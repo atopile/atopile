@@ -7,3 +7,13 @@ paths:
 builds:
   default:
     entry: board_outline_demo.ato:App
+dependencies:
+- type: registry
+  identifier: atopile/usb-connectors
+  release: 0.4.1
+- type: registry
+  identifier: atopile/sensirion-sht45
+  release: 0.2.0
+- type: registry
+  identifier: atopile/programming-headers
+  release: 0.2.0

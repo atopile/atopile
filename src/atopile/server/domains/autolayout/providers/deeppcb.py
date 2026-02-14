@@ -910,6 +910,14 @@ class DeepPCBProvider(AutolayoutProvider):
                 status = exc.response.status_code
                 detail = exc.response.text.strip()
                 detail = detail[:2_000] if detail else "<no response body>"
+                detail = _redact_sensitive_values(
+                    detail,
+                    (
+                        self.config.api_key,
+                        self.config.bearer_token,
+                        self.config.webhook_token,
+                    ),
+                )
                 raise RuntimeError(
                     f"DeepPCB API request failed ({method} {url}) with status "
                     f"{status}. Response: {detail}"
@@ -1058,7 +1066,7 @@ class DeepPCBProvider(AutolayoutProvider):
 
     def _auth_headers(self) -> dict[str, str]:
         headers = {"x-deeppcb-api-key": self.config.api_key}
-        bearer_token = (self.config.bearer_token or "").strip() or self.config.api_key
+        bearer_token = (self.config.bearer_token or "").strip()
         if bearer_token:
             headers["Authorization"] = f"Bearer {bearer_token}"
         return headers
@@ -1470,3 +1478,21 @@ def _is_running_workflow_status(raw: str) -> bool:
         "in_progress",
         "in-progress",
     }
+
+
+def _redact_sensitive_values(
+    text: str,
+    values: tuple[str | None, ...],
+) -> str:
+    if not text:
+        return text
+
+    output = text
+    for raw in values:
+        if not isinstance(raw, str):
+            continue
+        token = raw.strip()
+        if len(token) < 4:
+            continue
+        output = output.replace(token, "***REDACTED***")
+    return output

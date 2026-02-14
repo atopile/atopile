@@ -7,8 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from atopile.dataclasses import AppContext, BuildStatus
+from atopile.dataclasses import (
+    AppContext,
+    BuildResponse,
+    BuildStatus,
+    BuildTargetInfo,
+)
 from atopile.server.agent import policy, tools
+from atopile.server.domains.autolayout.models import (
+    AutolayoutCandidate,
+    AutolayoutJob,
+    AutolayoutState,
+    utc_now_iso,
+)
 
 
 def _run(coro):
@@ -37,6 +48,11 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_rename_path" in names
     assert "project_delete_path" in names
     assert "manufacturing_generate" in names
+    assert "autolayout_run" in names
+    assert "autolayout_status" in names
+    assert "autolayout_fetch_to_layout" in names
+    assert "autolayout_request_screenshot" in names
+    assert "autolayout_configure_board_intent" in names
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
 
@@ -196,6 +212,243 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     assert result["success"] is True
     assert result["lcsc_id"] == "C521608"
     assert "datasheet_read" in result["implementation_hint"]
+
+
+def test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        def start_job(
+            self,
+            project_root: str,
+            build_target: str,
+            provider_name: str | None,
+            constraints: dict,
+            options: dict,
+        ) -> AutolayoutJob:
+            captured["project_root"] = project_root
+            captured["build_target"] = build_target
+            captured["provider_name"] = provider_name
+            captured["constraints"] = constraints
+            captured["options"] = options
+            return AutolayoutJob(
+                job_id="al-123456789abc",
+                project_root=project_root,
+                build_target=build_target,
+                provider="deeppcb",
+                state=AutolayoutState.RUNNING,
+                created_at=utc_now_iso(),
+                updated_at=utc_now_iso(),
+                provider_job_ref="board-123",
+                constraints=constraints,
+                options=options,
+            )
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_run",
+            arguments={
+                "build_target": "default",
+                "provider": "deeppcb",
+                "job_type": "Routing",
+                "timeout_minutes": 15,
+                "max_batch_timeout": 45,
+                "webhook_url": "https://example.com/hook",
+                "webhook_token": "tok",
+                "constraints": {"keepouts": []},
+                "options": {"responseBoardFormat": 3},
+            },
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["job_id"] == "al-123456789abc"
+    assert result["background"] is True
+    assert captured["build_target"] == "default"
+    assert captured["provider_name"] == "deeppcb"
+    assert captured["constraints"] == {"keepouts": []}
+    options = captured["options"]
+    assert isinstance(options, dict)
+    assert options["jobType"] == "Routing"
+    assert options["timeout"] == 15
+    assert options["maxBatchTimeout"] == 45
+    assert options["responseBoardFormat"] == 3
+
+
+def test_autolayout_fetch_to_layout_archives_iteration(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    layout_dir = tmp_path / "layouts" / "default"
+    layout_dir.mkdir(parents=True)
+    layout_path = layout_dir / "default.kicad_pcb"
+    layout_path.write_text("old-board", encoding="utf-8")
+
+    work_dir = tmp_path / "build" / "builds" / "default" / "autolayout" / "al-job"
+    downloads_dir = work_dir / "downloads"
+    downloads_dir.mkdir(parents=True)
+    (downloads_dir / "cand-1.kicad_pcb").write_text("new-board", encoding="utf-8")
+
+    base_job = AutolayoutJob(
+        job_id="al-123456789abc",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.RUNNING,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-123",
+        layout_path=str(layout_path),
+        work_dir=str(work_dir),
+    )
+
+    class FakeService:
+        def refresh_job(self, job_id: str) -> AutolayoutJob:
+            assert job_id == "al-123456789abc"
+            return base_job
+
+        def list_candidates(
+            self,
+            job_id: str,
+            refresh: bool = True,
+        ) -> list[AutolayoutCandidate]:
+            assert job_id == "al-123456789abc"
+            return [AutolayoutCandidate(candidate_id="cand-1", score=0.91)]
+
+        def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
+            assert job_id == "al-123456789abc"
+            assert candidate_id == "cand-1"
+            return base_job
+
+        def apply_candidate(
+            self,
+            job_id: str,
+            candidate_id: str | None = None,
+            manual_layout_path: str | None = None,
+        ) -> AutolayoutJob:
+            assert job_id == "al-123456789abc"
+            assert candidate_id == "cand-1"
+            return AutolayoutJob(
+                job_id=base_job.job_id,
+                project_root=base_job.project_root,
+                build_target=base_job.build_target,
+                provider=base_job.provider,
+                state=AutolayoutState.COMPLETED,
+                created_at=base_job.created_at,
+                updated_at=utc_now_iso(),
+                provider_job_ref=base_job.provider_job_ref,
+                layout_path=base_job.layout_path,
+                work_dir=base_job.work_dir,
+                applied_layout_path=str(layout_path),
+                selected_candidate_id="cand-1",
+                applied_candidate_id="cand-1",
+            )
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_fetch_to_layout",
+            arguments={"job_id": "al-123456789abc"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["selected_candidate_id"] == "cand-1"
+    assert result["downloaded_candidate_path"]
+    archived = result["archived_iteration_path"]
+    assert isinstance(archived, str)
+    assert "autolayout_iterations" in archived
+    assert Path(archived).exists()
+
+
+def test_autolayout_request_screenshot_queues_render_build(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_start_build(request):
+        assert request.targets == ["default"]
+        assert set(request.include_targets) == {"2d-image", "3d-image"}
+        return BuildResponse(
+            success=True,
+            message="Build queued",
+            build_targets=[BuildTargetInfo(target="default", build_id="b123")],
+        )
+
+    monkeypatch.setattr(tools.builds_domain, "handle_start_build", fake_start_build)
+    monkeypatch.setattr(
+        tools,
+        "_expected_screenshot_outputs",
+        lambda **_: {
+            "view": "both",
+            "target": "default",
+            "paths": {
+                "2d": "/tmp/default.pcba.svg",
+                "3d": "/tmp/default.pcba.png",
+            },
+            "exists": {"2d": False, "3d": False},
+        },
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_request_screenshot",
+            arguments={"target": "default", "view": "both"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["queued_build_id"] == "b123"
+    assert set(result["include_targets"]) == {"2d-image", "3d-image"}
+    assert result["expected_outputs"]["view"] == "both"
+
+
+def test_autolayout_configure_board_intent_updates_ato_yaml(tmp_path: Path) -> None:
+    ato_yaml = tmp_path / "ato.yaml"
+    ato_yaml.write_text(
+        (
+            "paths:\n"
+            "  src: ./\n"
+            "  layout: ./layouts\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: main.ato:App\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_configure_board_intent",
+            arguments={
+                "build_target": "default",
+                "enable_ground_pours": True,
+                "plane_nets": ["GND", "5V"],
+                "layer_count": 4,
+                "board_thickness_mm": 1.6,
+                "outer_copper_oz": 1.0,
+                "dielectric_er": 4.2,
+                "preserve_existing_routing": True,
+            },
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["build_target"] == "default"
+    after = result["constraints_after"]
+    assert after["plane_intent"]["enabled"] is True
+    assert after["plane_intent"]["nets"] == ["GND", "5V"]
+    assert after["stackup_intent"]["layer_count"] == 4
+    assert after["stackup_intent"]["board_thickness_mm"] == 1.6
+    assert after["preserve_existing_routing"] is True
 
 
 def test_datasheet_read_uploads_pdf_and_returns_file_id(
@@ -631,9 +884,7 @@ def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
         "https://example.com/dead.pdf",
         "https://example.com/working.pdf",
     ]
-    assert result["resolution"]["url_fallback"]["selected_url"].endswith(
-        "/working.pdf"
-    )
+    assert result["resolution"]["url_fallback"]["selected_url"].endswith("/working.pdf")
 
 
 def test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:

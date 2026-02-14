@@ -293,6 +293,130 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         typical_output="recent_builds, latest_failure_logs, problems",
         keywords=["diagnostic", "explain failure", "lint", "health check"],
     ),
+    "autolayout_run": ToolDirectoryItem(
+        name="autolayout_run",
+        category="autolayout",
+        purpose=(
+            "Start background placement or routing with DeepPCB/autolayout provider."
+        ),
+        tooltip=(
+            "Queue placement/routing as an autolayout job with provider options "
+            "(timeout, batch timeout, webhooks, resume board)."
+        ),
+        inputs=[
+            "build_target",
+            "provider",
+            "job_type",
+            "routing_type",
+            "timeout_minutes",
+            "max_batch_timeout",
+            "resume_board_id",
+            "constraints",
+            "options",
+        ],
+        typical_output="job_id, state, provider_job_ref, job",
+        keywords=[
+            "autolayout",
+            "auto layout",
+            "autoroute",
+            "routing",
+            "placement",
+            "deeppcb",
+            "route board",
+            "place board",
+        ],
+    ),
+    "autolayout_status": ToolDirectoryItem(
+        name="autolayout_status",
+        category="autolayout",
+        purpose="Refresh autolayout state and candidates.",
+        tooltip="Check autolayout progress, candidates, and terminal state.",
+        inputs=[
+            "job_id",
+            "refresh",
+            "include_candidates",
+            "wait_seconds",
+            "poll_interval_seconds",
+        ],
+        typical_output="state, candidate_count, job, candidates",
+        keywords=[
+            "autolayout status",
+            "routing status",
+            "placement status",
+            "job status",
+            "candidate status",
+        ],
+    ),
+    "autolayout_fetch_to_layout": ToolDirectoryItem(
+        name="autolayout_fetch_to_layout",
+        category="autolayout",
+        purpose="Apply selected routed/placed candidate into layouts/ with archive.",
+        tooltip=(
+            "Fetch candidate, apply to layout file, and archive an iteration copy "
+            "under layouts/autolayout_iterations."
+        ),
+        inputs=["job_id", "candidate_id", "archive_iteration"],
+        typical_output=(
+            "selected_candidate_id, applied_layout_path, backup_layout_path, "
+            "archived_iteration_path"
+        ),
+        keywords=[
+            "fetch routed board",
+            "apply candidate",
+            "pull layout",
+            "archive iteration",
+            "use routed board",
+        ],
+    ),
+    "autolayout_request_screenshot": ToolDirectoryItem(
+        name="autolayout_request_screenshot",
+        category="autolayout",
+        purpose="Queue 2D/3D screenshot render for current placed/routed layout.",
+        tooltip="Queue background build targets to render board screenshots.",
+        inputs=["target", "view", "frozen"],
+        typical_output="queued_build_id, expected_outputs",
+        keywords=[
+            "screenshot",
+            "render board",
+            "2d image",
+            "3d image",
+            "board preview",
+        ],
+    ),
+    "autolayout_configure_board_intent": ToolDirectoryItem(
+        name="autolayout_configure_board_intent",
+        category="autolayout",
+        purpose="Configure plane/stackup intent in ato.yaml for a build target.",
+        tooltip=(
+            "Set ground-pour and stackup assumptions as autolayout constraints so "
+            "the agent can express board intent before routing."
+        ),
+        inputs=[
+            "build_target",
+            "enable_ground_pours",
+            "plane_nets",
+            "plane_mode",
+            "layer_count",
+            "board_thickness_mm",
+            "outer_copper_oz",
+            "inner_copper_oz",
+            "dielectric_er",
+            "preserve_existing_routing",
+            "notes",
+        ],
+        typical_output="build_target, plane_intent, stackup_intent, constraints_after",
+        keywords=[
+            "ground pour",
+            "ground plane",
+            "power plane",
+            "plane net",
+            "stackup",
+            "board thickness",
+            "copper weight",
+            "dielectric",
+            "impedance assumptions",
+        ],
+    ),
     "report_bom": ToolDirectoryItem(
         name="report_bom",
         category="reports",
@@ -359,6 +483,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
 }
 
 _BUILD_ID_RE = re.compile(r"\b[a-f0-9]{8,}\b", re.IGNORECASE)
+_AUTOLAYOUT_JOB_ID_RE = re.compile(r"\bal-[a-f0-9]{12}\b", re.IGNORECASE)
 _FILE_RE = re.compile(r"([A-Za-z0-9_./-]+\.(?:ato|py|md|json|yaml|yml|toml|ts|tsx))")
 _PDF_FILE_RE = re.compile(r"([A-Za-z0-9_./-]+\.pdf)\b", re.IGNORECASE)
 _LCSC_RE = re.compile(r"\bC\d{3,}\b", re.IGNORECASE)
@@ -610,6 +735,64 @@ def suggest_tools(
             and name == "manufacturing_summary"
         ):
             score += 1.4
+        autolayout_terms = (
+            "autolayout",
+            "auto layout",
+            "autoroute",
+            "route board",
+            "routing",
+            "placement",
+            "deeppcb",
+            "pcb layout",
+        )
+        if any(term in search_blob for term in autolayout_terms):
+            if name == "autolayout_run":
+                score += 1.9
+            elif name in {"autolayout_status", "autolayout_fetch_to_layout"}:
+                score += 1.3
+            elif name == "autolayout_configure_board_intent":
+                score += 1.1
+        stackup_terms = (
+            "ground pour",
+            "ground plane",
+            "power plane",
+            "stackup",
+            "board thickness",
+            "copper weight",
+            "dielectric",
+            "impedance",
+            "controlled impedance",
+        )
+        if (
+            any(term in search_blob for term in stackup_terms)
+            and name == "autolayout_configure_board_intent"
+        ):
+            score += 2.1
+        fetch_terms = (
+            "fetch routed",
+            "fetch placement",
+            "apply candidate",
+            "pull layout",
+            "archive iteration",
+        )
+        if (
+            any(term in search_blob for term in fetch_terms)
+            and name == "autolayout_fetch_to_layout"
+        ):
+            score += 1.8
+        screenshot_terms = (
+            "screenshot",
+            "render board",
+            "board image",
+            "2d image",
+            "3d image",
+            "board preview",
+        )
+        if (
+            any(term in search_blob for term in screenshot_terms)
+            and name == "autolayout_request_screenshot"
+        ):
+            score += 1.9
         if "failure" in search_blob and name in {
             "build_logs_search",
             "design_diagnostics",
@@ -621,6 +804,9 @@ def suggest_tools(
             "report_variables",
             "manufacturing_generate",
             "manufacturing_summary",
+            "autolayout_run",
+            "autolayout_request_screenshot",
+            "autolayout_configure_board_intent",
         }:
             score += 0.3
 
@@ -694,13 +880,22 @@ def suggest_tools(
 def _stale_after_seconds(tool_name: str) -> float:
     if tool_name.startswith("build") or tool_name.startswith("design_"):
         return 90.0
+    if tool_name.startswith("autolayout_"):
+        return 75.0
     if tool_name.startswith("project_"):
         return 300.0
     return 600.0
 
 
 def _extract_context_id(result: dict[str, Any]) -> str | None:
-    for key in ("build_id", "item_id", "path", "identifier"):
+    for key in (
+        "job_id",
+        "build_id",
+        "provider_job_ref",
+        "item_id",
+        "path",
+        "identifier",
+    ):
         value = result.get(key)
         if isinstance(value, str) and value:
             return value
@@ -727,6 +922,33 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
         targets = result.get("build_targets")
         if isinstance(targets, list):
             return f"{len(targets)} build(s) queued"
+    if name == "autolayout_run":
+        state = result.get("state")
+        if isinstance(state, str) and state:
+            return f"autolayout {state}"
+        return "autolayout job queued"
+    if name == "autolayout_status":
+        state = result.get("state")
+        candidate_count = result.get("candidate_count")
+        if isinstance(state, str):
+            if isinstance(candidate_count, int):
+                return f"state={state}; candidates={candidate_count}"
+            return f"state={state}"
+    if name == "autolayout_fetch_to_layout":
+        candidate = result.get("selected_candidate_id")
+        if isinstance(candidate, str) and candidate:
+            return f"applied {candidate}"
+        return "layout candidate applied"
+    if name == "autolayout_request_screenshot":
+        view = result.get("view")
+        if isinstance(view, str) and view:
+            return f"{view} screenshot build queued"
+        return "screenshot build queued"
+    if name == "autolayout_configure_board_intent":
+        target = result.get("build_target")
+        if isinstance(target, str) and target:
+            return f"board intent updated for {target}"
+        return "board intent updated"
     return "ok"
 
 
@@ -867,6 +1089,122 @@ def _infer_prefilled_args(
                 args["stage"] = stage_match.group(1)
             return args
 
+    if tool_name == "autolayout_run":
+        args: dict[str, Any] = {}
+        if selected_targets:
+            args["build_target"] = selected_targets[0]
+        else:
+            target_match = re.search(r"(?:target|build)\s+([a-z0-9_.-]+)\b", lower)
+            if target_match:
+                candidate = target_match.group(1)
+                if candidate not in {"for", "with", "from", "the"}:
+                    args["build_target"] = candidate
+
+        if "placement" in lower or "place components" in lower:
+            args["job_type"] = "Placement"
+        else:
+            args["job_type"] = "Routing"
+
+        if "keep existing" in lower or "protected wiring" in lower:
+            args["routing_type"] = "CurrentProtectedWiring"
+        elif "start from current" in lower:
+            args["routing_type"] = "CurrentUnprotectedWiring"
+        elif "empty board" in lower or "fresh routing" in lower:
+            args["routing_type"] = "EmptyBoard"
+
+        resume_id = re.search(
+            r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
+            r"[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+            lower,
+            re.IGNORECASE,
+        )
+        if resume_id and ("resume" in lower or "from board" in lower):
+            args["resume_board_id"] = resume_id.group(0)
+        return args
+
+    if tool_name == "autolayout_status":
+        args: dict[str, Any] = {}
+        if any(token in lower for token in ("periodic", "check in", "monitor", "wait")):
+            args["wait_seconds"] = 120
+            args["poll_interval_seconds"] = 15
+        job_match = _AUTOLAYOUT_JOB_ID_RE.search(lower)
+        if job_match:
+            args["job_id"] = job_match.group(0)
+            return args
+        recent = memory_view.get("autolayout_run")
+        if recent and isinstance(recent.get("context_id"), str):
+            args["job_id"] = str(recent["context_id"])
+            return args
+
+    if tool_name == "autolayout_fetch_to_layout":
+        job_match = _AUTOLAYOUT_JOB_ID_RE.search(lower)
+        if job_match:
+            return {"job_id": job_match.group(0)}
+        recent = memory_view.get("autolayout_run")
+        if recent and isinstance(recent.get("context_id"), str):
+            return {"job_id": str(recent["context_id"])}
+        status_recent = memory_view.get("autolayout_status")
+        if status_recent and isinstance(status_recent.get("context_id"), str):
+            return {"job_id": str(status_recent["context_id"])}
+
+    if tool_name == "autolayout_request_screenshot":
+        args = {"view": "2d"}
+        if "3d" in lower and "2d" in lower:
+            args["view"] = "both"
+        elif "3d" in lower:
+            args["view"] = "3d"
+        elif "both" in lower:
+            args["view"] = "both"
+
+        if selected_targets:
+            args["target"] = selected_targets[0]
+        else:
+            target_match = re.search(r"(?:target|build)\s+([a-z0-9_.-]+)\b", lower)
+            if target_match:
+                candidate = target_match.group(1)
+                if candidate not in {"for", "with", "from", "the"}:
+                    args["target"] = candidate
+        return args
+
+    if tool_name == "autolayout_configure_board_intent":
+        args: dict[str, Any] = {}
+        if selected_targets:
+            args["build_target"] = selected_targets[0]
+
+        if "no ground pour" in lower or "disable pour" in lower:
+            args["enable_ground_pours"] = False
+        elif any(
+            token in lower for token in ("ground pour", "ground plane", "power plane")
+        ):
+            args["enable_ground_pours"] = True
+
+        if "hatched" in lower:
+            args["plane_mode"] = "hatched"
+        elif "solid" in lower:
+            args["plane_mode"] = "solid"
+
+        if "4 layer" in lower or "4-layer" in lower:
+            args["layer_count"] = 4
+        elif "6 layer" in lower or "6-layer" in lower:
+            args["layer_count"] = 6
+        elif "2 layer" in lower or "2-layer" in lower:
+            args["layer_count"] = 2
+
+        if "1.6mm" in lower:
+            args["board_thickness_mm"] = 1.6
+        elif "0.8mm" in lower:
+            args["board_thickness_mm"] = 0.8
+        elif "1.0mm" in lower:
+            args["board_thickness_mm"] = 1.0
+
+        if "preserve existing routing" in lower:
+            args["preserve_existing_routing"] = True
+        elif "ignore existing routing" in lower:
+            args["preserve_existing_routing"] = False
+
+        if args:
+            return args
+
     if tool_name == "parts_install":
         lcsc_match = _LCSC_RE.search(text)
         if lcsc_match:
@@ -1001,9 +1339,7 @@ def _maybe_explain_failure_suggestion(
         "category": "diagnostics",
         "score": 4.2,
         "reason": "Composite failure triage workflow.",
-        "tooltip": (
-            "Runs diagnostics-first failure analysis before suggesting fixes."
-        ),
+        "tooltip": ("Runs diagnostics-first failure analysis before suggesting fixes."),
         "prefilled_args": {"build_id": build_context} if build_context else {},
         "prefilled_prompt": prompt,
         "kind": "composite",

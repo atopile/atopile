@@ -72,6 +72,14 @@ Use this when changing agent tool behavior, orchestrator prompts, tool policies,
 - `build_logs_search`
 - `design_diagnostics`
 
+### PCB Autolayout
+
+- `autolayout_run`
+- `autolayout_status`
+- `autolayout_fetch_to_layout`
+- `autolayout_request_screenshot`
+- `autolayout_configure_board_intent`
+
 ### Reports and Manufacturing
 
 - `report_bom`
@@ -116,6 +124,10 @@ Validated: 27/27 advertised tools executed successfully (plus an extra `project_
 ## Behavior Notes (Important)
 
 - `build_run` and `manufacturing_generate` returning success means the build was queued, not necessarily completed successfully.
+- `autolayout_run` is also asynchronous: it queues provider work and returns a local `job_id`; monitor with `autolayout_status`.
+- `autolayout_fetch_to_layout` applies a candidate into `layouts/` and archives an iteration snapshot in `layouts/.../autolayout_iterations/`.
+- `autolayout_request_screenshot` queues `2d-image`/`3d-image` build targets; track completion with `build_logs_search`.
+- `autolayout_configure_board_intent` writes plane/stackup intent under `builds.<target>.autolayout.constraints` in `ato.yaml`.
 - `build_logs_search` can return a synthetic diagnostic log entry when no real logs were captured.
 - `report_bom` / `report_variables` return `found=false` with actionable guidance when artifacts are missing.
 - `datasheet_read` uses graph-first datasheet resolution, then falls back to part API URL lookup, and uploads the PDF as an OpenAI file.
@@ -131,6 +143,17 @@ Validated: 27/27 advertised tools executed successfully (plus an extra `project_
   - the tool call usually returns quickly (queue acknowledged),
   - the actual build can take a few seconds to a few minutes for complex designs.
 - `manufacturing_summary` is usually quick once artifacts exist, but can be slower when cost estimation needs additional analysis.
+- `autolayout_run` is async at provider level: start run, check progress with `autolayout_status`, then apply with `autolayout_fetch_to_layout`.
+
+### Autolayout Timing/Resume Guideline
+
+- Use periodic check-ins (`autolayout_status` with `wait_seconds`) instead of tight polling loops.
+- Suggested starting time budget:
+  - `<=50` components: `2-4` minutes.
+  - `50-100` components: `10-15` minutes.
+  - `>100` components: `20+` minutes.
+- If quality is insufficient, resume using `autolayout_run` with `resume_board_id` and extra timeout.
+- Prefer DeepPCB's board-specific `recommended-max-batch-timeout` endpoint when available.
 
 Recommended pattern:
 

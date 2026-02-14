@@ -65,6 +65,19 @@ Rules:
 - If asked to generate manufacturing outputs, call manufacturing_generate
   first, then track with build_logs_search, then inspect with
   manufacturing_summary.
+- For PCB placement/routing automation, use autolayout_run (background), then
+  autolayout_status to monitor candidates, then autolayout_fetch_to_layout to
+  apply/archive selected results under layouts/.
+- If asked to control ground pours/planes/stackup assumptions, call
+  autolayout_configure_board_intent before running placement/routing.
+- Use periodic check-ins for active autolayout jobs (autolayout_status with
+  wait_seconds/poll_interval_seconds). If quality is not good enough, resume by
+  calling autolayout_run with resume_board_id and additional timeout.
+- Time-budget heuristic: simple boards (<=50 components) start around 2-4 min,
+  medium (50-100) around 10-15 min, larger boards often 20+ min with iterative
+  resume runs.
+- For board preview images after placement/routing, use
+  autolayout_request_screenshot and track the queued build with build_logs_search.
 - For build diagnostics, prefer build_logs_search with explicit log_levels/stage
   filters when logs are noisy.
 - Use design_diagnostics when a build fails silently or diagnostics are needed.
@@ -100,6 +113,18 @@ def _build_session_primer(
         "  and constraints use report_variables.\n"
         "- manufacturing: use manufacturing_generate to create artifacts, then\n"
         "  build_logs_search to track, then manufacturing_summary to inspect.\n"
+        "- pcb auto layout: use autolayout_run for placement/routing, then\n"
+        "  autolayout_status to monitor, then autolayout_fetch_to_layout to\n"
+        "  apply + archive board iterations.\n"
+        "- planes/stackup: use autolayout_configure_board_intent to encode\n"
+        "  ground pour and stackup assumptions in ato.yaml before routing.\n"
+        "- time-budget heuristic: <=50 components ~2-4 minutes, 50-100 ~10-15\n"
+        "  minutes, larger boards 20+ minutes. Resume incrementally if needed.\n"
+        "- quality loop: check in periodically with autolayout_status\n"
+        "  (wait_seconds/poll_interval_seconds), and if quality is insufficient,\n"
+        "  call autolayout_run with resume_board_id for extra time.\n"
+        "- screenshots: use autolayout_request_screenshot (2d/3d), then\n"
+        "  build_logs_search to track completion and read output paths.\n"
         "- datasheets: use datasheet_read to attach component PDFs for native\n"
         "  model reading (instead of scraping text manually). Prefer lcsc_id\n"
         "  for graph-first resolution."
@@ -197,9 +222,7 @@ class AgentOrchestrator:
             )
 
         project_path = tools.validate_tool_scope(project_root, ctx)
-        include_session_primer = (
-            previous_response_id is None and len(history) == 0
-        )
+        include_session_primer = previous_response_id is None and len(history) == 0
         context_text = await self._build_context(
             project_root=project_path,
             selected_targets=selected_targets or [],
@@ -530,9 +553,7 @@ class AgentOrchestrator:
             lines.append("  - none")
 
         lines.append("- report_targets:")
-        lines.append(
-            f"  - bom: {bom_targets if bom_targets else ['none']}"
-        )
+        lines.append(f"  - bom: {bom_targets if bom_targets else ['none']}")
         lines.append(
             f"  - variables: {variables_targets if variables_targets else ['none']}"
         )
@@ -673,9 +694,9 @@ class AgentOrchestrator:
                 should_retry = status_code == 429 and attempt < self.api_retries
                 if should_retry:
                     if telemetry is not None:
-                        telemetry["api_retry_count"] = int(
-                            telemetry.get("api_retry_count", 0)
-                        ) + 1
+                        telemetry["api_retry_count"] = (
+                            int(telemetry.get("api_retry_count", 0)) + 1
+                        )
                     delay_s = _compute_rate_limit_retry_delay_s(
                         exc=exc,
                         attempt=attempt,
@@ -817,7 +838,7 @@ def _compute_rate_limit_retry_delay_s(
     hinted_delay_s = _extract_retry_after_delay_s(exc)
     if hinted_delay_s is not None:
         return min(max_delay_s, max(0.05, hinted_delay_s))
-    backoff_delay_s = max(0.05, base_delay_s) * (2**max(0, attempt))
+    backoff_delay_s = max(0.05, base_delay_s) * (2 ** max(0, attempt))
     return min(max_delay_s, backoff_delay_s)
 
 
@@ -905,9 +926,7 @@ def _build_prompt_cache_key(
 ) -> str:
     tool_names = ",".join(
         sorted(
-            str(tool.get("name", ""))
-            for tool in tool_defs
-            if isinstance(tool, dict)
+            str(tool.get("name", "")) for tool in tool_defs if isinstance(tool, dict)
         )
     )
     skill_ids = ",".join(
@@ -982,11 +1001,7 @@ def _limit_tool_output_for_model(
         "total",
         "count",
     }
-    compact: dict[str, Any] = {
-        key: value[key]
-        for key in keep_keys
-        if key in value
-    }
+    compact: dict[str, Any] = {key: value[key] for key in keep_keys if key in value}
     compact["truncated"] = True
     compact["truncated_reason"] = "tool_output_budget_exceeded"
     compact["original_size_chars"] = len(serialized)
@@ -1080,9 +1095,7 @@ def _build_function_call_outputs_for_model(
 
         lcsc_id = result_payload.get("lcsc_id")
         lcsc_suffix = (
-            f" lcsc_id={lcsc_id};"
-            if isinstance(lcsc_id, str) and lcsc_id
-            else ""
+            f" lcsc_id={lcsc_id};" if isinstance(lcsc_id, str) and lcsc_id else ""
         )
         outputs.append(
             {

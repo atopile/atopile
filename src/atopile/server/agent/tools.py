@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
+from atopile.config import ProjectConfig
 from atopile.dataclasses import (
     AddBuildTargetRequest,
     AppContext,
@@ -36,6 +39,11 @@ from atopile.server.domains import parts_search as parts_domain
 from atopile.server.domains import problems as problems_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains import stdlib as stdlib_domain
+from atopile.server.domains.autolayout.models import (
+    AutolayoutCandidate,
+    AutolayoutState,
+)
+from atopile.server.domains.autolayout.service import get_autolayout_service
 
 _openai_file_client: AsyncOpenAI | None = None
 _openai_file_cache: dict[str, str] = {}
@@ -162,9 +170,7 @@ def _parse_build_log_levels(raw_levels: Any) -> list[str]:
 
     if isinstance(raw_levels, str):
         parsed = [
-            part.strip().upper()
-            for part in raw_levels.split(",")
-            if part.strip()
+            part.strip().upper() for part in raw_levels.split(",") if part.strip()
         ]
         if not parsed:
             return list(_DEFAULT_AGENT_BUILD_LOG_LEVELS)
@@ -412,8 +418,10 @@ def _build_artifact_summary(
         records_key = next(iter(list_lengths))
         records_count = list_lengths[records_key]
         maybe_rows = data.get(records_key)
-        if isinstance(maybe_rows, list) and maybe_rows and isinstance(
-            maybe_rows[0], dict
+        if (
+            isinstance(maybe_rows, list)
+            and maybe_rows
+            and isinstance(maybe_rows[0], dict)
         ):
             sample_fields = [str(field) for field in maybe_rows[0].keys()][:20]
 
@@ -447,6 +455,234 @@ def _present_output_keys(outputs: dict[str, Any]) -> list[str]:
         for key in _EXPECTED_MANUFACTURING_OUTPUT_KEYS
         if isinstance(outputs.get(key), str) and str(outputs.get(key)).strip()
     ]
+
+
+def _resolve_build_target(project_root: Path, build_target: str) -> Any:
+    project_cfg = ProjectConfig.from_path(project_root)
+    if project_cfg is None:
+        raise ValueError(f"No ato.yaml found in: {project_root}")
+    build_cfg = project_cfg.builds.get(build_target)
+    if build_cfg is None:
+        known = ", ".join(sorted(project_cfg.builds.keys()))
+        raise ValueError(f"Unknown build target '{build_target}'. Available: {known}")
+    return build_cfg
+
+
+def _extract_candidate_id(candidate: Any) -> str | None:
+    if isinstance(candidate, AutolayoutCandidate):
+        return candidate.candidate_id
+    if isinstance(candidate, dict):
+        raw = candidate.get("candidate_id") or candidate.get("candidateId")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        return None
+    raw = getattr(candidate, "candidate_id", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _extract_candidate_score(candidate: Any) -> float | None:
+    if isinstance(candidate, AutolayoutCandidate):
+        return candidate.score
+    if isinstance(candidate, dict):
+        raw = candidate.get("score")
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        return None
+    raw = getattr(candidate, "score", None)
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    return None
+
+
+def _autolayout_state_value(raw: Any) -> str:
+    if isinstance(raw, AutolayoutState):
+        return raw.value
+    if isinstance(raw, str):
+        return raw
+    return str(raw or "")
+
+
+def _choose_autolayout_candidate_id(
+    *,
+    candidates: list[Any],
+    requested_id: str | None,
+) -> str | None:
+    if requested_id:
+        return requested_id
+    if not candidates:
+        return None
+
+    ranked = sorted(
+        candidates,
+        key=lambda item: _extract_candidate_score(item)
+        if _extract_candidate_score(item) is not None
+        else float("-inf"),
+        reverse=True,
+    )
+    chosen = _extract_candidate_id(ranked[0])
+    if chosen:
+        return chosen
+    return _extract_candidate_id(candidates[0])
+
+
+def _safe_name_token(value: str, *, fallback: str) -> str:
+    token = "".join(
+        char if char.isalnum() or char in {".", "_", "-"} else "_"
+        for char in value.strip()
+    ).strip("._-")
+    if not token:
+        return fallback
+    return token[:120]
+
+
+def _archive_autolayout_iteration(
+    *,
+    source_layout: Path,
+    destination_layout_dir: Path,
+    layout_stem: str,
+    build_target: str,
+    job_id: str,
+    candidate_id: str,
+) -> Path:
+    archive_dir = destination_layout_dir / "autolayout_iterations"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    safe_target = _safe_name_token(build_target, fallback="target")
+    safe_job = _safe_name_token(job_id, fallback="job")
+    safe_candidate = _safe_name_token(candidate_id, fallback="candidate")
+
+    archive_path = archive_dir / (
+        f"{layout_stem}.{safe_target}.{safe_job}.{safe_candidate}.{timestamp}.kicad_pcb"
+    )
+    shutil.copy2(source_layout, archive_path)
+    return archive_path
+
+
+def _expected_screenshot_outputs(
+    *,
+    project_root: Path,
+    target: str,
+    view: str,
+) -> dict[str, Any]:
+    build_cfg = _resolve_build_target(project_root, target)
+    output_base = build_cfg.paths.output_base
+
+    want_2d = view in {"2d", "both"}
+    want_3d = view in {"3d", "both"}
+
+    outputs: dict[str, Any] = {
+        "view": view,
+        "target": target,
+        "paths": {},
+        "exists": {},
+    }
+    if want_2d:
+        two_d = output_base.with_suffix(".pcba.svg")
+        outputs["paths"]["2d"] = str(two_d)
+        outputs["exists"]["2d"] = two_d.exists()
+    if want_3d:
+        three_d = output_base.with_suffix(".pcba.png")
+        outputs["paths"]["3d"] = str(three_d)
+        outputs["exists"]["3d"] = three_d.exists()
+    return outputs
+
+
+def _estimate_layout_component_count(layout_path: Path) -> int | None:
+    if not layout_path.exists():
+        return None
+    try:
+        text = layout_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    return text.count("(footprint ")
+
+
+def _recommended_autolayout_timeout(
+    *,
+    component_count: int | None,
+    job_type: str,
+) -> dict[str, Any]:
+    normalized_job_type = job_type.strip().lower()
+    if component_count is None:
+        return {
+            "component_count": None,
+            "bucket": "unknown",
+            "start_timeout_minutes": 10,
+            "resume_increment_minutes": 10,
+            "note": (
+                "Could not estimate component count from layout. Start at 10 minutes "
+                "and resume in 10-minute increments."
+            ),
+        }
+
+    if component_count <= 50:
+        start = 2 if normalized_job_type == "placement" else 4
+        resume = 2 if normalized_job_type == "placement" else 4
+        bucket = "simple"
+    elif component_count <= 100:
+        start = 10 if normalized_job_type == "placement" else 15
+        resume = 5 if normalized_job_type == "placement" else 10
+        bucket = "medium"
+    elif component_count <= 200:
+        start = 20 if normalized_job_type == "placement" else 30
+        resume = 10 if normalized_job_type == "placement" else 15
+        bucket = "complex"
+    else:
+        start = 30 if normalized_job_type == "placement" else 45
+        resume = 15 if normalized_job_type == "placement" else 20
+        bucket = "very_complex"
+
+    return {
+        "component_count": component_count,
+        "bucket": bucket,
+        "start_timeout_minutes": start,
+        "resume_increment_minutes": resume,
+        "note": (
+            "Heuristic guidance based on component count and DeepPCB's stop/resume "
+            "workflow. Use autolayout_status checkpoints and resume when quality is "
+            "not sufficient."
+        ),
+    }
+
+
+def _normalize_plane_nets(raw: Any) -> list[str]:
+    if raw is None:
+        return ["GND"]
+    if not isinstance(raw, list):
+        raise ValueError("plane_nets must be an array of net names")
+    normalized: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError("plane_nets entries must be strings")
+        token = item.strip()
+        if not token:
+            continue
+        if token not in normalized:
+            normalized.append(token)
+    if not normalized:
+        normalized = ["GND"]
+    return normalized
+
+
+def _to_float_or_none(value: Any, *, field_name: str) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a number") from exc
+
+
+def _to_int_or_none(value: Any, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
 
 
 def _stdlib_matches_child_query(item: Any, query: str) -> bool:
@@ -714,9 +950,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "examples_search",
-            "description": (
-                "Search across curated example .ato files by substring."
-            ),
+            "description": ("Search across curated example .ato files by substring."),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -735,9 +969,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "examples_read_ato",
-            "description": (
-                "Read a curated example .ato file by example name."
-            ),
+            "description": ("Read a curated example .ato file by example name."),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1159,6 +1391,152 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
+            "name": "autolayout_run",
+            "description": (
+                "Start an autolayout placement or routing run as a background task."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "build_target": {"type": "string", "default": "default"},
+                    "provider": {"type": ["string", "null"]},
+                    "job_type": {
+                        "type": "string",
+                        "enum": ["Routing", "Placement"],
+                        "default": "Routing",
+                    },
+                    "routing_type": {"type": ["string", "null"]},
+                    "timeout_minutes": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "maximum": 240,
+                    },
+                    "max_batch_timeout": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "maximum": 3600,
+                    },
+                    "resume_board_id": {"type": ["string", "null"]},
+                    "resume_stop_first": {"type": "boolean", "default": True},
+                    "webhook_url": {"type": ["string", "null"]},
+                    "webhook_token": {"type": ["string", "null"]},
+                    "constraints": {"type": "object", "default": {}},
+                    "options": {"type": "object", "default": {}},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "autolayout_status",
+            "description": (
+                "Refresh an autolayout job and return state, candidates, and "
+                "provider refs."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "string"},
+                    "refresh": {"type": "boolean", "default": True},
+                    "include_candidates": {"type": "boolean", "default": True},
+                    "wait_seconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1800,
+                        "default": 0,
+                    },
+                    "poll_interval_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 120,
+                        "default": 10,
+                    },
+                },
+                "required": ["job_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "autolayout_fetch_to_layout",
+            "description": (
+                "Fetch one autolayout candidate into layouts/, apply it, and archive "
+                "an iteration snapshot."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "string"},
+                    "candidate_id": {"type": ["string", "null"]},
+                    "archive_iteration": {"type": "boolean", "default": True},
+                },
+                "required": ["job_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "autolayout_request_screenshot",
+            "description": (
+                "Queue screenshot render(s) of the current board layout (2D/3D) "
+                "as a background build."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "default": "default"},
+                    "view": {
+                        "type": "string",
+                        "enum": ["2d", "3d", "both"],
+                        "default": "2d",
+                    },
+                    "frozen": {"type": "boolean", "default": False},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "autolayout_configure_board_intent",
+            "description": (
+                "Set board plane/stackup intent for a build target in ato.yaml so "
+                "the agent can express ground pour and impedance assumptions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "build_target": {"type": "string", "default": "default"},
+                    "enable_ground_pours": {"type": "boolean", "default": True},
+                    "plane_nets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": ["GND"],
+                    },
+                    "plane_mode": {
+                        "type": "string",
+                        "enum": ["solid", "hatched"],
+                        "default": "solid",
+                    },
+                    "min_plane_clearance_mm": {
+                        "type": ["number", "null"],
+                    },
+                    "layer_count": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "maximum": 64,
+                    },
+                    "board_thickness_mm": {"type": ["number", "null"]},
+                    "outer_copper_oz": {"type": ["number", "null"]},
+                    "inner_copper_oz": {"type": ["number", "null"]},
+                    "dielectric_er": {"type": ["number", "null"]},
+                    "preserve_existing_routing": {"type": ["boolean", "null"]},
+                    "notes": {"type": ["string", "null"]},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
             "name": "report_bom",
             "description": (
                 "Primary BOM report tool. Read generated BOM artifact data for "
@@ -1311,9 +1689,7 @@ async def execute_tool(
         example_project_root = _resolve_example_project(examples_root, example)
         example_file = _resolve_example_ato_file(
             example_project_root,
-            arguments.get("path")
-            if isinstance(arguments.get("path"), str)
-            else None,
+            arguments.get("path") if isinstance(arguments.get("path"), str) else None,
         )
         relative_path = str(example_file.relative_to(example_project_root))
         chunk = await asyncio.to_thread(
@@ -1339,9 +1715,9 @@ async def execute_tool(
         )
         if response is None:
             return {"modules": [], "total": 0, "returned": 0, "types": {}}
-        modules = [
-            module.model_dump(by_alias=True) for module in response.modules
-        ][:limit]
+        modules = [module.model_dump(by_alias=True) for module in response.modules][
+            :limit
+        ]
         return {
             "modules": modules,
             "total": response.total,
@@ -1393,9 +1769,7 @@ async def execute_tool(
         items = list(response.items)
         if isinstance(child_query, str) and child_query.strip():
             items = [
-                item
-                for item in items
-                if _stdlib_matches_child_query(item, child_query)
+                item for item in items if _stdlib_matches_child_query(item, child_query)
             ]
         if isinstance(parameter_query, str) and parameter_query.strip():
             items = [
@@ -1739,8 +2113,7 @@ async def execute_tool(
             else:
                 details = "; ".join(attempted_errors[:3]) or "unknown"
                 raise policy.ScopeError(
-                    "Failed to fetch datasheet from all resolved URLs "
-                    f"({details})"
+                    f"Failed to fetch datasheet from all resolved URLs ({details})"
                 ) from last_error
 
             if selected_url and source_url and selected_url != source_url:
@@ -1903,8 +2276,7 @@ async def execute_tool(
             builds = await asyncio.to_thread(BuildHistory.get_all, min(limit, 120))
             active_ids = _active_or_pending_build_ids()
             normalized = [
-                _normalize_history_build(build, active_ids)
-                for build in builds
+                _normalize_history_build(build, active_ids) for build in builds
             ]
             if query:
                 normalized = [
@@ -2083,6 +2455,468 @@ async def execute_tool(
                 "items": problems_list,
             },
             "recommendations": recommendations,
+        }
+
+    if name == "autolayout_run":
+        build_target = (
+            str(arguments.get("build_target", "default")).strip() or "default"
+        )
+        provider = arguments.get("provider")
+        provider_name = (
+            str(provider).strip()
+            if isinstance(provider, str) and str(provider).strip()
+            else None
+        )
+
+        raw_constraints = arguments.get("constraints")
+        if raw_constraints is None:
+            constraints: dict[str, Any] = {}
+        elif isinstance(raw_constraints, dict):
+            constraints = dict(raw_constraints)
+        else:
+            raise ValueError("constraints must be an object")
+
+        raw_options = arguments.get("options")
+        if raw_options is None:
+            options: dict[str, Any] = {}
+        elif isinstance(raw_options, dict):
+            options = dict(raw_options)
+        else:
+            raise ValueError("options must be an object")
+
+        job_type = arguments.get("job_type")
+        if isinstance(job_type, str) and job_type.strip():
+            options.setdefault("jobType", job_type.strip())
+
+        routing_type = arguments.get("routing_type")
+        if isinstance(routing_type, str) and routing_type.strip():
+            options.setdefault("routingType", routing_type.strip())
+
+        guidance_job_type = str(options.get("jobType", "Routing"))
+        component_count: int | None = None
+        try:
+            build_cfg = _resolve_build_target(project_root, build_target)
+            component_count = _estimate_layout_component_count(build_cfg.paths.layout)
+        except Exception:
+            component_count = None
+        timeout_guidance = _recommended_autolayout_timeout(
+            component_count=component_count,
+            job_type=guidance_job_type,
+        )
+
+        timeout_source = "provider_default"
+        timeout_minutes = arguments.get("timeout_minutes")
+        if timeout_minutes is not None:
+            options.setdefault("timeout", int(timeout_minutes))
+            timeout_source = "explicit_argument"
+        elif "timeout" in options or "timeout_minutes" in options:
+            timeout_source = "options_object"
+        else:
+            options.setdefault(
+                "timeout",
+                int(timeout_guidance["start_timeout_minutes"]),
+            )
+            timeout_source = "heuristic_component_count"
+
+        max_batch_timeout = arguments.get("max_batch_timeout")
+        if max_batch_timeout is not None:
+            options.setdefault("maxBatchTimeout", int(max_batch_timeout))
+
+        webhook_url = arguments.get("webhook_url")
+        if isinstance(webhook_url, str) and webhook_url.strip():
+            options.setdefault("webhook_url", webhook_url.strip())
+
+        webhook_token = arguments.get("webhook_token")
+        if isinstance(webhook_token, str) and webhook_token.strip():
+            options.setdefault("webhook_token", webhook_token.strip())
+
+        resume_board_id = arguments.get("resume_board_id")
+        if isinstance(resume_board_id, str) and resume_board_id.strip():
+            options.setdefault("resume_board_id", resume_board_id.strip())
+            options.setdefault(
+                "resume_stop_first",
+                bool(arguments.get("resume_stop_first", True)),
+            )
+
+        service = get_autolayout_service()
+        job = await asyncio.to_thread(
+            service.start_job,
+            str(project_root),
+            build_target,
+            provider_name,
+            constraints,
+            options,
+        )
+
+        return {
+            "job_id": job.job_id,
+            "provider": job.provider,
+            "build_target": job.build_target,
+            "state": _autolayout_state_value(job.state),
+            "provider_job_ref": job.provider_job_ref,
+            "applied_timeout_minutes": int(options.get("timeout", 10)),
+            "timeout_source": timeout_source,
+            "timeout_guidance": timeout_guidance,
+            "options": dict(job.options),
+            "constraints": dict(job.constraints),
+            "background": True,
+            "job": job.to_dict(),
+            "next_step": (
+                "Use autolayout_status with this job_id to monitor candidates, "
+                "then autolayout_fetch_to_layout to apply one into layouts/."
+            ),
+        }
+
+    if name == "autolayout_status":
+        job_id = str(arguments.get("job_id", "")).strip()
+        if not job_id:
+            raise ValueError("job_id is required")
+        refresh = bool(arguments.get("refresh", True))
+        include_candidates = bool(arguments.get("include_candidates", True))
+        wait_seconds = max(0, int(arguments.get("wait_seconds", 0)))
+        poll_interval_seconds = max(
+            1,
+            int(arguments.get("poll_interval_seconds", 10)),
+        )
+
+        service = get_autolayout_service()
+        if refresh:
+            job = await asyncio.to_thread(service.refresh_job, job_id)
+        else:
+            job = await asyncio.to_thread(service.get_job, job_id)
+
+        polls = 0
+        waited_seconds = 0
+        if refresh and wait_seconds > 0:
+            while (
+                _autolayout_state_value(job.state)
+                in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}
+                and waited_seconds < wait_seconds
+            ):
+                sleep_for = min(poll_interval_seconds, wait_seconds - waited_seconds)
+                await asyncio.sleep(sleep_for)
+                waited_seconds += sleep_for
+                polls += 1
+                job = await asyncio.to_thread(service.refresh_job, job_id)
+
+        candidates_payload: list[dict[str, Any]] = []
+        if include_candidates:
+            candidates = await asyncio.to_thread(
+                service.list_candidates,
+                job_id,
+                False,
+            )
+            candidates_payload = [candidate.to_dict() for candidate in candidates]
+
+        state_value = _autolayout_state_value(job.state)
+        terminal = state_value in {
+            AutolayoutState.COMPLETED.value,
+            AutolayoutState.FAILED.value,
+            AutolayoutState.CANCELLED.value,
+        }
+
+        candidate_count = (
+            len(candidates_payload) if include_candidates else len(job.candidates)
+        )
+        recommended_action: str
+        if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
+            recommended_action = "continue_monitoring"
+        elif candidate_count > 0:
+            recommended_action = "fetch_candidate_to_layout"
+        elif state_value == AutolayoutState.FAILED.value:
+            recommended_action = "retry_or_resume_with_adjusted_options"
+        elif job.provider_job_ref:
+            recommended_action = "resume_with_additional_timeout"
+        else:
+            recommended_action = "inspect_job_details"
+
+        return {
+            "job_id": job.job_id,
+            "provider_job_ref": job.provider_job_ref,
+            "state": state_value,
+            "terminal": terminal,
+            "candidate_count": candidate_count,
+            "selected_candidate_id": job.selected_candidate_id,
+            "applied_candidate_id": job.applied_candidate_id,
+            "check_in": {
+                "wait_seconds": wait_seconds,
+                "waited_seconds": waited_seconds,
+                "poll_interval_seconds": poll_interval_seconds,
+                "polls": polls,
+            },
+            "recommended_action": recommended_action,
+            "job": job.to_dict(),
+            "candidates": candidates_payload if include_candidates else None,
+        }
+
+    if name == "autolayout_fetch_to_layout":
+        job_id = str(arguments.get("job_id", "")).strip()
+        if not job_id:
+            raise ValueError("job_id is required")
+        requested_candidate_id = arguments.get("candidate_id")
+        candidate_id = (
+            str(requested_candidate_id).strip()
+            if isinstance(requested_candidate_id, str)
+            and str(requested_candidate_id).strip()
+            else None
+        )
+        archive_iteration = bool(arguments.get("archive_iteration", True))
+
+        service = get_autolayout_service()
+        job = await asyncio.to_thread(service.refresh_job, job_id)
+        candidates = await asyncio.to_thread(service.list_candidates, job_id, False)
+
+        selected_candidate_id = _choose_autolayout_candidate_id(
+            candidates=candidates,
+            requested_id=candidate_id,
+        )
+        if not selected_candidate_id and isinstance(job.provider_job_ref, str):
+            selected_candidate_id = job.provider_job_ref
+        if not selected_candidate_id:
+            raise ValueError(
+                "No candidate available yet. Wait for autolayout_status to show "
+                "candidates and retry."
+            )
+
+        if any(
+            _extract_candidate_id(candidate) == selected_candidate_id
+            for candidate in candidates
+        ):
+            await asyncio.to_thread(
+                service.select_candidate,
+                job_id,
+                selected_candidate_id,
+            )
+
+        applied = await asyncio.to_thread(
+            service.apply_candidate,
+            job_id,
+            selected_candidate_id,
+            None,
+        )
+
+        downloaded_candidate_path: str | None = None
+        archived_iteration_path: str | None = None
+        work_dir_str = str(applied.work_dir or "").strip()
+        if work_dir_str:
+            work_dir = Path(work_dir_str)
+            downloaded = work_dir / "downloads" / f"{selected_candidate_id}.kicad_pcb"
+            if downloaded.exists():
+                downloaded_candidate_path = str(downloaded)
+
+        applied_layout_str = str(
+            applied.applied_layout_path or applied.layout_path or ""
+        ).strip()
+        applied_layout: Path | None = None
+        if archive_iteration and applied_layout_str:
+            candidate_layout = Path(applied_layout_str)
+            if candidate_layout.exists():
+                applied_layout = candidate_layout
+
+        if archive_iteration and applied_layout is not None:
+            source_for_archive = (
+                Path(downloaded_candidate_path)
+                if isinstance(downloaded_candidate_path, str)
+                and downloaded_candidate_path
+                and Path(downloaded_candidate_path).exists()
+                else applied_layout
+            )
+            archived = await asyncio.to_thread(
+                _archive_autolayout_iteration,
+                source_layout=source_for_archive,
+                destination_layout_dir=applied_layout.parent,
+                layout_stem=applied_layout.stem,
+                build_target=applied.build_target,
+                job_id=applied.job_id,
+                candidate_id=selected_candidate_id,
+            )
+            archived_iteration_path = str(archived)
+
+        return {
+            "job_id": applied.job_id,
+            "provider_job_ref": applied.provider_job_ref,
+            "selected_candidate_id": selected_candidate_id,
+            "applied_layout_path": applied.applied_layout_path,
+            "backup_layout_path": applied.backup_layout_path,
+            "downloaded_candidate_path": downloaded_candidate_path,
+            "archived_iteration_path": archived_iteration_path,
+            "job": applied.to_dict(),
+        }
+
+    if name == "autolayout_request_screenshot":
+        target = str(arguments.get("target", "default")).strip() or "default"
+        view = str(arguments.get("view", "2d")).strip().lower() or "2d"
+        if view not in {"2d", "3d", "both"}:
+            raise ValueError("view must be one of: 2d, 3d, both")
+        frozen = bool(arguments.get("frozen", False))
+
+        include_targets: list[str] = []
+        if view in {"2d", "both"}:
+            include_targets.append("2d-image")
+        if view in {"3d", "both"}:
+            include_targets.append("3d-image")
+
+        request = BuildRequest(
+            project_root=str(project_root),
+            targets=[target],
+            frozen=frozen,
+            include_targets=include_targets,
+            exclude_targets=[],
+        )
+        response = await asyncio.to_thread(builds_domain.handle_start_build, request)
+        build_targets = [
+            {"target": entry.target, "build_id": entry.build_id}
+            for entry in response.build_targets
+        ]
+        queued_build_id = build_targets[0]["build_id"] if build_targets else None
+
+        return {
+            "success": response.success,
+            "message": response.message,
+            "target": target,
+            "view": view,
+            "frozen": frozen,
+            "include_targets": include_targets,
+            "build_targets": build_targets,
+            "queued_build_id": queued_build_id,
+            "expected_outputs": _expected_screenshot_outputs(
+                project_root=project_root,
+                target=target,
+                view=view,
+            ),
+            "next_step": (
+                "Use build_logs_search with queued_build_id until complete, then "
+                "read expected_outputs.paths for the generated image files."
+            ),
+        }
+
+    if name == "autolayout_configure_board_intent":
+        build_target = (
+            str(arguments.get("build_target", "default")).strip() or "default"
+        )
+        enable_ground_pours = bool(arguments.get("enable_ground_pours", True))
+        plane_nets = _normalize_plane_nets(arguments.get("plane_nets"))
+        plane_mode = (
+            str(arguments.get("plane_mode", "solid")).strip().lower() or "solid"
+        )
+        if plane_mode not in {"solid", "hatched"}:
+            raise ValueError("plane_mode must be one of: solid, hatched")
+
+        min_plane_clearance_mm = _to_float_or_none(
+            arguments.get("min_plane_clearance_mm"),
+            field_name="min_plane_clearance_mm",
+        )
+        layer_count = _to_int_or_none(
+            arguments.get("layer_count"),
+            field_name="layer_count",
+        )
+        board_thickness_mm = _to_float_or_none(
+            arguments.get("board_thickness_mm"),
+            field_name="board_thickness_mm",
+        )
+        outer_copper_oz = _to_float_or_none(
+            arguments.get("outer_copper_oz"),
+            field_name="outer_copper_oz",
+        )
+        inner_copper_oz = _to_float_or_none(
+            arguments.get("inner_copper_oz"),
+            field_name="inner_copper_oz",
+        )
+        dielectric_er = _to_float_or_none(
+            arguments.get("dielectric_er"),
+            field_name="dielectric_er",
+        )
+        preserve_existing_raw = arguments.get("preserve_existing_routing")
+        preserve_existing_routing = (
+            bool(preserve_existing_raw)
+            if isinstance(preserve_existing_raw, bool)
+            else None
+        )
+        notes = arguments.get("notes")
+        notes_clean = (
+            str(notes).strip() if isinstance(notes, str) and notes.strip() else None
+        )
+
+        data, ato_file = await asyncio.to_thread(
+            projects_domain.load_ato_yaml,
+            project_root,
+        )
+        builds = data.get("builds")
+        if not isinstance(builds, dict):
+            raise ValueError("Invalid ato.yaml: missing builds mapping")
+        if build_target not in builds:
+            known = ", ".join(sorted(str(key) for key in builds.keys()))
+            raise ValueError(
+                f"Unknown build_target '{build_target}'. Available: {known}"
+            )
+
+        build_cfg = builds.get(build_target)
+        if not isinstance(build_cfg, dict):
+            raise ValueError(
+                "Unsupported build target shape for "
+                f"'{build_target}'; expected mapping."
+            )
+
+        autolayout_cfg = build_cfg.get("autolayout")
+        if not isinstance(autolayout_cfg, dict):
+            autolayout_cfg = {}
+            build_cfg["autolayout"] = autolayout_cfg
+
+        constraints = autolayout_cfg.get("constraints")
+        if not isinstance(constraints, dict):
+            constraints = {}
+            autolayout_cfg["constraints"] = constraints
+
+        previous_constraints = json.loads(json.dumps(constraints))
+
+        plane_intent: dict[str, Any] = {
+            "enabled": enable_ground_pours,
+            "nets": plane_nets,
+            "mode": plane_mode,
+        }
+        if min_plane_clearance_mm is not None:
+            plane_intent["min_clearance_mm"] = min_plane_clearance_mm
+        constraints["plane_intent"] = plane_intent
+
+        stackup_intent: dict[str, Any] = {}
+        if layer_count is not None:
+            stackup_intent["layer_count"] = layer_count
+        if board_thickness_mm is not None:
+            stackup_intent["board_thickness_mm"] = board_thickness_mm
+        if outer_copper_oz is not None:
+            stackup_intent["outer_copper_oz"] = outer_copper_oz
+        if inner_copper_oz is not None:
+            stackup_intent["inner_copper_oz"] = inner_copper_oz
+        if dielectric_er is not None:
+            stackup_intent["dielectric_er"] = dielectric_er
+        if notes_clean is not None:
+            stackup_intent["notes"] = notes_clean
+        if stackup_intent:
+            constraints["stackup_intent"] = stackup_intent
+
+        if preserve_existing_routing is not None:
+            constraints["preserve_existing_routing"] = preserve_existing_routing
+
+        await asyncio.to_thread(projects_domain.save_ato_yaml, ato_file, data)
+
+        return {
+            "success": True,
+            "build_target": build_target,
+            "ato_yaml_path": str(ato_file),
+            "plane_intent": plane_intent,
+            "stackup_intent": constraints.get("stackup_intent"),
+            "preserve_existing_routing": constraints.get("preserve_existing_routing"),
+            "constraints_before": previous_constraints,
+            "constraints_after": constraints,
+            "provider_note": (
+                "DeepPCB public API does not currently document first-class "
+                "ground-pour/stackup parameters; this stores intent in project "
+                "config for agent workflows and future provider mapping."
+            ),
+            "next_step": (
+                "Run autolayout_run for placement/routing so provider options can "
+                "use the updated board intent."
+            ),
         }
 
     if name == "report_bom":

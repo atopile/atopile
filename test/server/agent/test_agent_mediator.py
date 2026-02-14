@@ -24,6 +24,11 @@ def test_get_tool_directory_includes_core_tools() -> None:
     assert "build_logs_search" in names
     assert "design_diagnostics" in names
     assert "manufacturing_generate" in names
+    assert "autolayout_run" in names
+    assert "autolayout_status" in names
+    assert "autolayout_fetch_to_layout" in names
+    assert "autolayout_request_screenshot" in names
+    assert "autolayout_configure_board_intent" in names
     assert "examples_list" in names
     assert "examples_search" in names
     assert "examples_read_ato" in names
@@ -220,8 +225,7 @@ def test_suggest_tools_prefills_module_children_from_entry_point() -> None:
 def test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent() -> None:
     suggestions = mediator.suggest_tools(
         message=(
-            "generate manufacturing files (gerber + pick and place) "
-            "for target default"
+            "generate manufacturing files (gerber + pick and place) for target default"
         ),
         history=[],
         selected_targets=[],
@@ -239,6 +243,81 @@ def test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent() -
     assert generate is not None
     assert generate["prefilled_args"]["target"] == "default"
     assert generate["prefilled_args"]["include_targets"] == ["mfg-data"]
+
+
+def test_suggest_tools_surfaces_autolayout_for_routing_intent() -> None:
+    suggestions = mediator.suggest_tools(
+        message="run deeppcb autoroute for target default in background",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+
+    autolayout_run = next(
+        (
+            suggestion
+            for suggestion in suggestions
+            if suggestion["name"] == "autolayout_run"
+        ),
+        None,
+    )
+    assert autolayout_run is not None
+    assert autolayout_run["prefilled_args"]["job_type"] == "Routing"
+    assert autolayout_run["prefilled_args"]["build_target"] == "default"
+
+
+def test_suggest_tools_prefills_autolayout_status_from_recent_memory() -> None:
+    memory = {
+        "autolayout_run": {
+            "tool_name": "autolayout_run",
+            "summary": "queued",
+            "ok": True,
+            "updated_at": time.time(),
+            "context_id": "al-123456789abc",
+        }
+    }
+
+    suggestions = mediator.suggest_tools(
+        message="check in periodically on autolayout progress",
+        history=[],
+        selected_targets=[],
+        tool_memory=memory,
+    )
+
+    status_tool = next(
+        (
+            suggestion
+            for suggestion in suggestions
+            if suggestion["name"] == "autolayout_status"
+        ),
+        None,
+    )
+    assert status_tool is not None
+    assert status_tool["prefilled_args"]["job_id"] == "al-123456789abc"
+    assert status_tool["prefilled_args"]["wait_seconds"] == 120
+
+
+def test_suggest_tools_surfaces_stackup_config_tool() -> None:
+    suggestions = mediator.suggest_tools(
+        message="set 4-layer stackup and add a GND ground plane pour",
+        history=[],
+        selected_targets=["default"],
+        tool_memory={},
+    )
+
+    config_tool = next(
+        (
+            suggestion
+            for suggestion in suggestions
+            if suggestion["name"] == "autolayout_configure_board_intent"
+        ),
+        None,
+    )
+    assert config_tool is not None
+    args = config_tool["prefilled_args"]
+    assert args["build_target"] == "default"
+    assert args["layer_count"] == 4
+    assert args["enable_ground_pours"] is True
 
 
 def test_suggest_tools_prefills_examples_search_for_reference_intent() -> None:

@@ -1,8 +1,202 @@
 import RectangularBoardShape
+import ElectricPower
+import ElectricLogic
+import I2C
+import Resistor
+import Capacitor
+import LED
+
+from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
+from "atopile/sensirion-sht45/sensirion-sht45.ato" import Sensirion_SHT45
+from "parts/Texas_Instruments_TLV75733PDBVR/Texas_Instruments_TLV75733PDBVR.ato" import Texas_Instruments_TLV75733PDBVR_package
+from "parts/Espressif_Systems_ESP32_C6_WROOM_1_N8/Espressif_Systems_ESP32_C6_WROOM_1_N8.ato" import Espressif_Systems_ESP32_C6_WROOM_1_N8_package
+from "atopile/programming-headers/parts/Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical/Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical.ato" import Tag_Connect_TC2030_IDC_NL_2x03_P1_27mm_Vertical_package
+
+
+module TLV75733Regulator:
+    """Fixed 3.3V regulator with recommended bypass network."""
+    input = new ElectricPower
+    output = new ElectricPower
+
+    input.voltage = 5V +/- 10%
+    input.max_current = 1A +/- 20%
+    output.voltage = 3.3V +/- 3%
+    output.max_current = 600mA +/- 20%
+
+    package = new Texas_Instruments_TLV75733PDBVR_package
+
+    input.hv ~ package.IN
+    input.lv ~ package.GND
+    output.hv ~ package.OUT
+    output.lv ~ package.GND
+    package.EN ~ input.hv
+
+    input_caps = new Capacitor[2]
+    input_caps[0].capacitance = 10uF +/- 20%
+    input_caps[0].max_voltage = 10V
+    # input_caps[0] tempco X7R
+    input_caps[0].package = "0603"
+    input_caps[1].capacitance = 100nF +/- 10%
+    input_caps[1].max_voltage = 10V
+    # input_caps[1] tempco X7R
+    input_caps[1].package = "0402"
+    for cap in input_caps:
+        input.hv ~> cap ~> input.lv
+
+    output_caps = new Capacitor[2]
+    output_caps[0].capacitance = 10uF +/- 20%
+    output_caps[0].max_voltage = 10V
+    # output_caps[0] tempco X7R
+    output_caps[0].package = "0603"
+    output_caps[1].capacitance = 1uF +/- 10%
+    output_caps[1].max_voltage = 10V
+    # output_caps[1] tempco X7R
+    output_caps[1].package = "0402"
+    for cap in output_caps:
+        output.hv ~> cap ~> output.lv
+
+
+module ESP32C6_ProgHeader:
+    """Tag-Connect 6-pin header wired for ESP32-C6 esptool UART/boot control."""
+    power = new ElectricPower
+    tx = new ElectricLogic
+    rx = new ElectricLogic
+    boot = new ElectricLogic
+    reset = new ElectricLogic
+
+    connector = new Tag_Connect_TC2030_IDC_NL_2x03_P1_27mm_Vertical_package
+
+    power.hv ~ connector.1
+    tx.line ~ connector.2
+    rx.line ~ connector.3
+    boot.line ~ connector.4
+    reset.line ~ connector.5
+    power.lv ~ connector.6
+
+    tx.reference ~ power
+    rx.reference ~ power
+    boot.reference ~ power
+    reset.reference ~ power
+
 
 module App:
     board = new RectangularBoardShape
-    board.width = 20mm
-    board.height = 30mm
-    board.corner_radius = 3mm
-    board.mounting_hole_diameter = 3.3mm
+    board.width = 45mm
+    board.height = 60mm
+    board.corner_radius = 4mm
+    board.mounting_hole_diameter = 3.2mm
+
+    usb_port = new USB2_0TypeCHorizontalConnector
+    regulator = new TLV75733Regulator
+    esp = new Espressif_Systems_ESP32_C6_WROOM_1_N8_package
+    humidity = new Sensirion_SHT45
+    prog_header = new ESP32C6_ProgHeader
+
+    usb_power = new ElectricPower
+    usb_power.voltage = 5V +/- 10%
+    usb_power.max_current = 500mA +/- 20%
+    usb_port.usb.usb_if.buspower ~ usb_power
+    regulator.input ~ usb_power
+
+    power_3v3 = new ElectricPower
+    power_3v3.voltage = 3.3V +/- 5%
+    power_3v3.max_current = 400mA +/- 20%
+    regulator.output ~ power_3v3
+
+    power_3v3.hv ~ esp.P3V3
+    power_3v3.lv ~ esp.GND
+
+    bulk_caps = new Capacitor[2]
+    bulk_caps[0].capacitance = 22uF +/- 20%
+    bulk_caps[0].max_voltage = 10V
+    # bulk_caps[0] tempco X7R
+    bulk_caps[0].package = "0805"
+    bulk_caps[1].capacitance = 100nF +/- 10%
+    bulk_caps[1].max_voltage = 10V
+    # bulk_caps[1] tempco X7R
+    bulk_caps[1].package = "0402"
+    for cap in bulk_caps:
+        power_3v3.hv ~> cap ~> power_3v3.lv
+
+    en_signal = new ElectricLogic
+    en_signal.reference ~ power_3v3
+    en_signal.line ~ esp.EN
+
+    en_pullup = new Resistor
+    en_pullup.resistance = 10kohm +/- 1%
+    en_pullup.package = "0402"
+    power_3v3.hv ~> en_pullup ~> en_signal.line
+
+    en_rc = new Capacitor
+    en_rc.capacitance = 1uF +/- 10%
+    en_rc.max_voltage = 10V
+    # en_rc tempco X7R
+    en_rc.package = "0402"
+    en_signal.line ~> en_rc ~> power_3v3.lv
+
+    boot_signal = new ElectricLogic
+    boot_signal.reference ~ power_3v3
+    boot_signal.line ~ esp.IO0
+
+    boot_pullup = new Resistor
+    boot_pullup.resistance = 10kohm +/- 1%
+    boot_pullup.package = "0402"
+    power_3v3.hv ~> boot_pullup ~> boot_signal.line
+
+    uart_tx = new ElectricLogic
+    uart_tx.reference ~ power_3v3
+    uart_tx.line ~ esp.TXD0
+
+    uart_rx = new ElectricLogic
+    uart_rx.reference ~ power_3v3
+    uart_rx.line ~ esp.RXD0
+
+    prog_header.power ~ power_3v3
+    prog_header.tx ~ uart_tx
+    prog_header.rx ~ uart_rx
+    prog_header.boot ~ boot_signal
+    prog_header.reset ~ en_signal
+
+    status_signal = new ElectricLogic
+    status_signal.reference ~ power_3v3
+    status_signal.line ~ esp.IO18
+
+    status_led = new LED
+    status_led.forward_voltage = 2.1V +/- 10%
+    status_led.current = 5mA +/- 20%
+    status_led.max_current = 20mA
+    status_led.color = LED.Color.BLUE
+    status_led.package = "0603"
+
+    status_res = new Resistor
+    status_res.resistance = 330ohm +/- 5%
+    status_res.package = "0603"
+
+    status_signal.line ~> status_res ~> status_led ~> power_3v3.lv
+
+    power_led = new LED
+    power_led.forward_voltage = 2.0V +/- 10%
+    power_led.current = 2mA +/- 20%
+    power_led.max_current = 20mA
+    power_led.color = LED.Color.GREEN
+    power_led.package = "0603"
+
+    power_led_res = new Resistor
+    power_led_res.resistance = 1kohm +/- 5%
+    power_led_res.package = "0603"
+
+    power_3v3.hv ~> power_led_res ~> power_led ~> power_3v3.lv
+
+    i2c_bus = new I2C
+    i2c_bus.scl.reference ~ power_3v3
+    i2c_bus.sda.reference ~ power_3v3
+    i2c_bus.scl.line ~ esp.IO7
+    i2c_bus.sda.line ~ esp.IO6
+    i2c_bus ~ humidity.i2c
+
+    humidity.power ~ power_3v3
+
+    usb_port.usb.usb_if.d.p.reference ~ power_3v3
+    usb_port.usb.usb_if.d.n.reference ~ power_3v3
+    usb_port.usb.usb_if.d.p.line ~ esp.IO13
+    usb_port.usb.usb_if.d.n.line ~ esp.IO12

@@ -104,7 +104,7 @@ def test_extract_board_candidates_falls_back_to_top_level_id():
     assert deeppcb_module._extract_board_candidates(payload)[0] == "generic-id"
 
 
-def test_auth_headers_fall_back_to_api_key_as_bearer(monkeypatch):
+def test_auth_headers_do_not_use_api_key_as_bearer(monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
     monkeypatch.delenv("ATO_DEEPPCB_BEARER_TOKEN", raising=False)
 
@@ -113,7 +113,32 @@ def test_auth_headers_fall_back_to_api_key_as_bearer(monkeypatch):
 
     headers = provider._auth_headers()
     assert headers["x-deeppcb-api-key"] == "api-key"
-    assert headers["Authorization"] == "Bearer api-key"
+    assert "Authorization" not in headers
+
+
+def test_auth_headers_include_explicit_bearer(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_BEARER_TOKEN", "bearer-token")
+
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    headers = provider._auth_headers()
+    assert headers["x-deeppcb-api-key"] == "api-key"
+    assert headers["Authorization"] == "Bearer bearer-token"
+
+
+def test_redact_sensitive_values():
+    deeppcb_module = _reload_deeppcb_module()
+
+    text = "error token=abc123 and key=shhh-secret"
+    redacted = deeppcb_module._redact_sensitive_values(
+        text,
+        ("abc123", "shhh-secret", None, ""),
+    )
+    assert "abc123" not in redacted
+    assert "shhh-secret" not in redacted
+    assert "***REDACTED***" in redacted
 
 
 def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
