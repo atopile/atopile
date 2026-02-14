@@ -94,7 +94,7 @@ const RawPointerSequence = struct {
 
     pub fn as_list(self: @This(), allocator: std.mem.Allocator) ![]graph.BoundNodeReference {
         const Ctx = struct {
-            out: std.ArrayList(IndexedNode),
+            out: std.array_list.Managed(IndexedNode),
 
             fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
@@ -106,7 +106,7 @@ const RawPointerSequence = struct {
             }
         };
 
-        var ctx: Ctx = .{ .out = std.ArrayList(IndexedNode).init(allocator) };
+        var ctx: Ctx = .{ .out = std.array_list.Managed(IndexedNode).init(allocator) };
         errdefer ctx.out.deinit();
 
         switch (faebryk.pointer.EdgePointer.visit_pointed_edges_with_identifier(self.node.instance, elem_identifier, void, &ctx, Ctx.visit)) {
@@ -246,7 +246,7 @@ pub fn PointerSequenceOf(comptime T: type) type {
         }
 
         pub fn append(self: @This(), elems: []const T) void {
-            var raw = std.ArrayList(graph.BoundNodeReference).init(std.heap.page_allocator);
+            var raw = std.array_list.Managed(graph.BoundNodeReference).init(std.heap.page_allocator);
             defer raw.deinit();
             for (elems) |elem| raw.append(elem.node.instance) catch @panic("OOM");
             (RawPointerSequence{ .node = self.node }).append(raw.items);
@@ -289,7 +289,7 @@ pub fn PointerSetOf(comptime T: type) type {
         }
 
         pub fn append(self: @This(), elems: []const T) void {
-            var raw = std.ArrayList(graph.BoundNodeReference).init(std.heap.page_allocator);
+            var raw = std.array_list.Managed(graph.BoundNodeReference).init(std.heap.page_allocator);
             defer raw.deinit();
             for (elems) |elem| raw.append(elem.node.instance) catch @panic("OOM");
             (RawPointerSet{ .node = self.node }).append(raw.items);

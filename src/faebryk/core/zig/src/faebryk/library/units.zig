@@ -477,7 +477,7 @@ fn symbol_for_basis_vector(vector: BasisVector, multiplier: f64) ?str {
 fn to_superscript_alloc(allocator: std.mem.Allocator, n: i64) ![]u8 {
     var buf: [32]u8 = undefined;
     const plain = try std.fmt.bufPrint(&buf, "{d}", .{n});
-    var out = std.ArrayList(u8).init(allocator);
+    var out = std.array_list.Managed(u8).init(allocator);
     errdefer out.deinit();
     for (plain) |ch| {
         const mapped: str = switch (ch) {
@@ -510,7 +510,7 @@ fn format_number_alloc(allocator: std.mem.Allocator, value: f64) ![]u8 {
     return allocator.dupe(u8, float_s);
 }
 
-fn append_vector_term(out: *std.ArrayList(u8), allocator: std.mem.Allocator, symbol: str, exp: i64) !void {
+fn append_vector_term(out: *std.array_list.Managed(u8), allocator: std.mem.Allocator, symbol: str, exp: i64) !void {
     if (exp == 0) return;
     if (out.items.len > 0) try out.appendSlice("·");
     try out.appendSlice(symbol);
@@ -555,7 +555,7 @@ pub fn compact_repr(unit: ?is_unit, allocator: std.mem.Allocator) ![]u8 {
         }
     }
 
-    var out = std.ArrayList(u8).init(allocator);
+    var out = std.array_list.Managed(u8).init(allocator);
     errdefer out.deinit();
     try append_vector_term(&out, allocator, "A", vector.ampere);
     try append_vector_term(&out, allocator, "s", vector.second);

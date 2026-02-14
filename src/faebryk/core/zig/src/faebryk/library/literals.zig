@@ -32,7 +32,7 @@ fn collect_child_values(
 ) ![]T {
     const Ctx = struct {
         allocator: std.mem.Allocator,
-        out: std.ArrayList(T),
+        out: std.array_list.Managed(T),
 
         fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
             const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
@@ -45,7 +45,7 @@ fn collect_child_values(
 
     var ctx: Ctx = .{
         .allocator = allocator,
-        .out = std.ArrayList(T).init(allocator),
+        .out = std.array_list.Managed(T).init(allocator),
     };
     errdefer ctx.out.deinit();
 
@@ -65,7 +65,7 @@ fn dedup_sort_strings(values: []str, allocator: std.mem.Allocator) ![]str {
         try map.put(v, {});
     }
 
-    var out = std.ArrayList(str).init(allocator);
+    var out = std.array_list.Managed(str).init(allocator);
     errdefer out.deinit();
 
     var it = map.iterator();
@@ -90,7 +90,7 @@ fn dedup_sort_ints(values: []i64, allocator: std.mem.Allocator) ![]i64 {
         try map.put(v, {});
     }
 
-    var out = std.ArrayList(i64).init(allocator);
+    var out = std.array_list.Managed(i64).init(allocator);
     errdefer out.deinit();
 
     var it = map.iterator();
@@ -109,7 +109,7 @@ fn dedup_sort_bools(values: []bool, allocator: std.mem.Allocator) ![]bool {
         if (v) seen_true = true else seen_false = true;
     }
 
-    var out = std.ArrayList(bool).init(allocator);
+    var out = std.array_list.Managed(bool).init(allocator);
     errdefer out.deinit();
     if (seen_false) try out.append(false);
     if (seen_true) try out.append(true);
@@ -182,7 +182,7 @@ pub const Strings = struct {
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]str {
         const nodes = try self.values.get().as_list(allocator);
         defer allocator.free(nodes);
-        var raw = std.ArrayList(str).init(allocator);
+        var raw = std.array_list.Managed(str).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
             try raw.append(node.get_value());
@@ -262,7 +262,7 @@ pub const Strings = struct {
             }
         }
 
-        var vals = std.ArrayList(bool).init(allocator);
+        var vals = std.array_list.Managed(bool).init(allocator);
         defer vals.deinit();
         if (!(a.len == 1 and b.len == 1 and overlap)) try vals.append(false);
         if (overlap) try vals.append(true);
@@ -280,7 +280,7 @@ pub const Strings = struct {
         defer bset.deinit();
         for (b) |v| try bset.put(v, {});
 
-        var inter = std.ArrayList(str).init(allocator);
+        var inter = std.array_list.Managed(str).init(allocator);
         defer inter.deinit();
         for (a) |v| {
             if (bset.contains(v)) try inter.append(v);
@@ -298,7 +298,7 @@ pub const Strings = struct {
         const b = try other.get_values(allocator);
         defer allocator.free(b);
 
-        var vals = std.ArrayList(str).init(allocator);
+        var vals = std.array_list.Managed(str).init(allocator);
         defer vals.deinit();
         try vals.appendSlice(a);
         try vals.appendSlice(b);
@@ -325,7 +325,7 @@ pub const Strings = struct {
         defer iset.deinit();
         for (i) |v| try iset.put(v, {});
 
-        var outvals = std.ArrayList(str).init(allocator);
+        var outvals = std.array_list.Managed(str).init(allocator);
         defer outvals.deinit();
         for (u) |v| {
             if (!iset.contains(v)) try outvals.append(v);
@@ -447,7 +447,7 @@ fn normalize_intervals(intervals: []const Interval, allocator: std.mem.Allocator
         }
     }.lessThan);
 
-    var out = std.ArrayList(Interval).init(allocator);
+    var out = std.array_list.Managed(Interval).init(allocator);
     errdefer out.deinit();
 
     var current = sorted[0];
@@ -585,7 +585,7 @@ pub const NumericSet = struct {
         const b = try other.get_intervals(allocator);
         defer allocator.free(b);
 
-        var outvals = std.ArrayList(Interval).init(allocator);
+        var outvals = std.array_list.Managed(Interval).init(allocator);
         defer outvals.deinit();
 
         var i: usize = 0;
@@ -614,7 +614,7 @@ pub const NumericSet = struct {
         const b = try other.get_intervals(allocator);
         defer allocator.free(b);
 
-        var all = std.ArrayList(Interval).init(allocator);
+        var all = std.array_list.Managed(Interval).init(allocator);
         defer all.deinit();
         try all.appendSlice(a);
         try all.appendSlice(b);
@@ -634,18 +634,18 @@ pub const NumericSet = struct {
         const i = try inter.get_intervals(allocator);
         defer allocator.free(i);
 
-        var outvals = std.ArrayList(Interval).init(allocator);
+        var outvals = std.array_list.Managed(Interval).init(allocator);
         defer outvals.deinit();
 
         var cursor: usize = 0;
         while (cursor < u.len) : (cursor += 1) {
             const current = u[cursor];
-            var fragments = std.ArrayList(Interval).init(allocator);
+            var fragments = std.array_list.Managed(Interval).init(allocator);
             defer fragments.deinit();
             try fragments.append(current);
 
             for (i) |cut| {
-                var next_frags = std.ArrayList(Interval).init(allocator);
+                var next_frags = std.array_list.Managed(Interval).init(allocator);
                 defer next_frags.deinit();
                 for (fragments.items) |frag| {
                     if (cut.max < frag.min or cut.min > frag.max) {
@@ -683,7 +683,7 @@ pub const NumericSet = struct {
         const has_inter = !(try inter.is_empty(allocator));
         const same_single = (try self.is_singleton(allocator)) and (try other.is_singleton(allocator)) and (try self.op_setic_equals(other, allocator));
 
-        var vals = std.ArrayList(bool).init(allocator);
+        var vals = std.array_list.Managed(bool).init(allocator);
         defer vals.deinit();
         if (!same_single) try vals.append(false);
         if (has_inter) try vals.append(true);
@@ -774,7 +774,7 @@ pub const Numbers = struct {
     }
 
     pub fn setup_from_singletons_with_unit(self: @This(), values: []const f64, unit: ?units.is_unit, allocator: std.mem.Allocator) !@This() {
-        var intervals = std.ArrayList(Interval).init(allocator);
+        var intervals = std.array_list.Managed(Interval).init(allocator);
         defer intervals.deinit();
         for (values) |v| {
             try intervals.append(.{ .min = v, .max = v });
@@ -805,7 +805,7 @@ pub const Numbers = struct {
         const in = try self.get_numeric_set().get_intervals(allocator);
         defer allocator.free(in);
 
-        var out = std.ArrayList(Interval).init(allocator);
+        var out = std.array_list.Managed(Interval).init(allocator);
         errdefer out.deinit();
         for (in) |interval| {
             const a = try units.convert_value(interval.min, self.get_is_unit(), target);
@@ -1066,7 +1066,7 @@ pub const Numbers = struct {
     pub fn op_abs(self: @This(), allocator: std.mem.Allocator) !@This() {
         const intervals = try self.get_numeric_set().get_intervals(allocator);
         defer allocator.free(intervals);
-        var outvals = std.ArrayList(Interval).init(allocator);
+        var outvals = std.array_list.Managed(Interval).init(allocator);
         defer outvals.deinit();
 
         for (intervals) |i| {
@@ -1339,7 +1339,7 @@ pub const Numbers = struct {
             }
         }
         if (is_discrete) {
-            var out = std.ArrayList(u8).init(allocator);
+            var out = std.array_list.Managed(u8).init(allocator);
             errdefer out.deinit();
             try out.append('{');
             for (intervals, 0..) |iv, i| {
@@ -1353,7 +1353,7 @@ pub const Numbers = struct {
             return out.toOwnedSlice();
         }
 
-        var interval_strings = std.ArrayList([]u8).init(allocator);
+        var interval_strings = std.array_list.Managed([]u8).init(allocator);
         defer {
             for (interval_strings.items) |s| allocator.free(s);
             interval_strings.deinit();
@@ -1371,7 +1371,7 @@ pub const Numbers = struct {
             }
         }
 
-        var out = std.ArrayList(u8).init(allocator);
+        var out = std.array_list.Managed(u8).init(allocator);
         errdefer out.deinit();
         try out.append('{');
         for (interval_strings.items, 0..) |s, i| {
@@ -1477,7 +1477,7 @@ pub const Counts = struct {
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]i64 {
         const nodes = try self.values.get().as_list(allocator);
         defer allocator.free(nodes);
-        var raw = std.ArrayList(i64).init(allocator);
+        var raw = std.array_list.Managed(i64).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
             try raw.append(node.get_value());
@@ -1557,7 +1557,7 @@ pub const Counts = struct {
             }
         }
 
-        var vals = std.ArrayList(bool).init(allocator);
+        var vals = std.array_list.Managed(bool).init(allocator);
         defer vals.deinit();
         if (!(a.len == 1 and b.len == 1 and overlap)) try vals.append(false);
         if (overlap) try vals.append(true);
@@ -1574,7 +1574,7 @@ pub const Counts = struct {
         defer bset.deinit();
         for (b) |v| try bset.put(v, {});
 
-        var outvals = std.ArrayList(i64).init(allocator);
+        var outvals = std.array_list.Managed(i64).init(allocator);
         defer outvals.deinit();
         for (a) |v| if (bset.contains(v)) try outvals.append(v);
 
@@ -1590,7 +1590,7 @@ pub const Counts = struct {
         const b = try other.get_values(allocator);
         defer allocator.free(b);
 
-        var vals = std.ArrayList(i64).init(allocator);
+        var vals = std.array_list.Managed(i64).init(allocator);
         defer vals.deinit();
         try vals.appendSlice(a);
         try vals.appendSlice(b);
@@ -1617,7 +1617,7 @@ pub const Counts = struct {
         defer iset.deinit();
         for (i) |v| try iset.put(v, {});
 
-        var outvals = std.ArrayList(i64).init(allocator);
+        var outvals = std.array_list.Managed(i64).init(allocator);
         defer outvals.deinit();
         for (u) |v| if (!iset.contains(v)) try outvals.append(v);
 
@@ -1690,7 +1690,7 @@ pub const Booleans = struct {
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]bool {
         const nodes = try self.values.get().as_list(allocator);
         defer allocator.free(nodes);
-        var raw = std.ArrayList(bool).init(allocator);
+        var raw = std.array_list.Managed(bool).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
             try raw.append(node.get_value());
@@ -1768,7 +1768,7 @@ pub const Booleans = struct {
             if (overlap) break;
         }
 
-        var vals = std.ArrayList(bool).init(allocator);
+        var vals = std.array_list.Managed(bool).init(allocator);
         defer vals.deinit();
         if (!(a.len == 1 and b.len == 1 and overlap)) try vals.append(false);
         if (overlap) try vals.append(true);
@@ -1785,7 +1785,7 @@ pub const Booleans = struct {
         const b = try other.get_values(allocator);
         defer allocator.free(b);
 
-        var outvals = std.ArrayList(bool).init(allocator);
+        var outvals = std.array_list.Managed(bool).init(allocator);
         defer outvals.deinit();
         for (a) |v| {
             for (b) |o| {
@@ -1811,7 +1811,7 @@ pub const Booleans = struct {
         const b = try other.get_values(allocator);
         defer allocator.free(b);
 
-        var vals = std.ArrayList(bool).init(allocator);
+        var vals = std.array_list.Managed(bool).init(allocator);
         defer vals.deinit();
         try vals.appendSlice(a);
         try vals.appendSlice(b);
@@ -1834,7 +1834,7 @@ pub const Booleans = struct {
         const i = try inter.get_values(allocator);
         defer allocator.free(i);
 
-        var outvals = std.ArrayList(bool).init(allocator);
+        var outvals = std.array_list.Managed(bool).init(allocator);
         defer outvals.deinit();
         for (u) |v| {
             var found = false;
@@ -1922,7 +1922,7 @@ pub const AbstractEnums = struct {
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]str {
         const nodes = try self.values.get().as_list(allocator);
         defer allocator.free(nodes);
-        var raw = std.ArrayList(str).init(allocator);
+        var raw = std.array_list.Managed(str).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
             try raw.append(node.get_value());
@@ -2002,7 +2002,7 @@ pub const AbstractEnums = struct {
             }
         }
 
-        var vals = std.ArrayList(bool).init(allocator);
+        var vals = std.array_list.Managed(bool).init(allocator);
         defer vals.deinit();
         if (!(a.len == 1 and b.len == 1 and overlap)) try vals.append(false);
         if (overlap) try vals.append(true);
@@ -2019,7 +2019,7 @@ pub const AbstractEnums = struct {
         defer bset.deinit();
         for (b) |v| try bset.put(v, {});
 
-        var outvals = std.ArrayList(str).init(allocator);
+        var outvals = std.array_list.Managed(str).init(allocator);
         defer outvals.deinit();
         for (a) |v| if (bset.contains(v)) try outvals.append(v);
 
@@ -2027,7 +2027,7 @@ pub const AbstractEnums = struct {
         var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
 
-        var entries = std.ArrayList(EnumEntry).init(allocator);
+        var entries = std.array_list.Managed(EnumEntry).init(allocator);
         defer entries.deinit();
         for (outvals.items) |v| try entries.append(.{ .name = v, .value = v });
         return out.setup_from_values(entries.items);
@@ -2039,7 +2039,7 @@ pub const AbstractEnums = struct {
         const b = try other.get_values(allocator);
         defer allocator.free(b);
 
-        var vals = std.ArrayList(str).init(allocator);
+        var vals = std.array_list.Managed(str).init(allocator);
         defer vals.deinit();
         try vals.appendSlice(a);
         try vals.appendSlice(b);
@@ -2051,7 +2051,7 @@ pub const AbstractEnums = struct {
         var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
 
-        var entries = std.ArrayList(EnumEntry).init(allocator);
+        var entries = std.array_list.Managed(EnumEntry).init(allocator);
         defer entries.deinit();
         for (dedup) |v| try entries.append(.{ .name = v, .value = v });
         return out.setup_from_values(entries.items);
@@ -2070,7 +2070,7 @@ pub const AbstractEnums = struct {
         defer iset.deinit();
         for (i) |v| try iset.put(v, {});
 
-        var entries = std.ArrayList(EnumEntry).init(allocator);
+        var entries = std.array_list.Managed(EnumEntry).init(allocator);
         defer entries.deinit();
         for (u) |v| {
             if (!iset.contains(v)) try entries.append(.{ .name = v, .value = v });
@@ -2091,7 +2091,7 @@ pub const AbstractEnums = struct {
         if (!std.mem.eql(u8, data.@"type", "EnumSet")) return Error.InvalidSerializedType;
         var out = fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
 
-        var entries = std.ArrayList(EnumEntry).init(allocator);
+        var entries = std.array_list.Managed(EnumEntry).init(allocator);
         defer entries.deinit();
         for (data.data.values) |value| {
             try entries.append(.{ .name = value, .value = value });
