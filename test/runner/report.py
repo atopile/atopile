@@ -305,7 +305,7 @@ class TestAggregator:
                         test.claim_time = None
                         test.requeues += 1
                         test_queue.put(claimed)
-                self._active_pids.remove(pid)
+                self._active_pids.discard(pid)
                 self._exited_pids.add(pid)
                 return
 
@@ -422,9 +422,9 @@ class TestAggregator:
                     t.output = {
                         "error": f"Worker process {pid} crashed while running this test.\n\n{output}"  # noqa: E501
                     }
-                    self._exited_pids.add(pid)
-                    if pid in self._active_pids:
-                        self._active_pids.remove(pid)
+            # Worker exited regardless of whether it had an active running test.
+            self._exited_pids.add(pid)
+            self._active_pids.discard(pid)
 
     def get_timed_out_workers(self, timeout_seconds: float) -> list[tuple[int, str]]:
         """Return list of (pid, nodeid) for running tests that exceeded the timeout."""
@@ -561,7 +561,7 @@ class TestAggregator:
 
         with self._lock:
             tests = list(self._tests.values())
-            workers = len(self._active_pids)
+            workers_active = self._live_workers_count()
             exited_workers = len(self._exited_pids)
 
         def _count(outcome: Outcome | None) -> int:
@@ -582,7 +582,7 @@ class TestAggregator:
         remaining = queued
 
         out = (
-            f"WA:{workers:2} WE:{exited_workers:2}|"
+            f"WA:{workers_active:2} WE:{exited_workers:2}|"
             f" ✓{passed:4} ✗{failed:4} E{errored:4} C{crashed:4} T{timed_out:4} S{skipped:4} R{running:4} Q{remaining:4}"  # noqa: E501
         )
 
@@ -613,6 +613,15 @@ class TestAggregator:
                 for t in self._tests.values()
             )
 
+    @staticmethod
+    def _live_workers_count() -> int:
+        try:
+            if workers is None:
+                return 0
+            return sum(1 for p in workers.values() if p.poll() is None)
+        except Exception:
+            return 0
+
     def build_report_data(self) -> dict[str, Any]:
         now = datetime.datetime.now()
         with self._lock:
@@ -638,7 +647,7 @@ class TestAggregator:
                 }
                 for t in self._tests.values()
             ]
-            workers_active = len(self._active_pids)
+            workers_active = self._live_workers_count()
             workers_exited = len(self._exited_pids)
             pid_to_worker_id = dict(self._pid_to_worker_id)
             baseline = self._baseline
