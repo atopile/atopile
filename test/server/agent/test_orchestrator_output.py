@@ -7,13 +7,20 @@ from pathlib import Path
 import httpx
 from openai import APIStatusError
 
+from atopile.dataclasses import AppContext
 from atopile.server.agent.orchestrator import (
     AgentOrchestrator,
+    AgentTurnResult,
+    _SYSTEM_PROMPT,
+    _MANAGER_PLANNER_PROMPT,
+    ToolTrace,
     _build_function_call_outputs_for_model,
     _build_prompt_cache_key,
     _build_session_primer,
+    _build_worker_loop_guard_message,
     _extract_retry_after_delay_s,
     _sanitize_tool_output_for_model,
+    _tool_call_signature,
     _trim_user_message,
 )
 
@@ -42,6 +49,15 @@ def test_sanitize_tool_output_removes_internal_keys() -> None:
     assert sanitized["diff"]["added_lines"] == 2
     assert "_private" not in sanitized["nested"]
     assert sanitized["nested"]["items"][0] == {"ok": True}
+
+
+def test_prompts_enforce_abstraction_first_hardware_authoring() -> None:
+    assert "abstraction-first structure" in _SYSTEM_PROMPT
+    assert "generic passives by default" in _SYSTEM_PROMPT
+    assert "Resistor" in _SYSTEM_PROMPT
+    assert "Capacitor" in _SYSTEM_PROMPT
+    assert "manual netlist" in _SYSTEM_PROMPT
+    assert "module/interface-oriented architecture" in _MANAGER_PLANNER_PROMPT
 
 
 def test_build_session_primer_contains_core_orientation() -> None:
@@ -265,3 +281,389 @@ def test_trim_user_message_preserves_head_and_tail() -> None:
     assert "truncated" in trimmed.lower()
     assert trimmed.startswith("A")
     assert trimmed.endswith("B")
+
+
+def test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
+    traces = [
+        ToolTrace(
+            name="project_read_file",
+            args={"path": "main.ato"},
+            ok=True,
+            result={"path": "main.ato"},
+        )
+        for _ in range(6)
+    ]
+    signatures = [
+        _tool_call_signature(tool_name="project_read_file", args={"path": "main.ato"})
+        for _ in range(6)
+    ]
+
+    message = _build_worker_loop_guard_message(
+        traces=traces,
+        recent_tool_signatures=signatures,
+        loops=6,
+        guard_hits=0,
+        window=8,
+        min_discovery=6,
+    )
+
+    assert message is not None
+    assert "repetitive" in message.lower()
+
+
+def test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
+    traces = [
+        ToolTrace(
+            name="project_read_file",
+            args={"path": "main.ato"},
+            ok=True,
+            result={"path": "main.ato"},
+        )
+        for _ in range(5)
+    ] + [
+        ToolTrace(
+            name="project_edit_file",
+            args={"path": "main.ato"},
+            ok=True,
+            result={"operations_applied": 1},
+        )
+    ]
+    signatures = [
+        _tool_call_signature(tool_name=trace.name, args=trace.args) for trace in traces
+    ]
+
+    message = _build_worker_loop_guard_message(
+        traces=traces,
+        recent_tool_signatures=signatures,
+        loops=6,
+        guard_hits=0,
+        window=8,
+        min_discovery=6,
+    )
+
+    assert message is None
+
+
+def test_run_turn_duo_mode_emits_agent_messages(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+    orchestrator = AgentOrchestrator()
+    orchestrator.enable_duo_agents = True
+    orchestrator.manager_refine_rounds = 0
+
+    async def fake_manager_build_plan(**_: object) -> dict[str, object]:
+        return {
+            "intent_summary": "Implement dual-agent flow",
+            "objective": "Ship the requested implementation",
+            "constraints": ["keep scope tight"],
+            "acceptance_criteria": ["messages emitted", "final response produced"],
+            "worker_brief": "Implement the feature and summarize results.",
+            "checkpoints": ["done"],
+        }
+
+    async def fake_worker_turn(**_: object) -> AgentTurnResult:
+        return AgentTurnResult(
+            text="Worker completed implementation.",
+            tool_traces=[],
+            model="worker-model",
+            response_id="resp_worker",
+            skill_state={},
+            context_metrics={},
+        )
+
+    async def fake_manager_review_result(**_: object) -> dict[str, str]:
+        return {
+            "decision": "accept",
+            "refinement_brief": "",
+            "final_response": "Manager-approved final response.",
+            "completion_summary": "Accepted output.",
+        }
+
+    monkeypatch.setattr(orchestrator, "_manager_build_plan", fake_manager_build_plan)
+    monkeypatch.setattr(orchestrator, "_run_worker_turn", fake_worker_turn)
+    monkeypatch.setattr(
+        orchestrator,
+        "_manager_review_result",
+        fake_manager_review_result,
+    )
+
+    emitted: list[dict[str, object]] = []
+
+    async def collect_message(message: dict[str, object]) -> None:
+        emitted.append(message)
+
+    result = asyncio.run(
+        orchestrator.run_turn(
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            project_root=str(tmp_path),
+            history=[],
+            user_message="Please implement the dual-agent protocol.",
+            selected_targets=["default"],
+            message_callback=collect_message,
+        )
+    )
+
+    assert result.text == "Manager-approved final response."
+    assert result.agent_messages
+    assert emitted == result.agent_messages
+    assert any(message.get("kind") == "intent_brief" for message in emitted)
+    assert any(message.get("kind") == "result_bundle" for message in emitted)
+    assert any(message.get("kind") == "final_response" for message in emitted)
+
+
+def test_run_turn_duo_mode_manager_direct_response_skips_worker(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+    orchestrator = AgentOrchestrator()
+    orchestrator.enable_duo_agents = True
+
+    async def fake_manager_build_plan(**_: object) -> dict[str, object]:
+        return {
+            "execution_mode": "manager_response",
+            "delegation_reason": "Question can be answered without tools.",
+            "manager_response": "Here is the quick answer without engineering handoff.",
+            "intent_summary": "Provide direct answer",
+            "objective": "Answer user question",
+            "constraints": [],
+            "acceptance_criteria": [],
+            "worker_brief": "",
+            "checkpoints": [],
+        }
+
+    async def fail_worker_turn(**_: object) -> AgentTurnResult:
+        raise AssertionError("worker should not be called for manager direct response")
+
+    monkeypatch.setattr(orchestrator, "_manager_build_plan", fake_manager_build_plan)
+    monkeypatch.setattr(orchestrator, "_run_worker_turn", fail_worker_turn)
+
+    emitted: list[dict[str, object]] = []
+
+    async def collect_message(message: dict[str, object]) -> None:
+        emitted.append(message)
+
+    result = asyncio.run(
+        orchestrator.run_turn(
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            project_root=str(tmp_path),
+            history=[],
+            user_message="Can you summarize what changed?",
+            selected_targets=["default"],
+            message_callback=collect_message,
+        )
+    )
+
+    assert (
+        result.text
+        == "Here is the quick answer without engineering handoff."
+    )
+    assert result.tool_traces == []
+    assert result.model == orchestrator.manager_model
+    assert any(message.get("kind") == "decision" for message in emitted)
+    assert any(message.get("kind") == "final_response" for message in emitted)
+    assert not any(message.get("kind") == "intent_brief" for message in emitted)
+
+
+def test_run_turn_duo_mode_reduces_worker_status_noise(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+    orchestrator = AgentOrchestrator()
+    orchestrator.enable_duo_agents = True
+    orchestrator.manager_refine_rounds = 0
+
+    async def fake_manager_build_plan(**_: object) -> dict[str, object]:
+        return {
+            "execution_mode": "delegate_worker",
+            "delegation_reason": "Needs project work.",
+            "manager_response": "",
+            "intent_summary": "Implement requested change",
+            "objective": "Apply implementation update",
+            "constraints": [],
+            "acceptance_criteria": ["deliver final response"],
+            "worker_brief": "Implement update and report result.",
+            "checkpoints": [],
+        }
+
+    async def fake_worker_turn(**kwargs: object) -> AgentTurnResult:
+        progress_callback = kwargs.get("progress_callback")
+        if callable(progress_callback):
+            await progress_callback(
+                {
+                    "phase": "thinking",
+                    "status_text": "Planning",
+                    "detail_text": "Preparing execution plan",
+                }
+            )
+            await progress_callback(
+                {
+                    "phase": "thinking",
+                    "status_text": "Reviewing tool results",
+                    "detail_text": "Choosing next step",
+                }
+            )
+            await progress_callback(
+                {
+                    "phase": "tool_start",
+                    "name": "parts_search",
+                    "call_id": "call-1",
+                    "args": {"query": "stm32"},
+                }
+            )
+            await progress_callback(
+                {
+                    "phase": "tool_end",
+                    "call_id": "call-1",
+                    "trace": {"name": "parts_search", "ok": True, "result": {}},
+                }
+            )
+            await progress_callback(
+                {
+                    "phase": "tool_start",
+                    "name": "autolayout_run",
+                    "call_id": "call-2",
+                    "args": {"job_type": "Routing"},
+                }
+            )
+            await progress_callback(
+                {
+                    "phase": "tool_end",
+                    "call_id": "call-2",
+                    "trace": {"name": "autolayout_run", "ok": True, "result": {}},
+                }
+            )
+        return AgentTurnResult(
+            text="Worker completed requested update.",
+            tool_traces=[],
+            model="worker-model",
+            response_id="resp_worker",
+            skill_state={},
+            context_metrics={},
+        )
+
+    async def fake_manager_review_result(**_: object) -> dict[str, str]:
+        return {
+            "decision": "accept",
+            "refinement_brief": "",
+            "final_response": "Completed.",
+            "completion_summary": "done",
+        }
+
+    monkeypatch.setattr(orchestrator, "_manager_build_plan", fake_manager_build_plan)
+    monkeypatch.setattr(orchestrator, "_run_worker_turn", fake_worker_turn)
+    monkeypatch.setattr(
+        orchestrator, "_manager_review_result", fake_manager_review_result
+    )
+
+    emitted: list[dict[str, object]] = []
+
+    async def collect_message(message: dict[str, object]) -> None:
+        emitted.append(message)
+
+    asyncio.run(
+        orchestrator.run_turn(
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            project_root=str(tmp_path),
+            history=[],
+            user_message="Do work quietly but keep me informed on big steps.",
+            selected_targets=["default"],
+            message_callback=collect_message,
+        )
+    )
+
+    assert any(
+        message.get("kind") == "tool_intent"
+        and "autolayout_run" in str(message.get("summary", ""))
+        for message in emitted
+    )
+    assert not any(
+        message.get("kind") == "tool_intent"
+        and "parts_search" in str(message.get("summary", ""))
+        for message in emitted
+    )
+    assert any(
+        message.get("kind") == "tool_result"
+        and "autolayout_run" in str(message.get("summary", ""))
+        for message in emitted
+    )
+    assert not any(
+        message.get("kind") == "tool_result"
+        and "parts_search" in str(message.get("summary", ""))
+        for message in emitted
+    )
+    assert not any(
+        message.get("kind") == "plan_update"
+        and str(message.get("summary", "")).strip().lower() == "reviewing tool results"
+        for message in emitted
+    )
+
+
+def test_run_worker_turn_stops_repetitive_discovery_loop(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+    (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
+
+    orchestrator = AgentOrchestrator()
+    orchestrator.enable_duo_agents = False
+    orchestrator.worker_loop_guard_min_discovery = 4
+    orchestrator.worker_loop_guard_max_hits = 1
+    orchestrator.max_tool_loops = 30
+
+    async def fake_build_context(**_: object) -> str:
+        return "Project summary: minimal test context"
+
+    call_counter = {"count": 0}
+
+    async def fake_create_with_context_control(**_: object) -> dict[str, object]:
+        call_counter["count"] += 1
+        return {
+            "id": f"resp_{call_counter['count']}",
+            "output": [
+                {
+                    "type": "function_call",
+                    "id": f"fc_{call_counter['count']}",
+                    "call_id": f"call_{call_counter['count']}",
+                    "name": "project_read_file",
+                    "arguments": json.dumps(
+                        {"path": "main.ato", "start_line": 1, "max_lines": 40}
+                    ),
+                }
+            ],
+        }
+
+    async def fake_execute_tool(**_: object) -> dict[str, object]:
+        return {"path": "main.ato", "content": "1:aaaa|module App:"}
+
+    monkeypatch.setattr(orchestrator, "_build_context", fake_build_context)
+    monkeypatch.setattr(
+        orchestrator,
+        "_responses_create_with_context_control",
+        fake_create_with_context_control,
+    )
+    monkeypatch.setattr(
+        "atopile.server.agent.orchestrator.tools.execute_tool",
+        fake_execute_tool,
+    )
+
+    result = asyncio.run(
+        orchestrator.run_turn(
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            project_root=str(tmp_path),
+            history=[],
+            user_message="Implement the requested feature.",
+            selected_targets=["default"],
+        )
+    )
+
+    assert "repetitive discovery loop" in result.text.lower()
+    assert len(result.tool_traces) >= 4
+    assert call_counter["count"] >= 4

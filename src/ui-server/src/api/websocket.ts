@@ -629,6 +629,16 @@ function handleEventMessage(message: EventMessage): void {
     return;
   }
 
+  // Handle agent-to-agent message event (not in EventType enum)
+  if ((message.event as string) === 'agent_message') {
+    window.dispatchEvent(
+      new CustomEvent('atopile:agent_message', {
+        detail: data,
+      })
+    );
+    return;
+  }
+
   switch (message.event) {
     case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;

@@ -82,6 +82,9 @@ Rules:
   resume runs.
 - For board preview images after placement/routing, use
   autolayout_request_screenshot and track the queued build with build_logs_search.
+- For manual placement adjustments, use layout_get_component_position to query
+  footprint xy/rotation by atopile address/reference, then
+  layout_set_component_position for absolute or relative (nudge) transforms.
 - For build diagnostics, prefer build_logs_search with explicit log_levels/stage
   filters when logs are noisy.
 - Use design_diagnostics when a build fails silently or diagnostics are needed.
@@ -90,18 +93,39 @@ Rules:
 - End with a concise completion summary of what was done.
 - Suggest one concrete next step and ask whether to continue.
 - After editing, explain exactly which files changed.
+- Avoid discovery-only loops: do not repeatedly call the same read/search tool
+  with identical arguments. After gathering enough context, either execute the
+  requested implementation (edits/builds/installs) or return a concise blocker.
+- For atopile design authoring, default to abstraction-first structure:
+  define functional modules (power, MCU, sensors, IO/debug) and connect them
+  through high-level interfaces, instead of writing a monolithic manual netlist.
+- Prefer interface-driven wiring (`ElectricPower`, `I2C`, `SPI`, `UART`, `SWD`,
+  `ElectricLogic`, etc.) and bridge/connect modules at top-level.
+- Use generic passives by default (`Resistor`, `Capacitor`, `Inductor`) with
+  parameter constraints (value/tolerance/voltage/package/tempco). Do not select
+  fixed vendor passives unless explicitly requested or manufacturing constraints
+  require a specific MPN.
+- Use explicit package parts for ICs/connectors/protection/mechanics where
+  needed, but keep passives abstract and constrained whenever possible.
+- Prefer arrays/loops/templates for repeated decoupling and pull-up patterns.
+- Avoid hand-wiring every pin at top-level unless no interface abstraction is
+  available for that subcircuit.
 """
 
 _MANAGER_PLANNER_PROMPT = """You are the conversation manager for atopile.
 
 Your job:
 - Track and preserve user intent exactly.
+- Decide whether to answer directly or delegate to engineering.
 - Convert user request into a crisp worker brief.
 - Define acceptance criteria.
 - Keep scope and constraints explicit.
 
 Return JSON only with this shape:
 {
+  "execution_mode": "manager_response" | "delegate_worker",
+  "delegation_reason": string,
+  "manager_response": string,
   "intent_summary": string,
   "objective": string,
   "constraints": [string, ...],
@@ -111,6 +135,16 @@ Return JSON only with this shape:
 }
 
 Rules:
+- Use manager_response for conversational questions, status check-ins, and
+  explanations that can be answered confidently without mutating project state.
+- Use delegate_worker when tool calls, file edits, builds, installs, or
+  uncertain project facts are required.
+- Always use delegate_worker for design/build/layout requests, part/package
+  selection (LCSC/package lookups), BOM/procurement decisions, and any request
+  that asks to run, edit, install, verify, or generate project artifacts.
+- For delegated hardware design tasks, the worker brief should explicitly
+  request module/interface-oriented architecture and generic constrained
+  passives rather than a flat pin-by-pin netlist style.
 - Keep worker_brief concrete and implementation-focused.
 - Do not include markdown in JSON fields.
 - If uncertain, encode uncertainty as constraints/checkpoints rather than asking
@@ -218,7 +252,7 @@ class AgentTurnResult:
 class AgentOrchestrator:
     def __init__(self) -> None:
         self.base_url = os.getenv("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1")
-        self.model = os.getenv("ATOPILE_AGENT_MODEL", "gpt-5-codex")
+        self.model = os.getenv("ATOPILE_AGENT_MODEL", "gpt-5.1-codex-max")
         self.api_key = os.getenv("ATOPILE_AGENT_OPENAI_API_KEY") or os.getenv(
             "OPENAI_API_KEY"
         )
@@ -268,14 +302,31 @@ class AgentOrchestrator:
         self.prompt_cache_retention = os.getenv(
             "ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"
         )
-        self.manager_model = os.getenv("ATOPILE_AGENT_MANAGER_MODEL", self.model)
+        self.manager_model = os.getenv(
+            "ATOPILE_AGENT_MANAGER_MODEL",
+            "gpt-5.2-chat-latest",
+        )
         self.enable_duo_agents = os.getenv(
             "ATOPILE_AGENT_ENABLE_DUO", "1"
         ).strip().lower() not in {"0", "false", "no"}
         self.manager_refine_rounds = int(
-            os.getenv("ATOPILE_AGENT_MANAGER_REFINE_ROUNDS", "1")
+            os.getenv("ATOPILE_AGENT_MANAGER_REFINE_ROUNDS", "0")
         )
         self.manager_refine_rounds = max(0, min(self.manager_refine_rounds, 3))
+        self.worker_loop_guard_window = int(
+            os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_WINDOW", "8")
+        )
+        self.worker_loop_guard_window = max(4, min(self.worker_loop_guard_window, 24))
+        self.worker_loop_guard_min_discovery = int(
+            os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_MIN_DISCOVERY", "6")
+        )
+        self.worker_loop_guard_min_discovery = max(
+            4, min(self.worker_loop_guard_min_discovery, 20)
+        )
+        self.worker_loop_guard_max_hits = int(
+            os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_MAX_HITS", "3")
+        )
+        self.worker_loop_guard_max_hits = max(1, min(self.worker_loop_guard_max_hits, 8))
         self._client: AsyncOpenAI | None = None
 
     async def run_turn(
@@ -441,6 +492,8 @@ class AgentOrchestrator:
         traces: list[ToolTrace] = []
         loops = 0
         last_response_id: str | None = response.get("id")
+        recent_tool_signatures: list[str] = []
+        loop_guard_hits = 0
         while loops < self.max_tool_loops:
             loops += 1
             function_calls = _extract_function_calls(response)
@@ -585,6 +638,11 @@ class AgentOrchestrator:
                         result=result_payload,
                     )
                 )
+                recent_tool_signatures.append(
+                    _tool_call_signature(tool_name=tool_name, args=args)
+                )
+                if len(recent_tool_signatures) > 48:
+                    recent_tool_signatures = recent_tool_signatures[-48:]
                 await _emit_progress(
                     progress_callback,
                     {
@@ -615,6 +673,52 @@ class AgentOrchestrator:
             steering_inputs = _build_steering_inputs_for_model(
                 _consume_steering_updates(consume_steering_messages)
             )
+            guard_message = _build_worker_loop_guard_message(
+                traces=traces,
+                recent_tool_signatures=recent_tool_signatures,
+                loops=loops,
+                guard_hits=loop_guard_hits,
+                window=self.worker_loop_guard_window,
+                min_discovery=self.worker_loop_guard_min_discovery,
+            )
+            guard_inputs: list[dict[str, Any]] = []
+            if guard_message:
+                loop_guard_hits += 1
+                telemetry["loop_guard_hits"] = loop_guard_hits
+                guard_inputs = _build_execution_guard_inputs_for_model(guard_message)
+                outputs.extend(guard_inputs)
+                await _emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "thinking",
+                        "status_text": "Execution nudge",
+                        "detail_text": "Breaking repetitive discovery loop",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "loop_guard_hits": loop_guard_hits,
+                    },
+                )
+                if loop_guard_hits > self.worker_loop_guard_max_hits:
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "stopped",
+                            "reason": "repetitive_discovery_loop",
+                            "loop": loops,
+                            "tool_calls_total": len(traces),
+                        },
+                    )
+                    return AgentTurnResult(
+                        text=_build_worker_loop_guard_stop_text(
+                            traces=traces,
+                            loops=loops,
+                        ),
+                        tool_traces=traces,
+                        model=self.model,
+                        response_id=last_response_id,
+                        skill_state=skill_state,
+                        context_metrics=telemetry,
+                    )
             if steering_inputs:
                 outputs.extend(steering_inputs)
                 await _emit_progress(
@@ -627,6 +731,10 @@ class AgentOrchestrator:
                         "tool_calls_total": len(traces),
                     },
                 )
+            elif guard_inputs:
+                # Progress event already emitted for guard trigger; avoid noisy
+                # "reviewing tool results" chatter on the same loop.
+                pass
             else:
                 await _emit_progress(
                     progress_callback,
@@ -706,6 +814,7 @@ class AgentOrchestrator:
             selected_targets=selected_targets,
             user_message=user_message,
             history=history,
+            tool_memory=tool_memory or {},
             progress_callback=progress_callback,
         )
 
@@ -747,6 +856,49 @@ class AgentOrchestrator:
                 await maybe_awaitable
             return data
 
+        execution_mode = _normalize_execution_mode(
+            intent_snapshot.get("execution_mode")
+        )
+        manager_response = str(intent_snapshot.get("manager_response") or "").strip()
+        delegation_reason = str(intent_snapshot.get("delegation_reason") or "").strip()
+        context_metrics: dict[str, Any] = {
+            "intent_snapshot": intent_snapshot,
+            "manager_execution_mode": execution_mode,
+        }
+
+        if execution_mode == "manager_response" and manager_response:
+            await emit_message(
+                from_agent="manager",
+                to_agent="worker",
+                kind="decision",
+                summary="No engineering handoff required.",
+                payload={
+                    "execution_mode": execution_mode,
+                    "reason": delegation_reason
+                    or "Manager answered directly from available context.",
+                },
+                visibility="internal",
+            )
+            await emit_message(
+                from_agent="manager",
+                to_agent="user",
+                kind="final_response",
+                summary=trim_single_line(manager_response, 140),
+                payload={"text": manager_response},
+                visibility="user_visible",
+                priority="high",
+            )
+            context_metrics["manager_direct_response"] = True
+            return AgentTurnResult(
+                text=manager_response,
+                tool_traces=[],
+                model=self.manager_model,
+                response_id=previous_response_id,
+                skill_state={},
+                context_metrics=context_metrics,
+                agent_messages=emitted_messages,
+            )
+
         intent_message = await emit_message(
             from_agent="manager",
             to_agent="worker",
@@ -768,66 +920,102 @@ class AgentOrchestrator:
         )
 
         all_traces: list[ToolTrace] = []
-        context_metrics: dict[str, Any] = {"intent_snapshot": intent_snapshot}
         worker_response_id: str | None = previous_response_id
         worker_skill_state: dict[str, Any] = {}
         worker_latest_text = ""
         final_text = ""
+        worker_status_min_interval_s = max(
+            0.0,
+            float(os.getenv("ATOPILE_AGENT_WORKER_STATUS_MIN_INTERVAL_S", "8")),
+        )
+        worker_tool_intent_min_interval_s = max(
+            0.0,
+            float(os.getenv("ATOPILE_AGENT_WORKER_TOOL_INTENT_MIN_INTERVAL_S", "18")),
+        )
+        last_worker_status_key = ""
+        last_worker_status_at = 0.0
+        last_tool_intent_at_by_name: dict[str, float] = {}
 
         async def worker_progress(payload: dict[str, Any]) -> None:
+            nonlocal last_worker_status_at
+            nonlocal last_worker_status_key
+
             enriched = {**payload, "agent": "worker"}
             await _emit_progress(progress_callback, enriched)
 
             phase = str(payload.get("phase") or "")
             if phase == "tool_start":
                 tool_name = str(payload.get("name") or "tool")
-                await emit_message(
-                    from_agent="worker",
-                    to_agent="manager",
-                    kind="tool_intent",
-                    summary=f"Starting tool: {tool_name}",
-                    payload={
-                        "name": tool_name,
-                        "args": payload.get("args", {}),
-                        "call_id": payload.get("call_id"),
-                    },
-                    visibility="user_visible",
-                )
+                if _is_long_running_tool_for_status(tool_name):
+                    now_s = time.time()
+                    previous_s = last_tool_intent_at_by_name.get(tool_name, 0.0)
+                    if (now_s - previous_s) >= worker_tool_intent_min_interval_s:
+                        last_tool_intent_at_by_name[tool_name] = now_s
+                        await emit_message(
+                            from_agent="worker",
+                            to_agent="manager",
+                            kind="tool_intent",
+                            summary=f"Starting tool: {tool_name}",
+                            payload={
+                                "name": tool_name,
+                                "args": payload.get("args", {}),
+                                "call_id": payload.get("call_id"),
+                            },
+                            visibility="user_visible",
+                        )
             elif phase == "tool_end":
                 trace = payload.get("trace")
                 if isinstance(trace, dict):
                     ok = bool(trace.get("ok", False))
                     tool_name = str(trace.get("name") or "tool")
-                    await emit_message(
-                        from_agent="worker",
-                        to_agent="manager",
-                        kind="tool_result",
-                        summary=(
-                            f"Completed tool: {tool_name}"
-                            if ok
-                            else f"Tool failed: {tool_name}"
-                        ),
-                        payload={
-                            "trace": trace,
-                            "call_id": payload.get("call_id"),
-                        },
-                        visibility="user_visible",
-                        priority="high" if not ok else "normal",
-                    )
+                    if not ok or _is_high_signal_tool_for_status(tool_name):
+                        await emit_message(
+                            from_agent="worker",
+                            to_agent="manager",
+                            kind="tool_result",
+                            summary=(
+                                f"Completed tool: {tool_name}"
+                                if ok
+                                else f"Tool failed: {tool_name}"
+                            ),
+                            payload={
+                                "trace": trace,
+                                "call_id": payload.get("call_id"),
+                            },
+                            visibility="user_visible" if not ok else "internal",
+                            priority="high" if not ok else "normal",
+                        )
             elif phase == "thinking":
                 status_text = str(payload.get("status_text") or "").strip()
-                if status_text:
-                    await emit_message(
-                        from_agent="worker",
-                        to_agent="manager",
-                        kind="plan_update",
-                        summary=status_text,
-                        payload={
-                            "detail_text": payload.get("detail_text"),
-                            "loop": payload.get("loop"),
-                        },
-                        visibility="internal",
-                    )
+                if not status_text:
+                    return
+                if _should_suppress_worker_status(status_text):
+                    return
+                detail_text = str(payload.get("detail_text") or "").strip()
+                status_key = (
+                    f"{status_text.lower()}::{trim_single_line(detail_text, 80)}"
+                    if detail_text
+                    else status_text.lower()
+                )
+                now_s = time.time()
+                if (
+                    status_key == last_worker_status_key
+                    and (now_s - last_worker_status_at) < worker_status_min_interval_s
+                ):
+                    return
+                last_worker_status_key = status_key
+                last_worker_status_at = now_s
+                await emit_message(
+                    from_agent="worker",
+                    to_agent="manager",
+                    kind="plan_update",
+                    summary=status_text,
+                    payload={
+                        "detail_text": payload.get("detail_text"),
+                        "loop": payload.get("loop"),
+                    },
+                    visibility="internal",
+                )
             elif phase in {"error", "stopped"}:
                 await emit_message(
                     from_agent="worker",
@@ -907,9 +1095,7 @@ class AgentOrchestrator:
             )
             final_text = str(manager_review.get("final_response") or "").strip()
             decision = str(manager_review.get("decision") or "accept").lower().strip()
-            refinement_brief = str(
-                manager_review.get("refinement_brief") or ""
-            ).strip()
+            refinement_brief = str(manager_review.get("refinement_brief") or "").strip()
 
             await emit_message(
                 from_agent="manager",
@@ -997,6 +1183,7 @@ class AgentOrchestrator:
         selected_targets: list[str],
         user_message: str,
         history: list[dict[str, str]],
+        tool_memory: dict[str, dict[str, Any]],
         progress_callback: ProgressCallback | None,
     ) -> dict[str, Any]:
         await _emit_progress(
@@ -1009,6 +1196,7 @@ class AgentOrchestrator:
             },
         )
         history_summary = _summarize_history_for_manager(history)
+        tool_memory_summary = _summarize_tool_memory_for_manager(tool_memory)
         payload = {
             "model": self.manager_model,
             "input": [
@@ -1018,6 +1206,7 @@ class AgentOrchestrator:
                         f"Project root: {project_path}\n"
                         f"Selected targets: {selected_targets or []}\n"
                         f"Recent history:\n{history_summary}\n\n"
+                        f"Recent tool memory:\n{tool_memory_summary}\n\n"
                         f"User request:\n{_trim_user_message(user_message, 6000)}"
                     ),
                 }
@@ -1033,16 +1222,22 @@ class AgentOrchestrator:
         text = _extract_text(response)
         parsed = _extract_json_object(text)
         constraints = _normalize_string_list(parsed.get("constraints"))
-        acceptance_criteria = _normalize_string_list(
-            parsed.get("acceptance_criteria")
-        )
+        acceptance_criteria = _normalize_string_list(parsed.get("acceptance_criteria"))
         checkpoints = _normalize_string_list(parsed.get("checkpoints"))
         intent_summary = str(parsed.get("intent_summary") or "").strip()
         objective = str(parsed.get("objective") or "").strip()
         worker_brief = str(parsed.get("worker_brief") or "").strip()
+        manager_response = str(parsed.get("manager_response") or "").strip()
+        delegation_reason = str(parsed.get("delegation_reason") or "").strip()
+        execution_mode = _normalize_execution_mode(parsed.get("execution_mode"))
+        if execution_mode == "manager_response" and not manager_response:
+            execution_mode = "delegate_worker"
 
         fallback_brief = _trim_user_message(user_message, 6000)
         return {
+            "execution_mode": execution_mode,
+            "delegation_reason": delegation_reason,
+            "manager_response": manager_response,
             "intent_summary": intent_summary or "Prepared execution brief.",
             "objective": objective or fallback_brief,
             "constraints": constraints,
@@ -1670,6 +1865,22 @@ def _build_steering_inputs_for_model(messages: list[str]) -> list[dict[str, Any]
     ]
 
 
+def _build_execution_guard_inputs_for_model(message: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "role": "user",
+            "content": (
+                "Execution guard from runtime: avoid repetitive discovery-only "
+                "loops.\n"
+                f"{message}\n"
+                "Your next step must be either:\n"
+                "- execute a concrete implementation tool call, or\n"
+                "- return a concise blocker with the exact missing input."
+            ),
+        }
+    ]
+
+
 def _truncate_middle(text: str, max_chars: int) -> str:
     if max_chars <= 0:
         return ""
@@ -1763,6 +1974,298 @@ def _extract_text(response: dict[str, Any]) -> str:
                     pieces.append(text.strip())
 
     return "\n\n".join(pieces)
+
+
+def trim_single_line(value: str, max_chars: int) -> str:
+    compact = " ".join(value.split()).strip()
+    if len(compact) <= max_chars:
+        return compact
+    if max_chars <= 0:
+        return ""
+    if max_chars == 1:
+        return compact[:1]
+    return f"{compact[: max_chars - 1]}..."
+
+
+def _summarize_history_for_manager(history: list[dict[str, str]], limit: int = 8) -> str:
+    if not history:
+        return "- none"
+    lines: list[str] = []
+    for entry in history[-limit:]:
+        role = str(entry.get("role", "unknown")).strip()
+        content = str(entry.get("content", "")).strip()
+        if not content:
+            continue
+        lines.append(f"- {role}: {trim_single_line(content, 220)}")
+    return "\n".join(lines) if lines else "- none"
+
+
+def _summarize_tool_memory_for_manager(
+    tool_memory: dict[str, dict[str, Any]],
+    *,
+    limit: int = 8,
+) -> str:
+    if not tool_memory:
+        return "- none"
+    entries = []
+    for tool_name, payload in tool_memory.items():
+        if not isinstance(payload, dict):
+            continue
+        updated_at = payload.get("updated_at")
+        updated_suffix = ""
+        if isinstance(updated_at, (int, float)):
+            age_s = max(0.0, time.time() - float(updated_at))
+            updated_suffix = f", age={int(age_s)}s"
+        status = "ok" if bool(payload.get("ok", False)) else "failed"
+        summary = str(payload.get("summary") or "").strip()
+        context_id = str(payload.get("context_id") or "").strip()
+        extra = []
+        if summary:
+            extra.append(trim_single_line(summary, 90))
+        if context_id:
+            extra.append(f"context={trim_single_line(context_id, 40)}")
+        details = "; ".join(extra)
+        entries.append(
+            f"- {tool_name} [{status}{updated_suffix}]"
+            + (f": {details}" if details else "")
+        )
+    if not entries:
+        return "- none"
+    if len(entries) > limit:
+        hidden = len(entries) - limit
+        entries = entries[:limit] + [f"- ... {hidden} more memory entries"]
+    return "\n".join(entries)
+
+
+def _summarize_tool_traces_for_manager(
+    traces: list[ToolTrace],
+    *,
+    limit: int = 24,
+) -> str:
+    if not traces:
+        return "- none"
+    lines: list[str] = []
+    for trace in traces[:limit]:
+        status = "ok" if trace.ok else "failed"
+        detail = ""
+        message = trace.result.get("message")
+        error = trace.result.get("error")
+        if isinstance(message, str) and message.strip():
+            detail = trim_single_line(message, 120)
+        elif isinstance(error, str) and error.strip():
+            detail = trim_single_line(error, 120)
+        lines.append(
+            f"- {trace.name} [{status}]"
+            + (f": {detail}" if detail else "")
+        )
+    if len(traces) > limit:
+        lines.append(f"- ... {len(traces) - limit} more tool traces")
+    return "\n".join(lines)
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    if not stripped:
+        return {}
+
+    def parse_candidate(candidate: str) -> dict[str, Any] | None:
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+        return None
+
+    parsed = parse_candidate(stripped)
+    if parsed is not None:
+        return parsed
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start >= 0 and end > start:
+        parsed = parse_candidate(stripped[start : end + 1])
+        if parsed is not None:
+            return parsed
+
+    return {}
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    output: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        clean = item.strip()
+        if not clean:
+            continue
+        output.append(clean)
+    return output
+
+
+def _normalize_execution_mode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    if mode == "manager_response":
+        return "manager_response"
+    return "delegate_worker"
+
+
+def _tool_call_signature(*, tool_name: str, args: dict[str, Any]) -> str:
+    try:
+        serialized = json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
+    except Exception:
+        serialized = str(args)
+    return f"{tool_name}:{serialized[:400]}"
+
+
+def _worker_discovery_tool_names() -> set[str]:
+    return {
+        "project_read_file",
+        "project_list_files",
+        "project_search",
+        "project_list_modules",
+        "project_module_children",
+        "stdlib_list",
+        "stdlib_get_item",
+        "examples_list",
+        "examples_search",
+        "examples_read_ato",
+        "parts_search",
+        "packages_search",
+        "build_logs_search",
+        "design_diagnostics",
+        "report_bom",
+        "report_variables",
+        "manufacturing_summary",
+        "autolayout_status",
+        "datasheet_read",
+        "layout_get_component_position",
+    }
+
+
+def _worker_execution_tool_names() -> set[str]:
+    return {
+        "project_edit_file",
+        "project_write_file",
+        "project_replace_text",
+        "project_rename_path",
+        "project_delete_path",
+        "parts_install",
+        "packages_install",
+        "build_run",
+        "manufacturing_generate",
+        "autolayout_run",
+        "autolayout_fetch_to_layout",
+        "autolayout_request_screenshot",
+        "autolayout_configure_board_intent",
+        "layout_set_component_position",
+    }
+
+
+def _build_worker_loop_guard_message(
+    *,
+    traces: list[ToolTrace],
+    recent_tool_signatures: list[str],
+    loops: int,
+    guard_hits: int,
+    window: int,
+    min_discovery: int,
+) -> str | None:
+    if loops < 3 or len(traces) < min_discovery:
+        return None
+
+    discovery_tools = _worker_discovery_tool_names()
+    execution_tools = _worker_execution_tool_names()
+
+    recent_traces = traces[-window:]
+    recent_signatures = recent_tool_signatures[-window:]
+    if not recent_traces or not recent_signatures:
+        return None
+
+    execution_count = sum(1 for trace in recent_traces if trace.name in execution_tools)
+    if execution_count > 0:
+        return None
+
+    discovery_count = sum(1 for trace in recent_traces if trace.name in discovery_tools)
+    if discovery_count < min_discovery:
+        return None
+
+    repeated_tail = (
+        len(recent_signatures) >= 3 and len(set(recent_signatures[-3:])) == 1
+    )
+    signature_uniqueness = len(set(recent_signatures)) / max(1, len(recent_signatures))
+    low_uniqueness = signature_uniqueness <= 0.55
+    if not repeated_tail and not low_uniqueness:
+        return None
+
+    if guard_hits >= 2:
+        return (
+            "You are still repeating discovery calls without concrete implementation "
+            "progress. Stop discovery churn now."
+        )
+
+    last_tool = recent_traces[-1].name
+    return (
+        "Recent tool activity is discovery-heavy and repetitive"
+        f" (latest tool: {last_tool}). "
+        "Do not repeat identical read/search calls."
+    )
+
+
+def _build_worker_loop_guard_stop_text(
+    *,
+    traces: list[ToolTrace],
+    loops: int,
+) -> str:
+    recent_names = [trace.name for trace in traces[-6:]]
+    recent_text = ", ".join(recent_names) if recent_names else "none"
+    return (
+        "Stopped to prevent a repetitive discovery loop after "
+        f"{len(traces)} tool calls across {loops} loops. "
+        "I need to switch to concrete execution (edits/builds/installs) or report a "
+        "specific blocker. "
+        f"Recent tools: {recent_text}."
+    )
+
+
+def _is_long_running_tool_for_status(tool_name: str) -> bool:
+    return tool_name in {
+        "build_run",
+        "manufacturing_generate",
+        "autolayout_run",
+        "autolayout_status",
+        "autolayout_fetch_to_layout",
+        "autolayout_request_screenshot",
+    }
+
+
+def _is_high_signal_tool_for_status(tool_name: str) -> bool:
+    return tool_name in {
+        "project_edit_file",
+        "project_write_file",
+        "project_replace_text",
+        "project_rename_path",
+        "project_delete_path",
+        "parts_install",
+        "packages_install",
+        "build_run",
+        "manufacturing_generate",
+        "autolayout_run",
+        "autolayout_fetch_to_layout",
+        "autolayout_request_screenshot",
+        "autolayout_configure_board_intent",
+        "layout_set_component_position",
+    }
+
+
+def _should_suppress_worker_status(status_text: str) -> bool:
+    normalized = status_text.strip().lower()
+    return normalized in {
+        "reviewing tool results",
+        "choosing next step",
+    }
 
 
 async def _emit_progress(

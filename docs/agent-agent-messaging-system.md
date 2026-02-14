@@ -126,14 +126,58 @@ Do not persist unbounded tool payloads in full. Keep pointer IDs or compact summ
 ## Manager/Worker Protocol
 
 1. User message arrives.
-2. Manager creates `intent_snapshot`.
-3. Manager emits `intent_brief` to worker.
+2. Manager creates `intent_snapshot` and chooses `execution_mode`:
+   - `manager_response`: answer directly, no worker handoff.
+   - `delegate_worker`: hand off to worker with explicit brief.
+3. If delegated, manager emits `intent_brief` to worker.
 4. Worker executes tools and emits `tool_intent`/`tool_result`/`build_update`.
 5. Worker emits `blocker` when blocked.
 6. Manager either resolves via user clarification or sends decision.
 7. Worker emits `result_bundle`.
 8. Manager validates against `intent_snapshot.acceptance_criteria`.
 9. Manager emits `final_response` to user.
+
+## Role Contract
+
+### Manager (Conversational)
+
+- Owns user relationship and natural dialogue.
+- Preserves intent and constraints across turns.
+- Answers directly when no tooling/mutation is required.
+- Decides when engineering handoff is needed.
+- Summarizes engineer output back to user in plain language.
+
+### Worker (Engineer)
+
+- Executes concrete implementation tasks.
+- Uses toolchain for reads/edits/builds/reports.
+- Produces verifiable outputs and traceable steps.
+- Reports blockers and status updates to manager.
+
+## Tool Responsibility Split
+
+### Manager-allowed tools (read/status/report only)
+
+- `project_list_files`
+- `project_read_file`
+- `project_search`
+- `project_list_modules`
+- `project_module_children`
+- `stdlib_list`
+- `stdlib_get_item`
+- `parts_search`
+- `packages_search`
+- `build_logs_search`
+- `design_diagnostics`
+- `autolayout_status`
+- `report_bom`
+- `report_variables`
+- `manufacturing_summary`
+
+### Worker tools
+
+- Full toolset (including mutating/build/install/manufacturing generation).
+- Manager restrictions are enforced server-side, not prompt-only.
 
 ## UI/UX Mapping
 

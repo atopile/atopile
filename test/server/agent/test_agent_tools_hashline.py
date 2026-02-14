@@ -50,9 +50,344 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "autolayout_status" in names
     assert "autolayout_fetch_to_layout" in names
     assert "autolayout_request_screenshot" in names
+    assert "layout_get_component_position" in names
+    assert "layout_set_component_position" in names
     assert "autolayout_configure_board_intent" in names
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
+
+
+def test_manager_tool_definitions_exclude_mutating_tools() -> None:
+    names = {tool_def["name"] for tool_def in tools.get_tool_definitions_for_actor("manager")}
+
+    assert "project_read_file" in names
+    assert "project_search" in names
+    assert "layout_get_component_position" in names
+    assert "autolayout_request_screenshot" in names
+    assert "layout_set_component_position" not in names
+    assert "project_edit_file" not in names
+    assert "project_write_file" not in names
+    assert "project_replace_text" not in names
+    assert "parts_install" not in names
+    assert "packages_install" not in names
+    assert "build_run" not in names
+    assert "manufacturing_generate" not in names
+
+
+def test_execute_tool_rejects_disallowed_manager_tool(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not allowed"):
+        _run(
+            tools.execute_tool(
+                name="project_edit_file",
+                arguments={},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+                actor="manager",
+            )
+        )
+
+
+def test_execute_tool_rejects_layout_set_for_manager(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not allowed"):
+        _run(
+            tools.execute_tool(
+                name="layout_set_component_position",
+                arguments={"address": "app.mcu", "x_mm": 10, "y_mm": 10},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+                actor="manager",
+            )
+        )
+
+
+def test_execute_tool_allows_manager_read_tool(tmp_path: Path) -> None:
+    (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
+
+    result = _run(
+        tools.execute_tool(
+            name="project_read_file",
+            arguments={"path": "main.ato", "start_line": 1, "max_lines": 20},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            actor="manager",
+        )
+    )
+
+    assert result["path"] == "main.ato"
+    assert "module App:" in result["content"]
+
+
+def test_execute_tool_allows_manager_layout_screenshot(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "layouts" / "default").mkdir(parents=True)
+    (tmp_path / "layouts" / "default" / "default.kicad_pcb").write_text(
+        "(kicad_pcb (version 20221018) (generator test))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "ato.yaml").write_text(
+        (
+            "paths:\n"
+            "  src: ./\n"
+            "  layout: ./layouts\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: main.ato:App\n"
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_export_svg(
+        pcb_file: Path,
+        svg_file: Path,
+        flip_board: bool = False,
+        project_dir: Path | None = None,
+        layers: str | None = None,
+    ) -> None:
+        svg_file.write_text("<svg />\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "faebryk.exporters.pcb.kicad.artifacts.export_svg",
+        fake_export_svg,
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_request_screenshot",
+            arguments={"target": "default", "view": "2d", "side": "top"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            actor="manager",
+        )
+    )
+
+    assert result["success"] is True
+    assert Path(result["screenshot_paths"]["2d"]).exists()
+
+
+@dataclass
+class _FakeAt:
+    x: float
+    y: float
+    r: float
+
+
+@dataclass
+class _FakeFootprint:
+    at: _FakeAt
+    layer: str
+
+
+def _make_layout_record(
+    *,
+    reference: str,
+    atopile_address: str,
+    x: float,
+    y: float,
+    r: float,
+    layer: str = "F.Cu",
+) -> tools._LayoutComponentRecord:
+    footprint = _FakeFootprint(at=_FakeAt(x=x, y=y, r=r), layer=layer)
+    return tools._LayoutComponentRecord(
+        reference=reference,
+        atopile_address=atopile_address,
+        layer=layer,
+        x_mm=x,
+        y_mm=y,
+        rotation_deg=r,
+        footprint=footprint,
+    )
+
+
+def test_layout_get_component_position_returns_exact_match(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    layout_path = tmp_path / "layouts" / "default" / "default.kicad_pcb"
+    layout_path.parent.mkdir(parents=True)
+    layout_path.write_text("(kicad_pcb)\n", encoding="utf-8")
+    records = [
+        _make_layout_record(
+            reference="U1",
+            atopile_address="App.mcu",
+            x=12.5,
+            y=8.0,
+            r=90.0,
+        )
+    ]
+
+    monkeypatch.setattr(
+        tools,
+        "_resolve_layout_file_for_tool",
+        lambda *, project_root, target: layout_path,
+    )
+    monkeypatch.setattr(
+        tools,
+        "_load_layout_component_index",
+        lambda _layout_path: (object(), records),
+    )
+
+    result = tools._layout_get_component_position(
+        project_root=tmp_path,
+        target="default",
+        address="App.mcu",
+        fuzzy_limit=5,
+    )
+
+    assert result["found"] is True
+    assert result["matched_by"] == "atopile_address_exact"
+    assert result["component"]["reference"] == "U1"
+    assert result["component"]["x_mm"] == pytest.approx(12.5)
+    assert result["component"]["rotation_deg"] == pytest.approx(90.0)
+
+
+def test_layout_get_component_position_returns_fuzzy_suggestions(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    layout_path = tmp_path / "layouts" / "default" / "default.kicad_pcb"
+    layout_path.parent.mkdir(parents=True)
+    layout_path.write_text("(kicad_pcb)\n", encoding="utf-8")
+    records = [
+        _make_layout_record(
+            reference="U1",
+            atopile_address="App.mcu",
+            x=10.0,
+            y=10.0,
+            r=0.0,
+        ),
+        _make_layout_record(
+            reference="J1",
+            atopile_address="App.usb",
+            x=2.0,
+            y=4.0,
+            r=180.0,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        tools,
+        "_resolve_layout_file_for_tool",
+        lambda *, project_root, target: layout_path,
+    )
+    monkeypatch.setattr(
+        tools,
+        "_load_layout_component_index",
+        lambda _layout_path: (object(), records),
+    )
+
+    result = tools._layout_get_component_position(
+        project_root=tmp_path,
+        target="default",
+        address="App.mcc",
+        fuzzy_limit=3,
+    )
+
+    assert result["found"] is False
+    assert result["suggestions"]
+    assert result["suggestions"][0]["reference"] == "U1"
+    assert result["suggestions"][0]["score"] >= 0.35
+
+
+def test_layout_set_component_position_supports_absolute_and_relative(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    layout_path = tmp_path / "layouts" / "default" / "default.kicad_pcb"
+    layout_path.parent.mkdir(parents=True)
+    layout_path.write_text("(kicad_pcb)\n", encoding="utf-8")
+    record = _make_layout_record(
+        reference="U1",
+        atopile_address="App.mcu",
+        x=10.0,
+        y=6.0,
+        r=15.0,
+        layer="F.Cu",
+    )
+
+    monkeypatch.setattr(
+        tools,
+        "_resolve_layout_file_for_tool",
+        lambda *, project_root, target: layout_path,
+    )
+    footprint = record.footprint
+
+    def fake_load_layout_index(_layout_path: Path):
+        refreshed = tools._LayoutComponentRecord(
+            reference="U1",
+            atopile_address="App.mcu",
+            layer=footprint.layer,
+            x_mm=footprint.at.x,
+            y_mm=footprint.at.y,
+            rotation_deg=footprint.at.r,
+            footprint=footprint,
+        )
+        return object(), [refreshed]
+
+    monkeypatch.setattr(
+        tools,
+        "_load_layout_component_index",
+        fake_load_layout_index,
+    )
+    monkeypatch.setattr(
+        tools,
+        "_write_layout_component_file",
+        lambda _layout_path, _pcb_file: None,
+    )
+
+    def fake_move_fp(footprint: _FakeFootprint, coord, layer: str) -> None:
+        footprint.at.x = float(coord.x)
+        footprint.at.y = float(coord.y)
+        footprint.at.r = float(coord.r)
+        footprint.layer = layer
+
+    monkeypatch.setattr(
+        "faebryk.exporters.pcb.kicad.transformer.PCB_Transformer.move_fp",
+        fake_move_fp,
+    )
+
+    absolute = tools._layout_set_component_position(
+        project_root=tmp_path,
+        target="default",
+        address="App.mcu",
+        mode="absolute",
+        x_mm=25.0,
+        y_mm=30.0,
+        rotation_deg=45.0,
+        dx_mm=None,
+        dy_mm=None,
+        drotation_deg=None,
+        layer="B.Cu",
+        fuzzy_limit=5,
+    )
+    assert absolute["updated"] is True
+    assert absolute["after"]["x_mm"] == pytest.approx(25.0)
+    assert absolute["after"]["y_mm"] == pytest.approx(30.0)
+    assert absolute["after"]["rotation_deg"] == pytest.approx(45.0)
+    assert absolute["after"]["layer"] == "B.Cu"
+
+    relative = tools._layout_set_component_position(
+        project_root=tmp_path,
+        target="default",
+        address="App.mcu",
+        mode="relative",
+        x_mm=None,
+        y_mm=None,
+        rotation_deg=None,
+        dx_mm=-1.5,
+        dy_mm=2.0,
+        drotation_deg=10.0,
+        layer=None,
+        fuzzy_limit=5,
+    )
+    assert relative["updated"] is True
+    assert relative["after"]["x_mm"] == pytest.approx(23.5)
+    assert relative["after"]["y_mm"] == pytest.approx(32.0)
+    assert relative["after"]["rotation_deg"] == pytest.approx(55.0)
+    assert relative["delta"]["dx_mm"] == pytest.approx(-1.5)
+    assert relative["delta"]["dy_mm"] == pytest.approx(2.0)
+    assert relative["delta"]["drotation_deg"] == pytest.approx(10.0)
 
 
 def test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> None:

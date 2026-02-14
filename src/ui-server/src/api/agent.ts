@@ -7,6 +7,22 @@ export interface AgentToolTrace {
   result: Record<string, unknown>;
 }
 
+export interface AgentPeerMessage {
+  messageId: string;
+  threadId: string;
+  fromAgent: string;
+  toAgent: string;
+  kind: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  visibility: 'internal' | 'user_visible' | 'user_redacted' | string;
+  priority: 'low' | 'normal' | 'high' | 'urgent' | string;
+  requiresAck: boolean;
+  correlationId?: string | null;
+  parentId?: string | null;
+  createdAt: number;
+}
+
 export interface AgentToolDirectoryItem {
   name: string;
   category: string;
@@ -44,6 +60,7 @@ export interface AgentMessageResponse {
   assistantMessage: string;
   model: string;
   toolTraces: AgentToolTrace[];
+  agentMessages?: AgentPeerMessage[];
   toolSuggestions?: AgentToolSuggestion[];
   toolMemory?: AgentToolMemoryEntry[];
 }
@@ -58,6 +75,14 @@ export interface AgentRunStatusResponse {
   status: string;
   response?: AgentMessageResponse | null;
   error?: string | null;
+}
+
+export interface AgentRunMessagesResponse {
+  runId: string;
+  sessionId: string;
+  count: number;
+  pendingAcks: number;
+  messages: AgentPeerMessage[];
 }
 
 export interface AgentRunCancelResponse {
@@ -192,6 +217,25 @@ export const agentApi = {
   ): Promise<AgentRunStatusResponse> {
     return request<AgentRunStatusResponse>(
       `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`,
+      {
+        method: 'GET',
+      }
+    );
+  },
+
+  async getRunMessages(
+    sessionId: string,
+    runId: string,
+    payload?: { agent?: 'manager' | 'worker'; limit?: number }
+  ): Promise<AgentRunMessagesResponse> {
+    const params = new URLSearchParams();
+    if (payload?.agent) params.set('agent', payload.agent);
+    if (typeof payload?.limit === 'number' && Number.isFinite(payload.limit)) {
+      params.set('limit', String(Math.max(1, Math.floor(payload.limit))));
+    }
+    const query = params.toString();
+    return request<AgentRunMessagesResponse>(
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/messages${query ? `?${query}` : ''}`,
       {
         method: 'GET',
       }

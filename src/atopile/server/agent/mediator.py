@@ -387,6 +387,55 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "board preview",
         ],
     ),
+    "layout_get_component_position": ToolDirectoryItem(
+        name="layout_get_component_position",
+        category="layout",
+        purpose="Query component XY/rotation by atopile address or reference.",
+        tooltip=(
+            "Fetch current component placement from the .kicad_pcb with fuzzy "
+            "suggestions when an address is close but not exact."
+        ),
+        inputs=["address", "target", "fuzzy_limit"],
+        typical_output="found, matched_by, component, suggestions",
+        keywords=[
+            "component position",
+            "where is component",
+            "placement query",
+            "atopile address",
+            "reference designator",
+            "xy rotation",
+        ],
+    ),
+    "layout_set_component_position": ToolDirectoryItem(
+        name="layout_set_component_position",
+        category="layout",
+        purpose="Set or nudge component XY/rotation in the PCB layout.",
+        tooltip=(
+            "Apply absolute or relative placement transforms "
+            "(x/y/rotation or dx/dy/drotation)."
+        ),
+        inputs=[
+            "address",
+            "target",
+            "mode",
+            "x_mm",
+            "y_mm",
+            "rotation_deg",
+            "dx_mm",
+            "dy_mm",
+            "drotation_deg",
+            "layer",
+        ],
+        typical_output="updated, before, after, delta",
+        keywords=[
+            "move component",
+            "set component position",
+            "nudge component",
+            "rotate component",
+            "placement edit",
+            "layout transform",
+        ],
+    ),
     "autolayout_configure_board_intent": ToolDirectoryItem(
         name="autolayout_configure_board_intent",
         category="autolayout",
@@ -797,6 +846,34 @@ def suggest_tools(
             and name == "autolayout_request_screenshot"
         ):
             score += 1.9
+        placement_query_terms = (
+            "component position",
+            "where is",
+            "placement query",
+            "atopile address",
+            "reference designator",
+            "xy",
+            "rotation",
+        )
+        if (
+            any(term in search_blob for term in placement_query_terms)
+            and name == "layout_get_component_position"
+        ):
+            score += 2.0
+        placement_edit_terms = (
+            "move component",
+            "set component position",
+            "nudge",
+            "rotate component",
+            "placement edit",
+            "set x",
+            "set y",
+        )
+        if (
+            any(term in search_blob for term in placement_edit_terms)
+            and name == "layout_set_component_position"
+        ):
+            score += 2.0
         if "failure" in search_blob and name in {
             "build_logs_search",
             "design_diagnostics",
@@ -886,6 +963,8 @@ def _stale_after_seconds(tool_name: str) -> float:
         return 90.0
     if tool_name.startswith("autolayout_"):
         return 75.0
+    if tool_name.startswith("layout_"):
+        return 120.0
     if tool_name.startswith("project_"):
         return 300.0
     return 600.0
@@ -953,6 +1032,30 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
         if isinstance(target, str) and target:
             return f"board intent updated for {target}"
         return "board intent updated"
+    if name == "layout_get_component_position":
+        if bool(result.get("found", False)):
+            component = result.get("component")
+            if isinstance(component, dict):
+                reference = component.get("reference")
+                if isinstance(reference, str) and reference:
+                    return f"position for {reference}"
+            return "component position fetched"
+        suggestions = result.get("suggestions")
+        if isinstance(suggestions, list):
+            return f"not found; {len(suggestions)} suggestion(s)"
+        return "component not found"
+    if name == "layout_set_component_position":
+        if bool(result.get("updated", False)):
+            after = result.get("after")
+            if isinstance(after, dict):
+                reference = after.get("reference")
+                if isinstance(reference, str) and reference:
+                    return f"moved {reference}"
+            return "component placement updated"
+        suggestions = result.get("suggestions")
+        if isinstance(suggestions, list):
+            return f"not found; {len(suggestions)} suggestion(s)"
+        return "component placement not updated"
     return "ok"
 
 
@@ -1050,6 +1153,60 @@ def _infer_prefilled_args(
         entry_match = _ENTRY_POINT_RE.search(text)
         if entry_match:
             return {"entry_point": entry_match.group(1), "max_depth": 2}
+
+    if tool_name == "layout_get_component_position":
+        args: dict[str, Any] = {}
+        if selected_targets:
+            args["target"] = selected_targets[0]
+        quoted = re.search(r"['\"]([^'\"]+)['\"]", text)
+        if quoted:
+            args["address"] = quoted.group(1)
+            return args
+        address_match = re.search(
+            r"\b(?:app|module|board|root|top)\.[a-z0-9_.:-]+\b",
+            lower,
+        )
+        if address_match:
+            args["address"] = address_match.group(0)
+            return args
+
+    if tool_name == "layout_set_component_position":
+        args: dict[str, Any] = {"mode": "absolute"}
+        if selected_targets:
+            args["target"] = selected_targets[0]
+        quoted = re.search(r"['\"]([^'\"]+)['\"]", text)
+        if quoted:
+            args["address"] = quoted.group(1)
+        else:
+            address_match = re.search(
+                r"\b(?:app|module|board|root|top)\.[a-z0-9_.:-]+\b",
+                lower,
+            )
+            if address_match:
+                args["address"] = address_match.group(0)
+
+        nudge_match = re.search(
+            r"\bnudge\s+([+-]?\d+(?:\.\d+)?)\s*mm\s+"
+            r"(left|right|up|down|top|bottom)\b",
+            lower,
+        )
+        if nudge_match:
+            amount = float(nudge_match.group(1))
+            direction = nudge_match.group(2)
+            dx = 0.0
+            dy = 0.0
+            if direction == "left":
+                dx = -amount
+            elif direction == "right":
+                dx = amount
+            elif direction in {"up", "top"}:
+                dy = -amount
+            else:
+                dy = amount
+            args["mode"] = "relative"
+            args["dx_mm"] = dx
+            args["dy_mm"] = dy
+            return args
 
     if tool_name == "build_logs_search":
         requested_levels: list[str] = []

@@ -57,6 +57,12 @@ class AgentRun:
     updated_at: float = field(default_factory=time.time)
     task: asyncio.Task[Any] | None = field(default=None, repr=False)
     steer_messages: list[str] = field(default_factory=list)
+    message_log: list[dict[str, Any]] = field(default_factory=list)
+    inbox_cursor: dict[str, int] = field(
+        default_factory=lambda: {"manager": 0, "worker": 0}
+    )
+    pending_acks: set[str] = field(default_factory=set)
+    intent_snapshot: dict[str, Any] = field(default_factory=dict)
 
 
 class CreateSessionRequest(BaseModel):
@@ -90,6 +96,25 @@ class ToolTraceResponse(BaseModel):
     result: dict
 
 
+class AgentPeerMessageResponse(BaseModel):
+    message_id: str = Field(alias="messageId")
+    thread_id: str = Field(alias="threadId")
+    from_agent: str = Field(alias="fromAgent")
+    to_agent: str = Field(alias="toAgent")
+    kind: str
+    summary: str
+    payload: dict = Field(default_factory=dict)
+    visibility: str
+    priority: str
+    requires_ack: bool = Field(alias="requiresAck")
+    correlation_id: str | None = Field(default=None, alias="correlationId")
+    parent_id: str | None = Field(default=None, alias="parentId")
+    created_at: float = Field(alias="createdAt")
+
+    class Config:
+        populate_by_name = True
+
+
 class SendMessageResponse(BaseModel):
     session_id: str = Field(alias="sessionId")
     assistant_message: str = Field(alias="assistantMessage")
@@ -99,6 +124,9 @@ class SendMessageResponse(BaseModel):
     )
     tool_suggestions: list[dict] = Field(default_factory=list, alias="toolSuggestions")
     tool_memory: list[dict] = Field(default_factory=list, alias="toolMemory")
+    agent_messages: list[AgentPeerMessageResponse] = Field(
+        default_factory=list, alias="agentMessages"
+    )
 
     class Config:
         populate_by_name = True
@@ -171,6 +199,17 @@ class GetRunResponse(BaseModel):
     status: str
     response: SendMessageResponse | None = None
     error: str | None = None
+
+    class Config:
+        populate_by_name = True
+
+
+class GetRunMessagesResponse(BaseModel):
+    run_id: str = Field(alias="runId")
+    session_id: str = Field(alias="sessionId")
+    count: int
+    pending_acks: int = Field(alias="pendingAcks")
+    messages: list[AgentPeerMessageResponse] = Field(default_factory=list)
 
     class Config:
         populate_by_name = True
@@ -461,6 +500,11 @@ def _build_send_message_response(
         ],
         toolSuggestions=suggestions,
         toolMemory=tool_memory_view,
+        agentMessages=[
+            AgentPeerMessageResponse.model_validate(message)
+            for message in getattr(result, "agent_messages", [])
+            if isinstance(message, dict)
+        ],
     )
     _log_session_event(
         "turn_completed",
@@ -474,7 +518,11 @@ def _build_send_message_response(
             "assistant_message": result.text,
             "model": result.model,
             "tool_trace_count": len(response.tool_traces),
+            "agent_message_count": len(response.agent_messages),
             "tool_traces": [trace.model_dump() for trace in response.tool_traces],
+            "agent_messages": [
+                message.model_dump() for message in response.agent_messages
+            ],
             "last_response_id": session.last_response_id,
             "skill_state": session.skill_state,
             "context_metrics": getattr(result, "context_metrics", {}),
@@ -498,6 +546,90 @@ async def _emit_agent_progress(
     if run_id:
         event_payload["run_id"] = run_id
     await get_event_bus().emit("agent_progress", event_payload)
+
+
+async def _emit_agent_message(
+    *,
+    session_id: str,
+    project_root: str,
+    run_id: str,
+    message: dict[str, Any],
+) -> None:
+    await get_event_bus().emit(
+        "agent_message",
+        {
+            "session_id": session_id,
+            "project_root": project_root,
+            "run_id": run_id,
+            "message": message,
+        },
+    )
+
+
+def _post_agent_run_message(run_id: str, message: dict[str, Any]) -> None:
+    if not isinstance(message, dict):
+        return
+    with _runs_lock:
+        run = _runs.get(run_id)
+        if run is None:
+            return
+        run.message_log.append(dict(message))
+        run.updated_at = time.time()
+        requires_ack = bool(message.get("requires_ack", False))
+        message_id = message.get("message_id")
+        if requires_ack and isinstance(message_id, str) and message_id:
+            run.pending_acks.add(message_id)
+        if message.get("kind") == "ack":
+            payload = message.get("payload")
+            acked_id = None
+            if isinstance(payload, dict):
+                payload_id = payload.get("message_id")
+                if isinstance(payload_id, str) and payload_id:
+                    acked_id = payload_id
+            if acked_id:
+                run.pending_acks.discard(acked_id)
+        if (
+            message.get("kind") == "intent_brief"
+            and isinstance(message.get("payload"), dict)
+            and not run.intent_snapshot
+        ):
+            run.intent_snapshot = dict(message["payload"])
+
+
+def _pull_agent_run_messages(
+    run_id: str,
+    *,
+    agent_id: str,
+    max_items: int = 50,
+) -> list[dict[str, Any]]:
+    max_items = max(1, min(max_items, 500))
+    with _runs_lock:
+        run = _runs.get(run_id)
+        if run is None:
+            return []
+        cursor = run.inbox_cursor.get(agent_id, 0)
+        if cursor < 0:
+            cursor = 0
+        messages = run.message_log[cursor : cursor + max_items]
+        run.inbox_cursor[agent_id] = cursor + len(messages)
+        run.updated_at = time.time()
+    return [dict(message) for message in messages]
+
+
+def _ack_agent_run_message(
+    run_id: str,
+    *,
+    message_id: str,
+) -> bool:
+    with _runs_lock:
+        run = _runs.get(run_id)
+        if run is None:
+            return False
+        if message_id not in run.pending_acks:
+            return False
+        run.pending_acks.remove(message_id)
+        run.updated_at = time.time()
+        return True
 
 
 def _cleanup_finished_runs(max_age_seconds: float = 3_600.0) -> None:
@@ -586,6 +718,15 @@ async def _run_turn_in_background(
             payload=payload,
         )
 
+    async def emit_message(message: dict) -> None:
+        _post_agent_run_message(run_id, message)
+        await _emit_agent_message(
+            session_id=session_id,
+            project_root=run.project_root,
+            run_id=run_id,
+            message=message,
+        )
+
     def consume_steering_messages() -> list[str]:
         queued = _consume_run_steer_messages(run_id)
         if queued:
@@ -611,6 +752,7 @@ async def _run_turn_in_background(
             tool_memory=session.tool_memory,
             progress_callback=emit_progress,
             consume_steering_messages=consume_steering_messages,
+            message_callback=emit_message,
         )
     except asyncio.CancelledError:
         with _runs_lock:
@@ -815,6 +957,14 @@ async def send_message(
             payload=payload,
         )
 
+    async def emit_message(message: dict) -> None:
+        await _emit_agent_message(
+            session_id=session_id,
+            project_root=request.project_root,
+            run_id=run_id,
+            message=message,
+        )
+
     try:
         result = await _orchestrator.run_turn(
             ctx=ctx,
@@ -825,6 +975,7 @@ async def send_message(
             previous_response_id=session.last_response_id,
             tool_memory=session.tool_memory,
             progress_callback=emit_progress,
+            message_callback=emit_message,
         )
     except Exception as exc:
         await emit_progress(
@@ -973,6 +1124,45 @@ async def get_run(
         status=run.status,
         response=response,
         error=run.error,
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/runs/{run_id}/messages",
+    response_model=GetRunMessagesResponse,
+)
+async def get_run_messages(
+    session_id: str,
+    run_id: str,
+    agent: str = Query(default="manager"),
+    limit: int = Query(default=200, ge=1, le=500),
+):
+    with _runs_lock:
+        run = _runs.get(run_id)
+        if run:
+            run = _normalize_running_run_state(run)
+    if not run or run.session_id != session_id:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+
+    messages = _pull_agent_run_messages(
+        run_id,
+        agent_id=agent.strip().lower() or "manager",
+        max_items=limit,
+    )
+    with _runs_lock:
+        current = _runs.get(run_id)
+        pending_acks = len(current.pending_acks) if current else 0
+
+    return GetRunMessagesResponse(
+        runId=run_id,
+        sessionId=session_id,
+        count=len(messages),
+        pendingAcks=pending_acks,
+        messages=[
+            AgentPeerMessageResponse.model_validate(message)
+            for message in messages
+            if isinstance(message, dict)
+        ],
     )
 
 
