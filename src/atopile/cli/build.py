@@ -195,7 +195,7 @@ def _run_single_build() -> None:
             logger.error(e, exc_info=e)
         sys.exit(1)
 
-    # Note: BuildLogger.close_all() is registered as an atexit handler,
+    # Note: AtoLogger.close_all() is registered as an atexit handler,
     # so logs will be flushed during process shutdown.
 
 
@@ -532,9 +532,9 @@ def build(
 
     results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
-    from atopile.logging import BuildLogger
+    from atopile.logging import AtoLogger
 
-    BuildLogger.close_all()
+    AtoLogger.close_all()
 
     build_by_id = {build.build_id: build for build in builds if build.build_id}
     failed = [

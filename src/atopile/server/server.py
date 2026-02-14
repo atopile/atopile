@@ -362,9 +362,9 @@ def cleanup_server(exc: BaseException | None = None) -> None:
 
     # 2. Flush logs to database
     try:
-        from atopile.logging import BuildLogger
+        from atopile.logging import AtoLogger
 
-        BuildLogger.close_all()
+        AtoLogger.close_all()
     except Exception:
         pass
 
