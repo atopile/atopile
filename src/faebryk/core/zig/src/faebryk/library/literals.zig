@@ -4,6 +4,7 @@ const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 const faebryk = @import("faebryk");
 const fabll = faebryk.fabll;
+const is_trait = fabll.is_trait;
 const collections = @import("collections.zig");
 const units = @import("units.zig");
 const parameters = @import("parameters.zig");
@@ -714,7 +715,7 @@ pub const NumbersSerialized = struct {
 
 pub const Numbers = struct {
     node: fabll.Node,
-    can_be_operand: parameters.is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     numeric_set_ptr: collections.PointerOf(NumericSet).MakeChild(),
     unit_ptr: collections.PointerOf(units.is_unit).MakeChild(),
     const ScaleFactor = struct {

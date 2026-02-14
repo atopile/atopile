@@ -3,27 +3,9 @@ const graph_mod = @import("graph");
 const graph = graph_mod.graph;
 const faebryk = @import("faebryk");
 const fabll = faebryk.fabll;
+const is_trait = fabll.is_trait;
 const collections = @import("collections.zig");
 const str = []const u8;
-
-const is_trait = struct {
-    node: fabll.Node,
-
-    pub fn MakeEdge(comptime traitchildfield: type, comptime owner: ?fabll.RefPath) type {
-        const owner_path = owner orelse fabll.RefPath.self();
-        return traitchildfield.add_dependant(
-            fabll.MakeDependantEdge(
-                owner_path,
-                fabll.RefPath.owner_child(),
-                faebryk.trait.EdgeTrait,
-            ),
-        );
-    }
-
-    pub fn MakeChild() type {
-        return fabll.Node.MakeChild(@This());
-    }
-};
 
 pub const Error = error{
     UnitsNotCommensurable,

@@ -835,13 +835,7 @@ fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
     return out;
 }
 
-// =============================================================================
-// Test fixtures and tests
-// =============================================================================
-
-// TESTING ====================================================================
-
-const is_trait = struct {
+pub const is_trait = struct {
     node: Node,
 
     pub fn MakeEdge(comptime traitchildfield: type, comptime owner: ?RefPath) type {
@@ -859,6 +853,12 @@ const is_trait = struct {
         return Node.MakeChild(@This());
     }
 };
+
+// =============================================================================
+// Test fixtures and tests
+// =============================================================================
+
+// TESTING ====================================================================
 
 const is_interface = struct {
     node: Node,
