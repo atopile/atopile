@@ -567,10 +567,6 @@ def main(
             if ORCHESTRATOR_TIMEOUT > 0:
                 timed_out = aggregator.get_timed_out_workers(ORCHESTRATOR_TIMEOUT)
                 for pid, nodeid in timed_out:
-                    _print(
-                        f"TIMEOUT: {nodeid} exceeded {ORCHESTRATOR_TIMEOUT}s"
-                        f" — killing worker {pid}"
-                    )
                     if aggregator.handle_worker_timeout(pid, nodeid):
                         for i, p in list(workers.items()):
                             if p.pid == pid:
