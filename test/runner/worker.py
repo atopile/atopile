@@ -32,7 +32,7 @@ FBRK_TEST_WORKER_MEMORY_LIMIT = (
 )
 
 FBRK_TEST_TEST_TIMEOUT = int(os.environ.get("FBRK_TEST_TEST_TIMEOUT", 0))
-FBRK_TEST_BATCH_SIZE = max(int(os.environ.get("FBRK_TEST_BATCH_SIZE", "1")), 1)
+FBRK_TEST_BATCH_SIZE = max(int(os.environ.get("FBRK_TEST_BATCH_SIZE", "4")), 1)
 FBRK_TEST_BATCH_EXEC_MODE = os.environ.get(
     "FBRK_TEST_BATCH_EXEC_MODE", "session"
 ).lower()
