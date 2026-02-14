@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+from pathlib import Path
 from unittest.mock import patch
 
 from atopile.dataclasses import LogRow
@@ -200,3 +201,45 @@ def test_setup_build_logging_defaults_stage_to_blank():
             os.environ.pop("ATO_BUILD_TIMESTAMP", None)
         else:
             os.environ["ATO_BUILD_TIMESTAMP"] = prev_timestamp
+
+
+def test_source_file_reports_original_callsite():
+    captured: list[LogRow] = []
+    logger = AtoLogger._make_db_logger(
+        identifier="",
+        context="source",
+        writer=lambda rows: captured.extend(rows),
+        row_class=LogRow,
+        id_field="build_id",
+        context_field="stage",
+        logger_name=f"atopile.db.test.source.{uuid.uuid4().hex}",
+    )
+    logger.setLevel(logging.INFO)
+
+    prev_active_unscoped = AtoLogger._active_unscoped_logger
+    AtoLogger._active_unscoped_logger = logger
+    prev_active_build = AtoLogger._active_build_logger
+    prev_active_test = AtoLogger._active_test_logger
+    AtoLogger._active_build_logger = None
+    AtoLogger._active_test_logger = None
+
+    root = logging.getLogger()
+    prev_level = root.level
+    db_handler = DBLogHandler(level=logging.DEBUG)
+    root.addHandler(db_handler)
+    root.setLevel(logging.DEBUG)
+    try:
+        logger.info("callsite check")
+        logger.db_flush()
+    finally:
+        root.removeHandler(db_handler)
+        root.setLevel(prev_level)
+        AtoLogger._active_unscoped_logger = prev_active_unscoped
+        AtoLogger._active_build_logger = prev_active_build
+        AtoLogger._active_test_logger = prev_active_test
+
+    assert len(captured) == 1
+    row = captured[0]
+    assert row.source_file is not None
+    assert Path(row.source_file).name == "test_logging_db.py"
+    assert row.source_line is not None
