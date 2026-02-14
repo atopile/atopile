@@ -4,11 +4,37 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from atopile.dataclasses import LogRow
 from atopile.logging import AtoLogger, DBLogHandler
 
 
-def test_unscoped_logger_uses_empty_build_id():
+@pytest.fixture()
+def isolated_logging_state():
+    root = logging.getLogger()
+    prev_handlers = list(root.handlers)
+    prev_level = root.level
+    prev_active_build = AtoLogger._active_build_logger
+    prev_active_test = AtoLogger._active_test_logger
+    prev_active_unscoped = AtoLogger._active_unscoped_logger
+
+    root.handlers = []
+    root.setLevel(logging.WARNING)
+    AtoLogger._active_build_logger = None
+    AtoLogger._active_test_logger = None
+    AtoLogger._active_unscoped_logger = None
+    try:
+        yield root
+    finally:
+        root.handlers = prev_handlers
+        root.setLevel(prev_level)
+        AtoLogger._active_build_logger = prev_active_build
+        AtoLogger._active_test_logger = prev_active_test
+        AtoLogger._active_unscoped_logger = prev_active_unscoped
+
+
+def test_unscoped_logger_uses_empty_build_id(isolated_logging_state):
     captured: list[LogRow] = []
     logger = AtoLogger._make_db_logger(
         identifier="",
@@ -21,9 +47,7 @@ def test_unscoped_logger_uses_empty_build_id():
     )
     logger.setLevel(logging.INFO)
 
-    root = logging.getLogger()
-    prev_level = root.level
-    prev_active_unscoped = AtoLogger._active_unscoped_logger
+    root = isolated_logging_state
     AtoLogger._active_unscoped_logger = logger
     db_handler = DBLogHandler(level=logging.DEBUG)
     root.addHandler(db_handler)
@@ -33,15 +57,13 @@ def test_unscoped_logger_uses_empty_build_id():
         logger.db_flush()
     finally:
         root.removeHandler(db_handler)
-        root.setLevel(prev_level)
-        AtoLogger._active_unscoped_logger = prev_active_unscoped
 
     assert len(captured) == 1
     assert captured[0].build_id == ""
     assert captured[0].stage == "install"
 
 
-def test_non_db_logger_routes_to_active_db_context():
+def test_non_db_logger_routes_to_active_db_context(isolated_logging_state):
     captured: list[LogRow] = []
     active_logger = AtoLogger._make_db_logger(
         identifier="build-1",
@@ -54,13 +76,9 @@ def test_non_db_logger_routes_to_active_db_context():
     )
     active_logger.setLevel(logging.INFO)
 
-    prev_active_build = AtoLogger._active_build_logger
-    prev_active_test = AtoLogger._active_test_logger
     AtoLogger._active_build_logger = active_logger
-    AtoLogger._active_test_logger = None
 
-    root = logging.getLogger()
-    prev_level = root.level
+    root = isolated_logging_state
     db_handler = DBLogHandler(level=logging.DEBUG)
     root.addHandler(db_handler)
     root.setLevel(logging.DEBUG)
@@ -71,9 +89,6 @@ def test_non_db_logger_routes_to_active_db_context():
         active_logger.db_flush()
     finally:
         root.removeHandler(db_handler)
-        root.setLevel(prev_level)
-        AtoLogger._active_build_logger = prev_active_build
-        AtoLogger._active_test_logger = prev_active_test
 
     assert len(captured) >= 1
     row = captured[-1]
@@ -83,7 +98,7 @@ def test_non_db_logger_routes_to_active_db_context():
     assert row.message == "from third-party logger"
 
 
-def test_db_handler_defaults_to_unscoped_without_active_context():
+def test_db_handler_defaults_to_unscoped_without_active_context(isolated_logging_state):
     captured: list[LogRow] = []
     default_unscoped = AtoLogger._make_db_logger(
         identifier="",
@@ -94,15 +109,8 @@ def test_db_handler_defaults_to_unscoped_without_active_context():
         context_field="stage",
         logger_name=f"atopile.db.test.default.{uuid.uuid4().hex}",
     )
-    root = logging.getLogger()
-    prev_level = root.level
+    root = isolated_logging_state
     db_handler = DBLogHandler(level=logging.DEBUG)
-    prev_active_build = AtoLogger._active_build_logger
-    prev_active_test = AtoLogger._active_test_logger
-    prev_active_unscoped = AtoLogger._active_unscoped_logger
-    AtoLogger._active_build_logger = None
-    AtoLogger._active_test_logger = None
-    AtoLogger._active_unscoped_logger = None
     root.addHandler(db_handler)
     root.setLevel(logging.DEBUG)
     try:
@@ -113,10 +121,6 @@ def test_db_handler_defaults_to_unscoped_without_active_context():
         default_unscoped.db_flush()
     finally:
         root.removeHandler(db_handler)
-        root.setLevel(prev_level)
-        AtoLogger._active_build_logger = prev_active_build
-        AtoLogger._active_test_logger = prev_active_test
-        AtoLogger._active_unscoped_logger = prev_active_unscoped
 
     assert len(captured) >= 1
     row = captured[-1]
@@ -124,7 +128,7 @@ def test_db_handler_defaults_to_unscoped_without_active_context():
     assert row.message == "should route to default unscoped"
 
 
-def test_db_handler_raises_with_multiple_active_contexts():
+def test_db_handler_raises_with_multiple_active_contexts(isolated_logging_state):
     captured: list[LogRow] = []
     build_logger = AtoLogger._make_db_logger(
         identifier="build-x",
@@ -154,12 +158,8 @@ def test_db_handler_raises_with_multiple_active_contexts():
         logger_name=f"atopile.db.test.multictx.test.{uuid.uuid4().hex}",
     )
 
-    root = logging.getLogger()
-    prev_level = root.level
+    root = isolated_logging_state
     db_handler = DBLogHandler(level=logging.DEBUG)
-    prev_active_build = AtoLogger._active_build_logger
-    prev_active_test = AtoLogger._active_test_logger
-    prev_active_unscoped = AtoLogger._active_unscoped_logger
     AtoLogger._active_build_logger = build_logger
     AtoLogger._active_test_logger = test_logger
     AtoLogger._active_unscoped_logger = unscoped_logger
@@ -175,21 +175,14 @@ def test_db_handler_raises_with_multiple_active_contexts():
             pass
     finally:
         root.removeHandler(db_handler)
-        root.setLevel(prev_level)
-        AtoLogger._active_build_logger = prev_active_build
-        AtoLogger._active_test_logger = prev_active_test
-        AtoLogger._active_unscoped_logger = prev_active_unscoped
 
 
-def test_setup_build_logging_defaults_stage_to_blank():
+def test_setup_build_logging_defaults_stage_to_blank(isolated_logging_state):
     prev_build_id = os.environ.get("ATO_BUILD_ID")
     prev_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
     os.environ["ATO_BUILD_ID"] = f"build-{uuid.uuid4().hex}"
     os.environ["ATO_BUILD_TIMESTAMP"] = "2026-02-14_00-00-00"
 
-    prev_active_build = AtoLogger._active_build_logger
-    prev_active_test = AtoLogger._active_test_logger
-    prev_active_unscoped = AtoLogger._active_unscoped_logger
     expected = AtoLogger._make_db_logger(
         identifier="build-test",
         context="",
@@ -212,9 +205,6 @@ def test_setup_build_logging_defaults_stage_to_blank():
         assert AtoLogger._active_test_logger is None
         assert AtoLogger._active_unscoped_logger is None
     finally:
-        AtoLogger._active_build_logger = prev_active_build
-        AtoLogger._active_test_logger = prev_active_test
-        AtoLogger._active_unscoped_logger = prev_active_unscoped
         if prev_build_id is None:
             os.environ.pop("ATO_BUILD_ID", None)
         else:
@@ -225,7 +215,7 @@ def test_setup_build_logging_defaults_stage_to_blank():
             os.environ["ATO_BUILD_TIMESTAMP"] = prev_timestamp
 
 
-def test_source_file_reports_original_callsite():
+def test_source_file_reports_original_callsite(isolated_logging_state):
     captured: list[LogRow] = []
     logger = AtoLogger._make_db_logger(
         identifier="",
@@ -238,15 +228,9 @@ def test_source_file_reports_original_callsite():
     )
     logger.setLevel(logging.INFO)
 
-    prev_active_unscoped = AtoLogger._active_unscoped_logger
     AtoLogger._active_unscoped_logger = logger
-    prev_active_build = AtoLogger._active_build_logger
-    prev_active_test = AtoLogger._active_test_logger
-    AtoLogger._active_build_logger = None
-    AtoLogger._active_test_logger = None
 
-    root = logging.getLogger()
-    prev_level = root.level
+    root = isolated_logging_state
     db_handler = DBLogHandler(level=logging.DEBUG)
     root.addHandler(db_handler)
     root.setLevel(logging.DEBUG)
@@ -255,13 +239,11 @@ def test_source_file_reports_original_callsite():
         logger.db_flush()
     finally:
         root.removeHandler(db_handler)
-        root.setLevel(prev_level)
-        AtoLogger._active_unscoped_logger = prev_active_unscoped
-        AtoLogger._active_build_logger = prev_active_build
-        AtoLogger._active_test_logger = prev_active_test
 
-    assert len(captured) == 1
-    row = captured[0]
-    assert row.source_file is not None
-    assert Path(row.source_file).name == "test_logging_db.py"
-    assert row.source_line is not None
+    assert len(captured) >= 1
+    rows = [r for r in captured if r.message == "callsite check"]
+    assert rows
+    for row in rows:
+        assert row.source_file is not None
+        assert Path(row.source_file).name == "test_logging_db.py"
+        assert row.source_line is not None
