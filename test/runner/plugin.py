@@ -16,7 +16,7 @@ import httpx
 import psutil
 import pytest
 
-from atopile.logging import _extract_traceback_frames
+from atopile.logging import LoggerForTest, _extract_traceback_frames
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
 
 # Use atopile prefix so logs pass through the _atopile_log_filter
@@ -134,6 +134,7 @@ def pytest_runtest_call(item: pytest.Item):
 
 def pytest_runtest_logstart(nodeid, location):
     global _start_memory
+    LoggerForTest.update_test_name(nodeid)
     _start_memory = psutil.Process().memory_info().rss
     tracemalloc.start()
     client = _get_client()

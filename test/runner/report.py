@@ -174,7 +174,7 @@ class TestAggregator:
         # Tracks tests that have been handed out via /claim but for which we
         # haven't yet received START/FINISH. If a worker dies in that window,
         # the test is otherwise "lost" (not in the queue and never started).
-        self._claimed_by_pid: dict[int, str] = {}
+        self._claimed_by_pid: dict[int, set[str]] = {}
         # Maps worker PID to worker ID (for log file access)
         self._pid_to_worker_id: dict[int, int] = {}
         self._scheduler_stats: dict[str, int] = {}
@@ -192,6 +192,10 @@ class TestAggregator:
     def set_scheduler_stats(self, stats: dict[str, int]) -> None:
         with self._lock:
             self._scheduler_stats = dict(stats)
+
+    def get_claimed_nodeids(self, pid: int) -> list[str]:
+        with self._lock:
+            return list(self._claimed_by_pid.get(pid, set()))
 
     def register_worker(self, worker_id: int, pid: int) -> None:
         """Register a worker's PID to worker_id mapping for log file access."""
@@ -216,22 +220,8 @@ class TestAggregator:
         claim_time = datetime.datetime.now()
         with self._lock:
             self._active_pids.add(pid)
-
-            # Defensive: if the worker somehow claims twice without finishing,
-            # treat the previous claim as orphaned and requeue if unstarted.
-            prev = self._claimed_by_pid.get(pid)
-            if prev and prev != nodeid:
-                prev_state = self._tests.get(prev)
-                if (
-                    prev_state
-                    and prev_state.outcome is None
-                    and prev_state.start_time is None
-                ):
-                    prev_state.pid = None
-                    prev_state.requeues += 1
-                    test_queue.put(prev)
-
-            self._claimed_by_pid[pid] = nodeid
+            claims = self._claimed_by_pid.setdefault(pid, set())
+            claims.add(nodeid)
             state = self._tests.get(nodeid)
             if state:
                 state.pid = pid
@@ -306,8 +296,8 @@ class TestAggregator:
             if event_type == EventType.EXIT:
                 # If the worker exits while still holding a claim, requeue the
                 # test (it was dequeued but never started/finished).
-                claimed = self._claimed_by_pid.pop(pid, None)
-                if claimed:
+                claimed_nodeids = self._claimed_by_pid.pop(pid, set())
+                for claimed in claimed_nodeids:
                     test = self._tests.get(claimed)
                     if test and test.outcome is None and test.start_time is None:
                         test.pid = None
@@ -329,8 +319,11 @@ class TestAggregator:
                             (start_time - test.claim_time).total_seconds(), 0.0
                         )
                 # START implies the claim is no longer "in limbo"
-                if self._claimed_by_pid.get(pid) == nodeid:
-                    self._claimed_by_pid.pop(pid, None)
+                claims = self._claimed_by_pid.get(pid)
+                if nodeid and claims and nodeid in claims:
+                    claims.discard(nodeid)
+                    if not claims:
+                        self._claimed_by_pid.pop(pid, None)
 
             elif event_type == EventType.FINISH:
                 nodeid = data.nodeid
@@ -366,8 +359,11 @@ class TestAggregator:
                         self._compute_compare_status(test)
                     except ValueError:
                         pass
-                if self._claimed_by_pid.get(pid) == nodeid:
-                    self._claimed_by_pid.pop(pid, None)
+                claims = self._claimed_by_pid.get(pid)
+                if nodeid and claims and nodeid in claims:
+                    claims.discard(nodeid)
+                    if not claims:
+                        self._claimed_by_pid.pop(pid, None)
 
             elif event_type == EventType.WORKER_FINISH:
                 nodeid = data.nodeid
@@ -385,8 +381,8 @@ class TestAggregator:
             # If this worker had a claimed test that never started, put it back
             # into the queue. This avoids the rare "finished with queued tests"
             # state when a worker dies between /claim and START.
-            claimed = self._claimed_by_pid.pop(pid, None)
-            if claimed:
+            claimed_nodeids = self._claimed_by_pid.pop(pid, set())
+            for claimed in claimed_nodeids:
                 test = self._tests.get(claimed)
                 if test and test.outcome is None and test.start_time is None:
                     test.pid = None
@@ -483,7 +479,11 @@ class TestAggregator:
             }
 
             # Clean up tracking state
-            self._claimed_by_pid.pop(pid, None)
+            claims = self._claimed_by_pid.get(pid)
+            if claims:
+                claims.discard(nodeid)
+                if not claims:
+                    self._claimed_by_pid.pop(pid, None)
             self._exited_pids.add(pid)
             if pid in self._active_pids:
                 self._active_pids.remove(pid)
@@ -496,10 +496,15 @@ class TestAggregator:
 
     def unstarted_pending_nodeids(self) -> list[str]:
         with self._lock:
+            claimed = {
+                nodeid for claims in self._claimed_by_pid.values() for nodeid in claims
+            }
             return [
                 t.nodeid
                 for t in self._tests.values()
-                if t.outcome is None and t.start_time is None
+                if t.outcome is None
+                and t.start_time is None
+                and t.nodeid not in claimed
             ]
 
     def get_report(self) -> str:

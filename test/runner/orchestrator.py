@@ -205,12 +205,14 @@ async def claim(request: ClaimRequest) -> ClaimResponse:
 async def event(request: EventRequest) -> dict[str, str]:
     """Report a test event (start, finish, etc.)."""
     if request.type in (EventType.FINISH, EventType.EXIT):
-        nodeid = request.nodeid
-        # For EXIT events, the nodeid on the request may be None.
-        # Look up what the crashing worker had claimed via the aggregator.
-        if nodeid is None and request.type == EventType.EXIT and aggregator:
-            nodeid = aggregator._claimed_by_pid.get(request.pid)
-        if nodeid:
+        nodeids: list[str] = []
+        if request.nodeid:
+            nodeids = [request.nodeid]
+        elif request.type == EventType.EXIT and aggregator:
+            # EXIT may have no explicit nodeid; release all outstanding claims.
+            nodeids = aggregator.get_claimed_nodeids(request.pid)
+
+        for nodeid in nodeids:
             group = _get_group(nodeid)
             if group:
                 with _group_lock:
