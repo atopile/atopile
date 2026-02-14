@@ -473,6 +473,11 @@ class TestAggregator:
                     and t.start_time is None
                     and (now - t.claim_time) > timeout_s
                 ):
+                    # Clean up _claimed_by_pid so handle_claim doesn't
+                    # double-requeue this test when the same PID claims again.
+                    if t.pid is not None:
+                        if self._claimed_by_pid.get(t.pid) == t.nodeid:
+                            del self._claimed_by_pid[t.pid]
                     t.pid = None
                     t.claim_time = None
                     t.requeues += 1

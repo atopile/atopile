@@ -174,6 +174,30 @@ def test_recover_stale_claims_resets_state():
     assert state.pid is None
     assert state.claim_time is None
     assert state.requeues == 1
+    # _claimed_by_pid must be cleaned up too
+    assert 100 not in agg._claimed_by_pid
+
+
+def test_recover_stale_claims_no_double_requeue():
+    """After recovery, the same PID claiming a new test must not re-requeue
+    the already-recovered test via the orphan-detection in handle_claim."""
+    import test.runner.main as runner_main
+    from test.runner.report import set_globals as set_report_globals
+
+    test_q = queue.Queue()
+    set_report_globals(test_q, {}, runner_main.commit_info, runner_main.ci_info)
+    agg = runner_main.TestAggregator(["t1", "t2"], runner_main.RemoteBaseline())
+
+    # PID 100 claims t1, then goes stale
+    agg.handle_claim(pid=100, nodeid="t1")
+    agg._tests["t1"].claim_time = time.time() - 60
+
+    stale = agg.recover_stale_claims(timeout_s=30)
+    assert stale == ["t1"]
+
+    # Now the same PID 100 claims t2 — t1 must NOT be requeued again
+    agg.handle_claim(pid=100, nodeid="t2")
+    assert agg._tests["t1"].requeues == 1  # still 1, not 2
 
 
 def test_claim_time_cleared_on_start():
