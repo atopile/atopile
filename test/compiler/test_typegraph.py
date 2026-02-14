@@ -9,7 +9,7 @@ import faebryk.core.graph as graph
 import faebryk.library._F as F
 from atopile.compiler import DslRichException, DslUndefinedSymbolError
 from atopile.compiler.ast_visitor import ASTVisitor, DslException
-from atopile.compiler.build import Linker, StdlibRegistry, build_file
+from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_stage_2
 from atopile.errors import UserSyntaxError
 from faebryk.core.solver.mutator import MutationMap, Mutator
 from faebryk.core.solver.symbolic.structural import transitive_subset
@@ -3141,6 +3141,61 @@ class TestDocStrings:
 
 class TestBlockInheritance:
     """Tests for block inheritance (module Derived from Base)."""
+
+    def test_inherit_from_capacitor_records_parent_and_picker_type_family(self):
+        """
+        Diagnostic test for stdlib inheritance used by picker.
+
+        This verifies:
+        1. AST visitor records pending inheritance from `Capacitor` correctly.
+        2. After deferred inheritance, `is_pickable_by_type.pick_type` resolves to the
+           canonical Capacitor family type so picker classification remains stable.
+        """
+        source = """
+            import Capacitor
+
+            module Decap0402 from Capacitor:
+                capacitance = 100nF +/- 10%
+                package = "C0402"
+
+            module App:
+                decoupling = new Decap0402
+        """
+        g, tg, stdlib, result = build_type(source, link=False)
+
+        # AST visitor: parent reference for inheritance is captured as expected.
+        assert len(result.state.pending_inheritance) == 1
+        (pending,) = result.state.pending_inheritance
+        assert pending.derived_name == "Decap0402"
+        from atopile.compiler.gentypegraph import ImportRef
+
+        assert isinstance(pending.parent_ref, ImportRef)
+        assert pending.parent_ref.name == "Capacitor"
+        assert pending.parent_ref.path is None
+
+        # Complete linking + deferred execution so inherited traits are materialized.
+        linker = Linker(NULL_CONFIG, stdlib, tg)
+        build_stage_2(g=g, tg=tg, linker=linker, result=result)
+
+        app_type = result.state.type_roots["App"]
+        app_instance = tg.instantiate_node(type_node=app_type, attributes={})
+        decoupling = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="decoupling"
+        )
+
+        import faebryk.core.node as fabll
+        from faebryk.libs.picker.api.picker_lib import BackendPackage
+        from faebryk.libs.smd import SMDSize
+
+        decoupling_node = fabll.Node.bind_instance(not_none(decoupling))
+        pickable = decoupling_node.get_trait(F.Pickable.is_pickable_by_type)
+        assert pickable.endpoint == F.Pickable.is_pickable_by_type.Endpoint.CAPACITORS
+
+        pick_type_name = fbrk.TypeGraph.get_type_name(type_node=pickable.pick_type)
+        assert pick_type_name == F.Capacitor._type_identifier()
+        assert BackendPackage.from_smd_size(SMDSize.I0402, pickable.pick_type) == (
+            BackendPackage.C0402
+        )
 
     def test_basic_inheritance(self):
         """Child type has access to parent's children."""
