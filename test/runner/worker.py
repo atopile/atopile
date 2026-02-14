@@ -48,7 +48,6 @@ def run_pytest(nodeid: str):
             "--no-header",
             "--no-summary",
             "--disable-warnings",
-            *["--timeout", "100"],
         ]
     )
 

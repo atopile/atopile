@@ -1,6 +1,6 @@
 ---
-name: Faebryk
-description: "How Faebryk’s TypeGraph works (GraphView + Zig edges), how to traverse/resolve references, and how FabLL types/traits map onto edge types."
+name: faebryk
+description: "How Faebryk's TypeGraph works (GraphView + Zig edges), how to traverse/resolve references, and how FabLL types/traits map onto edge types. Use when working with TypeGraph traversal, edge types, or building type-aware queries."
 ---
 
 # Faebryk Core Module

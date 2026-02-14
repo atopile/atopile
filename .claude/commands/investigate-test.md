@@ -7,6 +7,7 @@ Debug and fix a failing test.
 This project uses a custom test runner: `ato dev test`
 
 Key flags:
+
 - `--direct` - Run tests directly without isolation
 - `-k <pattern>` - Filter tests by name pattern
 
@@ -14,7 +15,14 @@ Key flags:
 ato dev test --direct -k $ARGUMENTS
 ```
 
+Run using local .venv
+
+```bash
+uv run ato dev test --direct -k test_solver
+```
+
 For solver-related tests, enable detailed logging with these environment variables:
+
 - `FBRK_LOG_PICK_SOLVE=y`
 - `FBRK_LOG_FMT=y`
 - `FBRK_SLOG=y`

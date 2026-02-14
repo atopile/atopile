@@ -72,6 +72,7 @@ source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
     { name = "atopile-easyeda2kicad" },
+    { name = "atopile-kicad-python" },
     { name = "black" },
     { name = "case-converter" },
     { name = "cookiecutter" },
@@ -83,7 +84,6 @@ dependencies = [
     { name = "gitpython" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "kicad-python" },
     { name = "kicadcliwrapper" },
     { name = "matplotlib" },
     { name = "mcp", extra = ["cli"] },
@@ -136,7 +136,6 @@ dev = [
     { name = "pre-commit" },
     { name = "py-spy" },
     { name = "pydantic-to-typescript" },
-    { name = "pytest-timeout" },
     { name = "viztracer" },
     { name = "ziglang" },
 ]
@@ -145,6 +144,7 @@ dev = [
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
     { name = "atopile-easyeda2kicad", specifier = ">=0.9.7" },
+    { name = "atopile-kicad-python", specifier = ">=0.5.1" },
     { name = "black", specifier = ">=24.4.2" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
@@ -156,7 +156,6 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.41" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "kicad-python", url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" },
     { name = "kicadcliwrapper", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.7.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.10.1" },
@@ -209,7 +208,6 @@ dev = [
     { name = "pre-commit", specifier = ">=2.20,<4.0" },
     { name = "py-spy", specifier = ">=0.4.1" },
     { name = "pydantic-to-typescript", specifier = ">=2.0.0" },
-    { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "viztracer", specifier = ">=1.0.0,<2.0.0" },
     { name = "ziglang", specifier = "==0.14.1" },
 ]
@@ -226,6 +224,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d8/4d/ba2c53b3cb3a7f83ed580e1c2df0159faa5cecc25155f6b04e18d68b7a55/atopile_easyeda2kicad-0.9.7.tar.gz", hash = "sha256:6345f59d050f7c6c8d64e32a7db3bed5600d824c810eda1db578b1a995168c7f", size = 1473455, upload-time = "2025-09-01T22:54:39.519Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/1a/9f6e2425008a895c4f8b398c6e8826b1bf66fe717ed6ab200ff7f12f4f26/atopile_easyeda2kicad-0.9.7-py3-none-any.whl", hash = "sha256:4ce8e720d499a788897b4082d08c3d527439509cb0768b89227377efa1c8aa4d", size = 54939, upload-time = "2025-09-01T22:54:37.876Z" },
+]
+
+[[package]]
+name = "atopile-kicad-python"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+    { name = "pynng" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/97/6f27d3d7d49c9064009526f4b15b24b890bae3d8045f3b8c5dff7e96ff71/atopile_kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:ad5b6beab5bc2e407463695cf31270a06467d83def3f99fe37756f5c107f492a", size = 124779, upload-time = "2026-02-11T23:00:54.792Z" },
 ]
 
 [[package]]
@@ -1085,25 +1095,6 @@ wheels = [
 ]
 
 [[package]]
-name = "kicad-python"
-version = "0.5.1"
-source = { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" }
-dependencies = [
-    { name = "protobuf" },
-    { name = "pynng" },
-]
-wheels = [
-    { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:02273fb6bccbd9a1dc394b51e7ba4e7c5db84ed7e59f15fe1a091f65af78c030" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "protobuf", specifier = ">=5.29,<6" },
-    { name = "pynng", specifier = ">=0.8.0" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'", specifier = ">=4.13.2" },
-]
-
-[[package]]
 name = "kicadcliwrapper"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1938,18 +1929,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d1/db/7ef3487e0fb0049ddb5ce41d3a49c235bf9ad299b6a25d5780a89f19230f/pytest-9.0.2.tar.gz", hash = "sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11", size = 1568901, upload-time = "2025-12-06T21:30:51.014Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/ab/b3226f0bd7cdcf710fbede2b3548584366da3b19b5021e74f5bde2a8fa3f/pytest-9.0.2-py3-none-any.whl", hash = "sha256:711ffd45bf766d5264d487b917733b453d917afd2b0ad65223959f59089f875b", size = 374801, upload-time = "2025-12-06T21:30:49.154Z" },
-]
-
-[[package]]
-name = "pytest-timeout"
-version = "2.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/82/4c9ecabab13363e72d880f2fb504c5f750433b2b6f16e99f4ec21ada284c/pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a", size = 17973, upload-time = "2025-05-05T19:44:34.99Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/b6/3127540ecdf1464a00e5a01ee60a1b09175f6913f0644ac748494d9c4b21/pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2", size = 14382, upload-time = "2025-05-05T19:44:33.502Z" },
 ]
 
 [[package]]

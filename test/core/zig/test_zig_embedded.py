@@ -105,8 +105,8 @@ def _escape_shell_args(args: list[str]) -> str:
     return " ".join([_escape_arg(arg) for arg in args])
 
 
-@pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
-def test_zig_embedded(
+# @pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
+def _test_zig_embedded(
     zig_test: tuple[Path, str], release_mode: str = "ReleaseFast"
 ) -> None:
     """Run a single zig embedded test."""
@@ -156,13 +156,19 @@ def test_zig_embedded(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+@pytest.mark.max_parallel(16)
+@pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
+def test_zig_embedded(zig_test: tuple[Path, str]):
+    _test_zig_embedded(zig_test)
+
+
 def main(glob_pattern: str, test_name: str):
     paths = list(ZIG_SRC_DIR.rglob(glob_pattern))
     if not len(paths) == 1:
         raise ValueError(f"Expected 1 path, got {len(paths)}")
     path = paths[0]
 
-    test_zig_embedded(
+    _test_zig_embedded(
         (
             path,
             test_name,

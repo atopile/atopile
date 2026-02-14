@@ -1351,11 +1351,35 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "message": f"Syncing packages{' (force)' if force else ''}...",
             }
 
-        if action == "migrateProject":
+        if action == "getMigrationSteps":
+            from atopile.server.migrations import get_all_steps, get_topics
+
+            return {
+                "success": True,
+                "steps": [step.to_dict() for step in get_all_steps()],
+                "topics": get_topics(),
+            }
+
+        if action == "migrateProjectSteps":
+            from atopile.server.migrations import (
+                EVENT_MIGRATION_RESULT,
+                EVENT_MIGRATION_STEP_RESULT,
+                get_step,
+            )
+
+            def _truncate_error(exc: Exception, max_len: int = 500) -> str:
+                msg = str(exc)
+                if not msg:
+                    return type(exc).__name__
+                return msg[:max_len] + ("..." if len(msg) > max_len else "")
+
             project_root = payload.get("projectRoot") or payload.get("project_root", "")
+            steps = payload.get("steps", [])
 
             if not project_root:
                 return {"success": False, "error": "Missing projectRoot"}
+            if not steps:
+                return {"success": False, "error": "No migration steps specified"}
 
             project_path = Path(project_root)
             if not await asyncio.to_thread(project_path.exists):
@@ -1364,72 +1388,79 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            def run_migration():
-                from atopile import version as ato_version
-                from atopile.config import config
-                from faebryk.libs.project.dependencies import ProjectDependencies
+            async def run_step(step_id: str) -> None:
+                """Run a single migration step and emit its result."""
+                try:
+                    step = get_step(step_id)
+                    await step.run(project_path)
 
-                log.info(f"[migrate] Starting migration for {project_root}")
-
-                # Run ProjectDependencies FIRST to sync packages. This ensures
-                # packages are updated before we mark the project as migrated
-                log.info("[migrate] Applying config options...")
-                config.apply_options(None, working_dir=project_path)
-                log.info("[migrate] Running ProjectDependencies to sync packages...")
-                ProjectDependencies(
-                    sync_versions=True,
-                    install_missing=True,
-                    clean_unmanaged_dirs=True,
-                    update_versions=True,
-                    force_sync=True,
-                )
-                log.info("[migrate] ProjectDependencies completed")
-
-                # Update ato.yaml AFTER package sync completes
-                current_version = ato_version.clean_version(
-                    ato_version.get_installed_atopile_version()
-                )
-                new_requires = f"^{current_version}"
-                data, ato_file = projects_domain.load_ato_yaml(project_path)
-                data["requires-atopile"] = new_requires
-                projects_domain.save_ato_yaml(ato_file, data)
-                log.info(f"[migrate] Updated requires-atopile to {new_requires}")
+                    await server_state.emit_event(
+                        EVENT_MIGRATION_STEP_RESULT,
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": True,
+                            "error": None,
+                        },
+                    )
+                except KeyError:
+                    error_msg = f"Unknown migration step: {step_id}"
+                    log.error(f"[migrate] {error_msg}")
+                    await server_state.emit_event(
+                        EVENT_MIGRATION_STEP_RESULT,
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": False,
+                            "error": error_msg,
+                        },
+                    )
+                except Exception as exc:
+                    error_msg = _truncate_error(exc)
+                    log.exception(f"[migrate] Step {step_id} failed: {error_msg}")
+                    await server_state.emit_event(
+                        EVENT_MIGRATION_STEP_RESULT,
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": False,
+                            "error": error_msg,
+                        },
+                    )
 
             try:
-                # Run migration synchronously so frontend can show spinner
-                await asyncio.to_thread(run_migration)
+                # Run each step sequentially
+                for step_id in steps:
+                    await run_step(step_id)
 
-                # Emit success events after migration completes
+                # Post-migration cleanup
                 from atopile.server.module_introspection import clear_module_cache
 
                 clear_module_cache()
                 await packages_domain.refresh_packages_state(scan_path=project_path)
 
-                # Re-discover projects to pick up updated needs_migration value
+                # Re-discover projects to pick up updated needs_migration
                 if ctx.workspace_paths:
                     await asyncio.to_thread(
-                        projects_domain.discover_projects_in_paths, ctx.workspace_paths
+                        projects_domain.discover_projects_in_paths,
+                        ctx.workspace_paths,
                     )
 
                 await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
-                    "packages_changed",
-                    {"migrated": True, "project_root": project_root},
-                )
-                await server_state.emit_event(
-                    "migration_result",
+                    EVENT_MIGRATION_RESULT,
                     {"project_root": project_root, "success": True},
                 )
 
                 return {
                     "success": True,
-                    "message": "Migration completed successfully",
+                    "message": "Migration steps completed",
                 }
             except Exception as exc:
-                error_msg = str(exc)[:500] or "Unknown error"
-                log.exception(f"Migration failed: {error_msg}")
+                error_msg = _truncate_error(exc)
+                log.exception(f"Migration steps failed: {error_msg}")
 
-                # Re-discover projects even on error to update state
+                # Re-discover projects even on error
                 if ctx.workspace_paths:
                     try:
                         await asyncio.to_thread(
@@ -1439,12 +1470,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     except Exception:
                         pass
 
+                await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
-                    "projects_changed",
-                    {"error": error_msg, "project_root": project_root},
-                )
-                await server_state.emit_event(
-                    "migration_result",
+                    EVENT_MIGRATION_RESULT,
                     {
                         "project_root": project_root,
                         "success": False,

@@ -352,6 +352,7 @@ export default defineConfig(({ mode }) => {
               sidebar: resolve(__dirname, 'sidebar.html'),
               logViewer: resolve(__dirname, 'log-viewer.html'),
               testExplorer: resolve(__dirname, 'test-explorer.html'),
+              migrate: resolve(__dirname, 'migrate.html'),
             },
         output: {
           entryFileNames: '[name].js',

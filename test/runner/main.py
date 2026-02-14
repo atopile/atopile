@@ -74,6 +74,10 @@ elif WORKER_COUNT < 0:
 ORCHESTRATOR_BIND_HOST = os.getenv("FBRK_TEST_BIND_HOST", "0.0.0.0")
 ORCHESTRATOR_REPORT_HOST = os.getenv("FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_HOST)
 
+# Orchestrator-level test timeout (hard backstop — kills worker via SIGKILL).
+# Set via FBRK_TEST_TEST_TIMEOUT (seconds). 0 or unset = disabled.
+ORCHESTRATOR_TIMEOUT = float(os.getenv("FBRK_TEST_TEST_TIMEOUT", "0"))
+
 # Local baselines config
 BASELINES_DIR = Path("artifacts/baselines")
 BASELINES_INDEX = BASELINES_DIR / "index.json"
@@ -190,8 +194,13 @@ def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
     )
 
 
-def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
-    """Collects tests using pytest --collect-only"""
+def collect_tests(
+    pytest_args: list[str],
+) -> tuple[list[str], dict[str, str], dict[str, int]]:
+    """Collects tests using pytest --collect-only.
+
+    Returns (test_nodeids, collection_errors, max_parallel_groups).
+    """
     # Filter out empty strings if any
     pytest_args = [arg for arg in pytest_args if arg]
 
@@ -244,18 +253,28 @@ def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
             if current_file and current_error:
                 errors_clean[current_file] = "\n".join(current_error)
 
-    # Parse tests from stdout (lines that look like test nodeids)
+    # Parse tests and max_parallel markers from stdout
     tests = []
+    max_parallel: dict[str, int] = {}
     for line in stdout.strip().split("\n"):
         line = line.strip()
         # Skip empty lines and summary lines (but not test names containing 'error')
         if not line or line.startswith("="):
             continue
+        # Parse "@max_parallel:<prefix><N>" lines emitted by conftest
+        # e.g. "@max_parallel:test/foo.py::16" -> prefix="test/foo.py::", N=16
+        if line.startswith("@max_parallel:"):
+            rest = line[len("@max_parallel:") :]
+            idx = rest.rfind(":")
+            if idx > 0:
+                prefix = rest[: idx + 1]
+                max_parallel[prefix] = int(rest[idx + 1 :])
+            continue
         # Test nodeids contain "::" - skip actual error messages which don't
         if "::" in line:
             tests.append(line)
 
-    return tests, errors_clean
+    return tests, errors_clean, max_parallel
 
 
 def start_server(port) -> uvicorn.Server:
@@ -333,7 +352,7 @@ def main(
     pytest_args = args if args is not None else sys.argv[1:]
 
     # 1. Collect tests
-    tests, errors = collect_tests(pytest_args)
+    tests, errors, max_parallel = collect_tests(pytest_args)
     tests_total = len(tests)
     _print(f"Collected {tests_total} tests")
 
@@ -434,7 +453,7 @@ def main(
     )
 
     # Set up orchestrator and UI globals
-    set_orchestrator_globals(test_queue, aggregator)
+    set_orchestrator_globals(test_queue, aggregator, max_parallel)
     set_ui_globals(aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR)
 
     for error_key, error_value in errors.items():
@@ -539,8 +558,21 @@ def main(
     timer = ReportTimer(aggregator, REPORT_INTERVAL_SECONDS)
     timer.start()
 
+    if ORCHESTRATOR_TIMEOUT > 0:
+        _print(f"Orchestrator timeout: {ORCHESTRATOR_TIMEOUT}s")
+
     try:
         while True:
+            # Kill workers that have exceeded the orchestrator timeout
+            if ORCHESTRATOR_TIMEOUT > 0:
+                timed_out = aggregator.get_timed_out_workers(ORCHESTRATOR_TIMEOUT)
+                for pid, nodeid in timed_out:
+                    if aggregator.handle_worker_timeout(pid, nodeid):
+                        for i, p in list(workers.items()):
+                            if p.pid == pid:
+                                p.kill()
+                                break
+
             # Check if workers are alive
             for i, p in list(workers.items()):
                 if p.poll() is None:

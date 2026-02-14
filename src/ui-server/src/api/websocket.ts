@@ -598,6 +598,12 @@ function handleEventMessage(message: EventMessage): void {
     (typeof data.project_root === 'string' && data.project_root) ||
     null;
 
+  // Handle migration_step_result event (per-step progress for migrate dialog)
+  if ((message.event as string) === 'migration_step_result') {
+    window.dispatchEvent(new CustomEvent('migration-step-result', { detail: data }));
+    return;
+  }
+
   // Handle migration_result event (not in EventType enum)
   if ((message.event as string) === 'migration_result') {
     const success = data.success === true;

@@ -14,8 +14,8 @@ jobs:
   pytest:
     #runs-on: blacksmith-4vcpu-ubuntu-2404
     #runs-on: blacksmith-32vcpu-ubuntu-2404-arm
-    runs-on: blacksmith-32vcpu-ubuntu-2404
-    #runs-on: [self-hosted]
+    #runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: [self-hosted]
     #runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.14"
@@ -84,24 +84,24 @@ jobs:
       - name: Run pytest
         id: pytest
         continue-on-error: true
-        # FIXME timeout
         run: |
           PYTHON=$(uv python find)
-          $PYTHON -m atopile dev test --ci --timeout=120
+          $PYTHON -m atopile dev test --ci
         env:
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
           FBRK_TEST_REPORT_INTERVAL: 10
           FBRK_TEST_LONG_THRESHOLD: 30
           FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
-          FBRK_TEST_WORKERS: -2 # 32 threads/16 cpus -> 32 workers
+          FBRK_TEST_WORKERS: -1 # 96 threads/48 cpus ->  48workers
           FBRK_TEST_PERIODIC_HTML: 0
           FBRK_TEST_GENERATE_HTML: 1
           # threshold for worker to restart after exceeding after a test run
           FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
           PYTHON_UNBUFFERED: 1
           FBRK_TEST_LOG_VIEWER: 0
-          
+          FBRK_TEST_TEST_TIMEOUT: 60
+
       - name: Upload test report json artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -109,7 +109,7 @@ jobs:
           name: test-report.json
           path: artifacts/test-report.json
           if-no-files-found: error
-          
+
       - name: Upload test report html artifact
         uses: actions/upload-artifact@v4
         with:

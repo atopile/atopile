@@ -1,6 +1,6 @@
 ---
-name: Sexp
-description: "How the Zig S-expression engine and typed KiCad models work, how they are exposed to Python (pyzig_sexp), and the invariants around parsing, formatting, and freeing."
+name: sexp
+description: "How the Zig S-expression engine and typed KiCad models work, how they are exposed to Python (pyzig_sexp), and the invariants around parsing, formatting, and freeing. Use when working with KiCad file parsing, S-expression generation, or layout sync."
 ---
 
 # Sexp Module

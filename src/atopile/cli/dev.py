@@ -1,7 +1,9 @@
 import json
 import os
+import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import webbrowser
 from collections import Counter
@@ -27,6 +29,139 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 # On Windows, npm/npx are .cmd wrappers, not .exe files.
 # shutil.which() resolves the full path so subprocess can find them.
 _npm = shutil.which("npm") or "npm"
+
+
+def _spawn_shell_with_venv(worktree_path: Path) -> None:
+    """Start an interactive shell in worktree_path with .venv activated."""
+    shell = os.environ.get("SHELL")
+    if not shell:
+        raise ValueError("SHELL is not set")
+
+    venv_path = worktree_path / ".venv"
+    venv_bin = venv_path / "bin"
+
+    activate = venv_bin / "activate"
+    if not activate.is_file():
+        raise ValueError(f"activate script not found: {activate}")
+
+    cmd = f". {shlex.quote(str(activate))} && exec {shlex.quote(shell)} -i"
+    subprocess.run([shell, "-i", "-c", cmd], cwd=worktree_path, check=False)
+
+
+@dev_app.command()
+@capture("cli:dev_extension_start", "cli:dev_extension_end")
+def extension(
+    skip_install: bool = typer.Option(
+        False, "--skip-install", help="Skip npm install checks."
+    ),
+    launch: bool = typer.Option(
+        True,
+        "--launch/--no-launch",
+        help="Launch VS Code Extension Development Host.",
+    ),
+):
+    """
+    Start the fast VS Code extension development loop.
+
+    Runs:
+    - `npm run build -- --watch --outDir
+    ../vscode-atopile/resources/webviews` in `src/ui-server`
+    - `npm run watch` in `src/vscode-atopile` (extension bundle watch)
+    """
+    import time
+
+    repo_root = Path(__file__).resolve().parents[3]
+    ui_server_dir = repo_root / "src" / "ui-server"
+    vscode_dir = repo_root / "src" / "vscode-atopile"
+
+    if not ui_server_dir.exists():
+        raise FileNotFoundError(f"ui-server directory not found: {ui_server_dir}")
+    if not vscode_dir.exists():
+        raise FileNotFoundError(f"vscode extension directory not found: {vscode_dir}")
+
+    if not skip_install:
+        if not (ui_server_dir / "node_modules").exists():
+            print("installing ui-server dependencies")
+            subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
+        if not (vscode_dir / "node_modules").exists():
+            print("installing vscode-atopile dependencies")
+            subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
+
+    print("starting ui-server webview build watch")
+    ui_watch = subprocess.Popen(
+        [
+            _npm,
+            "run",
+            "build",
+            "--",
+            "--watch",
+            "--outDir",
+            "../vscode-atopile/resources/webviews",
+        ],
+        cwd=ui_server_dir,
+    )
+    print("starting vscode extension webpack watch")
+    ext_watch = subprocess.Popen([_npm, "run", "watch"], cwd=vscode_dir)
+
+    if launch:
+        vscode_cli = shutil.which("code") or "code"
+        try:
+            launch_env = os.environ.copy()
+            launch_env["ATOPILE_EXTENSION_DEV_UI"] = "1"
+            subprocess.Popen(
+                [
+                    vscode_cli,
+                    "--new-window",
+                    "--extensionDevelopmentPath",
+                    str(vscode_dir),
+                    str(Path.cwd()),
+                ],
+                env=launch_env,
+            )
+        except FileNotFoundError:
+            typer.secho(
+                "Could not find 'code' CLI. Install it from VS Code command palette.",
+                fg=typer.colors.YELLOW,
+            )
+
+    print("\nExtension dev loop is running.")
+    print("Press Ctrl+C to stop.")
+
+    exit_code = 0
+    try:
+        while True:
+            for name, process in (
+                ("ui-server", ui_watch),
+                ("vscode-atopile", ext_watch),
+            ):
+                code = process.poll()
+                if code is not None:
+                    typer.secho(
+                        f"{name} exited with code {code}. Stopping other processes.",
+                        fg=typer.colors.RED if code != 0 else typer.colors.YELLOW,
+                    )
+                    exit_code = code
+                    break
+            else:
+                time.sleep(0.5)
+                continue
+            break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for process in (ui_watch, ext_watch):
+            if process.poll() is None:
+                process.terminate()
+        for process in (ui_watch, ext_watch):
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
 
 @dev_app.command()
@@ -193,11 +328,21 @@ def install(
 @dev_app.command()
 @capture("cli:dev_worktree_start", "cli:dev_worktree_end")
 def worktree(
-    name: str = typer.Argument(..., help="Branch/worktree name to create."),
+    name_suffix: str = typer.Argument(
+        ...,
+        help="Worktree name suffix. Defaults to <repo>_<suffix> for the path.",
+    ),
+    branch_name: str | None = typer.Option(
+        None,
+        "--branch",
+        "-b",
+        help="Branch to use. Defaults to the suffix. "
+        "If it exists on origin, a local tracking branch is created.",
+    ),
     path: Path | None = typer.Option(
         None,
         "--path",
-        help="Explicit worktree path. Defaults to <parent-of-main-worktree>/<name>.",
+        help="Explicit worktree path. Defaults to <parent>/<repo>_<suffix>.",
     ),
     start_point: str = typer.Option(
         "HEAD",
@@ -222,6 +367,11 @@ def worktree(
         "--skip-editable-install",
         help="Skip editable install step in the cloned worktree venv.",
     ),
+    cd: bool = typer.Option(
+        True,
+        "--cd/--no-cd",
+        help="Enter a shell in the new worktree after creation.",
+    ),
 ):
     """
     Create a fast development worktree with cloned `.venv` and Zig artifacts.
@@ -229,8 +379,9 @@ def worktree(
     from atopile.worktree import create_worktree
 
     try:
-        create_worktree(
-            name,
+        worktree_path = create_worktree(
+            name_suffix,
+            branch_name=branch_name,
             path=path,
             start_point=start_point,
             base_dir=base_dir,
@@ -240,6 +391,30 @@ def worktree(
         )
     except (RuntimeError, FileExistsError, FileNotFoundError) as e:
         raise typer.BadParameter(str(e))
+
+    if not cd:
+        return
+
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        typer.echo(
+            f"Skipping shell handoff (non-interactive). "
+            f"Use: cd {worktree_path} && source .venv/bin/activate"
+        )
+        return
+
+    typer.echo(
+        f"\nStarting a shell in {worktree_path} with .venv activated. "
+        "Exit that shell to return here."
+    )
+    try:
+        _spawn_shell_with_venv(worktree_path)
+    except Exception as e:
+        typer.secho(
+            f"Error spawning shell: {e}. "
+            f"Use: cd {worktree_path} && source .venv/bin/activate",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
 
 
 def _env_truthy(name: str) -> bool | None:
