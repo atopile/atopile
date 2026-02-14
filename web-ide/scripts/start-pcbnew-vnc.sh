@@ -98,7 +98,7 @@ X11VNC_PID=$!
 sleep 1
 
 # Start websockify — bridges WebSocket to VNC
-websockify --web /usr/share/novnc "${WS_PORT}" "localhost:${VNC_PORT}" &
+websockify --web /usr/share/novnc 127.0.0.1:"${WS_PORT}" "localhost:${VNC_PORT}" &
 WEBSOCKIFY_PID=$!
 
 # Start PCBnew

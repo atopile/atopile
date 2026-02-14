@@ -8,7 +8,16 @@
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 1000,
 
-    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.defaultProfile.linux": null,
+    "terminal.integrated.profiles.linux": {},
+    "terminal.integrated.allowChords": false,
+    "terminal.integrated.sendKeybindingsToShell": false,
+
+    "debug.showInStatusBar": "never",
+    "debug.toolBarLocation": "hidden",
+    "debug.console.closeOnEnd": true,
+    "debug.showInlineBreakpointCandidates": false,
+    "launch": { "configurations": [], "compounds": [] },
 
     "atopile.autoInstall": false,
     "atopile.ato": "/home/openvscode-server/.local/bin/ato",
