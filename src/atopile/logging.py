@@ -728,6 +728,17 @@ class ConsoleLogHandler(RichHandler):
             self.console.print(renderable, crop=False, overflow="ignore")
 
 
+class _DBLogFilter(logging.Filter):
+    """Exclude noisy third-party loggers from DB storage."""
+
+    _excluded_prefixes = ("httpcore", "httpx", "http11", "connection")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name.startswith(self._excluded_prefixes):
+            return record.levelno > logging.DEBUG
+        return True
+
+
 class DBLogHandler(logging.Handler):
     """Persist records into build/test context, else default unscoped context."""
 
@@ -807,6 +818,7 @@ handler = ConsoleLogHandler(console=error_console)
 handler.setFormatter(_DEFAULT_FORMATTER)
 handler.setLevel(logging.INFO)
 _db_handler = DBLogHandler(level=logging.DEBUG)
+_db_handler.addFilter(_DBLogFilter())
 logging.basicConfig(level=logging.DEBUG, handlers=[handler, _db_handler])
 
 if _is_serving():
