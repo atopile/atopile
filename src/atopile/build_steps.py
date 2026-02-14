@@ -36,6 +36,7 @@ from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
+from faebryk.exporters.pcb.board_shape.board_shape import apply_rectangular_board_shape
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
     export_3d_board_render,
@@ -818,6 +819,7 @@ def update_pcb(ctx: BuildStepContext) -> None:
 
     original_pcb = kicad.copy(pcb.pcb_file)
     pcb.transformer.apply_design()
+    apply_rectangular_board_shape(pcb.transformer)
     pcb.transformer.check_unattached_fps()
 
     # Ensure proper board appearance (matte black soldermask, ENIG copper finish)

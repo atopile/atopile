@@ -1836,6 +1836,150 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, "boardSummary": summary}
             return {"success": False, "error": "Board summary not available"}
 
+        # Autolayout actions
+        elif action == "startAutolayout":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "default")
+            provider = payload.get("provider")
+            constraints = payload.get("constraints") or {}
+            options = payload.get("options") or {}
+
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.start_job,
+                project_root,
+                target,
+                provider,
+                constraints,
+                options,
+            )
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "getAutolayoutStatus":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            refresh = bool(payload.get("refresh", True))
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.refresh_job if refresh else service.get_job, job_id
+            )
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "listAutolayoutJobs":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            project_root = payload.get("projectRoot")
+            service = get_autolayout_service()
+            jobs = await asyncio.to_thread(service.list_jobs, project_root)
+            return {"success": True, "jobs": [job.to_dict() for job in jobs]}
+
+        elif action == "listAutolayoutCandidates":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            refresh = bool(payload.get("refresh", True))
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            candidates = await asyncio.to_thread(
+                service.list_candidates,
+                job_id,
+                refresh,
+            )
+            return {
+                "success": True,
+                "candidates": [candidate.to_dict() for candidate in candidates],
+            }
+
+        elif action == "selectAutolayoutCandidate":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            candidate_id = payload.get("candidateId", "")
+            if not job_id or not candidate_id:
+                return {"success": False, "error": "Missing jobId or candidateId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.select_candidate,
+                job_id,
+                candidate_id,
+            )
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "applyAutolayoutCandidate":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            candidate_id = payload.get("candidateId")
+            manual_layout_path = payload.get("manualLayoutPath")
+            run_mfg_data_build = bool(payload.get("runMfgDataBuild", False))
+
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.apply_candidate,
+                job_id,
+                candidate_id,
+                manual_layout_path,
+            )
+
+            build_result = None
+            if run_mfg_data_build:
+                build_payload = {
+                    "projectRoot": job.project_root,
+                    "targets": [job.build_target],
+                    "includeTargets": ["mfg-data"],
+                    "frozen": True,
+                }
+                build_result = await asyncio.to_thread(
+                    _handle_build_sync,
+                    build_payload,
+                )
+
+            return {
+                "success": True,
+                "job": job.to_dict(),
+                "build": build_result,
+            }
+
+        elif action == "cancelAutolayout":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(service.cancel_job, job_id)
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "exportQuilterPackage":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "default")
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+
+            service = get_autolayout_service()
+            package_path = await asyncio.to_thread(
+                service.export_quilter_package, project_root, target
+            )
+            return {"success": True, "packagePath": package_path}
+
         return {"success": False, "error": f"Unknown action: {action}"}
 
     except Exception as exc:

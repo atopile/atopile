@@ -48,6 +48,7 @@ import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
+from faebryk.library.RectangularBoardShape import RectangularBoardShape
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
@@ -151,6 +152,7 @@ __all__ = [
     "implements_design_check",
     "Electrical",
     "has_net_name_suggestion",
+    "RectangularBoardShape",
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",

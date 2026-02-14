@@ -1,0 +1,9 @@
+requires-atopile: ^0.14.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  default:
+    entry: board_outline_demo.ato:App

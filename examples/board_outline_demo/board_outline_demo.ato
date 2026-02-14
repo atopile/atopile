@@ -1,0 +1,8 @@
+import RectangularBoardShape
+
+module App:
+    board = new RectangularBoardShape
+    board.width = 20mm
+    board.height = 30mm
+    board.corner_radius = 3mm
+    board.mounting_hole_diameter = 3.3mm

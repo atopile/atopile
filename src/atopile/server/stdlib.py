@@ -447,6 +447,11 @@ def _get_docstring(cls: type, item_type: StdLibItemType | None = None) -> str:
             return "Test point for debugging and measurement."
         elif name == "MountingHole":
             return "PCB mounting hole for mechanical attachment."
+        elif name == "RectangularBoardShape":
+            return (
+                "Parameterized rectangular PCB outline with optional corner "
+                "mounting holes."
+            )
         elif name == "NetTie":
             return "Net tie for connecting separate nets."
         elif "Filter" in name:
