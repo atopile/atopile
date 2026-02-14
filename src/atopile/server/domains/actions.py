@@ -15,7 +15,7 @@ from pathlib import Path
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import AppContext, Build, BuildStatus, Log
-from atopile.logging import BuildLogger
+from atopile.logging import AtoLogger
 from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
     _build_queue,
@@ -622,9 +622,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             pkg_spec = f"{package_id}@{clean_version}" if clean_version else package_id
 
             # Create a logger for this action - logs to central SQLite DB
-            action_logger = BuildLogger.get(
-                project_path=project_root,
-                target="package-install",
+            action_logger = AtoLogger.get_unscoped(
+                channel="package-install",
                 stage="install",
             )
 
@@ -715,7 +714,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "message": f"Installing {package_id}...",
-                "build_id": action_logger.build_id,
+                "build_id": "",
             }
 
         if action == "changeDependencyVersion":
@@ -775,9 +774,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             # Run remove + install sequentially in background
-            action_logger = BuildLogger.get(
-                project_path=project_root,
-                target="package-version",
+            action_logger = AtoLogger.get_unscoped(
+                channel="package-version",
                 stage="install",
             )
             action_logger.info(
@@ -844,7 +842,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "message": f"Changing {package_id} to {version}...",
-                "build_id": action_logger.build_id,
+                "build_id": "",
             }
 
         if action == "removePackage":

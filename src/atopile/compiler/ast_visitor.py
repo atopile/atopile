@@ -713,7 +713,7 @@ class ASTVisitor:
         module = "atopile.compiler.ast_types"
         mod_suffix = "." + ".".join(reversed(module.split(".")))
         node_type = cast_assert(str, node.get_type_name()).removesuffix(mod_suffix)
-        logger.info(f"Visiting node of type {node_type}")
+        logger.debug(f"Visiting node of type {node_type}")
 
         try:
             handler = getattr(self, f"visit_{node_type}")

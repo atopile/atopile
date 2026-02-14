@@ -11,23 +11,28 @@ Supports two modes:
 
 import asyncio
 import logging
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from atopile.dataclasses import Log
-from atopile.logging import (
-    load_build_logs,
-    load_build_logs_stream,
-    load_test_logs,
-    load_test_logs_stream,
-)
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["logs"])
 
 STREAM_POLL_INTERVAL = 0.25  # 250ms between polls when streaming
+_MAX_COUNT = 5000
+
+
+def _clamp(count: int) -> int:
+    return max(1, min(count, _MAX_COUNT))
+
+
+def _strip_id(row: dict[str, Any]) -> dict[str, Any]:
+    """Remove the internal 'id' field used for streaming cursors."""
+    return {k: v for k, v in row.items() if k != "id"}
 
 
 def _parse_filter_params(
@@ -47,14 +52,17 @@ async def _push_build_stream(
     after_id: int,
 ) -> int:
     """Push build log updates to client. Returns new last_id."""
+    from atopile.model.sqlite import Logs
+
     log_levels_str, audience_str = _parse_filter_params(query)
-    logs, new_last_id = load_build_logs_stream(
-        build_id=query.build_id,
+    logs, new_last_id = Logs.fetch_chunk(
+        query.build_id,
         stage=query.stage,
-        log_levels=log_levels_str,
+        levels=log_levels_str,
         audience=audience_str,
         after_id=after_id,
-        count=query.count,
+        count=_clamp(query.count),
+        order="ASC",
     )
 
     if logs:
@@ -72,14 +80,17 @@ async def _push_test_stream(
     after_id: int,
 ) -> int:
     """Push test log updates to client. Returns new last_id."""
+    from atopile.model.sqlite import TestLogs
+
     log_levels_str, audience_str = _parse_filter_params(query)
-    logs, new_last_id = load_test_logs_stream(
-        test_run_id=query.test_run_id,
+    logs, new_last_id = TestLogs.fetch_chunk(
+        query.test_run_id,
         test_name=query.test_name,
-        log_levels=log_levels_str,
+        levels=log_levels_str,
         audience=audience_str,
         after_id=after_id,
-        count=query.count,
+        count=_clamp(query.count),
+        order="ASC",
     )
 
     if logs:
@@ -199,7 +210,7 @@ async def websocket_logs(websocket: WebSocket):
                     # Send initial batch immediately
                     last_id = await _push_test_stream(websocket, stream_query, last_id)
                 else:
-                    # One-shot query (existing behavior)
+                    # One-shot query
                     streaming = False
                     stream_query = None
                     try:
@@ -209,17 +220,21 @@ async def websocket_logs(websocket: WebSocket):
                         await websocket.send_json(err)
                         continue
 
+                    from atopile.model.sqlite import TestLogs
+
                     log_levels_str, audience_str = _parse_filter_params(query)
-                    logs = load_test_logs(
-                        test_run_id=query.test_run_id,
+                    rows, _ = TestLogs.fetch_chunk(
+                        query.test_run_id,
                         test_name=query.test_name,
-                        log_levels=log_levels_str,
+                        levels=log_levels_str,
                         audience=audience_str,
-                        count=query.count,
+                        after_id=0,
+                        count=_clamp(query.count),
+                        order="DESC",
                     )
 
                     entries = [
-                        Log.TestEntryPydantic.model_validate(entry) for entry in logs
+                        Log.TestEntryPydantic.model_validate(_strip_id(r)) for r in rows
                     ]
                     await websocket.send_json(Log.TestResult(logs=entries).model_dump())
             else:
@@ -241,7 +256,7 @@ async def websocket_logs(websocket: WebSocket):
                     # Send initial batch immediately
                     last_id = await _push_build_stream(websocket, stream_query, last_id)
                 else:
-                    # One-shot query (existing behavior)
+                    # One-shot query
                     streaming = False
                     stream_query = None
                     try:
@@ -251,17 +266,22 @@ async def websocket_logs(websocket: WebSocket):
                         await websocket.send_json(err)
                         continue
 
+                    from atopile.model.sqlite import Logs
+
                     log_levels_str, audience_str = _parse_filter_params(query)
-                    logs = load_build_logs(
-                        build_id=query.build_id,
+                    rows, _ = Logs.fetch_chunk(
+                        query.build_id,
                         stage=query.stage,
-                        log_levels=log_levels_str,
+                        levels=log_levels_str,
                         audience=audience_str,
-                        count=query.count,
+                        after_id=0,
+                        count=_clamp(query.count),
+                        order="DESC",
                     )
 
                     entries = [
-                        Log.BuildEntryPydantic.model_validate(entry) for entry in logs
+                        Log.BuildEntryPydantic.model_validate(_strip_id(r))
+                        for r in rows
                     ]
                     await websocket.send_json(
                         Log.BuildResult(logs=entries).model_dump()

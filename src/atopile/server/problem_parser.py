@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 
 from atopile.dataclasses import EventType, Problem
-from atopile.logging import BuildLogger
+from atopile.logging import AtoLogger
 from atopile.model.sqlite import BuildHistory
 from atopile.server.events import event_bus
 
@@ -49,7 +49,7 @@ def _load_problems_from_db(
         developer_mode: If True, show all audiences.
             If False (default), only show 'user' audience.
     """
-    db_path = BuildLogger.get_log_db()
+    db_path = AtoLogger.get_build_log_db()
     if not db_path.exists():
         return []
 
