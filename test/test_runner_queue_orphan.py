@@ -1,6 +1,39 @@
 import queue
 import time
 
+from test.runner.orchestrator import (
+    _affinity_bindings,
+    _affinity_membership,
+    _check_affinity,
+    unbind_affinity_for_pid,
+)
+
+
+def test_worker_crash_releases_affinity_bindings():
+    """After a worker crash, affinity bindings must be released so a
+    respawned worker (new PID) can claim tests from the same group."""
+    # Set up affinity: test "zig::t1" belongs to group "zig"
+    _affinity_membership["zig::t1"] = "zig"
+    _affinity_bindings.clear()
+
+    # Worker PID 100 claims the test — binding is created
+    assert _check_affinity("zig::t1", pid=100) is True
+    assert _affinity_bindings["zig"] == 100
+
+    # A different PID cannot claim it (bound to 100)
+    assert _check_affinity("zig::t1", pid=200) is False
+
+    # Simulate crash cleanup: release bindings for dead worker
+    unbind_affinity_for_pid(100)
+
+    # Now a respawned worker (PID 200) can claim the group
+    assert _check_affinity("zig::t1", pid=200) is True
+    assert _affinity_bindings["zig"] == 200
+
+    # Cleanup
+    _affinity_membership.pop("zig::t1", None)
+    _affinity_bindings.clear()
+
 
 def test_requeues_claimed_but_unstarted_on_worker_crash():
     import test.runner.main as runner_main

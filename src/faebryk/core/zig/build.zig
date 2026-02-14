@@ -229,4 +229,32 @@ pub fn build(b: *std.Build) void {
     // Ensure python-ext depends on sexp ext and pyi generation so one command builds all.
     py_ext_step.dependOn(sexp_ext_step);
     py_ext_step.dependOn(pyi_step);
+
+    // --- Test file step: compile a single source file as a test binary ---
+    const test_file_opt = b.option([]const u8, "test-file", "Zig source file to compile as test binary (e.g. src/faebryk/composition.zig)");
+    if (test_file_opt) |test_file_path| {
+        const test_name_opt = b.option([]const u8, "test-name", "Output binary name") orelse "test";
+
+        const test_comp = b.addTest(.{
+            .name = test_name_opt,
+            .root_source_file = b.path(test_file_path),
+            .target = target,
+            .optimize = optimize,
+            .test_runner = .{ .path = b.path("src/test_runner.zig"), .mode = .simple },
+        });
+
+        // Add all known modules — zig's lazy compilation skips unused ones
+        test_comp.root_module.addImport("graph", graph_mod);
+        test_comp.root_module.addImport("faebryk", faebryk_mod);
+
+        // Match existing compile flags
+        test_comp.root_module.sanitize_c = true;
+        test_comp.root_module.omit_frame_pointer = false;
+        test_comp.root_module.strip = false;
+        test_comp.linkLibC();
+
+        const install_test = b.addInstallArtifact(test_comp, .{});
+        const test_file_step = b.step("test-file", "Build test binary for a zig source file");
+        test_file_step.dependOn(&install_test.step);
+    }
 }
