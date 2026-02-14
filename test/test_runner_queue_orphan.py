@@ -1,5 +1,6 @@
 import queue
 import time
+from unittest.mock import MagicMock, patch
 
 from test.runner.orchestrator import (
     _affinity_bindings,
@@ -83,3 +84,138 @@ def test_finish_event_sets_start_time_if_missing():
     assert state.start_time is not None
     assert state.finish_time is not None
     assert state.start_time == state.finish_time
+
+
+# --- Fix 1: Retry tests ---
+
+
+def test_send_event_retries_on_failure():
+    """send_event should attempt 4 times with exponential backoff."""
+    from test.runner.plugin import HttpClient
+
+    client = HttpClient("http://localhost:99999")
+    mock_post = MagicMock(side_effect=Exception("connection refused"))
+    client.client.post = mock_post
+
+    from test.runner.common import EventType
+
+    with patch("test.runner.plugin.time.sleep") as mock_sleep:
+        client.send_event(EventType.START, nodeid="t1")
+
+    assert mock_post.call_count == 4
+    # Backoff: 0.1, 0.3, 0.9
+    assert mock_sleep.call_count == 3
+    delays = [c.args[0] for c in mock_sleep.call_args_list]
+    assert abs(delays[0] - 0.1) < 0.01
+    assert abs(delays[1] - 0.3) < 0.01
+    assert abs(delays[2] - 0.9) < 0.01
+
+
+def test_send_event_succeeds_on_retry():
+    """send_event should stop retrying after a successful POST."""
+    from test.runner.plugin import HttpClient
+
+    client = HttpClient("http://localhost:99999")
+    mock_post = MagicMock(
+        side_effect=[Exception("fail"), Exception("fail"), MagicMock()]
+    )
+    client.client.post = mock_post
+
+    from test.runner.common import EventType
+
+    with patch("test.runner.plugin.time.sleep"):
+        client.send_event(EventType.START, nodeid="t1")
+
+    # Should have stopped after the 3rd attempt (first success)
+    assert mock_post.call_count == 3
+
+
+# --- Fix 2: Stale claim tests ---
+
+
+def test_stale_claims_detected():
+    """Claims older than the timeout should be recovered."""
+    import test.runner.main as runner_main
+    from test.runner.report import set_globals as set_report_globals
+
+    test_q = queue.Queue()
+    set_report_globals(test_q, {}, runner_main.commit_info, runner_main.ci_info)
+    agg = runner_main.TestAggregator(["t1", "t2"], runner_main.RemoteBaseline())
+
+    # Claim t1 with an old timestamp
+    agg.handle_claim(pid=100, nodeid="t1")
+    agg._tests["t1"].claim_time = time.time() - 60  # 60s ago
+
+    # Claim t2 just now (fresh)
+    agg.handle_claim(pid=200, nodeid="t2")
+
+    stale = agg.recover_stale_claims(timeout_s=30)
+    assert stale == ["t1"]
+    # t2 should NOT be recovered (it's fresh)
+    assert agg._tests["t2"].claim_time is not None
+
+
+def test_recover_stale_claims_resets_state():
+    """Recovery should reset pid, claim_time, and increment requeues."""
+    import test.runner.main as runner_main
+    from test.runner.report import set_globals as set_report_globals
+
+    test_q = queue.Queue()
+    set_report_globals(test_q, {}, runner_main.commit_info, runner_main.ci_info)
+    agg = runner_main.TestAggregator(["t1"], runner_main.RemoteBaseline())
+
+    agg.handle_claim(pid=100, nodeid="t1")
+    agg._tests["t1"].claim_time = time.time() - 60
+
+    stale = agg.recover_stale_claims(timeout_s=30)
+    assert stale == ["t1"]
+
+    state = agg._tests["t1"]
+    assert state.pid is None
+    assert state.claim_time is None
+    assert state.requeues == 1
+
+
+def test_claim_time_cleared_on_start():
+    """START event should clear claim_time."""
+    import test.runner.main as runner_main
+    from test.runner.common import EventRequest, EventType
+    from test.runner.report import set_globals as set_report_globals
+
+    test_q = queue.Queue()
+    set_report_globals(test_q, {}, runner_main.commit_info, runner_main.ci_info)
+    agg = runner_main.TestAggregator(["t1"], runner_main.RemoteBaseline())
+
+    agg.handle_claim(pid=100, nodeid="t1")
+    assert agg._tests["t1"].claim_time is not None
+
+    agg.handle_event(
+        EventRequest(type=EventType.START, pid=100, timestamp=time.time(), nodeid="t1")
+    )
+    assert agg._tests["t1"].claim_time is None
+
+
+def test_claim_time_cleared_on_finish():
+    """FINISH event (even without a prior START) should clear claim_time."""
+    import test.runner.main as runner_main
+    from test.runner.common import EventRequest, EventType, Outcome
+    from test.runner.report import set_globals as set_report_globals
+
+    test_q = queue.Queue()
+    set_report_globals(test_q, {}, runner_main.commit_info, runner_main.ci_info)
+    agg = runner_main.TestAggregator(["t1"], runner_main.RemoteBaseline())
+
+    agg.handle_claim(pid=100, nodeid="t1")
+    assert agg._tests["t1"].claim_time is not None
+
+    agg.handle_event(
+        EventRequest(
+            type=EventType.FINISH,
+            pid=100,
+            timestamp=time.time(),
+            nodeid="t1",
+            outcome=Outcome.PASSED,
+            output={},
+        )
+    )
+    assert agg._tests["t1"].claim_time is None
