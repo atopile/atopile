@@ -19,6 +19,7 @@ from .models import (
     ERROR_MESSAGE_EMPTY,
     EVENT_RUN_CANCELLED,
     EVENT_RUN_CREATED,
+    EVENT_RUN_PROGRESS,
     EVENT_RUN_STEER_QUEUED,
     EVENT_SESSION_CREATED,
     EVENT_SESSION_PROJECT_SWITCHED,
@@ -54,6 +55,7 @@ from .models import (
 )
 from .tools import router as tools_router
 from .utils import (
+    build_run_trace_callback,
     build_send_message_response,
     cleanup_finished_runs,
     emit_agent_message,
@@ -185,6 +187,24 @@ async def send_message(
             message=message,
         )
 
+    trace_callback, trace_log_path = build_run_trace_callback(
+        session_id=session_id,
+        run_id=run_id,
+        project_root=request.project_root,
+    )
+    if trace_log_path:
+        log_session_event(
+            EVENT_RUN_PROGRESS,
+            {
+                "run_id": run_id,
+                "session_id": session_id,
+                "project_root": request.project_root,
+                "phase": "trace",
+                "status_text": "Tracing enabled",
+                "detail_text": trace_log_path,
+            },
+        )
+
     try:
         result = await orchestrator.run_turn(
             ctx=ctx,
@@ -196,6 +216,7 @@ async def send_message(
             tool_memory=session.tool_memory,
             progress_callback=emit_progress,
             message_callback=emit_message,
+            trace_callback=trace_callback,
         )
     except Exception as exc:
         await emit_progress({"phase": PHASE_ERROR, "error": str(exc)})

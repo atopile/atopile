@@ -593,19 +593,21 @@ async function fetchLogViewCurrentId(): Promise<void> {
 
 function handleEventMessage(message: EventMessage): void {
   const data = message.data ?? {};
+  // Backend can emit additional string events that lag behind generated EventType.
+  const event = message.event as string;
   const projectRoot =
     (typeof data.projectRoot === 'string' && data.projectRoot) ||
     (typeof data.project_root === 'string' && data.project_root) ||
     null;
 
   // Handle migration_step_result event (per-step progress for migrate dialog)
-  if ((message.event as string) === 'migration_step_result') {
+  if (event === 'migration_step_result') {
     window.dispatchEvent(new CustomEvent('migration-step-result', { detail: data }));
     return;
   }
 
   // Handle migration_result event (not in EventType enum)
-  if ((message.event as string) === 'migration_result') {
+  if (event === 'migration_result') {
     const success = data.success === true;
     const error = typeof data.error === 'string' ? data.error : null;
 
@@ -620,7 +622,7 @@ function handleEventMessage(message: EventMessage): void {
   }
 
   // Handle agent progress streaming event (not in EventType enum)
-  if ((message.event as string) === 'agent_progress') {
+  if (event === 'agent_progress') {
     window.dispatchEvent(
       new CustomEvent('atopile:agent_progress', {
         detail: data,
@@ -630,7 +632,7 @@ function handleEventMessage(message: EventMessage): void {
   }
 
   // Handle agent-to-agent message event (not in EventType enum)
-  if ((message.event as string) === 'agent_message') {
+  if (event === 'agent_message') {
     window.dispatchEvent(
       new CustomEvent('atopile:agent_message', {
         detail: data,
@@ -639,7 +641,7 @@ function handleEventMessage(message: EventMessage): void {
     return;
   }
 
-  switch (message.event) {
+  switch (event) {
     case 'open_file': {
       const path = typeof data.path === 'string' ? data.path : null;
       const line =

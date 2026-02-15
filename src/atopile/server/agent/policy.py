@@ -68,6 +68,8 @@ _MIN_DATASHEET_CHARS = 500
 _MAX_DATASHEET_SNIPPETS = 8
 _DATASHEET_FETCH_TIMEOUT_S = 45
 _DATASHEET_FETCH_RETRIES = 2
+_ALLOWED_CREATE_FILE_EXTENSIONS: tuple[str, ...] = (".ato", ".md", ".py")
+_FABLL_PY_CREATE_ROOTS: tuple[Path, ...] = (Path("src/faebryk/library"),)
 
 _ANCHOR_RE = re.compile(r"^(\d+)\s*:\s*([0-9A-Za-z]{1,16})$")
 _ANCHOR_PREFIX_RE = re.compile(r"^(\d+)\s*:\s*([0-9A-Za-z]{1,16})")
@@ -492,6 +494,86 @@ def read_datasheet_content(
         "page_range": page_range,
         "query": query_text or None,
         "query_matches": snippets,
+    }
+
+
+def create_path(
+    project_root: Path,
+    path: str,
+    *,
+    kind: Literal["file", "directory"] = "file",
+    content: str = "",
+    overwrite: bool = False,
+    parents: bool = True,
+) -> dict:
+    raw_path = path.strip()
+    if not raw_path:
+        raise ScopeError("path must not be empty")
+
+    target_path = resolve_scoped_path(project_root, raw_path)
+    if target_path == project_root:
+        raise ScopeError("Refusing to create project root path")
+
+    if kind not in {"file", "directory"}:
+        raise ScopeError("kind must be 'file' or 'directory'")
+
+    if kind == "directory":
+        if content:
+            raise ScopeError("content is only supported when kind='file'")
+        if target_path.exists() and not target_path.is_dir():
+            raise ScopeError(f"Path already exists and is not a directory: {path}")
+        if not parents and not target_path.parent.exists():
+            raise ScopeError("Parent directory does not exist; set parents=true")
+
+        existed = target_path.exists()
+        target_path.mkdir(parents=parents, exist_ok=True)
+        return {
+            "path": str(target_path.relative_to(project_root)),
+            "kind": "directory",
+            "created": not existed,
+        }
+
+    extension = target_path.suffix.lower()
+    if extension not in _ALLOWED_CREATE_FILE_EXTENSIONS:
+        allowed = ", ".join(_ALLOWED_CREATE_FILE_EXTENSIONS)
+        raise ScopeError(f"Only {allowed} files can be created with this tool.")
+
+    relative_target = target_path.relative_to(project_root)
+    if extension == ".py" and not any(
+        relative_target == allowed_root or relative_target.is_relative_to(allowed_root)
+        for allowed_root in _FABLL_PY_CREATE_ROOTS
+    ):
+        allowed_roots = ", ".join(str(root) for root in _FABLL_PY_CREATE_ROOTS)
+        raise ScopeError(
+            f"Python files may only be created for fabll modules under: {allowed_roots}"
+        )
+
+    if target_path.exists():
+        if target_path.is_dir():
+            raise ScopeError(f"Path already exists and is a directory: {path}")
+        if not overwrite:
+            raise ScopeError(f"File already exists: {path}")
+        overwrote = True
+    else:
+        overwrote = False
+
+    if not parents and not target_path.parent.exists():
+        raise ScopeError("Parent directory does not exist; set parents=true")
+
+    content_bytes = len(content.encode("utf-8"))
+    if content_bytes > _MAX_WRITE_FILE_BYTES:
+        raise ScopeError("Refusing to write very large file content")
+
+    target_path.parent.mkdir(parents=parents, exist_ok=True)
+    target_path.write_text(content, encoding="utf-8")
+
+    return {
+        "path": str(relative_target),
+        "kind": "file",
+        "extension": extension,
+        "bytes": content_bytes,
+        "created": not overwrote,
+        "overwrote": overwrote,
     }
 
 
@@ -1670,6 +1752,47 @@ if pytest is not None:
         )
         assert detected == "html"
 
+    def _test_create_path_supports_directories_and_allowed_files(
+        tmp_path: Path,
+    ) -> None:
+        created_dir = policy.create_path(tmp_path, "plans", kind="directory")
+        assert created_dir["path"] == "plans"
+        assert created_dir["kind"] == "directory"
+        assert created_dir["created"] is True
+
+        created_file = policy.create_path(
+            tmp_path,
+            "plans/roadmap.md",
+            kind="file",
+            content="# Roadmap\n",
+        )
+        assert created_file["path"] == "plans/roadmap.md"
+        assert created_file["kind"] == "file"
+        assert created_file["extension"] == ".md"
+        assert created_file["created"] is True
+        roadmap_text = (tmp_path / "plans" / "roadmap.md").read_text(encoding="utf-8")
+        assert roadmap_text.startswith("# Roadmap")
+
+    def _test_create_path_rejects_disallowed_extensions(tmp_path: Path) -> None:
+        with pytest.raises(policy.ScopeError, match="Only .ato, .md, .py"):
+            policy.create_path(tmp_path, "plans/notes.txt", kind="file", content="")
+
+    def _test_create_path_restricts_python_files_to_fabll_modules(
+        tmp_path: Path,
+    ) -> None:
+        with pytest.raises(policy.ScopeError, match="fabll modules"):
+            policy.create_path(tmp_path, "scripts/helper.py", kind="file")
+
+        created = policy.create_path(
+            tmp_path,
+            "src/faebryk/library/NewModule.py",
+            kind="file",
+            content="class NewModule:\n    pass\n",
+        )
+        assert created["path"] == "src/faebryk/library/NewModule.py"
+        assert created["extension"] == ".py"
+        assert created["created"] is True
+
     def _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -1784,6 +1907,15 @@ if pytest is not None:
         )
         test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html = staticmethod(
             _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html
+        )
+        test_create_path_supports_directories_and_allowed_files = staticmethod(
+            _test_create_path_supports_directories_and_allowed_files
+        )
+        test_create_path_rejects_disallowed_extensions = staticmethod(
+            _test_create_path_rejects_disallowed_extensions
+        )
+        test_create_path_restricts_python_files_to_fabll_modules = staticmethod(
+            _test_create_path_restricts_python_files_to_fabll_modules
         )
         test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url = staticmethod(
             _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url

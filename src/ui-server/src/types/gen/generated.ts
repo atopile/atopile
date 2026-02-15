@@ -3,6 +3,7 @@
  *
  * This file is generated from Python Pydantic models in:
  *   src/atopile/dataclasses.py
+ *   src/atopile/server/schemas/agent_api.py
  *
  * To regenerate, run:
  *   python scripts/generate_types.py
@@ -729,4 +730,330 @@ export enum EventType {
 
 export enum EventMessageType {
     Event = "event",
+}
+
+export interface CreateSessionRequest {
+    projectRoot: string;
+    [property: string]: any;
+}
+
+export interface CreateSessionResponse {
+    projectRoot: string;
+    sessionId:   string;
+    [property: string]: any;
+}
+
+export interface SendMessageRequest {
+    message:          string;
+    projectRoot:      string;
+    selectedTargets?: string[];
+    [property: string]: any;
+}
+
+export interface ToolTraceResponse {
+    args:   { [key: string]: any };
+    name:   string;
+    ok:     boolean;
+    result: { [key: string]: any };
+    [property: string]: any;
+}
+
+export interface ToolDirectoryItem {
+    category:      string;
+    inputs:        string[];
+    keywords:      string[];
+    name:          string;
+    purpose:       string;
+    tooltip:       string;
+    typicalOutput: string;
+    [property: string]: any;
+}
+
+export interface ToolSuggestion {
+    category:        string;
+    kind:            Kind;
+    name:            string;
+    prefilledArgs:   { [key: string]: any };
+    prefilledPrompt: null | string;
+    reason:          string;
+    score:           number;
+    tooltip:         string;
+    [property: string]: any;
+}
+
+export enum Kind {
+    Composite = "composite",
+    Tool = "tool",
+}
+
+export interface ToolMemoryEntry {
+    ageSeconds: number;
+    contextId:  null | string;
+    ok:         boolean;
+    stale:      boolean;
+    staleHint:  null | string;
+    summary:    string;
+    toolName:   string;
+    updatedAt:  number;
+    [property: string]: any;
+}
+
+export interface SendMessageResponse {
+    assistantMessage: string;
+    model:            string;
+    sessionId:        string;
+    toolMemory:       PurpleToolMemoryEntry[];
+    toolSuggestions:  PurpleToolSuggestion[];
+    toolTraces:       PurpleToolTraceResponse[];
+    [property: string]: any;
+}
+
+export interface PurpleToolMemoryEntry {
+    ageSeconds: number;
+    contextId:  null | string;
+    ok:         boolean;
+    stale:      boolean;
+    staleHint:  null | string;
+    summary:    string;
+    toolName:   string;
+    updatedAt:  number;
+    [property: string]: any;
+}
+
+export interface PurpleToolSuggestion {
+    category:        string;
+    kind:            Kind;
+    name:            string;
+    prefilledArgs:   { [key: string]: any };
+    prefilledPrompt: null | string;
+    reason:          string;
+    score:           number;
+    tooltip:         string;
+    [property: string]: any;
+}
+
+export interface PurpleToolTraceResponse {
+    args:   { [key: string]: any };
+    name:   string;
+    ok:     boolean;
+    result: { [key: string]: any };
+    [property: string]: any;
+}
+
+export interface ToolDirectoryResponse {
+    categories:  string[];
+    suggestions: ToolDirectoryResponseSuggestion[];
+    toolMemory:  ToolDirectoryResponseToolMemory[];
+    tools:       ToolElement[];
+    [property: string]: any;
+}
+
+export interface ToolDirectoryResponseSuggestion {
+    category:        string;
+    kind:            Kind;
+    name:            string;
+    prefilledArgs:   { [key: string]: any };
+    prefilledPrompt: null | string;
+    reason:          string;
+    score:           number;
+    tooltip:         string;
+    [property: string]: any;
+}
+
+export interface ToolDirectoryResponseToolMemory {
+    ageSeconds: number;
+    contextId:  null | string;
+    ok:         boolean;
+    stale:      boolean;
+    staleHint:  null | string;
+    summary:    string;
+    toolName:   string;
+    updatedAt:  number;
+    [property: string]: any;
+}
+
+export interface ToolElement {
+    category:      string;
+    inputs:        string[];
+    keywords:      string[];
+    name:          string;
+    purpose:       string;
+    tooltip:       string;
+    typicalOutput: string;
+    [property: string]: any;
+}
+
+export interface ToolSuggestionsRequest {
+    message?:         string;
+    projectRoot?:     null | string;
+    selectedTargets?: string[];
+    [property: string]: any;
+}
+
+export interface ToolSuggestionsResponse {
+    suggestions: ToolSuggestionsResponseSuggestion[];
+    toolMemory:  ToolSuggestionsResponseToolMemory[];
+    [property: string]: any;
+}
+
+export interface ToolSuggestionsResponseSuggestion {
+    category:        string;
+    kind:            Kind;
+    name:            string;
+    prefilledArgs:   { [key: string]: any };
+    prefilledPrompt: null | string;
+    reason:          string;
+    score:           number;
+    tooltip:         string;
+    [property: string]: any;
+}
+
+export interface ToolSuggestionsResponseToolMemory {
+    ageSeconds: number;
+    contextId:  null | string;
+    ok:         boolean;
+    stale:      boolean;
+    staleHint:  null | string;
+    summary:    string;
+    toolName:   string;
+    updatedAt:  number;
+    [property: string]: any;
+}
+
+export interface SessionSkillsResponse {
+    generatedAt?:       number | null;
+    loadedSkillsCount?: number;
+    projectRoot:        string;
+    reasoning?:         string[];
+    selectedSkillIds?:  string[];
+    selectedSkills?:    { [key: string]: any }[];
+    sessionId:          string;
+    skillsDir:          string;
+    totalChars?:        number;
+    [property: string]: any;
+}
+
+export interface CreateRunRequest {
+    message:          string;
+    projectRoot:      string;
+    selectedTargets?: string[];
+    [property: string]: any;
+}
+
+export interface CreateRunResponse {
+    runId:  string;
+    status: string;
+    [property: string]: any;
+}
+
+export interface GetRunResponse {
+    error?:    null | string;
+    response?: null | SendMessageResponseObject;
+    runId:     string;
+    status:    string;
+    [property: string]: any;
+}
+
+export interface SendMessageResponseObject {
+    assistantMessage: string;
+    model:            string;
+    sessionId:        string;
+    toolMemory:       FluffyToolMemoryEntry[];
+    toolSuggestions:  FluffyToolSuggestion[];
+    toolTraces:       FluffyToolTraceResponse[];
+    [property: string]: any;
+}
+
+export interface FluffyToolMemoryEntry {
+    ageSeconds: number;
+    contextId:  null | string;
+    ok:         boolean;
+    stale:      boolean;
+    staleHint:  null | string;
+    summary:    string;
+    toolName:   string;
+    updatedAt:  number;
+    [property: string]: any;
+}
+
+export interface FluffyToolSuggestion {
+    category:        string;
+    kind:            Kind;
+    name:            string;
+    prefilledArgs:   { [key: string]: any };
+    prefilledPrompt: null | string;
+    reason:          string;
+    score:           number;
+    tooltip:         string;
+    [property: string]: any;
+}
+
+export interface FluffyToolTraceResponse {
+    args:   { [key: string]: any };
+    name:   string;
+    ok:     boolean;
+    result: { [key: string]: any };
+    [property: string]: any;
+}
+
+export interface CancelRunResponse {
+    error?: null | string;
+    runId:  string;
+    status: string;
+    [property: string]: any;
+}
+
+export interface SteerRunRequest {
+    message: string;
+    [property: string]: any;
+}
+
+export interface SteerRunResponse {
+    queuedMessages: number;
+    runId:          string;
+    status:         string;
+    [property: string]: any;
+}
+
+export interface AgentProgressUsage {
+    inputTokens?:  number | null;
+    outputTokens?: number | null;
+    totalTokens?:  number | null;
+    [property: string]: any;
+}
+
+export interface AgentProgressEventPayload {
+    args?:         { [key: string]: any } | null;
+    callId?:       null | string;
+    detailText?:   null | string;
+    inputTokens?:  number | null;
+    loop?:         number | null;
+    name?:         null | string;
+    outputTokens?: number | null;
+    phase?:        null | string;
+    projectRoot?:  null | string;
+    runId?:        null | string;
+    sessionId?:    null | string;
+    statusText?:   null | string;
+    toolCount?:    number | null;
+    toolIndex?:    number | null;
+    totalTokens?:  number | null;
+    trace?:        null | ToolTraceResponseObject;
+    usage?:        null | AgentProgressUsageObject;
+    [property: string]: any;
+}
+
+export interface ToolTraceResponseObject {
+    args:   { [key: string]: any };
+    name:   string;
+    ok:     boolean;
+    result: { [key: string]: any };
+    [property: string]: any;
+}
+
+export interface AgentProgressUsageObject {
+    inputTokens?:  number | null;
+    outputTokens?: number | null;
+    totalTokens?:  number | null;
+    [property: string]: any;
 }

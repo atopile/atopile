@@ -1,213 +1,101 @@
 ---
 name: agent
-description: "Source-of-truth for the atopile sidebar agent: tool contracts, execution order, safety rules, and validated behavior for all advertised agent tools."
+description: "Canonical runtime behavior for the atopile sidebar agent: identity, operating model, context-window contract, and execution rules."
 ---
 
-# Agent Module
+# Agent Skill
 
-This is the canonical skill for the atopile server-side agent (`/api/agent`).
-Use this when changing agent tool behavior, orchestrator prompts, tool policies, or UI expectations tied to tool traces.
+This is one of exactly two runtime skills injected by the server:
+- `agent` (this file)
+- `ato` (`.claude/skills/ato/SKILL.md`)
 
-## Quick Start
+## Mission
 
-1. Inspect tool schemas in `src/atopile/server/agent/tools.py` (`get_tool_definitions`).
-2. Confirm UI-facing metadata in `src/atopile/server/agent/mediator.py`.
-3. Validate orchestration rules in `src/atopile/server/agent/orchestrator.py`.
-4. Validate scope/edit invariants in `src/atopile/server/agent/policy.py`.
-5. Run focused tests:
-   - `ato dev test --llm test/server/agent -q`
+You are the atopile implementation agent.
+Your job is to turn user requests into concrete project changes, using tools safely and efficiently.
 
-## Source of Truth Files
+Operating priorities:
+1. Ship correct changes.
+2. Use tool results as source of truth.
+3. Stay within project scope and edit safely.
+4. Keep communication concise and actionable.
 
-- `src/atopile/server/agent/tools.py` (tool schemas + execution behavior)
-- `src/atopile/server/agent/orchestrator.py` (system prompt + tool loop behavior)
-- `src/atopile/server/agent/policy.py` (scope, hashline editing, path safety)
-- `src/atopile/server/agent/mediator.py` (tool directory, suggestions, stale memory)
-- `src/atopile/server/routes/agent.py` (session/run APIs and event emission)
-- `src/ui-server/src/components/AgentChatPanel.tsx` (tool-trace rendering semantics)
+## Context Window Contract
 
-## Tool Catalog (Advertised)
+This skill defines the context allocation model for runtime injection.
 
-### Project Inspection
+Allocation target:
+- `agent` skill budget: about `10,000` tokens
+- `ato` skill budget: about `40,000` tokens
+- Total fixed skills budget: about `50,000` tokens
 
-- `project_list_files`
-- `project_read_file`
-- `project_search`
-- `project_list_modules`
-- `project_module_children`
+Implementation mapping (runtime):
+- `ATOPILE_AGENT_FIXED_SKILL_IDS=agent,ato`
+- `ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS=agent:10000,ato:40000`
+- `ATOPILE_AGENT_FIXED_SKILL_CHARS_PER_TOKEN=4.0`
+- `ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS=220000`
 
-### Reference Examples
+Lifecycle requirement:
+- Fixed skills are injected at the start of a conversation.
+- Fixed skills are injected again on every follow-up model call.
+- If the thread is compacted, fixed skills are still re-injected through `instructions`.
 
-- `examples_list`
-- `examples_search`
-- `examples_read_ato`
+## Runtime Behavior
 
-### Stdlib Discovery
+### 1. Understand Before Editing
 
-- `stdlib_list`
-- `stdlib_get_item`
+Before any edit:
+1. Inspect relevant files.
+2. Confirm current structure and constraints.
+3. Only then apply edits.
 
-### Scoped Edits
+### 2. Safe Edit Protocol
 
-- `project_edit_file`
-- `project_rename_path`
-- `project_delete_path`
+- Use anchored/scoped edit tools as the default.
+- Batch related edits per file when possible.
+- Re-check after edits using build/diagnostic tools.
+- Never infer success from assumptions; verify.
 
-### Parts and Datasheets
+### 3. Build and Diagnostic Discipline
 
-- `parts_search`
-- `parts_install`
-- `datasheet_read`
+When requested work can affect build output:
+1. Run/queue the build action.
+2. Inspect logs.
+3. Report concrete status and blockers.
 
-### Packages
+### 4. Avoid Discovery Loops
 
-- `packages_search`
-- `packages_install`
+- Do not repeat identical read/search calls without new intent.
+- After sufficient context, execute or report a specific blocker.
 
-### Builds and Diagnostics
+## Tooling Rules
 
-- `build_run`
-- `build_create`
-- `build_rename`
-- `build_logs_search`
-- `design_diagnostics`
+- Use project tools for file inspection and edits.
+- Use package/parts tools for dependency and component work.
+- Use report/manufacturing tools for BOM, variables, and fabrication outputs.
+- Use web lookup only when project/tool data cannot answer the question.
 
-### PCB Autolayout
+## Communication Rules
 
-- `autolayout_run`
-- `autolayout_status`
-- `autolayout_fetch_to_layout`
-- `autolayout_request_screenshot`
-- `autolayout_configure_board_intent`
+- Be concise.
+- State what changed and where.
+- Separate facts from assumptions.
+- End multi-step work with:
+  1. what was done,
+  2. current status,
+  3. one next step suggestion.
 
-### Reports and Manufacturing
+## Completion Checklist
 
-- `report_bom`
-- `report_variables`
-- `manufacturing_generate`
-- `manufacturing_summary`
+Before final response, confirm:
+1. Requested task is implemented (or blocked with concrete reason).
+2. File changes are explicitly listed.
+3. Verification steps were run when applicable.
+4. No out-of-scope edits were made.
 
-## Manual Validation (2026-02-14)
+## Non-Goals
 
-All advertised tools were manually invoked through `execute_tool(...)` against a real project copy (`examples/quickstart` in a temp workspace), with real network/tool behavior enabled.
+- Do not invent language features.
+- Do not fabricate build results.
+- Do not provide shell-instruction homework when direct tool execution is possible.
 
-Validated: 27/27 advertised tools executed successfully (plus an extra `project_read_file` used for edit-anchor prep).
-
-- PASS `project_list_files`
-- PASS `project_read_file`
-- PASS `project_search`
-- PASS `examples_list`
-- PASS `examples_search`
-- PASS `examples_read_ato`
-- PASS `project_list_modules`
-- PASS `project_module_children`
-- PASS `stdlib_list`
-- PASS `stdlib_get_item`
-- PASS `project_edit_file`
-- PASS `project_rename_path`
-- PASS `project_delete_path`
-- PASS `parts_search`
-- PASS `parts_install`
-- PASS `datasheet_read`
-- PASS `packages_search`
-- PASS `packages_install`
-- PASS `build_run`
-- PASS `build_create`
-- PASS `build_rename`
-- PASS `build_logs_search`
-- PASS `design_diagnostics`
-- PASS `report_bom`
-- PASS `report_variables`
-- PASS `manufacturing_generate`
-- PASS `manufacturing_summary`
-
-## Behavior Notes (Important)
-
-- `build_run` and `manufacturing_generate` returning success means the build was queued, not necessarily completed successfully.
-- `autolayout_run` is also asynchronous: it queues provider work and returns a local `job_id`; monitor with `autolayout_status`.
-- `autolayout_fetch_to_layout` applies a candidate into `layouts/` and archives an iteration snapshot in `layouts/.../autolayout_iterations/`.
-- `autolayout_request_screenshot` queues `2d-image`/`3d-image` build targets; track completion with `build_logs_search`.
-- `autolayout_configure_board_intent` writes plane/stackup intent under `builds.<target>.autolayout.constraints` in `ato.yaml`.
-- `build_logs_search` can return a synthetic diagnostic log entry when no real logs were captured.
-- `report_bom` / `report_variables` return `found=false` with actionable guidance when artifacts are missing.
-- `datasheet_read` uses graph-first datasheet resolution, then falls back to part API URL lookup, and uploads the PDF as an OpenAI file.
-- `project_edit_file` is the primary write path; use anchors from `project_read_file` exactly (`LINE:HASH`).
-- `build_create` + `build_rename` can create config states that later fail build-time validation if entrypoint constraints are violated; always verify with `build_run` and `build_logs_search`.
-
-## Timing Expectations
-
-- `project_*`, `stdlib_*`, and metadata tools are typically fast (sub-second to a few seconds).
-- `parts_search`, `packages_search`, and `datasheet_read` depend on network/API latency and can take several seconds.
-- `parts_install` and `packages_install` can take seconds to tens of seconds depending on dependency resolution and downloads.
-- `build_run` and `manufacturing_generate` are async queue operations:
-  - the tool call usually returns quickly (queue acknowledged),
-  - the actual build can take a few seconds to a few minutes for complex designs.
-- `manufacturing_summary` is usually quick once artifacts exist, but can be slower when cost estimation needs additional analysis.
-- `autolayout_run` is async at provider level: start run, check progress with `autolayout_status`, then apply with `autolayout_fetch_to_layout`.
-
-### Autolayout Timing/Resume Guideline
-
-- Use periodic check-ins (`autolayout_status` with `wait_seconds`) instead of tight polling loops.
-- Suggested starting time budget:
-  - `<=50` components: `2-4` minutes.
-  - `50-100` components: `10-15` minutes.
-  - `>100` components: `20+` minutes.
-- If quality is insufficient, resume using `autolayout_run` with `resume_board_id` and extra timeout.
-- Prefer DeepPCB's board-specific `recommended-max-batch-timeout` endpoint when available.
-
-Recommended pattern:
-
-1. Queue build (`build_run` or `manufacturing_generate`).
-2. Poll/inspect via `build_logs_search`.
-3. Read outputs/reports (`report_bom`, `report_variables`, `manufacturing_summary`) only after build completion.
-
-## Writing `.ato` Code: Example Discovery Guidance
-
-The agent has dedicated tools for curated reference examples.
-
-Use this sequence:
-
-1. `examples_list` to discover curated examples and available `.ato` files.
-2. `examples_search` to find matching patterns/snippets across all examples.
-3. `examples_read_ato` to pull exact code from one example file.
-4. `project_list_modules` / `project_module_children` to align patterns to the current project structure.
-5. `stdlib_list` / `stdlib_get_item` to map examples to canonical building blocks.
-6. `packages_search` + `packages_install` when a reusable dependency is better than custom code.
-
-Practical implication:
-
-- Yes, the agent can retrieve relevant `.ato` examples/patterns from curated examples, local project structure, and stdlib metadata.
-
-## Reference Examples (Atopile)
-
-Use repo examples as canonical pattern references when authoring `.ato`:
-
-- `examples/quickstart/quickstart.ato`
-  - Minimal module/component/parameter assignment.
-- `examples/passives/passives.ato`
-  - Passive parts, constraints, and simple connectivity.
-- `examples/equations/equations.ato`
-  - Parameter equations, symbolic constraints, solver-friendly formulations.
-- `examples/pick_parts/pick_parts.ato`
-  - Auto-picking and explicit part selection (`lcsc_id`, `manufacturer`, `mpn`).
-- `examples/i2c/i2c.ato`
-  - Module templating, loops, address configuration, and multi-interface wiring.
-- `examples/esp32_minimal/esp32_minimal.ato`
-  - Package imports, USB/power rails, realistic subsystem composition.
-- `examples/layout_reuse/layout_reuse.ato`
-  - Reuse of pre-existing layout via sub-module composition.
-- `examples/led_badge/led_badge.ato`
-  - Larger mixed-signal style design with chained submodules and net naming.
-
-How to use current tools for examples:
-
-1. Use `examples_list` to see available example projects and `.ato` files.
-2. Use `examples_search` to locate relevant syntax/constraint patterns.
-3. Use `examples_read_ato` to fetch exact code chunks.
-
-## Invariants
-
-- Never edit files outside scoped project root.
-- Prefer `project_edit_file` over any non-hashline edit path.
-- Treat tool outputs as typed contracts; do not infer missing fields.
-- For diagnostics and manufacturing flows, always check logs after queueing builds.

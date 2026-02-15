@@ -2868,6 +2868,49 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
+            "name": "project_create_path",
+            "description": (
+                "Create an in-scope directory or allowed file type. Allowed file "
+                "extensions: .ato, .md, and .py (restricted to "
+                "src/faebryk/library for fabll modules)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["file", "directory"],
+                        "default": "file",
+                    },
+                    "content": {"type": "string", "default": ""},
+                    "overwrite": {"type": "boolean", "default": False},
+                    "parents": {"type": "boolean", "default": True},
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "project_move_path",
+            "description": (
+                "Rearrange project files/directories by moving or renaming within "
+                "the selected project scope."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_path": {"type": "string"},
+                    "new_path": {"type": "string"},
+                    "overwrite": {"type": "boolean", "default": False},
+                },
+                "required": ["old_path", "new_path"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
             "name": "project_rename_path",
             "description": (
                 "Rename or move a file/directory within the selected project scope."
@@ -3753,7 +3796,24 @@ async def execute_tool(
             edits,
         )
 
-    if name == "project_rename_path":
+    if name == "project_create_path":
+        content = arguments.get("content", "")
+        if content is None:
+            content = ""
+        if not isinstance(content, str):
+            raise ValueError("content must be a string")
+        kind = str(arguments.get("kind", "file")).strip().lower()
+        return await asyncio.to_thread(
+            policy.create_path,
+            project_root,
+            str(arguments.get("path", "")),
+            kind=kind,
+            content=content,
+            overwrite=bool(arguments.get("overwrite", False)),
+            parents=bool(arguments.get("parents", True)),
+        )
+
+    if name in {"project_rename_path", "project_move_path"}:
         return await asyncio.to_thread(
             policy.rename_path,
             project_root,
@@ -5460,6 +5520,8 @@ if pytest is not None:
         assert "stdlib_get_item" in names
         assert "datasheet_read" in names
         assert "design_diagnostics" in names
+        assert "project_create_path" in names
+        assert "project_move_path" in names
         assert "project_rename_path" in names
         assert "project_delete_path" in names
         assert "manufacturing_generate" in names
@@ -5941,6 +6003,64 @@ if pytest is not None:
         assert deleted["path"] == "docs/notes.md"
         assert deleted["deleted"] is True
         assert not (tmp_path / "docs" / "notes.md").exists()
+
+    def _test_project_create_and_move_path_execute(tmp_path: Path) -> None:
+        created_dir = _run(
+            tools.execute_tool(
+                name="project_create_path",
+                arguments={"path": "plans", "kind": "directory"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert created_dir["path"] == "plans"
+        assert created_dir["kind"] == "directory"
+        assert created_dir["created"] is True
+
+        created_file = _run(
+            tools.execute_tool(
+                name="project_create_path",
+                arguments={
+                    "path": "plans/notes.md",
+                    "kind": "file",
+                    "content": "# Notes\n",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert created_file["path"] == "plans/notes.md"
+        assert created_file["kind"] == "file"
+        assert created_file["extension"] == ".md"
+
+        created_fabll_py = _run(
+            tools.execute_tool(
+                name="project_create_path",
+                arguments={
+                    "path": "src/faebryk/library/MyModule.py",
+                    "content": "class MyModule:\n    pass\n",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert created_fabll_py["path"] == "src/faebryk/library/MyModule.py"
+        assert created_fabll_py["extension"] == ".py"
+
+        moved = _run(
+            tools.execute_tool(
+                name="project_move_path",
+                arguments={
+                    "old_path": "plans/notes.md",
+                    "new_path": "docs/notes.md",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert moved["old_path"] == "plans/notes.md"
+        assert moved["new_path"] == "docs/notes.md"
+        assert (tmp_path / "docs" / "notes.md").exists()
 
     def _test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
         def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
@@ -7622,6 +7742,9 @@ if pytest is not None:
         )
         test_project_rename_and_delete_path_execute = staticmethod(
             _test_project_rename_and_delete_path_execute
+        )
+        test_project_create_and_move_path_execute = staticmethod(
+            _test_project_create_and_move_path_execute
         )
         test_parts_install_returns_datasheet_followup_hint = staticmethod(
             _test_parts_install_returns_datasheet_followup_hint

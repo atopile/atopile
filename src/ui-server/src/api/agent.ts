@@ -1,118 +1,33 @@
 import { API_URL } from './config';
+import type {
+  CancelRunResponse,
+  CreateRunRequest,
+  CreateRunResponse,
+  CreateSessionRequest,
+  CreateSessionResponse,
+  GetRunResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+  SteerRunRequest,
+  SteerRunResponse,
+  ToolDirectoryItem,
+  ToolDirectoryResponse,
+  ToolMemoryEntry,
+  ToolSuggestion,
+  ToolSuggestionsRequest,
+  ToolSuggestionsResponse,
+  ToolTraceResponse,
+} from '../types/gen/generated';
 
-export interface AgentToolTrace {
-  name: string;
-  args: Record<string, unknown>;
-  ok: boolean;
-  result: Record<string, unknown>;
-}
-
-export interface AgentPeerMessage {
-  messageId: string;
-  threadId: string;
-  fromAgent: string;
-  toAgent: string;
-  kind: string;
-  summary: string;
-  payload: Record<string, unknown>;
-  visibility: 'internal' | 'user_visible' | 'user_redacted' | string;
-  priority: 'low' | 'normal' | 'high' | 'urgent' | string;
-  requiresAck: boolean;
-  correlationId?: string | null;
-  parentId?: string | null;
-  createdAt: number;
-}
-
-export interface AgentToolDirectoryItem {
-  name: string;
-  category: string;
-  purpose: string;
-  tooltip: string;
-  inputs: string[];
-  typical_output: string;
-  keywords: string[];
-}
-
-export interface AgentToolSuggestion {
-  name: string;
-  category: string;
-  score: number;
-  reason: string;
-  tooltip: string;
-  prefilled_args: Record<string, unknown>;
-  prefilled_prompt?: string | null;
-  kind: 'tool' | 'composite';
-}
-
-export interface AgentToolMemoryEntry {
-  tool_name: string;
-  summary: string;
-  ok: boolean;
-  updated_at: number;
-  age_seconds: number;
-  stale: boolean;
-  stale_hint?: string | null;
-  context_id?: string | null;
-}
-
-export interface AgentMessageResponse {
-  sessionId: string;
-  assistantMessage: string;
-  model: string;
-  toolTraces: AgentToolTrace[];
-  agentMessages?: AgentPeerMessage[];
-  toolSuggestions?: AgentToolSuggestion[];
-  toolMemory?: AgentToolMemoryEntry[];
-}
-
-export interface AgentRunCreateResponse {
-  runId: string;
-  status: string;
-}
-
-export interface AgentRunStatusResponse {
-  runId: string;
-  status: string;
-  response?: AgentMessageResponse | null;
-  error?: string | null;
-}
-
-export interface AgentRunMessagesResponse {
-  runId: string;
-  sessionId: string;
-  count: number;
-  pendingAcks: number;
-  messages: AgentPeerMessage[];
-}
-
-export interface AgentRunCancelResponse {
-  runId: string;
-  status: string;
-  error?: string | null;
-}
-
-export interface AgentRunSteerResponse {
-  runId: string;
-  status: string;
-  queuedMessages: number;
-}
-
-interface CreateSessionResponse {
-  sessionId: string;
-  projectRoot: string;
-}
-
-interface ToolDirectoryResponse {
-  tools: AgentToolDirectoryItem[];
-  categories: string[];
-  suggestions: AgentToolSuggestion[];
-  toolMemory: AgentToolMemoryEntry[];
-}
-
-interface ToolSuggestionsResponse {
-  suggestions: AgentToolSuggestion[];
-  toolMemory: AgentToolMemoryEntry[];
-}
+export type AgentToolTrace = ToolTraceResponse;
+export type AgentToolDirectoryItem = ToolDirectoryItem;
+export type AgentToolSuggestion = ToolSuggestion;
+export type AgentToolMemoryEntry = ToolMemoryEntry;
+export type AgentMessageResponse = SendMessageResponse;
+export type AgentRunCreateResponse = CreateRunResponse;
+export type AgentRunStatusResponse = GetRunResponse;
+export type AgentRunCancelResponse = CancelRunResponse;
+export type AgentRunSteerResponse = SteerRunResponse;
 
 export class AgentApiError extends Error {
   constructor(public status: number, message: string) {
@@ -148,23 +63,25 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 
 export const agentApi = {
   async createSession(projectRoot: string): Promise<CreateSessionResponse> {
+    const requestBody: CreateSessionRequest = { projectRoot };
     return request<CreateSessionResponse>('/api/agent/sessions', {
       method: 'POST',
-      body: JSON.stringify({ projectRoot }),
+      body: JSON.stringify(requestBody),
     });
   },
 
   async sendMessage(
     sessionId: string,
-    payload: { message: string; projectRoot: string; selectedTargets?: string[] }
+    payload: SendMessageRequest
   ): Promise<AgentMessageResponse> {
+    const requestBody: SendMessageRequest = {
+      message: payload.message,
+      projectRoot: payload.projectRoot,
+      selectedTargets: payload.selectedTargets ?? [],
+    };
     return request<AgentMessageResponse>(`/api/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'POST',
-      body: JSON.stringify({
-        message: payload.message,
-        projectRoot: payload.projectRoot,
-        selectedTargets: payload.selectedTargets ?? [],
-      }),
+      body: JSON.stringify(requestBody),
     });
   },
 
@@ -179,34 +96,36 @@ export const agentApi = {
 
   async getToolSuggestions(
     sessionId: string,
-    payload: { message: string; projectRoot?: string | null; selectedTargets?: string[] }
+    payload: ToolSuggestionsRequest
   ): Promise<ToolSuggestionsResponse> {
+    const requestBody: ToolSuggestionsRequest = {
+      message: payload.message ?? '',
+      projectRoot: payload.projectRoot ?? null,
+      selectedTargets: payload.selectedTargets ?? [],
+    };
     return request<ToolSuggestionsResponse>(
       `/api/agent/sessions/${encodeURIComponent(sessionId)}/tool-suggestions`,
       {
         method: 'POST',
-        body: JSON.stringify({
-          message: payload.message,
-          projectRoot: payload.projectRoot ?? null,
-          selectedTargets: payload.selectedTargets ?? [],
-        }),
+        body: JSON.stringify(requestBody),
       }
     );
   },
 
   async createRun(
     sessionId: string,
-    payload: { message: string; projectRoot: string; selectedTargets?: string[] }
+    payload: CreateRunRequest
   ): Promise<AgentRunCreateResponse> {
+    const requestBody: CreateRunRequest = {
+      message: payload.message,
+      projectRoot: payload.projectRoot,
+      selectedTargets: payload.selectedTargets ?? [],
+    };
     return request<AgentRunCreateResponse>(
       `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs`,
       {
         method: 'POST',
-        body: JSON.stringify({
-          message: payload.message,
-          projectRoot: payload.projectRoot,
-          selectedTargets: payload.selectedTargets ?? [],
-        }),
+        body: JSON.stringify(requestBody),
       }
     );
   },
@@ -217,25 +136,6 @@ export const agentApi = {
   ): Promise<AgentRunStatusResponse> {
     return request<AgentRunStatusResponse>(
       `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`,
-      {
-        method: 'GET',
-      }
-    );
-  },
-
-  async getRunMessages(
-    sessionId: string,
-    runId: string,
-    payload?: { agent?: 'manager' | 'worker'; limit?: number }
-  ): Promise<AgentRunMessagesResponse> {
-    const params = new URLSearchParams();
-    if (payload?.agent) params.set('agent', payload.agent);
-    if (typeof payload?.limit === 'number' && Number.isFinite(payload.limit)) {
-      params.set('limit', String(Math.max(1, Math.floor(payload.limit))));
-    }
-    const query = params.toString();
-    return request<AgentRunMessagesResponse>(
-      `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/messages${query ? `?${query}` : ''}`,
       {
         method: 'GET',
       }
@@ -257,15 +157,14 @@ export const agentApi = {
   async steerRun(
     sessionId: string,
     runId: string,
-    payload: { message: string }
+    payload: SteerRunRequest
   ): Promise<AgentRunSteerResponse> {
+    const requestBody: SteerRunRequest = { message: payload.message };
     return request<AgentRunSteerResponse>(
       `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/steer`,
       {
         method: 'POST',
-        body: JSON.stringify({
-          message: payload.message,
-        }),
+        body: JSON.stringify(requestBody),
       }
     );
   },

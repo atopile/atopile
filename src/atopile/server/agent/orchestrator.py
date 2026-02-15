@@ -23,10 +23,13 @@ from atopile.server.domains import artifacts as artifacts_domain
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 SteeringMessagesCallback = Callable[[], list[str]]
+MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 _RETRY_AFTER_TEXT_PATTERN = re.compile(
     r"Please try again in\s*(\d+(?:\.\d+)?)\s*(ms|s)\b",
     re.IGNORECASE,
 )
+_TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
 
 _SYSTEM_PROMPT = """You are the atopile agent inside the sidebar.
 
@@ -42,7 +45,8 @@ Rules:
 - Batch known edits for one file in a single project_edit_file call.
 - If project_edit_file returns hash mismatch remaps, retry with remapped
   anchors before re-reading unless more context is needed.
-- Use project_rename_path and project_delete_path for scoped file operations
+- Use project_create_path for new files/directories, project_move_path/
+  project_rename_path to rearrange paths, and project_delete_path for deletes
   when requested.
 - Avoid project_write_file and project_replace_text unless explicitly asked for
   compatibility.
@@ -235,30 +239,31 @@ class AgentOrchestrator:
                 "/Users/narayanpowderly/projects/atopile/.claude/skills",
             )
         ).expanduser()
-        raw_skill_mode = os.getenv("ATOPILE_AGENT_SKILL_MODE", "fixed").strip().lower()
-        if raw_skill_mode not in {"fixed", "dynamic"}:
-            raw_skill_mode = "dynamic"
-        self.skill_mode = raw_skill_mode
         raw_fixed_skill_ids = os.getenv("ATOPILE_AGENT_FIXED_SKILL_IDS", "agent,ato")
         self.fixed_skill_ids = [
             part.strip() for part in raw_fixed_skill_ids.split(",") if part.strip()
         ] or ["agent", "ato"]
+        self.fixed_skill_token_budgets = _parse_fixed_skill_token_budgets(
+            os.getenv(
+                "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS",
+                "agent:10000,ato:40000",
+            ),
+            default_skill_ids=self.fixed_skill_ids,
+        )
+        self.fixed_skill_chars_per_token = float(
+            os.getenv("ATOPILE_AGENT_FIXED_SKILL_CHARS_PER_TOKEN", "4.0")
+        )
+        self.fixed_skill_chars_per_token = max(
+            1.0, min(self.fixed_skill_chars_per_token, 8.0)
+        )
         self.fixed_skill_total_max_chars = int(
             os.getenv("ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "220000")
-        )
-        self.skill_top_k = int(os.getenv("ATOPILE_AGENT_SKILL_TOP_K", "3"))
-        self.skill_card_max_chars = int(
-            os.getenv("ATOPILE_AGENT_SKILL_CARD_MAX_CHARS", "1800")
-        )
-        self.skill_total_max_chars = int(
-            os.getenv("ATOPILE_AGENT_SKILL_TOTAL_MAX_CHARS", "6000")
         )
         self.skill_index_ttl_s = float(
             os.getenv("ATOPILE_AGENT_SKILL_INDEX_TTL_S", "10")
         )
-        prefix_default_max_chars = "220000" if self.skill_mode == "fixed" else "18000"
         self.prefix_max_chars = int(
-            os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", prefix_default_max_chars)
+            os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", "220000")
         )
         self.context_summary_max_chars = int(
             os.getenv("ATOPILE_AGENT_CONTEXT_SUMMARY_MAX_CHARS", "8000")
@@ -277,6 +282,16 @@ class AgentOrchestrator:
         )
         self.prompt_cache_retention = os.getenv(
             "ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"
+        )
+        raw_trace_enabled = os.getenv("ATOPILE_AGENT_TRACE_ENABLED", "1")
+        self.trace_enabled = (
+            str(raw_trace_enabled).strip().lower() not in _TRACE_DISABLE_VALUES
+        )
+        self.trace_preview_max_chars = int(
+            os.getenv("ATOPILE_AGENT_TRACE_PREVIEW_MAX_CHARS", "4000")
+        )
+        self.trace_preview_max_chars = max(
+            300, min(self.trace_preview_max_chars, 20000)
         )
         self.worker_loop_guard_window = int(
             os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_WINDOW", "8")
@@ -320,6 +335,8 @@ class AgentOrchestrator:
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
         consume_steering_messages: SteeringMessagesCallback | None = None,
+        message_callback: MessageCallback | None = None,
+        trace_callback: TraceCallback | None = None,
     ) -> AgentTurnResult:
         return await self._run_worker_turn(
             ctx=ctx,
@@ -331,6 +348,8 @@ class AgentOrchestrator:
             tool_memory=tool_memory,
             progress_callback=progress_callback,
             consume_steering_messages=consume_steering_messages,
+            message_callback=message_callback,
+            trace_callback=trace_callback,
         )
 
     async def _run_worker_turn(
@@ -345,7 +364,11 @@ class AgentOrchestrator:
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
         consume_steering_messages: SteeringMessagesCallback | None = None,
+        message_callback: MessageCallback | None = None,
+        trace_callback: TraceCallback | None = None,
     ) -> AgentTurnResult:
+        _ = message_callback
+
         if not self.api_key:
             raise RuntimeError(
                 "Missing API key. Set ATOPILE_AGENT_OPENAI_API_KEY or OPENAI_API_KEY."
@@ -366,55 +389,38 @@ class AgentOrchestrator:
             self.user_message_max_chars,
         )
 
-        if self.skill_mode == "fixed":
-            fixed_docs, missing_skill_ids = skills_domain.load_fixed_skill_docs(
-                skills_dir=self.skills_dir,
-                skill_ids=self.fixed_skill_ids,
-                ttl_s=self.skill_index_ttl_s,
+        fixed_docs, missing_skill_ids = skills_domain.load_fixed_skill_docs(
+            skills_dir=self.skills_dir,
+            skill_ids=self.fixed_skill_ids,
+            ttl_s=self.skill_index_ttl_s,
+        )
+        if missing_skill_ids:
+            missing_text = ", ".join(missing_skill_ids)
+            raise RuntimeError(
+                "Missing required fixed skill docs. "
+                f"Expected ids: {self.fixed_skill_ids}. Missing: {missing_text}."
             )
-            if fixed_docs:
-                skill_block = skills_domain.render_fixed_skills_block(
-                    docs=fixed_docs,
-                    max_chars=self.fixed_skill_total_max_chars,
-                )
-                skill_state = skills_domain.build_fixed_skill_state(
-                    skills_dir=self.skills_dir,
-                    requested_skill_ids=self.fixed_skill_ids,
-                    selected_docs=fixed_docs,
-                    missing_skill_ids=missing_skill_ids,
-                    rendered_total_chars=len(skill_block),
-                    max_chars=self.fixed_skill_total_max_chars,
-                )
-            else:
-                # Safety fallback: keep runtime functional even before fixed
-                # skill files are fully migrated.
-                skill_selection = skills_domain.select_skills_for_turn(
-                    skills_dir=self.skills_dir,
-                    user_message=trimmed_user_message,
-                    selected_targets=selected_targets or [],
-                    history=history,
-                    tool_memory=tool_memory or {},
-                    top_k=self.skill_top_k,
-                    per_card_max_chars=self.skill_card_max_chars,
-                    total_max_chars=self.skill_total_max_chars,
-                    ttl_s=self.skill_index_ttl_s,
-                )
-                skill_state = skills_domain.build_skill_state(skill_selection)
-                skill_block = skills_domain.render_active_skills_block(skill_selection)
-        else:
-            skill_selection = skills_domain.select_skills_for_turn(
-                skills_dir=self.skills_dir,
-                user_message=trimmed_user_message,
-                selected_targets=selected_targets or [],
-                history=history,
-                tool_memory=tool_memory or {},
-                top_k=self.skill_top_k,
-                per_card_max_chars=self.skill_card_max_chars,
-                total_max_chars=self.skill_total_max_chars,
-                ttl_s=self.skill_index_ttl_s,
-            )
-            skill_state = skills_domain.build_skill_state(skill_selection)
-            skill_block = skills_domain.render_active_skills_block(skill_selection)
+
+        per_skill_max_chars = _allocate_fixed_skill_char_caps(
+            docs=fixed_docs,
+            token_budgets=self.fixed_skill_token_budgets,
+            chars_per_token=self.fixed_skill_chars_per_token,
+            total_max_chars=self.fixed_skill_total_max_chars,
+        )
+        skill_block = skills_domain.render_fixed_skills_block(
+            docs=fixed_docs,
+            max_chars=self.fixed_skill_total_max_chars,
+            per_skill_max_chars=per_skill_max_chars,
+        )
+        skill_state = skills_domain.build_fixed_skill_state(
+            skills_dir=self.skills_dir,
+            requested_skill_ids=self.fixed_skill_ids,
+            selected_docs=fixed_docs,
+            missing_skill_ids=missing_skill_ids,
+            rendered_total_chars=len(skill_block),
+            max_chars=self.fixed_skill_total_max_chars,
+            per_skill_max_chars=per_skill_max_chars,
+        )
 
         instructions = _build_turn_instructions(
             include_session_primer=include_session_primer,
@@ -474,6 +480,23 @@ class AgentOrchestrator:
             "compaction_events": [],
             "preflight_input_tokens": None,
         }
+        await _emit_trace(
+            trace_callback if self.trace_enabled else None,
+            "turn_started",
+            {
+                "model": self.model,
+                "project_root": str(project_path),
+                "selected_targets": list(selected_targets or []),
+                "history_items": len(history),
+                "user_message_preview": _to_trace_preview(
+                    trimmed_user_message,
+                    max_chars=self.trace_preview_max_chars,
+                ),
+                "previous_response_id": previous_response_id,
+                "tool_memory_keys": sorted((tool_memory or {}).keys()),
+                "request_payload": _payload_debug_summary(request_payload),
+            },
+        )
 
         await _emit_progress(
             progress_callback,
@@ -487,6 +510,7 @@ class AgentOrchestrator:
             payload=request_payload,
             telemetry=telemetry,
             progress_callback=progress_callback,
+            trace_callback=trace_callback if self.trace_enabled else None,
         )
 
         traces: list[ToolTrace] = []
@@ -499,11 +523,30 @@ class AgentOrchestrator:
         started_at_s = time.monotonic()
         while loops < self.max_tool_loops:
             elapsed_s = time.monotonic() - started_at_s
+            await _emit_trace(
+                trace_callback if self.trace_enabled else None,
+                "loop_started",
+                {
+                    "loop": loops + 1,
+                    "elapsed_seconds": round(elapsed_s, 3),
+                    "response_id": response.get("id"),
+                },
+            )
             if elapsed_s >= self.max_turn_seconds:
                 await _emit_progress(
                     progress_callback,
                     {
                         "phase": "stopped",
+                        "reason": "turn_time_budget_exceeded",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "elapsed_seconds": round(elapsed_s, 1),
+                    },
+                )
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "turn_stopped",
+                    {
                         "reason": "turn_time_budget_exceeded",
                         "loop": loops,
                         "tool_calls_total": len(traces),
@@ -524,11 +567,35 @@ class AgentOrchestrator:
                 )
             loops += 1
             function_calls = _extract_function_calls(response)
+            await _emit_trace(
+                trace_callback if self.trace_enabled else None,
+                "loop_function_calls",
+                {
+                    "loop": loops,
+                    "response_id": response.get("id"),
+                    "function_call_count": len(function_calls),
+                    "function_calls": [
+                        _summarize_function_call_for_trace(
+                            call,
+                            max_chars=self.trace_preview_max_chars,
+                        )
+                        for call in function_calls
+                    ],
+                },
+            )
             if not function_calls:
                 steering_inputs = _build_steering_inputs_for_model(
                     _consume_steering_updates(consume_steering_messages)
                 )
                 if steering_inputs:
+                    await _emit_trace(
+                        trace_callback if self.trace_enabled else None,
+                        "steering_applied",
+                        {
+                            "loop": loops,
+                            "steering_items": len(steering_inputs),
+                        },
+                    )
                     await _emit_progress(
                         progress_callback,
                         {
@@ -562,6 +629,7 @@ class AgentOrchestrator:
                         },
                         telemetry=telemetry,
                         progress_callback=progress_callback,
+                        trace_callback=trace_callback if self.trace_enabled else None,
                         enable_preflight=False,
                     )
                     last_response_id = response.get("id") or last_response_id
@@ -569,6 +637,19 @@ class AgentOrchestrator:
                 text = _extract_text(response)
                 if not text:
                     text = "No assistant response produced."
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "turn_completed",
+                    {
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "response_id": response.get("id"),
+                        "assistant_text_preview": _to_trace_preview(
+                            text,
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                    },
+                )
                 await _emit_progress(
                     progress_callback,
                     {
@@ -599,6 +680,20 @@ class AgentOrchestrator:
             for tool_index, call in enumerate(function_calls, start=1):
                 call_id = call.get("call_id") or call.get("id")
                 if not call_id:
+                    await _emit_trace(
+                        trace_callback if self.trace_enabled else None,
+                        "tool_call_skipped",
+                        {
+                            "loop": loops,
+                            "tool_index": tool_index,
+                            "tool_count": tool_count,
+                            "reason": "missing_call_id",
+                            "call": _summarize_function_call_for_trace(
+                                call,
+                                max_chars=self.trace_preview_max_chars,
+                            ),
+                        },
+                    )
                     continue
 
                 tool_name = str(call.get("name", ""))
@@ -623,6 +718,24 @@ class AgentOrchestrator:
                         "call_id": str(call_id),
                         "name": tool_name,
                         "args": parsed_args if parsed_args is not None else {},
+                    },
+                )
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "tool_call_started",
+                    {
+                        "loop": loops,
+                        "tool_index": tool_index,
+                        "tool_count": tool_count,
+                        "call_id": str(call_id),
+                        "name": tool_name,
+                        "raw_arguments_preview": _to_trace_preview(
+                            raw_args,
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                        "parsed_arguments": (
+                            parsed_args if parsed_args is not None else {}
+                        ),
                     },
                 )
 
@@ -691,12 +804,39 @@ class AgentOrchestrator:
                         },
                     },
                 )
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "tool_call_completed",
+                    {
+                        "loop": loops,
+                        "tool_index": tool_index,
+                        "tool_count": tool_count,
+                        "call_id": str(call_id),
+                        "name": tool_name,
+                        "ok": ok,
+                        "arguments": args,
+                        "result": _summarize_tool_result_for_trace(
+                            result_payload,
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                    },
+                )
                 if consecutive_tool_failures >= self.worker_failure_streak_limit:
                     telemetry["failure_streak"] = consecutive_tool_failures
                     await _emit_progress(
                         progress_callback,
                         {
                             "phase": "stopped",
+                            "reason": "repeated_tool_failures",
+                            "loop": loops,
+                            "tool_calls_total": len(traces),
+                            "failure_streak": consecutive_tool_failures,
+                        },
+                    )
+                    await _emit_trace(
+                        trace_callback if self.trace_enabled else None,
+                        "turn_stopped",
+                        {
                             "reason": "repeated_tool_failures",
                             "loop": loops,
                             "tool_calls_total": len(traces),
@@ -715,6 +855,7 @@ class AgentOrchestrator:
                         skill_state=skill_state,
                         context_metrics=telemetry,
                     )
+                output_count_before = len(outputs)
                 outputs.extend(
                     _build_function_call_outputs_for_model(
                         call_id=str(call_id),
@@ -724,6 +865,16 @@ class AgentOrchestrator:
                             max_chars=self.tool_output_max_chars,
                         ),
                     )
+                )
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "function_call_output_built",
+                    {
+                        "loop": loops,
+                        "call_id": str(call_id),
+                        "tool_name": tool_name,
+                        "output_items_added": len(outputs) - output_count_before,
+                    },
                 )
 
             steering_inputs = _build_steering_inputs_for_model(
@@ -761,11 +912,33 @@ class AgentOrchestrator:
                         "loop_guard_hits": loop_guard_hits,
                     },
                 )
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "loop_guard_triggered",
+                    {
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "loop_guard_hits": loop_guard_hits,
+                        "guard_message_preview": _to_trace_preview(
+                            guard_message,
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                    },
+                )
                 if loop_guard_hits > self.worker_loop_guard_max_hits:
                     await _emit_progress(
                         progress_callback,
                         {
                             "phase": "stopped",
+                            "reason": "repetitive_discovery_loop",
+                            "loop": loops,
+                            "tool_calls_total": len(traces),
+                        },
+                    )
+                    await _emit_trace(
+                        trace_callback if self.trace_enabled else None,
+                        "turn_stopped",
+                        {
                             "reason": "repetitive_discovery_loop",
                             "loop": loops,
                             "tool_calls_total": len(traces),
@@ -787,6 +960,16 @@ class AgentOrchestrator:
                     progress_callback,
                     {
                         "phase": "stopped",
+                        "reason": "no_concrete_progress",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "no_progress_loops": no_progress_loops,
+                    },
+                )
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "turn_stopped",
+                    {
                         "reason": "no_concrete_progress",
                         "loop": loops,
                         "tool_calls_total": len(traces),
@@ -857,6 +1040,7 @@ class AgentOrchestrator:
                 },
                 telemetry=telemetry,
                 progress_callback=progress_callback,
+                trace_callback=trace_callback if self.trace_enabled else None,
                 enable_preflight=False,
             )
             last_response_id = response.get("id") or last_response_id
@@ -865,6 +1049,15 @@ class AgentOrchestrator:
             progress_callback,
             {
                 "phase": "stopped",
+                "reason": "too_many_tool_iterations",
+                "loop": loops,
+                "tool_calls_total": len(traces),
+            },
+        )
+        await _emit_trace(
+            trace_callback if self.trace_enabled else None,
+            "turn_stopped",
+            {
                 "reason": "too_many_tool_iterations",
                 "loop": loops,
                 "tool_calls_total": len(traces),
@@ -1004,11 +1197,20 @@ class AgentOrchestrator:
         payload: dict[str, Any],
         telemetry: dict[str, Any],
         progress_callback: ProgressCallback | None,
+        trace_callback: TraceCallback | None = None,
         enable_preflight: bool = True,
     ) -> dict[str, Any]:
         if enable_preflight:
             preflight_tokens = await self._count_input_tokens(payload)
             telemetry["preflight_input_tokens"] = preflight_tokens
+            await _emit_trace(
+                trace_callback if self.trace_enabled else None,
+                "model_preflight_tokens",
+                {
+                    "input_tokens": preflight_tokens,
+                    "payload": _payload_debug_summary(payload),
+                },
+            )
             if (
                 isinstance(preflight_tokens, int)
                 and preflight_tokens > self.context_hard_max_tokens
@@ -1028,10 +1230,26 @@ class AgentOrchestrator:
                         telemetry=telemetry,
                     )
                     if compacted_id:
+                        await _emit_trace(
+                            trace_callback if self.trace_enabled else None,
+                            "context_compacted",
+                            {
+                                "from_response_id": previous_response_id,
+                                "compacted_response_id": compacted_id,
+                            },
+                        )
                         payload = dict(payload)
                         payload["previous_response_id"] = compacted_id
                         preflight_tokens_after = await self._count_input_tokens(payload)
                         telemetry["preflight_input_tokens"] = preflight_tokens_after
+                        await _emit_trace(
+                            trace_callback if self.trace_enabled else None,
+                            "model_preflight_tokens",
+                            {
+                                "input_tokens": preflight_tokens_after,
+                                "payload": _payload_debug_summary(payload),
+                            },
+                        )
                         if (
                             isinstance(preflight_tokens_after, int)
                             and preflight_tokens_after > self.context_hard_max_tokens
@@ -1050,6 +1268,7 @@ class AgentOrchestrator:
             payload,
             telemetry=telemetry,
             progress_callback=progress_callback,
+            trace_callback=trace_callback if self.trace_enabled else None,
         )
 
     async def _responses_create(
@@ -1058,6 +1277,7 @@ class AgentOrchestrator:
         *,
         telemetry: dict[str, Any] | None = None,
         progress_callback: ProgressCallback | None = None,
+        trace_callback: TraceCallback | None = None,
     ) -> dict[str, Any]:
         client = self._get_client()
         working_payload = dict(payload)
@@ -1065,6 +1285,15 @@ class AgentOrchestrator:
         function_output_shrink_steps = (5000, 2500, 1200, 600, 300)
         function_output_shrink_index = 0
         for attempt in range(self.api_retries + 1):
+            await _emit_trace(
+                trace_callback if self.trace_enabled else None,
+                "model_request",
+                {
+                    "attempt": attempt + 1,
+                    "max_attempts": self.api_retries + 1,
+                    "payload": _payload_debug_summary(working_payload),
+                },
+            )
             await _emit_progress(
                 progress_callback,
                 {
@@ -1075,6 +1304,17 @@ class AgentOrchestrator:
             )
             try:
                 response = await client.responses.create(**working_payload)
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "model_response",
+                    {
+                        "attempt": attempt + 1,
+                        "summary": _summarize_response_for_trace(
+                            _response_model_to_dict(response),
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                    },
+                )
                 break
             except APIStatusError as exc:
                 status_code = getattr(exc, "status_code", "unknown")
@@ -1096,6 +1336,16 @@ class AgentOrchestrator:
                             "phase": "thinking",
                             "status_text": "Retrying model request",
                             "detail_text": f"Rate limited, retrying in {delay_s:.1f}s",
+                        },
+                    )
+                    await _emit_trace(
+                        trace_callback if self.trace_enabled else None,
+                        "model_retry_scheduled",
+                        {
+                            "attempt": attempt + 1,
+                            "status_code": status_code,
+                            "retry_delay_seconds": delay_s,
+                            "reason": "rate_limited",
                         },
                     )
                     await asyncio.sleep(delay_s)
@@ -1124,6 +1374,15 @@ class AgentOrchestrator:
                                     ),
                                 },
                             )
+                            await _emit_trace(
+                                trace_callback if self.trace_enabled else None,
+                                "tool_output_compacted",
+                                {
+                                    "attempt": attempt + 1,
+                                    "max_chars": max_chars,
+                                    "payload": _payload_debug_summary(reduced_payload),
+                                },
+                            )
                             working_payload = reduced_payload
                             continue
                     raise RuntimeError(
@@ -1145,10 +1404,33 @@ class AgentOrchestrator:
                         telemetry=telemetry,
                     )
                     if compacted_id:
+                        await _emit_trace(
+                            trace_callback if self.trace_enabled else None,
+                            "context_compacted",
+                            {
+                                "from_response_id": working_payload[
+                                    "previous_response_id"
+                                ],
+                                "compacted_response_id": compacted_id,
+                            },
+                        )
                         working_payload["previous_response_id"] = compacted_id
                         continue
                 snippet = _extract_sdk_error_text(exc)[:500]
                 payload_debug = _payload_debug_summary(working_payload)
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "model_request_failed",
+                    {
+                        "attempt": attempt + 1,
+                        "status_code": status_code,
+                        "error_preview": _to_trace_preview(
+                            snippet,
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                        "payload": payload_debug,
+                    },
+                )
                 raise RuntimeError(
                     f"Model API request failed ({status_code}): {snippet} "
                     f"| payload_debug={payload_debug}"
@@ -1174,9 +1456,30 @@ class AgentOrchestrator:
                             ),
                         },
                     )
+                    await _emit_trace(
+                        trace_callback if self.trace_enabled else None,
+                        "model_retry_scheduled",
+                        {
+                            "attempt": attempt + 1,
+                            "retry_delay_seconds": delay_s,
+                            "reason": type(exc).__name__,
+                        },
+                    )
                     await asyncio.sleep(delay_s)
                     continue
                 payload_debug = _payload_debug_summary(working_payload)
+                await _emit_trace(
+                    trace_callback if self.trace_enabled else None,
+                    "model_request_failed",
+                    {
+                        "attempt": attempt + 1,
+                        "error_preview": _to_trace_preview(
+                            str(exc),
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                        "payload": payload_debug,
+                    },
+                )
                 raise RuntimeError(
                     f"Model API request failed: {exc} | payload_debug={payload_debug}"
                 ) from exc
@@ -1379,6 +1682,88 @@ def _build_turn_instructions(
     return _truncate_middle(joined, max_chars)
 
 
+def _normalize_skill_id(value: str) -> str:
+    cleaned = value.strip().lower().replace("_", "-").replace(" ", "-")
+    cleaned = re.sub(r"[^a-z0-9\-]+", "-", cleaned)
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-")
+    return cleaned or "unknown-skill"
+
+
+def _parse_fixed_skill_token_budgets(
+    raw_value: str,
+    *,
+    default_skill_ids: list[str],
+) -> dict[str, int]:
+    parsed: dict[str, int] = {}
+    for raw_part in raw_value.split(","):
+        part = raw_part.strip()
+        if not part or ":" not in part:
+            continue
+        raw_skill_id, raw_budget = part.split(":", 1)
+        skill_id = _normalize_skill_id(raw_skill_id)
+        try:
+            budget = int(raw_budget.strip())
+        except ValueError:
+            continue
+        if budget <= 0:
+            continue
+        parsed[skill_id] = budget
+
+    # Ensure every fixed skill gets at least a baseline budget.
+    fallback = 10000
+    for raw_skill_id in default_skill_ids:
+        skill_id = _normalize_skill_id(raw_skill_id)
+        parsed.setdefault(skill_id, fallback)
+    return parsed
+
+
+def _allocate_fixed_skill_char_caps(
+    *,
+    docs: list[skills_domain.SkillDoc],
+    token_budgets: dict[str, int],
+    chars_per_token: float,
+    total_max_chars: int,
+) -> dict[str, int]:
+    if not docs:
+        return {}
+    if total_max_chars <= 0:
+        return {doc.id: 0 for doc in docs}
+
+    requested_caps: dict[str, int] = {}
+    for doc in docs:
+        token_budget = max(0, int(token_budgets.get(doc.id, 0)))
+        if token_budget <= 0:
+            continue
+        requested_caps[doc.id] = int(token_budget * chars_per_token)
+
+    if not requested_caps:
+        even_cap = max(1, total_max_chars // len(docs))
+        return {doc.id: even_cap for doc in docs}
+
+    fallback_cap = max(1, int(sum(requested_caps.values()) / len(requested_caps)))
+    for doc in docs:
+        requested_caps.setdefault(doc.id, fallback_cap)
+
+    requested_total = sum(max(0, cap) for cap in requested_caps.values())
+    if requested_total <= total_max_chars:
+        return requested_caps
+
+    scale = total_max_chars / requested_total
+    allocated: dict[str, int] = {}
+    remaining_chars = total_max_chars
+    for index, doc in enumerate(docs):
+        requested_cap = max(0, requested_caps.get(doc.id, 0))
+        if index == len(docs) - 1:
+            capped_value = remaining_chars
+        else:
+            scaled_cap = max(0, int(requested_cap * scale))
+            capped_value = min(scaled_cap, remaining_chars)
+        allocated[doc.id] = capped_value
+        remaining_chars = max(0, remaining_chars - capped_value)
+
+    return allocated
+
+
 def _build_prompt_cache_key(
     *,
     project_path: Path,
@@ -1396,7 +1781,20 @@ def _build_prompt_cache_key(
         for value in skill_state.get("selected_skill_ids", [])
         if isinstance(value, str)
     )
-    digest_input = f"{project_path}|{model}|{tool_names}|{skill_ids}"
+    raw_caps = skill_state.get("per_skill_max_chars", {})
+    skill_caps = ""
+    if isinstance(raw_caps, dict):
+        pairs: list[tuple[str, int]] = []
+        for raw_skill_id, raw_cap in raw_caps.items():
+            if not isinstance(raw_skill_id, str):
+                continue
+            try:
+                cap = int(raw_cap)
+            except (TypeError, ValueError):
+                continue
+            pairs.append((_normalize_skill_id(raw_skill_id), cap))
+        skill_caps = ",".join(f"{skill_id}:{cap}" for skill_id, cap in sorted(pairs))
+    digest_input = f"{project_path}|{model}|{tool_names}|{skill_ids}|{skill_caps}"
     digest = hashlib.sha256(digest_input.encode("utf-8")).hexdigest()[:24]
     return f"atopile-agent:{digest}"
 
@@ -1619,6 +2017,8 @@ def _worker_discovery_tool_names() -> set[str]:
 def _worker_execution_tool_names() -> set[str]:
     return {
         "project_edit_file",
+        "project_create_path",
+        "project_move_path",
         "project_write_file",
         "project_replace_text",
         "project_rename_path",
@@ -1797,6 +2197,18 @@ async def _emit_progress(
         return
 
     maybe_awaitable = callback(payload)
+    if inspect.isawaitable(maybe_awaitable):
+        await maybe_awaitable
+
+
+async def _emit_trace(
+    callback: TraceCallback | None,
+    event: str,
+    payload: dict[str, Any],
+) -> None:
+    if callback is None:
+        return
+    maybe_awaitable = callback(event, payload)
     if inspect.isawaitable(maybe_awaitable):
         await maybe_awaitable
 
@@ -2010,6 +2422,102 @@ def _payload_input_item_label(item: Any) -> str:
     if isinstance(role, str) and role:
         return f"role:{role}"
     return "object"
+
+
+def _to_trace_preview(value: Any, *, max_chars: int) -> Any:
+    if isinstance(value, str):
+        compact = value.strip()
+        if len(compact) <= max_chars:
+            return compact
+        return f"{compact[: max_chars - 18]}...[trace-truncated]"
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    try:
+        serialized = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        serialized = str(value)
+    if len(serialized) <= max_chars:
+        return value
+    return {
+        "truncated": True,
+        "preview": serialized[: max_chars - 18] + "...[trace-truncated]",
+        "size_chars": len(serialized),
+    }
+
+
+def _summarize_function_call_for_trace(
+    call: dict[str, Any],
+    *,
+    max_chars: int,
+) -> dict[str, Any]:
+    arguments_raw = call.get("arguments")
+    parsed_arguments: dict[str, Any] | None = None
+    if isinstance(arguments_raw, str):
+        try:
+            parsed = json.loads(arguments_raw)
+            if isinstance(parsed, dict):
+                parsed_arguments = parsed
+        except Exception:
+            parsed_arguments = None
+    return {
+        "id": call.get("id"),
+        "call_id": call.get("call_id"),
+        "name": call.get("name"),
+        "arguments": (
+            parsed_arguments
+            if parsed_arguments is not None
+            else _to_trace_preview(arguments_raw, max_chars=max_chars)
+        ),
+    }
+
+
+def _summarize_tool_result_for_trace(
+    value: dict[str, Any],
+    *,
+    max_chars: int,
+) -> Any:
+    summarized = _to_trace_preview(value, max_chars=max_chars)
+    if isinstance(summarized, dict):
+        return summarized
+    if isinstance(value, dict):
+        return value
+    return {"preview": summarized}
+
+
+def _summarize_response_for_trace(
+    response: dict[str, Any],
+    *,
+    max_chars: int,
+) -> dict[str, Any]:
+    output = response.get("output")
+    item_types: dict[str, int] = {}
+    function_calls: list[dict[str, Any]] = []
+    reasoning_previews: list[Any] = []
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                item_types["non_object"] = item_types.get("non_object", 0) + 1
+                continue
+            item_type = item.get("type")
+            label = item_type if isinstance(item_type, str) and item_type else "object"
+            item_types[label] = item_types.get(label, 0) + 1
+            if item_type == "function_call":
+                function_calls.append(
+                    _summarize_function_call_for_trace(item, max_chars=max_chars)
+                )
+            elif item_type == "reasoning":
+                reasoning_previews.append(
+                    _to_trace_preview(item.get("summary"), max_chars=max_chars)
+                )
+    output_text = _extract_text(response)
+    return {
+        "id": response.get("id"),
+        "output_items": len(output) if isinstance(output, list) else None,
+        "output_item_types": item_types,
+        "function_calls": function_calls,
+        "reasoning_summaries": reasoning_previews[:8],
+        "assistant_text_preview": _to_trace_preview(output_text, max_chars=max_chars),
+    }
 
 
 # Colocated tests moved from `test/server/agent/test_orchestrator_output.py`.

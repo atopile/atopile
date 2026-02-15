@@ -17,7 +17,6 @@ import remarkGfm from 'remark-gfm';
 import {
   AgentApiError,
   agentApi,
-  type AgentPeerMessage,
   type AgentToolTrace,
 } from '../api/agent';
 import { api } from '../api/client';
@@ -68,7 +67,6 @@ interface AgentMessage {
   pending?: boolean;
   activity?: string;
   toolTraces?: AgentTraceView[];
-  agentMessages?: AgentPeerMessage[];
 }
 
 interface AgentChangedFile {
@@ -667,75 +665,6 @@ function readProgressPayload(detail: unknown): {
   };
 }
 
-function normalizePeerMessage(value: unknown): AgentPeerMessage | null {
-  if (!value || typeof value !== 'object') return null;
-  const raw = value as Record<string, unknown>;
-  const messageId = typeof raw.message_id === 'string'
-    ? raw.message_id
-    : typeof raw.messageId === 'string'
-      ? raw.messageId
-      : null;
-  const threadId = typeof raw.thread_id === 'string'
-    ? raw.thread_id
-    : typeof raw.threadId === 'string'
-      ? raw.threadId
-      : null;
-  const fromAgent = typeof raw.from_agent === 'string'
-    ? raw.from_agent
-    : typeof raw.fromAgent === 'string'
-      ? raw.fromAgent
-      : null;
-  const toAgent = typeof raw.to_agent === 'string'
-    ? raw.to_agent
-    : typeof raw.toAgent === 'string'
-      ? raw.toAgent
-      : null;
-  const kind = typeof raw.kind === 'string' ? raw.kind : null;
-  const summary = typeof raw.summary === 'string' ? raw.summary : null;
-  if (!messageId || !threadId || !fromAgent || !toAgent || !kind || !summary) return null;
-
-  const payload = raw.payload && typeof raw.payload === 'object'
-    ? raw.payload as Record<string, unknown>
-    : {};
-  const visibility = typeof raw.visibility === 'string' ? raw.visibility : 'internal';
-  const priority = typeof raw.priority === 'string' ? raw.priority : 'normal';
-  const requiresAck = typeof raw.requires_ack === 'boolean'
-    ? raw.requires_ack
-    : typeof raw.requiresAck === 'boolean'
-      ? raw.requiresAck
-      : false;
-  const correlationId = typeof raw.correlation_id === 'string'
-    ? raw.correlation_id
-    : typeof raw.correlationId === 'string'
-      ? raw.correlationId
-      : null;
-  const parentId = typeof raw.parent_id === 'string'
-    ? raw.parent_id
-    : typeof raw.parentId === 'string'
-      ? raw.parentId
-      : null;
-  const createdAt = typeof raw.created_at === 'number'
-    ? raw.created_at
-    : typeof raw.createdAt === 'number'
-      ? raw.createdAt
-      : Date.now() / 1000;
-  return {
-    messageId,
-    threadId,
-    fromAgent,
-    toAgent,
-    kind,
-    summary,
-    payload,
-    visibility,
-    priority,
-    requiresAck,
-    correlationId,
-    parentId,
-    createdAt,
-  };
-}
-
 function readTraceDiff(trace: AgentTraceView): { added: number; removed: number } | null {
   const raw = trace.result.diff;
   if (!raw || typeof raw !== 'object') return null;
@@ -1054,19 +983,6 @@ function summarizeToolTraceGroup(traces: AgentTraceView[]): string {
     return `${formatCount(completed, 'done', 'done')} • ${formatCount(failed, 'failed', 'failed')}`;
   }
   return `${formatCount(completed, 'completed', 'completed')}`;
-}
-
-function summarizeAgentThread(messages: AgentPeerMessage[]): string {
-  if (messages.length === 0) return 'No internal messages';
-  const latest = messages[messages.length - 1];
-  const kind = latest.kind.replace(/_/g, ' ');
-  return `${messages.length} messages • ${trimSingleLine(kind, 24)}`;
-}
-
-function formatAgentHop(message: AgentPeerMessage): string {
-  const from = message.fromAgent.replace(/^specialist:/, '');
-  const to = message.toAgent.replace(/^specialist:/, '');
-  return `${from} -> ${to}`;
 }
 
 function asNonEmptyString(value: unknown): string | null {
@@ -1659,7 +1575,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const [changesExpanded, setChangesExpanded] = useState(false);
   const [expandedTraceGroups, setExpandedTraceGroups] = useState<Set<string>>(new Set());
   const [expandedTraceKeys, setExpandedTraceKeys] = useState<Set<string>>(new Set());
-  const [expandedAgentThreads, setExpandedAgentThreads] = useState<Set<string>>(new Set());
   const [resizingDock, setResizingDock] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2505,74 +2420,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   }, [updateChatSnapshot]);
 
   useEffect(() => {
-    const onAgentMessage = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const detail = customEvent.detail as Record<string, unknown> | undefined;
-      if (!detail || typeof detail !== 'object') return;
-      const session = typeof detail.session_id === 'string'
-        ? detail.session_id
-        : typeof detail.sessionId === 'string'
-          ? detail.sessionId
-          : null;
-      if (!session) return;
-      const run = typeof detail.run_id === 'string'
-        ? detail.run_id
-        : typeof detail.runId === 'string'
-          ? detail.runId
-          : null;
-      const peerMessage = normalizePeerMessage(detail.message);
-      if (!peerMessage) return;
-
-      const targetChat = chatSnapshotsRef.current.find((chat) => {
-        if (chat.sessionId !== session) return false;
-        if (!run) return true;
-        return !chat.pendingRunId || chat.pendingRunId === run || chat.activeRunId === run;
-      });
-      if (!targetChat) return;
-
-      const pickTargetMessageId = (items: AgentMessage[]): string | null => {
-        const pending = targetChat.pendingAssistantId;
-        if (pending && items.some((item) => item.id === pending)) return pending;
-        for (let index = items.length - 1; index >= 0; index -= 1) {
-          const candidate = items[index];
-          if (candidate.role === 'assistant') return candidate.id;
-        }
-        return null;
-      };
-
-      const appendPeer = (items: AgentMessage[]): AgentMessage[] => {
-        const targetMessageId = pickTargetMessageId(items);
-        if (!targetMessageId) return items;
-        return items.map((item) => {
-          if (item.id !== targetMessageId) return item;
-          const existing = item.agentMessages ?? [];
-          if (existing.some((entry) => entry.messageId === peerMessage.messageId)) {
-            return item;
-          }
-          return {
-            ...item,
-            agentMessages: [...existing, peerMessage],
-          };
-        });
-      };
-
-      updateChatSnapshot(targetChat.id, (chat) => ({
-        ...chat,
-        messages: appendPeer(chat.messages),
-      }));
-
-      if (activeChatIdRef.current === targetChat.id) {
-        setMessages((previous) => appendPeer(previous));
-      }
-    };
-
-    window.addEventListener('atopile:agent_message', onAgentMessage as EventListener);
-    return () => {
-      window.removeEventListener('atopile:agent_message', onAgentMessage as EventListener);
-    };
-  }, [updateChatSnapshot]);
-
-  useEffect(() => {
     if (!projectRoot) {
       setActiveChatId(null);
       setSessionId(null);
@@ -2707,18 +2554,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         next.delete(traceKey);
       } else {
         next.add(traceKey);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleAgentThreadExpanded = useCallback((messageId: string) => {
-    setExpandedAgentThreads((previous) => {
-      const next = new Set(previous);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
-        next.add(messageId);
       }
       return next;
     });
@@ -3051,9 +2886,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       }
       const response = await waitForRunCompletion(currentSessionId, run.runId);
       const finalizedTraces = response.toolTraces.map((trace) => ({ ...trace, running: false }));
-      const finalizedAgentMessages = Array.isArray(response.agentMessages)
-        ? response.agentMessages
-        : [];
 
       const assistantMessage: AgentMessage = {
         id: `${chatPrefix}-assistant-${Date.now()}`,
@@ -3063,7 +2895,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           finalizedTraces,
         ),
         toolTraces: finalizedTraces,
-        agentMessages: finalizedAgentMessages,
       };
 
       updateChatSnapshot(chatId, (chat) => ({
@@ -3469,58 +3300,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                   </div>
                 ) : null;
 
-                const agentThreadEntries = message.agentMessages ?? [];
-                const hasAgentThread = agentThreadEntries.length > 0;
-                const isAgentThreadExpanded = expandedAgentThreads.has(message.id);
-                const visibleAgentThreadEntries = isAgentThreadExpanded
-                  ? agentThreadEntries
-                  : agentThreadEntries.slice(-3);
-                const hiddenAgentThreadCount = Math.max(
-                  0,
-                  agentThreadEntries.length - visibleAgentThreadEntries.length
-                );
-                const agentThreadSection = hasAgentThread ? (
-                  <div className={`agent-peer-thread ${isAgentThreadExpanded ? 'expanded' : 'collapsed'}`}>
-                    <button
-                      type="button"
-                      className="agent-peer-thread-toggle"
-                      onClick={() => toggleAgentThreadExpanded(message.id)}
-                      aria-expanded={isAgentThreadExpanded}
-                    >
-                      <ChevronDown
-                        size={11}
-                        className={`agent-peer-thread-chevron ${isAgentThreadExpanded ? 'open' : ''}`}
-                      />
-                      <span className="agent-peer-thread-title">Internal thread</span>
-                      <span className="agent-peer-thread-summary">
-                        {summarizeAgentThread(agentThreadEntries)}
-                      </span>
-                    </button>
-                    <div className="agent-peer-thread-list">
-                      {visibleAgentThreadEntries.map((peerMessage) => (
-                        <div key={`${message.id}-peer-${peerMessage.messageId}`} className="agent-peer-item">
-                          <div className="agent-peer-item-head">
-                            <span className="agent-peer-item-hop">{formatAgentHop(peerMessage)}</span>
-                            <span className={`agent-peer-item-kind ${peerMessage.visibility === 'user_visible' ? 'public' : 'internal'}`}>
-                              {peerMessage.kind.replace(/_/g, ' ')}
-                            </span>
-                          </div>
-                          <div className="agent-peer-item-summary">{peerMessage.summary}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {!isAgentThreadExpanded && hiddenAgentThreadCount > 0 && (
-                      <button
-                        type="button"
-                        className="agent-peer-thread-more"
-                        onClick={() => toggleAgentThreadExpanded(message.id)}
-                      >
-                        show {hiddenAgentThreadCount} older internal messages
-                      </button>
-                    )}
-                  </div>
-                ) : null;
-
                 return (
                   <div key={message.id} className={`agent-message-row ${message.role} ${message.pending ? 'pending' : ''}`}>
                     {message.pending && (
@@ -3532,7 +3311,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                       </div>
                     )}
                     {message.role === 'assistant' && toolTraceSection}
-                    {message.role === 'assistant' && agentThreadSection}
                     <div className="agent-message-bubble">
                       <div className="agent-message-content agent-markdown">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>

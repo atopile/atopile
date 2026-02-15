@@ -14,6 +14,7 @@ from typing import Any
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent import AgentOrchestrator, mediator
+from atopile.server.agent.orchestrator import TraceCallback
 from atopile.server.events import get_event_bus
 from faebryk.libs.paths import get_log_dir
 
@@ -36,7 +37,6 @@ from .models import (
     RUN_STATUS_RUNNING,
     TURN_MODE_BACKGROUND,
     USER_ROLE,
-    AgentPeerMessageResponse,
     AgentRun,
     AgentSession,
     SendMessageResponse,
@@ -51,12 +51,14 @@ MAX_PERSISTED_HISTORY = 2_000
 DEFAULT_RUN_RETENTION_SECONDS = 3_600.0
 
 _PROGRESS_DISABLE_VALUES = {"0", "false", "no", "off"}
+_TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
 
 sessions_by_id: dict[str, AgentSession] = {}
 sessions_lock = threading.Lock()
 runs_by_id: dict[str, AgentRun] = {}
 runs_lock = threading.Lock()
 _session_log_lock = threading.Lock()
+_trace_log_lock = threading.Lock()
 orchestrator = AgentOrchestrator()
 
 log = logging.getLogger(__name__)
@@ -74,6 +76,21 @@ def _get_agent_session_state_path() -> Path:
     if override and override.strip():
         return Path(override).expanduser()
     return get_log_dir() / "agent_sessions_state.json"
+
+
+def _get_agent_trace_log_dir() -> Path:
+    override = os.getenv("ATOPILE_AGENT_TRACE_LOG_DIR")
+    if override and override.strip():
+        return Path(override).expanduser()
+    return get_log_dir() / "agent_traces"
+
+
+def _build_agent_trace_log_path(*, session_id: str, run_id: str) -> Path:
+    safe_session = "".join(
+        ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in session_id
+    )
+    safe_run = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in run_id)
+    return _get_agent_trace_log_dir() / safe_session / f"{safe_run}.jsonl"
 
 
 def _get_max_persisted_history_entries() -> int:
@@ -282,6 +299,63 @@ def _should_log_run_progress() -> bool:
     return raw not in _PROGRESS_DISABLE_VALUES
 
 
+def _should_log_agent_traces() -> bool:
+    raw = os.getenv("ATOPILE_AGENT_LOG_TRACE_EVENTS", "1").strip().lower()
+    return raw not in _TRACE_DISABLE_VALUES
+
+
+def _append_trace_event(
+    *,
+    trace_log_path: Path,
+    session_id: str,
+    run_id: str,
+    project_root: str,
+    event: str,
+    payload: dict[str, Any],
+) -> None:
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "session_id": session_id,
+        "run_id": run_id,
+        "project_root": project_root,
+        "event": event,
+        "payload": payload,
+    }
+    try:
+        encoded = json.dumps(record, ensure_ascii=False, default=str)
+        with _trace_log_lock:
+            trace_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with trace_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(encoded + "\n")
+    except Exception:
+        log.exception("Failed to append agent trace event")
+
+
+def build_run_trace_callback(
+    *,
+    session_id: str,
+    run_id: str,
+    project_root: str,
+) -> tuple[TraceCallback | None, str | None]:
+    if not _should_log_agent_traces():
+        return None, None
+
+    trace_log_path = _build_agent_trace_log_path(session_id=session_id, run_id=run_id)
+
+    async def _trace(event: str, payload: dict[str, Any]) -> None:
+        await asyncio.to_thread(
+            _append_trace_event,
+            trace_log_path=trace_log_path,
+            session_id=session_id,
+            run_id=run_id,
+            project_root=project_root,
+            event=event,
+            payload=payload,
+        )
+
+    return _trace, str(trace_log_path)
+
+
 def _truncate_log_text(value: Any, *, max_chars: int = 240) -> str | None:
     if not isinstance(value, str):
         return None
@@ -378,6 +452,12 @@ def build_send_message_response(
     )
     tool_memory_view = mediator.get_tool_memory_view(session.tool_memory)
 
+    agent_messages = [
+        message
+        for message in getattr(result, "agent_messages", [])
+        if isinstance(message, dict)
+    ]
+
     response = SendMessageResponse(
         sessionId=session.session_id,
         assistantMessage=result.text,
@@ -390,11 +470,6 @@ def build_send_message_response(
         ],
         toolSuggestions=suggestions,
         toolMemory=tool_memory_view,
-        agentMessages=[
-            AgentPeerMessageResponse.model_validate(message)
-            for message in getattr(result, "agent_messages", [])
-            if isinstance(message, dict)
-        ],
     )
 
     log_session_event(
@@ -409,11 +484,9 @@ def build_send_message_response(
             "assistant_message": result.text,
             "model": result.model,
             "tool_trace_count": len(response.tool_traces),
-            "agent_message_count": len(response.agent_messages),
+            "agent_message_count": len(agent_messages),
             "tool_traces": [trace.model_dump() for trace in response.tool_traces],
-            "agent_messages": [
-                message.model_dump() for message in response.agent_messages
-            ],
+            "agent_messages": agent_messages,
             "last_response_id": session.last_response_id,
             "skill_state": session.skill_state,
             "context_metrics": getattr(result, "context_metrics", {}),
@@ -667,6 +740,24 @@ async def run_turn_in_background(
             message=message,
         )
 
+    trace_callback, trace_log_path = build_run_trace_callback(
+        session_id=session_id,
+        run_id=run_id,
+        project_root=run.project_root,
+    )
+    if trace_log_path:
+        log_session_event(
+            EVENT_RUN_PROGRESS,
+            {
+                "run_id": run_id,
+                "session_id": session_id,
+                "project_root": run.project_root,
+                "phase": "trace",
+                "status_text": "Tracing enabled",
+                "detail_text": trace_log_path,
+            },
+        )
+
     try:
         result = await orchestrator.run_turn(
             ctx=ctx,
@@ -679,6 +770,7 @@ async def run_turn_in_background(
             progress_callback=_emit_progress,
             consume_steering_messages=_consume_steering_messages,
             message_callback=_emit_message,
+            trace_callback=trace_callback,
         )
     except asyncio.CancelledError:
         with runs_lock:

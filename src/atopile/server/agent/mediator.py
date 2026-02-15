@@ -209,6 +209,34 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         typical_output="operations_applied, first_changed_line, bytes",
         keywords=["edit", "change", "modify", "fix code", "patch"],
     ),
+    "project_create_path": ToolDirectoryItem(
+        name="project_create_path",
+        category="edit",
+        purpose="Create allowed files (.ato/.md/fabll .py) and directories.",
+        tooltip=(
+            "Create files or folders in project scope with extension/path policy "
+            "enforcement."
+        ),
+        inputs=["path", "kind", "content", "overwrite", "parents"],
+        typical_output="path, kind, created, bytes, extension",
+        keywords=[
+            "create file",
+            "new file",
+            "create folder",
+            "mkdir",
+            "scaffold",
+            "bootstrap",
+        ],
+    ),
+    "project_move_path": ToolDirectoryItem(
+        name="project_move_path",
+        category="edit",
+        purpose="Move/rearrange project files/directories.",
+        tooltip="Move or rename a file/folder within project scope.",
+        inputs=["old_path", "new_path", "overwrite"],
+        typical_output="old_path, new_path, kind, overwrote",
+        keywords=["move file", "move folder", "rearrange", "rename path"],
+    ),
     "project_rename_path": ToolDirectoryItem(
         name="project_rename_path",
         category="edit",
@@ -1806,6 +1834,8 @@ if pytest is not None:
 
         assert "project_read_file" in names
         assert "datasheet_read" in names
+        assert "project_create_path" in names
+        assert "project_move_path" in names
         assert "project_rename_path" in names
         assert "project_delete_path" in names
         assert "build_logs_search" in names
