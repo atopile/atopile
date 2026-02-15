@@ -24,6 +24,16 @@ class CapacitorPolarized(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.CAPACITORS_POLARIZED,
+            params={
+                "capacitance": capacitance,
+                "max_voltage": max_voltage,
+            },
+        )
+    )
+
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )

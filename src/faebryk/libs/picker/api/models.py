@@ -209,12 +209,25 @@ class Component:
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
     ) -> dict[str, F.Literals.is_literal | None]:
-        def deserialize(k, v):
-            if v is None:
-                return None
-            return F.Literals.is_literal.deserialize(v, g=g, tg=tg)
-
-        return {k: deserialize(k, v) for k, v in self.attributes.items()}
+        out: dict[str, F.Literals.is_literal | None] = {}
+        for key, value in self.attributes.items():
+            if value is None:
+                out[key] = None
+                continue
+            if not isinstance(value, dict):
+                # Ignore non-literal payloads from backends that provide human-readable
+                # attribute metadata instead of serialized faebryk literals.
+                continue
+            try:
+                out[key] = F.Literals.is_literal.deserialize(value, g=g, tg=tg)
+            except Exception:
+                logger.debug(
+                    "Skipping unsupported serialized attribute literal %r for key %s",
+                    value,
+                    key,
+                    exc_info=True,
+                )
+        return out
 
     def attach(self, pickable_module: F.Pickable.is_pickable, qty: int = 1):
         module = pickable_module.get_pickable_node()

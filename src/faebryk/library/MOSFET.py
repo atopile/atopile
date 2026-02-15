@@ -44,6 +44,19 @@ class MOSFET(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.MOSFETS,
+            params={
+                "channel_type": channel_type,
+                "gate_source_threshold_voltage": gate_source_threshold_voltage,
+                "max_drain_source_voltage": max_drain_source_voltage,
+                "max_continuous_drain_current": max_continuous_drain_current,
+                "on_resistance": on_resistance,
+            },
+        )
+    )
+
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )

@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import sqlite3
 from pathlib import Path
 
 from .config import TransformConfig
-from .validate_snapshot import validate_snapshot
+from .validate_snapshot import (
+    _write_valid_detail_db,
+    _write_valid_fast_db,
+    validate_snapshot,
+)
 
 
 def publish_snapshot(
@@ -196,56 +199,8 @@ def _write_valid_snapshot(snapshot_dir: Path, *, partial: bool = False) -> None:
     fast_db = snapshot_dir / "fast.sqlite"
     detail_db = snapshot_dir / "detail.sqlite"
 
-    with sqlite3.connect(fast_db) as conn:
-        conn.executescript(
-            """
-            CREATE TABLE resistor_pick (
-                lcsc_id INTEGER PRIMARY KEY NOT NULL,
-                package TEXT NOT NULL,
-                stock INTEGER NOT NULL,
-                is_basic INTEGER NOT NULL,
-                is_preferred INTEGER NOT NULL,
-                resistance_ohm REAL NOT NULL,
-                resistance_min_ohm REAL NOT NULL,
-                resistance_max_ohm REAL NOT NULL,
-                tolerance_pct REAL,
-                max_power_w REAL,
-                max_voltage_v REAL,
-                tempco_ppm REAL
-            );
-            CREATE TABLE capacitor_pick (
-                lcsc_id INTEGER PRIMARY KEY NOT NULL,
-                package TEXT NOT NULL,
-                stock INTEGER NOT NULL,
-                is_basic INTEGER NOT NULL,
-                is_preferred INTEGER NOT NULL,
-                capacitance_f REAL NOT NULL,
-                capacitance_min_f REAL NOT NULL,
-                capacitance_max_f REAL NOT NULL,
-                tolerance_pct REAL,
-                max_voltage_v REAL,
-                tempco_code TEXT
-            );
-            CREATE INDEX resistor_pick_lookup_pkg_idx
-                ON resistor_pick(package, resistance_min_ohm, resistance_max_ohm);
-            CREATE INDEX resistor_pick_lookup_range_idx
-                ON resistor_pick(resistance_min_ohm, resistance_max_ohm);
-            CREATE INDEX capacitor_pick_lookup_pkg_idx
-                ON capacitor_pick(package, capacitance_min_f, capacitance_max_f);
-            CREATE INDEX capacitor_pick_lookup_range_idx
-                ON capacitor_pick(capacitance_min_f, capacitance_max_f);
-            """
-        )
-        conn.commit()
-
-    with sqlite3.connect(detail_db) as conn:
-        conn.executescript(
-            """
-            CREATE TABLE components_full (lcsc_id INTEGER PRIMARY KEY NOT NULL);
-            CREATE TABLE component_assets (lcsc_id INTEGER PRIMARY KEY NOT NULL);
-            """
-        )
-        conn.commit()
+    _write_valid_fast_db(fast_db)
+    _write_valid_detail_db(detail_db)
     metadata = {
         "snapshot_name": snapshot_dir.name,
         "is_partial": partial,

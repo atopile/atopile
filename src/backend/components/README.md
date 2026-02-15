@@ -70,9 +70,15 @@ Notes:
 Snapshot outputs:
 
 - `fast.sqlite`
-  - `resistor_pick` (`resistance_ohm`, `tolerance_pct`, `max_power_w`, `max_voltage_v`, `stock`, flags, package)
-  - `capacitor_pick` (`capacitance_f`, `tolerance_pct`, `max_voltage_v`, `tempco_code`, `stock`, flags, package)
-  - range-friendly composite indexes for parameterized lookups
+  - `resistor_pick`
+  - `capacitor_pick`
+  - `capacitor_polarized_pick`
+  - `inductor_pick`
+  - `diode_pick`
+  - `led_pick`
+  - `bjt_pick`
+  - `mosfet_pick`
+  - prefiltered to pickable rows only (`stock > 0`, valid package, required params present)
 - `detail.sqlite`
   - `components_full` (full metadata + normalized numeric fields)
   - `component_assets` (datasheet/footprint/3D reference fields)
@@ -109,10 +115,41 @@ uv run python -m backend.components.serve.lookup_bench \
   --iterations 50000 \
   --warmup 5000
 
-# Benchmark against a real snapshot fast.sqlite
+# Benchmark against a real snapshot fast.sqlite (legacy SQLite baseline)
 uv run python -m backend.components.serve.lookup_bench \
   --db /var/cache/atopile/components/current/fast.sqlite \
   --iterations 50000 \
   --warmup 5000 \
   --explain
+```
+
+## Stage 3 Fast Engine
+
+Stage 3 serve defaults to SQLite fast lookup (`ATOPILE_COMPONENTS_FAST_ENGINE=sqlite`),
+reading `fast.sqlite` + `detail.sqlite` from the active snapshot.
+
+Zig lookup remains available for resistor/capacitor-only benchmarking
+(`ATOPILE_COMPONENTS_FAST_ENGINE=zig`) using TSV inputs.
+
+Run the API:
+
+```bash
+uv run python -m backend.components.serve.main
+```
+
+Optional overrides:
+
+```bash
+export ATOPILE_COMPONENTS_FAST_ENGINE=sqlite
+export ATOPILE_COMPONENTS_FAST_DB_FILENAME=fast.sqlite
+```
+
+Compare Zig vs SQLite on the same source rows (offline benchmark only):
+
+```bash
+uv run python -m backend.components.serve.lookup_bench_compare \
+  --db /Users/narayanpowderly/projects/atopile/src/backend/components/.cache/jlcparts_playground/snapshots/current/fast.sqlite \
+  --iterations 3000 \
+  --warmup 300 \
+  --json-out /tmp/lookup-compare.json
 ```

@@ -7,6 +7,7 @@ import unittest
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from shutil import copy2
 
 import pytest
 from dataclasses_json import (
@@ -520,6 +521,8 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     data = get_raw(lcsc_id)
     part = EasyEDAPart.from_api_response(data, download_model=False)
 
+    _seed_prefetched_step_model(lifecycle=lifecycle, part=part)
+
     if get_model and not part._pre_model:
         logger.warning(f"No 3D model for '{lcsc_id} ({part.footprint.base_name})'")
 
@@ -527,6 +530,29 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
         part.load_model()
 
     return lifecycle.easyeda2kicad.ingest_part(part)
+
+
+def _seed_prefetched_step_model(*, lifecycle, part: EasyEDAPart) -> None:
+    """
+    If stage-3 full responses were already unpacked locally, seed the expected
+    easyeda2kicad model cache path so attach() can avoid an extra EasyEDA model fetch.
+    """
+    if part._pre_model is None and part.model is None:
+        return
+    cache_root = Gcfg.project.paths.build / "cache" / "components_api"
+    part_cache_dir = cache_root / part.identifier.upper()
+    candidates = [part_cache_dir / "model.step", *sorted(part_cache_dir.glob("*.step"))]
+    source = next((path for path in candidates if path.exists()), None)
+    if source is None:
+        return
+
+    destination = lifecycle.easyeda2kicad.get_model_path(
+        part.identifier, part.model_name
+    )
+    if destination.exists():
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    copy2(source, destination)
 
 
 def check_attachable(component: fabll.Node):

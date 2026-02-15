@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from .bundle_builder import TarZstdBundleBuilder
 from .detail_store_sqlite import SQLiteDetailStore
 from .fast_lookup_sqlite import SQLiteFastLookupStore
+from .fast_lookup_zig import ZigFastLookupStore
 from .interfaces import SnapshotNotFoundError
 from .routes import ServeServices, router
 
@@ -21,6 +22,9 @@ class ServeConfig:
     cache_dir: Path
     current_snapshot_name: str = "current"
     fast_db_filename: str = "fast.sqlite"
+    resistor_tsv_filename: str = "resistor_pick.tsv"
+    capacitor_tsv_filename: str = "capacitor_pick.tsv"
+    fast_engine: str = "sqlite"
     detail_db_filename: str = "detail.sqlite"
     host: str = "127.0.0.1"
     port: int = 8079
@@ -39,6 +43,15 @@ class ServeConfig:
                 "ATOPILE_COMPONENTS_FAST_DB_FILENAME",
                 "fast.sqlite",
             ),
+            resistor_tsv_filename=os.getenv(
+                "ATOPILE_COMPONENTS_RESISTOR_TSV_FILENAME",
+                "resistor_pick.tsv",
+            ),
+            capacitor_tsv_filename=os.getenv(
+                "ATOPILE_COMPONENTS_CAPACITOR_TSV_FILENAME",
+                "capacitor_pick.tsv",
+            ),
+            fast_engine=os.getenv("ATOPILE_COMPONENTS_FAST_ENGINE", "sqlite").strip(),
             detail_db_filename=os.getenv(
                 "ATOPILE_COMPONENTS_DETAIL_DB_FILENAME",
                 "detail.sqlite",
@@ -56,6 +69,14 @@ class ServeConfig:
         return self.current_snapshot_path / self.fast_db_filename
 
     @property
+    def resistor_tsv_path(self) -> Path:
+        return self.current_snapshot_path / self.resistor_tsv_filename
+
+    @property
+    def capacitor_tsv_path(self) -> Path:
+        return self.current_snapshot_path / self.capacitor_tsv_filename
+
+    @property
     def detail_db_path(self) -> Path:
         return self.current_snapshot_path / self.detail_db_filename
 
@@ -65,12 +86,34 @@ def build_services(config: ServeConfig) -> ServeServices:
         raise SnapshotNotFoundError(
             f"snapshot path not found: {config.current_snapshot_path}"
         )
-    if not config.fast_db_path.exists():
-        raise SnapshotNotFoundError(f"fast DB not found: {config.fast_db_path}")
     if not config.detail_db_path.exists():
         raise SnapshotNotFoundError(f"detail DB not found: {config.detail_db_path}")
 
-    fast_lookup = SQLiteFastLookupStore(config.fast_db_path)
+    engine = config.fast_engine.lower()
+    if engine == "sqlite":
+        if not config.fast_db_path.exists():
+            raise SnapshotNotFoundError(f"fast DB not found: {config.fast_db_path}")
+        fast_lookup = SQLiteFastLookupStore(config.fast_db_path)
+    elif engine == "zig":
+        if not config.resistor_tsv_path.exists():
+            raise SnapshotNotFoundError(
+                f"resistor TSV not found: {config.resistor_tsv_path}"
+            )
+        if not config.capacitor_tsv_path.exists():
+            raise SnapshotNotFoundError(
+                f"capacitor TSV not found: {config.capacitor_tsv_path}"
+            )
+        fast_lookup = ZigFastLookupStore(
+            resistor_tsv_path=config.resistor_tsv_path,
+            capacitor_tsv_path=config.capacitor_tsv_path,
+            cache_root=config.cache_dir,
+        )
+    else:
+        raise SnapshotNotFoundError(
+            f"unsupported fast engine: {config.fast_engine!r} "
+            "(expected 'sqlite' or 'zig')"
+        )
+
     detail_store = SQLiteDetailStore(config.detail_db_path)
     bundle_store = TarZstdBundleBuilder(
         detail_store=detail_store, cache_root=config.cache_dir
@@ -98,6 +141,9 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
             "status": "ok",
             "snapshot": str(serve_config.current_snapshot_path),
             "fast_db": str(serve_config.fast_db_path),
+            "fast_engine": serve_config.fast_engine,
+            "resistor_tsv": str(serve_config.resistor_tsv_path),
+            "capacitor_tsv": str(serve_config.capacitor_tsv_path),
             "detail_db": str(serve_config.detail_db_path),
         }
 

@@ -464,9 +464,13 @@ def explain_query_plans(db_path: Path, cases: list[QueryCase]) -> dict[str, list
         )
         with store._connect() as conn:  # noqa: SLF001 - intentional for tuning tool
             columns = store._table_columns(conn, table)  # noqa: SLF001
-            where, params = store._build_filters(case.query, columns)  # noqa: SLF001
+            where, params = store._build_filters(  # noqa: SLF001
+                component_type=case.component_type,
+                query=case.query,
+                columns=columns,
+            )
             where_sql = f" where {' and '.join(where)}" if where else ""
-            order_sql = store._build_order_sql(columns)  # noqa: SLF001
+            order_sql = store._build_order_sql(table, columns)  # noqa: SLF001
             sql = (
                 "EXPLAIN QUERY PLAN "
                 f"select * from {_quote_ident(table)}{where_sql}{order_sql} limit ?"

@@ -6,27 +6,150 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-ComponentType = Literal["resistor", "capacitor"]
+ComponentType = Literal[
+    "resistor",
+    "capacitor",
+    "capacitor_polarized",
+    "inductor",
+    "diode",
+    "led",
+    "bjt",
+    "mosfet",
+]
 
 RESISTOR_SUBCATEGORIES: tuple[str, ...] = (
     "Current Sense Resistors / Shunt Resistors",
     "Current Sense Resistors/Shunt Resistors",
     "Through Hole Resistors",
     "Chip Resistor - Surface Mount",
+    "Low Resistors & Current Sense Resistors - Surface Mount",
+    "Low Resistors & Current Sense Resistors (TH)",
 )
 
 CAPACITOR_SUBCATEGORIES: tuple[str, ...] = (
     "Film Capacitors",
     "Multilayer Ceramic Capacitors MLCC - Leaded",
     "Through Hole Ceramic Capacitors",
-    "Aluminum Electrolytic Capacitors - Leaded",
     "Multilayer Ceramic Capacitors MLCC - SMD/SMT",
+    "Ceramic Disc Capacitors",
+    "Polypropylene Film Capacitors (CBB)",
+    "Suppression Capacitors",
+    "Safety Capacitors",
+    "Mica And PTFE Capacitors",
+    "Silicon Capacitors",
+    "Paper Dielectric Capacitors",
+    "CBB Capacitors(polypropylene film)",
+    "CBB Capacitors(Polypropylene Film)",
+    "Mylar Capacitor",
+)
+
+CAPACITOR_POLARIZED_SUBCATEGORIES: tuple[str, ...] = (
+    "Aluminum Electrolytic Capacitors - Leaded",
     "Polymer Aluminum Capacitors",
     "Aluminum Electrolytic Capacitors - SMD",
-    "Ceramic Disc Capacitors",
     "Horn-Type Electrolytic Capacitors",
-    "Polypropylene Film Capacitors (CBB)",
+    "horn-type electrolytic capacitor",
     "Tantalum Capacitors",
+    "Solid Capacitors",
+    "Solid Polymer Electrolytic Capacitor",
+    "Niobium Oxide Capacitors",
+    "Hybrid Aluminum Electrolytic Capacitors",
+    "Aluminum Electrolytic Capacitors (Can - Screw Terminals)",
+)
+
+_INDUCTOR_CATEGORY_SUBCATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Inductors & Chokes & Transformers",
+        (
+            "Ferrite Beads",
+            "General Inductors (TH)",
+            "HF Inductors",
+            "Inductors (SMD)",
+            "Power Inductors",
+        ),
+    ),
+    (
+        "Inductors, Coils, Chokes",
+        (
+            "Color Ring Inductors / Through Hole Inductors",
+            "Color Ring Inductors/Through Hole Inductors",
+            "Inductors (SMD)",
+            "Power Inductors",
+            "Through Hole Inductors",
+            "Adjustable Inductors",
+            "HF Inductors",
+        ),
+    ),
+    (
+        "Inductors/Coils/Transformers",
+        (
+            "Color Ring Inductors/Through Hole Inductors",
+            "HF Inductors",
+            "Inductors (SMD)",
+            "Power Inductors",
+            "Through Hole Inductors",
+            "Adjustable Inductors",
+            "Color Ring Inductors / Through Hole Inductors",
+        ),
+    ),
+    ("inductors/coils/transformers", ("Inductors (SMD)",)),
+)
+
+DIODE_SUBCATEGORIES: tuple[str, ...] = (
+    "Diodes - General Purpose",
+    "Schottky Barrier Diodes (SBD)",
+    "Schottky Diodes",
+    "Switching Diode",
+    "Switching Diodes",
+    "Diodes - Fast Recovery Rectifiers",
+    "Fast Recovery / High Efficiency Diodes",
+    "Fast Recovery/High Efficiency Diode",
+    "High Effic Rectifier",
+    "Bridge Rectifiers",
+    "Super Barrier Rectifier (SBR)",
+    "Super Barrier Rectifiers (SBR)",
+    "Super Barrier Rectifier（SBR）",
+    "Diodes - Rectifiers - Fast Recovery",
+    "Diodes Rectifiers Fast Recovery",
+)
+
+LED_SUBCATEGORIES: tuple[str, ...] = (
+    "Light Emitting Diodes (LED)",
+    "LED Indication - Discrete",
+    "Infrared (IR) LEDs",
+    "Infrared LED Emitters",
+    "Ultra Violet LEDs",
+    "Ultraviolet LEDs (UVLED)",
+    "RGB LEDs",
+    "RGB LEDs(Built-In IC)",
+)
+
+LED_CATEGORIES: tuple[str, ...] = (
+    "Photoelectric Devices",
+    "Optoelectronics",
+    "Optocoupler/LED/Digital Tube/Photoelectric Device",
+    "Optocouplers & LEDs & Infrared",
+    "LED/Photoelectric Devices",
+    "optoelectronics",
+)
+
+TRANSISTOR_CATEGORIES: tuple[str, ...] = (
+    "Triode/MOS Tube/Transistor",
+    "Transistors",
+    "Transistors/Thyristors",
+)
+
+BJT_SUBCATEGORIES: tuple[str, ...] = (
+    "Bipolar Transistors - BJT",
+    "Bipolar (BJT)",
+    "Transistors (NPN/PNP)",
+)
+
+MOSFET_SUBCATEGORIES: tuple[str, ...] = (
+    "MOSFETs",
+    "MOSFET",
+    "SiC MOSFETs",
+    "Silicon Carbide Field Effect Transistor (MOSFET)",
 )
 
 _SI_PREFIX: dict[str, float] = {
@@ -46,9 +169,11 @@ _SI_PREFIX: dict[str, float] = {
 }
 
 _SI_VALUE_RE = re.compile(
-    r"^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+    r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
     r"([yzafpnumkMGT]?)"
-    r"[A-Za-zΩΩ°℃%/\-\(\)]*$"
+)
+_SI_FRACTION_RE = re.compile(
+    r"^([+-]?\d+(?:\.\d+)?)/([+-]?\d+(?:\.\d+)?)\s*([yzafpnumkMGT]?)"
 )
 _TOLERANCE_SINGLE_RE = re.compile(r"^[±]?\s*([+-]?\d+(?:\.\d+)?)\s*%$")
 _TOLERANCE_RANGE_RE = re.compile(
@@ -121,6 +246,27 @@ class NormalizedComponent:
     model_3d_path: str | None
     easyeda_model_uuid: str | None
     footprint_name: str | None
+    inductance_h: float | None = None
+    inductance_min_h: float | None = None
+    inductance_max_h: float | None = None
+    max_current_a: float | None = None
+    dc_resistance_ohm: float | None = None
+    saturation_current_a: float | None = None
+    self_resonant_frequency_hz: float | None = None
+    forward_voltage_v: float | None = None
+    reverse_working_voltage_v: float | None = None
+    reverse_leakage_current_a: float | None = None
+    led_color_code: str | None = None
+    max_brightness_cd: float | None = None
+    bjt_doping_type: str | None = None
+    max_collector_emitter_voltage_v: float | None = None
+    max_collector_current_a: float | None = None
+    dc_current_gain_hfe: float | None = None
+    mosfet_channel_type: str | None = None
+    gate_source_threshold_voltage_v: float | None = None
+    max_drain_source_voltage_v: float | None = None
+    max_continuous_drain_current_a: float | None = None
+    on_resistance_ohm: float | None = None
 
 
 class ComponentSink(Protocol):
@@ -132,16 +278,57 @@ class ComponentSink(Protocol):
 
 
 def category_to_component_type(category: str, subcategory: str) -> ComponentType | None:
-    if category == "Resistors" and subcategory in RESISTOR_SUBCATEGORIES:
+    category_norm = category.strip().casefold()
+    subcategory_norm = subcategory.strip().casefold()
+    if category_norm == "resistors" and subcategory_norm in {
+        value.casefold() for value in RESISTOR_SUBCATEGORIES
+    }:
         return "resistor"
-    if category == "Capacitors" and subcategory in CAPACITOR_SUBCATEGORIES:
+    if category_norm == "capacitors" and subcategory_norm in {
+        value.casefold() for value in CAPACITOR_POLARIZED_SUBCATEGORIES
+    }:
+        return "capacitor_polarized"
+    if category_norm == "capacitors" and subcategory_norm in {
+        value.casefold() for value in CAPACITOR_SUBCATEGORIES
+    }:
         return "capacitor"
+    for inductor_category, inductor_subcategories in _INDUCTOR_CATEGORY_SUBCATEGORIES:
+        if category_norm == inductor_category.casefold() and subcategory_norm in {
+            value.casefold() for value in inductor_subcategories
+        }:
+            return "inductor"
+    if category_norm == "diodes" and subcategory_norm in {
+        value.casefold() for value in DIODE_SUBCATEGORIES
+    }:
+        return "diode"
+    if category_norm in {
+        value.casefold() for value in LED_CATEGORIES
+    } and subcategory_norm in {value.casefold() for value in LED_SUBCATEGORIES}:
+        return "led"
+    if category_norm in {
+        value.casefold() for value in TRANSISTOR_CATEGORIES
+    } and subcategory_norm in {value.casefold() for value in BJT_SUBCATEGORIES}:
+        return "bjt"
+    if category_norm in {
+        value.casefold() for value in TRANSISTOR_CATEGORIES
+    } and subcategory_norm in {value.casefold() for value in MOSFET_SUBCATEGORIES}:
+        return "mosfet"
     return None
 
 
 def normalize_component(component: SourceComponent) -> NormalizedComponent:
     attributes = _extract_attributes(component.extra_json)
-    tolerance_pct = parse_tolerance_percent(component.tolerance_raw)
+    attributes_folded = {key.casefold(): value for key, value in attributes.items()}
+
+    def _attr(*keys: str) -> str | None:
+        for key in keys:
+            value = attributes_folded.get(key.casefold())
+            if value:
+                return value
+        return None
+
+    tolerance_raw = component.tolerance_raw or _attr("Tolerance")
+    tolerance_pct = parse_tolerance_percent(tolerance_raw)
 
     resistance_ohm: float | None = None
     resistance_min_ohm: float | None = None
@@ -153,24 +340,188 @@ def normalize_component(component: SourceComponent) -> NormalizedComponent:
     max_voltage_v: float | None = None
     resistor_tempco_ppm: float | None = None
     capacitor_tempco_code: str | None = None
+    inductance_h: float | None = None
+    inductance_min_h: float | None = None
+    inductance_max_h: float | None = None
+    max_current_a: float | None = None
+    dc_resistance_ohm: float | None = None
+    saturation_current_a: float | None = None
+    self_resonant_frequency_hz: float | None = None
+    forward_voltage_v: float | None = None
+    reverse_working_voltage_v: float | None = None
+    reverse_leakage_current_a: float | None = None
+    led_color_code: str | None = None
+    max_brightness_cd: float | None = None
+    bjt_doping_type: str | None = None
+    max_collector_emitter_voltage_v: float | None = None
+    max_collector_current_a: float | None = None
+    dc_current_gain_hfe: float | None = None
+    mosfet_channel_type: str | None = None
+    gate_source_threshold_voltage_v: float | None = None
+    max_drain_source_voltage_v: float | None = None
+    max_continuous_drain_current_a: float | None = None
+    on_resistance_ohm: float | None = None
 
     if component.component_type == "resistor":
-        resistance_ohm = parse_si_value(component.resistance_raw)
+        resistance_ohm = parse_si_value(component.resistance_raw or _attr("Resistance"))
         resistance_min_ohm, resistance_max_ohm = tolerance_bounds(
             nominal=resistance_ohm,
             tolerance_pct=tolerance_pct,
         )
-        max_power_w = parse_si_value(component.power_raw)
-        max_voltage_v = parse_si_value(component.resistor_voltage_raw)
-        resistor_tempco_ppm = parse_tempco_ppm(component.tempco_raw)
-    elif component.component_type == "capacitor":
-        capacitance_f = parse_si_value(component.capacitance_raw)
+        max_power_w = parse_si_value(
+            component.power_raw or _attr("Power(Watts)", "Power")
+        )
+        max_voltage_v = parse_si_value(
+            component.resistor_voltage_raw
+            or _attr(
+                "Overload Voltage (Max)",
+                "Rated Voltage",
+                "Voltage Rating",
+                "Voltage Rated",
+            )
+        )
+        resistor_tempco_ppm = parse_tempco_ppm(
+            component.tempco_raw or _attr("Temperature Coefficient")
+        )
+    elif component.component_type in {"capacitor", "capacitor_polarized"}:
+        capacitance_f = parse_si_value(
+            component.capacitance_raw or _attr("Capacitance")
+        )
         capacitance_min_f, capacitance_max_f = tolerance_bounds(
             nominal=capacitance_f,
             tolerance_pct=tolerance_pct,
         )
-        max_voltage_v = parse_si_value(component.capacitor_voltage_raw)
-        capacitor_tempco_code = normalize_tempco_code(component.tempco_raw)
+        max_voltage_v = parse_si_value(
+            component.capacitor_voltage_raw
+            or _attr("Voltage Rated", "Rated Voltage", "Voltage Rating")
+        )
+        capacitor_tempco_code = normalize_tempco_code(
+            component.tempco_raw or _attr("Temperature Coefficient")
+        )
+    elif component.component_type == "inductor":
+        inductance_h = parse_si_value(_attr("Inductance"))
+        inductance_min_h, inductance_max_h = tolerance_bounds(
+            nominal=inductance_h,
+            tolerance_pct=tolerance_pct,
+        )
+        max_current_a = parse_si_value(_attr("Rated Current", "Current Rating"))
+        dc_resistance_ohm = parse_si_value(
+            _attr("DC Resistance (DCR)", "DC Resistance", "DC Resistance(DCR)")
+        )
+        saturation_current_a = parse_si_value(
+            _attr("Current - Saturation (Isat)", "Saturation Current (Isat)")
+        )
+        self_resonant_frequency_hz = parse_si_value(
+            _attr("Frequency - Self Resonant", "Self Resonant Frequency")
+        )
+    elif component.component_type == "diode":
+        forward_voltage_v = parse_si_value(
+            _attr(
+                "Forward Voltage",
+                "Forward Voltage (Vf@If)",
+                "Voltage - Forward(Vf@If)",
+                "Forward Voltage (Vf) @ If",
+            )
+        )
+        reverse_working_voltage_v = parse_si_value(
+            _attr(
+                "Reverse Voltage (Vr)",
+                "Voltage - DC Reverse(Vr)",
+                "Reverse Voltage",
+                "Reverse Stand-Off Voltage (Vrwm)",
+            )
+        )
+        max_current_a = parse_si_value(
+            _attr(
+                "Average Rectified Current (Io)",
+                "Rectified Current",
+                "Current - Rectified",
+                "Forward Current",
+            )
+        )
+        reverse_leakage_current_a = parse_si_value(
+            _attr(
+                "Reverse Leakage Current (Ir)",
+                "Reverse Leakage Current",
+                "Ir - Reverse Current",
+            )
+        )
+    elif component.component_type == "led":
+        led_color_code = normalize_led_color(
+            _attr("Emitted Color", "Color", "Emitting Color")
+        )
+        forward_voltage_v = parse_si_value(
+            _attr(
+                "Forward Voltage",
+                "Forward Voltage (VF)",
+                "Forward Voltage (Vf@If)",
+            )
+        )
+        max_current_a = parse_si_value(_attr("Forward Current", "Current - Forward"))
+        max_brightness_cd = parse_si_value(
+            _attr("Luminous Intensity", "Radiant Intensity")
+        )
+    elif component.component_type == "bjt":
+        bjt_doping_type = normalize_bjt_doping_type(
+            _attr("Transistor Type", "Transistor type", "Type", "type")
+        )
+        max_collector_emitter_voltage_v = parse_si_value(
+            _attr(
+                "Collector-Emitter Breakdown Voltage (Vceo)",
+                "Collector Emitter Voltage (Vceo)",
+                "Voltage - Collector Emitter Breakdown (Max)",
+            )
+        )
+        max_collector_current_a = parse_si_value(
+            _attr(
+                "Collector Current (Ic)",
+                "Current - Collector(Ic)",
+                "Collector Current",
+            )
+        )
+        max_power_w = parse_si_value(
+            _attr(
+                "Power Dissipation (Pd)",
+                "Pd - Power Dissipation",
+                "Power Dissipation",
+            )
+        )
+        dc_current_gain_hfe = parse_si_value(
+            _attr(
+                "DC Current Gain (hFE@Ic,Vce)",
+                "DC Current Gain (hFE)",
+                "DC Current Gain",
+                "hFE",
+            )
+        )
+    elif component.component_type == "mosfet":
+        mosfet_channel_type = normalize_mosfet_channel_type(
+            _attr("Type", "Channel Type")
+        )
+        gate_source_threshold_voltage_v = parse_si_value(
+            _attr(
+                "Gate Threshold Voltage (Vgs(th)@Id)",
+                "Gate Threshold Voltage (Vgs(th))",
+                "Vgs(th)",
+            )
+        )
+        max_drain_source_voltage_v = parse_si_value(
+            _attr("Drain Source Voltage (Vdss)", "Vdss")
+        )
+        max_continuous_drain_current_a = parse_si_value(
+            _attr(
+                "Continuous Drain Current (Id)",
+                "Drain Current (Id)",
+                "Current - Continuous Drain (Id)",
+            )
+        )
+        on_resistance_ohm = parse_si_value(
+            _attr(
+                "Drain Source On Resistance (RDS(on)@Vgs,Id)",
+                "Drain Source On Resistance (Rds(on))",
+                "RDS(on)",
+            )
+        )
 
     return NormalizedComponent(
         lcsc_id=component.lcsc_id,
@@ -208,6 +559,27 @@ def normalize_component(component: SourceComponent) -> NormalizedComponent:
         model_3d_path=component.model_3d_path,
         easyeda_model_uuid=component.easyeda_model_uuid,
         footprint_name=component.footprint_name,
+        inductance_h=inductance_h,
+        inductance_min_h=inductance_min_h,
+        inductance_max_h=inductance_max_h,
+        max_current_a=max_current_a,
+        dc_resistance_ohm=dc_resistance_ohm,
+        saturation_current_a=saturation_current_a,
+        self_resonant_frequency_hz=self_resonant_frequency_hz,
+        forward_voltage_v=forward_voltage_v,
+        reverse_working_voltage_v=reverse_working_voltage_v,
+        reverse_leakage_current_a=reverse_leakage_current_a,
+        led_color_code=led_color_code,
+        max_brightness_cd=max_brightness_cd,
+        bjt_doping_type=bjt_doping_type,
+        max_collector_emitter_voltage_v=max_collector_emitter_voltage_v,
+        max_collector_current_a=max_collector_current_a,
+        dc_current_gain_hfe=dc_current_gain_hfe,
+        mosfet_channel_type=mosfet_channel_type,
+        gate_source_threshold_voltage_v=gate_source_threshold_voltage_v,
+        max_drain_source_voltage_v=max_drain_source_voltage_v,
+        max_continuous_drain_current_a=max_continuous_drain_current_a,
+        on_resistance_ohm=on_resistance_ohm,
     )
 
 
@@ -221,8 +593,9 @@ def parse_si_value(raw: str | None) -> float | None:
     parts = _split_multi_value_tokens(stripped)
     parsed_values: list[float] = []
     for part in parts:
+        candidate = part.split("@", 1)[0]
         normalized = (
-            part.strip()
+            candidate.strip()
             .replace(" ", "")
             .replace(",", "")
             .replace("μ", "u")
@@ -232,7 +605,16 @@ def parse_si_value(raw: str | None) -> float | None:
         )
         if not normalized:
             continue
-        match = _SI_VALUE_RE.match(normalized)
+        fraction_match = _SI_FRACTION_RE.match(normalized)
+        if fraction_match:
+            numerator = float(fraction_match.group(1))
+            denominator = float(fraction_match.group(2))
+            if denominator != 0:
+                prefix = fraction_match.group(3)
+                multiplier = _SI_PREFIX.get(prefix, 1.0)
+                parsed_values.append((numerator / denominator) * multiplier)
+                continue
+        match = _SI_VALUE_RE.search(normalized)
         if not match:
             continue
         magnitude = float(match.group(1))
@@ -311,7 +693,7 @@ def tolerance_bounds(
 
 
 def _split_multi_value_tokens(raw: str) -> list[str]:
-    parts = re.split(r"[;~]", raw)
+    parts = re.split(r"[;~|]", raw)
     if len(parts) == 1:
         return [raw]
     return [part for part in parts if part.strip()]
@@ -338,6 +720,101 @@ def _extract_attributes(extra_json: str | None) -> dict[str, str]:
     return result
 
 
+def normalize_led_color(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped or stripped in {"-", "null"}:
+        return None
+    compact = re.sub(r"[^a-z0-9]+", "", stripped.lower())
+    if compact in {"rgb", "multicolor", "colorful"}:
+        return None
+    if "warmwhite" in compact:
+        return "WARM_WHITE"
+    if "coldwhite" in compact:
+        return "COLD_WHITE"
+    if "naturalwhite" in compact or "neutralwhite" in compact:
+        return "NATURAL_WHITE"
+    if "infrared" in compact or compact in {"ir"}:
+        return "INFRA_RED"
+    if "ultraviolet" in compact or compact in {"uv"}:
+        return "ULTRA_VIOLET"
+    if "emerald" in compact:
+        return "EMERALD"
+    if "amber" in compact:
+        return "AMBER"
+    if "magenta" in compact:
+        return "MAGENTA"
+    if "violet" in compact:
+        return "VIOLET"
+    if "lime" in compact:
+        return "LIME"
+    if "cyan" in compact:
+        return "CYAN"
+    if "purple" in compact:
+        return "PURPLE"
+    if "orange" in compact:
+        return "ORANGE"
+    if "yellow" in compact:
+        return "YELLOW"
+    if "green" in compact:
+        return "GREEN"
+    if "blue" in compact:
+        return "BLUE"
+    if "red" in compact:
+        return "RED"
+    if "white" in compact:
+        return "WHITE"
+    if "pink" in compact:
+        return "PINK"
+    return None
+
+
+def normalize_bjt_doping_type(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    normalized = raw.strip().upper()
+    if not normalized:
+        return None
+    has_npn = "NPN" in normalized
+    has_pnp = "PNP" in normalized
+    if has_npn and has_pnp:
+        return None
+    if has_npn:
+        return "NPN"
+    if has_pnp:
+        return "PNP"
+    return None
+
+
+def normalize_mosfet_channel_type(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if not normalized:
+        return None
+    compact = re.sub(r"[^a-z0-9+&]", "", normalized)
+    has_n = (
+        "nchannel" in compact
+        or compact in {"n", "nmos"}
+        or "n-channel" in normalized
+        or "n channel" in normalized
+    )
+    has_p = (
+        "pchannel" in compact
+        or compact in {"p", "pmos"}
+        or "p-channel" in normalized
+        or "p channel" in normalized
+    )
+    if has_n and has_p:
+        return None
+    if has_n:
+        return "N_CHANNEL"
+    if has_p:
+        return "P_CHANNEL"
+    return None
+
+
 def normalize_components(
     source_components: Iterable[SourceComponent],
 ) -> list[NormalizedComponent]:
@@ -348,6 +825,8 @@ def test_parse_si_value() -> None:
     assert parse_si_value("10kΩ") == 10_000.0
     assert parse_si_value("62.5mW") == 0.0625
     assert parse_si_value("1.2kV;700V") == 700.0
+    assert parse_si_value("1.5Ω@10V,500mA") == 1.5
+    assert parse_si_value("1/16W") == 0.0625
     assert parse_si_value("-") is None
     assert parse_si_value(None) is None
 
@@ -374,8 +853,33 @@ def test_normalize_tempco_and_category() -> None:
         == "resistor"
     )
     assert (
-        category_to_component_type("Capacitors", "Tantalum Capacitors") == "capacitor"
+        category_to_component_type("Capacitors", "Tantalum Capacitors")
+        == "capacitor_polarized"
     )
+    assert (
+        category_to_component_type(
+            "Capacitors",
+            "Aluminum Electrolytic Capacitors - SMD",
+        )
+        == "capacitor_polarized"
+    )
+    assert (
+        category_to_component_type("Inductors/Coils/Transformers", "Power Inductors")
+        == "inductor"
+    )
+    assert category_to_component_type("Diodes", "Switching Diode") == "diode"
+    assert (
+        category_to_component_type("Optoelectronics", "LED Indication - Discrete")
+        == "led"
+    )
+    assert (
+        category_to_component_type(
+            "Triode/MOS Tube/Transistor",
+            "Bipolar Transistors - BJT",
+        )
+        == "bjt"
+    )
+    assert category_to_component_type("Transistors/Thyristors", "MOSFETs") == "mosfet"
     assert category_to_component_type("Resistors", "Resistor Networks & Arrays") is None
 
 
@@ -415,3 +919,56 @@ def test_normalize_component_resistor() -> None:
     assert normalized.max_power_w == 0.0625
     assert normalized.max_voltage_v == 50.0
     assert normalized.resistor_tempco_ppm == 100.0
+
+
+def test_normalize_component_diode_and_channel_enums() -> None:
+    source = SourceComponent(
+        lcsc_id=777,
+        component_type="diode",
+        category="Diodes",
+        subcategory="Switching Diode",
+        manufacturer_name="MFR",
+        part_number="D1",
+        package="SOD-123",
+        description="desc",
+        is_basic=False,
+        is_preferred=False,
+        stock=10,
+        datasheet_url=None,
+        price_json="[]",
+        extra_json=json.dumps(
+            {
+                "attributes": {
+                    "Forward Voltage (Vf@If)": "1.25V@150mA",
+                    "Reverse Voltage (Vr)": "100V",
+                    "Average Rectified Current (Io)": "300mA",
+                    "Reverse Leakage Current (Ir)": "2uA",
+                }
+            }
+        ),
+        resistance_raw=None,
+        tolerance_raw=None,
+        power_raw=None,
+        resistor_voltage_raw=None,
+        tempco_raw=None,
+        capacitance_raw=None,
+        capacitor_voltage_raw=None,
+        data_manual_url=None,
+        model_3d_path=None,
+        easyeda_model_uuid=None,
+        footprint_name=None,
+    )
+    normalized = normalize_component(source)
+    assert normalized.forward_voltage_v == 1.25
+    assert normalized.reverse_working_voltage_v == 100.0
+    assert normalized.max_current_a == 0.3
+    assert normalized.reverse_leakage_current_a == 2e-06
+
+    assert normalize_bjt_doping_type("NPN") == "NPN"
+    assert normalize_bjt_doping_type("PNP") == "PNP"
+    assert normalize_bjt_doping_type("NPN/PNP") is None
+    assert normalize_mosfet_channel_type("1 Piece N-Channel") == "N_CHANNEL"
+    assert normalize_mosfet_channel_type("P channel") == "P_CHANNEL"
+    assert normalize_mosfet_channel_type("N-Channel + P-Channel") is None
+    assert normalize_led_color("Warm White") == "WARM_WHITE"
+    assert normalize_led_color("Ultra Violet") == "ULTRA_VIOLET"

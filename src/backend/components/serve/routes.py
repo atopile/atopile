@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 
 from .interfaces import (
+    AssetLoadError,
     BundleStore,
     ComponentType,
     DetailStore,
@@ -52,17 +53,24 @@ async def query_component_parameters(
     services: ServeServices = Depends(get_services),
 ) -> ParametersQueryResponse:
     query = payload.to_domain_query()
+    handler_by_type = {
+        ComponentType.RESISTOR: services.fast_lookup.query_resistors,
+        ComponentType.CAPACITOR: services.fast_lookup.query_capacitors,
+        ComponentType.CAPACITOR_POLARIZED: services.fast_lookup.query_capacitors_polarized,  # noqa: E501
+        ComponentType.INDUCTOR: services.fast_lookup.query_inductors,
+        ComponentType.DIODE: services.fast_lookup.query_diodes,
+        ComponentType.LED: services.fast_lookup.query_leds,
+        ComponentType.BJT: services.fast_lookup.query_bjts,
+        ComponentType.MOSFET: services.fast_lookup.query_mosfets,
+    }
+    handler = handler_by_type.get(payload.component_type)
+    if handler is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported component_type: {payload.component_type}",
+        )
     try:
-        if payload.component_type == ComponentType.RESISTOR:
-            candidates = await asyncio.to_thread(
-                services.fast_lookup.query_resistors,
-                query,
-            )
-        else:
-            candidates = await asyncio.to_thread(
-                services.fast_lookup.query_capacitors,
-                query,
-            )
+        candidates = await asyncio.to_thread(handler, query)
     except SnapshotSchemaError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except QueryValidationError as exc:
@@ -195,6 +203,24 @@ def test_parameters_query_route_returns_candidates() -> None:
         def query_capacitors(self, _query):
             return []
 
+        def query_capacitors_polarized(self, _query):
+            return []
+
+        def query_inductors(self, _query):
+            return []
+
+        def query_diodes(self, _query):
+            return []
+
+        def query_leds(self, _query):
+            return []
+
+        def query_bjts(self, _query):
+            return []
+
+        def query_mosfets(self, _query):
+            return []
+
     class _Detail:
         def get_components(self, _ids):
             return {1: {"lcsc_id": 1}}
@@ -246,6 +272,24 @@ def test_full_route_returns_multipart() -> None:
         def query_capacitors(self, _query):
             return []
 
+        def query_capacitors_polarized(self, _query):
+            return []
+
+        def query_inductors(self, _query):
+            return []
+
+        def query_diodes(self, _query):
+            return []
+
+        def query_leds(self, _query):
+            return []
+
+        def query_bjts(self, _query):
+            return []
+
+        def query_mosfets(self, _query):
+            return []
+
     class _Detail:
         def get_components(self, _ids):
             return {1: {"lcsc_id": 1, "category": "Resistors"}}
@@ -289,13 +333,31 @@ def test_parameters_query_route_invalid_filter_returns_400() -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from .interfaces import BundleArtifact, QueryValidationError
+    from .interfaces import BundleArtifact
 
     class _FastLookup:
         def query_resistors(self, _query):
             raise QueryValidationError("Unknown filter column: does_not_exist")
 
         def query_capacitors(self, _query):
+            return []
+
+        def query_capacitors_polarized(self, _query):
+            return []
+
+        def query_inductors(self, _query):
+            return []
+
+        def query_diodes(self, _query):
+            return []
+
+        def query_leds(self, _query):
+            return []
+
+        def query_bjts(self, _query):
+            return []
+
+        def query_mosfets(self, _query):
             return []
 
     class _Detail:
@@ -336,7 +398,7 @@ def test_full_route_bundle_error_returns_500() -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from .interfaces import AssetLoadError, ComponentCandidate
+    from .interfaces import ComponentCandidate
 
     class _FastLookup:
         def query_resistors(self, _query):
@@ -350,6 +412,24 @@ def test_full_route_bundle_error_returns_500() -> None:
             ]
 
         def query_capacitors(self, _query):
+            return []
+
+        def query_capacitors_polarized(self, _query):
+            return []
+
+        def query_inductors(self, _query):
+            return []
+
+        def query_diodes(self, _query):
+            return []
+
+        def query_leds(self, _query):
+            return []
+
+        def query_bjts(self, _query):
+            return []
+
+        def query_mosfets(self, _query):
             return []
 
     class _Detail:

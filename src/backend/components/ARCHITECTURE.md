@@ -197,41 +197,29 @@ Config:
 ### Responsibilities
 
 - Build immutable snapshots from stage-1 raw data.
-- Produce two serving databases per snapshot:
+- Produce fast + detail serving artifacts per snapshot:
 
-1. `fast.sqlite` for query-critical lookup only.
+1. `fast.sqlite` for query-critical lookup tables.
 2. `detail.sqlite` for full component/detail/asset lookup.
 
 - Both keyed by `lcsc_id` (`INTEGER`), which is the canonical ID.
 
-### Database Split
+### Artifact Split
 
 #### `fast.sqlite`
 
-- `resistor_pick`
-- `capacitor_pick`
+Contains only pickable rows and query-critical columns, keyed by `lcsc_id`.
 
-Contains only:
-
-- `lcsc_id`
-- pickable parameters
-- `stock`
-- `is_basic`
-- `is_preferred`
-
-Design target: minimal rows and columns, heavy indexing for range filters.
-
-Current implementation:
+Current implementation tables:
 
 - `resistor_pick`
-  - `lcsc_id`, `package`, `stock`, `is_basic`, `is_preferred`
-  - `resistance_ohm`, `resistance_min_ohm`, `resistance_max_ohm`
-  - `tolerance_pct`, `max_power_w`, `max_voltage_v`, `tempco_ppm`
 - `capacitor_pick`
-  - `lcsc_id`, `package`, `stock`, `is_basic`, `is_preferred`
-  - `capacitance_f`, `capacitance_min_f`, `capacitance_max_f`
-  - `tolerance_pct`, `max_voltage_v`, `tempco_code`
-- Composite indexes are created to support ranged lookup directly on precomputed bounds plus package/stock filters.
+- `capacitor_polarized_pick`
+- `inductor_pick`
+- `diode_pick`
+- `led_pick`
+- `bjt_pick`
+- `mosfet_pick`
 
 #### `detail.sqlite`
 
@@ -264,7 +252,7 @@ Current implementation:
 
 ### Stage 2 Acceptance Checklist
 
-- [x] Build immutable snapshot directory with `fast.sqlite` and `detail.sqlite`.
+- [x] Build immutable snapshot directory with `fast.sqlite` + `detail.sqlite`.
 - [x] Normalize resistor/capacitor pick parameters into SI numeric columns.
 - [x] Precompute tolerance-aware min/max bounds for fast ranged lookup.
 - [x] Store full component metadata and asset references keyed by `lcsc_id`.
@@ -297,8 +285,10 @@ Use **FastAPI** for API serving.
 
 Fast candidate query endpoint.
 
-- Input: resistor/capacitor query constraints (`qty`, `limit`, package, pickable params).
-- Reads only from `fast.sqlite`.
+- Input: query constraints (`qty`, `limit`, package, pickable params) across supported
+  component types.
+- Reads from `fast.sqlite` by default (`ATOPILE_COMPONENTS_FAST_ENGINE=sqlite`).
+- Zig remains optional for resistor/capacitor only (`ATOPILE_COMPONENTS_FAST_ENGINE=zig`).
 - Output: lightweight candidate records (includes `lcsc_id`, stock/flags, pick params).
 
 #### 2) `POST /v1/components/full`
@@ -334,6 +324,56 @@ Bundle may be returned as `multipart/mixed` (JSON part + `application/zstd` part
 - Include `manifest.json` + checksums.
 - Client is expected to decompress.
 
+### Stage 1 Artifact Compression Research (2026-02-15)
+
+Objective: find per-artifact strategies that beat generic `zstd -10` while preserving
+round-trip correctness for fetch-stage storage.
+
+Corpus used for local benchmarks in this repo:
+
+- `kicad_mod`: 345 unique files
+- `step/stp`: 95 unique files
+- `pdf`: 30 unique files
+- `obj`: 2 unique stage-1 samples
+
+Measured outcomes versus current baseline (`zstd -10`):
+
+- `kicad_mod`: dictionary compression is a clear win.
+  - `zstd -10 -D <dict>` with a 32 KiB trained dictionary: ~37% smaller than baseline.
+  - `zstd -14 -D <dict>`: ~45% smaller than baseline.
+  - Recommendation: use a versioned per-type dictionary for `.kicad_mod` artifacts.
+- `step/stp`: trained dictionaries regressed size in our corpus.
+  - `zstd -14` gave ~4% size improvement over baseline.
+  - `zstd -16` gave ~8.5% size improvement over baseline at much higher CPU cost.
+  - Recommendation: no dictionary; choose level by policy (`-14` balanced, `-16` size-priority).
+- `pdf`: only marginal gains from higher levels.
+  - `zstd -14` improved size by ~0.4% over baseline.
+  - Recommendation: prioritize throughput (`-6` or `-10`), not aggressive compression.
+- `obj`: limited local sample count, but higher levels help.
+  - `zstd -14` improved size by ~15% vs baseline on available sample.
+  - Recommendation: use `-14` for now; evaluate mesh-native encoding (Draco/meshopt)
+    if semantic (not byte-identical) round-trip is acceptable.
+
+External references informing strategy:
+
+- Zstandard dictionary guidance and small-data behavior:
+  <https://github.com/facebook/zstd/blob/dev/README.md>,
+  <https://github.com/facebook/zstd/blob/dev/lib/zdict.h>
+- KiCad footprint/file format references:
+  <https://docs.kicad.org/master/en/file-formats/file-formats.html>
+- OBJ/STEP format references:
+  <https://www.loc.gov/preservation/digital/formats/fdd/fdd000507.shtml>,
+  <https://www.loc.gov/preservation/digital/formats/fdd/fdd000448.shtml>
+- STEP media type variants (`model/step+zip`, etc.):
+  <https://www.iana.org/assignments/media-types/media-types.xhtml>
+- Mesh-native compression references:
+  <https://github.com/zeux/meshoptimizer>,
+  <https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Vendor/EXT_meshopt_compression>,
+  <https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_draco_mesh_compression>
+- PDF optimization/tooling limits:
+  <https://qpdf.readthedocs.io/en/stable/cli.html>,
+  <https://ghostscript.readthedocs.io/en/latest/VectorDevices.html>
+
 ## Internal Interface Boundaries
 
 `serve` should depend on interfaces, not specific storage engines:
@@ -347,7 +387,8 @@ Bundle may be returned as `multipart/mixed` (JSON part + `application/zstd` part
 - `BundleStore`
   - `build_bundle(lcsc_ids)`
 
-This keeps fast lookup backend swappable (SQLite now, Zig/in-memory later).
+This keeps fast lookup behind stable interfaces while Zig remains the
+production implementation.
 
 ## Tech Stack
 
@@ -356,7 +397,7 @@ This keeps fast lookup backend swappable (SQLite now, Zig/in-memory later).
 - HTTP client: `httpx`
 - Data models: `pydantic`
 - Compression: `zstandard`
-- Databases: SQLite (read-only snapshots during serve)
+- Databases: SQLite (`detail.sqlite`, read-only snapshots during serve)
 - Scheduling: periodic daily fetch/transform jobs
 
 ## SQLite Operational Notes
@@ -380,4 +421,5 @@ Per project preference, tests are co-located in module files (at bottom), not in
 
 ## Future Direction
 
-The fast lookup implementation may be replaced by a custom Zig in-memory engine. API contracts remain unchanged by keeping `serve` behind storage-agnostic interfaces and `lcsc_id`-based joins to detail data.
+Explore compact binary or custom in-memory indexes behind the same fast lookup
+interface if SQLite becomes the bottleneck.

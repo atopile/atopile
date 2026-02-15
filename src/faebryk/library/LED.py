@@ -50,6 +50,9 @@ class LED(fabll.Node):
         F.has_part_removed.MakeChild(), [diode]
     )
 
+    forward_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
     max_brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
     color = F.Parameters.EnumParameter.MakeChild(enum_t=Color)
@@ -58,6 +61,18 @@ class LED(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.LEDS,
+            params={
+                "color": color,
+                "forward_voltage": forward_voltage,
+                "max_current": max_current,
+                "max_brightness": max_brightness,
+            },
+        )
+    )
 
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
@@ -89,8 +104,8 @@ class LED(fabll.Node):
         ).MakeChild(
             S(self.max_brightness),
             S(self.color),
-            S(self.diode.get().forward_voltage, prefix="Vf"),
-            S(self.diode.get().current, prefix="If"),
+            S(self.forward_voltage, prefix="Vf"),
+            S(self.current, prefix="If"),
         )
 
     usage_example = fabll.Traits.MakeEdge(

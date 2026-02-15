@@ -7,20 +7,20 @@ Date: 2026-02-15
 Review of stage-2 transform pipeline for resistor/capacitor snapshots:
 
 - Source ingest from downloaded JLC `cache.sqlite3`
-- Build `fast.sqlite` and `detail.sqlite`
+- Build fast TSV artifacts and `detail.sqlite`
 - Validate and publish snapshots
 - Verify range-query lookup shape for solver
 
 ## Architecture Coverage
 
-- [x] Two DB outputs per snapshot (`fast.sqlite`, `detail.sqlite`)
+- [x] Fast TSV + detail DB outputs per snapshot (`resistor_pick.tsv`, `capacitor_pick.tsv`, `detail.sqlite`)
 - [x] Canonical key `lcsc_id` in all stage-2 tables
 - [x] Fast pick tables contain only query-critical fields + flags/stock/package
 - [x] Detail tables contain full metadata + asset references
 - [x] Precomputed tolerance bounds for ranged lookup:
   - resistor: `resistance_min_ohm` / `resistance_max_ohm`
   - capacitor: `capacitance_min_f` / `capacitance_max_f`
-- [x] Composite indexes for package/range/stock search paths
+- [x] Canonical package normalization for passives (`R0402`/`C0402` -> `0402`)
 - [x] Snapshot validation before publish
 - [x] Atomic `current`/`previous` symlink cutover
 - [x] Retention pruning of old snapshots (`--keep-snapshots`)
@@ -33,7 +33,7 @@ Command:
 uv run pytest -q \
   src/backend/components/transform/config.py \
   src/backend/components/transform/models.py \
-  src/backend/components/transform/fast_db_builder.py \
+  src/backend/components/transform/fast_tsv_builder.py \
   src/backend/components/transform/detail_db_builder.py \
   src/backend/components/transform/validate_snapshot.py \
   src/backend/components/transform/build_snapshot.py \
@@ -88,15 +88,11 @@ Result:
 
 - `fast_rows=41461 detail_rows=50000`
 
-### Range Lookup Query Plan
+### Fast Artifact Contract
 
-Resistor query plan:
-
-- Uses `resistor_pick_lookup_pkg_idx` for package + range filtering.
-
-Capacitor query plan:
-
-- Uses `capacitor_pick_lookup_pkg_idx` for package/tempco + range filtering.
+- `resistor_pick.tsv` contains canonicalized package + precomputed range bounds.
+- `capacitor_pick.tsv` contains canonicalized package + precomputed range bounds.
+- Stage-3 Zig lookup loads these TSV artifacts directly.
 
 ### Publish Flow
 

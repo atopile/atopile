@@ -108,7 +108,12 @@ def _get_component_type_from_endpoint(
     endpoint_map = {
         F.Pickable.is_pickable_by_type.Endpoint.RESISTORS: "resistor",
         F.Pickable.is_pickable_by_type.Endpoint.CAPACITORS: "capacitor",
+        F.Pickable.is_pickable_by_type.Endpoint.CAPACITORS_POLARIZED: "capacitor_polarized",  # noqa: E501
         F.Pickable.is_pickable_by_type.Endpoint.INDUCTORS: "inductor",
+        F.Pickable.is_pickable_by_type.Endpoint.DIODES: "diode",
+        F.Pickable.is_pickable_by_type.Endpoint.LEDS: "led",
+        F.Pickable.is_pickable_by_type.Endpoint.BJTS: "bjt",
+        F.Pickable.is_pickable_by_type.Endpoint.MOSFETS: "mosfet",
     }
     return endpoint_map.get(endpoint, "other")
 

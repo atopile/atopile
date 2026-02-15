@@ -13,10 +13,9 @@ from .config import TransformConfig
 from .detail_db_builder import DetailDbBuilder
 from .fast_db_builder import FastLookupDbBuilder
 from .models import (
-    CAPACITOR_SUBCATEGORIES,
-    RESISTOR_SUBCATEGORIES,
     ComponentType,
     SourceComponent,
+    category_to_component_type,
     normalize_component,
 )
 from .validate_snapshot import validate_snapshot
@@ -131,33 +130,25 @@ class JlcCacheSqliteSource:
     def _load_target_category_map(
         self, conn: sqlite3.Connection
     ) -> dict[int, ComponentType]:
-        resistor_placeholders = ",".join("?" for _ in RESISTOR_SUBCATEGORIES)
-        capacitor_placeholders = ",".join("?" for _ in CAPACITOR_SUBCATEGORIES)
-        query = f"""
+        rows = conn.execute(
+            """
             SELECT id, category, subcategory
             FROM categories
-            WHERE (
-                category = 'Resistors'
-                AND subcategory IN ({resistor_placeholders})
-            ) OR (
-                category = 'Capacitors'
-                AND subcategory IN ({capacitor_placeholders})
-            )
-        """
-        params: list[Any] = list(RESISTOR_SUBCATEGORIES) + list(CAPACITOR_SUBCATEGORIES)
-        rows = conn.execute(query, params).fetchall()
+            """
+        ).fetchall()
         if not rows:
-            raise RuntimeError(
-                "No matching resistor/capacitor categories found in source."
-            )
+            raise RuntimeError("No categories found in source sqlite.")
 
         category_map: dict[int, ComponentType] = {}
         for row in rows:
             category = str(row["category"])
-            component_type: ComponentType = (
-                "resistor" if category == "Resistors" else "capacitor"
-            )
+            subcategory = str(row["subcategory"])
+            component_type = category_to_component_type(category, subcategory)
+            if component_type is None:
+                continue
             category_map[int(row["id"])] = component_type
+        if not category_map:
+            raise RuntimeError("No target categories found in source sqlite.")
         return category_map
 
 
@@ -181,7 +172,8 @@ def build_snapshot(
         stage1_assets_by_lcsc = _load_stage1_assets_by_lcsc(config.fetch_manifest_path)
         source = JlcCacheSqliteSource(config.source_sqlite_path)
         fast_builder = FastLookupDbBuilder(
-            config.fast_db_path, batch_size=config.batch_size
+            config.fast_db_path,
+            batch_size=config.batch_size,
         )
         detail_builder = DetailDbBuilder(
             config.detail_db_path,
@@ -216,6 +208,12 @@ def build_snapshot(
             "detail_total_rows": validation.detail_total_rows,
             "resistor_rows": validation.resistor_rows,
             "capacitor_rows": validation.capacitor_rows,
+            "capacitor_polarized_rows": validation.capacitor_polarized_rows,
+            "inductor_rows": validation.inductor_rows,
+            "diode_rows": validation.diode_rows,
+            "led_rows": validation.led_rows,
+            "bjt_rows": validation.bjt_rows,
+            "mosfet_rows": validation.mosfet_rows,
         },
         "stage1_artifact_records": sum(
             len(records) for records in stage1_assets_by_lcsc.values()
@@ -371,9 +369,9 @@ def test_build_snapshot(tmp_path) -> None:
     capacitor_value = fast_conn.execute(
         "SELECT capacitance_f FROM capacitor_pick WHERE lcsc_id = 2001"
     ).fetchone()[0]
+    fast_conn.close()
     assert resistor_value == 10_000.0
     assert abs(capacitor_value - 1e-07) < 1e-15
-    fast_conn.close()
 
 
 def test_build_snapshot_includes_stage1_manifest_assets(tmp_path) -> None:

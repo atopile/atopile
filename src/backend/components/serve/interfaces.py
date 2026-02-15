@@ -11,6 +11,12 @@ JsonValue: TypeAlias = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"
 class ComponentType(StrEnum):
     RESISTOR = "resistor"
     CAPACITOR = "capacitor"
+    CAPACITOR_POLARIZED = "capacitor_polarized"
+    INDUCTOR = "inductor"
+    DIODE = "diode"
+    LED = "led"
+    BJT = "bjt"
+    MOSFET = "mosfet"
 
 
 @dataclass(frozen=True)
@@ -100,6 +106,26 @@ class FastLookupStore(Protocol):
         raise NotImplementedError
 
     def query_capacitors(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_capacitors_polarized(
+        self, query: ParameterQuery
+    ) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_inductors(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_diodes(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_leds(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_bjts(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_mosfets(self, query: ParameterQuery) -> list[ComponentCandidate]:
         raise NotImplementedError
 
 
