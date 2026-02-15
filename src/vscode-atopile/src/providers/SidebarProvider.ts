@@ -9,15 +9,15 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
-import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone, traceWarn } from '../common/log/logging';
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
-import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
+import { prepareThreeDViewer, handleThreeDModelBuildResult, showThreeDModel } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
-import { loadBuilds, getBuilds } from '../common/manifest';
+import { loadBuilds, getBuilds, type Build } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openMigratePreview } from '../ui/migrate';
@@ -102,6 +102,14 @@ interface ShowBackendMenuMessage {
 interface OpenInSimpleBrowserMessage {
   type: 'openInSimpleBrowser';
   url: string;
+}
+
+interface OpenDiffMessage {
+  type: 'openDiff';
+  path: string;
+  beforeContent: string;
+  afterContent: string;
+  title?: string;
 }
 
 interface RevealInFinderMessage {
@@ -190,6 +198,7 @@ type WebviewMessage =
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
+  | OpenDiffMessage
   | RevealInFinderMessage
   | RenameFileMessage
   | DeleteFileMessage
@@ -224,6 +233,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
+  private _lastThreeDBuildRequest: { projectRoot: string; targetName: string } | null = null;
+  private _didFallbackFromGlbOnly = false;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -534,6 +545,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);
         break;
+      case 'openDiff':
+        void this._openDiffView(message).catch((error) => {
+          traceError(`[SidebarProvider] Error opening diff view: ${error}`);
+          vscode.window.showErrorMessage(`Failed to open diff view: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        break;
       case 'revealInFinder':
         // Reveal file in OS file explorer (Finder on Mac, Explorer on Windows)
         void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
@@ -689,6 +706,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'threeDModelBuildResult':
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
+        if (!message.success && this._maybeRetryThreeDBuildWithGlb(message.error ?? null)) {
+          break;
+        }
         handleThreeDModelBuildResult(message.success, message.error);
         break;
       case 'openMigrateTab':
@@ -727,13 +747,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] 3D viewer open, preparing viewer for new target: ${build.name}`);
 
         prepareThreeDViewer(build.model_path, () => {
-          backendServer.sendToWebview({
-            type: 'triggerBuild',
-            projectRoot: build.root,
-            targets: [build.name],
-            includeTargets: ['glb-only'],
-            excludeTargets: ['default'],
-          });
+          this._startThreeDModelBuild(build.root, build.name);
         });
 
         await openModelViewerPreview();
@@ -780,6 +794,43 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  private _languageForPath(filePath: string): string | undefined {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.py' || ext === '.pyi') return 'python';
+    if (ext === '.ato') return 'plaintext';
+    if (ext === '.ts') return 'typescript';
+    if (ext === '.tsx') return 'typescriptreact';
+    if (ext === '.js') return 'javascript';
+    if (ext === '.jsx') return 'javascriptreact';
+    if (ext === '.json') return 'json';
+    if (ext === '.md') return 'markdown';
+    if (ext === '.yaml' || ext === '.yml') return 'yaml';
+    if (ext === '.toml') return 'toml';
+    if (ext === '.css') return 'css';
+    if (ext === '.sh') return 'shellscript';
+    return undefined;
+  }
+
+  private async _openDiffView(message: OpenDiffMessage): Promise<void> {
+    const language = this._languageForPath(message.path);
+    const beforeDocument = await vscode.workspace.openTextDocument({
+      content: message.beforeContent,
+      language,
+    });
+    const afterDocument = await vscode.workspace.openTextDocument({
+      content: message.afterContent,
+      language,
+    });
+    const title = message.title ?? `Agent diff: ${path.basename(message.path)}`;
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      beforeDocument.uri,
+      afterDocument.uri,
+      title,
+      { preview: true },
+    );
+  }
+
   private _findFirstFileByExt(dirPath: string, ext: string): string | null {
     try {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -812,6 +863,56 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     return null;
   }
 
+  private _findBuildForModelPath(modelPath: string): Build | undefined {
+    const normalizedModelPath = path.normalize(modelPath);
+    const modelDirectory = path.normalize(path.dirname(normalizedModelPath));
+
+    return getBuilds().find((build) => {
+      const rawModelPath = path.normalize(build.model_path);
+      const optimizedModelPath = path.normalize(build.model_path.replace(/\.glb$/i, '.optimized.glb'));
+      const buildDirectory = path.normalize(path.dirname(rawModelPath));
+
+      return (
+        normalizedModelPath === rawModelPath ||
+        normalizedModelPath === optimizedModelPath ||
+        modelDirectory === buildDirectory
+      );
+    });
+  }
+
+  private _triggerThreeDModelBuild(projectRoot: string, targetName: string, includeTargets: string[]): void {
+    backendServer.sendToWebview({
+      type: 'triggerBuild',
+      projectRoot,
+      targets: [targetName],
+      includeTargets,
+      excludeTargets: ['default'],
+    });
+  }
+
+  private _startThreeDModelBuild(projectRoot: string, targetName: string): void {
+    this._lastThreeDBuildRequest = { projectRoot, targetName };
+    this._didFallbackFromGlbOnly = false;
+    this._triggerThreeDModelBuild(projectRoot, targetName, ['glb-only']);
+  }
+
+  private _maybeRetryThreeDBuildWithGlb(error: string | null): boolean {
+    if (!error || this._didFallbackFromGlbOnly || !this._lastThreeDBuildRequest) {
+      return false;
+    }
+
+    // Older atopile versions do not expose the glb-only target.
+    if (!/Target [`'"]?glb-only[`'"]? not recognized/i.test(error)) {
+      return false;
+    }
+
+    const { projectRoot, targetName } = this._lastThreeDBuildRequest;
+    this._didFallbackFromGlbOnly = true;
+    traceWarn('[SidebarProvider] glb-only target unavailable, retrying 3D build with glb target');
+    this._triggerThreeDModelBuild(projectRoot, targetName, ['glb']);
+    return true;
+  }
+
   private _openLayoutPreview(filePath: string): void {
     const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
     if (!pcbPath) {
@@ -838,21 +939,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async _open3dPreview(filePath: string): Promise<void> {
     const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
-    const build = getBuildTarget();
+    let build = this._findBuildForModelPath(modelPath);
+    if (!build) {
+      await loadBuilds();
+      build = this._findBuildForModelPath(modelPath);
+    }
+
+    if (!build) {
+      build = getBuildTarget();
+    }
+
     if (!build?.root || !build.name) {
-      traceError('[SidebarProvider] No build target selected for 3D export.');
+      traceError(`[SidebarProvider] No build target selected for 3D export. Showing existing model without rebuild: ${modelPath}`);
+      this._lastThreeDBuildRequest = null;
+      this._didFallbackFromGlbOnly = false;
+      showThreeDModel(modelPath);
       await openModelViewerPreview();
       return;
     }
 
     prepareThreeDViewer(modelPath, () => {
-      backendServer.sendToWebview({
-        type: 'triggerBuild',
-        projectRoot: build.root,
-        targets: [build.name],
-        includeTargets: ['glb-only'],
-        excludeTargets: ['default'],
-      });
+      this._startThreeDModelBuild(build.root, build.name);
     });
 
     await openModelViewerPreview();

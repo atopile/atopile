@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import inspect
 import itertools
 import logging
 import re
@@ -1091,10 +1092,54 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # construct typegraph
         for field in cls.__fields.values():
             cls._exec_field(t=t, field=field)
+        cls._add_module_docstring_trait(t=t)
         # TODO
         # call stage1
         # call stage2
         pass
+
+    @classmethod
+    def _add_module_docstring_trait(cls, t: "TypeNodeBoundTG[Self, T]") -> None:
+        """
+        Attach has_doc_string to module types when a Python class docstring exists.
+        """
+        if not t.check_if_instance_of_type_has_trait(is_module):
+            return
+
+        doc = getattr(cls, "__doc__", None)
+        cleaned_doc = inspect.cleandoc(doc).strip() if doc else ""
+        if not cleaned_doc:
+            # Fallback to inherited docs only when they are meaningful.
+            inherited_doc = inspect.getdoc(cls)
+            if inherited_doc:
+                inherited_clean = inspect.cleandoc(inherited_doc).strip()
+                if not inherited_clean.startswith(
+                    "Abstract base class for generic types."
+                ):
+                    cleaned_doc = inherited_clean
+
+        if not cleaned_doc:
+            return
+        if cleaned_doc.lower() == cls.__name__.lower():
+            return
+
+        try:
+            import faebryk.library._F as F
+
+            type_node = t.as_type_node()
+            trait = type_node.try_get_trait(F.has_doc_string)
+            if trait is None:
+                trait = Traits.create_and_add_instance_to(
+                    node=type_node, trait=F.has_doc_string
+                )
+
+            trait.doc_string_.get().set_singleton(value=cleaned_doc)
+        except Exception as exc:
+            logging.getLogger(__name__).debug(
+                "Failed to attach has_doc_string trait for %s: %s",
+                cls.__name__,
+                exc,
+            )
 
     @classmethod
     def _create_instance(cls, tg: fbrk.TypeGraph, g: graph.GraphView) -> Self:
@@ -3008,6 +3053,32 @@ def test_resistor_instantiation():
         res_inst.get_trait(F.has_designator_prefix).get_prefix()
         == F.has_designator_prefix.Prefix.R
     )
+
+
+def test_module_docstring_trait_attachment():
+    import faebryk.library._F as F
+
+    g, tg = _make_graph_and_typegraph()
+
+    class _WithDoc(Node):
+        """A module-level docstring for trait attachment."""
+
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    class _WithoutDoc(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    with_doc = _WithDoc.bind_typegraph(tg=tg)
+    without_doc = _WithoutDoc.bind_typegraph(tg=tg)
+    with_doc.get_or_create_type()
+    without_doc.get_or_create_type()
+
+    with_doc_trait = with_doc.try_get_type_trait(F.has_doc_string)
+    without_doc_trait = without_doc.try_get_type_trait(F.has_doc_string)
+
+    assert with_doc_trait is not None
+    assert with_doc_trait.doc_string == "A module-level docstring for trait attachment."
+    assert without_doc_trait is None
 
 
 def test_string_param():

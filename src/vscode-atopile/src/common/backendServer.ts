@@ -526,6 +526,10 @@ class BackendServerManager implements vscode.Disposable {
             }
 
             const command = atoBin.command[0];
+            const explicitAtoBinary =
+                atoBin.source === 'explicit-path'
+                    ? (settings.ato || atoBin.command[0])
+                    : undefined;
             traceMilestone('backend spawning');
             this._log('info', `server: Starting: ${command} ${args.join(' ')}`);
 
@@ -536,6 +540,12 @@ class BackendServerManager implements vscode.Disposable {
                     ...process.env,
                     ATO_NON_INTERACTIVE: 'y',
                     PYTHONUNBUFFERED: '1',  // Disable Python output buffering
+                    ...(explicitAtoBinary
+                        ? {
+                            ATO_BINARY: explicitAtoBinary,
+                            ATO_BINARY_PATH: explicitAtoBinary,
+                        }
+                        : {}),
                 },
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
