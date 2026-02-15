@@ -12,6 +12,7 @@ _PASSIVE_PREFIX = {
     "capacitor": "C",
     "capacitor_polarized": "C",
     "inductor": "L",
+    "ferrite_bead": "L",
 }
 
 
@@ -29,6 +30,9 @@ class FastLookupDbBuilder(ComponentSink):
             "led": [],
             "bjt": [],
             "mosfet": [],
+            "crystal": [],
+            "ferrite_bead": [],
+            "ldo": [],
         }
         self.inserted_count = 0
         self._init_db()
@@ -148,6 +152,45 @@ class FastLookupDbBuilder(ComponentSink):
                 max_continuous_drain_current_a REAL NOT NULL,
                 on_resistance_ohm REAL NOT NULL,
                 gate_source_threshold_voltage_v REAL
+            );
+
+            CREATE TABLE crystal_pick (
+                lcsc_id INTEGER PRIMARY KEY NOT NULL,
+                package TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                is_basic INTEGER NOT NULL,
+                is_preferred INTEGER NOT NULL,
+                frequency_hz REAL NOT NULL,
+                frequency_min_hz REAL NOT NULL,
+                frequency_max_hz REAL NOT NULL,
+                load_capacitance_f REAL NOT NULL,
+                frequency_tolerance_ppm REAL NOT NULL,
+                frequency_stability_ppm REAL
+            );
+
+            CREATE TABLE ferrite_bead_pick (
+                lcsc_id INTEGER PRIMARY KEY NOT NULL,
+                package TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                is_basic INTEGER NOT NULL,
+                is_preferred INTEGER NOT NULL,
+                impedance_ohm REAL NOT NULL,
+                current_rating_a REAL NOT NULL,
+                dc_resistance_ohm REAL NOT NULL
+            );
+
+            CREATE TABLE ldo_pick (
+                lcsc_id INTEGER PRIMARY KEY NOT NULL,
+                package TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                is_basic INTEGER NOT NULL,
+                is_preferred INTEGER NOT NULL,
+                output_voltage_v REAL NOT NULL,
+                max_input_voltage_v REAL NOT NULL,
+                output_current_a REAL NOT NULL,
+                dropout_voltage_v REAL NOT NULL,
+                output_type TEXT,
+                output_polarity TEXT
             );
             """
         )
@@ -323,6 +366,69 @@ class FastLookupDbBuilder(ComponentSink):
                 )
             )
             self._flush_if_needed("mosfet")
+            return
+
+        if component.component_type == "crystal":
+            if not _is_pickable_crystal(component):
+                return
+            package = _normalize_package(component.component_type, component.package)
+            self._rows["crystal"].append(
+                (
+                    component.lcsc_id,
+                    package,
+                    component.stock,
+                    int(component.is_basic),
+                    int(component.is_preferred),
+                    component.frequency_hz,
+                    component.frequency_min_hz,
+                    component.frequency_max_hz,
+                    component.load_capacitance_f,
+                    component.frequency_tolerance_ppm,
+                    component.frequency_stability_ppm,
+                )
+            )
+            self._flush_if_needed("crystal")
+            return
+
+        if component.component_type == "ferrite_bead":
+            if not _is_pickable_ferrite_bead(component):
+                return
+            package = _normalize_package(component.component_type, component.package)
+            self._rows["ferrite_bead"].append(
+                (
+                    component.lcsc_id,
+                    package,
+                    component.stock,
+                    int(component.is_basic),
+                    int(component.is_preferred),
+                    component.ferrite_impedance_ohm,
+                    component.ferrite_current_rating_a,
+                    component.dc_resistance_ohm,
+                )
+            )
+            self._flush_if_needed("ferrite_bead")
+            return
+
+        if component.component_type == "ldo":
+            if not _is_pickable_ldo(component):
+                return
+            package = _normalize_package(component.component_type, component.package)
+            self._rows["ldo"].append(
+                (
+                    component.lcsc_id,
+                    package,
+                    component.stock,
+                    int(component.is_basic),
+                    int(component.is_preferred),
+                    component.ldo_output_voltage_v,
+                    component.ldo_max_input_voltage_v,
+                    component.ldo_output_current_a,
+                    component.ldo_dropout_voltage_v,
+                    component.ldo_output_type,
+                    component.ldo_output_polarity,
+                )
+            )
+            self._flush_if_needed("ldo")
 
     def _flush_if_needed(self, component_type: str) -> None:
         if len(self._rows[component_type]) >= self.batch_size:
@@ -447,6 +553,44 @@ class FastLookupDbBuilder(ComponentSink):
                 on_resistance_ohm,
                 stock DESC
             );
+
+            CREATE INDEX crystal_pick_lookup_pkg_idx
+            ON crystal_pick (
+                package,
+                frequency_min_hz,
+                frequency_max_hz,
+                load_capacitance_f,
+                frequency_tolerance_ppm,
+                stock DESC
+            );
+            CREATE INDEX crystal_pick_lookup_range_idx
+            ON crystal_pick (
+                frequency_min_hz,
+                frequency_max_hz,
+                load_capacitance_f,
+                stock DESC
+            );
+
+            CREATE INDEX ferrite_bead_pick_lookup_pkg_idx
+            ON ferrite_bead_pick (
+                package,
+                impedance_ohm,
+                current_rating_a,
+                dc_resistance_ohm,
+                stock DESC
+            );
+
+            CREATE INDEX ldo_pick_lookup_pkg_idx
+            ON ldo_pick (
+                package,
+                output_type,
+                output_polarity,
+                output_voltage_v,
+                max_input_voltage_v,
+                output_current_a,
+                dropout_voltage_v,
+                stock DESC
+            );
             ANALYZE;
             PRAGMA optimize;
             """
@@ -466,6 +610,14 @@ def _is_valid_package(raw_package: str) -> bool:
 
 def _normalize_package(component_type: str, raw_package: str) -> str:
     package = raw_package.strip().upper()
+    if component_type == "ferrite_bead":
+        for prefix in ("L", "FB"):
+            if package.startswith(prefix):
+                suffix = package[len(prefix) :]
+                if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
+                    return suffix
+        return package
+
     prefix = _PASSIVE_PREFIX.get(component_type)
     if prefix and package.startswith(prefix):
         suffix = package[len(prefix) :]
@@ -597,6 +749,55 @@ def _is_pickable_mosfet(component: NormalizedComponent) -> bool:
     return True
 
 
+def _is_pickable_crystal(component: NormalizedComponent) -> bool:
+    if not _is_pickable_base(component):
+        return False
+    if component.frequency_hz is None or component.frequency_hz <= 0:
+        return False
+    if component.frequency_min_hz is None or component.frequency_max_hz is None:
+        return False
+    if (
+        component.frequency_tolerance_ppm is None
+        or component.frequency_tolerance_ppm < 0
+    ):
+        return False
+    if component.load_capacitance_f is None or component.load_capacitance_f <= 0:
+        return False
+    return True
+
+
+def _is_pickable_ferrite_bead(component: NormalizedComponent) -> bool:
+    if not _is_pickable_base(component):
+        return False
+    if component.ferrite_impedance_ohm is None or component.ferrite_impedance_ohm <= 0:
+        return False
+    if (
+        component.ferrite_current_rating_a is None
+        or component.ferrite_current_rating_a <= 0
+    ):
+        return False
+    if component.dc_resistance_ohm is None or component.dc_resistance_ohm < 0:
+        return False
+    return True
+
+
+def _is_pickable_ldo(component: NormalizedComponent) -> bool:
+    if not _is_pickable_base(component):
+        return False
+    if component.ldo_output_voltage_v is None or component.ldo_output_voltage_v <= 0:
+        return False
+    if (
+        component.ldo_max_input_voltage_v is None
+        or component.ldo_max_input_voltage_v <= 0
+    ):
+        return False
+    if component.ldo_output_current_a is None or component.ldo_output_current_a <= 0:
+        return False
+    if component.ldo_dropout_voltage_v is None or component.ldo_dropout_voltage_v <= 0:
+        return False
+    return True
+
+
 _INSERT_SQL_BY_TYPE = {
     "resistor": """
         INSERT INTO resistor_pick (
@@ -713,6 +914,48 @@ _INSERT_SQL_BY_TYPE = {
             on_resistance_ohm,
             gate_source_threshold_voltage_v
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+    "crystal": """
+        INSERT INTO crystal_pick (
+            lcsc_id,
+            package,
+            stock,
+            is_basic,
+            is_preferred,
+            frequency_hz,
+            frequency_min_hz,
+            frequency_max_hz,
+            load_capacitance_f,
+            frequency_tolerance_ppm,
+            frequency_stability_ppm
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+    "ferrite_bead": """
+        INSERT INTO ferrite_bead_pick (
+            lcsc_id,
+            package,
+            stock,
+            is_basic,
+            is_preferred,
+            impedance_ohm,
+            current_rating_a,
+            dc_resistance_ohm
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+    "ldo": """
+        INSERT INTO ldo_pick (
+            lcsc_id,
+            package,
+            stock,
+            is_basic,
+            is_preferred,
+            output_voltage_v,
+            max_input_voltage_v,
+            output_current_a,
+            dropout_voltage_v,
+            output_type,
+            output_polarity
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
 }
 

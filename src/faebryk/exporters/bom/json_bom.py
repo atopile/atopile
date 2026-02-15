@@ -114,6 +114,9 @@ def _get_component_type_from_endpoint(
         F.Pickable.is_pickable_by_type.Endpoint.LEDS: "led",
         F.Pickable.is_pickable_by_type.Endpoint.BJTS: "bjt",
         F.Pickable.is_pickable_by_type.Endpoint.MOSFETS: "mosfet",
+        F.Pickable.is_pickable_by_type.Endpoint.CRYSTALS: "crystal",
+        F.Pickable.is_pickable_by_type.Endpoint.FERRITE_BEADS: "ferrite_bead",
+        F.Pickable.is_pickable_by_type.Endpoint.LDOS: "ldo",
     }
     return endpoint_map.get(endpoint, "other")
 

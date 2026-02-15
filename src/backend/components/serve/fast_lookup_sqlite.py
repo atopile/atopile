@@ -3,11 +3,12 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from urllib.parse import quote
 
 from .interfaces import (
+    BatchQueryValidationError,
     ComponentCandidate,
     FastLookupStore,
     NumericRange,
@@ -23,6 +24,7 @@ from .query_normalization import (
 )
 
 _VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_FAST_TABLE_SUFFIX = "_pick"
 _FAST_TABLES = {
     "resistor": "resistor_pick",
     "capacitor": "capacitor_pick",
@@ -32,6 +34,9 @@ _FAST_TABLES = {
     "led": "led_pick",
     "bjt": "bjt_pick",
     "mosfet": "mosfet_pick",
+    "crystal": "crystal_pick",
+    "ferrite_bead": "ferrite_bead_pick",
+    "ldo": "ldo_pick",
 }
 _CANDIDATE_CORE_COLUMNS = {"lcsc_id", "stock", "is_basic", "is_preferred"}
 _REQUIRED_FAST_COLUMNS = {"lcsc_id", "stock", "is_basic", "is_preferred"}
@@ -39,6 +44,7 @@ _RANGE_COLUMN_BOUNDS = {
     "resistance_ohm": ("resistance_min_ohm", "resistance_max_ohm"),
     "capacitance_f": ("capacitance_min_f", "capacitance_max_f"),
     "inductance_h": ("inductance_min_h", "inductance_max_h"),
+    "frequency_hz": ("frequency_min_hz", "frequency_max_hz"),
 }
 
 
@@ -54,6 +60,12 @@ def _quote_ident(identifier: str) -> str:
     return f'"{identifier}"'
 
 
+def _component_fast_table(component_type: str) -> str:
+    if not _VALID_IDENTIFIER.fullmatch(component_type):
+        raise QueryValidationError(f"Invalid component_type: {component_type!r}")
+    return f"{component_type}{_FAST_TABLE_SUFFIX}"
+
+
 class SQLiteFastLookupStore(FastLookupStore):
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
@@ -63,35 +75,62 @@ class SQLiteFastLookupStore(FastLookupStore):
         self._table_column_order_cache: dict[str, tuple[str, ...]] = {}
         self._order_sql_cache: dict[str, str] = {}
 
+    def query_component(
+        self, component_type: str, query: ParameterQuery
+    ) -> list[ComponentCandidate]:
+        table = _FAST_TABLES.get(component_type, _component_fast_table(component_type))
+        return self._query_table(component_type, table, query)
+
+    def query_components_batch(
+        self, queries: Sequence[tuple[str, ParameterQuery]]
+    ) -> list[list[ComponentCandidate]]:
+        errors: list[str | None] = []
+        results: list[list[ComponentCandidate]] = []
+        for component_type, query in queries:
+            try:
+                results.append(self.query_component(component_type, query))
+                errors.append(None)
+            except QueryValidationError as exc:
+                results.append([])
+                errors.append(str(exc))
+        if any(error is not None for error in errors):
+            raise BatchQueryValidationError(errors)
+        return results
+
     def query_resistors(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("resistor", _FAST_TABLES["resistor"], query)
+        return self.query_component("resistor", query)
 
     def query_capacitors(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("capacitor", _FAST_TABLES["capacitor"], query)
+        return self.query_component("capacitor", query)
 
     def query_capacitors_polarized(
         self, query: ParameterQuery
     ) -> list[ComponentCandidate]:
-        return self._query_table(
-            "capacitor_polarized",
-            _FAST_TABLES["capacitor_polarized"],
-            query,
-        )
+        return self.query_component("capacitor_polarized", query)
 
     def query_inductors(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("inductor", _FAST_TABLES["inductor"], query)
+        return self.query_component("inductor", query)
 
     def query_diodes(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("diode", _FAST_TABLES["diode"], query)
+        return self.query_component("diode", query)
 
     def query_leds(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("led", _FAST_TABLES["led"], query)
+        return self.query_component("led", query)
 
     def query_bjts(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("bjt", _FAST_TABLES["bjt"], query)
+        return self.query_component("bjt", query)
 
     def query_mosfets(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_table("mosfet", _FAST_TABLES["mosfet"], query)
+        return self.query_component("mosfet", query)
+
+    def query_crystals(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("crystal", query)
+
+    def query_ferrite_beads(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("ferrite_bead", query)
+
+    def query_ldos(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("ldo", query)
 
     def _connect(self) -> sqlite3.Connection:
         if not self.db_path.exists():
@@ -501,6 +540,40 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
                 max_continuous_drain_current_a real,
                 on_resistance_ohm real
             );
+            create table crystal_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                frequency_hz real,
+                frequency_min_hz real,
+                frequency_max_hz real,
+                load_capacitance_f real,
+                frequency_tolerance_ppm real
+            );
+            create table ferrite_bead_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                impedance_ohm real,
+                current_rating_a real,
+                dc_resistance_ohm real
+            );
+            create table ldo_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                output_voltage_v real,
+                max_input_voltage_v real,
+                output_current_a real,
+                dropout_voltage_v real,
+                output_type text
+            );
             """
         )
         conn.execute(
@@ -513,6 +586,24 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
             """
             insert into mosfet_pick values
             (2, 'SOT-23', 200, 0, 1, 'N_CHANNEL', 30.0, 2.0, 0.05)
+            """
+        )
+        conn.execute(
+            """
+            insert into crystal_pick values
+            (3, 'SMD-3225', 50, 1, 1, 16000000.0, 15999680.0, 16000320.0, 18e-12, 20.0)
+            """
+        )
+        conn.execute(
+            """
+            insert into ferrite_bead_pick values
+            (4, '0603', 80, 0, 1, 120.0, 2.0, 0.05)
+            """
+        )
+        conn.execute(
+            """
+            insert into ldo_pick values
+            (5, 'SOT-23-5', 40, 1, 0, 3.3, 6.0, 0.2, 0.3, 'FIXED')
             """
         )
         conn.commit()
@@ -533,5 +624,141 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
             },
         )
     )
+    crystal_candidates = store.query_crystals(
+        ParameterQuery(
+            ranges={
+                "frequency": NumericRange(minimum=15_999_000.0, maximum=16_001_000.0)
+            },
+        )
+    )
+    ferrite_candidates = store.query_ferrite_beads(
+        ParameterQuery(
+            package="L0603",
+            ranges={
+                "impedance_at_frequency": NumericRange(minimum=100.0, maximum=150.0),
+                "current_rating": NumericRange(minimum=1.0),
+            },
+        )
+    )
+    ldo_candidates = store.query_ldos(
+        ParameterQuery(
+            exact={"output_type": "FIXED"},
+            ranges={
+                "output_voltage": NumericRange(minimum=3.0, maximum=3.6),
+                "max_input_voltage": NumericRange(minimum=5.0),
+            },
+        )
+    )
     assert [candidate.lcsc_id for candidate in inductor_candidates] == [1]
     assert [candidate.lcsc_id for candidate in mosfet_candidates] == [2]
+    assert [candidate.lcsc_id for candidate in crystal_candidates] == [3]
+    assert [candidate.lcsc_id for candidate in ferrite_candidates] == [4]
+    assert [candidate.lcsc_id for candidate in ldo_candidates] == [5]
+
+
+def test_sqlite_lookup_store_query_component_supports_custom_pick_table(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "fast.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            create table fuse_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                current_rating_a real,
+                voltage_rating_v real
+            );
+            """
+        )
+        conn.execute(
+            """
+            insert into fuse_pick values
+            (9, '1206', 77, 0, 1, 2.0, 32.0)
+            """
+        )
+        conn.commit()
+
+    store = SQLiteFastLookupStore(db_path)
+    candidates = store.query_component(
+        "fuse",
+        ParameterQuery(
+            package="1206",
+            exact={"current_rating_a": 2.0},
+            ranges={"voltage_rating_v": NumericRange(minimum=30.0, maximum=40.0)},
+        ),
+    )
+    assert [candidate.lcsc_id for candidate in candidates] == [9]
+
+
+def test_sqlite_lookup_store_query_components_batch_success(tmp_path) -> None:
+    db_path = tmp_path / "fast.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            create table resistor_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                resistance_ohm real
+            );
+            create table capacitor_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                capacitance_f real
+            );
+            """
+        )
+        conn.execute("insert into resistor_pick values (1, '0603', 10, 1, 0, 1000.0)")
+        conn.execute("insert into capacitor_pick values (2, '0402', 20, 0, 1, 1e-6)")
+        conn.commit()
+
+    store = SQLiteFastLookupStore(db_path)
+    results = store.query_components_batch(
+        [
+            ("resistor", ParameterQuery(exact={"resistance_ohm": 1000.0})),
+            ("capacitor", ParameterQuery(exact={"capacitance_f": 1e-6})),
+        ]
+    )
+    assert [candidate.lcsc_id for candidate in results[0]] == [1]
+    assert [candidate.lcsc_id for candidate in results[1]] == [2]
+
+
+def test_sqlite_lookup_store_query_components_batch_validation_error(tmp_path) -> None:
+    db_path = tmp_path / "fast.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            create table resistor_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                resistance_ohm real
+            );
+            """
+        )
+        conn.execute("insert into resistor_pick values (1, '0603', 10, 1, 0, 1000.0)")
+        conn.commit()
+
+    store = SQLiteFastLookupStore(db_path)
+    try:
+        store.query_components_batch(
+            [
+                ("resistor", ParameterQuery(exact={"resistance_ohm": 1000.0})),
+                ("resistor", ParameterQuery(exact={"does_not_exist": 1})),
+            ]
+        )
+    except BatchQueryValidationError as exc:
+        assert exc.errors == [None, "Unknown filter column: does_not_exist"]
+    else:
+        assert False, "Expected BatchQueryValidationError"

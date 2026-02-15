@@ -13,6 +13,7 @@ from email.policy import default as email_policy_default
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import zstd
 
@@ -32,6 +33,7 @@ from faebryk.libs.util import ConfigFlag, once
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_TIMEOUT_SECONDS = 30
+_FULL_COMPONENTS_MAX_IDS = 1000
 
 API_LOG = ConfigFlag("API_LOG", descr="Log API calls (very verbose)", default=False)
 _V1_METHOD_TO_TYPE = {
@@ -45,8 +47,10 @@ _V1_METHOD_TO_TYPE = {
     str(F.Pickable.is_pickable_by_type.Endpoint.LEDS): "led",
     str(F.Pickable.is_pickable_by_type.Endpoint.BJTS): "bjt",
     str(F.Pickable.is_pickable_by_type.Endpoint.MOSFETS): "mosfet",
+    str(F.Pickable.is_pickable_by_type.Endpoint.CRYSTALS): "crystal",
+    str(F.Pickable.is_pickable_by_type.Endpoint.FERRITE_BEADS): "ferrite_bead",
+    str(F.Pickable.is_pickable_by_type.Endpoint.LDOS): "ldo",
 }
-_LEGACY_FALLBACK_STATUS_CODES = {404, 405}
 
 
 class ApiError(Exception): ...
@@ -154,30 +158,19 @@ class ApiClient:
 
     @once
     def fetch_part_by_lcsc(self, lcsc: int) -> list["Component"]:
-        try:
-            return self._fetch_components_v1([lcsc])
-        except ApiHTTPError as e:
-            if e.response.status_code not in _LEGACY_FALLBACK_STATUS_CODES:
-                raise
-        response = self._get(f"/v0/component/lcsc/{lcsc}")
-        return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore[arg-type]
+        return self._fetch_components_v1([lcsc])
 
     @once
     def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list["Component"]:
-        response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
-        return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore[arg-type]
+        component_ids = self._lookup_component_ids_by_mfr(mfr, mfr_pn, limit=50)
+        if not component_ids:
+            return []
+        return self._fetch_components_v1(component_ids)
 
     def query_parts(
         self, method: F.Pickable.is_pickable_by_type.Endpoint, params: BaseParams
     ) -> list["Component"]:
-        if str(method) in _V1_METHOD_TO_TYPE:
-            try:
-                return self._query_parts_v1(method, params)
-            except ApiHTTPError as e:
-                if e.response.status_code not in _LEGACY_FALLBACK_STATUS_CODES:
-                    raise
-        response = self._post(f"/v0/query/{method}", params.serialize())
-        return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore[arg-type]
+        return self._query_parts_v1(method, params)
 
     @once
     def fetch_parts(self, params: BaseParams) -> list["Component"]:
@@ -188,27 +181,103 @@ class ApiClient:
         self,
         params: list[BaseParams | LCSCParams | ManufacturerPartParams] | list[dict],
     ) -> list[list["Component"]]:
-        results: list[list[Component]] = []
-        for param in params:
+        query_payloads: list[tuple[int, dict[str, Any]]] = []
+        component_ids_by_query: dict[int, list[int]] = {}
+        pick_parameters_by_query: dict[int, dict[int, dict[str, Any]]] = {}
+
+        for idx, param in enumerate(params):
             if isinstance(param, BaseParams):
-                results.append(self.fetch_parts(param))
+                assert param.endpoint
+                payload = _build_v1_query_payload(method=param.endpoint, params=param)
+                query_payloads.append((idx, payload))
                 continue
             if isinstance(param, LCSCParams):
-                results.append(self.fetch_part_by_lcsc(param.lcsc))
+                component_ids_by_query[idx] = [param.lcsc]
+                pick_parameters_by_query[idx] = {}
                 continue
             if isinstance(param, ManufacturerPartParams):
-                results.append(
-                    self.fetch_part_by_mfr(param.manufacturer_name, param.part_number)
+                component_ids_by_query[idx] = self._lookup_component_ids_by_mfr(
+                    param.manufacturer_name, param.part_number, limit=50
                 )
+                pick_parameters_by_query[idx] = {}
                 continue
             if isinstance(param, dict):
-                results.append(self._fetch_parts_from_legacy_dict(param))
-                continue
+                if "lcsc" in param:
+                    try:
+                        component_ids_by_query[idx] = [int(param["lcsc"])]
+                    except Exception as exc:
+                        raise ApiError(
+                            f"Invalid lcsc query payload: {param!r}"
+                        ) from exc
+                    pick_parameters_by_query[idx] = {}
+                    continue
+                if "manufacturer_name" in param and "part_number" in param:
+                    component_ids_by_query[idx] = self._lookup_component_ids_by_mfr(
+                        str(param["manufacturer_name"]),
+                        str(param["part_number"]),
+                        limit=50,
+                    )
+                    pick_parameters_by_query[idx] = {}
+                    continue
+                endpoint = param.get("endpoint")
+                if isinstance(endpoint, str) and endpoint in _V1_METHOD_TO_TYPE:
+                    payload = _build_v1_query_payload_from_dict(
+                        endpoint=endpoint, raw=param
+                    )
+                    query_payloads.append((idx, payload))
+                    continue
+                raise ApiError(f"Unsupported query payload: {param!r}")
             raise ApiError(f"Unsupported query type: {type(param)}")
+
+        if query_payloads:
+            batch_payload = {"queries": [payload for _, payload in query_payloads]}
+            response = self._post(
+                "/v1/components/parameters/query/batch",
+                batch_payload,
+            )
+            body = response.json()
+            raw_results = body.get("results")
+            if not isinstance(raw_results, list):
+                raise ApiError("Invalid v1 batch query response: results is not a list")
+            if len(raw_results) != len(query_payloads):
+                raise ApiError(
+                    "Invalid v1 batch query response: mismatched results length"
+                )
+            for (idx, _), raw_result in zip(query_payloads, raw_results, strict=True):
+                if not isinstance(raw_result, dict):
+                    component_ids_by_query[idx] = []
+                    pick_parameters_by_query[idx] = {}
+                    continue
+                ordered_ids, pick_parameters_by_id = _extract_candidate_pick_parameters(
+                    raw_result.get("candidates", [])
+                )
+                component_ids_by_query[idx] = ordered_ids
+                pick_parameters_by_query[idx] = pick_parameters_by_id
+
+        all_component_ids: list[int] = []
+        seen_component_ids: set[int] = set()
+        for idx in range(len(params)):
+            for component_id in component_ids_by_query.get(idx, []):
+                if component_id <= 0 or component_id in seen_component_ids:
+                    continue
+                seen_component_ids.add(component_id)
+                all_component_ids.append(component_id)
+        rows_by_id = self._fetch_components_v1_rows(all_component_ids)
+
+        results: list[list[Component]] = []
+        for idx in range(len(params)):
+            component_ids = component_ids_by_query.get(idx, [])
+            pick_parameters_by_id = pick_parameters_by_query.get(idx, {})
+            results.append(
+                self._components_from_v1_rows(
+                    component_ids=component_ids,
+                    rows_by_id=rows_by_id,
+                    pick_parameters_by_id=pick_parameters_by_id,
+                )
+            )
 
         if len(results) != len(params):
             raise ApiError(f"Expected {len(params)} results, got {len(results)}")
-
         return results
 
     def _query_parts_v1(
@@ -233,43 +302,26 @@ class ApiClient:
         *,
         pick_parameters_by_id: dict[int, dict[str, Any]] | None = None,
     ) -> list[Component]:
-        payload = {"component_ids": component_ids}
-        response = self._post("/v1/components/full", payload)
-        metadata, bundle_files = _parse_v1_full_multipart(response)
-        _materialize_v1_assets(metadata=metadata, bundle_files=bundle_files)
+        rows_by_id = self._fetch_components_v1_rows(component_ids)
+        return self._components_from_v1_rows(
+            component_ids=component_ids,
+            rows_by_id=rows_by_id,
+            pick_parameters_by_id=pick_parameters_by_id or {},
+        )
 
-        components = metadata.get("components", [])
-        if not isinstance(components, list):
-            raise ApiError("Invalid v1 full response: components is not a list")
-        by_id: dict[int, dict[str, Any]] = {}
-        for row in components:
-            if not isinstance(row, dict):
-                continue
-            raw_lcsc_id = row.get("lcsc_id")
-            if isinstance(raw_lcsc_id, int) and raw_lcsc_id > 0:
-                by_id[raw_lcsc_id] = row
-
-        pick_map = pick_parameters_by_id or {}
-        out: list[Component] = []
-        for component_id in component_ids:
-            row = by_id.get(component_id)
-            if row is None:
-                continue
-            out.append(
-                _component_from_v1_row(
-                    row,
-                    pick_parameters=pick_map.get(component_id, {}),
-                )
-            )
-        return out
-
-    def _fetch_parts_from_legacy_dict(self, query: dict[str, Any]) -> list[Component]:
+    def _fetch_parts_from_dict_query(self, query: dict[str, Any]) -> list[Component]:
         if "lcsc" in query:
             try:
                 lcsc_id = int(query["lcsc"])
             except Exception as exc:
                 raise ApiError(f"Invalid lcsc query payload: {query!r}") from exc
             return self.fetch_part_by_lcsc(lcsc_id)
+
+        if "manufacturer_name" in query and "part_number" in query:
+            return self.fetch_part_by_mfr(
+                str(query["manufacturer_name"]),
+                str(query["part_number"]),
+            )
 
         endpoint = query.get("endpoint")
         if not isinstance(endpoint, str):
@@ -278,30 +330,92 @@ class ApiClient:
         if endpoint in _V1_METHOD_TO_TYPE:
             # Re-wrap into BaseParams-like shape and use v1 path.
             payload = _build_v1_query_payload_from_dict(endpoint=endpoint, raw=query)
-            try:
-                response = self._post("/v1/components/parameters/query", payload)
-            except ApiHTTPError as e:
-                if e.response.status_code not in _LEGACY_FALLBACK_STATUS_CODES:
-                    raise
-            else:
-                body = response.json()
-                ordered_ids, pick_parameters_by_id = _extract_candidate_pick_parameters(
-                    body.get("candidates", [])
-                )
-                if not ordered_ids:
-                    return []
-                return self._fetch_components_v1(
-                    ordered_ids,
-                    pick_parameters_by_id=pick_parameters_by_id,
-                )
+            response = self._post("/v1/components/parameters/query", payload)
+            body = response.json()
+            ordered_ids, pick_parameters_by_id = _extract_candidate_pick_parameters(
+                body.get("candidates", [])
+            )
+            if not ordered_ids:
+                return []
+            return self._fetch_components_v1(
+                ordered_ids,
+                pick_parameters_by_id=pick_parameters_by_id,
+            )
 
-        response = self._post("/v0/query", {"queries": [query]})
-        results = response.json().get("results", [])
-        if not results:
-            return []
-        first = results[0]
-        components = first.get("components", []) if isinstance(first, dict) else []
-        return [Component.from_dict(part) for part in components]  # type: ignore[arg-type]
+        raise ApiError(f"Endpoint unsupported by v1 API: {endpoint}")
+
+    def _lookup_component_ids_by_mfr(
+        self, mfr: str, mfr_pn: str, *, limit: int
+    ) -> list[int]:
+        response = self._get(
+            "/v1/components/mfr/"
+            f"{quote(mfr, safe='')}/{quote(mfr_pn, safe='')}?limit={limit}"
+        )
+        body = response.json()
+        raw_component_ids = body.get("component_ids")
+        if not isinstance(raw_component_ids, list):
+            raise ApiError(
+                "Invalid v1 manufacturer lookup response: component_ids is not a list"
+            )
+        component_ids: list[int] = []
+        for raw_component_id in raw_component_ids:
+            try:
+                component_id = int(raw_component_id)
+            except Exception:
+                continue
+            if component_id > 0:
+                component_ids.append(component_id)
+        return component_ids
+
+    def _fetch_components_v1_rows(
+        self, component_ids: list[int]
+    ) -> dict[int, dict[str, Any]]:
+        ordered_unique: list[int] = []
+        seen: set[int] = set()
+        for component_id in component_ids:
+            if component_id <= 0 or component_id in seen:
+                continue
+            seen.add(component_id)
+            ordered_unique.append(component_id)
+
+        rows_by_id: dict[int, dict[str, Any]] = {}
+        for start in range(0, len(ordered_unique), _FULL_COMPONENTS_MAX_IDS):
+            chunk = ordered_unique[start : start + _FULL_COMPONENTS_MAX_IDS]
+            payload = {"component_ids": chunk}
+            response = self._post("/v1/components/full", payload)
+            metadata, bundle_files = _parse_v1_full_multipart(response)
+            _materialize_v1_assets(metadata=metadata, bundle_files=bundle_files)
+
+            components = metadata.get("components", [])
+            if not isinstance(components, list):
+                raise ApiError("Invalid v1 full response: components is not a list")
+            for row in components:
+                if not isinstance(row, dict):
+                    continue
+                raw_lcsc_id = row.get("lcsc_id")
+                if isinstance(raw_lcsc_id, int) and raw_lcsc_id > 0:
+                    rows_by_id[raw_lcsc_id] = row
+        return rows_by_id
+
+    def _components_from_v1_rows(
+        self,
+        *,
+        component_ids: list[int],
+        rows_by_id: dict[int, dict[str, Any]],
+        pick_parameters_by_id: dict[int, dict[str, Any]],
+    ) -> list[Component]:
+        out: list[Component] = []
+        for component_id in component_ids:
+            row = rows_by_id.get(component_id)
+            if row is None:
+                continue
+            out.append(
+                _component_from_v1_row(
+                    row,
+                    pick_parameters=pick_parameters_by_id.get(component_id, {}),
+                )
+            )
+        return out
 
 
 @once
@@ -661,6 +775,8 @@ def _canonical_asset_filename(*, artifact_type: str) -> str | None:
         return "model.obj"
     if artifact_type == "datasheet_pdf":
         return "datasheet.pdf"
+    if artifact_type == "easyeda_cad_json":
+        return "easyeda_cad.json"
     return None
 
 
@@ -911,6 +1027,74 @@ def _build_literal_attributes_for_component(
             pick_parameters.get("on_resistance_ohm", row.get("on_resistance_ohm")),
             unit="ohm",
         )
+    elif component_type == "crystal":
+        attrs["frequency"] = _quantity_literal(
+            pick_parameters.get("frequency_hz", row.get("frequency_hz")),
+            unit="hertz",
+        )
+        attrs["load_capacitance"] = _quantity_literal(
+            pick_parameters.get("load_capacitance_f", row.get("load_capacitance_f")),
+            unit="farad",
+        )
+        attrs["frequency_tolerance"] = _quantity_literal(
+            pick_parameters.get(
+                "frequency_tolerance_ppm",
+                row.get("frequency_tolerance_ppm"),
+            ),
+            unit="ppm",
+        )
+        attrs["frequency_temperature_tolerance"] = _quantity_literal(
+            pick_parameters.get(
+                "frequency_stability_ppm",
+                row.get("frequency_stability_ppm"),
+            ),
+            unit="ppm",
+        )
+    elif component_type == "ferrite_bead":
+        attrs["impedance_at_frequency"] = _quantity_literal(
+            pick_parameters.get("impedance_ohm", row.get("ferrite_impedance_ohm")),
+            unit="ohm",
+        )
+        attrs["current_rating"] = _quantity_literal(
+            pick_parameters.get(
+                "current_rating_a",
+                _first_non_none(
+                    row.get("ferrite_current_rating_a"),
+                    row.get("max_current_a"),
+                ),
+            ),
+            unit="ampere",
+        )
+        attrs["dc_resistance"] = _quantity_literal(
+            pick_parameters.get("dc_resistance_ohm", row.get("dc_resistance_ohm")),
+            unit="ohm",
+        )
+    elif component_type == "ldo":
+        attrs["output_voltage"] = _quantity_literal(
+            pick_parameters.get("output_voltage_v", row.get("ldo_output_voltage_v")),
+            unit="volt",
+        )
+        attrs["max_input_voltage"] = _quantity_literal(
+            pick_parameters.get(
+                "max_input_voltage_v",
+                row.get("ldo_max_input_voltage_v"),
+            ),
+            unit="volt",
+        )
+        attrs["output_current"] = _quantity_literal(
+            pick_parameters.get("output_current_a", row.get("ldo_output_current_a")),
+            unit="ampere",
+        )
+        attrs["dropout_voltage"] = _quantity_literal(
+            pick_parameters.get(
+                "dropout_voltage_v",
+                row.get("ldo_dropout_voltage_v"),
+            ),
+            unit="volt",
+        )
+        output_type = pick_parameters.get("output_type", row.get("ldo_output_type"))
+        if isinstance(output_type, str) and output_type:
+            attrs["output_type"] = _enum_literal(output_type)
 
     return {key: value for key, value in attrs.items() if value is not None}
 
@@ -1037,6 +1221,109 @@ def test_build_v1_query_payload_supports_new_endpoints() -> None:
     assert payload["ranges"]["inductance"] == {"minimum": 9e-06, "maximum": 1.1e-05}
 
 
+def test_fetch_part_by_mfr_uses_v1_lookup_endpoint(monkeypatch) -> None:
+    client = ApiClient()
+    captured: dict[str, Any] = {}
+
+    class _Response:
+        def json(self):
+            return {"component_ids": [2040]}
+
+    def _fake_get(url: str, timeout: float = 10):
+        captured["url"] = url
+        return _Response()
+
+    def _fake_fetch_components_v1(
+        component_ids: list[int],
+        *,
+        pick_parameters_by_id: dict[int, dict[str, Any]] | None = None,
+    ):
+        captured["component_ids"] = component_ids
+        return []
+
+    monkeypatch.setattr(client, "_get", _fake_get)
+    monkeypatch.setattr(client, "_fetch_components_v1", _fake_fetch_components_v1)
+
+    out = client.fetch_part_by_mfr("Raspberry Pi", "RP2040")
+    assert out == []
+    assert captured["component_ids"] == [2040]
+    assert captured["url"] == "/v1/components/mfr/Raspberry%20Pi/RP2040?limit=50"
+
+
+def test_fetch_parts_multiple_uses_v1_batch_query(monkeypatch) -> None:
+    client = ApiClient()
+    captured: dict[str, Any] = {}
+
+    class _BatchResponse:
+        def json(self):
+            return {
+                "results": [
+                    {
+                        "component_type": "resistor",
+                        "candidates": [
+                            {
+                                "lcsc_id": 1001,
+                                "pick_parameters": {"resistance_ohm": 10_000.0},
+                            }
+                        ],
+                        "total": 1,
+                    },
+                    {
+                        "component_type": "capacitor",
+                        "candidates": [{"lcsc_id": 2002, "pick_parameters": {}}],
+                        "total": 1,
+                    },
+                ],
+                "total_queries": 2,
+            }
+
+    def _fake_post(
+        url: str, data: dict, timeout: float = DEFAULT_API_TIMEOUT_SECONDS
+    ) -> _BatchResponse:
+        captured["url"] = url
+        captured["data"] = data
+        return _BatchResponse()
+
+    def _fake_fetch_components_v1_rows(
+        component_ids: list[int],
+    ) -> dict[int, dict[str, Any]]:
+        captured["component_ids"] = component_ids
+        return {
+            1001: {"lcsc_id": 1001, "component_type": "resistor"},
+            2002: {"lcsc_id": 2002, "component_type": "capacitor"},
+        }
+
+    monkeypatch.setattr(client, "_post", _fake_post)
+    monkeypatch.setattr(
+        client,
+        "_fetch_components_v1_rows",
+        _fake_fetch_components_v1_rows,
+    )
+
+    out = client.fetch_parts_multiple(
+        [
+            {"endpoint": "resistors", "qty": 1},
+            {"endpoint": "capacitors", "qty": 1},
+        ]
+    )
+    assert captured["url"] == "/v1/components/parameters/query/batch"
+    assert len(captured["data"]["queries"]) == 2
+    assert captured["component_ids"] == [1001, 2002]
+    assert len(out) == 2
+    assert out[0][0].lcsc == 1001
+    assert out[1][0].lcsc == 2002
+
+
+def test_fetch_parts_from_dict_query_rejects_non_v1_endpoints() -> None:
+    client = ApiClient()
+    try:
+        client._fetch_parts_from_dict_query({"endpoint": "tvs", "qty": 1})
+    except ApiError as exc:
+        assert "unsupported by v1 API" in str(exc)
+    else:
+        raise AssertionError("Expected ApiError for unsupported endpoint")
+
+
 def test_v1_method_mapping_covers_pickable_endpoints() -> None:
     endpoint_values = {
         str(value)
@@ -1078,6 +1365,46 @@ def test_build_literal_attributes_for_component_new_types() -> None:
     assert "max_drain_source_voltage" in mosfet
     assert "on_resistance" in mosfet
 
+    crystal = _build_literal_attributes_for_component(
+        {"component_type": "crystal"},
+        {
+            "frequency_hz": 16_000_000.0,
+            "load_capacitance_f": 18e-12,
+            "frequency_tolerance_ppm": 20.0,
+        },
+    )
+    assert "frequency" in crystal
+    assert "load_capacitance" in crystal
+    assert "frequency_tolerance" in crystal
+
+    ferrite = _build_literal_attributes_for_component(
+        {"component_type": "ferrite_bead"},
+        {
+            "impedance_ohm": 120.0,
+            "current_rating_a": 2.0,
+            "dc_resistance_ohm": 0.05,
+        },
+    )
+    assert "impedance_at_frequency" in ferrite
+    assert "current_rating" in ferrite
+    assert "dc_resistance" in ferrite
+
+    ldo = _build_literal_attributes_for_component(
+        {"component_type": "ldo"},
+        {
+            "output_voltage_v": 3.3,
+            "max_input_voltage_v": 6.0,
+            "output_current_a": 0.2,
+            "dropout_voltage_v": 0.3,
+            "output_type": "FIXED",
+        },
+    )
+    assert "output_voltage" in ldo
+    assert "max_input_voltage" in ldo
+    assert "output_current" in ldo
+    assert "dropout_voltage" in ldo
+    assert "output_type" in ldo
+
 
 def test_materialize_v1_assets_uses_bundle_manifest_paths(
     tmp_path: Path, monkeypatch
@@ -1104,12 +1431,20 @@ def test_materialize_v1_assets_uses_bundle_manifest_paths(
                         {
                             "artifact_type": "model_step",
                             "bundle_path": "assets/21190/001_model_step_hash",
-                        }
+                        },
+                        {
+                            "artifact_type": "easyeda_cad_json",
+                            "bundle_path": "assets/21190/002_easyeda_cad_hash",
+                        },
                     ]
                 }
             }
         ).encode("utf-8"),
         "assets/21190/001_model_step_hash": b"step-bytes",
+        "assets/21190/002_easyeda_cad_hash": b'{"description":"test"}',
     }
     _materialize_v1_assets(metadata=metadata, bundle_files=bundle_files)
     assert (tmp_path / "C21190" / "model.step").read_bytes() == b"step-bytes"
+    assert (tmp_path / "C21190" / "easyeda_cad.json").read_bytes() == (
+        b'{"description":"test"}'
+    )

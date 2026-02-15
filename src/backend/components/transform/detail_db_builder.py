@@ -22,6 +22,7 @@ class DetailDbBuilder(ComponentSink):
         self._conn = sqlite3.connect(db_path)
         self._component_rows: list[tuple] = []
         self._asset_rows: list[tuple] = []
+        self._mfr_lookup_rows: list[tuple[str, str, int]] = []
         self.inserted_count = 0
         self._init_db()
 
@@ -81,7 +82,21 @@ class DetailDbBuilder(ComponentSink):
                 gate_source_threshold_voltage_v REAL,
                 max_drain_source_voltage_v REAL,
                 max_continuous_drain_current_a REAL,
-                on_resistance_ohm REAL
+                on_resistance_ohm REAL,
+                frequency_hz REAL,
+                frequency_min_hz REAL,
+                frequency_max_hz REAL,
+                load_capacitance_f REAL,
+                frequency_tolerance_ppm REAL,
+                frequency_stability_ppm REAL,
+                ferrite_impedance_ohm REAL,
+                ferrite_current_rating_a REAL,
+                ldo_output_voltage_v REAL,
+                ldo_max_input_voltage_v REAL,
+                ldo_output_current_a REAL,
+                ldo_dropout_voltage_v REAL,
+                ldo_output_type TEXT,
+                ldo_output_polarity TEXT
             );
 
             CREATE TABLE component_assets (
@@ -100,6 +115,14 @@ class DetailDbBuilder(ComponentSink):
                 footprint_name TEXT,
                 model_3d_path TEXT,
                 easyeda_model_uuid TEXT,
+                FOREIGN KEY(lcsc_id) REFERENCES components_full(lcsc_id)
+            );
+
+            CREATE TABLE component_mfr_lookup (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mfr_norm TEXT NOT NULL,
+                part_number_norm TEXT NOT NULL,
+                lcsc_id INTEGER NOT NULL,
                 FOREIGN KEY(lcsc_id) REFERENCES components_full(lcsc_id)
             );
             """
@@ -155,6 +178,20 @@ class DetailDbBuilder(ComponentSink):
                 component.max_drain_source_voltage_v,
                 component.max_continuous_drain_current_a,
                 component.on_resistance_ohm,
+                component.frequency_hz,
+                component.frequency_min_hz,
+                component.frequency_max_hz,
+                component.load_capacitance_f,
+                component.frequency_tolerance_ppm,
+                component.frequency_stability_ppm,
+                component.ferrite_impedance_ohm,
+                component.ferrite_current_rating_a,
+                component.ldo_output_voltage_v,
+                component.ldo_max_input_voltage_v,
+                component.ldo_output_current_a,
+                component.ldo_dropout_voltage_v,
+                component.ldo_output_type,
+                component.ldo_output_polarity,
             )
         )
         self._asset_rows.append(
@@ -198,6 +235,12 @@ class DetailDbBuilder(ComponentSink):
                     None,
                     None,
                 )
+            )
+        mfr_norm = _normalize_lookup_token(component.manufacturer_name)
+        part_number_norm = _normalize_lookup_token(component.part_number)
+        if mfr_norm is not None and part_number_norm is not None:
+            self._mfr_lookup_rows.append(
+                (mfr_norm, part_number_norm, component.lcsc_id)
             )
 
         if len(self._component_rows) >= self.batch_size:
@@ -255,13 +298,29 @@ class DetailDbBuilder(ComponentSink):
                 gate_source_threshold_voltage_v,
                 max_drain_source_voltage_v,
                 max_continuous_drain_current_a,
-                on_resistance_ohm
+                on_resistance_ohm,
+                frequency_hz,
+                frequency_min_hz,
+                frequency_max_hz,
+                load_capacitance_f,
+                frequency_tolerance_ppm,
+                frequency_stability_ppm,
+                ferrite_impedance_ohm,
+                ferrite_current_rating_a,
+                ldo_output_voltage_v,
+                ldo_max_input_voltage_v,
+                ldo_output_current_a,
+                ldo_dropout_voltage_v,
+                ldo_output_type,
+                ldo_output_polarity
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?
             )
             """,
             self._component_rows,
@@ -287,9 +346,20 @@ class DetailDbBuilder(ComponentSink):
             """,
             self._asset_rows,
         )
+        self._conn.executemany(
+            """
+            INSERT INTO component_mfr_lookup (
+                mfr_norm,
+                part_number_norm,
+                lcsc_id
+            ) VALUES (?, ?, ?)
+            """,
+            self._mfr_lookup_rows,
+        )
         self.inserted_count += len(self._component_rows)
         self._component_rows.clear()
         self._asset_rows.clear()
+        self._mfr_lookup_rows.clear()
 
     def finalize(self) -> None:
         self._flush_rows()
@@ -303,12 +373,23 @@ class DetailDbBuilder(ComponentSink):
             ON component_assets (lcsc_id);
             CREATE INDEX component_assets_artifact_idx
             ON component_assets (artifact_type);
+            CREATE INDEX component_mfr_lookup_match_idx
+            ON component_mfr_lookup (mfr_norm, part_number_norm, lcsc_id);
             ANALYZE;
             PRAGMA optimize;
             """
         )
         self._conn.commit()
         self._conn.close()
+
+
+def _normalize_lookup_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split()).strip()
+    if not normalized:
+        return None
+    return normalized.casefold()
 
 
 def test_detail_db_builder(tmp_path) -> None:
@@ -361,6 +442,13 @@ def test_detail_db_builder(tmp_path) -> None:
         """
     ).fetchone()
     assert asset == ("https://example.com/a.pdf", "R0402", "uuid")
+    mfr_lookup = conn.execute(
+        """
+        SELECT mfr_norm, part_number_norm, lcsc_id
+        FROM component_mfr_lookup
+        """
+    ).fetchone()
+    assert mfr_lookup == ("m", "r1", 1)
     conn.close()
 
 
@@ -438,3 +526,10 @@ def test_detail_db_builder_includes_stage1_asset_rows(tmp_path) -> None:
     assert artifact[1] == "objects/datasheet_pdf/abc.zst"
     assert json.loads(artifact[2])["status_code"] == 200
     conn.close()
+
+
+def test_normalize_lookup_token() -> None:
+    assert _normalize_lookup_token(None) is None
+    assert _normalize_lookup_token("  ") is None
+    assert _normalize_lookup_token("Raspberry   Pi") == "raspberry pi"
+    assert _normalize_lookup_token(" RP2040 ") == "rp2040"

@@ -3,13 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 
-from .fast_lookup_sqlite import _FAST_TABLES, _quote_ident
+from .fast_lookup_sqlite import _quote_ident
 from .interfaces import (
+    BatchQueryValidationError,
     ComponentCandidate,
     FastLookupStore,
     ParameterQuery,
@@ -25,10 +28,14 @@ from .query_normalization import (
 
 _ZIG_SERVER_SOURCE = Path(__file__).with_name("zig_lookup_server.zig")
 _ENGINE_CACHE_DIR = "zig_fast_lookup"
+_DATASET_SCHEMA_VERSION = "v3"
+_FAST_TABLE_SUFFIX = "_pick"
+_REQUIRED_FAST_COLUMNS = {"lcsc_id", "package", "stock", "is_basic", "is_preferred"}
 _RANGE_BOUNDS = {
     "resistance_ohm": ("resistance_min_ohm", "resistance_max_ohm"),
     "capacitance_f": ("capacitance_min_f", "capacitance_max_f"),
     "inductance_h": ("inductance_min_h", "inductance_max_h"),
+    "frequency_hz": ("frequency_min_hz", "frequency_max_hz"),
 }
 
 
@@ -66,33 +73,7 @@ class ZigFastLookupStore(FastLookupStore):
             pass
         self._process = None
 
-    def query_resistors(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("resistor", query)
-
-    def query_capacitors(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("capacitor", query)
-
-    def query_capacitors_polarized(
-        self, query: ParameterQuery
-    ) -> list[ComponentCandidate]:
-        return self._query_component("capacitor_polarized", query)
-
-    def query_inductors(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("inductor", query)
-
-    def query_diodes(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("diode", query)
-
-    def query_leds(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("led", query)
-
-    def query_bjts(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("bjt", query)
-
-    def query_mosfets(self, query: ParameterQuery) -> list[ComponentCandidate]:
-        return self._query_component("mosfet", query)
-
-    def _query_component(
+    def query_component(
         self, component_type: str, query: ParameterQuery
     ) -> list[ComponentCandidate]:
         if component_type not in self._supported_component_types:
@@ -101,6 +82,87 @@ class ZigFastLookupStore(FastLookupStore):
             )
         payload = self._build_payload(component_type, query)
         return self._query(payload)
+
+    def query_components_batch(
+        self, queries: Sequence[tuple[str, ParameterQuery]]
+    ) -> list[list[ComponentCandidate]]:
+        payloads: list[dict[str, object]] = []
+        for component_type, query in queries:
+            if component_type not in self._supported_component_types:
+                raise QueryValidationError(
+                    f"Unsupported component_type for zig fast lookup: {component_type}"
+                )
+            payloads.append(self._build_payload(component_type, query))
+
+        parsed = self._send_request({"queries": payloads})
+        if not parsed.get("ok", False):
+            error = parsed.get("error", "unknown error")
+            error_type = parsed.get("error_type", "internal")
+            if error_type == "validation":
+                raise QueryValidationError(str(error))
+            raise SnapshotSchemaError(str(error))
+
+        raw_results = parsed.get("results", [])
+        if not isinstance(raw_results, list):
+            raise SnapshotSchemaError("zig batch response missing results array")
+        if len(raw_results) != len(payloads):
+            raise SnapshotSchemaError("zig batch response results length mismatch")
+
+        out: list[list[ComponentCandidate]] = []
+        errors: list[str | None] = []
+        for raw_result in raw_results:
+            if not isinstance(raw_result, dict):
+                raise SnapshotSchemaError("zig batch response item must be object")
+            if not raw_result.get("ok", False):
+                error = str(raw_result.get("error", "invalid query filters"))
+                error_type = str(raw_result.get("error_type", "validation"))
+                if error_type != "validation":
+                    raise SnapshotSchemaError(error)
+                errors.append(error)
+                out.append([])
+                continue
+            candidates_raw = raw_result.get("candidates", [])
+            out.append(self._parse_candidates(candidates_raw))
+            errors.append(None)
+
+        if any(error is not None for error in errors):
+            raise BatchQueryValidationError(errors)
+        return out
+
+    def query_resistors(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("resistor", query)
+
+    def query_capacitors(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("capacitor", query)
+
+    def query_capacitors_polarized(
+        self, query: ParameterQuery
+    ) -> list[ComponentCandidate]:
+        return self.query_component("capacitor_polarized", query)
+
+    def query_inductors(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("inductor", query)
+
+    def query_diodes(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("diode", query)
+
+    def query_leds(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("led", query)
+
+    def query_bjts(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("bjt", query)
+
+    def query_mosfets(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("mosfet", query)
+
+    def query_crystals(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("crystal", query)
+
+    def query_ferrite_beads(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("ferrite_bead", query)
+
+    def query_ldos(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        return self.query_component("ldo", query)
 
     def _build_payload(
         self, component_type: str, query: ParameterQuery
@@ -153,6 +215,16 @@ class ZigFastLookupStore(FastLookupStore):
         return payload
 
     def _query(self, payload: dict[str, object]) -> list[ComponentCandidate]:
+        parsed = self._send_request(payload)
+        if not parsed.get("ok", False):
+            error = parsed.get("error", "unknown error")
+            error_type = parsed.get("error_type", "internal")
+            if error_type == "validation":
+                raise QueryValidationError(str(error))
+            raise SnapshotSchemaError(str(error))
+        return self._parse_candidates(parsed.get("candidates", []))
+
+    def _send_request(self, payload: dict[str, object]) -> dict[str, object]:
         process = self._process
         if process is None or process.poll() is not None:
             raise SnapshotSchemaError("zig lookup process not running")
@@ -184,14 +256,13 @@ class ZigFastLookupStore(FastLookupStore):
             raise SnapshotSchemaError(
                 f"invalid response from zig lookup process: {exc}"
             ) from exc
-        if not parsed.get("ok", False):
-            error = parsed.get("error", "unknown error")
-            error_type = parsed.get("error_type", "internal")
-            if error_type == "validation":
-                raise QueryValidationError(str(error))
-            raise SnapshotSchemaError(str(error))
+        if not isinstance(parsed, dict):
+            raise SnapshotSchemaError("zig lookup response must be object")
+        return parsed
 
-        candidates_raw = parsed.get("candidates", [])
+    def _parse_candidates(self, candidates_raw: object) -> list[ComponentCandidate]:
+        if not isinstance(candidates_raw, list):
+            raise SnapshotSchemaError("zig lookup response candidates must be list")
         out: list[ComponentCandidate] = []
         for item in candidates_raw:
             if not isinstance(item, dict):
@@ -275,8 +346,11 @@ class ZigFastLookupStore(FastLookupStore):
 
     def _ensure_dataset(self, artifact_root: Path) -> tuple[Path, list[str]]:
         db_stat = self.db_path.stat()
+        source_stat = _ZIG_SERVER_SOURCE.stat()
         db_fingerprint = _hash_text(
-            f"{self.db_path.resolve()}:{db_stat.st_mtime_ns}:{db_stat.st_size}"
+            f"{_DATASET_SCHEMA_VERSION}:"
+            f"{self.db_path.resolve()}:{db_stat.st_mtime_ns}:{db_stat.st_size}:"
+            f"{_ZIG_SERVER_SOURCE.resolve()}:{source_stat.st_mtime_ns}:{source_stat.st_size}"
         )
         dataset_dir = artifact_root / f"data-{db_fingerprint}"
         schema_path = dataset_dir / "schema.json"
@@ -288,18 +362,18 @@ class ZigFastLookupStore(FastLookupStore):
         dataset_dir.mkdir(parents=True, exist_ok=True)
         components: list[dict[str, object]] = []
         with sqlite3.connect(self.db_path) as conn:
-            existing_tables = {
-                str(row[0])
-                for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
-            }
-            for component_type, table_name in _FAST_TABLES.items():
-                if table_name not in existing_tables:
-                    continue
+            for component_type, table_name in _discover_fast_tables(conn):
                 columns = _table_columns(conn, table_name)
                 if not columns:
                     continue
+                column_names = {column["name"] for column in columns}
+                missing_columns = sorted(
+                    _REQUIRED_FAST_COLUMNS.difference(column_names)
+                )
+                if missing_columns:
+                    raise SnapshotSchemaError(
+                        f"{table_name} missing required columns: {missing_columns}"
+                    )
                 out_path = dataset_dir / f"{component_type}.tsv"
                 _export_table_to_tsv(
                     conn=conn,
@@ -314,9 +388,7 @@ class ZigFastLookupStore(FastLookupStore):
                         "max_field": max_col,
                     }
                     for field, (min_col, max_col) in _RANGE_BOUNDS.items()
-                    if {field, min_col, max_col}.issubset(
-                        {column["name"] for column in columns}
-                    )
+                    if {field, min_col, max_col}.issubset(column_names)
                 ]
                 components.append(
                     {
@@ -339,6 +411,28 @@ class ZigFastLookupStore(FastLookupStore):
         )
         supported = [str(component["component_type"]) for component in components]
         return schema_path, supported
+
+
+def _discover_fast_tables(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name LIKE '%_pick'
+        ORDER BY name
+        """
+    ).fetchall()
+    out: list[tuple[str, str]] = []
+    for row in rows:
+        table_name = str(row[0])
+        if not table_name.endswith(_FAST_TABLE_SUFFIX):
+            continue
+        component_type = table_name[: -len(_FAST_TABLE_SUFFIX)]
+        if not component_type:
+            continue
+        out.append((component_type, table_name))
+    return out
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> list[dict[str, str]]:
@@ -460,6 +554,9 @@ def test_zig_lookup_store_missing_db_raises(tmp_path) -> None:
 
 
 def test_zig_lookup_store_unsupported_exact_type_raises(tmp_path) -> None:
+    if shutil.which("zig") is None:
+        return
+
     db_path = tmp_path / "fast.sqlite"
     _create_minimal_fast_db(db_path)
     store = ZigFastLookupStore(db_path, cache_root=tmp_path)
@@ -469,5 +566,185 @@ def test_zig_lookup_store_unsupported_exact_type_raises(tmp_path) -> None:
         assert "Unsupported exact filter type" in str(exc)
     else:
         assert False, "Expected QueryValidationError"
+    finally:
+        store.close()
+
+
+def test_zig_lookup_store_supports_dynamic_component_tables(tmp_path) -> None:
+    if shutil.which("zig") is None:
+        return
+
+    db_path = tmp_path / "fast.sqlite"
+    _create_minimal_fast_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE diode_pick (
+                lcsc_id INTEGER PRIMARY KEY,
+                package TEXT,
+                stock INTEGER,
+                is_basic INTEGER,
+                is_preferred INTEGER,
+                forward_voltage_v REAL,
+                reverse_working_voltage_v REAL,
+                max_current_a REAL,
+                reverse_leakage_current_a REAL
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO diode_pick (
+                lcsc_id,
+                package,
+                stock,
+                is_basic,
+                is_preferred,
+                forward_voltage_v,
+                reverse_working_voltage_v,
+                max_current_a,
+                reverse_leakage_current_a
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (12345, "SOD-123", 42, 1, 0, 0.72, 60.0, 1.0, 1e-6),
+        )
+        conn.commit()
+
+    store = ZigFastLookupStore(db_path, cache_root=tmp_path)
+    try:
+        candidates = store.query_diodes(ParameterQuery(limit=5, qty=1))
+        assert len(candidates) == 1
+        assert candidates[0].lcsc_id == 12345
+        assert candidates[0].pick_parameters["forward_voltage_v"] == 0.72
+    finally:
+        store.close()
+
+
+def test_zig_lookup_store_query_component_supports_unknown_pick_table(tmp_path) -> None:
+    if shutil.which("zig") is None:
+        return
+
+    db_path = tmp_path / "fast.sqlite"
+    _create_minimal_fast_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE tvs_diode_pick (
+                lcsc_id INTEGER PRIMARY KEY,
+                package TEXT,
+                stock INTEGER,
+                is_basic INTEGER,
+                is_preferred INTEGER,
+                standoff_voltage_v REAL,
+                clamp_voltage_v REAL,
+                polarity TEXT
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO tvs_diode_pick (
+                lcsc_id,
+                package,
+                stock,
+                is_basic,
+                is_preferred,
+                standoff_voltage_v,
+                clamp_voltage_v,
+                polarity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (98765, "SOD-323", 120, 0, 1, 5.0, 9.2, "UNIDIRECTIONAL"),
+        )
+        conn.commit()
+
+    store = ZigFastLookupStore(db_path, cache_root=tmp_path)
+    try:
+        candidates = store.query_component("tvs_diode", ParameterQuery(limit=5, qty=1))
+        assert len(candidates) == 1
+        assert candidates[0].lcsc_id == 98765
+        assert candidates[0].pick_parameters["polarity"] == "UNIDIRECTIONAL"
+    finally:
+        store.close()
+
+
+def test_zig_lookup_store_query_components_batch_success(tmp_path) -> None:
+    if shutil.which("zig") is None:
+        return
+
+    db_path = tmp_path / "fast.sqlite"
+    _create_minimal_fast_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO resistor_pick (
+                lcsc_id,
+                package,
+                stock,
+                is_basic,
+                is_preferred,
+                resistance_ohm,
+                resistance_min_ohm,
+                resistance_max_ohm,
+                tolerance_pct,
+                max_power_w,
+                max_voltage_v,
+                tempco_ppm
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1001, "0603", 100, 1, 0, 1000.0, 999.0, 1001.0, 1.0, 0.125, 50.0, 100.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO capacitor_pick (
+                lcsc_id,
+                package,
+                stock,
+                is_basic,
+                is_preferred,
+                capacitance_f,
+                capacitance_min_f,
+                capacitance_max_f,
+                tolerance_pct,
+                max_voltage_v,
+                tempco_code
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (2002, "0402", 80, 0, 1, 1e-6, 0.9e-6, 1.1e-6, 10.0, 16.0, "X7R"),
+        )
+        conn.commit()
+
+    store = ZigFastLookupStore(db_path, cache_root=tmp_path)
+    try:
+        results = store.query_components_batch(
+            [
+                ("resistor", ParameterQuery(exact={"resistance_ohm": 1000.0}, limit=5)),
+                ("capacitor", ParameterQuery(exact={"tempco_code": "X7R"}, limit=5)),
+            ]
+        )
+        assert [candidate.lcsc_id for candidate in results[0]] == [1001]
+        assert [candidate.lcsc_id for candidate in results[1]] == [2002]
+    finally:
+        store.close()
+
+
+def test_zig_lookup_store_query_components_batch_validation_error(tmp_path) -> None:
+    if shutil.which("zig") is None:
+        return
+
+    db_path = tmp_path / "fast.sqlite"
+    _create_minimal_fast_db(db_path)
+    store = ZigFastLookupStore(db_path, cache_root=tmp_path)
+    try:
+        store.query_components_batch(
+            [
+                ("resistor", ParameterQuery(limit=5, qty=1)),
+                ("resistor", ParameterQuery(exact={"does_not_exist": 1.0}, limit=5)),
+            ]
+        )
+    except BatchQueryValidationError as exc:
+        assert exc.errors == [None, "invalid query filters"]
+    else:
+        assert False, "Expected BatchQueryValidationError"
     finally:
         store.close()

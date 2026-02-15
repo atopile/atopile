@@ -214,6 +214,9 @@ def build_snapshot(
             "led_rows": validation.led_rows,
             "bjt_rows": validation.bjt_rows,
             "mosfet_rows": validation.mosfet_rows,
+            "crystal_rows": validation.crystal_rows,
+            "ferrite_bead_rows": validation.ferrite_bead_rows,
+            "ldo_rows": validation.ldo_rows,
         },
         "stage1_artifact_records": sum(
             len(records) for records in stage1_assets_by_lcsc.values()

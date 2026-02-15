@@ -35,7 +35,6 @@ from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Tree,
-    cast_assert,
     groupby,
 )
 
@@ -85,17 +84,20 @@ BackendPackage = StrEnum(
 def _from_smd_size(cls, size: SMDSize, type_node: graph.BoundNode) -> "BackendPackage":  # type: ignore[invalid-type-form]
     type_name = fbrk.TypeGraph.get_type_name(type_node=type_node)
 
+    prefix: str | None = None
     if type_name == F.Resistor._type_identifier():
         prefix = "R"
     elif type_name == F.Capacitor._type_identifier():
         prefix = "C"
     elif type_name == F.Inductor._type_identifier():
         prefix = "L"
-    else:
-        raise NotImplementedError(f"Unsupported pickable trait: {type_node}")
+    elif type_name == F.FerriteBead._type_identifier():
+        prefix = "L"
 
     try:
-        return cls[f"{prefix}{size.imperial.without_prefix}"]
+        if prefix is not None:
+            return cls[f"{prefix}{size.imperial.without_prefix}"]
+        return cls[size.value]
     except SMDSize.UnableToConvert:
         return cls[size.value]
 
@@ -287,8 +289,10 @@ def _find_modules(
         raise UserInfraError("Fetching component data failed: connection error") from e
     except ApiHTTPError as e:
         if e.response.status_code == 400:
-            response = cast_assert(dict, e.response.json())
-            if errors := response.get("detail", {}).get("errors", None):
+            response = e.response.json()
+            detail = response.get("detail") if isinstance(response, dict) else None
+            errors = detail.get("errors") if isinstance(detail, dict) else None
+            if errors:
                 raise ExceptionGroup(
                     "Failed to fetch one or more parts",
                     [

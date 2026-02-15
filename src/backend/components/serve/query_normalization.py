@@ -28,6 +28,16 @@ _QUERY_ALIASES = {
     "on_resistance": "on_resistance_ohm",
     "temperature_coefficient": "tempco_code",
     "tolerance": "tolerance_pct",
+    "frequency": "frequency_hz",
+    "frequency_tolerance": "frequency_tolerance_ppm",
+    "frequency_temperature_tolerance": "frequency_stability_ppm",
+    "load_capacitance": "load_capacitance_f",
+    "impedance_at_frequency": "impedance_ohm",
+    "current_rating": "current_rating_a",
+    "output_voltage": "output_voltage_v",
+    "max_input_voltage": "max_input_voltage_v",
+    "dropout_voltage": "dropout_voltage_v",
+    "output_current": "output_current_a",
 }
 _EPSILON_RELATIVE = 1e-5
 _PACKAGE_NUMERIC_RE = re.compile(r"^\d{4,5}$")
@@ -36,6 +46,7 @@ _COMPONENT_PACKAGE_PREFIX = {
     "capacitor": "C",
     "capacitor_polarized": "C",
     "inductor": "L",
+    "ferrite_bead": "L",
 }
 
 
@@ -56,6 +67,14 @@ def normalize_package(component_type: str, raw_package: str) -> str | None:
     if not normalized:
         return None
 
+    if component_type == "ferrite_bead":
+        for prefix in ("L", "FB"):
+            if normalized.startswith(prefix):
+                suffix = normalized[len(prefix) :]
+                if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
+                    return suffix
+        return normalized
+
     prefix = _COMPONENT_PACKAGE_PREFIX.get(component_type)
     if prefix is None:
         return normalized
@@ -71,4 +90,6 @@ def test_normalize_package_passive_prefixes() -> None:
     assert normalize_package("resistor", "R0402") == "0402"
     assert normalize_package("capacitor", "C0603") == "0603"
     assert normalize_package("inductor", "L0805") == "0805"
+    assert normalize_package("ferrite_bead", "L0603") == "0603"
+    assert normalize_package("ferrite_bead", "FB0603") == "0603"
     assert normalize_package("resistor", "0402") == "0402"

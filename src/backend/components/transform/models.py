@@ -15,6 +15,9 @@ ComponentType = Literal[
     "led",
     "bjt",
     "mosfet",
+    "crystal",
+    "ferrite_bead",
+    "ldo",
 ]
 
 RESISTOR_SUBCATEGORIES: tuple[str, ...] = (
@@ -61,7 +64,6 @@ _INDUCTOR_CATEGORY_SUBCATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Inductors & Chokes & Transformers",
         (
-            "Ferrite Beads",
             "General Inductors (TH)",
             "HF Inductors",
             "Inductors (SMD)",
@@ -150,6 +152,40 @@ MOSFET_SUBCATEGORIES: tuple[str, ...] = (
     "MOSFET",
     "SiC MOSFETs",
     "Silicon Carbide Field Effect Transistor (MOSFET)",
+)
+
+CRYSTAL_CATEGORIES: tuple[str, ...] = (
+    "Crystals/Oscillators/Resonators",
+    "Crystal Oscillator/Oscillator/Resonator",
+    "Crystals, Oscillators, Resonators",
+    "Resonators/Oscillators",
+    "crystals/oscillators/resonators",
+    "Crystals",
+)
+
+CRYSTAL_SUBCATEGORIES: tuple[str, ...] = ("Crystals",)
+
+FERRITE_BEAD_CATEGORIES: tuple[str, ...] = (
+    "Filters/EMI Optimization",
+    "Bead/Filter/EMI Optimization",
+    "Filters",
+    "Inductors & Chokes & Transformers",
+)
+
+FERRITE_BEAD_SUBCATEGORIES: tuple[str, ...] = ("Ferrite Beads",)
+
+LDO_CATEGORIES: tuple[str, ...] = (
+    "Power Management ICs",
+    "Power Supply Chip",
+    "Power Management (PMIC)",
+    "Power Management",
+)
+
+LDO_SUBCATEGORIES: tuple[str, ...] = (
+    "Linear Voltage Regulators (LDO)",
+    "Voltage Regulators - Linear, Low Drop Out (LDO) Regulators",
+    "Dropout Regulators(LDO)",
+    "Low Dropout Regulators(LDO)",
 )
 
 _SI_PREFIX: dict[str, float] = {
@@ -267,6 +303,20 @@ class NormalizedComponent:
     max_drain_source_voltage_v: float | None = None
     max_continuous_drain_current_a: float | None = None
     on_resistance_ohm: float | None = None
+    frequency_hz: float | None = None
+    frequency_min_hz: float | None = None
+    frequency_max_hz: float | None = None
+    load_capacitance_f: float | None = None
+    frequency_tolerance_ppm: float | None = None
+    frequency_stability_ppm: float | None = None
+    ferrite_impedance_ohm: float | None = None
+    ferrite_current_rating_a: float | None = None
+    ldo_output_voltage_v: float | None = None
+    ldo_max_input_voltage_v: float | None = None
+    ldo_output_current_a: float | None = None
+    ldo_dropout_voltage_v: float | None = None
+    ldo_output_type: str | None = None
+    ldo_output_polarity: str | None = None
 
 
 class ComponentSink(Protocol):
@@ -313,6 +363,20 @@ def category_to_component_type(category: str, subcategory: str) -> ComponentType
         value.casefold() for value in TRANSISTOR_CATEGORIES
     } and subcategory_norm in {value.casefold() for value in MOSFET_SUBCATEGORIES}:
         return "mosfet"
+    if category_norm in {
+        value.casefold() for value in CRYSTAL_CATEGORIES
+    } and subcategory_norm in {value.casefold() for value in CRYSTAL_SUBCATEGORIES}:
+        return "crystal"
+    if category_norm in {
+        value.casefold() for value in FERRITE_BEAD_CATEGORIES
+    } and subcategory_norm in {
+        value.casefold() for value in FERRITE_BEAD_SUBCATEGORIES
+    }:
+        return "ferrite_bead"
+    if category_norm in {
+        value.casefold() for value in LDO_CATEGORIES
+    } and subcategory_norm in {value.casefold() for value in LDO_SUBCATEGORIES}:
+        return "ldo"
     return None
 
 
@@ -361,6 +425,20 @@ def normalize_component(component: SourceComponent) -> NormalizedComponent:
     max_drain_source_voltage_v: float | None = None
     max_continuous_drain_current_a: float | None = None
     on_resistance_ohm: float | None = None
+    frequency_hz: float | None = None
+    frequency_min_hz: float | None = None
+    frequency_max_hz: float | None = None
+    load_capacitance_f: float | None = None
+    frequency_tolerance_ppm: float | None = None
+    frequency_stability_ppm: float | None = None
+    ferrite_impedance_ohm: float | None = None
+    ferrite_current_rating_a: float | None = None
+    ldo_output_voltage_v: float | None = None
+    ldo_max_input_voltage_v: float | None = None
+    ldo_output_current_a: float | None = None
+    ldo_dropout_voltage_v: float | None = None
+    ldo_output_type: str | None = None
+    ldo_output_polarity: str | None = None
 
     if component.component_type == "resistor":
         resistance_ohm = parse_si_value(component.resistance_raw or _attr("Resistance"))
@@ -522,6 +600,52 @@ def normalize_component(component: SourceComponent) -> NormalizedComponent:
                 "RDS(on)",
             )
         )
+    elif component.component_type == "crystal":
+        frequency_hz = parse_si_value(_attr("Frequency"))
+        frequency_tolerance_ppm = parse_tempco_ppm(
+            _attr(
+                "Normal temperature Frequency Tolerance",
+                "Frequency Tolerance",
+            )
+        )
+        frequency_stability_ppm = parse_tempco_ppm(
+            _attr(
+                "Frequency Stability",
+                "Frequency Stability(Full temperature range)",
+            )
+        )
+        frequency_min_hz, frequency_max_hz = tolerance_bounds_ppm(
+            nominal=frequency_hz,
+            tolerance_ppm=frequency_tolerance_ppm,
+        )
+        load_capacitance_f = parse_si_value(
+            _attr(
+                "Load Capacitance",
+                "Load Capacitor",
+                "External load capacitor",
+            )
+        )
+    elif component.component_type == "ferrite_bead":
+        ferrite_impedance_ohm = parse_si_value(_attr("Impedance @ Frequency"))
+        ferrite_current_rating_a = parse_si_value(
+            _attr("Current Rating", "Rated Current")
+        )
+        dc_resistance_ohm = parse_si_value(
+            _attr("DC Resistance", "DC Resistance(DCR)", "DC Resistance (DCR)")
+        )
+    elif component.component_type == "ldo":
+        ldo_output_voltage_v = parse_si_value(_attr("Output Voltage"))
+        ldo_max_input_voltage_v = parse_si_value(
+            _attr("Maximum Input Voltage", "Input Voltage", "Voltage - Supply")
+        )
+        ldo_output_current_a = parse_si_value(
+            _attr("Output Current", "MAX Output Current")
+        )
+        ldo_dropout_voltage_v = parse_si_value(
+            _attr("Dropout Voltage", "Voltage Dropout")
+        )
+        ldo_output_type = normalize_ldo_output_type(_attr("Output Type"))
+        ldo_output_polarity = normalize_ldo_output_polarity(_attr("Output Polarity"))
 
     return NormalizedComponent(
         lcsc_id=component.lcsc_id,
@@ -580,6 +704,20 @@ def normalize_component(component: SourceComponent) -> NormalizedComponent:
         max_drain_source_voltage_v=max_drain_source_voltage_v,
         max_continuous_drain_current_a=max_continuous_drain_current_a,
         on_resistance_ohm=on_resistance_ohm,
+        frequency_hz=frequency_hz,
+        frequency_min_hz=frequency_min_hz,
+        frequency_max_hz=frequency_max_hz,
+        load_capacitance_f=load_capacitance_f,
+        frequency_tolerance_ppm=frequency_tolerance_ppm,
+        frequency_stability_ppm=frequency_stability_ppm,
+        ferrite_impedance_ohm=ferrite_impedance_ohm,
+        ferrite_current_rating_a=ferrite_current_rating_a,
+        ldo_output_voltage_v=ldo_output_voltage_v,
+        ldo_max_input_voltage_v=ldo_max_input_voltage_v,
+        ldo_output_current_a=ldo_output_current_a,
+        ldo_dropout_voltage_v=ldo_dropout_voltage_v,
+        ldo_output_type=ldo_output_type,
+        ldo_output_polarity=ldo_output_polarity,
     )
 
 
@@ -689,6 +827,19 @@ def tolerance_bounds(
     if tolerance_pct is None:
         return nominal, nominal
     fraction = tolerance_pct / 100.0
+    return nominal * (1.0 - fraction), nominal * (1.0 + fraction)
+
+
+def tolerance_bounds_ppm(
+    *,
+    nominal: float | None,
+    tolerance_ppm: float | None,
+) -> tuple[float | None, float | None]:
+    if nominal is None:
+        return None, None
+    if tolerance_ppm is None:
+        return nominal, nominal
+    fraction = tolerance_ppm / 1_000_000.0
     return nominal * (1.0 - fraction), nominal * (1.0 + fraction)
 
 
@@ -815,6 +966,38 @@ def normalize_mosfet_channel_type(raw: str | None) -> str | None:
     return None
 
 
+def normalize_ldo_output_type(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if not normalized or normalized in {"-", "null"}:
+        return None
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
+    if "adjustable" in compact:
+        return "ADJUSTABLE"
+    if "fixed" in compact:
+        return "FIXED"
+    return None
+
+
+def normalize_ldo_output_polarity(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if not normalized or normalized in {"-", "null"}:
+        return None
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
+    has_positive = "positive" in compact
+    has_negative = "negative" in compact
+    if has_positive and has_negative:
+        return "BIPOLAR"
+    if has_positive:
+        return "POSITIVE"
+    if has_negative:
+        return "NEGATIVE"
+    return None
+
+
 def normalize_components(
     source_components: Iterable[SourceComponent],
 ) -> list[NormalizedComponent]:
@@ -842,6 +1025,9 @@ def test_tolerance_bounds() -> None:
     assert tolerance_bounds(nominal=100.0, tolerance_pct=5.0) == (95.0, 105.0)
     assert tolerance_bounds(nominal=100.0, tolerance_pct=None) == (100.0, 100.0)
     assert tolerance_bounds(nominal=None, tolerance_pct=5.0) == (None, None)
+    minimum, maximum = tolerance_bounds_ppm(nominal=16e6, tolerance_ppm=20.0)
+    assert abs((minimum or 0.0) - 15_999_680.0) < 1e-6
+    assert abs((maximum or 0.0) - 16_000_320.0) < 1e-6
 
 
 def test_normalize_tempco_and_category() -> None:
@@ -880,6 +1066,27 @@ def test_normalize_tempco_and_category() -> None:
         == "bjt"
     )
     assert category_to_component_type("Transistors/Thyristors", "MOSFETs") == "mosfet"
+    assert (
+        category_to_component_type(
+            "Crystals/Oscillators/Resonators",
+            "Crystals",
+        )
+        == "crystal"
+    )
+    assert (
+        category_to_component_type(
+            "Filters/EMI Optimization",
+            "Ferrite Beads",
+        )
+        == "ferrite_bead"
+    )
+    assert (
+        category_to_component_type(
+            "Power Management ICs",
+            "Linear Voltage Regulators (LDO)",
+        )
+        == "ldo"
+    )
     assert category_to_component_type("Resistors", "Resistor Networks & Arrays") is None
 
 
@@ -972,3 +1179,138 @@ def test_normalize_component_diode_and_channel_enums() -> None:
     assert normalize_mosfet_channel_type("N-Channel + P-Channel") is None
     assert normalize_led_color("Warm White") == "WARM_WHITE"
     assert normalize_led_color("Ultra Violet") == "ULTRA_VIOLET"
+
+
+def test_normalize_component_crystal_ferrite_and_ldo() -> None:
+    crystal = normalize_component(
+        SourceComponent(
+            lcsc_id=100,
+            component_type="crystal",
+            category="Crystals/Oscillators/Resonators",
+            subcategory="Crystals",
+            manufacturer_name="MFR",
+            part_number="XTAL-16M",
+            package="SMD-3225",
+            description="desc",
+            is_basic=False,
+            is_preferred=False,
+            stock=10,
+            datasheet_url=None,
+            price_json="[]",
+            extra_json=json.dumps(
+                {
+                    "attributes": {
+                        "Frequency": "16MHz",
+                        "Normal temperature Frequency Tolerance": "±20ppm",
+                        "Frequency Stability": "±30ppm",
+                        "Load Capacitance": "18pF",
+                    }
+                }
+            ),
+            resistance_raw=None,
+            tolerance_raw=None,
+            power_raw=None,
+            resistor_voltage_raw=None,
+            tempco_raw=None,
+            capacitance_raw=None,
+            capacitor_voltage_raw=None,
+            data_manual_url=None,
+            model_3d_path=None,
+            easyeda_model_uuid=None,
+            footprint_name=None,
+        )
+    )
+    assert crystal.frequency_hz == 16_000_000.0
+    assert crystal.frequency_tolerance_ppm == 20.0
+    assert crystal.frequency_stability_ppm == 30.0
+    assert crystal.load_capacitance_f == 18e-12
+    assert crystal.frequency_min_hz == 15_999_680.0
+    assert abs((crystal.frequency_max_hz or 0.0) - 16_000_320.0) < 1e-6
+
+    ferrite = normalize_component(
+        SourceComponent(
+            lcsc_id=101,
+            component_type="ferrite_bead",
+            category="Filters/EMI Optimization",
+            subcategory="Ferrite Beads",
+            manufacturer_name="MFR",
+            part_number="FB-0603",
+            package="0603",
+            description="desc",
+            is_basic=False,
+            is_preferred=False,
+            stock=10,
+            datasheet_url=None,
+            price_json="[]",
+            extra_json=json.dumps(
+                {
+                    "attributes": {
+                        "Impedance @ Frequency": "120Ω@100MHz",
+                        "Current Rating": "2A",
+                        "DC Resistance": "50mΩ",
+                    }
+                }
+            ),
+            resistance_raw=None,
+            tolerance_raw=None,
+            power_raw=None,
+            resistor_voltage_raw=None,
+            tempco_raw=None,
+            capacitance_raw=None,
+            capacitor_voltage_raw=None,
+            data_manual_url=None,
+            model_3d_path=None,
+            easyeda_model_uuid=None,
+            footprint_name=None,
+        )
+    )
+    assert ferrite.ferrite_impedance_ohm == 120.0
+    assert ferrite.ferrite_current_rating_a == 2.0
+    assert ferrite.dc_resistance_ohm == 0.05
+
+    ldo = normalize_component(
+        SourceComponent(
+            lcsc_id=102,
+            component_type="ldo",
+            category="Power Management ICs",
+            subcategory="Linear Voltage Regulators (LDO)",
+            manufacturer_name="MFR",
+            part_number="LDO-3V3",
+            package="SOT-23-5",
+            description="desc",
+            is_basic=False,
+            is_preferred=False,
+            stock=10,
+            datasheet_url=None,
+            price_json="[]",
+            extra_json=json.dumps(
+                {
+                    "attributes": {
+                        "Output Voltage": "3.3V",
+                        "Maximum Input Voltage": "6V",
+                        "Output Current": "150mA",
+                        "Dropout Voltage": "300mV",
+                        "Output Type": "Fixed",
+                        "Output Polarity": "Positive electrode",
+                    }
+                }
+            ),
+            resistance_raw=None,
+            tolerance_raw=None,
+            power_raw=None,
+            resistor_voltage_raw=None,
+            tempco_raw=None,
+            capacitance_raw=None,
+            capacitor_voltage_raw=None,
+            data_manual_url=None,
+            model_3d_path=None,
+            easyeda_model_uuid=None,
+            footprint_name=None,
+        )
+    )
+    assert ldo.ldo_output_voltage_v == 3.3
+    assert ldo.ldo_max_input_voltage_v == 6.0
+    assert ldo.ldo_output_current_a == 0.15
+    assert ldo.ldo_dropout_voltage_v == 0.3
+    assert ldo.ldo_output_type == "FIXED"
+    assert ldo.ldo_output_polarity == "POSITIVE"

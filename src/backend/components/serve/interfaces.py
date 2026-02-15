@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Protocol, Sequence, TypeAlias
+from typing import Any, Protocol, TypeAlias
 
 JsonPrimitive: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
@@ -17,6 +18,9 @@ class ComponentType(StrEnum):
     LED = "led"
     BJT = "bjt"
     MOSFET = "mosfet"
+    CRYSTAL = "crystal"
+    FERRITE_BEAD = "ferrite_bead"
+    LDO = "ldo"
 
 
 @dataclass(frozen=True)
@@ -97,11 +101,29 @@ class QueryValidationError(ServeError):
     """Raised when client-supplied query constraints are invalid."""
 
 
+class BatchQueryValidationError(QueryValidationError):
+    """Raised when one or more batch query items are invalid."""
+
+    def __init__(self, errors: list[str | None]):
+        super().__init__("One or more batch queries are invalid")
+        self.errors = errors
+
+
 class AssetLoadError(ServeError):
     """Raised when an asset cannot be safely loaded into a response bundle."""
 
 
 class FastLookupStore(Protocol):
+    def query_components_batch(
+        self, queries: Sequence[tuple[str, ParameterQuery]]
+    ) -> list[list[ComponentCandidate]]:
+        raise NotImplementedError
+
+    def query_component(
+        self, component_type: str, query: ParameterQuery
+    ) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
     def query_resistors(self, query: ParameterQuery) -> list[ComponentCandidate]:
         raise NotImplementedError
 
@@ -128,6 +150,15 @@ class FastLookupStore(Protocol):
     def query_mosfets(self, query: ParameterQuery) -> list[ComponentCandidate]:
         raise NotImplementedError
 
+    def query_crystals(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_ferrite_beads(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
+    def query_ldos(self, query: ParameterQuery) -> list[ComponentCandidate]:
+        raise NotImplementedError
+
 
 class DetailStore(Protocol):
     def get_components(self, lcsc_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
@@ -136,6 +167,15 @@ class DetailStore(Protocol):
     def get_asset_manifest(
         self, lcsc_ids: Sequence[int]
     ) -> dict[int, list[AssetRecord]]:
+        raise NotImplementedError
+
+    def lookup_component_ids_by_manufacturer_part(
+        self,
+        manufacturer_name: str,
+        part_number: str,
+        *,
+        limit: int = 50,
+    ) -> list[int]:
         raise NotImplementedError
 
 

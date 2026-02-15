@@ -19,6 +19,9 @@ class SnapshotValidationResult:
     led_rows: int
     bjt_rows: int
     mosfet_rows: int
+    crystal_rows: int
+    ferrite_bead_rows: int
+    ldo_rows: int
 
 
 _FAST_TABLES_BY_TYPE = {
@@ -30,6 +33,9 @@ _FAST_TABLES_BY_TYPE = {
     "led": "led_pick",
     "bjt": "bjt_pick",
     "mosfet": "mosfet_pick",
+    "crystal": "crystal_pick",
+    "ferrite_bead": "ferrite_bead_pick",
+    "ldo": "ldo_pick",
 }
 
 _REQUIRED_INDEXES_BY_TABLE = {
@@ -47,6 +53,9 @@ _REQUIRED_INDEXES_BY_TABLE = {
     "led_pick": {"led_pick_lookup_pkg_idx"},
     "bjt_pick": {"bjt_pick_lookup_pkg_idx"},
     "mosfet_pick": {"mosfet_pick_lookup_pkg_idx"},
+    "crystal_pick": {"crystal_pick_lookup_pkg_idx", "crystal_pick_lookup_range_idx"},
+    "ferrite_bead_pick": {"ferrite_bead_pick_lookup_pkg_idx"},
+    "ldo_pick": {"ldo_pick_lookup_pkg_idx"},
 }
 
 
@@ -98,6 +107,9 @@ def validate_snapshot(snapshot_dir: Path) -> SnapshotValidationResult:
         led_rows=row_counts["led"],
         bjt_rows=row_counts["bjt"],
         mosfet_rows=row_counts["mosfet"],
+        crystal_rows=row_counts["crystal"],
+        ferrite_bead_rows=row_counts["ferrite_bead"],
+        ldo_rows=row_counts["ldo"],
     )
 
 
@@ -164,6 +176,16 @@ def _validate_fast_pickability(conn: sqlite3.Connection) -> None:
             """
         ).fetchone()[0]
     )
+    bad_crystal_bounds = int(
+        conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM crystal_pick
+            WHERE frequency_min_hz > frequency_hz
+               OR frequency_hz > frequency_max_hz
+            """
+        ).fetchone()[0]
+    )
     if bad_res_bounds:
         raise RuntimeError(
             f"Invalid resistor bounds in fast snapshot: {bad_res_bounds}"
@@ -179,6 +201,10 @@ def _validate_fast_pickability(conn: sqlite3.Connection) -> None:
     if bad_ind_bounds:
         raise RuntimeError(
             f"Invalid inductor bounds in fast snapshot: {bad_ind_bounds}"
+        )
+    if bad_crystal_bounds:
+        raise RuntimeError(
+            f"Invalid crystal bounds in fast snapshot: {bad_crystal_bounds}"
         )
 
     checks: list[tuple[str, str]] = [
@@ -271,6 +297,41 @@ def _validate_fast_pickability(conn: sqlite3.Connection) -> None:
                OR on_resistance_ohm IS NULL OR on_resistance_ohm <= 0
             """,
         ),
+        (
+            "crystal",
+            """
+            SELECT COUNT(*) FROM crystal_pick
+            WHERE stock <= 0
+               OR trim(package) IN ('', '-')
+               OR frequency_hz IS NULL OR frequency_hz <= 0
+               OR frequency_min_hz IS NULL OR frequency_max_hz IS NULL
+               OR frequency_tolerance_ppm IS NULL OR frequency_tolerance_ppm < 0
+               OR load_capacitance_f IS NULL OR load_capacitance_f <= 0
+            """,
+        ),
+        (
+            "ferrite_bead",
+            """
+            SELECT COUNT(*) FROM ferrite_bead_pick
+            WHERE stock <= 0
+               OR trim(package) IN ('', '-')
+               OR impedance_ohm IS NULL OR impedance_ohm <= 0
+               OR current_rating_a IS NULL OR current_rating_a <= 0
+               OR dc_resistance_ohm IS NULL OR dc_resistance_ohm < 0
+            """,
+        ),
+        (
+            "ldo",
+            """
+            SELECT COUNT(*) FROM ldo_pick
+            WHERE stock <= 0
+               OR trim(package) IN ('', '-')
+               OR output_voltage_v IS NULL OR output_voltage_v <= 0
+               OR max_input_voltage_v IS NULL OR max_input_voltage_v <= 0
+               OR output_current_a IS NULL OR output_current_a <= 0
+               OR dropout_voltage_v IS NULL OR dropout_voltage_v <= 0
+            """,
+        ),
     ]
     for component_type, sql in checks:
         bad_rows = int(conn.execute(sql).fetchone()[0])
@@ -288,10 +349,20 @@ def _validate_detail_schema(db_path: Path) -> None:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-        required_tables = {"components_full", "component_assets"}
+        required_tables = {
+            "components_full",
+            "component_assets",
+            "component_mfr_lookup",
+        }
         if not required_tables.issubset(tables):
             missing = sorted(required_tables - tables)
             raise RuntimeError(f"Missing detail tables in {db_path}: {missing}")
+        index_names = _index_names(conn, "component_mfr_lookup")
+        if "component_mfr_lookup_match_idx" not in index_names:
+            raise RuntimeError(
+                "Missing indexes for component_mfr_lookup "
+                f"in {db_path}: ['component_mfr_lookup_match_idx']"
+            )
 
 
 def _index_names(conn: sqlite3.Connection, table_name: str) -> set[str]:
@@ -309,8 +380,8 @@ def test_validate_snapshot(tmp_path) -> None:
     _write_valid_detail_db(detail_db)
 
     result = validate_snapshot(snapshot_dir)
-    assert result.fast_total_rows == 8
-    assert result.detail_total_rows == 8
+    assert result.fast_total_rows == 11
+    assert result.detail_total_rows == 11
 
 
 def test_validate_snapshot_rejects_non_pickable_fast_rows(tmp_path) -> None:
@@ -438,6 +509,42 @@ def _write_valid_fast_db(db_path: Path) -> None:
                 on_resistance_ohm REAL NOT NULL,
                 gate_source_threshold_voltage_v REAL
             );
+            CREATE TABLE crystal_pick (
+                lcsc_id INTEGER PRIMARY KEY NOT NULL,
+                package TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                is_basic INTEGER NOT NULL,
+                is_preferred INTEGER NOT NULL,
+                frequency_hz REAL NOT NULL,
+                frequency_min_hz REAL NOT NULL,
+                frequency_max_hz REAL NOT NULL,
+                load_capacitance_f REAL NOT NULL,
+                frequency_tolerance_ppm REAL NOT NULL,
+                frequency_stability_ppm REAL
+            );
+            CREATE TABLE ferrite_bead_pick (
+                lcsc_id INTEGER PRIMARY KEY NOT NULL,
+                package TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                is_basic INTEGER NOT NULL,
+                is_preferred INTEGER NOT NULL,
+                impedance_ohm REAL NOT NULL,
+                current_rating_a REAL NOT NULL,
+                dc_resistance_ohm REAL NOT NULL
+            );
+            CREATE TABLE ldo_pick (
+                lcsc_id INTEGER PRIMARY KEY NOT NULL,
+                package TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                is_basic INTEGER NOT NULL,
+                is_preferred INTEGER NOT NULL,
+                output_voltage_v REAL NOT NULL,
+                max_input_voltage_v REAL NOT NULL,
+                output_current_a REAL NOT NULL,
+                dropout_voltage_v REAL NOT NULL,
+                output_type TEXT,
+                output_polarity TEXT
+            );
 
             CREATE INDEX resistor_pick_lookup_pkg_idx
                 ON resistor_pick(package, resistance_min_ohm, resistance_max_ohm);
@@ -467,6 +574,14 @@ def _write_valid_fast_db(db_path: Path) -> None:
                 ON bjt_pick(package, doping_type);
             CREATE INDEX mosfet_pick_lookup_pkg_idx
                 ON mosfet_pick(package, channel_type);
+            CREATE INDEX crystal_pick_lookup_pkg_idx
+                ON crystal_pick(package, frequency_min_hz, frequency_max_hz);
+            CREATE INDEX crystal_pick_lookup_range_idx
+                ON crystal_pick(frequency_min_hz, frequency_max_hz);
+            CREATE INDEX ferrite_bead_pick_lookup_pkg_idx
+                ON ferrite_bead_pick(package, impedance_ohm);
+            CREATE INDEX ldo_pick_lookup_pkg_idx
+                ON ldo_pick(package, output_type, output_voltage_v);
             """
         )
         conn.executescript(
@@ -487,6 +602,12 @@ def _write_valid_fast_db(db_path: Path) -> None:
                 (7,'SOT-23',100,0,1,'NPN',40.0,0.2,0.35,120.0);
             INSERT INTO mosfet_pick VALUES
                 (8,'SOT-23',100,0,1,'N_CHANNEL',30.0,2.0,0.05,1.8);
+            INSERT INTO crystal_pick VALUES
+                (9,'SMD-3225',100,1,1,16000000.0,15999680.0,16000320.0,18e-12,20.0,30.0);
+            INSERT INTO ferrite_bead_pick VALUES
+                (10,'0603',100,0,1,120.0,2.0,0.05);
+            INSERT INTO ldo_pick VALUES
+                (11,'SOT-23-5',100,1,0,3.3,6.0,0.15,0.3,'FIXED','POSITIVE');
             """
         )
         conn.commit()
@@ -501,9 +622,17 @@ def _write_valid_detail_db(db_path: Path) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 lcsc_id INTEGER NOT NULL
             );
+            CREATE TABLE component_mfr_lookup (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mfr_norm TEXT NOT NULL,
+                part_number_norm TEXT NOT NULL,
+                lcsc_id INTEGER NOT NULL
+            );
+            CREATE INDEX component_mfr_lookup_match_idx
+                ON component_mfr_lookup (mfr_norm, part_number_norm, lcsc_id);
             """
         )
-        for lcsc_id in range(1, 9):
+        for lcsc_id in range(1, 12):
             conn.execute(
                 "INSERT INTO components_full (lcsc_id) VALUES (?)",
                 (lcsc_id,),
@@ -511,6 +640,16 @@ def _write_valid_detail_db(db_path: Path) -> None:
             conn.execute(
                 "INSERT INTO component_assets (lcsc_id) VALUES (?)",
                 (lcsc_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO component_mfr_lookup (
+                    mfr_norm,
+                    part_number_norm,
+                    lcsc_id
+                ) VALUES (?, ?, ?)
+                """,
+                ("m", f"p{lcsc_id}", lcsc_id),
             )
         conn.commit()
 

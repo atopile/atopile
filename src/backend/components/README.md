@@ -78,6 +78,9 @@ Snapshot outputs:
   - `led_pick`
   - `bjt_pick`
   - `mosfet_pick`
+  - `crystal_pick`
+  - `ferrite_bead_pick`
+  - `ldo_pick`
   - prefiltered to pickable rows only (`stock > 0`, valid package, required params present)
 - `detail.sqlite`
   - `components_full` (full metadata + normalized numeric fields)
@@ -89,6 +92,7 @@ Lookup parity with legacy backend:
 - Package filters accept both raw and legacy-prefixed forms for passives:
   - resistor: `0402` and `R0402`
   - capacitor: `0402` and `C0402`
+  - ferrite bead: `0603`, `L0603`, and `FB0603`
 
 Validate an existing snapshot:
 
