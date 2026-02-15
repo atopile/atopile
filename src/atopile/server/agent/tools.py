@@ -609,9 +609,11 @@ def _choose_autolayout_candidate_id(
 
     ranked = sorted(
         candidates,
-        key=lambda item: _extract_candidate_score(item)
-        if _extract_candidate_score(item) is not None
-        else float("-inf"),
+        key=lambda item: (
+            _extract_candidate_score(item)
+            if _extract_candidate_score(item) is not None
+            else float("-inf")
+        ),
         reverse=True,
     )
     chosen = _extract_candidate_id(ranked[0])

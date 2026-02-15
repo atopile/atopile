@@ -9,8 +9,7 @@ import json
 import os
 import re
 import time
-import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -23,7 +22,6 @@ from atopile.server.agent import skills as skills_domain
 from atopile.server.domains import artifacts as artifacts_domain
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
-MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 SteeringMessagesCallback = Callable[[], list[str]]
 _RETRY_AFTER_TEXT_PATTERN = re.compile(
     r"Please try again in\s*(\d+(?:\.\d+)?)\s*(ms|s)\b",
@@ -54,6 +52,9 @@ Rules:
   library modules, interfaces, and traits.
 - Use examples_list/examples_search/examples_read_ato for curated reference
   `.ato` examples when authoring or explaining DSL patterns.
+- Use package_ato_list/package_ato_search/package_ato_read to inspect installed
+  package `.ato` sources under `.ato/modules` (and configured package reference
+  roots) when authoring new designs.
 - Use web_search for external/current web facts (vendor docs, standards, news,
   release changes) when project files do not contain the answer.
 - Use datasheet_read when a component datasheet is needed; it attaches a PDF
@@ -83,18 +84,24 @@ Rules:
   autolayout_configure_board_intent before running placement/routing.
 - Use periodic check-ins for active autolayout jobs (autolayout_status with
   wait_seconds/poll_interval_seconds). If quality is not good enough, resume by
-  calling autolayout_run with resume_board_id and additional timeout.
+  calling autolayout_run with resume_board_id and another short (<=2 min) run.
 - Treat autolayout_fetch_to_layout as apply-safe only when the job is ready.
   If it reports queued/running, wait the suggested seconds and check status
   again before retrying fetch/apply.
-- Time-budget heuristic: simple boards (<=50 components) start around 2-4 min,
-  medium (50-100) around 10-15 min, larger boards often 20+ min with iterative
-  resume runs.
+- Per-run autolayout timeout is capped at 2 minutes. Use iterative cycles:
+  run short pass, review status/screenshots, then resume with resume_board_id if
+  quality is not sufficient.
 - For board preview images after placement/routing, use
   autolayout_request_screenshot and track the queued build with build_logs_search.
+- For crowded boards, use autolayout_request_screenshot with
+  highlight_components to spotlight selected parts while dimming the rest.
 - For manual placement adjustments, use layout_get_component_position to query
   footprint xy/rotation by atopile address/reference, then
   layout_set_component_position for absolute or relative (nudge) transforms.
+  Always read placement_check in the result to confirm on_board status and
+  collision_count before continuing.
+- Run layout_run_drc after major placement/routing changes to catch rule issues
+  early (errors/warnings and top violation types).
 - For build diagnostics, prefer build_logs_search with explicit log_levels/stage
   filters when logs are noisy.
 - Use design_diagnostics when a build fails silently or diagnostics are needed.
@@ -122,67 +129,6 @@ Rules:
   available for that subcircuit.
 """
 
-_MANAGER_PLANNER_PROMPT = """You are the conversation manager for atopile.
-
-Your job:
-- Track and preserve user intent exactly.
-- Decide whether to answer directly or delegate to engineering.
-- Convert user request into a crisp worker brief.
-- Define acceptance criteria.
-- Keep scope and constraints explicit.
-
-Return JSON only with this shape:
-{
-  "execution_mode": "manager_response" | "delegate_worker",
-  "delegation_reason": string,
-  "manager_response": string,
-  "intent_summary": string,
-  "objective": string,
-  "constraints": [string, ...],
-  "acceptance_criteria": [string, ...],
-  "worker_brief": string,
-  "checkpoints": [string, ...]
-}
-
-Rules:
-- Use manager_response for conversational questions, status check-ins, and
-  explanations that can be answered confidently without mutating project state.
-- Use delegate_worker when tool calls, file edits, builds, installs, or
-  uncertain project facts are required.
-- Always use delegate_worker for design/build/layout requests, part/package
-  selection (LCSC/package lookups), BOM/procurement decisions, and any request
-  that asks to run, edit, install, verify, or generate project artifacts.
-- For layout/autolayout requests, structure the brief as staged flow:
-  manual critical connector placement + screenshot review first, then
-  autoplacement, screenshot review, then autorouting.
-- For delegated hardware design tasks, the worker brief should explicitly
-  request module/interface-oriented architecture and generic constrained
-  passives rather than a flat pin-by-pin netlist style.
-- Keep worker_brief concrete and implementation-focused.
-- Do not include markdown in JSON fields.
-- If uncertain, encode uncertainty as constraints/checkpoints rather than asking
-  for a user clarification immediately.
-"""
-
-_MANAGER_REVIEW_PROMPT = """You are the conversation manager for atopile.
-
-Review the worker's output and decide whether to accept or refine.
-
-Return JSON only with this shape:
-{
-  "decision": "accept" | "refine",
-  "refinement_brief": string,
-  "final_response": string,
-  "completion_summary": string
-}
-
-Rules:
-- Use "accept" when acceptance criteria are satisfied.
-- Use "refine" only when there is a concrete, actionable gap.
-- Keep refinement_brief implementation-focused.
-- final_response must be suitable to show the user directly.
-"""
-
 
 def _build_session_primer(
     *,
@@ -204,6 +150,9 @@ def _build_session_primer(
         "- stdlib: use stdlib_list and stdlib_get_item for module/interface lookup.\n"
         "- examples: use examples_list/examples_search/examples_read_ato for\n"
         "  curated reference `.ato` code patterns.\n"
+        "- package references: use package_ato_list/package_ato_search/\n"
+        "  package_ato_read to mine installed package `.ato` sources for\n"
+        "  reusable design patterns.\n"
         "- web research: use web_search for external/current facts when the\n"
         "  answer is not available in the project files.\n"
         "- reports: for BOM/parts lists use report_bom; for computed parameters\n"
@@ -221,13 +170,21 @@ def _build_session_primer(
         "  autolayout_run for routing and repeat status->fetch->review.\n"
         "- planes/stackup: use autolayout_configure_board_intent to encode\n"
         "  ground pour and stackup assumptions in ato.yaml before routing.\n"
-        "- time-budget heuristic: <=50 components ~2-4 minutes, 50-100 ~10-15\n"
-        "  minutes, larger boards 20+ minutes. Resume incrementally if needed.\n"
+        "- autolayout per-run cap: each placement/routing run is limited to\n"
+        "  2 minutes. Use short iterative cycles: run, review candidates/screens,\n"
+        "  then resume with resume_board_id when quality is insufficient.\n"
         "- quality loop: check in periodically with autolayout_status\n"
         "  (wait_seconds/poll_interval_seconds), and if quality is insufficient,\n"
-        "  call autolayout_run with resume_board_id for extra time.\n"
+        "  call autolayout_run with resume_board_id for another <=2 minute pass.\n"
         "- screenshots: use autolayout_request_screenshot (2d/3d), then\n"
         "  build_logs_search to track completion and read output paths.\n"
+        "- crowded board review: use autolayout_request_screenshot with\n"
+        "  highlight_components to spotlight one part and dim others.\n"
+        "- manual moves: read placement_check from\n"
+        "  layout_set_component_position to verify on-board status and\n"
+        "  collisions immediately.\n"
+        "- drc: use layout_run_drc after key placement/routing edits to get\n"
+        "  KiCad rule errors/warnings before proceeding.\n"
         "- datasheets: use datasheet_read to attach component PDFs for native\n"
         "  model reading (instead of scraping text manually). Prefer lcsc_id\n"
         "  for graph-first resolution."
@@ -243,23 +200,6 @@ class ToolTrace:
 
 
 @dataclass
-class AgentPeerMessage:
-    message_id: str
-    thread_id: str
-    from_agent: str
-    to_agent: str
-    kind: str
-    summary: str
-    payload: dict[str, Any] = field(default_factory=dict)
-    visibility: str = "internal"
-    priority: str = "normal"
-    requires_ack: bool = False
-    correlation_id: str | None = None
-    parent_id: str | None = None
-    created_at: float = field(default_factory=time.time)
-
-
-@dataclass
 class AgentTurnResult:
     text: str
     tool_traces: list[ToolTrace]
@@ -267,7 +207,6 @@ class AgentTurnResult:
     response_id: str | None = None
     skill_state: dict[str, Any] = field(default_factory=dict)
     context_metrics: dict[str, Any] = field(default_factory=dict)
-    agent_messages: list[dict[str, Any]] = field(default_factory=list)
 
 
 class AgentOrchestrator:
@@ -278,7 +217,11 @@ class AgentOrchestrator:
             "OPENAI_API_KEY"
         )
         self.timeout_s = float(os.getenv("ATOPILE_AGENT_TIMEOUT_S", "120"))
-        self.max_tool_loops = int(os.getenv("ATOPILE_AGENT_MAX_TOOL_LOOPS", "1000"))
+        self.max_tool_loops = int(os.getenv("ATOPILE_AGENT_MAX_TOOL_LOOPS", "240"))
+        self.max_turn_seconds = float(
+            os.getenv("ATOPILE_AGENT_MAX_TURN_SECONDS", "480")
+        )
+        self.max_turn_seconds = max(30.0, min(self.max_turn_seconds, 3_600.0))
         self.api_retries = int(os.getenv("ATOPILE_AGENT_API_RETRIES", "4"))
         self.api_retry_base_delay_s = float(
             os.getenv("ATOPILE_AGENT_API_RETRY_BASE_DELAY_S", "0.5")
@@ -292,6 +235,17 @@ class AgentOrchestrator:
                 "/Users/narayanpowderly/projects/atopile/.claude/skills",
             )
         ).expanduser()
+        raw_skill_mode = os.getenv("ATOPILE_AGENT_SKILL_MODE", "fixed").strip().lower()
+        if raw_skill_mode not in {"fixed", "dynamic"}:
+            raw_skill_mode = "dynamic"
+        self.skill_mode = raw_skill_mode
+        raw_fixed_skill_ids = os.getenv("ATOPILE_AGENT_FIXED_SKILL_IDS", "agent,ato")
+        self.fixed_skill_ids = [
+            part.strip() for part in raw_fixed_skill_ids.split(",") if part.strip()
+        ] or ["agent", "ato"]
+        self.fixed_skill_total_max_chars = int(
+            os.getenv("ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "220000")
+        )
         self.skill_top_k = int(os.getenv("ATOPILE_AGENT_SKILL_TOP_K", "3"))
         self.skill_card_max_chars = int(
             os.getenv("ATOPILE_AGENT_SKILL_CARD_MAX_CHARS", "1800")
@@ -302,8 +256,9 @@ class AgentOrchestrator:
         self.skill_index_ttl_s = float(
             os.getenv("ATOPILE_AGENT_SKILL_INDEX_TTL_S", "10")
         )
+        prefix_default_max_chars = "220000" if self.skill_mode == "fixed" else "18000"
         self.prefix_max_chars = int(
-            os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", "18000")
+            os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", prefix_default_max_chars)
         )
         self.context_summary_max_chars = int(
             os.getenv("ATOPILE_AGENT_CONTEXT_SUMMARY_MAX_CHARS", "8000")
@@ -323,18 +278,6 @@ class AgentOrchestrator:
         self.prompt_cache_retention = os.getenv(
             "ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"
         )
-        self.manager_model = os.getenv(
-            "ATOPILE_AGENT_MANAGER_MODEL",
-            "gpt-5.2-chat-latest",
-        )
-        # Single-agent is the default runtime mode; duo remains opt-in.
-        self.enable_duo_agents = os.getenv(
-            "ATOPILE_AGENT_ENABLE_DUO", "0"
-        ).strip().lower() in {"1", "true", "yes", "on"}
-        self.manager_refine_rounds = int(
-            os.getenv("ATOPILE_AGENT_MANAGER_REFINE_ROUNDS", "0")
-        )
-        self.manager_refine_rounds = max(0, min(self.manager_refine_rounds, 3))
         self.worker_loop_guard_window = int(
             os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_WINDOW", "8")
         )
@@ -351,6 +294,18 @@ class AgentOrchestrator:
         self.worker_loop_guard_max_hits = max(
             1, min(self.worker_loop_guard_max_hits, 8)
         )
+        self.worker_failure_streak_limit = int(
+            os.getenv("ATOPILE_AGENT_WORKER_FAILURE_STREAK_LIMIT", "6")
+        )
+        self.worker_failure_streak_limit = max(
+            2, min(self.worker_failure_streak_limit, 20)
+        )
+        self.worker_no_progress_loop_limit = int(
+            os.getenv("ATOPILE_AGENT_WORKER_NO_PROGRESS_LOOP_LIMIT", "18")
+        )
+        self.worker_no_progress_loop_limit = max(
+            4, min(self.worker_no_progress_loop_limit, 60)
+        )
         self._client: AsyncOpenAI | None = None
 
     async def run_turn(
@@ -365,21 +320,7 @@ class AgentOrchestrator:
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
         consume_steering_messages: SteeringMessagesCallback | None = None,
-        message_callback: MessageCallback | None = None,
     ) -> AgentTurnResult:
-        if self.enable_duo_agents:
-            return await self._run_duo_turn(
-                ctx=ctx,
-                project_root=project_root,
-                history=history,
-                user_message=user_message,
-                selected_targets=selected_targets,
-                previous_response_id=previous_response_id,
-                tool_memory=tool_memory,
-                progress_callback=progress_callback,
-                consume_steering_messages=consume_steering_messages,
-                message_callback=message_callback,
-            )
         return await self._run_worker_turn(
             ctx=ctx,
             project_root=project_root,
@@ -404,7 +345,6 @@ class AgentOrchestrator:
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
         consume_steering_messages: SteeringMessagesCallback | None = None,
-        actor: str = "worker",
     ) -> AgentTurnResult:
         if not self.api_key:
             raise RuntimeError(
@@ -426,19 +366,55 @@ class AgentOrchestrator:
             self.user_message_max_chars,
         )
 
-        skill_selection = skills_domain.select_skills_for_turn(
-            skills_dir=self.skills_dir,
-            user_message=trimmed_user_message,
-            selected_targets=selected_targets or [],
-            history=history,
-            tool_memory=tool_memory or {},
-            top_k=self.skill_top_k,
-            per_card_max_chars=self.skill_card_max_chars,
-            total_max_chars=self.skill_total_max_chars,
-            ttl_s=self.skill_index_ttl_s,
-        )
-        skill_state = skills_domain.build_skill_state(skill_selection)
-        skill_block = skills_domain.render_active_skills_block(skill_selection)
+        if self.skill_mode == "fixed":
+            fixed_docs, missing_skill_ids = skills_domain.load_fixed_skill_docs(
+                skills_dir=self.skills_dir,
+                skill_ids=self.fixed_skill_ids,
+                ttl_s=self.skill_index_ttl_s,
+            )
+            if fixed_docs:
+                skill_block = skills_domain.render_fixed_skills_block(
+                    docs=fixed_docs,
+                    max_chars=self.fixed_skill_total_max_chars,
+                )
+                skill_state = skills_domain.build_fixed_skill_state(
+                    skills_dir=self.skills_dir,
+                    requested_skill_ids=self.fixed_skill_ids,
+                    selected_docs=fixed_docs,
+                    missing_skill_ids=missing_skill_ids,
+                    rendered_total_chars=len(skill_block),
+                    max_chars=self.fixed_skill_total_max_chars,
+                )
+            else:
+                # Safety fallback: keep runtime functional even before fixed
+                # skill files are fully migrated.
+                skill_selection = skills_domain.select_skills_for_turn(
+                    skills_dir=self.skills_dir,
+                    user_message=trimmed_user_message,
+                    selected_targets=selected_targets or [],
+                    history=history,
+                    tool_memory=tool_memory or {},
+                    top_k=self.skill_top_k,
+                    per_card_max_chars=self.skill_card_max_chars,
+                    total_max_chars=self.skill_total_max_chars,
+                    ttl_s=self.skill_index_ttl_s,
+                )
+                skill_state = skills_domain.build_skill_state(skill_selection)
+                skill_block = skills_domain.render_active_skills_block(skill_selection)
+        else:
+            skill_selection = skills_domain.select_skills_for_turn(
+                skills_dir=self.skills_dir,
+                user_message=trimmed_user_message,
+                selected_targets=selected_targets or [],
+                history=history,
+                tool_memory=tool_memory or {},
+                top_k=self.skill_top_k,
+                per_card_max_chars=self.skill_card_max_chars,
+                total_max_chars=self.skill_total_max_chars,
+                ttl_s=self.skill_index_ttl_s,
+            )
+            skill_state = skills_domain.build_skill_state(skill_selection)
+            skill_block = skills_domain.render_active_skills_block(skill_selection)
 
         instructions = _build_turn_instructions(
             include_session_primer=include_session_primer,
@@ -468,7 +444,7 @@ class AgentOrchestrator:
             )
         )
 
-        tool_defs = tools.get_tool_definitions_for_actor(actor)
+        tool_defs = tools.get_tool_definitions()
         request_payload: dict[str, Any] = {
             "model": self.model,
             "input": request_input,
@@ -518,7 +494,34 @@ class AgentOrchestrator:
         last_response_id: str | None = response.get("id")
         recent_tool_signatures: list[str] = []
         loop_guard_hits = 0
+        consecutive_tool_failures = 0
+        no_progress_loops = 0
+        started_at_s = time.monotonic()
         while loops < self.max_tool_loops:
+            elapsed_s = time.monotonic() - started_at_s
+            if elapsed_s >= self.max_turn_seconds:
+                await _emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "stopped",
+                        "reason": "turn_time_budget_exceeded",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "elapsed_seconds": round(elapsed_s, 1),
+                    },
+                )
+                return AgentTurnResult(
+                    text=_build_worker_time_budget_stop_text(
+                        traces=traces,
+                        loops=loops,
+                        elapsed_seconds=elapsed_s,
+                    ),
+                    tool_traces=traces,
+                    model=self.model,
+                    response_id=last_response_id,
+                    skill_state=skill_state,
+                    context_metrics=telemetry,
+                )
             loops += 1
             function_calls = _extract_function_calls(response)
             if not function_calls:
@@ -591,6 +594,7 @@ class AgentOrchestrator:
                 )
 
             outputs: list[dict[str, Any]] = []
+            loop_traces: list[ToolTrace] = []
             tool_count = len(function_calls)
             for tool_index, call in enumerate(function_calls, start=1):
                 call_id = call.get("call_id") or call.get("id")
@@ -631,7 +635,6 @@ class AgentOrchestrator:
                         arguments=args,
                         project_root=project_path,
                         ctx=ctx,
-                        actor=actor,
                     )
                 except Exception as exc:
                     args = parsed_args if parsed_args is not None else {}
@@ -662,6 +665,11 @@ class AgentOrchestrator:
                         result=result_payload,
                     )
                 )
+                loop_traces.append(traces[-1])
+                if ok:
+                    consecutive_tool_failures = 0
+                else:
+                    consecutive_tool_failures += 1
                 recent_tool_signatures.append(
                     _tool_call_signature(tool_name=tool_name, args=args)
                 )
@@ -683,6 +691,30 @@ class AgentOrchestrator:
                         },
                     },
                 )
+                if consecutive_tool_failures >= self.worker_failure_streak_limit:
+                    telemetry["failure_streak"] = consecutive_tool_failures
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "stopped",
+                            "reason": "repeated_tool_failures",
+                            "loop": loops,
+                            "tool_calls_total": len(traces),
+                            "failure_streak": consecutive_tool_failures,
+                        },
+                    )
+                    return AgentTurnResult(
+                        text=_build_worker_failure_streak_stop_text(
+                            traces=traces,
+                            loops=loops,
+                            failure_streak=consecutive_tool_failures,
+                        ),
+                        tool_traces=traces,
+                        model=self.model,
+                        response_id=last_response_id,
+                        skill_state=skill_state,
+                        context_metrics=telemetry,
+                    )
                 outputs.extend(
                     _build_function_call_outputs_for_model(
                         call_id=str(call_id),
@@ -697,6 +729,13 @@ class AgentOrchestrator:
             steering_inputs = _build_steering_inputs_for_model(
                 _consume_steering_updates(consume_steering_messages)
             )
+            if _loop_has_concrete_progress(loop_traces):
+                no_progress_loops = 0
+            else:
+                no_progress_loops += 1
+            telemetry["no_progress_loops"] = no_progress_loops
+            if steering_inputs:
+                no_progress_loops = max(0, no_progress_loops - 1)
             guard_message = _build_worker_loop_guard_message(
                 traces=traces,
                 recent_tool_signatures=recent_tool_signatures,
@@ -743,6 +782,29 @@ class AgentOrchestrator:
                         skill_state=skill_state,
                         context_metrics=telemetry,
                     )
+            if no_progress_loops >= self.worker_no_progress_loop_limit:
+                await _emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "stopped",
+                        "reason": "no_concrete_progress",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "no_progress_loops": no_progress_loops,
+                    },
+                )
+                return AgentTurnResult(
+                    text=_build_worker_no_progress_stop_text(
+                        traces=traces,
+                        loops=loops,
+                        no_progress_loops=no_progress_loops,
+                    ),
+                    tool_traces=traces,
+                    model=self.model,
+                    response_id=last_response_id,
+                    skill_state=skill_state,
+                    context_metrics=telemetry,
+                )
             if steering_inputs:
                 outputs.extend(steering_inputs)
                 await _emit_progress(
@@ -816,514 +878,6 @@ class AgentOrchestrator:
             skill_state=skill_state,
             context_metrics=telemetry,
         )
-
-    async def _run_duo_turn(
-        self,
-        *,
-        ctx: AppContext,
-        project_root: str,
-        history: list[dict[str, str]],
-        user_message: str,
-        selected_targets: list[str] | None = None,
-        previous_response_id: str | None = None,
-        tool_memory: dict[str, dict[str, Any]] | None = None,
-        progress_callback: ProgressCallback | None = None,
-        consume_steering_messages: SteeringMessagesCallback | None = None,
-        message_callback: MessageCallback | None = None,
-    ) -> AgentTurnResult:
-        selected_targets = selected_targets or []
-        project_path = tools.validate_tool_scope(project_root, ctx)
-        intent_snapshot = await self._manager_build_plan(
-            project_path=project_path,
-            selected_targets=selected_targets,
-            user_message=user_message,
-            history=history,
-            tool_memory=tool_memory or {},
-            progress_callback=progress_callback,
-        )
-
-        thread_id = f"agent-thread-{uuid.uuid4().hex[:10]}"
-        emitted_messages: list[dict[str, Any]] = []
-
-        async def emit_message(
-            *,
-            from_agent: str,
-            to_agent: str,
-            kind: str,
-            summary: str,
-            payload: dict[str, Any] | None = None,
-            visibility: str = "internal",
-            priority: str = "normal",
-            requires_ack: bool = False,
-            correlation_id: str | None = None,
-            parent_id: str | None = None,
-        ) -> dict[str, Any]:
-            message = self._new_peer_message(
-                thread_id=thread_id,
-                from_agent=from_agent,
-                to_agent=to_agent,
-                kind=kind,
-                summary=summary,
-                payload=payload or {},
-                visibility=visibility,
-                priority=priority,
-                requires_ack=requires_ack,
-                correlation_id=correlation_id,
-                parent_id=parent_id,
-            )
-            data = asdict(message)
-            emitted_messages.append(data)
-            maybe_awaitable = (
-                message_callback(data) if message_callback is not None else None
-            )
-            if inspect.isawaitable(maybe_awaitable):
-                await maybe_awaitable
-            return data
-
-        execution_mode = _normalize_execution_mode(
-            intent_snapshot.get("execution_mode")
-        )
-        manager_response = str(intent_snapshot.get("manager_response") or "").strip()
-        delegation_reason = str(intent_snapshot.get("delegation_reason") or "").strip()
-        context_metrics: dict[str, Any] = {
-            "intent_snapshot": intent_snapshot,
-            "manager_execution_mode": execution_mode,
-        }
-
-        if execution_mode == "manager_response" and manager_response:
-            await emit_message(
-                from_agent="manager",
-                to_agent="worker",
-                kind="decision",
-                summary="No engineering handoff required.",
-                payload={
-                    "execution_mode": execution_mode,
-                    "reason": delegation_reason
-                    or "Manager answered directly from available context.",
-                },
-                visibility="internal",
-            )
-            await emit_message(
-                from_agent="manager",
-                to_agent="user",
-                kind="final_response",
-                summary=trim_single_line(manager_response, 140),
-                payload={"text": manager_response},
-                visibility="user_visible",
-                priority="high",
-            )
-            context_metrics["manager_direct_response"] = True
-            return AgentTurnResult(
-                text=manager_response,
-                tool_traces=[],
-                model=self.manager_model,
-                response_id=previous_response_id,
-                skill_state={},
-                context_metrics=context_metrics,
-                agent_messages=emitted_messages,
-            )
-
-        intent_message = await emit_message(
-            from_agent="manager",
-            to_agent="worker",
-            kind="intent_brief",
-            summary=intent_snapshot.get("intent_summary", "Prepared worker brief."),
-            payload=intent_snapshot,
-            visibility="internal",
-            requires_ack=True,
-        )
-
-        await emit_message(
-            from_agent="worker",
-            to_agent="manager",
-            kind="ack",
-            summary="Worker accepted intent brief.",
-            payload={"message_id": intent_message["message_id"]},
-            visibility="internal",
-            parent_id=intent_message["message_id"],
-        )
-
-        all_traces: list[ToolTrace] = []
-        worker_response_id: str | None = previous_response_id
-        worker_skill_state: dict[str, Any] = {}
-        worker_latest_text = ""
-        final_text = ""
-        worker_status_min_interval_s = max(
-            0.0,
-            float(os.getenv("ATOPILE_AGENT_WORKER_STATUS_MIN_INTERVAL_S", "8")),
-        )
-        worker_tool_intent_min_interval_s = max(
-            0.0,
-            float(os.getenv("ATOPILE_AGENT_WORKER_TOOL_INTENT_MIN_INTERVAL_S", "18")),
-        )
-        last_worker_status_key = ""
-        last_worker_status_at = 0.0
-        last_tool_intent_at_by_name: dict[str, float] = {}
-
-        async def worker_progress(payload: dict[str, Any]) -> None:
-            nonlocal last_worker_status_at
-            nonlocal last_worker_status_key
-
-            enriched = {**payload, "agent": "worker"}
-            await _emit_progress(progress_callback, enriched)
-
-            phase = str(payload.get("phase") or "")
-            if phase == "tool_start":
-                tool_name = str(payload.get("name") or "tool")
-                if _is_long_running_tool_for_status(tool_name):
-                    now_s = time.time()
-                    previous_s = last_tool_intent_at_by_name.get(tool_name, 0.0)
-                    if (now_s - previous_s) >= worker_tool_intent_min_interval_s:
-                        last_tool_intent_at_by_name[tool_name] = now_s
-                        await emit_message(
-                            from_agent="worker",
-                            to_agent="manager",
-                            kind="tool_intent",
-                            summary=f"Starting tool: {tool_name}",
-                            payload={
-                                "name": tool_name,
-                                "args": payload.get("args", {}),
-                                "call_id": payload.get("call_id"),
-                            },
-                            visibility="user_visible",
-                        )
-            elif phase == "tool_end":
-                trace = payload.get("trace")
-                if isinstance(trace, dict):
-                    ok = bool(trace.get("ok", False))
-                    tool_name = str(trace.get("name") or "tool")
-                    if not ok or _is_high_signal_tool_for_status(tool_name):
-                        await emit_message(
-                            from_agent="worker",
-                            to_agent="manager",
-                            kind="tool_result",
-                            summary=(
-                                f"Completed tool: {tool_name}"
-                                if ok
-                                else f"Tool failed: {tool_name}"
-                            ),
-                            payload={
-                                "trace": trace,
-                                "call_id": payload.get("call_id"),
-                            },
-                            visibility="user_visible" if not ok else "internal",
-                            priority="high" if not ok else "normal",
-                        )
-            elif phase == "thinking":
-                status_text = str(payload.get("status_text") or "").strip()
-                if not status_text:
-                    return
-                if _should_suppress_worker_status(status_text):
-                    return
-                detail_text = str(payload.get("detail_text") or "").strip()
-                status_key = (
-                    f"{status_text.lower()}::{trim_single_line(detail_text, 80)}"
-                    if detail_text
-                    else status_text.lower()
-                )
-                now_s = time.time()
-                if (
-                    status_key == last_worker_status_key
-                    and (now_s - last_worker_status_at) < worker_status_min_interval_s
-                ):
-                    return
-                last_worker_status_key = status_key
-                last_worker_status_at = now_s
-                await emit_message(
-                    from_agent="worker",
-                    to_agent="manager",
-                    kind="plan_update",
-                    summary=status_text,
-                    payload={
-                        "detail_text": payload.get("detail_text"),
-                        "loop": payload.get("loop"),
-                    },
-                    visibility="internal",
-                )
-            elif phase in {"error", "stopped"}:
-                await emit_message(
-                    from_agent="worker",
-                    to_agent="manager",
-                    kind="blocker",
-                    summary=(
-                        str(payload.get("error") or "")
-                        or str(payload.get("reason") or "Worker halted.")
-                    ),
-                    payload=payload,
-                    visibility="user_visible",
-                    priority="urgent",
-                )
-
-        worker_brief = str(intent_snapshot.get("worker_brief") or user_message).strip()
-        worker_brief = worker_brief or user_message
-        max_rounds = 1 + self.manager_refine_rounds
-        for round_index in range(max_rounds):
-            await emit_message(
-                from_agent="manager",
-                to_agent="worker",
-                kind="decision",
-                summary=(
-                    "Execute initial brief."
-                    if round_index == 0
-                    else f"Refinement cycle {round_index}: execute updated brief."
-                ),
-                payload={
-                    "round": round_index + 1,
-                    "worker_brief": worker_brief,
-                    "acceptance_criteria": intent_snapshot.get(
-                        "acceptance_criteria", []
-                    ),
-                },
-                visibility="internal",
-            )
-
-            worker_result = await self._run_worker_turn(
-                ctx=ctx,
-                project_root=str(project_path),
-                history=history,
-                user_message=worker_brief,
-                selected_targets=selected_targets,
-                previous_response_id=worker_response_id,
-                tool_memory=tool_memory,
-                progress_callback=worker_progress,
-                consume_steering_messages=consume_steering_messages,
-                actor="worker",
-            )
-            all_traces.extend(worker_result.tool_traces)
-            worker_response_id = worker_result.response_id or worker_response_id
-            worker_skill_state = dict(worker_result.skill_state)
-            worker_latest_text = worker_result.text
-            context_metrics[f"worker_round_{round_index + 1}"] = (
-                worker_result.context_metrics
-            )
-
-            await emit_message(
-                from_agent="worker",
-                to_agent="manager",
-                kind="result_bundle",
-                summary=trim_single_line(worker_result.text, 140),
-                payload={
-                    "round": round_index + 1,
-                    "text": worker_result.text,
-                    "tool_trace_count": len(worker_result.tool_traces),
-                },
-                visibility="internal",
-            )
-
-            manager_review = await self._manager_review_result(
-                user_message=user_message,
-                intent_snapshot=intent_snapshot,
-                worker_text=worker_result.text,
-                tool_traces=worker_result.tool_traces,
-                progress_callback=progress_callback,
-            )
-            final_text = str(manager_review.get("final_response") or "").strip()
-            decision = str(manager_review.get("decision") or "accept").lower().strip()
-            refinement_brief = str(manager_review.get("refinement_brief") or "").strip()
-
-            await emit_message(
-                from_agent="manager",
-                to_agent="worker",
-                kind="decision",
-                summary=(
-                    "Accepted worker output."
-                    if decision != "refine"
-                    else "Requested refinement."
-                ),
-                payload={
-                    "decision": decision,
-                    "refinement_brief": refinement_brief,
-                    "completion_summary": manager_review.get("completion_summary"),
-                    "round": round_index + 1,
-                },
-                visibility="internal",
-            )
-
-            if decision != "refine":
-                break
-            if not refinement_brief:
-                break
-            worker_brief = refinement_brief
-        else:
-            final_text = worker_latest_text
-
-        if not final_text:
-            final_text = worker_latest_text or "Completed."
-
-        await emit_message(
-            from_agent="manager",
-            to_agent="user",
-            kind="final_response",
-            summary=trim_single_line(final_text, 140),
-            payload={"text": final_text},
-            visibility="user_visible",
-            priority="high",
-        )
-
-        return AgentTurnResult(
-            text=final_text,
-            tool_traces=all_traces,
-            model=f"{self.manager_model}+{self.model}",
-            response_id=worker_response_id,
-            skill_state=worker_skill_state,
-            context_metrics=context_metrics,
-            agent_messages=emitted_messages,
-        )
-
-    def _new_peer_message(
-        self,
-        *,
-        thread_id: str,
-        from_agent: str,
-        to_agent: str,
-        kind: str,
-        summary: str,
-        payload: dict[str, Any],
-        visibility: str = "internal",
-        priority: str = "normal",
-        requires_ack: bool = False,
-        correlation_id: str | None = None,
-        parent_id: str | None = None,
-    ) -> AgentPeerMessage:
-        return AgentPeerMessage(
-            message_id=f"msg-{uuid.uuid4().hex[:16]}",
-            thread_id=thread_id,
-            from_agent=from_agent,
-            to_agent=to_agent,
-            kind=kind,
-            summary=summary,
-            payload=payload,
-            visibility=visibility,
-            priority=priority,
-            requires_ack=requires_ack,
-            correlation_id=correlation_id,
-            parent_id=parent_id,
-        )
-
-    async def _manager_build_plan(
-        self,
-        *,
-        project_path: Path,
-        selected_targets: list[str],
-        user_message: str,
-        history: list[dict[str, str]],
-        tool_memory: dict[str, dict[str, Any]],
-        progress_callback: ProgressCallback | None,
-    ) -> dict[str, Any]:
-        await _emit_progress(
-            progress_callback,
-            {
-                "phase": "thinking",
-                "status_text": "Manager planning",
-                "detail_text": "Converting user request into worker brief",
-                "agent": "manager",
-            },
-        )
-        history_summary = _summarize_history_for_manager(history)
-        tool_memory_summary = _summarize_tool_memory_for_manager(tool_memory)
-        payload = {
-            "model": self.manager_model,
-            "input": [
-                {
-                    "role": "user",
-                    "content": (
-                        f"Project root: {project_path}\n"
-                        f"Selected targets: {selected_targets or []}\n"
-                        f"Recent history:\n{history_summary}\n\n"
-                        f"Recent tool memory:\n{tool_memory_summary}\n\n"
-                        f"User request:\n{_trim_user_message(user_message, 6000)}"
-                    ),
-                }
-            ],
-            "instructions": _MANAGER_PLANNER_PROMPT,
-            "truncation": "auto",
-        }
-        response = await self._responses_create(
-            payload,
-            telemetry={"api_retry_count": 0},
-            progress_callback=progress_callback,
-        )
-        text = _extract_text(response)
-        parsed = _extract_json_object(text)
-        constraints = _normalize_string_list(parsed.get("constraints"))
-        acceptance_criteria = _normalize_string_list(parsed.get("acceptance_criteria"))
-        checkpoints = _normalize_string_list(parsed.get("checkpoints"))
-        intent_summary = str(parsed.get("intent_summary") or "").strip()
-        objective = str(parsed.get("objective") or "").strip()
-        worker_brief = str(parsed.get("worker_brief") or "").strip()
-        manager_response = str(parsed.get("manager_response") or "").strip()
-        delegation_reason = str(parsed.get("delegation_reason") or "").strip()
-        execution_mode = _normalize_execution_mode(parsed.get("execution_mode"))
-        if execution_mode == "manager_response" and not manager_response:
-            execution_mode = "delegate_worker"
-
-        fallback_brief = _trim_user_message(user_message, 6000)
-        return {
-            "execution_mode": execution_mode,
-            "delegation_reason": delegation_reason,
-            "manager_response": manager_response,
-            "intent_summary": intent_summary or "Prepared execution brief.",
-            "objective": objective or fallback_brief,
-            "constraints": constraints,
-            "acceptance_criteria": acceptance_criteria,
-            "worker_brief": worker_brief or fallback_brief,
-            "checkpoints": checkpoints,
-            "selected_targets": selected_targets,
-            "project_root": str(project_path),
-        }
-
-    async def _manager_review_result(
-        self,
-        *,
-        user_message: str,
-        intent_snapshot: dict[str, Any],
-        worker_text: str,
-        tool_traces: list[ToolTrace],
-        progress_callback: ProgressCallback | None,
-    ) -> dict[str, Any]:
-        await _emit_progress(
-            progress_callback,
-            {
-                "phase": "thinking",
-                "status_text": "Manager review",
-                "detail_text": "Validating worker output against acceptance criteria",
-                "agent": "manager",
-            },
-        )
-        traces_summary = _summarize_tool_traces_for_manager(tool_traces, limit=24)
-        payload = {
-            "model": self.manager_model,
-            "input": [
-                {
-                    "role": "user",
-                    "content": (
-                        f"Original user request:\n{_trim_user_message(user_message, 4000)}\n\n"
-                        f"Intent snapshot:\n{json.dumps(intent_snapshot, ensure_ascii=False)}\n\n"
-                        f"Worker output:\n{_trim_user_message(worker_text, 6000)}\n\n"
-                        f"Tool trace summary:\n{traces_summary}"
-                    ),
-                }
-            ],
-            "instructions": _MANAGER_REVIEW_PROMPT,
-            "truncation": "auto",
-        }
-        response = await self._responses_create(
-            payload,
-            telemetry={"api_retry_count": 0},
-            progress_callback=progress_callback,
-        )
-        text = _extract_text(response)
-        parsed = _extract_json_object(text)
-        decision = str(parsed.get("decision") or "accept").strip().lower()
-        if decision not in {"accept", "refine"}:
-            decision = "accept"
-        return {
-            "decision": decision,
-            "refinement_brief": str(parsed.get("refinement_brief") or "").strip(),
-            "final_response": str(parsed.get("final_response") or "").strip()
-            or worker_text,
-            "completion_summary": str(parsed.get("completion_summary") or "").strip(),
-        }
 
     async def _build_context(
         self,
@@ -1511,6 +1065,14 @@ class AgentOrchestrator:
         function_output_shrink_steps = (5000, 2500, 1200, 600, 300)
         function_output_shrink_index = 0
         for attempt in range(self.api_retries + 1):
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Calling model",
+                    "detail_text": f"Attempt {attempt + 1}/{self.api_retries + 1}",
+                },
+            )
             try:
                 response = await client.responses.create(**working_payload)
                 break
@@ -1586,8 +1148,10 @@ class AgentOrchestrator:
                         working_payload["previous_response_id"] = compacted_id
                         continue
                 snippet = _extract_sdk_error_text(exc)[:500]
+                payload_debug = _payload_debug_summary(working_payload)
                 raise RuntimeError(
-                    f"Model API request failed ({status_code}): {snippet}"
+                    f"Model API request failed ({status_code}): {snippet} "
+                    f"| payload_debug={payload_debug}"
                 ) from exc
             except (APIConnectionError, APITimeoutError) as exc:
                 if attempt < self.api_retries:
@@ -1612,7 +1176,10 @@ class AgentOrchestrator:
                     )
                     await asyncio.sleep(delay_s)
                     continue
-                raise RuntimeError(f"Model API request failed: {exc}") from exc
+                payload_debug = _payload_debug_summary(working_payload)
+                raise RuntimeError(
+                    f"Model API request failed: {exc} | payload_debug={payload_debug}"
+                ) from exc
 
         body = _response_model_to_dict(response)
         if not isinstance(body, dict):
@@ -2011,130 +1578,6 @@ def trim_single_line(value: str, max_chars: int) -> str:
     return f"{compact[: max_chars - 1]}..."
 
 
-def _summarize_history_for_manager(
-    history: list[dict[str, str]], limit: int = 8
-) -> str:
-    if not history:
-        return "- none"
-    lines: list[str] = []
-    for entry in history[-limit:]:
-        role = str(entry.get("role", "unknown")).strip()
-        content = str(entry.get("content", "")).strip()
-        if not content:
-            continue
-        lines.append(f"- {role}: {trim_single_line(content, 220)}")
-    return "\n".join(lines) if lines else "- none"
-
-
-def _summarize_tool_memory_for_manager(
-    tool_memory: dict[str, dict[str, Any]],
-    *,
-    limit: int = 8,
-) -> str:
-    if not tool_memory:
-        return "- none"
-    entries = []
-    for tool_name, payload in tool_memory.items():
-        if not isinstance(payload, dict):
-            continue
-        updated_at = payload.get("updated_at")
-        updated_suffix = ""
-        if isinstance(updated_at, (int, float)):
-            age_s = max(0.0, time.time() - float(updated_at))
-            updated_suffix = f", age={int(age_s)}s"
-        status = "ok" if bool(payload.get("ok", False)) else "failed"
-        summary = str(payload.get("summary") or "").strip()
-        context_id = str(payload.get("context_id") or "").strip()
-        extra = []
-        if summary:
-            extra.append(trim_single_line(summary, 90))
-        if context_id:
-            extra.append(f"context={trim_single_line(context_id, 40)}")
-        details = "; ".join(extra)
-        entries.append(
-            f"- {tool_name} [{status}{updated_suffix}]"
-            + (f": {details}" if details else "")
-        )
-    if not entries:
-        return "- none"
-    if len(entries) > limit:
-        hidden = len(entries) - limit
-        entries = entries[:limit] + [f"- ... {hidden} more memory entries"]
-    return "\n".join(entries)
-
-
-def _summarize_tool_traces_for_manager(
-    traces: list[ToolTrace],
-    *,
-    limit: int = 24,
-) -> str:
-    if not traces:
-        return "- none"
-    lines: list[str] = []
-    for trace in traces[:limit]:
-        status = "ok" if trace.ok else "failed"
-        detail = ""
-        message = trace.result.get("message")
-        error = trace.result.get("error")
-        if isinstance(message, str) and message.strip():
-            detail = trim_single_line(message, 120)
-        elif isinstance(error, str) and error.strip():
-            detail = trim_single_line(error, 120)
-        lines.append(f"- {trace.name} [{status}]" + (f": {detail}" if detail else ""))
-    if len(traces) > limit:
-        lines.append(f"- ... {len(traces) - limit} more tool traces")
-    return "\n".join(lines)
-
-
-def _extract_json_object(text: str) -> dict[str, Any]:
-    stripped = text.strip()
-    if not stripped:
-        return {}
-
-    def parse_candidate(candidate: str) -> dict[str, Any] | None:
-        try:
-            parsed = json.loads(candidate)
-        except Exception:
-            return None
-        if isinstance(parsed, dict):
-            return parsed
-        return None
-
-    parsed = parse_candidate(stripped)
-    if parsed is not None:
-        return parsed
-
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start >= 0 and end > start:
-        parsed = parse_candidate(stripped[start : end + 1])
-        if parsed is not None:
-            return parsed
-
-    return {}
-
-
-def _normalize_string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    output: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            continue
-        clean = item.strip()
-        if not clean:
-            continue
-        output.append(clean)
-    return output
-
-
-def _normalize_execution_mode(value: Any) -> str:
-    mode = str(value or "").strip().lower()
-    if mode == "manager_response":
-        return "manager_response"
-    return "delegate_worker"
-
-
 def _tool_call_signature(*, tool_name: str, args: dict[str, Any]) -> str:
     try:
         serialized = json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
@@ -2155,6 +1598,9 @@ def _worker_discovery_tool_names() -> set[str]:
         "examples_list",
         "examples_search",
         "examples_read_ato",
+        "package_ato_list",
+        "package_ato_search",
+        "package_ato_read",
         "web_search",
         "parts_search",
         "packages_search",
@@ -2166,6 +1612,7 @@ def _worker_discovery_tool_names() -> set[str]:
         "autolayout_status",
         "datasheet_read",
         "layout_get_component_position",
+        "layout_run_drc",
     }
 
 
@@ -2185,6 +1632,7 @@ def _worker_execution_tool_names() -> set[str]:
         "autolayout_request_screenshot",
         "autolayout_configure_board_intent",
         "layout_set_component_position",
+        "layout_run_drc",
     }
 
 
@@ -2254,42 +1702,91 @@ def _build_worker_loop_guard_stop_text(
     )
 
 
-def _is_long_running_tool_for_status(tool_name: str) -> bool:
-    return tool_name in {
-        "build_run",
-        "manufacturing_generate",
-        "autolayout_run",
-        "autolayout_status",
-        "autolayout_fetch_to_layout",
-        "autolayout_request_screenshot",
-    }
+def _loop_has_concrete_progress(loop_traces: list[ToolTrace]) -> bool:
+    if not loop_traces:
+        return False
+
+    execution_tools = _worker_execution_tool_names()
+    for trace in loop_traces:
+        if not trace.ok:
+            continue
+
+        if trace.name == "autolayout_fetch_to_layout":
+            if bool(trace.result.get("applied", False)):
+                return True
+            if isinstance(trace.result.get("applied_layout_path"), str):
+                return True
+            continue
+
+        if trace.name == "autolayout_status":
+            state = str(trace.result.get("state", "")).lower()
+            candidates = trace.result.get("candidate_count")
+            if state in {"awaiting_selection", "completed"} and isinstance(
+                candidates, int
+            ):
+                return candidates > 0
+            continue
+
+        if trace.name in execution_tools:
+            return True
+
+    return False
 
 
-def _is_high_signal_tool_for_status(tool_name: str) -> bool:
-    return tool_name in {
-        "project_edit_file",
-        "project_write_file",
-        "project_replace_text",
-        "project_rename_path",
-        "project_delete_path",
-        "parts_install",
-        "packages_install",
-        "build_run",
-        "manufacturing_generate",
-        "autolayout_run",
-        "autolayout_fetch_to_layout",
-        "autolayout_request_screenshot",
-        "autolayout_configure_board_intent",
-        "layout_set_component_position",
-    }
+def _build_worker_failure_streak_stop_text(
+    *,
+    traces: list[ToolTrace],
+    loops: int,
+    failure_streak: int,
+) -> str:
+    failing = [trace for trace in traces[-8:] if not trace.ok]
+    details: list[str] = []
+    for trace in failing[-3:]:
+        error = trace.result.get("error")
+        if isinstance(error, str) and error.strip():
+            details.append(f"{trace.name}: {trim_single_line(error, 110)}")
+        else:
+            details.append(trace.name)
+    detail_text = "; ".join(details) if details else "no error details captured"
+    return (
+        "Stopped after repeated tool failures to avoid stalling "
+        f"({failure_streak} consecutive failures across {loops} loops). "
+        "Need a corrected next step or missing input before continuing. "
+        f"Recent failures: {detail_text}."
+    )
 
 
-def _should_suppress_worker_status(status_text: str) -> bool:
-    normalized = status_text.strip().lower()
-    return normalized in {
-        "reviewing tool results",
-        "choosing next step",
-    }
+def _build_worker_no_progress_stop_text(
+    *,
+    traces: list[ToolTrace],
+    loops: int,
+    no_progress_loops: int,
+) -> str:
+    recent_names = [trace.name for trace in traces[-8:]]
+    recent_text = ", ".join(recent_names) if recent_names else "none"
+    return (
+        "Stopped after repeated loops without concrete progress "
+        f"({no_progress_loops} loops, {len(traces)} tool calls). "
+        "Need to change strategy (implement edit/build/apply) or report a blocker. "
+        f"Recent tools: {recent_text}. "
+        "If monitoring a background job, use a longer wait_seconds before the next "
+        "status check."
+    )
+
+
+def _build_worker_time_budget_stop_text(
+    *,
+    traces: list[ToolTrace],
+    loops: int,
+    elapsed_seconds: float,
+) -> str:
+    recent_names = [trace.name for trace in traces[-6:]]
+    recent_text = ", ".join(recent_names) if recent_names else "none"
+    return (
+        "Stopped after exceeding the per-turn time budget to avoid stalling "
+        f"({elapsed_seconds:.1f}s, {loops} loops, {len(traces)} tool calls). "
+        f"Recent tools: {recent_text}."
+    )
 
 
 async def _emit_progress(
@@ -2474,3 +1971,596 @@ def _shrink_function_call_output_string(
         return _truncate_middle(compacted_text, max_chars)
 
     return _truncate_middle(output, max_chars)
+
+
+def _payload_debug_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    raw_input = payload.get("input")
+    item_types: dict[str, int] = {}
+    function_output_call_ids: list[str] = []
+    if isinstance(raw_input, list):
+        for item in raw_input:
+            label = _payload_input_item_label(item)
+            item_types[label] = item_types.get(label, 0) + 1
+            if isinstance(item, dict) and item.get("type") == "function_call_output":
+                call_id = item.get("call_id")
+                if isinstance(call_id, str) and call_id:
+                    function_output_call_ids.append(call_id)
+
+    previous_response_id = payload.get("previous_response_id")
+    return {
+        "previous_response_id": (
+            previous_response_id
+            if isinstance(previous_response_id, str) and previous_response_id
+            else None
+        ),
+        "input_items": len(raw_input) if isinstance(raw_input, list) else None,
+        "input_item_types": item_types,
+        "function_call_output_count": len(function_output_call_ids),
+        "function_call_output_call_ids": function_output_call_ids[:12],
+    }
+
+
+def _payload_input_item_label(item: Any) -> str:
+    if not isinstance(item, dict):
+        return "non_object"
+    item_type = item.get("type")
+    if isinstance(item_type, str) and item_type:
+        return item_type
+    role = item.get("role")
+    if isinstance(role, str) and role:
+        return f"role:{role}"
+    return "object"
+
+
+# Colocated tests moved from `test/server/agent/test_orchestrator_output.py`.
+try:
+    import pytest
+except Exception:  # pragma: no cover - runtime deployments may omit pytest
+    pytest = None
+
+if pytest is not None:
+    import asyncio
+    import json
+    from pathlib import Path
+
+    import httpx
+    from openai import APIStatusError
+
+    from atopile.dataclasses import AppContext
+    from atopile.server.agent.orchestrator import (
+        _SYSTEM_PROMPT,
+        AgentOrchestrator,
+        ToolTrace,
+        _build_function_call_outputs_for_model,
+        _build_prompt_cache_key,
+        _build_session_primer,
+        _build_worker_loop_guard_message,
+        _extract_retry_after_delay_s,
+        _sanitize_tool_output_for_model,
+        _tool_call_signature,
+        _trim_user_message,
+    )
+
+    def _test_sanitize_tool_output_removes_internal_keys() -> None:
+        payload = {
+            "path": "main.ato",
+            "diff": {"added_lines": 2, "removed_lines": 1},
+            "_ui": {
+                "edit_diff": {
+                    "before_content": "a\n",
+                    "after_content": "b\n",
+                }
+            },
+            "nested": {
+                "_private": "drop",
+                "value": 1,
+                "items": [{"ok": True, "_debug": "drop-me"}],
+            },
+        }
+
+        sanitized = _sanitize_tool_output_for_model(payload)
+
+        assert "_ui" not in sanitized
+        assert sanitized["path"] == "main.ato"
+        assert sanitized["diff"]["added_lines"] == 2
+        assert "_private" not in sanitized["nested"]
+        assert sanitized["nested"]["items"][0] == {"ok": True}
+
+    def _test_build_function_call_outputs_attaches_datasheet_file() -> None:
+        outputs = _build_function_call_outputs_for_model(
+            call_id="call_123",
+            tool_name="datasheet_read",
+            result_payload={
+                "found": True,
+                "openai_file_id": "file-abc123",
+                "source": "https://example.com/ds.pdf",
+                "filename": "ds.pdf",
+                "query": "boot0 and reset",
+            },
+        )
+
+        assert len(outputs) == 2
+        assert outputs[0]["type"] == "function_call_output"
+        assert outputs[0]["call_id"] == "call_123"
+        assert outputs[1]["role"] == "user"
+        assert outputs[1]["content"][1] == {
+            "type": "input_file",
+            "file_id": "file-abc123",
+        }
+
+    def _test_build_function_call_outputs_nudges_after_parts_install() -> None:
+        outputs = _build_function_call_outputs_for_model(
+            call_id="call_456",
+            tool_name="parts_install",
+            result_payload={
+                "success": True,
+                "lcsc_id": "C521608",
+                "identifier": "STM32G474RET6",
+            },
+        )
+
+        assert len(outputs) == 2
+        assert outputs[0]["type"] == "function_call_output"
+        assert outputs[0]["call_id"] == "call_456"
+        assert outputs[1]["role"] == "user"
+        text = outputs[1]["content"][0]["text"]
+        assert "parts_install completed" in text
+        assert "datasheet_read next" in text
+
+    def _make_api_status_error(
+        *,
+        status_code: int,
+        body: dict | None = None,
+        headers: dict[str, str] | None = None,
+        text: str | None = None,
+    ) -> APIStatusError:
+        request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+        response = httpx.Response(
+            status_code=status_code,
+            request=request,
+            headers=headers,
+            text=text if text is not None else (json.dumps(body) if body else ""),
+        )
+        return APIStatusError(
+            "api status error",
+            response=response,
+            body=body,
+        )
+
+    def _test_extract_retry_after_delay_from_message_text() -> None:
+        exc = _make_api_status_error(
+            status_code=429,
+            body={
+                "error": {
+                    "message": (
+                        "Rate limit reached. Please try again in 578ms. "
+                        "Visit dashboard."
+                    ),
+                    "code": "rate_limit_exceeded",
+                }
+            },
+        )
+        delay_s = _extract_retry_after_delay_s(exc)
+        assert delay_s is not None
+        assert delay_s == 0.578
+
+    def _test_responses_create_retries_on_429(monkeypatch) -> None:
+        orchestrator = AgentOrchestrator()
+        sleep_calls: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        monkeypatch.setattr(
+            "atopile.server.agent.orchestrator.asyncio.sleep", fake_sleep
+        )
+
+        class StubResponses:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def create(self, **_: object) -> dict:
+                self.calls += 1
+                if self.calls == 1:
+                    raise _make_api_status_error(
+                        status_code=429,
+                        body={
+                            "error": {
+                                "message": "Please try again in 250ms.",
+                                "code": "rate_limit_exceeded",
+                            }
+                        },
+                        headers={"retry-after-ms": "250"},
+                    )
+                return {"id": "resp_ok", "output": [], "output_text": "ok"}
+
+        class StubClient:
+            def __init__(self) -> None:
+                self.responses = StubResponses()
+
+        stub_client = StubClient()
+        orchestrator._client = stub_client  # type: ignore[assignment]
+
+        result = asyncio.run(
+            orchestrator._responses_create({"model": "gpt-5-codex", "input": "ping"})
+        )
+        assert result["id"] == "resp_ok"
+        assert stub_client.responses.calls == 2
+        assert sleep_calls == [0.25]
+
+    def _test_responses_create_compacts_and_retries_on_context_overflow() -> None:
+        orchestrator = AgentOrchestrator()
+        telemetry: dict[str, object] = {"api_retry_count": 0, "compaction_events": []}
+
+        class StubResponses:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.last_previous_response_id: str | None = None
+                self.compact_calls = 0
+
+            async def create(self, **kwargs: object) -> dict:
+                self.calls += 1
+                self.last_previous_response_id = str(kwargs.get("previous_response_id"))
+                if self.calls == 1:
+                    raise _make_api_status_error(
+                        status_code=400,
+                        body={
+                            "error": {
+                                "message": "input exceeds context window",
+                                "code": "context_length_exceeded",
+                            }
+                        },
+                    )
+                return {"id": "resp_ok", "output": [], "output_text": "ok"}
+
+            async def compact(self, **_: object) -> dict:
+                self.compact_calls += 1
+                return {"id": "resp_compact", "output": []}
+
+        class StubClient:
+            def __init__(self) -> None:
+                self.responses = StubResponses()
+
+        stub_client = StubClient()
+        orchestrator._client = stub_client  # type: ignore[assignment]
+        result = asyncio.run(
+            orchestrator._responses_create(
+                {
+                    "model": "gpt-5-codex",
+                    "previous_response_id": "resp_old",
+                    "input": [{"role": "user", "content": "hello"}],
+                },
+                telemetry=telemetry,
+            )
+        )
+
+        assert result["id"] == "resp_ok"
+        assert stub_client.responses.calls == 2
+        assert stub_client.responses.compact_calls == 1
+        assert stub_client.responses.last_previous_response_id == "resp_compact"
+        events = telemetry.get("compaction_events")
+        assert isinstance(events, list)
+        assert len(events) == 1
+
+    def _test_prompt_cache_key_is_stable_for_same_inputs() -> None:
+        key_a = _build_prompt_cache_key(
+            project_path=Path("/tmp/demo"),
+            tool_defs=[{"name": "project_read_file"}, {"name": "build_run"}],
+            skill_state={"selected_skill_ids": ["dev", "domain-layer"]},
+            model="gpt-5-codex",
+        )
+        key_b = _build_prompt_cache_key(
+            project_path=Path("/tmp/demo"),
+            tool_defs=[{"name": "build_run"}, {"name": "project_read_file"}],
+            skill_state={"selected_skill_ids": ["dev", "domain-layer"]},
+            model="gpt-5-codex",
+        )
+        assert key_a == key_b
+        assert key_a.startswith("atopile-agent:")
+
+    def _test_trim_user_message_preserves_head_and_tail() -> None:
+        message = "A" * 120 + "B" * 120
+        trimmed = _trim_user_message(message, max_chars=120)
+        assert len(trimmed) <= 150
+        assert "truncated" in trimmed.lower()
+        assert trimmed.startswith("A")
+        assert trimmed.endswith("B")
+
+    def _test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
+        traces = [
+            ToolTrace(
+                name="project_read_file",
+                args={"path": "main.ato"},
+                ok=True,
+                result={"path": "main.ato"},
+            )
+            for _ in range(6)
+        ]
+        signatures = [
+            _tool_call_signature(
+                tool_name="project_read_file", args={"path": "main.ato"}
+            )
+            for _ in range(6)
+        ]
+
+        message = _build_worker_loop_guard_message(
+            traces=traces,
+            recent_tool_signatures=signatures,
+            loops=6,
+            guard_hits=0,
+            window=8,
+            min_discovery=6,
+        )
+
+        assert message is not None
+        assert "repetitive" in message.lower()
+
+    def _test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
+        traces = [
+            ToolTrace(
+                name="project_read_file",
+                args={"path": "main.ato"},
+                ok=True,
+                result={"path": "main.ato"},
+            )
+            for _ in range(5)
+        ] + [
+            ToolTrace(
+                name="project_edit_file",
+                args={"path": "main.ato"},
+                ok=True,
+                result={"operations_applied": 1},
+            )
+        ]
+        signatures = [
+            _tool_call_signature(tool_name=trace.name, args=trace.args)
+            for trace in traces
+        ]
+
+        message = _build_worker_loop_guard_message(
+            traces=traces,
+            recent_tool_signatures=signatures,
+            loops=6,
+            guard_hits=0,
+            window=8,
+            min_discovery=6,
+        )
+
+        assert message is None
+
+    def _test_run_worker_turn_stops_repetitive_discovery_loop(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+        (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
+
+        orchestrator = AgentOrchestrator()
+        orchestrator.worker_loop_guard_min_discovery = 4
+        orchestrator.worker_loop_guard_max_hits = 1
+        orchestrator.max_tool_loops = 30
+
+        async def fake_build_context(**_: object) -> str:
+            return "Project summary: minimal test context"
+
+        call_counter = {"count": 0}
+
+        async def fake_create_with_context_control(**_: object) -> dict[str, object]:
+            call_counter["count"] += 1
+            return {
+                "id": f"resp_{call_counter['count']}",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "id": f"fc_{call_counter['count']}",
+                        "call_id": f"call_{call_counter['count']}",
+                        "name": "project_read_file",
+                        "arguments": json.dumps(
+                            {"path": "main.ato", "start_line": 1, "max_lines": 40}
+                        ),
+                    }
+                ],
+            }
+
+        async def fake_execute_tool(**_: object) -> dict[str, object]:
+            return {"path": "main.ato", "content": "1:aaaa|module App:"}
+
+        monkeypatch.setattr(orchestrator, "_build_context", fake_build_context)
+        monkeypatch.setattr(
+            orchestrator,
+            "_responses_create_with_context_control",
+            fake_create_with_context_control,
+        )
+        monkeypatch.setattr(
+            "atopile.server.agent.orchestrator.tools.execute_tool",
+            fake_execute_tool,
+        )
+
+        result = asyncio.run(
+            orchestrator.run_turn(
+                ctx=AppContext(workspace_paths=[tmp_path]),
+                project_root=str(tmp_path),
+                history=[],
+                user_message="Implement the requested feature.",
+                selected_targets=["default"],
+            )
+        )
+
+        assert "repetitive discovery loop" in result.text.lower()
+        assert len(result.tool_traces) >= 4
+        assert call_counter["count"] >= 4
+
+    def _test_run_worker_turn_stops_on_repeated_tool_failures(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+        (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
+
+        orchestrator = AgentOrchestrator()
+        orchestrator.worker_failure_streak_limit = 2
+        orchestrator.max_tool_loops = 20
+
+        async def fake_build_context(**_: object) -> str:
+            return "Project summary: minimal test context"
+
+        call_counter = {"count": 0}
+
+        async def fake_create_with_context_control(**_: object) -> dict[str, object]:
+            call_counter["count"] += 1
+            return {
+                "id": f"resp_{call_counter['count']}",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "id": f"fc_{call_counter['count']}",
+                        "call_id": f"call_{call_counter['count']}",
+                        "name": "project_edit_file",
+                        "arguments": json.dumps(
+                            {
+                                "path": "main.ato",
+                                "edits": [
+                                    {
+                                        "op": "replace",
+                                        "line": "1:aaaa",
+                                        "old": "module App:",
+                                        "new": "module App:",
+                                    }
+                                ],
+                            }
+                        ),
+                    }
+                ],
+            }
+
+        async def fake_execute_tool(**_: object) -> dict[str, object]:
+            raise RuntimeError("hash anchor mismatch")
+
+        monkeypatch.setattr(orchestrator, "_build_context", fake_build_context)
+        monkeypatch.setattr(
+            orchestrator,
+            "_responses_create_with_context_control",
+            fake_create_with_context_control,
+        )
+        monkeypatch.setattr(
+            "atopile.server.agent.orchestrator.tools.execute_tool",
+            fake_execute_tool,
+        )
+
+        result = asyncio.run(
+            orchestrator.run_turn(
+                ctx=AppContext(workspace_paths=[tmp_path]),
+                project_root=str(tmp_path),
+                history=[],
+                user_message="Apply edit.",
+                selected_targets=["default"],
+            )
+        )
+
+        assert "repeated tool failures" in result.text.lower()
+        assert len(result.tool_traces) >= 2
+
+    def _test_run_worker_turn_stops_after_no_concrete_progress(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+
+        orchestrator = AgentOrchestrator()
+        orchestrator.worker_no_progress_loop_limit = 3
+        orchestrator.worker_loop_guard_min_discovery = 10
+        orchestrator.max_tool_loops = 30
+
+        async def fake_build_context(**_: object) -> str:
+            return "Project summary: minimal test context"
+
+        call_counter = {"count": 0}
+
+        async def fake_create_with_context_control(**_: object) -> dict[str, object]:
+            call_counter["count"] += 1
+            return {
+                "id": f"resp_{call_counter['count']}",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "id": f"fc_{call_counter['count']}",
+                        "call_id": f"call_{call_counter['count']}",
+                        "name": "autolayout_status",
+                        "arguments": json.dumps({"job_id": "al-123456789abc"}),
+                    }
+                ],
+            }
+
+        async def fake_execute_tool(**_: object) -> dict[str, object]:
+            return {
+                "job_id": "al-123456789abc",
+                "state": "running",
+                "candidate_count": 0,
+            }
+
+        monkeypatch.setattr(orchestrator, "_build_context", fake_build_context)
+        monkeypatch.setattr(
+            orchestrator,
+            "_responses_create_with_context_control",
+            fake_create_with_context_control,
+        )
+        monkeypatch.setattr(
+            "atopile.server.agent.orchestrator.tools.execute_tool",
+            fake_execute_tool,
+        )
+
+        result = asyncio.run(
+            orchestrator.run_turn(
+                ctx=AppContext(workspace_paths=[tmp_path]),
+                project_root=str(tmp_path),
+                history=[],
+                user_message="Keep monitoring this job.",
+                selected_targets=["default"],
+            )
+        )
+
+        assert "without concrete progress" in result.text.lower()
+        assert len(result.tool_traces) >= 3
+
+    class TestOrchestratorOutput:
+        test_sanitize_tool_output_removes_internal_keys = staticmethod(
+            _test_sanitize_tool_output_removes_internal_keys
+        )
+        test_build_function_call_outputs_attaches_datasheet_file = staticmethod(
+            _test_build_function_call_outputs_attaches_datasheet_file
+        )
+        test_build_function_call_outputs_nudges_after_parts_install = staticmethod(
+            _test_build_function_call_outputs_nudges_after_parts_install
+        )
+        test_extract_retry_after_delay_from_message_text = staticmethod(
+            _test_extract_retry_after_delay_from_message_text
+        )
+        test_responses_create_retries_on_429 = staticmethod(
+            _test_responses_create_retries_on_429
+        )
+        test_responses_create_compacts_and_retries_on_context_overflow = staticmethod(
+            _test_responses_create_compacts_and_retries_on_context_overflow
+        )
+        test_prompt_cache_key_is_stable_for_same_inputs = staticmethod(
+            _test_prompt_cache_key_is_stable_for_same_inputs
+        )
+        test_trim_user_message_preserves_head_and_tail = staticmethod(
+            _test_trim_user_message_preserves_head_and_tail
+        )
+        test_build_worker_loop_guard_message_detects_repetitive_discovery = (
+            staticmethod(
+                _test_build_worker_loop_guard_message_detects_repetitive_discovery
+            )
+        )
+        test_build_worker_loop_guard_message_ignores_execution_progress = staticmethod(
+            _test_build_worker_loop_guard_message_ignores_execution_progress
+        )
+        test_run_worker_turn_stops_repetitive_discovery_loop = staticmethod(
+            _test_run_worker_turn_stops_repetitive_discovery_loop
+        )
+        test_run_worker_turn_stops_on_repeated_tool_failures = staticmethod(
+            _test_run_worker_turn_stops_on_repeated_tool_failures
+        )
+        test_run_worker_turn_stops_after_no_concrete_progress = staticmethod(
+            _test_run_worker_turn_stops_after_no_concrete_progress
+        )

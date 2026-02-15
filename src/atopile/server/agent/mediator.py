@@ -113,6 +113,58 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         typical_output="example, path, content, start_line, end_line, total_lines",
         keywords=["read example", "open example", "example ato", "reference ato"],
     ),
+    "package_ato_list": ToolDirectoryItem(
+        name="package_ato_list",
+        category="examples",
+        purpose="List package .ato reference files from installed modules.",
+        tooltip=(
+            "Discover package source files under .ato/modules and configured "
+            "reference roots."
+        ),
+        inputs=["package_query", "path_query", "limit"],
+        typical_output="roots, files, packages, total_files",
+        keywords=[
+            "package ato list",
+            "installed package source",
+            "module references",
+            ".ato/modules",
+            "reference corpus",
+        ],
+    ),
+    "package_ato_search": ToolDirectoryItem(
+        name="package_ato_search",
+        category="examples",
+        purpose="Search package .ato reference files with filters.",
+        tooltip=(
+            "Search installed package .ato code by text, package id, or path "
+            "for reusable design patterns."
+        ),
+        inputs=["query", "package_query", "path_query", "limit"],
+        typical_output="query, matches, total, scanned_files",
+        keywords=[
+            "package ato search",
+            "search package source",
+            "reference patterns",
+            "scan modules",
+            "look through package code",
+        ],
+    ),
+    "package_ato_read": ToolDirectoryItem(
+        name="package_ato_read",
+        category="examples",
+        purpose="Read one package .ato file by package id/path.",
+        tooltip="Open a package .ato source file for detailed pattern review.",
+        inputs=["package_identifier", "path_in_package", "start_line", "max_lines"],
+        typical_output=(
+            "package_identifier, path_in_package, path, content, start_line, end_line"
+        ),
+        keywords=[
+            "read package ato",
+            "open package source",
+            "package file",
+            "reference implementation",
+        ],
+    ),
     "project_list_modules": ToolDirectoryItem(
         name="project_list_modules",
         category="project",
@@ -323,16 +375,14 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
     "autolayout_run": ToolDirectoryItem(
         name="autolayout_run",
         category="autolayout",
-        purpose=(
-            "Start background placement or routing with DeepPCB/autolayout provider."
-        ),
+        purpose="Start background placement or routing with DeepPCB.",
         tooltip=(
-            "Queue placement/routing as an autolayout job with provider options "
-            "(timeout, batch timeout, webhooks, resume board)."
+            "Queue placement/routing as an autolayout job with timeout/batch/"
+            "webhook/resume options. Per-run timeout is "
+            "capped at 2 minutes, so use iterative resume cycles for longer runs."
         ),
         inputs=[
             "build_target",
-            "provider",
             "job_type",
             "routing_type",
             "timeout_minutes",
@@ -380,7 +430,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         purpose="Apply selected routed/placed candidate into layouts/ with archive.",
         tooltip=(
             "Fetch candidate, apply to layout file, archive an iteration copy "
-            "under layouts/autolayout_iterations, and report downloaded provider "
+            "under layouts/autolayout_iterations, and report downloaded candidate "
             "artifacts (JSON/SES/DSN when available). If the job is still running, "
             "it returns a check-back hint instead of applying early."
         ),
@@ -403,9 +453,18 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         purpose="Render 2D/3D screenshot files for current placed/routed layout.",
         tooltip=(
             "Generate board screenshots immediately, with optional 2D layer "
-            "filters and drawing sheet excluded by default."
+            "filters and drawing sheet excluded by default. Supports highlighting "
+            "specific components while dimming the rest of the board."
         ),
-        inputs=["target", "view", "side", "layers"],
+        inputs=[
+            "target",
+            "view",
+            "side",
+            "layers",
+            "highlight_components",
+            "dim_others",
+            "dim_opacity",
+        ],
         typical_output="screenshot_paths, layers, drawing_sheet_excluded",
         keywords=[
             "screenshot",
@@ -413,6 +472,8 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "2d image",
             "3d image",
             "board preview",
+            "highlight component",
+            "spotlight component",
         ],
     ),
     "layout_get_component_position": ToolDirectoryItem(
@@ -462,6 +523,24 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "rotate component",
             "placement edit",
             "layout transform",
+        ],
+    ),
+    "layout_run_drc": ToolDirectoryItem(
+        name="layout_run_drc",
+        category="layout",
+        purpose="Run KiCad DRC and summarize layout rule violations.",
+        tooltip=(
+            "Runs KiCad DRC on the active board and returns error/warning counts "
+            "plus a saved JSON report path."
+        ),
+        inputs=["target", "max_findings", "max_items_per_finding"],
+        typical_output="total_findings, error_count, warning_count, report_path",
+        keywords=[
+            "drc",
+            "design rule check",
+            "erc",
+            "rule violations",
+            "board check",
         ],
     ),
     "autolayout_configure_board_intent": ToolDirectoryItem(
@@ -755,6 +834,9 @@ def suggest_tools(
         if any(term in search_blob for term in package_terms) and name in {
             "packages_search",
             "packages_install",
+            "package_ato_list",
+            "package_ato_search",
+            "package_ato_read",
         }:
             score += 1.0
         structure_terms = (
@@ -785,8 +867,26 @@ def suggest_tools(
             "examples_list",
             "examples_search",
             "examples_read_ato",
+            "package_ato_list",
+            "package_ato_search",
+            "package_ato_read",
         }:
             score += 1.9
+        package_source_terms = (
+            ".ato/modules",
+            "package source",
+            "installed module code",
+            "reference corpus",
+            "package ato",
+            "look through package",
+            "scan package",
+        )
+        if any(term in search_blob for term in package_source_terms) and name in {
+            "package_ato_list",
+            "package_ato_search",
+            "package_ato_read",
+        }:
+            score += 2.2
         bom_terms = (
             "bom",
             "bill of materials",
@@ -1012,8 +1112,17 @@ def _stale_after_seconds(tool_name: str) -> float:
 
 
 def _extract_context_id(result: dict[str, Any]) -> str | None:
+    nested_job = result.get("job")
+    if isinstance(nested_job, dict):
+        nested_job_id = nested_job.get("job_id")
+        if isinstance(nested_job_id, str) and nested_job_id:
+            return nested_job_id
+
     for key in (
         "job_id",
+        "latest_job_id",
+        "resolved_job_id",
+        "fallback_job_id",
         "build_id",
         "provider_job_ref",
         "item_id",
@@ -1023,6 +1132,16 @@ def _extract_context_id(result: dict[str, Any]) -> str | None:
         value = result.get(key)
         if isinstance(value, str) and value:
             return value
+
+    jobs = result.get("jobs")
+    if isinstance(jobs, list):
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            candidate_id = job.get("job_id")
+            if isinstance(candidate_id, str) and candidate_id:
+                return candidate_id
+
     return None
 
 
@@ -1058,16 +1177,32 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
             if isinstance(candidate_count, int):
                 return f"state={state}; candidates={candidate_count}"
             return f"state={state}"
+        latest_job = result.get("latest_job_id")
+        total_jobs = result.get("total_jobs")
+        if isinstance(latest_job, str) and latest_job:
+            if isinstance(total_jobs, int):
+                return f"latest job={latest_job}; total={total_jobs}"
+            return f"latest job={latest_job}"
     if name == "autolayout_fetch_to_layout":
         candidate = result.get("selected_candidate_id")
         if isinstance(candidate, str) and candidate:
             return f"applied {candidate}"
+        if result.get("ready_to_apply") is False:
+            state = result.get("state")
+            if isinstance(state, str) and state:
+                return f"waiting ({state})"
         return "layout candidate applied"
     if name == "autolayout_request_screenshot":
         view = result.get("view")
         if isinstance(view, str) and view:
             return f"{view} screenshot rendered"
         return "screenshot rendered"
+    if name == "layout_run_drc":
+        errors = result.get("error_count")
+        total = result.get("total_findings")
+        if isinstance(errors, int) and isinstance(total, int):
+            return f"drc: {errors} error(s), {total} finding(s)"
+        return "drc report generated"
     if name == "autolayout_configure_board_intent":
         target = result.get("build_target")
         if isinstance(target, str) and target:
@@ -1175,7 +1310,11 @@ def _infer_prefilled_args(
         query = " ".join(cleaned.split()).strip().strip(".")
         if query:
             return {"query": query, "num_results": 8, "search_type": "auto"}
-        return {"query": "atopile latest updates", "num_results": 8, "search_type": "auto"}
+        return {
+            "query": "atopile latest updates",
+            "num_results": 8,
+            "search_type": "auto",
+        }
 
     if tool_name == "examples_list":
         return {"limit": 20}
@@ -1206,6 +1345,44 @@ def _infer_prefilled_args(
         for example_name in known_examples:
             if re.search(rf"\b{re.escape(example_name)}\b", lower):
                 return {"example": example_name, "start_line": 1, "max_lines": 220}
+
+    if tool_name == "package_ato_list":
+        args: dict[str, Any] = {}
+        package_match = _PACKAGE_RE.search(text)
+        if package_match:
+            args["package_query"] = package_match.group(1)
+        return args
+
+    if tool_name == "package_ato_search":
+        args: dict[str, Any] = {}
+        package_match = _PACKAGE_RE.search(text)
+        if package_match:
+            args["package_query"] = package_match.group(1)
+        quoted = re.search(r"['\"]([^'\"]+)['\"]", text)
+        if quoted:
+            args["query"] = quoted.group(1)
+            return args
+        cleaned = re.sub(
+            r"\b(package|packages|ato|search|find|look|through|scan|source|code)\b",
+            " ",
+            lower,
+        )
+        query = " ".join(cleaned.split()).strip(".")
+        if query:
+            args["query"] = query
+            return args
+        args["query"] = "module"
+        return args
+
+    if tool_name == "package_ato_read":
+        args: dict[str, Any] = {}
+        package_match = _PACKAGE_RE.search(text)
+        if package_match:
+            args["package_identifier"] = package_match.group(1)
+        file_match = re.search(r"([A-Za-z0-9_./-]+\.ato)\b", text)
+        if file_match:
+            args["path_in_package"] = file_match.group(1)
+        return args
 
     if tool_name == "project_read_file":
         file_match = _FILE_RE.search(text)
@@ -1355,21 +1532,28 @@ def _infer_prefilled_args(
         if job_match:
             args["job_id"] = job_match.group(0)
             return args
-        recent = memory_view.get("autolayout_run")
-        if recent and isinstance(recent.get("context_id"), str):
-            args["job_id"] = str(recent["context_id"])
-            return args
+        for memory_key in (
+            "autolayout_fetch_to_layout",
+            "autolayout_status",
+            "autolayout_run",
+        ):
+            recent = memory_view.get(memory_key)
+            if recent and isinstance(recent.get("context_id"), str):
+                args["job_id"] = str(recent["context_id"])
+                return args
 
     if tool_name == "autolayout_fetch_to_layout":
         job_match = _AUTOLAYOUT_JOB_ID_RE.search(lower)
         if job_match:
             return {"job_id": job_match.group(0)}
-        recent = memory_view.get("autolayout_run")
-        if recent and isinstance(recent.get("context_id"), str):
-            return {"job_id": str(recent["context_id"])}
-        status_recent = memory_view.get("autolayout_status")
-        if status_recent and isinstance(status_recent.get("context_id"), str):
-            return {"job_id": str(status_recent["context_id"])}
+        for memory_key in (
+            "autolayout_status",
+            "autolayout_fetch_to_layout",
+            "autolayout_run",
+        ):
+            recent = memory_view.get(memory_key)
+            if recent and isinstance(recent.get("context_id"), str):
+                return {"job_id": str(recent["context_id"])}
 
     if tool_name == "autolayout_request_screenshot":
         args = {"view": "2d"}
@@ -1386,6 +1570,14 @@ def _infer_prefilled_args(
         else:
             args["side"] = "top"
 
+        highlight_match = re.search(
+            r"(?:highlight|focus on|spotlight)\s+(?:component\s+)?([a-z0-9_.:-]+)\b",
+            lower,
+        )
+        if highlight_match:
+            args["highlight_components"] = [highlight_match.group(1)]
+            args["dim_others"] = True
+
         if selected_targets:
             args["target"] = selected_targets[0]
         else:
@@ -1394,6 +1586,20 @@ def _infer_prefilled_args(
                 candidate = target_match.group(1)
                 if candidate not in {"for", "with", "from", "the"}:
                     args["target"] = candidate
+        return args
+
+    if tool_name == "layout_run_drc":
+        args: dict[str, Any] = {}
+        if selected_targets:
+            args["target"] = selected_targets[0]
+        else:
+            target_match = re.search(r"(?:target|build)\s+([a-z0-9_.-]+)\b", lower)
+            if target_match:
+                candidate = target_match.group(1)
+                if candidate not in {"for", "with", "from", "the"}:
+                    args["target"] = candidate
+        if "quick" in lower or "fast" in lower:
+            args["max_findings"] = 40
         return args
 
     if tool_name == "autolayout_configure_board_intent":
@@ -1574,3 +1780,498 @@ def _maybe_explain_failure_suggestion(
         "prefilled_prompt": prompt,
         "kind": "composite",
     }
+
+
+# Colocated tests moved from `test/server/agent/test_agent_mediator.py`.
+try:
+    import pytest
+except Exception:  # pragma: no cover - runtime deployments may omit pytest
+    pytest = None
+
+if pytest is not None:
+    import time
+    from dataclasses import dataclass
+
+    from atopile.server.agent import mediator
+
+    @dataclass
+    class FakeTrace:
+        name: str
+        ok: bool
+        result: dict
+
+    def _test_get_tool_directory_includes_core_tools() -> None:
+        directory = mediator.get_tool_directory()
+        names = {entry["name"] for entry in directory}
+
+        assert "project_read_file" in names
+        assert "datasheet_read" in names
+        assert "project_rename_path" in names
+        assert "project_delete_path" in names
+        assert "build_logs_search" in names
+        assert "design_diagnostics" in names
+        assert "manufacturing_generate" in names
+        assert "autolayout_run" in names
+        assert "autolayout_status" in names
+        assert "autolayout_fetch_to_layout" in names
+        assert "autolayout_request_screenshot" in names
+        assert "layout_run_drc" in names
+        assert "autolayout_configure_board_intent" in names
+        assert "examples_list" in names
+        assert "examples_search" in names
+        assert "examples_read_ato" in names
+        assert "package_ato_list" in names
+        assert "package_ato_search" in names
+        assert "package_ato_read" in names
+
+    def _test_suggest_tools_prefills_build_logs_from_message() -> None:
+        suggestions = mediator.suggest_tools(
+            message="can you inspect build a13d257908e95383 failure logs?",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        build_logs = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "build_logs_search"
+            ),
+            None,
+        )
+        assert build_logs is not None
+        assert build_logs["prefilled_args"]["build_id"] == "a13d257908e95383"
+
+    def _test_tool_memory_view_marks_stale_entries() -> None:
+        now = time.time()
+        memory = {
+            "build_logs_search": {
+                "tool_name": "build_logs_search",
+                "summary": "no output",
+                "ok": False,
+                "updated_at": now - 200.0,
+                "context_id": "a13d257908e95383",
+            }
+        }
+        view = mediator.get_tool_memory_view(memory)
+
+        assert len(view) == 1
+        assert view[0]["stale"] is True
+        assert "rerun?" in str(view[0]["stale_hint"])
+
+    def _test_update_tool_memory_summarizes_results() -> None:
+        traces = [
+            FakeTrace(
+                name="project_edit_file",
+                ok=True,
+                result={"operations_applied": 2, "first_changed_line": 9},
+            )
+        ]
+        updated = mediator.update_tool_memory({}, traces)
+        entry = updated["project_edit_file"]
+
+        assert entry["tool_name"] == "project_edit_file"
+        assert entry["ok"] is True
+        assert "edits applied" in entry["summary"]
+
+    def _test_suggest_tools_prefers_parts_for_physical_component_queries() -> None:
+        suggestions = mediator.suggest_tools(
+            message="search lcsc stm32f4 mcu part",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        parts = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "parts_search"
+            ),
+            None,
+        )
+        packages = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "packages_search"
+            ),
+            None,
+        )
+
+        assert parts is not None
+        assert parts["prefilled_args"].get("query")
+        if packages is not None:
+            assert float(parts["score"]) >= float(packages["score"])
+
+    def _test_suggest_tools_prefills_debug_log_filters() -> None:
+        suggestions = mediator.suggest_tools(
+            message="show debug logs for build a13d257908e95383 stage compile",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        build_logs = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "build_logs_search"
+            ),
+            None,
+        )
+        assert build_logs is not None
+        assert build_logs["prefilled_args"]["build_id"] == "a13d257908e95383"
+        assert build_logs["prefilled_args"]["log_levels"] == ["DEBUG"]
+        assert build_logs["prefilled_args"]["stage"] == "compile"
+
+    def _test_suggest_tools_prefills_datasheet_read_from_lcsc_id() -> None:
+        suggestions = mediator.suggest_tools(
+            message="check datasheet for C521608 and review pin functions",
+            history=[],
+            selected_targets=["default"],
+            tool_memory={},
+        )
+
+        datasheet = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "datasheet_read"
+            ),
+            None,
+        )
+        assert datasheet is not None
+        assert datasheet["prefilled_args"]["lcsc_id"] == "C521608"
+        assert datasheet["prefilled_args"]["target"] == "default"
+
+    def _test_suggest_tools_surfaces_bom_tool_for_bom_requests() -> None:
+        suggestions = mediator.suggest_tools(
+            message="Can you review the BOM and parts list for this target?",
+            history=[],
+            selected_targets=["default"],
+            tool_memory={},
+        )
+
+        bom = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "report_bom"
+            ),
+            None,
+        )
+        assert bom is not None
+        assert bom["prefilled_args"]["target"] == "default"
+
+    def _test_suggest_tools_surfaces_variables_tool_for_parameter_requests() -> None:
+        suggestions = mediator.suggest_tools(
+            message="Show me the computed parameters and constraints",
+            history=[],
+            selected_targets=["main"],
+            tool_memory={},
+        )
+
+        variables = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "report_variables"
+            ),
+            None,
+        )
+        assert variables is not None
+        assert variables["prefilled_args"]["target"] == "main"
+
+    def _test_suggest_tools_prefills_module_children_from_entry_point() -> None:
+        suggestions = mediator.suggest_tools(
+            message="inspect hierarchy for src/main.ato:App",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        module_children = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "project_module_children"
+            ),
+            None,
+        )
+        assert module_children is not None
+        assert module_children["prefilled_args"]["entry_point"] == "src/main.ato:App"
+
+    def _test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent() -> (
+        None
+    ):
+        suggestions = mediator.suggest_tools(
+            message=(
+                "generate manufacturing files (gerber + pick and place) "
+                "for target default"
+            ),
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        generate = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "manufacturing_generate"
+            ),
+            None,
+        )
+        assert generate is not None
+        assert generate["prefilled_args"]["target"] == "default"
+        assert generate["prefilled_args"]["include_targets"] == ["mfg-data"]
+
+    def _test_suggest_tools_surfaces_autolayout_for_routing_intent() -> None:
+        suggestions = mediator.suggest_tools(
+            message="run deeppcb autoroute for target default in background",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        autolayout_run = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "autolayout_run"
+            ),
+            None,
+        )
+        assert autolayout_run is not None
+        assert autolayout_run["prefilled_args"]["job_type"] == "Routing"
+        assert autolayout_run["prefilled_args"]["build_target"] == "default"
+
+    def _test_suggest_tools_prefills_autolayout_status_from_recent_memory() -> None:
+        memory = {
+            "autolayout_run": {
+                "tool_name": "autolayout_run",
+                "summary": "queued",
+                "ok": True,
+                "updated_at": time.time(),
+                "context_id": "al-123456789abc",
+            }
+        }
+
+        suggestions = mediator.suggest_tools(
+            message="check in periodically on autolayout progress",
+            history=[],
+            selected_targets=[],
+            tool_memory=memory,
+        )
+
+        status_tool = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "autolayout_status"
+            ),
+            None,
+        )
+        assert status_tool is not None
+        assert status_tool["prefilled_args"]["job_id"] == "al-123456789abc"
+        assert status_tool["prefilled_args"]["wait_seconds"] == 120
+
+    def _test_suggest_tools_prefills_layout_run_drc() -> None:
+        suggestions = mediator.suggest_tools(
+            message="run a quick drc check for target default",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        drc_tool = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "layout_run_drc"
+            ),
+            None,
+        )
+        assert drc_tool is not None
+        assert drc_tool["prefilled_args"]["target"] == "default"
+        assert drc_tool["prefilled_args"]["max_findings"] == 40
+
+    def _test_update_tool_memory_extracts_latest_autolayout_job_id() -> None:
+        traces = [
+            FakeTrace(
+                name="autolayout_status",
+                ok=True,
+                result={
+                    "job_id": None,
+                    "latest_job_id": "al-aaaaaaaaaaaa",
+                    "jobs": [
+                        {"job_id": "al-aaaaaaaaaaaa"},
+                        {"job_id": "al-bbbbbbbbbbbb"},
+                    ],
+                },
+            )
+        ]
+
+        updated = mediator.update_tool_memory({}, traces)
+        entry = updated["autolayout_status"]
+
+        assert entry["context_id"] == "al-aaaaaaaaaaaa"
+        assert "latest job" in entry["summary"]
+
+    def _test_suggest_tools_prefills_autolayout_status_from_status_memory() -> None:
+        memory = {
+            "autolayout_status": {
+                "tool_name": "autolayout_status",
+                "summary": "state=running; candidates=0",
+                "ok": True,
+                "updated_at": time.time(),
+                "context_id": "al-feedfacecafe",
+            }
+        }
+
+        suggestions = mediator.suggest_tools(
+            message="check autolayout status again",
+            history=[],
+            selected_targets=[],
+            tool_memory=memory,
+        )
+
+        status_tool = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "autolayout_status"
+            ),
+            None,
+        )
+        assert status_tool is not None
+        assert status_tool["prefilled_args"]["job_id"] == "al-feedfacecafe"
+
+    def _test_suggest_tools_surfaces_stackup_config_tool() -> None:
+        suggestions = mediator.suggest_tools(
+            message="set 4-layer stackup and add a GND ground plane pour",
+            history=[],
+            selected_targets=["default"],
+            tool_memory={},
+        )
+
+        config_tool = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "autolayout_configure_board_intent"
+            ),
+            None,
+        )
+        assert config_tool is not None
+        args = config_tool["prefilled_args"]
+        assert args["build_target"] == "default"
+        assert args["layer_count"] == 4
+        assert args["enable_ground_pours"] is True
+
+    def _test_suggest_tools_prefills_examples_search_for_reference_intent() -> None:
+        suggestions = mediator.suggest_tools(
+            message="show an example of i2c module templating in ato",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        examples_search = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "examples_search"
+            ),
+            None,
+        )
+        assert examples_search is not None
+        assert "query" in examples_search["prefilled_args"]
+
+    def _test_suggest_tools_prefills_package_ato_search_for_package_source_intent() -> (
+        None
+    ):
+        suggestions = mediator.suggest_tools(
+            message="search package ato source for regulator enable pattern",
+            history=[],
+            selected_targets=[],
+            tool_memory={},
+        )
+
+        package_search = next(
+            (
+                suggestion
+                for suggestion in suggestions
+                if suggestion["name"] == "package_ato_search"
+            ),
+            None,
+        )
+        assert package_search is not None
+        assert "query" in package_search["prefilled_args"]
+
+    class TestAgentMediator:
+        test_get_tool_directory_includes_core_tools = staticmethod(
+            _test_get_tool_directory_includes_core_tools
+        )
+        test_suggest_tools_prefills_build_logs_from_message = staticmethod(
+            _test_suggest_tools_prefills_build_logs_from_message
+        )
+        test_tool_memory_view_marks_stale_entries = staticmethod(
+            _test_tool_memory_view_marks_stale_entries
+        )
+        test_update_tool_memory_summarizes_results = staticmethod(
+            _test_update_tool_memory_summarizes_results
+        )
+        test_suggest_tools_prefers_parts_for_physical_component_queries = staticmethod(
+            _test_suggest_tools_prefers_parts_for_physical_component_queries
+        )
+        test_suggest_tools_prefills_debug_log_filters = staticmethod(
+            _test_suggest_tools_prefills_debug_log_filters
+        )
+        test_suggest_tools_prefills_datasheet_read_from_lcsc_id = staticmethod(
+            _test_suggest_tools_prefills_datasheet_read_from_lcsc_id
+        )
+        test_suggest_tools_surfaces_bom_tool_for_bom_requests = staticmethod(
+            _test_suggest_tools_surfaces_bom_tool_for_bom_requests
+        )
+        test_suggest_tools_surfaces_variables_tool_for_parameter_requests = (
+            staticmethod(
+                _test_suggest_tools_surfaces_variables_tool_for_parameter_requests
+            )
+        )
+        test_suggest_tools_prefills_module_children_from_entry_point = staticmethod(
+            _test_suggest_tools_prefills_module_children_from_entry_point
+        )
+        (
+            test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent
+        ) = staticmethod(
+            _test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent
+        )
+        test_suggest_tools_surfaces_autolayout_for_routing_intent = staticmethod(
+            _test_suggest_tools_surfaces_autolayout_for_routing_intent
+        )
+        test_suggest_tools_prefills_autolayout_status_from_recent_memory = staticmethod(
+            _test_suggest_tools_prefills_autolayout_status_from_recent_memory
+        )
+        test_suggest_tools_prefills_layout_run_drc = staticmethod(
+            _test_suggest_tools_prefills_layout_run_drc
+        )
+        test_update_tool_memory_extracts_latest_autolayout_job_id = staticmethod(
+            _test_update_tool_memory_extracts_latest_autolayout_job_id
+        )
+        test_suggest_tools_prefills_autolayout_status_from_status_memory = staticmethod(
+            _test_suggest_tools_prefills_autolayout_status_from_status_memory
+        )
+        test_suggest_tools_surfaces_stackup_config_tool = staticmethod(
+            _test_suggest_tools_surfaces_stackup_config_tool
+        )
+        test_suggest_tools_prefills_examples_search_for_reference_intent = staticmethod(
+            _test_suggest_tools_prefills_examples_search_for_reference_intent
+        )
+        (
+            test_suggest_tools_prefills_package_ato_search_for_package_source_intent
+        ) = staticmethod(
+            _test_suggest_tools_prefills_package_ato_search_for_package_source_intent
+        )

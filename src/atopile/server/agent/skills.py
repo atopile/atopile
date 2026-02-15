@@ -64,6 +64,11 @@ _DEFAULT_TOOLS_BY_SKILL: dict[str, list[str]] = {
     "solver": ["report_variables", "design_diagnostics", "build_logs_search"],
     "dev": ["project_read_file", "project_edit_file", "build_run"],
 }
+_FIXED_SKILL_ID_ALIASES: dict[str, tuple[str, ...]] = {
+    # Migration alias: allow runtime to request `ato` while legacy skill id
+    # still exists as `ato-language`.
+    "ato": ("ato-language",),
+}
 
 
 def load_skill_docs(
@@ -92,6 +97,110 @@ def load_skill_docs(
             loaded_at=now,
         )
     return docs
+
+
+def load_fixed_skill_docs(
+    *,
+    skills_dir: Path,
+    skill_ids: list[str],
+    ttl_s: float = 10.0,
+) -> tuple[list[SkillDoc], list[str]]:
+    docs = load_skill_docs(skills_dir=skills_dir, ttl_s=ttl_s)
+    selected: list[SkillDoc] = []
+    missing: list[str] = []
+
+    for raw_id in skill_ids:
+        requested_id = _normalize_skill_id(str(raw_id))
+        if not requested_id:
+            continue
+
+        doc = _find_skill_by_id_alias(docs, requested_id)
+        if doc is None:
+            for alias in _FIXED_SKILL_ID_ALIASES.get(requested_id, ()):
+                doc = _find_skill_by_id_alias(docs, alias)
+                if doc is not None:
+                    break
+
+        if doc is None:
+            missing.append(requested_id)
+            continue
+        if any(existing.id == doc.id for existing in selected):
+            continue
+        selected.append(doc)
+
+    return selected, missing
+
+
+def render_fixed_skills_block(
+    *,
+    docs: list[SkillDoc],
+    max_chars: int,
+) -> str:
+    if not docs:
+        return "ACTIVE SKILLS:\n- none"
+
+    sections = ["ACTIVE SKILLS (FULL DOCS):"]
+    for doc in docs:
+        sections.append(
+            "\n".join(
+                [
+                    f"SKILL {doc.id}",
+                    f"Source: {doc.path}",
+                    doc.body.strip(),
+                ]
+            ).strip()
+        )
+    joined = "\n\n".join(sections)
+    if max_chars <= 0:
+        return ""
+    if len(joined) <= max_chars:
+        return joined
+    return _truncate(joined, max_chars)
+
+
+def build_fixed_skill_state(
+    *,
+    skills_dir: Path,
+    requested_skill_ids: list[str],
+    selected_docs: list[SkillDoc],
+    missing_skill_ids: list[str],
+    rendered_total_chars: int,
+    max_chars: int,
+) -> dict[str, Any]:
+    normalized_requested_ids = [
+        _normalize_skill_id(str(value))
+        for value in requested_skill_ids
+        if str(value).strip()
+    ]
+    return {
+        "mode": "fixed",
+        "skills_dir": str(skills_dir),
+        "requested_skill_ids": normalized_requested_ids,
+        "selected_skill_ids": [doc.id for doc in selected_docs],
+        "selected_skills": [
+            {
+                "id": doc.id,
+                "name": doc.name,
+                "path": doc.path,
+                "chars": len(doc.body),
+            }
+            for doc in selected_docs
+        ],
+        "missing_skill_ids": missing_skill_ids,
+        "reasoning": [
+            "mode=fixed",
+            "requested_ids=" + ",".join(normalized_requested_ids),
+            "selected_ids=" + ",".join(doc.id for doc in selected_docs),
+            "missing_ids=" + ",".join(missing_skill_ids)
+            if missing_skill_ids
+            else "missing_ids=<none>",
+            f"rendered_chars={rendered_total_chars}",
+            f"max_chars={max_chars}",
+        ],
+        "total_chars": rendered_total_chars,
+        "max_chars": max_chars,
+        "generated_at": time.time(),
+    }
 
 
 def select_skills_for_turn(
@@ -295,9 +404,7 @@ def _collect_turn_features(
     tool_memory: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     history_text = " ".join(
-        str(item.get("content", ""))
-        for item in history[-4:]
-        if isinstance(item, dict)
+        str(item.get("content", "")) for item in history[-4:] if isinstance(item, dict)
     )
     failed_tool_text = " ".join(
         str(value.get("summary", ""))
@@ -435,14 +542,10 @@ def _extract_quickstart(doc: SkillDoc) -> str:
         codeblock = _CODEBLOCK_RE.search(quickstart)
         if codeblock is not None:
             return " ".join(
-                line.strip()
-                for line in codeblock.group(1).splitlines()
-                if line.strip()
+                line.strip() for line in codeblock.group(1).splitlines() if line.strip()
             )
         summary = " ".join(
-            line.strip()
-            for line in quickstart.splitlines()
-            if line.strip()
+            line.strip() for line in quickstart.splitlines() if line.strip()
         )
         if summary:
             return summary
@@ -477,3 +580,154 @@ def _truncate(value: str, max_chars: int) -> str:
     if max_chars <= 3:
         return value[:max_chars]
     return value[: max_chars - 3].rstrip() + "..."
+
+
+# Colocated tests moved from `test/server/agent/test_agent_skills.py`.
+try:
+    import pytest
+except Exception:  # pragma: no cover - runtime deployments may omit pytest
+    pytest = None
+
+if pytest is not None:
+    import time
+    from pathlib import Path
+
+    from atopile.server.agent import skills
+
+    def _write_skill(
+        root: Path,
+        skill_id: str,
+        *,
+        name: str,
+        description: str,
+        quickstart: str,
+        best_practice: str,
+    ) -> None:
+        skill_dir = root / skill_id
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
+            (
+                "---\n"
+                f"name: {name}\n"
+                f'description: "{description}"\n'
+                "---\n\n"
+                f"# {name}\n\n"
+                "## Quick Start\n\n"
+                f"{quickstart}\n\n"
+                "## Best Practices\n\n"
+                f"- {best_practice}\n\n"
+                "## Relevant Files\n\n"
+                "- src/atopile/lsp/lsp_server.py\n"
+            ),
+            encoding="utf-8",
+        )
+
+    def _test_load_skill_docs_parses_frontmatter_and_sections(tmp_path: Path) -> None:
+        _write_skill(
+            tmp_path,
+            "lsp",
+            name="lsp",
+            description="Language server behavior and invariants.",
+            quickstart="python -m atopile.lsp.lsp_server",
+            best_practice="Never crash LSP handlers.",
+        )
+        (tmp_path / "broken").mkdir()
+        (tmp_path / "broken" / "SKILL.md").write_text(
+            "no frontmatter", encoding="utf-8"
+        )
+
+        docs = skills.load_skill_docs(skills_dir=tmp_path, ttl_s=0)
+        ids = {doc.id for doc in docs}
+        assert "lsp" in ids
+        assert "broken" in ids
+        lsp = next(doc for doc in docs if doc.id == "lsp")
+        assert lsp.name == "lsp"
+        assert "Language server behavior" in lsp.description
+        assert "Quick Start" in lsp.sections
+
+    def _test_select_skills_includes_baseline_and_relevant_match(
+        tmp_path: Path,
+    ) -> None:
+        _write_skill(
+            tmp_path,
+            "lsp",
+            name="lsp",
+            description="Autocomplete, hover, language server, diagnostics.",
+            quickstart="python -m atopile.lsp.lsp_server",
+            best_practice="Keep per-document graphs stable.",
+        )
+        _write_skill(
+            tmp_path,
+            "compiler",
+            name="compiler",
+            description="Compilation pipeline and parser behavior.",
+            quickstart="ato build",
+            best_practice="Preserve parser diagnostics.",
+        )
+        _write_skill(
+            tmp_path,
+            "dev",
+            name="dev",
+            description="General development workflow.",
+            quickstart="ato dev test",
+            best_practice="Run focused checks first.",
+        )
+        _write_skill(
+            tmp_path,
+            "domain-layer",
+            name="domain-layer",
+            description="Build targets, exporters, manufacturing flow.",
+            quickstart="ato build",
+            best_practice="Follow build step invariants.",
+        )
+
+        selection = skills.select_skills_for_turn(
+            skills_dir=tmp_path,
+            user_message="LSP autocomplete and hover is broken",
+            selected_targets=["default"],
+            history=[],
+            tool_memory={},
+            top_k=2,
+            ttl_s=0,
+        )
+        ids = [card.id for card in selection.cards]
+        assert "dev" in ids
+        assert "domain-layer" in ids
+        assert "lsp" in ids
+
+    def _test_load_skill_docs_refreshes_when_file_changes(tmp_path: Path) -> None:
+        _write_skill(
+            tmp_path,
+            "compiler",
+            name="compiler",
+            description="Old description",
+            quickstart="ato build",
+            best_practice="Keep diagnostics.",
+        )
+        docs_before = skills.load_skill_docs(skills_dir=tmp_path, ttl_s=1000)
+        compiler_before = next(doc for doc in docs_before if doc.id == "compiler")
+        assert compiler_before.description == "Old description"
+
+        time.sleep(0.01)
+        _write_skill(
+            tmp_path,
+            "compiler",
+            name="compiler",
+            description="New description",
+            quickstart="ato build",
+            best_practice="Keep diagnostics.",
+        )
+        docs_after = skills.load_skill_docs(skills_dir=tmp_path, ttl_s=1000)
+        compiler_after = next(doc for doc in docs_after if doc.id == "compiler")
+        assert compiler_after.description == "New description"
+
+    class TestAgentSkills:
+        test_load_skill_docs_parses_frontmatter_and_sections = staticmethod(
+            _test_load_skill_docs_parses_frontmatter_and_sections
+        )
+        test_select_skills_includes_baseline_and_relevant_match = staticmethod(
+            _test_select_skills_includes_baseline_and_relevant_match
+        )
+        test_load_skill_docs_refreshes_when_file_changes = staticmethod(
+            _test_load_skill_docs_refreshes_when_file_changes
+        )
