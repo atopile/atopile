@@ -1,0 +1,15 @@
+# Caddy reverse proxy — front door on port 3000
+# Routes WebSocket paths to the atopile backend, everything else to OpenVSCode Server.
+:3000 {
+	log {
+		output stderr
+	}
+
+	@backend_ws path /ws/*
+	handle @backend_ws {
+		reverse_proxy 127.0.0.1:8501
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3001
+	}
+}

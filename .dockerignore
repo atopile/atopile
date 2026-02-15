@@ -1,0 +1,41 @@
+# Docker build context filter for web-ide builds.
+# Build context is the repo root: docker build -f web-ide/Dockerfile .
+
+# Git history (too large; version comes via SETUPTOOLS_SCM_PRETEND_VERSION)
+.git
+
+# Zig build caches (3GB+)
+**/.zig-cache
+**/zig-out
+
+# Python caches
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/*.egg-info
+
+# Node caches (rebuilt inside Docker)
+**/node_modules
+
+# IDE and editor files
+.vscode
+.idea
+.cursor
+**/.cursor
+
+# Pre-built local artifacts (Docker builds from source)
+web-ide/artifacts
+
+# Test data and reports
+test-report*.json
+test-report*.html
+
+# Non-essential directories for the web-ide build
+.github
+docs
+test
+examples
+dockerfiles
