@@ -13,6 +13,8 @@ export class Editor {
     private panAndZoom: PanAndZoom;
     private model: RenderModel | null = null;
     private baseUrl: string;
+    private apiPrefix: string;
+    private wsPath: string;
     private ws: WebSocket | null = null;
 
     // Selection & drag state
@@ -29,9 +31,11 @@ export class Editor {
     // Track current mouse position
     private lastMouseScreen: Vec2 = new Vec2(0, 0);
 
-    constructor(canvas: HTMLCanvasElement, baseUrl: string) {
+    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
         this.baseUrl = baseUrl;
+        this.apiPrefix = apiPrefix;
+        this.wsPath = wsPath;
         this.renderer = new Renderer(canvas);
         this.camera = new Camera2();
         this.panAndZoom = new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
@@ -49,7 +53,7 @@ export class Editor {
     }
 
     private async fetchAndPaint() {
-        const resp = await fetch(`${this.baseUrl}/api/render-model`);
+        const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
         this.applyModel(await resp.json(), true);
     }
 
@@ -74,7 +78,7 @@ export class Editor {
     }
 
     private connectWebSocket() {
-        const wsUrl = this.baseUrl.replace(/^http/, "ws") + "/ws";
+        const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);
         this.ws.onopen = () => console.log("WS connected");
         this.ws.onmessage = (event) => {
@@ -173,7 +177,7 @@ export class Editor {
             // Ctrl+Z — undo
             if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
                 e.preventDefault();
-                await this.serverAction("/api/undo");
+                await this.serverAction("/undo");
                 return;
             }
 
@@ -181,7 +185,7 @@ export class Editor {
             if (((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) ||
                 ((e.ctrlKey || e.metaKey) && e.key === "y")) {
                 e.preventDefault();
-                await this.serverAction("/api/redo");
+                await this.serverAction("/redo");
                 return;
             }
         });
@@ -204,7 +208,7 @@ export class Editor {
 
     private async executeAction(type: string, details: Record<string, unknown>) {
         try {
-            const resp = await fetch(`${this.baseUrl}/api/execute-action`, {
+            const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ type, details }),
@@ -216,13 +220,13 @@ export class Editor {
         }
     }
 
-    private async serverAction(endpoint: string) {
+    private async serverAction(path: string) {
         try {
-            const resp = await fetch(`${this.baseUrl}${endpoint}`, { method: "POST" });
+            const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
             const data = await resp.json();
             if (data.model) this.applyModel(data.model);
         } catch (err) {
-            console.error(`Failed ${endpoint}:`, err);
+            console.error(`Failed ${path}:`, err);
         }
     }
 
