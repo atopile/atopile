@@ -7,6 +7,8 @@ import faebryk.library._F as F
 
 
 class Crystal_Oscillator(fabll.Node):
+    """Crystal oscillator module combining crystal, load caps, and drive resistor."""
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

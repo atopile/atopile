@@ -6,6 +6,8 @@ import faebryk.library._F as F
 
 
 class Crystal(fabll.Node):
+    """Quartz crystal resonator module for clock and frequency reference paths."""
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
