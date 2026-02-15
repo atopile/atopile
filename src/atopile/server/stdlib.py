@@ -263,6 +263,7 @@ def _is_user_facing_child(attr_name: str, type_name: str) -> bool:
         "is_sum_bus_parameter",
         "has_usage_example",
         "implements_design_check",
+        "implements_board_shape",
         "has_designator_prefix",
         "is_lead",
         "can_attach_to_any_pad",

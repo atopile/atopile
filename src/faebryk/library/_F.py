@@ -22,6 +22,7 @@ from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
+from faebryk.library.implements_board_shape import implements_board_shape
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
@@ -126,6 +127,7 @@ __all__ = [
     "is_source",
     "Logic",
     "Mechanical",
+    "implements_board_shape",
     "Signal",
     "is_app_root",
     "bus_parameter_utils",

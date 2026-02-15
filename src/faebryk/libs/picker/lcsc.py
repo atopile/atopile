@@ -32,13 +32,9 @@ import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.picker.picker import PickedPart, PickSupplier
-from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
+from faebryk.libs.util import call_with_file_capture, not_none, once
 
 logger = logging.getLogger(__name__)
-
-CRAWL_DATASHEET = ConfigFlag(
-    "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
-)
 
 WORKAROUND_SMD_3D_MODEL_FIX = True
 """
@@ -318,7 +314,6 @@ class EasyEDAPart:
         self.model = model
         self._pre_model: Ee3dModel | None = None
         self.datasheet_url = datasheet_url
-        self._pre_datasheet: str | None = None
 
     @property
     def identifier(self):
@@ -391,65 +386,11 @@ class EasyEDAPart:
             datasheet_url=data._atopile_datasheet_url,
         )
         part._pre_model = easyeda_model
-        # Only set _pre_datasheet for crawling fallback if no direct URL available
-        if not data._atopile_datasheet_url:
-            part._pre_datasheet = easyeda_symbol.info.datasheet
 
         if download_model and part._pre_model is not None:
             part.load_model()
 
-        # Only crawl for datasheet if no direct URL was provided
-        if part._pre_datasheet is not None:
-            part.load_datasheet()
-
         return part
-
-    @once
-    @staticmethod
-    def load_datasheet_for_identifier(
-        url: str, identifier: str, lcsc_id: str
-    ) -> str | None:
-        import re
-
-        from faebryk.libs.http import http_client
-
-        logger.debug(f"Crawling datasheet for {identifier}")
-
-        with http_client(
-            headers={"User-Agent": "curl/7.81.0"},  # emulate curl
-            verify=not Gcfg.project.dangerously_skip_ssl_verification,
-        ) as client:
-            lcsc_site = client.get(url)
-
-        # find _{partno}.pdf in html
-        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
-        if match:
-            pdfurl = match.group(1)
-            logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
-            return pdfurl
-
-        return None
-
-    def load_datasheet(self):
-        if self.datasheet_url:
-            return self.datasheet_url
-
-        # TODO use easyeda2kicad api as soon as works again
-        # return symbol.info.datasheet
-
-        if not CRAWL_DATASHEET:
-            return None
-
-        if not (url := self._pre_datasheet):
-            return None
-
-        if pdfurl := EasyEDAPart.load_datasheet_for_identifier(
-            url, self.identifier, self.lcsc_id
-        ):
-            self.datasheet_url = pdfurl
-            return pdfurl
-
-        return None
 
 
 def _fix_3d_model_offsets(ki_footprint: ExporterFootprintKicad):

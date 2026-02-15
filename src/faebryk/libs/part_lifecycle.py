@@ -21,6 +21,12 @@ from atopile.layout import in_sub_pcb
 from atopile.logging import ALERT
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
+from faebryk.libs.datasheets import (
+    DatasheetDownloadException,
+    datasheet_cache_dir,
+    datasheet_cache_path,
+    download_datasheet,
+)
 from faebryk.libs.kicad.fileformats import (
     C_kicad_model_file,
     Property,
@@ -206,6 +212,35 @@ class PartLifecycle:
 
             return part
 
+    class Datasheets:
+        @property
+        def _PATH(self) -> Path:
+            return datasheet_cache_dir(Gcfg.project.paths.build)
+
+        def get_cached_path(self, lcsc_id: str) -> Path | None:
+            return datasheet_cache_path(Gcfg.project.paths.build, lcsc_id)
+
+        def ensure_cached(self, lcsc_id: str, datasheet_url: str | None) -> Path | None:
+            if not datasheet_url:
+                return None
+
+            path = self.get_cached_path(lcsc_id)
+            if path is None:
+                return None
+            if path.exists() and path.stat().st_size > 0:
+                return path
+
+            try:
+                download_datasheet(datasheet_url, path)
+            except DatasheetDownloadException as ex:
+                logger.warning(f"Failed to cache datasheet for {lcsc_id}: {ex}")
+                return None
+
+            return path
+
+        def ensure_cached_for_part(self, part: EasyEDAPart) -> Path | None:
+            return self.ensure_cached(part.lcsc_id, part.datasheet_url)
+
     class Library:
         @property
         def _PATH(self) -> Path:
@@ -366,6 +401,7 @@ class PartLifecycle:
         def ingest_part_from_easyeda(self, epart: EasyEDAPart) -> AtoPart:
             out_path = self._get_part_path(epart)
             identifier = self._get_part_identifier(epart)
+            lifecycle = PartLifecycle.singleton()
 
             # cache
             # we assume that during runtime identical part ids are identical
@@ -373,6 +409,7 @@ class PartLifecycle:
             if not hasattr(self, "_cache_ingest_part_from_easyeda"):
                 self._cache_ingest_part_from_easyeda = dict[str, AtoPart]()
             if identifier in self._cache_ingest_part_from_easyeda:
+                lifecycle.datasheets.ensure_cached_for_part(epart)
                 return self._cache_ingest_part_from_easyeda[identifier]
 
             ato_part = AtoPart(
@@ -396,6 +433,7 @@ class PartLifecycle:
                 ),
             )
             out = self.ingest_part(ato_part)
+            lifecycle.datasheets.ensure_cached_for_part(epart)
 
             self._cache_ingest_part_from_easyeda[identifier] = out
             return out
@@ -740,6 +778,7 @@ class PartLifecycle:
     def __init__(self):
         self.easyeda_api = self.EasyEDA_API()
         self.easyeda2kicad = self.Easyeda2Kicad()
+        self.datasheets = self.Datasheets()
         self.library = self.Library()
         self.pcb = self.PCB()
 

@@ -1,8 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from typing import TYPE_CHECKING
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 
 class RectangularBoardShape(fabll.Node):
@@ -21,6 +26,9 @@ class RectangularBoardShape(fabll.Node):
     _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
     _can_attach_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
+    )
+    _implements_board_shape = fabll.Traits.MakeEdge(
+        F.implements_board_shape.MakeChild()
     )
 
     width = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
@@ -42,3 +50,10 @@ class RectangularBoardShape(fabll.Node):
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )
+
+    def __apply_board_shape__(self, transformer: "PCB_Transformer") -> None:
+        from faebryk.exporters.pcb.board_shape.rectangular_board_shape import (
+            apply_rectangular_board_shape,
+        )
+
+        apply_rectangular_board_shape(transformer, shape=self)
