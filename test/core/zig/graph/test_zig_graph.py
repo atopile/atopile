@@ -17,6 +17,23 @@ def test_fabll_import_surface():
     assert hasattr(zig.gen.fabll.units, "Volt")
 
 
+def test_fabll_zig_string_literal_runtime():
+    import faebryk.core.zig as zig
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    zig_string = zig.gen.fabll.literals.String.create_instance(
+        g=g, tg=tg, value="hello-zig"
+    )
+    assert zig_string.get_value() == "hello-zig"
+
+    strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(g=g)
+    strings.setup_from_values("hello-zig", "world")
+    assert sorted(strings.get_values()) == ["hello-zig", "world"]
+
+
 def test_minimal_graph():
     g = graph.GraphView.create()
 
