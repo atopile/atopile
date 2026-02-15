@@ -287,9 +287,22 @@ Fast candidate query endpoint.
 
 - Input: query constraints (`qty`, `limit`, package, pickable params) across supported
   component types.
-- Reads from `fast.sqlite` by default (`ATOPILE_COMPONENTS_FAST_ENGINE=sqlite`).
-- Zig remains optional for resistor/capacitor only (`ATOPILE_COMPONENTS_FAST_ENGINE=zig`).
+- Reads from Zig in-memory lookup with `fast.sqlite` as the source snapshot
+  artifact.
+- Zig lookup is schema-driven over discovered `*_pick` tables, so newly-added
+  fast component tables do not require hardcoded Python query glue.
 - Output: lightweight candidate records (includes `lcsc_id`, stock/flags, pick params).
+
+#### 1b) `POST /v1/components/parameters/query/batch`
+
+Grouped candidate query endpoint for large designs.
+
+- Input: ordered list of parameter-query payloads (same shape as endpoint 1).
+- Output: ordered per-query candidate result list.
+- Designed to preserve pick-group semantics while reducing HTTP overhead and enabling
+  concurrent fast-lookup execution server-side.
+- Implemented as a native Zig batch request (`{"queries":[...]}`) so Python route logic
+  remains thin.
 
 #### 2) `POST /v1/components/full`
 

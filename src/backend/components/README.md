@@ -125,11 +125,14 @@ uv run python -m backend.components.serve.lookup_bench \
 
 ## Stage 3 Fast Engine
 
-Stage 3 serve defaults to SQLite fast lookup (`ATOPILE_COMPONENTS_FAST_ENGINE=sqlite`),
-reading `fast.sqlite` + `detail.sqlite` from the active snapshot.
+Stage 3 serve uses Zig fast lookup, reading `fast.sqlite` + `detail.sqlite` from
+the active snapshot.
 
-Zig lookup remains available for resistor/capacitor-only benchmarking
-(`ATOPILE_COMPONENTS_FAST_ENGINE=zig`) using TSV inputs.
+The Zig lookup loader is schema-driven:
+
+- introspects available `*_pick` tables in `fast.sqlite`
+- exports compact per-table TSV + `schema.json` into cache
+- builds in-memory indexes and serves any discovered component type
 
 Run the API:
 
@@ -140,7 +143,6 @@ uv run python -m backend.components.serve.main
 Optional overrides:
 
 ```bash
-export ATOPILE_COMPONENTS_FAST_ENGINE=sqlite
 export ATOPILE_COMPONENTS_FAST_DB_FILENAME=fast.sqlite
 ```
 

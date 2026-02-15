@@ -11,14 +11,17 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from .bundle_builder import TarZstdBundleBuilder
+from .dashboard_metrics import DashboardMetrics
+from .dashboard_routes import router as dashboard_router
 from .detail_store_sqlite import SQLiteDetailStore
-from .fast_lookup_sqlite import SQLiteFastLookupStore
 from .fast_lookup_zig import ZigFastLookupStore
 from .interfaces import SnapshotNotFoundError
 from .routes import ServeServices, router
-from .telemetry import log_event
+from .telemetry import log_event, set_dashboard_metrics
 
 DEFAULT_CACHE_DIR = Path("/var/cache/atopile/components")
 
@@ -28,7 +31,6 @@ class ServeConfig:
     cache_dir: Path
     current_snapshot_name: str = "current"
     fast_db_filename: str = "fast.sqlite"
-    fast_engine: str = "zig"
     detail_db_filename: str = "detail.sqlite"
     host: str = "127.0.0.1"
     port: int = 8079
@@ -47,7 +49,6 @@ class ServeConfig:
                 "ATOPILE_COMPONENTS_FAST_DB_FILENAME",
                 "fast.sqlite",
             ),
-            fast_engine=os.getenv("ATOPILE_COMPONENTS_FAST_ENGINE", "zig").strip(),
             detail_db_filename=os.getenv(
                 "ATOPILE_COMPONENTS_DETAIL_DB_FILENAME",
                 "detail.sqlite",
@@ -77,21 +78,12 @@ def build_services(config: ServeConfig) -> ServeServices:
     if not config.detail_db_path.exists():
         raise SnapshotNotFoundError(f"detail DB not found: {config.detail_db_path}")
 
-    engine = config.fast_engine.lower()
     if not config.fast_db_path.exists():
         raise SnapshotNotFoundError(f"fast DB not found: {config.fast_db_path}")
-    if engine == "sqlite":
-        fast_lookup = SQLiteFastLookupStore(config.fast_db_path)
-    elif engine == "zig":
-        fast_lookup = ZigFastLookupStore(
-            config.fast_db_path,
-            cache_root=config.cache_dir,
-        )
-    else:
-        raise SnapshotNotFoundError(
-            f"unsupported fast engine: {config.fast_engine!r} "
-            "(expected 'sqlite' or 'zig')"
-        )
+    fast_lookup = ZigFastLookupStore(
+        config.fast_db_path,
+        cache_root=config.cache_dir,
+    )
 
     detail_store = SQLiteDetailStore(config.detail_db_path)
     bundle_store = TarZstdBundleBuilder(
@@ -106,13 +98,19 @@ def build_services(config: ServeConfig) -> ServeServices:
 
 def create_app(config: ServeConfig | None = None) -> FastAPI:
     serve_config = config or ServeConfig.from_env()
+    dashboard_metrics = DashboardMetrics()
     app = FastAPI(
         title="atopile-components-serve",
         version="0.1.0",
     )
     app.state.components_config = serve_config
     app.state.components_services = build_services(serve_config)
+    app.state.dashboard_metrics = dashboard_metrics
+    app.state.snapshot_package_stats = {}
+    set_dashboard_metrics(dashboard_metrics)
+    app.include_router(dashboard_router)
     app.include_router(router)
+    _mount_dashboard_frontend(app)
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
@@ -155,13 +153,14 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
     async def on_startup() -> None:
         metadata = _load_snapshot_metadata(serve_config.current_snapshot_path)
         package_stats = _load_package_stats(serve_config.detail_db_path)
+        app.state.snapshot_package_stats = package_stats
         log_event(
             "serve.startup",
             host=serve_config.host,
             port=serve_config.port,
             cache_dir=serve_config.cache_dir,
             snapshot=serve_config.current_snapshot_path,
-            fast_engine=serve_config.fast_engine,
+            fast_engine="zig",
             fast_db=serve_config.fast_db_path,
             detail_db=serve_config.detail_db_path,
             source_component_count=metadata.get("source_component_count"),
@@ -182,10 +181,11 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
 
     @app.on_event("shutdown")
     async def on_shutdown() -> None:
+        set_dashboard_metrics(None)
         log_event(
             "serve.shutdown",
             snapshot=serve_config.current_snapshot_path,
-            fast_engine=serve_config.fast_engine,
+            fast_engine="zig",
         )
 
     @app.get("/healthz")
@@ -194,7 +194,7 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
             "status": "ok",
             "snapshot": str(serve_config.current_snapshot_path),
             "fast_db": str(serve_config.fast_db_path),
-            "fast_engine": serve_config.fast_engine,
+            "fast_engine": "zig",
             "detail_db": str(serve_config.detail_db_path),
         }
 
@@ -212,6 +212,40 @@ def _load_snapshot_metadata(snapshot_path: Path) -> dict[str, Any]:
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _resolve_dashboard_dist_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "dashboard" / "dist"
+
+
+def _mount_dashboard_frontend(app: FastAPI) -> None:
+    dashboard_dist = _resolve_dashboard_dist_path()
+    app.state.dashboard_dist_path = dashboard_dist
+    index_path = dashboard_dist / "index.html"
+    if dashboard_dist.exists() and index_path.exists():
+        app.mount(
+            "/dashboard",
+            StaticFiles(directory=str(dashboard_dist), html=True),
+            name="components-dashboard",
+        )
+        return
+
+    help_text = (
+        "Dashboard frontend not built.\n"
+        "Run from src/backend/dashboard:\n"
+        "  npm install\n"
+        "  npm run build\n"
+        "Then restart the components serve API.\n"
+    )
+
+    @app.get("/dashboard", include_in_schema=False)
+    def dashboard_not_built() -> PlainTextResponse:
+        return PlainTextResponse(help_text, status_code=503)
+
+    @app.get("/dashboard/{path:path}", include_in_schema=False)
+    def dashboard_not_built_nested(path: str) -> PlainTextResponse:
+        del path
+        return PlainTextResponse(help_text, status_code=503)
 
 
 def _load_package_stats(detail_db_path: Path, *, top_n: int = 20) -> dict[str, Any]:
@@ -357,6 +391,11 @@ def test_create_app_adds_request_id_header(monkeypatch, tmp_path) -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.headers.get("x-request-id")
+    dashboard_response = client.get("/v1/dashboard/metrics")
+    assert dashboard_response.status_code == 200
+    payload = dashboard_response.json()
+    assert "services" in payload
+    assert "http" in payload
 
 
 def test_load_package_stats_reads_detail_db(tmp_path) -> None:
@@ -389,3 +428,8 @@ def test_load_package_stats_reads_detail_db(tmp_path) -> None:
     }
     assert stats["top_packages"][0]["package"] == "0402"
     assert stats["top_packages"][0]["part_count"] == 2
+
+
+def test_resolve_dashboard_dist_path() -> None:
+    dashboard_dist = _resolve_dashboard_dist_path()
+    assert dashboard_dist.parts[-3:] == ("backend", "dashboard", "dist")
