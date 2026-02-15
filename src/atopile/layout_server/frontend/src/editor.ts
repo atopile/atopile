@@ -22,7 +22,11 @@ export class Editor {
     private dragStartFpPos: { x: number; y: number } | null = null;
     private needsRedraw = true;
 
-    // Track current mouse position for R hotkey
+    // Layer visibility
+    private hiddenLayers: Set<string> = new Set();
+    private onLayersChanged: (() => void) | null = null;
+
+    // Track current mouse position
     private lastMouseScreen: Vec2 = new Vec2(0, 0);
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string) {
@@ -46,10 +50,14 @@ export class Editor {
 
     private async fetchAndPaint() {
         const resp = await fetch(`${this.baseUrl}/api/render-model`);
-        this.model = await resp.json();
+        this.applyModel(await resp.json());
+    }
+
+    private applyModel(model: RenderModel) {
+        this.model = model;
         this.paint();
 
-        const bbox = computeBBox(this.model!);
+        const bbox = computeBBox(this.model);
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
         this.camera.bbox = bbox;
         this.requestRedraw();
@@ -57,7 +65,7 @@ export class Editor {
 
     private paint() {
         if (!this.model) return;
-        paintAll(this.renderer, this.model);
+        paintAll(this.renderer, this.model, this.hiddenLayers);
 
         if (this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
             paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]!);
@@ -67,12 +75,14 @@ export class Editor {
     private connectWebSocket() {
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + "/ws";
         this.ws = new WebSocket(wsUrl);
-        this.ws.onmessage = async (event) => {
+        this.ws.onopen = () => console.log("WS connected");
+        this.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
-            if (msg.type === "layout_updated") {
-                await this.fetchAndPaint();
+            if (msg.type === "layout_updated" && msg.model) {
+                this.applyModel(msg.model);
             }
         };
+        this.ws.onerror = (err) => console.error("WS error:", err);
         this.ws.onclose = () => {
             setTimeout(() => this.connectWebSocket(), 2000);
         };
@@ -126,11 +136,15 @@ export class Editor {
             if (e.button !== 0 || !this.isDragging) return;
             this.isDragging = false;
 
-            if (!this.model || this.selectedFpIndex < 0) return;
+            if (!this.model || this.selectedFpIndex < 0 || !this.dragStartFpPos) return;
             const fp = this.model.footprints[this.selectedFpIndex]!;
 
-            await this.executeAction({
-                type: "move",
+            // Skip noop moves
+            const dx = fp.at.x - this.dragStartFpPos.x;
+            const dy = fp.at.y - this.dragStartFpPos.y;
+            if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+
+            await this.executeAction("move", {
                 uuid: fp.uuid,
                 x: fp.at.x,
                 y: fp.at.y,
@@ -144,7 +158,14 @@ export class Editor {
             // R — rotate selected footprint by 90 degrees
             if (e.key === "r" || e.key === "R") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
-                await this.rotateSelected();
+                await this.actionOnSelected("rotate", (fp) => ({ uuid: fp.uuid, delta_degrees: 90 }));
+                return;
+            }
+
+            // F — flip selected footprint
+            if (e.key === "f" || e.key === "F") {
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+                await this.actionOnSelected("flip", (fp) => ({ uuid: fp.uuid }));
                 return;
             }
 
@@ -171,18 +192,21 @@ export class Editor {
         });
     }
 
-    private async rotateSelected() {
+    private async actionOnSelected(
+        type: string,
+        detailsFn: (fp: RenderModel["footprints"][0]) => Record<string, unknown>,
+    ) {
         if (!this.model || this.selectedFpIndex < 0) return;
         const fp = this.model.footprints[this.selectedFpIndex]!;
-        await this.executeAction({ type: "rotate", uuid: fp.uuid, angle: 90 });
+        await this.executeAction(type, detailsFn(fp));
     }
 
-    private async executeAction(action: Record<string, unknown>) {
+    private async executeAction(type: string, details: Record<string, unknown>) {
         try {
             await fetch(`${this.baseUrl}/api/execute-action`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(action),
+                body: JSON.stringify({ type, details }),
             });
         } catch (err) {
             console.error("Failed to execute action:", err);
@@ -195,6 +219,52 @@ export class Editor {
         } catch (err) {
             console.error(`Failed ${endpoint}:`, err);
         }
+    }
+
+    // --- Layer visibility ---
+
+    setLayerVisible(layer: string, visible: boolean) {
+        if (visible) {
+            this.hiddenLayers.delete(layer);
+        } else {
+            this.hiddenLayers.add(layer);
+        }
+        this.paint();
+        this.requestRedraw();
+    }
+
+    isLayerVisible(layer: string): boolean {
+        return !this.hiddenLayers.has(layer);
+    }
+
+    getLayers(): string[] {
+        if (!this.model) return [];
+        const layers = new Set<string>();
+        for (const fp of this.model.footprints) {
+            layers.add(fp.layer);
+            for (const pad of fp.pads) {
+                for (const l of pad.layers) layers.add(l);
+            }
+            for (const d of fp.drawings) {
+                if (d.layer) layers.add(d.layer);
+            }
+        }
+        for (const t of this.model.tracks) {
+            if (t.layer) layers.add(t.layer);
+        }
+        for (const a of this.model.arcs) {
+            if (a.layer) layers.add(a.layer);
+        }
+        for (const z of this.model.zones) {
+            for (const fp of z.filled_polygons) layers.add(fp.layer);
+        }
+        layers.add("Edge.Cuts");
+        layers.add("Vias");
+        return [...layers].sort();
+    }
+
+    setOnLayersChanged(cb: () => void) {
+        this.onLayersChanged = cb;
     }
 
     private repaintWithSelection() {

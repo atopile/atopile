@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # --- Geometry primitives ---
 
@@ -169,24 +169,9 @@ class FootprintSummary(BaseModel):
 # --- Request / Response models ---
 
 
-class MoveActionRequest(BaseModel):
-    type: Literal["move"] = "move"
-    uuid: str
-    x: float
-    y: float
-    r: float | None = None
-
-
-class RotateActionRequest(BaseModel):
-    type: Literal["rotate"] = "rotate"
-    uuid: str
-    angle: float  # degrees to add
-
-
-ActionRequest = Annotated[
-    MoveActionRequest | RotateActionRequest,
-    Field(discriminator="type"),
-]
+class ActionRequest(BaseModel):
+    type: str
+    details: dict[str, Any]
 
 
 class StatusResponse(BaseModel):
@@ -195,3 +180,4 @@ class StatusResponse(BaseModel):
 
 class WsMessage(BaseModel):
     type: str
+    model: RenderModel | None = None

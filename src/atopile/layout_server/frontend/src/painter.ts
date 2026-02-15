@@ -69,14 +69,15 @@ function arcToPoints(start: Point2, mid: Point2, end: Point2, segments = 32): Ve
 }
 
 /** Paint the entire render model into renderer layers */
-export function paintAll(renderer: Renderer, model: RenderModel): void {
+export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>): void {
+    const hidden = hiddenLayers ?? new Set<string>();
     renderer.dispose_layers();
-    paintBoardEdges(renderer, model);
-    paintZones(renderer, model);
-    paintTracks(renderer, model);
-    paintVias(renderer, model);
+    if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
+    paintZones(renderer, model, hidden);
+    paintTracks(renderer, model, hidden);
+    if (!hidden.has("Vias")) paintVias(renderer, model);
     for (const fp of model.footprints) {
-        paintFootprint(renderer, fp);
+        paintFootprint(renderer, fp, hidden);
     }
 }
 
@@ -108,9 +109,10 @@ function paintBoardEdges(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
-function paintZones(renderer: Renderer, model: RenderModel) {
+function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
     for (const zone of model.zones) {
         for (const filled of zone.filled_polygons) {
+            if (hidden.has(filled.layer)) continue;
             const [r, g, b] = getLayerColor(filled.layer);
             const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
             const pts = filled.points.map(p2v);
@@ -122,10 +124,11 @@ function paintZones(renderer: Renderer, model: RenderModel) {
     }
 }
 
-function paintTracks(renderer: Renderer, model: RenderModel) {
+function paintTracks(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
     const byLayer = new Map<string, TrackModel[]>();
     for (const track of model.tracks) {
         const ln = track.layer ?? "F.Cu";
+        if (hidden.has(ln)) continue;
         let arr = byLayer.get(ln);
         if (!arr) { arr = []; byLayer.set(ln, arr); }
         arr.push(track);
@@ -142,6 +145,7 @@ function paintTracks(renderer: Renderer, model: RenderModel) {
         const arcByLayer = new Map<string, typeof model.arcs>();
         for (const arc of model.arcs) {
             const ln = arc.layer ?? "F.Cu";
+            if (hidden.has(ln)) continue;
             let arr = arcByLayer.get(ln);
             if (!arr) { arr = []; arcByLayer.set(ln, arr); }
             arr.push(arc);
@@ -169,10 +173,11 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
-function paintFootprint(renderer: Renderer, fp: FootprintModel) {
+function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
     for (const drawing of fp.drawings) {
         const ln = drawing.layer ?? "F.SilkS";
+        if (hidden.has(ln)) continue;
         let arr = drawingsByLayer.get(ln);
         if (!arr) { arr = []; drawingsByLayer.set(ln, arr); }
         arr.push(drawing);
@@ -186,11 +191,17 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel) {
         renderer.end_layer();
     }
     if (fp.pads.length > 0) {
-        const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-        for (const pad of fp.pads) {
-            paintPad(layer, fp.at, pad);
+        // Check if any pad layer is visible
+        const anyVisible = fp.pads.some(pad => pad.layers.some(l => !hidden.has(l)));
+        if (anyVisible) {
+            const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
+            for (const pad of fp.pads) {
+                if (pad.layers.some(l => !hidden.has(l))) {
+                    paintPad(layer, fp.at, pad);
+                }
+            }
+            renderer.end_layer();
         }
-        renderer.end_layer();
     }
 }
 

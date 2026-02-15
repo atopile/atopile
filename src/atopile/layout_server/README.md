@@ -24,7 +24,8 @@ npm run build
 | Middle-click drag | Pan |
 | Left-click | Select footprint |
 | Left-drag | Move selected footprint |
-| R | Rotate footprint under cursor 90° |
+| R | Rotate selected footprint 90° |
+| F | Flip selected footprint (front/back) |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z / Ctrl+Y | Redo |
 

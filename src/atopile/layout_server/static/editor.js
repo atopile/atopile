@@ -1357,14 +1357,17 @@ function arcToPoints(start, mid, end, segments = 32) {
   }
   return points;
 }
-function paintAll(renderer, model) {
+function paintAll(renderer, model, hiddenLayers) {
+  const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
   renderer.dispose_layers();
-  paintBoardEdges(renderer, model);
-  paintZones(renderer, model);
-  paintTracks(renderer, model);
-  paintVias(renderer, model);
+  if (!hidden.has("Edge.Cuts"))
+    paintBoardEdges(renderer, model);
+  paintZones(renderer, model, hidden);
+  paintTracks(renderer, model, hidden);
+  if (!hidden.has("Vias"))
+    paintVias(renderer, model);
   for (const fp of model.footprints) {
-    paintFootprint(renderer, fp);
+    paintFootprint(renderer, fp, hidden);
   }
 }
 function paintBoardEdges(renderer, model) {
@@ -1397,9 +1400,11 @@ function paintBoardEdges(renderer, model) {
   }
   renderer.end_layer();
 }
-function paintZones(renderer, model) {
+function paintZones(renderer, model, hidden) {
   for (const zone of model.zones) {
     for (const filled of zone.filled_polygons) {
+      if (hidden.has(filled.layer))
+        continue;
       const [r, g, b] = getLayerColor(filled.layer);
       const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
       const pts = filled.points.map(p2v);
@@ -1410,10 +1415,12 @@ function paintZones(renderer, model) {
     }
   }
 }
-function paintTracks(renderer, model) {
+function paintTracks(renderer, model, hidden) {
   const byLayer = /* @__PURE__ */ new Map();
   for (const track of model.tracks) {
     const ln = track.layer ?? "F.Cu";
+    if (hidden.has(ln))
+      continue;
     let arr = byLayer.get(ln);
     if (!arr) {
       arr = [];
@@ -1433,6 +1440,8 @@ function paintTracks(renderer, model) {
     const arcByLayer = /* @__PURE__ */ new Map();
     for (const arc of model.arcs) {
       const ln = arc.layer ?? "F.Cu";
+      if (hidden.has(ln))
+        continue;
       let arr = arcByLayer.get(ln);
       if (!arr) {
         arr = [];
@@ -1462,10 +1471,12 @@ function paintVias(renderer, model) {
   }
   renderer.end_layer();
 }
-function paintFootprint(renderer, fp) {
+function paintFootprint(renderer, fp, hidden) {
   const drawingsByLayer = /* @__PURE__ */ new Map();
   for (const drawing of fp.drawings) {
     const ln = drawing.layer ?? "F.SilkS";
+    if (hidden.has(ln))
+      continue;
     let arr = drawingsByLayer.get(ln);
     if (!arr) {
       arr = [];
@@ -1482,11 +1493,16 @@ function paintFootprint(renderer, fp) {
     renderer.end_layer();
   }
   if (fp.pads.length > 0) {
-    const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-    for (const pad of fp.pads) {
-      paintPad(layer, fp.at, pad);
+    const anyVisible = fp.pads.some((pad) => pad.layers.some((l) => !hidden.has(l)));
+    if (anyVisible) {
+      const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
+      for (const pad of fp.pads) {
+        if (pad.layers.some((l) => !hidden.has(l))) {
+          paintPad(layer, fp.at, pad);
+        }
+      }
+      renderer.end_layer();
     }
-    renderer.end_layer();
   }
 }
 function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
@@ -1684,7 +1700,10 @@ var Editor = class {
   dragStartWorld = null;
   dragStartFpPos = null;
   needsRedraw = true;
-  // Track current mouse position for R hotkey
+  // Layer visibility
+  hiddenLayers = /* @__PURE__ */ new Set();
+  onLayersChanged = null;
+  // Track current mouse position
   lastMouseScreen = new Vec2(0, 0);
   constructor(canvas2, baseUrl2) {
     this.canvas = canvas2;
@@ -1704,7 +1723,10 @@ var Editor = class {
   }
   async fetchAndPaint() {
     const resp = await fetch(`${this.baseUrl}/api/render-model`);
-    this.model = await resp.json();
+    this.applyModel(await resp.json());
+  }
+  applyModel(model) {
+    this.model = model;
     this.paint();
     const bbox = computeBBox(this.model);
     this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
@@ -1714,7 +1736,7 @@ var Editor = class {
   paint() {
     if (!this.model)
       return;
-    paintAll(this.renderer, this.model);
+    paintAll(this.renderer, this.model, this.hiddenLayers);
     if (this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
       paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]);
     }
@@ -1722,12 +1744,14 @@ var Editor = class {
   connectWebSocket() {
     const wsUrl = this.baseUrl.replace(/^http/, "ws") + "/ws";
     this.ws = new WebSocket(wsUrl);
-    this.ws.onmessage = async (event) => {
+    this.ws.onopen = () => console.log("WS connected");
+    this.ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-      if (msg.type === "layout_updated") {
-        await this.fetchAndPaint();
+      if (msg.type === "layout_updated" && msg.model) {
+        this.applyModel(msg.model);
       }
     };
+    this.ws.onerror = (err) => console.error("WS error:", err);
     this.ws.onclose = () => {
       setTimeout(() => this.connectWebSocket(), 2e3);
     };
@@ -1774,11 +1798,14 @@ var Editor = class {
       if (e.button !== 0 || !this.isDragging)
         return;
       this.isDragging = false;
-      if (!this.model || this.selectedFpIndex < 0)
+      if (!this.model || this.selectedFpIndex < 0 || !this.dragStartFpPos)
         return;
       const fp = this.model.footprints[this.selectedFpIndex];
-      await this.executeAction({
-        type: "move",
+      const dx = fp.at.x - this.dragStartFpPos.x;
+      const dy = fp.at.y - this.dragStartFpPos.y;
+      if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3)
+        return;
+      await this.executeAction("move", {
         uuid: fp.uuid,
         x: fp.at.x,
         y: fp.at.y,
@@ -1791,7 +1818,13 @@ var Editor = class {
       if (e.key === "r" || e.key === "R") {
         if (e.ctrlKey || e.metaKey || e.altKey)
           return;
-        await this.rotateSelected();
+        await this.actionOnSelected("rotate", (fp) => ({ uuid: fp.uuid, delta_degrees: 90 }));
+        return;
+      }
+      if (e.key === "f" || e.key === "F") {
+        if (e.ctrlKey || e.metaKey || e.altKey)
+          return;
+        await this.actionOnSelected("flip", (fp) => ({ uuid: fp.uuid }));
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -1811,18 +1844,18 @@ var Editor = class {
       this.requestRedraw();
     });
   }
-  async rotateSelected() {
+  async actionOnSelected(type, detailsFn) {
     if (!this.model || this.selectedFpIndex < 0)
       return;
     const fp = this.model.footprints[this.selectedFpIndex];
-    await this.executeAction({ type: "rotate", uuid: fp.uuid, angle: 90 });
+    await this.executeAction(type, detailsFn(fp));
   }
-  async executeAction(action) {
+  async executeAction(type, details) {
     try {
       await fetch(`${this.baseUrl}/api/execute-action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(action)
+        body: JSON.stringify({ type, details })
       });
     } catch (err) {
       console.error("Failed to execute action:", err);
@@ -1834,6 +1867,53 @@ var Editor = class {
     } catch (err) {
       console.error(`Failed ${endpoint}:`, err);
     }
+  }
+  // --- Layer visibility ---
+  setLayerVisible(layer, visible) {
+    if (visible) {
+      this.hiddenLayers.delete(layer);
+    } else {
+      this.hiddenLayers.add(layer);
+    }
+    this.paint();
+    this.requestRedraw();
+  }
+  isLayerVisible(layer) {
+    return !this.hiddenLayers.has(layer);
+  }
+  getLayers() {
+    if (!this.model)
+      return [];
+    const layers = /* @__PURE__ */ new Set();
+    for (const fp of this.model.footprints) {
+      layers.add(fp.layer);
+      for (const pad of fp.pads) {
+        for (const l of pad.layers)
+          layers.add(l);
+      }
+      for (const d of fp.drawings) {
+        if (d.layer)
+          layers.add(d.layer);
+      }
+    }
+    for (const t of this.model.tracks) {
+      if (t.layer)
+        layers.add(t.layer);
+    }
+    for (const a of this.model.arcs) {
+      if (a.layer)
+        layers.add(a.layer);
+    }
+    for (const z of this.model.zones) {
+      for (const fp of z.filled_polygons)
+        layers.add(fp.layer);
+    }
+    layers.add("Edge.Cuts");
+    layers.add("Vias");
+    return [...layers].sort();
+  }
+  setOnLayersChanged(cb) {
+    this.onLayersChanged = cb;
   }
   repaintWithSelection() {
     this.paint();
@@ -1862,7 +1942,37 @@ if (!canvas) {
 }
 var baseUrl = window.location.origin;
 var editor = new Editor(canvas, baseUrl);
-editor.init().catch((err) => {
+function buildLayerPanel() {
+  const panel = document.getElementById("layer-panel");
+  if (!panel)
+    return;
+  panel.innerHTML = "";
+  const layers = editor.getLayers();
+  for (const layerName of layers) {
+    const row = document.createElement("label");
+    row.className = "layer-row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = editor.isLayerVisible(layerName);
+    cb.addEventListener("change", () => {
+      editor.setLayerVisible(layerName, cb.checked);
+    });
+    const swatch = document.createElement("span");
+    swatch.className = "layer-swatch";
+    const [r, g, b] = getLayerColor(layerName);
+    swatch.style.background = `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+    const label = document.createElement("span");
+    label.textContent = layerName;
+    row.appendChild(cb);
+    row.appendChild(swatch);
+    row.appendChild(label);
+    panel.appendChild(row);
+  }
+}
+editor.init().then(() => {
+  buildLayerPanel();
+  editor.setOnLayersChanged(buildLayerPanel);
+}).catch((err) => {
   console.error("Failed to initialize editor:", err);
 });
 //# sourceMappingURL=editor.js.map

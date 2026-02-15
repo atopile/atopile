@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import time
 from pathlib import Path
 
 from atopile.layout_server.models import (
@@ -103,6 +104,77 @@ class RotateAction(Action):
         fp.at.r = ((fp.at.r or 0) - self.delta_degrees) % 360
 
 
+def _flip_layer(layer: str) -> str:
+    if layer.startswith("F."):
+        return layer.replace("F.", "B.", 1)
+    elif layer.startswith("B."):
+        return layer.replace("B.", "F.", 1)
+    return layer
+
+
+class FlipAction(Action):
+    """Flip a footprint between front and back."""
+
+    def __init__(self, uuid: str) -> None:
+        self.uuid = uuid
+
+    def _find(self, pcb: kicad.pcb.KicadPcb):
+        for fp in pcb.footprints:
+            if fp.uuid == self.uuid:
+                return fp
+        raise ValueError(f"Footprint with uuid {self.uuid!r} not found")
+
+    def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
+        fp = self._find(pcb)
+        # Flip the footprint layer
+        fp.layer = _flip_layer(fp.layer)
+        # Mirror rotation
+        fp.at.r = (((fp.at.r or 0) + 180) % 360) or None
+        # Flip pads
+        for pad in fp.pads:
+            pad.at.y = -pad.at.y
+            pad.at.r = (((pad.at.r or 0) + 180) % 360) or None
+            pad.layers = [_flip_layer(ly) for ly in pad.layers]
+        # Flip drawings
+        for line in fp.fp_lines:
+            line.start.y = -line.start.y
+            line.end.y = -line.end.y
+            if hasattr(line, "layer") and line.layer:
+                line.layer = _flip_layer(line.layer)
+        for arc in fp.fp_arcs:
+            arc.start.y = -arc.start.y
+            arc.mid.y = -arc.mid.y
+            arc.end.y = -arc.end.y
+            if hasattr(arc, "layer") and arc.layer:
+                arc.layer = _flip_layer(arc.layer)
+        for circle in fp.fp_circles:
+            circle.center.y = -circle.center.y
+            circle.end.y = -circle.end.y
+            if hasattr(circle, "layer") and circle.layer:
+                circle.layer = _flip_layer(circle.layer)
+        for rect in fp.fp_rects:
+            rect.start.y = -rect.start.y
+            rect.end.y = -rect.end.y
+            if hasattr(rect, "layer") and rect.layer:
+                rect.layer = _flip_layer(rect.layer)
+        for poly in fp.fp_poly:
+            for pt in poly.pts.xys:
+                pt.y = -pt.y
+            if hasattr(poly, "layer") and poly.layer:
+                poly.layer = _flip_layer(poly.layer)
+        # Flip text/properties
+        for prop in fp.propertys:
+            prop.at.y = -prop.at.y
+            if hasattr(prop, "layer") and prop.layer:
+                prop.layer = _flip_layer(prop.layer)
+
+    def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._flip(pcb)
+
+    def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._flip(pcb)  # Flip is its own inverse
+
+
 # --- PcbManager ---
 
 
@@ -112,6 +184,7 @@ class PcbManager:
         self._pcb_file: kicad.pcb.PcbFile | None = None
         self._undo_stack: list[Action] = []
         self._redo_stack: list[Action] = []
+        self._last_save_time: float = 0
 
     @property
     def pcb(self) -> kicad.pcb.KicadPcb:
@@ -166,9 +239,17 @@ class PcbManager:
     def rotate_footprint(self, uuid: str, delta_degrees: float) -> None:
         self.execute_action(RotateAction(uuid, delta_degrees))
 
+    def flip_footprint(self, uuid: str) -> None:
+        self.execute_action(FlipAction(uuid))
+
+    def was_recently_saved(self, threshold: float = 2.0) -> bool:
+        """Check if we saved within the last `threshold` seconds."""
+        return (time.monotonic() - self._last_save_time) < threshold
+
     def save(self) -> None:
         assert self._path is not None and self._pcb_file is not None
         kicad.dumps(self._pcb_file, self._path)
+        self._last_save_time = time.monotonic()
 
     # --- Extraction ---
 

@@ -179,3 +179,42 @@ def test_undo_rotate(manager_v8: PcbManager):
 
     after = next(f for f in manager_v8.get_footprints() if f.uuid == uuid)
     assert after.r == pytest.approx(orig_r)
+
+
+# --- Flip tests ---
+
+
+def test_flip_footprint(manager_v8: PcbManager):
+    fps = manager_v8.get_footprints()
+    uuid = fps[0].uuid
+    orig_layer = fps[0].layer
+
+    manager_v8.flip_footprint(uuid)
+
+    after = next(f for f in manager_v8.get_footprints() if f.uuid == uuid)
+    expected = "B.Cu" if orig_layer == "F.Cu" else "F.Cu"
+    assert after.layer == expected
+
+
+def test_undo_flip(manager_v8: PcbManager):
+    fps = manager_v8.get_footprints()
+    uuid = fps[0].uuid
+    orig_layer = fps[0].layer
+
+    manager_v8.flip_footprint(uuid)
+    manager_v8.undo()
+
+    after = next(f for f in manager_v8.get_footprints() if f.uuid == uuid)
+    assert after.layer == orig_layer
+
+
+def test_flip_roundtrip(manager_v8: PcbManager):
+    fps = manager_v8.get_footprints()
+    uuid = fps[0].uuid
+    orig_layer = fps[0].layer
+
+    manager_v8.flip_footprint(uuid)
+    manager_v8.flip_footprint(uuid)
+
+    after = next(f for f in manager_v8.get_footprints() if f.uuid == uuid)
+    assert after.layer == orig_layer

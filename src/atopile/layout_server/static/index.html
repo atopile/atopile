@@ -12,11 +12,38 @@
             color: #aaa; font: 12px monospace;
             pointer-events: none; z-index: 10;
         }
+        #layer-panel {
+            position: fixed; top: 8px; right: 8px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 20;
+            font: 12px monospace;
+            color: #ccc;
+        }
+        .layer-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 0;
+            cursor: pointer;
+        }
+        .layer-row:hover { color: #fff; }
+        .layer-swatch {
+            display: inline-block;
+            width: 12px; height: 12px;
+            border-radius: 2px;
+            border: 1px solid #666;
+        }
     </style>
 </head>
 <body>
     <canvas id="editor-canvas"></canvas>
-    <div id="status">PCB Layout Editor - scroll to zoom, middle-click to pan, left-click to select/drag</div>
+    <div id="layer-panel"></div>
+    <div id="status">PCB Layout Editor - scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip</div>
     <script type="module" src="static/editor.js"></script>
 </body>
 </html>

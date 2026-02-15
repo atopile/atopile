@@ -39,7 +39,6 @@ async def test_render_model(client: AsyncClient):
     assert "board" in model
     assert isinstance(model["footprints"], list)
     assert len(model["footprints"]) > 0
-    # Verify pydantic structure: footprint at is an object
     fp = model["footprints"][0]
     assert "x" in fp["at"]
     assert "y" in fp["at"]
@@ -86,7 +85,7 @@ async def test_execute_action_rotate(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"type": "rotate", "uuid": uuid, "angle": 90},
+        json={"type": "rotate", "details": {"uuid": uuid, "delta_degrees": 90}},
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
@@ -100,7 +99,38 @@ async def test_execute_action_move(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"type": "move", "uuid": uuid, "x": 10.0, "y": 20.0},
+        json={"type": "move", "details": {"uuid": uuid, "x": 10.0, "y": 20.0}},
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+@pytest.mark.anyio
+async def test_execute_action_flip(client: AsyncClient):
+    fps_resp = await client.get("/api/footprints")
+    fps = fps_resp.json()
+    uuid = fps[0]["uuid"]
+    orig_layer = fps[0]["layer"]
+
+    resp = await client.post(
+        "/api/execute-action",
+        json={"type": "flip", "details": {"uuid": uuid}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+
+    # Verify layer flipped
+    fps_after = await client.get("/api/footprints")
+    flipped = next(f for f in fps_after.json() if f["uuid"] == uuid)
+    expected = "B.Cu" if orig_layer == "F.Cu" else "F.Cu"
+    assert flipped["layer"] == expected
+
+
+@pytest.mark.anyio
+async def test_execute_action_unknown(client: AsyncClient):
+    resp = await client.post(
+        "/api/execute-action",
+        json={"type": "nonexistent", "details": {}},
+    )
+    assert resp.status_code == 200
+    assert "unknown_action" in resp.json()["status"]
