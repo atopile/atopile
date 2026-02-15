@@ -640,10 +640,38 @@ function handleEventMessage(message: EventMessage): void {
   }
 
   switch (message.event) {
+    case 'open_file': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      const line =
+        typeof data.line === 'number'
+          ? data.line
+          : typeof data.openFileLine === 'number'
+            ? data.openFileLine
+            : null;
+      const column =
+        typeof data.column === 'number'
+          ? data.column
+          : typeof data.openFileColumn === 'number'
+            ? data.openFileColumn
+            : null;
+      postMessage({
+        type: 'openSignals',
+        openFile: path,
+        openFileLine: line,
+        openFileColumn: column,
+        openLayout: null,
+        openKicad: null,
+        open3d: null,
+      });
+      break;
+    }
     case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: path,
         openKicad: null,
         open3d: null,
@@ -654,6 +682,9 @@ function handleEventMessage(message: EventMessage): void {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: null,
         openKicad: path,
         open3d: null,
@@ -664,6 +695,9 @@ function handleEventMessage(message: EventMessage): void {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: null,
         openKicad: null,
         open3d: path,
