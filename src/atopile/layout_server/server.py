@@ -4,24 +4,23 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
+from atopile.layout_server.models import (
+    FootprintSummary,
+    MoveFootprintRequest,
+    RenderModel,
+    RotateFootprintRequest,
+    StatusResponse,
+    WsMessage,
+)
 from atopile.layout_server.pcb_manager import PcbManager
 
 STATIC_DIR = Path(__file__).parent / "static"
-
-
-class MoveFootprintRequest(BaseModel):
-    uuid: str
-    x: float
-    y: float
-    r: float | None = None
 
 
 class ConnectionManager:
@@ -35,10 +34,11 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket) -> None:
         self.active_connections.remove(websocket)
 
-    async def broadcast(self, message: dict[str, Any]) -> None:
+    async def broadcast(self, message: WsMessage) -> None:
+        data = message.model_dump()
         for connection in self.active_connections:
             try:
-                await connection.send_json(message)
+                await connection.send_json(data)
             except Exception:
                 pass
 
@@ -58,26 +58,61 @@ def create_app(pcb_path: Path) -> FastAPI:
 
     ws_manager = ConnectionManager()
 
-    @app.get("/api/render-model")
-    async def get_render_model():
+    async def _broadcast_update() -> None:
+        await ws_manager.broadcast(WsMessage(type="layout_updated"))
+
+    @app.get("/api/render-model", response_model=RenderModel)
+    async def get_render_model() -> RenderModel:
         return await asyncio.to_thread(manager.get_render_model)
 
-    @app.get("/api/footprints")
-    async def get_footprints():
+    @app.get(
+        "/api/footprints",
+        response_model=list[FootprintSummary],
+    )
+    async def get_footprints() -> list[FootprintSummary]:
         return await asyncio.to_thread(manager.get_footprints)
 
-    @app.post("/api/move-footprint")
-    async def move_footprint(req: MoveFootprintRequest):
+    @app.post("/api/move-footprint", response_model=StatusResponse)
+    async def move_footprint(
+        req: MoveFootprintRequest,
+    ) -> StatusResponse:
         await asyncio.to_thread(manager.move_footprint, req.uuid, req.x, req.y, req.r)
         await asyncio.to_thread(manager.save)
-        await ws_manager.broadcast({"type": "layout_updated"})
-        return {"status": "ok"}
+        await _broadcast_update()
+        return StatusResponse(status="ok")
 
-    @app.post("/api/reload")
-    async def reload():
+    @app.post("/api/rotate-footprint", response_model=StatusResponse)
+    async def rotate_footprint(
+        req: RotateFootprintRequest,
+    ) -> StatusResponse:
+        await asyncio.to_thread(manager.rotate_footprint, req.uuid, req.angle)
+        await asyncio.to_thread(manager.save)
+        await _broadcast_update()
+        return StatusResponse(status="ok")
+
+    @app.post("/api/undo", response_model=StatusResponse)
+    async def undo() -> StatusResponse:
+        ok = await asyncio.to_thread(manager.undo)
+        if ok:
+            await asyncio.to_thread(manager.save)
+            await _broadcast_update()
+            return StatusResponse(status="ok")
+        return StatusResponse(status="nothing_to_undo")
+
+    @app.post("/api/redo", response_model=StatusResponse)
+    async def redo() -> StatusResponse:
+        ok = await asyncio.to_thread(manager.redo)
+        if ok:
+            await asyncio.to_thread(manager.save)
+            await _broadcast_update()
+            return StatusResponse(status="ok")
+        return StatusResponse(status="nothing_to_redo")
+
+    @app.post("/api/reload", response_model=StatusResponse)
+    async def reload() -> StatusResponse:
         await asyncio.to_thread(manager.load, pcb_path)
-        await ws_manager.broadcast({"type": "layout_updated"})
-        return {"status": "ok"}
+        await _broadcast_update()
+        return StatusResponse(status="ok")
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
@@ -93,6 +128,10 @@ def create_app(pcb_path: Path) -> FastAPI:
         index_path = STATIC_DIR / "index.html"
         return HTMLResponse(index_path.read_text())
 
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(STATIC_DIR)),
+        name="static",
+    )
 
     return app

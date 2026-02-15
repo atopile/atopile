@@ -1302,25 +1302,29 @@ function getPadColor(layers) {
 
 // src/painter.ts
 var DEG_TO_RAD = Math.PI / 180;
+function p2v(p) {
+  return new Vec2(p.x, p.y);
+}
 function fpTransform(fpAt, localX, localY) {
-  const rad = -(fpAt[2] || 0) * DEG_TO_RAD;
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const rx = localX * cos - localY * sin;
-  const ry = localX * sin + localY * cos;
-  return new Vec2(fpAt[0] + rx, fpAt[1] + ry);
+  return new Vec2(
+    fpAt.x + localX * cos - localY * sin,
+    fpAt.y + localX * sin + localY * cos
+  );
 }
-function padTransform(fpAt, padAt, localX, localY) {
-  const padRad = -(padAt[2] || 0) * DEG_TO_RAD;
+function padTransform(fpAt, padAt, lx, ly) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
   const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = localX * pc - localY * ps;
-  const py = localX * ps + localY * pc;
-  return fpTransform(fpAt, padAt[0] + px, padAt[1] + py);
+  const px = lx * pc - ly * ps;
+  const py = lx * ps + ly * pc;
+  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
 }
 function arcToPoints(start, mid, end, segments = 32) {
-  const ax = start[0], ay = start[1];
-  const bx = mid[0], by = mid[1];
-  const cx = end[0], cy = end[1];
+  const ax = start.x, ay = start.y;
+  const bx = mid.x, by = mid.y;
+  const cx = end.x, cy = end.y;
   const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
   if (Math.abs(D) < 1e-10) {
     return [new Vec2(ax, ay), new Vec2(bx, by), new Vec2(cx, cy)];
@@ -1328,19 +1332,14 @@ function arcToPoints(start, mid, end, segments = 32) {
   const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / D;
   const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / D;
   const radius = Math.sqrt((ax - ux) ** 2 + (ay - uy) ** 2);
-  let startAngle = Math.atan2(ay - uy, ax - ux);
+  const startAngle = Math.atan2(ay - uy, ax - ux);
   const midAngle = Math.atan2(by - uy, bx - ux);
-  let endAngle = Math.atan2(cy - uy, cx - ux);
+  const endAngle = Math.atan2(cy - uy, cx - ux);
   let da1 = midAngle - startAngle;
-  let da2 = endAngle - midAngle;
   while (da1 > Math.PI)
     da1 -= 2 * Math.PI;
   while (da1 < -Math.PI)
     da1 += 2 * Math.PI;
-  while (da2 > Math.PI)
-    da2 -= 2 * Math.PI;
-  while (da2 < -Math.PI)
-    da2 += 2 * Math.PI;
   const clockwise = da1 < 0;
   let sweep = endAngle - startAngle;
   if (clockwise) {
@@ -1373,37 +1372,26 @@ function paintBoardEdges(renderer, model) {
   const [r, g, b, a] = getLayerColor("Edge.Cuts");
   for (const edge of model.board.edges) {
     if (edge.type === "line" && edge.start && edge.end) {
-      layer.geometry.add_polyline(
-        [new Vec2(edge.start[0], edge.start[1]), new Vec2(edge.end[0], edge.end[1])],
-        0.15,
-        r,
-        g,
-        b,
-        a
-      );
+      layer.geometry.add_polyline([p2v(edge.start), p2v(edge.end)], 0.15, r, g, b, a);
     } else if (edge.type === "arc" && edge.start && edge.mid && edge.end) {
-      const pts = arcToPoints(edge.start, edge.mid, edge.end);
-      layer.geometry.add_polyline(pts, 0.15, r, g, b, a);
+      layer.geometry.add_polyline(arcToPoints(edge.start, edge.mid, edge.end), 0.15, r, g, b, a);
     } else if (edge.type === "circle" && edge.center && edge.end) {
-      const cx = edge.center[0], cy = edge.center[1];
-      const ex = edge.end[0], ey = edge.end[1];
-      const rad = Math.sqrt((ex - cx) ** 2 + (ey - cy) ** 2);
+      const cx = edge.center.x, cy = edge.center.y;
+      const rad = Math.sqrt((edge.end.x - cx) ** 2 + (edge.end.y - cy) ** 2);
       const pts = [];
-      const segs = 64;
-      for (let i = 0; i <= segs; i++) {
-        const angle = i / segs * 2 * Math.PI;
+      for (let i = 0; i <= 64; i++) {
+        const angle = i / 64 * 2 * Math.PI;
         pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
       }
       layer.geometry.add_polyline(pts, 0.15, r, g, b, a);
     } else if (edge.type === "rect" && edge.start && edge.end) {
-      const [x1, y1] = edge.start;
-      const [x2, y2] = edge.end;
+      const s = edge.start, e = edge.end;
       layer.geometry.add_polyline([
-        new Vec2(x1, y1),
-        new Vec2(x2, y1),
-        new Vec2(x2, y2),
-        new Vec2(x1, y2),
-        new Vec2(x1, y1)
+        new Vec2(s.x, s.y),
+        new Vec2(e.x, s.y),
+        new Vec2(e.x, e.y),
+        new Vec2(s.x, e.y),
+        new Vec2(s.x, s.y)
       ], 0.15, r, g, b, a);
     }
   }
@@ -1412,10 +1400,9 @@ function paintBoardEdges(renderer, model) {
 function paintZones(renderer, model) {
   for (const zone of model.zones) {
     for (const filled of zone.filled_polygons) {
-      const layerName = filled.layer;
-      const [r, g, b] = getLayerColor(layerName);
-      const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${layerName}`);
-      const pts = filled.points.map(([x, y]) => new Vec2(x, y));
+      const [r, g, b] = getLayerColor(filled.layer);
+      const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
+      const pts = filled.points.map(p2v);
       if (pts.length >= 3) {
         layer.geometry.add_polygon(pts, r, g, b, ZONE_COLOR_ALPHA);
       }
@@ -1426,11 +1413,11 @@ function paintZones(renderer, model) {
 function paintTracks(renderer, model) {
   const byLayer = /* @__PURE__ */ new Map();
   for (const track of model.tracks) {
-    const layerName = track.layer ?? "F.Cu";
-    let arr = byLayer.get(layerName);
+    const ln = track.layer ?? "F.Cu";
+    let arr = byLayer.get(ln);
     if (!arr) {
       arr = [];
-      byLayer.set(layerName, arr);
+      byLayer.set(ln, arr);
     }
     arr.push(track);
   }
@@ -1438,14 +1425,7 @@ function paintTracks(renderer, model) {
     const [r, g, b, a] = getLayerColor(layerName);
     const layer = renderer.start_layer(`tracks:${layerName}`);
     for (const track of tracks) {
-      layer.geometry.add_polyline(
-        [new Vec2(track.start[0], track.start[1]), new Vec2(track.end[0], track.end[1])],
-        track.width,
-        r,
-        g,
-        b,
-        a
-      );
+      layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
     }
     renderer.end_layer();
   }
@@ -1464,8 +1444,7 @@ function paintTracks(renderer, model) {
       const [r, g, b, a] = getLayerColor(layerName);
       const layer = renderer.start_layer(`arc_tracks:${layerName}`);
       for (const arc of arcs) {
-        const pts = arcToPoints(arc.start, arc.mid, arc.end);
-        layer.geometry.add_polyline(pts, arc.width, r, g, b, a);
+        layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
       }
       renderer.end_layer();
     }
@@ -1477,9 +1456,9 @@ function paintVias(renderer, model) {
   const layer = renderer.start_layer("vias");
   for (const via of model.vias) {
     const [vr, vg, vb, va] = VIA_COLOR;
-    layer.geometry.add_circle(via.at[0], via.at[1], via.size / 2, vr, vg, vb, va);
+    layer.geometry.add_circle(via.at.x, via.at.y, via.size / 2, vr, vg, vb, va);
     const [dr, dg, db, da] = VIA_DRILL_COLOR;
-    layer.geometry.add_circle(via.at[0], via.at[1], via.drill / 2, dr, dg, db, da);
+    layer.geometry.add_circle(via.at.x, via.at.y, via.drill / 2, dr, dg, db, da);
   }
   renderer.end_layer();
 }
@@ -1513,38 +1492,34 @@ function paintFootprint(renderer, fp) {
 function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   const w = drawing.width || 0.12;
   if (drawing.type === "line" && drawing.start && drawing.end) {
-    const p1 = fpTransform(fpAt, drawing.start[0], drawing.start[1]);
-    const p2 = fpTransform(fpAt, drawing.end[0], drawing.end[1]);
+    const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
+    const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
     layer.geometry.add_polyline([p1, p2], w, r, g, b, a);
   } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
     const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
     const worldPts = localPts.map((p) => fpTransform(fpAt, p.x, p.y));
     layer.geometry.add_polyline(worldPts, w, r, g, b, a);
   } else if (drawing.type === "circle" && drawing.center && drawing.end) {
-    const cx = drawing.center[0], cy = drawing.center[1];
-    const ex = drawing.end[0], ey = drawing.end[1];
-    const rad = Math.sqrt((ex - cx) ** 2 + (ey - cy) ** 2);
+    const cx = drawing.center.x, cy = drawing.center.y;
+    const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
     const pts = [];
-    const segs = 48;
-    for (let i = 0; i <= segs; i++) {
-      const angle = i / segs * 2 * Math.PI;
+    for (let i = 0; i <= 48; i++) {
+      const angle = i / 48 * 2 * Math.PI;
       pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
     }
-    const worldPts = pts.map((p) => fpTransform(fpAt, p.x, p.y));
-    layer.geometry.add_polyline(worldPts, w, r, g, b, a);
+    layer.geometry.add_polyline(pts.map((p) => fpTransform(fpAt, p.x, p.y)), w, r, g, b, a);
   } else if (drawing.type === "rect" && drawing.start && drawing.end) {
-    const [x1, y1] = drawing.start;
-    const [x2, y2] = drawing.end;
+    const s = drawing.start, e = drawing.end;
     const corners = [
-      fpTransform(fpAt, x1, y1),
-      fpTransform(fpAt, x2, y1),
-      fpTransform(fpAt, x2, y2),
-      fpTransform(fpAt, x1, y2),
-      fpTransform(fpAt, x1, y1)
+      fpTransform(fpAt, s.x, s.y),
+      fpTransform(fpAt, e.x, s.y),
+      fpTransform(fpAt, e.x, e.y),
+      fpTransform(fpAt, s.x, e.y),
+      fpTransform(fpAt, s.x, s.y)
     ];
     layer.geometry.add_polyline(corners, w, r, g, b, a);
   } else if (drawing.type === "polygon" && drawing.points) {
-    const worldPts = drawing.points.map(([x, y]) => fpTransform(fpAt, x, y));
+    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
     if (worldPts.length >= 3) {
       worldPts.push(worldPts[0].copy());
       layer.geometry.add_polyline(worldPts, w, r, g, b, a);
@@ -1553,10 +1528,10 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
 }
 function paintPad(layer, fpAt, pad) {
   const [cr, cg, cb, ca] = getPadColor(pad.layers);
-  const hw = pad.size[0] / 2;
-  const hh = pad.size[1] / 2;
+  const hw = pad.size.w / 2;
+  const hh = pad.size.h / 2;
   if (pad.shape === "circle") {
-    const center = fpTransform(fpAt, pad.at[0], pad.at[1]);
+    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
     layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
   } else if (pad.shape === "oval") {
     const longAxis = Math.max(hw, hh);
@@ -1581,8 +1556,8 @@ function paintPad(layer, fpAt, pad) {
     layer.geometry.add_polygon(corners, cr, cg, cb, ca);
   }
   if (pad.drill && pad.type === "thru_hole") {
-    const center = fpTransform(fpAt, pad.at[0], pad.at[1]);
-    const drillR = (pad.drill.size_x ?? pad.size[0] * 0.5) / 2;
+    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+    const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
     layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1);
   }
 }
@@ -1591,29 +1566,27 @@ function paintSelection(renderer, fp) {
   const [r, g, b, a] = SELECTION_COLOR;
   const allPoints = [];
   for (const pad of fp.pads) {
-    const center = fpTransform(fp.at, pad.at[0], pad.at[1]);
-    const hw = pad.size[0] / 2;
-    const hh = pad.size[1] / 2;
+    const center = fpTransform(fp.at, pad.at.x, pad.at.y);
+    const hw = pad.size.w / 2, hh = pad.size.h / 2;
     allPoints.push(center.add(new Vec2(-hw, -hh)));
     allPoints.push(center.add(new Vec2(hw, hh)));
   }
   for (const drawing of fp.drawings) {
     if (drawing.start)
-      allPoints.push(fpTransform(fp.at, drawing.start[0], drawing.start[1]));
+      allPoints.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
     if (drawing.end)
-      allPoints.push(fpTransform(fp.at, drawing.end[0], drawing.end[1]));
+      allPoints.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
     if (drawing.center)
-      allPoints.push(fpTransform(fp.at, drawing.center[0], drawing.center[1]));
+      allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
   }
   if (allPoints.length > 0) {
     const bbox = BBox.from_points(allPoints).grow(0.5);
-    const corners = [
+    layer.geometry.add_polygon([
       new Vec2(bbox.x, bbox.y),
       new Vec2(bbox.x2, bbox.y),
       new Vec2(bbox.x2, bbox.y2),
       new Vec2(bbox.x, bbox.y2)
-    ];
-    layer.geometry.add_polygon(corners, r, g, b, a);
+    ], r, g, b, a);
   }
   renderer.end_layer();
   return layer;
@@ -1622,27 +1595,26 @@ function computeBBox(model) {
   const points = [];
   for (const edge of model.board.edges) {
     if (edge.start)
-      points.push(new Vec2(edge.start[0], edge.start[1]));
+      points.push(p2v(edge.start));
     if (edge.end)
-      points.push(new Vec2(edge.end[0], edge.end[1]));
+      points.push(p2v(edge.end));
     if (edge.mid)
-      points.push(new Vec2(edge.mid[0], edge.mid[1]));
+      points.push(p2v(edge.mid));
     if (edge.center)
-      points.push(new Vec2(edge.center[0], edge.center[1]));
+      points.push(p2v(edge.center));
   }
   for (const fp of model.footprints) {
-    points.push(new Vec2(fp.at[0], fp.at[1]));
+    points.push(new Vec2(fp.at.x, fp.at.y));
     for (const pad of fp.pads) {
-      const center = fpTransform(fp.at, pad.at[0], pad.at[1]);
-      points.push(center);
+      points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
     }
   }
   for (const track of model.tracks) {
-    points.push(new Vec2(track.start[0], track.start[1]));
-    points.push(new Vec2(track.end[0], track.end[1]));
+    points.push(p2v(track.start));
+    points.push(p2v(track.end));
   }
   for (const via of model.vias) {
-    points.push(new Vec2(via.at[0], via.at[1]));
+    points.push(p2v(via.at));
   }
   if (points.length === 0)
     return new BBox(0, 0, 100, 100);
@@ -1652,35 +1624,38 @@ function computeBBox(model) {
 // src/hit-test.ts
 var DEG_TO_RAD2 = Math.PI / 180;
 function fpTransform2(fpAt, localX, localY) {
-  const rad = -(fpAt[2] || 0) * DEG_TO_RAD2;
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD2;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  return new Vec2(fpAt[0] + localX * cos - localY * sin, fpAt[1] + localX * sin + localY * cos);
+  return new Vec2(
+    fpAt.x + localX * cos - localY * sin,
+    fpAt.y + localX * sin + localY * cos
+  );
 }
 function footprintBBox(fp) {
   const points = [];
   for (const pad of fp.pads) {
-    const center = fpTransform2(fp.at, pad.at[0], pad.at[1]);
-    const hw = pad.size[0] / 2;
-    const hh = pad.size[1] / 2;
+    const center = fpTransform2(fp.at, pad.at.x, pad.at.y);
+    const hw = pad.size.w / 2;
+    const hh = pad.size.h / 2;
     points.push(center.add(new Vec2(-hw, -hh)));
     points.push(center.add(new Vec2(hw, hh)));
   }
   for (const drawing of fp.drawings) {
     if (drawing.start)
-      points.push(fpTransform2(fp.at, drawing.start[0], drawing.start[1]));
+      points.push(fpTransform2(fp.at, drawing.start.x, drawing.start.y));
     if (drawing.end)
-      points.push(fpTransform2(fp.at, drawing.end[0], drawing.end[1]));
+      points.push(fpTransform2(fp.at, drawing.end.x, drawing.end.y));
     if (drawing.center)
-      points.push(fpTransform2(fp.at, drawing.center[0], drawing.center[1]));
+      points.push(fpTransform2(fp.at, drawing.center.x, drawing.center.y));
     if (drawing.points) {
-      for (const [x, y] of drawing.points) {
-        points.push(fpTransform2(fp.at, x, y));
+      for (const p of drawing.points) {
+        points.push(fpTransform2(fp.at, p.x, p.y));
       }
     }
   }
   if (points.length === 0) {
-    return new BBox(fp.at[0] - 1, fp.at[1] - 1, 2, 2);
+    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
   }
   return BBox.from_points(points).grow(0.2);
 }
@@ -1709,6 +1684,8 @@ var Editor = class {
   dragStartWorld = null;
   dragStartFpPos = null;
   needsRedraw = true;
+  // Track current mouse position for R hotkey
+  lastMouseScreen = new Vec2(0, 0);
   constructor(canvas2, baseUrl2) {
     this.canvas = canvas2;
     this.baseUrl = baseUrl2;
@@ -1716,6 +1693,8 @@ var Editor = class {
     this.camera = new Camera2();
     this.panAndZoom = new PanAndZoom(canvas2, this.camera, () => this.requestRedraw());
     this.setupMouseHandlers();
+    this.setupKeyboardHandlers();
+    this.setupResizeHandler();
     this.renderer.setup();
     this.startRenderLoop();
   }
@@ -1768,7 +1747,7 @@ var Editor = class {
         const fp = this.model.footprints[hitIdx];
         this.isDragging = true;
         this.dragStartWorld = worldPos;
-        this.dragStartFpPos = [fp.at[0], fp.at[1]];
+        this.dragStartFpPos = { x: fp.at.x, y: fp.at.y };
         this.repaintWithSelection();
       } else {
         if (this.selectedFpIndex >= 0) {
@@ -1779,15 +1758,15 @@ var Editor = class {
       }
     });
     this.canvas.addEventListener("mousemove", (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
       if (!this.isDragging || !this.model || this.selectedFpIndex < 0)
         return;
-      const rect = this.canvas.getBoundingClientRect();
-      const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
-      const worldPos = this.camera.screen_to_world(screenPos);
+      const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
       const delta = worldPos.sub(this.dragStartWorld);
       const fp = this.model.footprints[this.selectedFpIndex];
-      fp.at[0] = this.dragStartFpPos[0] + delta.x;
-      fp.at[1] = this.dragStartFpPos[1] + delta.y;
+      fp.at.x = this.dragStartFpPos.x + delta.x;
+      fp.at.y = this.dragStartFpPos.y + delta.y;
       this.paint();
       this.requestRedraw();
     });
@@ -1804,15 +1783,65 @@ var Editor = class {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             uuid: fp.uuid,
-            x: fp.at[0],
-            y: fp.at[1],
-            r: fp.at[2] || null
+            x: fp.at.x,
+            y: fp.at.y,
+            r: fp.at.r || null
           })
         });
       } catch (err) {
         console.error("Failed to save footprint position:", err);
       }
     });
+  }
+  setupKeyboardHandlers() {
+    window.addEventListener("keydown", async (e) => {
+      if (e.key === "r" || e.key === "R") {
+        if (e.ctrlKey || e.metaKey || e.altKey)
+          return;
+        await this.rotateUnderCursor();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        await this.serverAction("/api/undo");
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey || (e.ctrlKey || e.metaKey) && e.key === "y") {
+        e.preventDefault();
+        await this.serverAction("/api/redo");
+        return;
+      }
+    });
+  }
+  setupResizeHandler() {
+    window.addEventListener("resize", () => {
+      this.requestRedraw();
+    });
+  }
+  async rotateUnderCursor() {
+    if (!this.model)
+      return;
+    const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
+    const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
+    if (hitIdx < 0)
+      return;
+    const fp = this.model.footprints[hitIdx];
+    try {
+      await fetch(`${this.baseUrl}/api/rotate-footprint`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uuid: fp.uuid, angle: 90 })
+      });
+    } catch (err) {
+      console.error("Failed to rotate footprint:", err);
+    }
+  }
+  async serverAction(endpoint) {
+    try {
+      await fetch(`${this.baseUrl}${endpoint}`, { method: "POST" });
+    } catch (err) {
+      console.error(`Failed ${endpoint}:`, err);
+    }
   }
   repaintWithSelection() {
     this.paint();

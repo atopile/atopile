@@ -1,37 +1,39 @@
-import { Vec2, Matrix3, BBox } from "./math";
+import { Vec2, BBox } from "./math";
 import { Renderer, RenderLayer } from "./webgl/renderer";
 import { getLayerColor, getPadColor, VIA_COLOR, VIA_DRILL_COLOR, SELECTION_COLOR, ZONE_COLOR_ALPHA } from "./colors";
-import type { RenderModel, FootprintModel, PadModel, TrackModel, ViaModel, DrawingModel, ZoneModel } from "./types";
+import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
 
 const DEG_TO_RAD = Math.PI / 180;
 
-/** Transform a point relative to a footprint (apply fp position + rotation) */
-function fpTransform(fpAt: [number, number, number], localX: number, localY: number): Vec2 {
-    const rad = -(fpAt[2] || 0) * DEG_TO_RAD;
+function p2v(p: Point2): Vec2 {
+    return new Vec2(p.x, p.y);
+}
+
+/** Transform a local point by a footprint's position + rotation */
+function fpTransform(fpAt: Point3, localX: number, localY: number): Vec2 {
+    const rad = -(fpAt.r || 0) * DEG_TO_RAD;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    const rx = localX * cos - localY * sin;
-    const ry = localX * sin + localY * cos;
-    return new Vec2(fpAt[0] + rx, fpAt[1] + ry);
+    return new Vec2(
+        fpAt.x + localX * cos - localY * sin,
+        fpAt.y + localX * sin + localY * cos,
+    );
 }
 
-/** Transform a point with both pad rotation and footprint rotation */
-function padTransform(fpAt: [number, number, number], padAt: [number, number, number], localX: number, localY: number): Vec2 {
-    // First apply pad rotation
-    const padRad = -(padAt[2] || 0) * DEG_TO_RAD;
+/** Transform by pad rotation, then footprint rotation */
+function padTransform(fpAt: Point3, padAt: Point3, lx: number, ly: number): Vec2 {
+    const padRad = -(padAt.r || 0) * DEG_TO_RAD;
     const pc = Math.cos(padRad), ps = Math.sin(padRad);
-    const px = localX * pc - localY * ps;
-    const py = localX * ps + localY * pc;
-    // Then offset by pad position and apply fp transform
-    return fpTransform(fpAt, padAt[0] + px, padAt[1] + py);
+    const px = lx * pc - ly * ps;
+    const py = lx * ps + ly * pc;
+    return fpTransform(fpAt, padAt.x + px, padAt.y + py);
 }
 
-/** Approximate an arc (start, mid, end) with line segments */
-function arcToPoints(start: [number, number], mid: [number, number], end: [number, number], segments = 32): Vec2[] {
-    // Find center of circle through 3 points
-    const ax = start[0], ay = start[1];
-    const bx = mid[0], by = mid[1];
-    const cx = end[0], cy = end[1];
+/** Approximate a 3-point arc with line segments */
+function arcToPoints(start: Point2, mid: Point2, end: Point2, segments = 32): Vec2[] {
+    const ax = start.x, ay = start.y;
+    const bx = mid.x, by = mid.y;
+    const cx = end.x, cy = end.y;
 
     const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
     if (Math.abs(D) < 1e-10) {
@@ -40,19 +42,14 @@ function arcToPoints(start: [number, number], mid: [number, number], end: [numbe
 
     const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / D;
     const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / D;
-
     const radius = Math.sqrt((ax - ux) ** 2 + (ay - uy) ** 2);
-    let startAngle = Math.atan2(ay - uy, ax - ux);
+    const startAngle = Math.atan2(ay - uy, ax - ux);
     const midAngle = Math.atan2(by - uy, bx - ux);
-    let endAngle = Math.atan2(cy - uy, cx - ux);
+    const endAngle = Math.atan2(cy - uy, cx - ux);
 
-    // Determine direction
     let da1 = midAngle - startAngle;
-    let da2 = endAngle - midAngle;
     while (da1 > Math.PI) da1 -= 2 * Math.PI;
     while (da1 < -Math.PI) da1 += 2 * Math.PI;
-    while (da2 > Math.PI) da2 -= 2 * Math.PI;
-    while (da2 < -Math.PI) da2 += 2 * Math.PI;
 
     const clockwise = da1 < 0;
     let sweep = endAngle - startAngle;
@@ -74,20 +71,10 @@ function arcToPoints(start: [number, number], mid: [number, number], end: [numbe
 /** Paint the entire render model into renderer layers */
 export function paintAll(renderer: Renderer, model: RenderModel): void {
     renderer.dispose_layers();
-
-    // 1. Board edges
     paintBoardEdges(renderer, model);
-
-    // 2. Zones (filled)
     paintZones(renderer, model);
-
-    // 3. Tracks
     paintTracks(renderer, model);
-
-    // 4. Vias
     paintVias(renderer, model);
-
-    // 5. Footprints (pads + drawings)
     for (const fp of model.footprints) {
         paintFootprint(renderer, fp);
     }
@@ -99,29 +86,22 @@ function paintBoardEdges(renderer: Renderer, model: RenderModel) {
 
     for (const edge of model.board.edges) {
         if (edge.type === "line" && edge.start && edge.end) {
-            layer.geometry.add_polyline(
-                [new Vec2(edge.start[0], edge.start[1]), new Vec2(edge.end[0], edge.end[1])],
-                0.15, r, g, b, a,
-            );
+            layer.geometry.add_polyline([p2v(edge.start), p2v(edge.end)], 0.15, r, g, b, a);
         } else if (edge.type === "arc" && edge.start && edge.mid && edge.end) {
-            const pts = arcToPoints(edge.start, edge.mid, edge.end);
-            layer.geometry.add_polyline(pts, 0.15, r, g, b, a);
+            layer.geometry.add_polyline(arcToPoints(edge.start, edge.mid, edge.end), 0.15, r, g, b, a);
         } else if (edge.type === "circle" && edge.center && edge.end) {
-            const cx = edge.center[0], cy = edge.center[1];
-            const ex = edge.end[0], ey = edge.end[1];
-            const rad = Math.sqrt((ex - cx) ** 2 + (ey - cy) ** 2);
+            const cx = edge.center.x, cy = edge.center.y;
+            const rad = Math.sqrt((edge.end.x - cx) ** 2 + (edge.end.y - cy) ** 2);
             const pts: Vec2[] = [];
-            const segs = 64;
-            for (let i = 0; i <= segs; i++) {
-                const angle = (i / segs) * 2 * Math.PI;
+            for (let i = 0; i <= 64; i++) {
+                const angle = (i / 64) * 2 * Math.PI;
                 pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
             }
             layer.geometry.add_polyline(pts, 0.15, r, g, b, a);
         } else if (edge.type === "rect" && edge.start && edge.end) {
-            const [x1, y1] = edge.start;
-            const [x2, y2] = edge.end;
+            const s = edge.start, e = edge.end;
             layer.geometry.add_polyline([
-                new Vec2(x1, y1), new Vec2(x2, y1), new Vec2(x2, y2), new Vec2(x1, y2), new Vec2(x1, y1),
+                new Vec2(s.x, s.y), new Vec2(e.x, s.y), new Vec2(e.x, e.y), new Vec2(s.x, e.y), new Vec2(s.x, s.y),
             ], 0.15, r, g, b, a);
         }
     }
@@ -131,10 +111,9 @@ function paintBoardEdges(renderer: Renderer, model: RenderModel) {
 function paintZones(renderer: Renderer, model: RenderModel) {
     for (const zone of model.zones) {
         for (const filled of zone.filled_polygons) {
-            const layerName = filled.layer;
-            const [r, g, b] = getLayerColor(layerName);
-            const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${layerName}`);
-            const pts = filled.points.map(([x, y]) => new Vec2(x, y));
+            const [r, g, b] = getLayerColor(filled.layer);
+            const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
+            const pts = filled.points.map(p2v);
             if (pts.length >= 3) {
                 layer.geometry.add_polygon(pts, r, g, b, ZONE_COLOR_ALPHA);
             }
@@ -144,28 +123,21 @@ function paintZones(renderer: Renderer, model: RenderModel) {
 }
 
 function paintTracks(renderer: Renderer, model: RenderModel) {
-    // Group tracks by layer for efficiency
     const byLayer = new Map<string, TrackModel[]>();
     for (const track of model.tracks) {
-        const layerName = track.layer ?? "F.Cu";
-        let arr = byLayer.get(layerName);
-        if (!arr) { arr = []; byLayer.set(layerName, arr); }
+        const ln = track.layer ?? "F.Cu";
+        let arr = byLayer.get(ln);
+        if (!arr) { arr = []; byLayer.set(ln, arr); }
         arr.push(track);
     }
-
     for (const [layerName, tracks] of byLayer) {
         const [r, g, b, a] = getLayerColor(layerName);
         const layer = renderer.start_layer(`tracks:${layerName}`);
         for (const track of tracks) {
-            layer.geometry.add_polyline(
-                [new Vec2(track.start[0], track.start[1]), new Vec2(track.end[0], track.end[1])],
-                track.width, r, g, b, a,
-            );
+            layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
         }
         renderer.end_layer();
     }
-
-    // Arc tracks
     if (model.arcs.length > 0) {
         const arcByLayer = new Map<string, typeof model.arcs>();
         for (const arc of model.arcs) {
@@ -178,8 +150,7 @@ function paintTracks(renderer: Renderer, model: RenderModel) {
             const [r, g, b, a] = getLayerColor(layerName);
             const layer = renderer.start_layer(`arc_tracks:${layerName}`);
             for (const arc of arcs) {
-                const pts = arcToPoints(arc.start, arc.mid, arc.end);
-                layer.geometry.add_polyline(pts, arc.width, r, g, b, a);
+                layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
             }
             renderer.end_layer();
         }
@@ -191,15 +162,14 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     const layer = renderer.start_layer("vias");
     for (const via of model.vias) {
         const [vr, vg, vb, va] = VIA_COLOR;
-        layer.geometry.add_circle(via.at[0], via.at[1], via.size / 2, vr, vg, vb, va);
+        layer.geometry.add_circle(via.at.x, via.at.y, via.size / 2, vr, vg, vb, va);
         const [dr, dg, db, da] = VIA_DRILL_COLOR;
-        layer.geometry.add_circle(via.at[0], via.at[1], via.drill / 2, dr, dg, db, da);
+        layer.geometry.add_circle(via.at.x, via.at.y, via.drill / 2, dr, dg, db, da);
     }
     renderer.end_layer();
 }
 
 function paintFootprint(renderer: Renderer, fp: FootprintModel) {
-    // Paint drawings (silkscreen, fab, courtyard lines)
     const drawingsByLayer = new Map<string, DrawingModel[]>();
     for (const drawing of fp.drawings) {
         const ln = drawing.layer ?? "F.SilkS";
@@ -207,7 +177,6 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel) {
         if (!arr) { arr = []; drawingsByLayer.set(ln, arr); }
         arr.push(drawing);
     }
-
     for (const [layerName, drawings] of drawingsByLayer) {
         const [r, g, b, a] = getLayerColor(layerName);
         const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
@@ -216,8 +185,6 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel) {
         }
         renderer.end_layer();
     }
-
-    // Paint pads
     if (fp.pads.length > 0) {
         const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
         for (const pad of fp.pads) {
@@ -227,43 +194,36 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel) {
     }
 }
 
-function paintDrawing(layer: RenderLayer, fpAt: [number, number, number], drawing: DrawingModel, r: number, g: number, b: number, a: number) {
+function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r: number, g: number, b: number, a: number) {
     const w = drawing.width || 0.12;
 
     if (drawing.type === "line" && drawing.start && drawing.end) {
-        const p1 = fpTransform(fpAt, drawing.start[0], drawing.start[1]);
-        const p2 = fpTransform(fpAt, drawing.end[0], drawing.end[1]);
+        const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
+        const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
         layer.geometry.add_polyline([p1, p2], w, r, g, b, a);
     } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
         const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
         const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
         layer.geometry.add_polyline(worldPts, w, r, g, b, a);
     } else if (drawing.type === "circle" && drawing.center && drawing.end) {
-        const cx = drawing.center[0], cy = drawing.center[1];
-        const ex = drawing.end[0], ey = drawing.end[1];
-        const rad = Math.sqrt((ex - cx) ** 2 + (ey - cy) ** 2);
+        const cx = drawing.center.x, cy = drawing.center.y;
+        const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
         const pts: Vec2[] = [];
-        const segs = 48;
-        for (let i = 0; i <= segs; i++) {
-            const angle = (i / segs) * 2 * Math.PI;
+        for (let i = 0; i <= 48; i++) {
+            const angle = (i / 48) * 2 * Math.PI;
             pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
         }
-        const worldPts = pts.map(p => fpTransform(fpAt, p.x, p.y));
-        layer.geometry.add_polyline(worldPts, w, r, g, b, a);
+        layer.geometry.add_polyline(pts.map(p => fpTransform(fpAt, p.x, p.y)), w, r, g, b, a);
     } else if (drawing.type === "rect" && drawing.start && drawing.end) {
-        const [x1, y1] = drawing.start;
-        const [x2, y2] = drawing.end;
+        const s = drawing.start, e = drawing.end;
         const corners = [
-            fpTransform(fpAt, x1, y1),
-            fpTransform(fpAt, x2, y1),
-            fpTransform(fpAt, x2, y2),
-            fpTransform(fpAt, x1, y2),
-            fpTransform(fpAt, x1, y1),
+            fpTransform(fpAt, s.x, s.y), fpTransform(fpAt, e.x, s.y),
+            fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
+            fpTransform(fpAt, s.x, s.y),
         ];
         layer.geometry.add_polyline(corners, w, r, g, b, a);
     } else if (drawing.type === "polygon" && drawing.points) {
-        const worldPts = drawing.points.map(([x, y]) => fpTransform(fpAt, x, y));
-        // Close the polygon
+        const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
         if (worldPts.length >= 3) {
             worldPts.push(worldPts[0]!.copy());
             layer.geometry.add_polyline(worldPts, w, r, g, b, a);
@@ -271,16 +231,15 @@ function paintDrawing(layer: RenderLayer, fpAt: [number, number, number], drawin
     }
 }
 
-function paintPad(layer: RenderLayer, fpAt: [number, number, number], pad: PadModel) {
+function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
     const [cr, cg, cb, ca] = getPadColor(pad.layers);
-    const hw = pad.size[0] / 2;
-    const hh = pad.size[1] / 2;
+    const hw = pad.size.w / 2;
+    const hh = pad.size.h / 2;
 
     if (pad.shape === "circle") {
-        const center = fpTransform(fpAt, pad.at[0], pad.at[1]);
+        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
         layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
     } else if (pad.shape === "oval") {
-        // Approximate oval as a thick line between the two focal points
         const longAxis = Math.max(hw, hh);
         const shortAxis = Math.min(hw, hh);
         const focalDist = longAxis - shortAxis;
@@ -294,20 +253,16 @@ function paintPad(layer: RenderLayer, fpAt: [number, number, number], pad: PadMo
         }
         layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
     } else {
-        // rect, roundrect, trapezoid, custom → draw as filled polygon
         const corners = [
-            padTransform(fpAt, pad.at, -hw, -hh),
-            padTransform(fpAt, pad.at, hw, -hh),
-            padTransform(fpAt, pad.at, hw, hh),
-            padTransform(fpAt, pad.at, -hw, hh),
+            padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
+            padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
         ];
         layer.geometry.add_polygon(corners, cr, cg, cb, ca);
     }
 
-    // Draw drill hole for through-hole pads
     if (pad.drill && pad.type === "thru_hole") {
-        const center = fpTransform(fpAt, pad.at[0], pad.at[1]);
-        const drillR = (pad.drill.size_x ?? pad.size[0] * 0.5) / 2;
+        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+        const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
         layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1.0);
     }
 }
@@ -317,30 +272,25 @@ export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLa
     const layer = renderer.start_layer("selection");
     const [r, g, b, a] = SELECTION_COLOR;
 
-    // Compute bounding box from pads and drawings
     const allPoints: Vec2[] = [];
     for (const pad of fp.pads) {
-        const center = fpTransform(fp.at, pad.at[0], pad.at[1]);
-        const hw = pad.size[0] / 2;
-        const hh = pad.size[1] / 2;
+        const center = fpTransform(fp.at, pad.at.x, pad.at.y);
+        const hw = pad.size.w / 2, hh = pad.size.h / 2;
         allPoints.push(center.add(new Vec2(-hw, -hh)));
         allPoints.push(center.add(new Vec2(hw, hh)));
     }
     for (const drawing of fp.drawings) {
-        if (drawing.start) allPoints.push(fpTransform(fp.at, drawing.start[0], drawing.start[1]));
-        if (drawing.end) allPoints.push(fpTransform(fp.at, drawing.end[0], drawing.end[1]));
-        if (drawing.center) allPoints.push(fpTransform(fp.at, drawing.center[0], drawing.center[1]));
+        if (drawing.start) allPoints.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+        if (drawing.end) allPoints.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+        if (drawing.center) allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
     }
 
     if (allPoints.length > 0) {
         const bbox = BBox.from_points(allPoints).grow(0.5);
-        const corners = [
-            new Vec2(bbox.x, bbox.y),
-            new Vec2(bbox.x2, bbox.y),
-            new Vec2(bbox.x2, bbox.y2),
-            new Vec2(bbox.x, bbox.y2),
-        ];
-        layer.geometry.add_polygon(corners, r, g, b, a);
+        layer.geometry.add_polygon([
+            new Vec2(bbox.x, bbox.y), new Vec2(bbox.x2, bbox.y),
+            new Vec2(bbox.x2, bbox.y2), new Vec2(bbox.x, bbox.y2),
+        ], r, g, b, a);
     }
 
     renderer.end_layer();
@@ -350,28 +300,25 @@ export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLa
 /** Compute a bounding box for the full render model */
 export function computeBBox(model: RenderModel): BBox {
     const points: Vec2[] = [];
-
     for (const edge of model.board.edges) {
-        if (edge.start) points.push(new Vec2(edge.start[0], edge.start[1]));
-        if (edge.end) points.push(new Vec2(edge.end[0], edge.end[1]));
-        if (edge.mid) points.push(new Vec2(edge.mid[0], edge.mid[1]));
-        if (edge.center) points.push(new Vec2(edge.center[0], edge.center[1]));
+        if (edge.start) points.push(p2v(edge.start));
+        if (edge.end) points.push(p2v(edge.end));
+        if (edge.mid) points.push(p2v(edge.mid));
+        if (edge.center) points.push(p2v(edge.center));
     }
     for (const fp of model.footprints) {
-        points.push(new Vec2(fp.at[0], fp.at[1]));
+        points.push(new Vec2(fp.at.x, fp.at.y));
         for (const pad of fp.pads) {
-            const center = fpTransform(fp.at, pad.at[0], pad.at[1]);
-            points.push(center);
+            points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
         }
     }
     for (const track of model.tracks) {
-        points.push(new Vec2(track.start[0], track.start[1]));
-        points.push(new Vec2(track.end[0], track.end[1]));
+        points.push(p2v(track.start));
+        points.push(p2v(track.end));
     }
     for (const via of model.vias) {
-        points.push(new Vec2(via.at[0], via.at[1]));
+        points.push(p2v(via.at));
     }
-
     if (points.length === 0) return new BBox(0, 0, 100, 100);
     return BBox.from_points(points).grow(5);
 }

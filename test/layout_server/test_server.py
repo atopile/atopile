@@ -39,6 +39,10 @@ async def test_render_model(client: AsyncClient):
     assert "board" in model
     assert isinstance(model["footprints"], list)
     assert len(model["footprints"]) > 0
+    # Verify pydantic structure: footprint at is an object
+    fp = model["footprints"][0]
+    assert "x" in fp["at"]
+    assert "y" in fp["at"]
 
 
 @pytest.mark.anyio
@@ -58,3 +62,31 @@ async def test_reload(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
+
+
+@pytest.mark.anyio
+async def test_undo_empty(client: AsyncClient):
+    resp = await client.post("/api/undo")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "nothing_to_undo"
+
+
+@pytest.mark.anyio
+async def test_redo_empty(client: AsyncClient):
+    resp = await client.post("/api/redo")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "nothing_to_redo"
+
+
+@pytest.mark.anyio
+async def test_rotate_footprint(client: AsyncClient):
+    fps_resp = await client.get("/api/footprints")
+    fps = fps_resp.json()
+    uuid = fps[0]["uuid"]
+
+    resp = await client.post(
+        "/api/rotate-footprint",
+        json={"uuid": uuid, "angle": 90},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
