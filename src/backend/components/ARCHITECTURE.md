@@ -89,6 +89,29 @@ src/backend/components/
   1. paginated public component list
   2. per-component detail by C-number
 
+### JLC Auth Details (Learned)
+
+- Use OpenAPI host: `https://open.jlcpcb.com`.
+- Use `Authorization: JOP ...` header on every request.
+- Header fields are: `appid`, `accesskey`, `timestamp`, `nonce`, `signature`.
+- Credential mapping:
+  - `JLC_APP_ID` = App ID
+  - `JLC_ACCESS_KEY` = Access Key
+  - `JLC_SECRET_KEY` = Tokenization private key (HMAC signing key)
+- Signature is `Base64(HMAC_SHA256(secret_key, string_to_sign))`.
+- `string_to_sign` must be exactly:
+  1. HTTP method (uppercase)
+  2. request path (+ query if present)
+  3. unix timestamp (seconds)
+  4. 32-char nonce
+  5. raw JSON body
+  6. trailing newline
+- The exact body bytes must match the body used in signing.
+- `J-Trace-ID` should always be logged/persisted for support.
+- Error interpretation:
+  - `401` typically means bad credentials/signature.
+  - `403` with permission message means auth is valid but API scope is not granted.
+
 ### Runtime Storage
 
 Default cache root in container:
@@ -98,8 +121,12 @@ Default cache root in container:
 Config:
 
 - `ATOPILE_COMPONENTS_CACHE_DIR` (default above)
-- `ATOPILE_COMPONENTS_JLC_API_BASE_URL` (default `https://jlcpcb.com`)
-- `JLC_API_KEY` / `JLC_API_SECRET`
+- `ATOPILE_COMPONENTS_JLC_API_BASE_URL` (default `https://open.jlcpcb.com`)
+- `JLC_APP_ID`
+- `JLC_ACCESS_KEY`
+- `JLC_SECRET_KEY`
+- `ATOPILE_COMPONENTS_JLC_COMPONENT_INFOS_PATH` (default `/overseas/openapi/component/getComponentInfos`)
+- `ATOPILE_COMPONENTS_JLC_COMPONENT_DETAIL_PATH` (default `/overseas/openapi/component/getComponentDetail`)
 
 ### Fetch Outputs
 
@@ -108,6 +135,62 @@ Config:
 - Raw datasheet PDFs.
 - Raw KiCad/EasyEDA/3D files where available.
 - Manifest/index records (hash, mime, sizes, timestamps, source).
+
+### Stage 1 Implementation TODO
+
+#### Shared Fetch Foundation
+
+- [x] Implement shared artifact model (`lcsc_id`, `artifact_type`, `source_url`, `raw_sha256`, `raw_size`, `mime`, `encoding`, `stored_key`, `fetched_at`, `source_meta`).
+- [x] Implement `zstd` compression/decompression helpers.
+- [x] Implement stable object-store keying (`objects/<artifact_type>/<sha256>.zst`).
+- [x] Implement local object-store write/read API.
+- [x] Implement manifest store (append/upsert records keyed by `lcsc_id` + artifact identity).
+- [x] Implement compare helpers for byte-identity and JSON semantic-identity.
+- [x] Implement reusable round-trip validation helper:
+  1. fetch raw bytes
+  2. compress and store
+  3. load and decompress
+  4. compare hash and payload equality
+  5. write manifest record
+
+#### Datasheets
+
+- [x] Implement datasource adapter for datasheet URLs.
+- [x] Support both direct PDF responses and HTML wrappers that contain embedded PDF URLs.
+- [x] Persist raw PDF bytes (lossless `zstd`), no PDF transformations.
+- [x] Persist source metadata: original URL, resolved URL, content type, status.
+- [x] Add round-trip tests (raw PDF bytes and hash identical after decompress).
+- [x] Add negative-path tests (invalid redirect, missing embedded PDF URL, unsupported MIME).
+- [x] Handle LCSC JS-escaped `previewPdfUrl` variants (`\/`, `\u002F`, scheme-relative paths).
+
+#### 3D Models (EasyEDA)
+
+- [x] Implement EasyEDA CAD JSON fetch by `lcsc_id`.
+- [x] Treat CAD JSON as transient extraction input (do not persist as a stage-1 artifact).
+- [x] Extract 3D UUID from CAD JSON shape records.
+- [x] Fetch and store OBJ model when available.
+- [x] Fetch and store STEP model when available.
+- [x] Record partial-success states (e.g. OBJ missing but STEP present).
+- [x] Add round-trip tests for KiCad footprint / OBJ / STEP.
+
+#### Footprints
+
+- [x] Convert EasyEDA footprint payload to KiCad `.kicad_mod` server-side.
+- [x] Store KiCad footprint artifact as compressed bytes (`zstd`), lossless.
+- [x] Fail part fetch if footprint conversion fails (no fallback path).
+- [x] Add round-trip tests for KiCad footprint artifacts.
+
+#### Fetch Job Integration
+
+- [x] Extend `fetch_once` orchestration to run datasheet + EasyEDA artifact pipelines for sample inputs.
+- [x] Add fetch summary report (`pass/fail` per artifact per `lcsc_id`).
+- [x] Wire daily job scaffold for scheduled execution.
+
+#### Stage 1 Validation (Completed)
+
+- [x] Automated tests (`ruff` + `pytest`) for `shared/` + `fetch/`.
+- [x] Manual roundtrip (EasyEDA/footprint/3D): `uv run python -m src.backend.components.fetch.jobs.fetch_once --skip-jlc-list --roundtrip-lcsc-id 21190`
+- [x] Manual roundtrip (datasheet direct/wrapper resolve): `uv run python -m src.backend.components.fetch.jobs.fetch_once --skip-jlc-list --roundtrip-lcsc-id 21190 --roundtrip-datasheet-url https://www.lcsc.com/datasheet/C21190.pdf`
 
 ## Stage 2: Transform (Serve Snapshots)
 
@@ -138,6 +221,18 @@ Contains only:
 
 Design target: minimal rows and columns, heavy indexing for range filters.
 
+Current implementation:
+
+- `resistor_pick`
+  - `lcsc_id`, `package`, `stock`, `is_basic`, `is_preferred`
+  - `resistance_ohm`, `resistance_min_ohm`, `resistance_max_ohm`
+  - `tolerance_pct`, `max_power_w`, `max_voltage_v`, `tempco_ppm`
+- `capacitor_pick`
+  - `lcsc_id`, `package`, `stock`, `is_basic`, `is_preferred`
+  - `capacitance_f`, `capacitance_min_f`, `capacitance_max_f`
+  - `tolerance_pct`, `max_voltage_v`, `tempco_code`
+- Composite indexes are created to support ranged lookup directly on precomputed bounds plus package/stock filters.
+
 #### `detail.sqlite`
 
 - `components_full`
@@ -151,13 +246,33 @@ Contains:
 - attributes JSON
 - asset references (datasheet/kicad/3d/raw object IDs/keys)
 
+Current implementation:
+
+- `components_full`
+  - canonical metadata + normalized numeric parameter columns
+  - raw JSON payload fields (`price_json`, `attributes_json`, `extra_json`)
+- `component_assets`
+  - `datasheet_url`, `data_manual_url`, `footprint_name`, `model_3d_path`, `easyeda_model_uuid`
+
 ### Publish/Cutover
 
 - Build new snapshot in a versioned directory.
-- Validate snapshot.
+- Validate snapshot structure and row integrity.
 - Atomically switch `current` symlink to new snapshot.
 - API reopens read-only handles to new DB files.
-- Keep previous snapshot for rollback, then prune old snapshots.
+- Keep previous snapshot for rollback, and prune older snapshots by retention policy.
+
+### Stage 2 Acceptance Checklist
+
+- [x] Build immutable snapshot directory with `fast.sqlite` and `detail.sqlite`.
+- [x] Normalize resistor/capacitor pick parameters into SI numeric columns.
+- [x] Precompute tolerance-aware min/max bounds for fast ranged lookup.
+- [x] Store full component metadata and asset references keyed by `lcsc_id`.
+- [x] Validate built snapshots before publish.
+- [x] Atomic cutover with `current` / `previous` links.
+- [x] Retention pruning for old snapshots.
+- [x] Automated tests for parsing, builders, snapshot build, validation, and publish flow.
+- [x] Manual smoke verification on downloaded `cache.sqlite3`.
 
 ### Suggested Snapshot Layout
 
@@ -266,9 +381,3 @@ Per project preference, tests are co-located in module files (at bottom), not in
 ## Future Direction
 
 The fast lookup implementation may be replaced by a custom Zig in-memory engine. API contracts remain unchanged by keeping `serve` behind storage-agnostic interfaces and `lcsc_id`-based joins to detail data.
-
-## JLC API
-
-stored as:
-JLC_API_KEY
-JLC_API_SECRET

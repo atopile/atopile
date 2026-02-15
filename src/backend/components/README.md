@@ -1,6 +1,118 @@
 # Components Backend
 
-See `ARCHITECTURE.md` for the planned design, data flow, and interfaces.
+Three-stage pipeline:
 
-Current source-of-truth direction for stage 1 is the authenticated JLC API.
-The downloaded `cache.sqlite3` format is treated as a bootstrap/dev fixture, not canonical input.
+1. `fetch`: raw upstream ingestion and local cache
+2. `transform`: build immutable serving snapshots
+3. `serve`: FastAPI endpoints for solver + full component payloads
+
+Primary stage-1 source is JLC OpenAPI (`open.jlcpcb.com`).
+`cache.sqlite3` remains a local bootstrap fixture, not canonical input.
+
+See `/Users/narayanpowderly/projects/atopile/src/backend/components/ARCHITECTURE.md` for full design.
+
+## Stage 1 Quick Start
+
+```bash
+cd /Users/narayanpowderly/projects/atopile
+export PYTHONPATH=/Users/narayanpowderly/projects/atopile/src
+export ATOPILE_COMPONENTS_CACHE_DIR=/var/cache/atopile/components
+export JLC_APP_ID="<app id>"
+export JLC_ACCESS_KEY="<access key>"
+export JLC_SECRET_KEY="<secret key>"
+uv run python -m backend.components.fetch.jobs.fetch_once --max-pages 1
+```
+
+## JLC OpenAPI Signing Rules (Important)
+
+- Every request is a signed `POST`.
+- `Authorization` header format:
+  - `JOP appid="<APP_ID>",accesskey="<ACCESS_KEY>",timestamp="<UNIX_SECONDS>",nonce="<32-char>",signature="<BASE64_HMAC_SHA256>"`
+- Credential mapping:
+  - `JLC_APP_ID` = App ID
+  - `JLC_ACCESS_KEY` = Access Key
+  - `JLC_SECRET_KEY` = Tokenization **Private** Key (signing key)
+- String-to-sign is exactly:
+  - `METHOD + "\n" + PATH_WITH_QUERY + "\n" + TIMESTAMP + "\n" + NONCE + "\n" + RAW_BODY + "\n"`
+- The request body bytes must match the body used during signing.
+- Capture `J-Trace-ID` from response headers for debugging/support.
+
+## Known Error Meanings
+
+- `401` + signature/login message: signing or credentials are incorrect.
+- `403` + permission denied: auth is valid, but API scope is not granted for that endpoint.
+
+## Stage 2 Quick Start
+
+Build a snapshot from downloaded `cache.sqlite3`:
+
+```bash
+cd /Users/narayanpowderly/projects/atopile
+export PYTHONPATH=/Users/narayanpowderly/projects/atopile/src
+export ATOPILE_COMPONENTS_CACHE_DIR=/Users/narayanpowderly/projects/atopile/src/backend/components/.cache/jlcparts_playground
+uv run python -m backend.components.transform.build_snapshot \
+  --source-sqlite /Users/narayanpowderly/projects/atopile/src/backend/components/.cache/jlcparts_playground/raw/cache.sqlite3 \
+  --snapshot-name local-dev
+```
+
+Promote snapshot atomically:
+
+```bash
+uv run python -m backend.components.transform.publish_snapshot local-dev --keep-snapshots 2
+```
+
+Notes:
+
+- Snapshots built with `--max-components` are marked as partial in `metadata.json`.
+- `publish_snapshot` rejects partial snapshots by default.
+- Use `--allow-partial` only for intentional local/dev publishes.
+
+Snapshot outputs:
+
+- `fast.sqlite`
+  - `resistor_pick` (`resistance_ohm`, `tolerance_pct`, `max_power_w`, `max_voltage_v`, `stock`, flags, package)
+  - `capacitor_pick` (`capacitance_f`, `tolerance_pct`, `max_voltage_v`, `tempco_code`, `stock`, flags, package)
+  - range-friendly composite indexes for parameterized lookups
+- `detail.sqlite`
+  - `components_full` (full metadata + normalized numeric fields)
+  - `component_assets` (datasheet/footprint/3D reference fields)
+
+Lookup parity with legacy backend:
+
+- Numeric range filters apply the same `1e-5` relative epsilon on request bounds.
+- Package filters accept both raw and legacy-prefixed forms for passives:
+  - resistor: `0402` and `R0402`
+  - capacitor: `0402` and `C0402`
+
+Validate an existing snapshot:
+
+```bash
+uv run python -m backend.components.transform.validate_snapshot \
+  /Users/narayanpowderly/projects/atopile/src/backend/components/.cache/jlcparts_playground/snapshots/local-dev
+```
+
+Stage-2 acceptance review and evidence:
+
+- `/Users/narayanpowderly/projects/atopile/src/backend/components/transform/STAGE2_REVIEW.md`
+- `/Users/narayanpowderly/projects/atopile/src/backend/components/E2E_VALIDATION_PLAN.md`
+
+## Stage 3 Lookup Benchmark
+
+Run lookup latency/throughput benchmarks with realistic resistor/capacitor query mixes:
+
+```bash
+cd /Users/narayanpowderly/projects/atopile
+export PYTHONPATH=/Users/narayanpowderly/projects/atopile/src
+
+# Benchmark against synthetic data (default)
+uv run python -m backend.components.serve.lookup_bench \
+  --iterations 50000 \
+  --warmup 5000
+
+# Benchmark against a real snapshot fast.sqlite
+uv run python -m backend.components.serve.lookup_bench \
+  --db /var/cache/atopile/components/current/fast.sqlite \
+  --iterations 50000 \
+  --warmup 5000 \
+  --explain
+```

@@ -19,9 +19,9 @@ def _csv(value: str | None) -> tuple[str, ...]:
 class FetchConfig:
     cache_dir: Path
     jlc_api_base_url: str
-    jlc_app_key: str | None
-    jlc_app_secret: str | None
-    jlc_token_path: str
+    jlc_app_id: str | None
+    jlc_access_key: str | None
+    jlc_secret_key: str | None
     jlc_component_infos_path: str
     jlc_component_detail_path: str
     request_timeout_s: float
@@ -34,20 +34,18 @@ class FetchConfig:
                 os.getenv("ATOPILE_COMPONENTS_CACHE_DIR", str(DEFAULT_CACHE_DIR))
             ),
             jlc_api_base_url=os.getenv(
-                "ATOPILE_COMPONENTS_JLC_API_BASE_URL", "https://jlcpcb.com"
+                "ATOPILE_COMPONENTS_JLC_API_BASE_URL", "https://open.jlcpcb.com"
             ),
-            jlc_app_key=os.getenv("JLC_API_KEY"),
-            jlc_app_secret=os.getenv("JLC_API_SECRET"),
-            jlc_token_path=os.getenv(
-                "ATOPILE_COMPONENTS_JLC_TOKEN_PATH", "/external/genToken"
-            ),
+            jlc_app_id=os.getenv("JLC_APP_ID"),
+            jlc_access_key=os.getenv("JLC_ACCESS_KEY"),
+            jlc_secret_key=os.getenv("JLC_SECRET_KEY"),
             jlc_component_infos_path=os.getenv(
                 "ATOPILE_COMPONENTS_JLC_COMPONENT_INFOS_PATH",
-                "/external/component/getComponentInfos",
+                "/overseas/openapi/component/getComponentInfos",
             ),
             jlc_component_detail_path=os.getenv(
                 "ATOPILE_COMPONENTS_JLC_COMPONENT_DETAIL_PATH",
-                "/external/component/getComponentDetail",
+                "/overseas/openapi/component/getComponentDetail",
             ),
             request_timeout_s=float(
                 os.getenv("ATOPILE_COMPONENTS_FETCH_TIMEOUT_S", "30")
@@ -56,29 +54,48 @@ class FetchConfig:
         )
 
     def has_jlc_credentials(self) -> bool:
-        return bool(self.jlc_app_key and self.jlc_app_secret)
+        return not self.missing_jlc_credentials()
+
+    def missing_jlc_credentials(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        if not self.jlc_app_id:
+            missing.append("JLC_APP_ID")
+        if not self.jlc_access_key:
+            missing.append("JLC_ACCESS_KEY")
+        if not self.jlc_secret_key:
+            missing.append("JLC_SECRET_KEY")
+        return tuple(missing)
 
 
 def test_fetch_config_defaults(monkeypatch) -> None:
     for key in (
         "ATOPILE_COMPONENTS_CACHE_DIR",
         "ATOPILE_COMPONENTS_JLC_API_BASE_URL",
-        "JLC_API_KEY",
-        "JLC_API_SECRET",
+        "JLC_APP_ID",
+        "JLC_ACCESS_KEY",
+        "JLC_SECRET_KEY",
         "ATOPILE_COMPONENTS_JLC_COMPONENT_DETAIL_PATH",
         "ATOPILE_COMPONENTS_TARGET_CATEGORIES",
     ):
         monkeypatch.delenv(key, raising=False)
     cfg = FetchConfig.from_env()
     assert cfg.cache_dir == DEFAULT_CACHE_DIR
-    assert cfg.jlc_api_base_url == "https://jlcpcb.com"
-    assert cfg.jlc_component_detail_path == "/external/component/getComponentDetail"
+    assert cfg.jlc_api_base_url == "https://open.jlcpcb.com"
+    expected_detail_path = "/overseas/openapi/component/getComponentDetail"
+    assert cfg.jlc_component_detail_path == expected_detail_path
     assert cfg.target_categories == DEFAULT_TARGET_CATEGORIES
     assert not cfg.has_jlc_credentials()
+    assert cfg.missing_jlc_credentials() == (
+        "JLC_APP_ID",
+        "JLC_ACCESS_KEY",
+        "JLC_SECRET_KEY",
+    )
 
 
 def test_fetch_config_credentials(monkeypatch) -> None:
-    monkeypatch.setenv("JLC_API_KEY", "key")
-    monkeypatch.setenv("JLC_API_SECRET", "secret")
+    monkeypatch.setenv("JLC_APP_ID", "app-id")
+    monkeypatch.setenv("JLC_ACCESS_KEY", "access-key")
+    monkeypatch.setenv("JLC_SECRET_KEY", "secret-key")
     cfg = FetchConfig.from_env()
     assert cfg.has_jlc_credentials()
+    assert cfg.missing_jlc_credentials() == ()
