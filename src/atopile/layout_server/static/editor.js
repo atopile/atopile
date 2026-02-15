@@ -316,14 +316,12 @@ var PanAndZoom = class {
     this.callback();
   }
   #handle_zoom(delta, mouse) {
-    const oldZoom = this.camera.zoom;
+    const worldBefore = mouse ? this.camera.screen_to_world(mouse) : null;
     this.camera.zoom *= Math.exp(delta * -zoom_speed);
     this.camera.zoom = Math.min(this.max_zoom, Math.max(this.camera.zoom, this.min_zoom));
-    if (mouse) {
-      const worldBefore = this.camera.screen_to_world(mouse);
+    if (worldBefore && mouse) {
       const worldAfter = this.camera.screen_to_world(mouse);
-      const correction = worldBefore.sub(worldAfter);
-      this.camera.translate(correction);
+      this.camera.translate(worldBefore.sub(worldAfter));
     }
     this.callback();
   }

@@ -112,17 +112,16 @@ export class PanAndZoom {
     }
 
     #handle_zoom(delta: number, mouse?: Vec2): void {
-        const oldZoom = this.camera.zoom;
+        // Capture world position under cursor BEFORE zoom change
+        const worldBefore = mouse ? this.camera.screen_to_world(mouse) : null;
+
         this.camera.zoom *= Math.exp(delta * -zoom_speed);
         this.camera.zoom = Math.min(this.max_zoom, Math.max(this.camera.zoom, this.min_zoom));
 
-        // Zoom toward mouse position
-        if (mouse) {
-            const worldBefore = this.camera.screen_to_world(mouse);
-            // Zoom already changed, so screen_to_world gives new position
+        // Adjust center so the world point under cursor stays fixed
+        if (worldBefore && mouse) {
             const worldAfter = this.camera.screen_to_world(mouse);
-            const correction = worldBefore.sub(worldAfter);
-            this.camera.translate(correction);
+            this.camera.translate(worldBefore.sub(worldAfter));
         }
 
         this.callback();
