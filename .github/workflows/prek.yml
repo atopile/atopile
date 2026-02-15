@@ -1,4 +1,4 @@
-name: pre-commit
+name: prek
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  pre-commit:
+  prek:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,4 +18,4 @@ jobs:
       with:
         python-version-file: 'pyproject.toml'
 
-    - uses: pre-commit/action@v3.0.1
+    - uses: j178/prek-action@v1
