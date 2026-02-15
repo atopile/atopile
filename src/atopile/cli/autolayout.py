@@ -177,7 +177,6 @@ def _manual_review_decision(
 def run_autolayout(
     build: str = typer.Option("default", "--build", "-b", help="Build target name"),
     project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p"),
-    provider: str | None = typer.Option(None, "--provider", help="Provider id"),
     webhook_url: str | None = typer.Option(
         None,
         "--webhook-url",
@@ -246,7 +245,6 @@ def run_autolayout(
     job = service.start_job(
         project_root=str(project_root),
         build_target=build,
-        provider_name=provider,
         options=options or None,
     )
 
@@ -266,7 +264,6 @@ def run_autolayout(
 def run_autolayout_flow(
     build: str = typer.Option("default", "--build", "-b", help="Build target name"),
     project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p"),
-    provider: str | None = typer.Option(None, "--provider", help="Provider id"),
     webhook_url: str | None = typer.Option(
         None,
         "--webhook-url",
@@ -364,7 +361,6 @@ def run_autolayout_flow(
     placement_job = service.start_job(
         project_root=str(project_root),
         build_target=build,
-        provider_name=provider,
         options=placement_options,
     )
 
@@ -471,7 +467,6 @@ def run_autolayout_flow(
     routing_job = service.start_job(
         project_root=str(project_root),
         build_target=build,
-        provider_name=provider,
         options=routing_options,
     )
 
@@ -535,18 +530,12 @@ def autolayout_candidates(
 def autolayout_apply(
     job_id: str,
     candidate_id: str | None = typer.Option(None, "--candidate", "-c"),
-    manual_layout_path: Path | None = typer.Option(
-        None,
-        "--manual-layout-path",
-        help="Use a local .kicad_pcb file instead of provider download",
-    ),
 ) -> None:
     """Apply a candidate to the target layout file."""
     service = get_autolayout_service()
     job = service.apply_candidate(
         job_id,
         candidate_id=candidate_id,
-        manual_layout_path=str(manual_layout_path) if manual_layout_path else None,
     )
     _print_json({"success": True, "job": job.to_dict()})
 
@@ -558,15 +547,3 @@ def autolayout_cancel(job_id: str) -> None:
     service = get_autolayout_service()
     job = service.cancel_job(job_id)
     _print_json({"success": True, "job": job.to_dict()})
-
-
-@autolayout_app.command("export-quilter")
-@capture("cli:autolayout_export_quilter_start", "cli:autolayout_export_quilter_end")
-def export_quilter(
-    build: str = typer.Option("default", "--build", "-b", help="Build target name"),
-    project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p"),
-) -> None:
-    """Create a manual-upload package for Quilter."""
-    service = get_autolayout_service()
-    package_path = service.export_quilter_package(str(project_root), build)
-    _print_json({"success": True, "packagePath": package_path})

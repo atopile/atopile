@@ -1,12 +1,13 @@
-"""Typed models for autolayout jobs and provider contracts."""
+"""Typed models for autolayout jobs and DeepPCB contracts."""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AutolayoutState(str, Enum):
@@ -27,8 +28,11 @@ TERMINAL_AUTO_LAYOUT_STATES = {
 }
 
 
-@dataclass
-class ProviderCapabilities:
+class _AutolayoutModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+
+class ProviderCapabilities(_AutolayoutModel):
     """Feature flags for a provider adapter."""
 
     supports_cancel: bool = True
@@ -37,22 +41,20 @@ class ProviderCapabilities:
     requires_manual_upload: bool = False
 
 
-@dataclass
-class AutolayoutCandidate:
+class AutolayoutCandidate(_AutolayoutModel):
     """A selectable layout candidate produced by a provider."""
 
     candidate_id: str
     label: str | None = None
     score: float | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    files: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    files: dict[str, str] = Field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return self.model_dump(mode="json")
 
 
-@dataclass
-class SubmitRequest:
+class SubmitRequest(_AutolayoutModel):
     """Input contract passed from service to provider adapter."""
 
     job_id: str
@@ -61,43 +63,39 @@ class SubmitRequest:
     layout_path: Path
     input_zip_path: Path
     work_dir: Path
-    constraints: dict[str, Any] = field(default_factory=dict)
-    options: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    options: dict[str, Any] = Field(default_factory=dict)
     kicad_project_path: Path | None = None
     schematic_path: Path | None = None
 
 
-@dataclass
-class SubmitResult:
+class SubmitResult(_AutolayoutModel):
     """Provider response after initial submission."""
 
     external_job_id: str
     state: AutolayoutState = AutolayoutState.RUNNING
     message: str | None = None
-    candidates: list[AutolayoutCandidate] = field(default_factory=list)
+    candidates: list[AutolayoutCandidate] = Field(default_factory=list)
 
 
-@dataclass
-class ProviderStatus:
+class ProviderStatus(_AutolayoutModel):
     """Provider status payload mapped to internal state."""
 
     state: AutolayoutState
     message: str | None = None
     progress: float | None = None
-    candidates: list[AutolayoutCandidate] = field(default_factory=list)
+    candidates: list[AutolayoutCandidate] = Field(default_factory=list)
 
 
-@dataclass
-class DownloadResult:
+class DownloadResult(_AutolayoutModel):
     """Provider download result for a specific candidate."""
 
     candidate_id: str
     layout_path: Path
-    files: dict[str, str] = field(default_factory=dict)
+    files: dict[str, str] = Field(default_factory=dict)
 
 
-@dataclass
-class AutolayoutJob:
+class AutolayoutJob(_AutolayoutModel):
     """Persistent in-memory representation of an autolayout job."""
 
     job_id: str
@@ -111,8 +109,8 @@ class AutolayoutJob:
     progress: float | None = None
     message: str | None = None
     error: str | None = None
-    constraints: dict[str, Any] = field(default_factory=dict)
-    options: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    options: dict[str, Any] = Field(default_factory=dict)
     input_zip_path: str | None = None
     work_dir: str | None = None
     layout_path: str | None = None
@@ -120,16 +118,26 @@ class AutolayoutJob:
     applied_candidate_id: str | None = None
     applied_layout_path: str | None = None
     backup_layout_path: str | None = None
-    candidates: list[AutolayoutCandidate] = field(default_factory=list)
+    candidates: list[AutolayoutCandidate] = Field(default_factory=list)
 
     def mark_updated(self) -> None:
         self.updated_at = utc_now_iso()
 
     def to_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["state"] = self.state.value
-        payload["candidates"] = [candidate.to_dict() for candidate in self.candidates]
-        return payload
+        return self.model_dump(mode="json")
+
+
+class ResolvedAutolayoutTargetFiles(_AutolayoutModel):
+    """Typed result of resolving project/build target inputs for autolayout."""
+
+    project_root: Path
+    build_target: str
+    layout_path: Path
+    kicad_project_path: Path | None = None
+    schematic_path: Path | None = None
+    work_root: Path
+    default_constraints: dict[str, Any] = Field(default_factory=dict)
+    default_options: dict[str, Any] = Field(default_factory=dict)
 
 
 def utc_now_iso() -> str:

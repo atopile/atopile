@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import difflib
 import json
+import math
 import os
 import shutil
+import tempfile
+import xml.etree.ElementTree as ET
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,7 +38,6 @@ from atopile.model.sqlite import BuildHistory
 from atopile.server import module_introspection
 from atopile.server.agent import policy
 from atopile.server.domains import artifacts as artifacts_domain
-from atopile.server.domains import datasheets as datasheets_domain
 from atopile.server.domains import manufacturing as manufacturing_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts_search as parts_domain
@@ -43,6 +46,7 @@ from atopile.server.domains import projects as projects_domain
 from atopile.server.domains import stdlib as stdlib_domain
 from atopile.server.domains.autolayout.models import (
     AutolayoutCandidate,
+    AutolayoutJob,
     AutolayoutState,
 )
 from atopile.server.domains.autolayout.service import get_autolayout_service
@@ -62,27 +66,14 @@ _EXPECTED_MANUFACTURING_OUTPUT_KEYS: tuple[str, ...] = (
     "kicad_sch",
     "pcb_summary",
 )
-
-_MANAGER_ALLOWED_TOOL_NAMES: set[str] = {
-    "project_list_files",
-    "project_read_file",
-    "project_search",
-    "web_search",
-    "project_list_modules",
-    "project_module_children",
-    "stdlib_list",
-    "stdlib_get_item",
-    "parts_search",
-    "packages_search",
-    "build_logs_search",
-    "design_diagnostics",
-    "layout_get_component_position",
-    "autolayout_status",
-    "autolayout_request_screenshot",
-    "report_bom",
-    "report_variables",
-    "manufacturing_summary",
-}
+_AUTOLAYOUT_MAX_TIMEOUT_MINUTES = 2
+_PACKAGE_REFERENCE_MAX_FILES_SCANNED = int(
+    os.getenv("ATOPILE_AGENT_PACKAGE_REFERENCE_MAX_FILES_SCANNED", "5000")
+)
+_PACKAGE_REFERENCE_MAX_FILES_SCANNED = max(
+    200,
+    min(_PACKAGE_REFERENCE_MAX_FILES_SCANNED, 200_000),
+)
 
 
 def _datasheet_cache_key(*, project_root: Path, source_type: str, source: str) -> str:
@@ -771,6 +762,481 @@ def _default_screenshot_layers(side: str) -> list[str]:
     return ["F.Cu", "F.Paste", "F.Mask", "Edge.Cuts"]
 
 
+def _normalize_highlight_components(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+
+    tokens: list[str] = []
+    if isinstance(raw, str):
+        token = raw.strip()
+        if token:
+            tokens.append(token)
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, str):
+                raise ValueError("highlight_components entries must be strings")
+            token = item.strip()
+            if token:
+                tokens.append(token)
+    else:
+        raise ValueError("highlight_components must be a string or array of strings")
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        lowered = token.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(token)
+    return deduped
+
+
+def _parse_svg_viewbox(root: ET.Element) -> tuple[float, float, float, float] | None:
+    raw = root.attrib.get("viewBox")
+    if not raw:
+        return None
+
+    parts = raw.replace(",", " ").split()
+    if len(parts) != 4:
+        return None
+    try:
+        x_min, y_min, width, height = (float(part) for part in parts)
+    except ValueError:
+        return None
+    return x_min, y_min, width, height
+
+
+def _svg_namespace_from_tag(tag: str) -> str:
+    if tag.startswith("{") and "}" in tag:
+        return tag[1 : tag.find("}")]
+    return ""
+
+
+def _svg_tag(namespace: str, local_name: str) -> str:
+    if namespace:
+        return f"{{{namespace}}}{local_name}"
+    return local_name
+
+
+def _rotate_xy(x: float, y: float, angle_deg: float) -> tuple[float, float]:
+    angle_rad = math.radians(angle_deg)
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    return (x * cos_a - y * sin_a, x * sin_a + y * cos_a)
+
+
+def _footprint_reference(footprint: Any) -> str:
+    from faebryk.libs.kicad.fileformats import Property
+
+    reference = Property.try_get_property(
+        getattr(footprint, "propertys", None),
+        "Reference",
+    )
+    if isinstance(reference, str) and reference.strip():
+        return reference.strip()
+    return ""
+
+
+def _footprint_bbox_mm(footprint: Any) -> tuple[float, float, float, float] | None:
+    fp_at = getattr(footprint, "at", None)
+    pads = getattr(footprint, "pads", None)
+    if fp_at is None or pads is None:
+        return None
+
+    fp_x = float(getattr(fp_at, "x", 0.0) or 0.0)
+    fp_y = float(getattr(fp_at, "y", 0.0) or 0.0)
+    fp_r = float(getattr(fp_at, "r", 0.0) or 0.0)
+
+    points: list[tuple[float, float]] = []
+    for pad in pads:
+        pad_at = getattr(pad, "at", None)
+        pad_size = getattr(pad, "size", None)
+        if pad_at is None or pad_size is None:
+            continue
+
+        width = float(getattr(pad_size, "w", 0.0) or 0.0)
+        height = float(getattr(pad_size, "h", width) or width)
+        if width <= 0 or height <= 0:
+            continue
+
+        rel_x = float(getattr(pad_at, "x", 0.0) or 0.0)
+        rel_y = float(getattr(pad_at, "y", 0.0) or 0.0)
+        rel_r = float(getattr(pad_at, "r", 0.0) or 0.0)
+
+        dx, dy = _rotate_xy(rel_x, rel_y, fp_r)
+        center_x = fp_x + dx
+        center_y = fp_y + dy
+        absolute_rotation = fp_r + rel_r
+
+        half_w = width / 2.0
+        half_h = height / 2.0
+        for offset_x, offset_y in (
+            (-half_w, -half_h),
+            (half_w, -half_h),
+            (half_w, half_h),
+            (-half_w, half_h),
+        ):
+            rx, ry = _rotate_xy(offset_x, offset_y, absolute_rotation)
+            points.append((center_x + rx, center_y + ry))
+
+    if not points:
+        # Fallback when footprint has no pads in the layout object.
+        return (fp_x - 0.1, fp_y - 0.1, fp_x + 0.1, fp_y + 0.1)
+
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _bbox_overlap_details(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> dict[str, float] | None:
+    overlap_x = min(first[2], second[2]) - max(first[0], second[0])
+    overlap_y = min(first[3], second[3]) - max(first[1], second[1])
+    if overlap_x <= 0 or overlap_y <= 0:
+        return None
+
+    return {
+        "overlap_dx_mm": overlap_x,
+        "overlap_dy_mm": overlap_y,
+        "overlap_area_mm2": overlap_x * overlap_y,
+    }
+
+
+def _extract_edge_cuts_points(kicad_pcb: Any) -> list[tuple[float, float]]:
+    from faebryk.libs.kicad.fileformats import kicad
+
+    points: list[tuple[float, float]] = []
+
+    def is_edge_cuts(geo: Any) -> bool:
+        layers = kicad.geo.get_layers(geo)
+        return "Edge.Cuts" in layers
+
+    def append_xy(coord: Any) -> None:
+        points.append(
+            (
+                float(getattr(coord, "x", 0.0)),
+                float(getattr(coord, "y", 0.0)),
+            )
+        )
+
+    for line in getattr(kicad_pcb, "gr_lines", []) or []:
+        if is_edge_cuts(line):
+            append_xy(line.start)
+            append_xy(line.end)
+    for arc in getattr(kicad_pcb, "gr_arcs", []) or []:
+        if is_edge_cuts(arc):
+            append_xy(arc.start)
+            append_xy(arc.mid)
+            append_xy(arc.end)
+    for rect in getattr(kicad_pcb, "gr_rects", []) or []:
+        if is_edge_cuts(rect):
+            append_xy(rect.start)
+            append_xy(rect.end)
+    for circle in getattr(kicad_pcb, "gr_circles", []) or []:
+        if not is_edge_cuts(circle):
+            continue
+        cx = float(circle.center.x)
+        cy = float(circle.center.y)
+        radius = (
+            (float(circle.end.x) - cx) ** 2 + (float(circle.end.y) - cy) ** 2
+        ) ** 0.5
+        points.extend(
+            [
+                (cx - radius, cy),
+                (cx + radius, cy),
+                (cx, cy - radius),
+                (cx, cy + radius),
+            ]
+        )
+
+    for footprint in getattr(kicad_pcb, "footprints", []) or []:
+        fp_at = getattr(footprint, "at", None)
+        fp_x = float(getattr(fp_at, "x", 0.0) or 0.0)
+        fp_y = float(getattr(fp_at, "y", 0.0) or 0.0)
+        fp_r = float(getattr(fp_at, "r", 0.0) or 0.0)
+
+        def transform_local(coord: Any) -> tuple[float, float]:
+            local_x = float(getattr(coord, "x", 0.0) or 0.0)
+            local_y = float(getattr(coord, "y", 0.0) or 0.0)
+            dx, dy = _rotate_xy(local_x, local_y, fp_r)
+            return (fp_x + dx, fp_y + dy)
+
+        for line in getattr(footprint, "fp_lines", []) or []:
+            if is_edge_cuts(line):
+                points.append(transform_local(line.start))
+                points.append(transform_local(line.end))
+        for arc in getattr(footprint, "fp_arcs", []) or []:
+            if is_edge_cuts(arc):
+                points.append(transform_local(arc.start))
+                points.append(transform_local(arc.mid))
+                points.append(transform_local(arc.end))
+
+    return points
+
+
+def _analyze_layout_component_placement(
+    *,
+    pcb_file: Any,
+    moved_record: _LayoutComponentRecord,
+    all_records: list[_LayoutComponentRecord],
+) -> dict[str, Any]:
+    moved_bbox = _footprint_bbox_mm(moved_record.footprint)
+    result: dict[str, Any] = {
+        "checked": moved_bbox is not None,
+        "reference": moved_record.reference or None,
+        "atopile_address": moved_record.atopile_address,
+        "component_bbox_mm": None,
+        "board_bbox_mm": None,
+        "board_outline_available": False,
+        "on_board": None,
+        "outside_board_area_mm2": None,
+        "collision_count": 0,
+        "collisions": [],
+    }
+    if moved_bbox is None:
+        return result
+
+    result["component_bbox_mm"] = {
+        "min_x": round(moved_bbox[0], 4),
+        "min_y": round(moved_bbox[1], 4),
+        "max_x": round(moved_bbox[2], 4),
+        "max_y": round(moved_bbox[3], 4),
+    }
+
+    collisions: list[dict[str, Any]] = []
+    for record in all_records:
+        if record.footprint is moved_record.footprint:
+            continue
+        if (
+            record.reference
+            and moved_record.reference
+            and record.reference == moved_record.reference
+        ):
+            continue
+
+        other_bbox = _footprint_bbox_mm(record.footprint)
+        if other_bbox is None:
+            continue
+        overlap = _bbox_overlap_details(moved_bbox, other_bbox)
+        if overlap is None:
+            continue
+
+        collisions.append(
+            {
+                "reference": record.reference or None,
+                "atopile_address": record.atopile_address,
+                "overlap_dx_mm": round(overlap["overlap_dx_mm"], 4),
+                "overlap_dy_mm": round(overlap["overlap_dy_mm"], 4),
+                "overlap_area_mm2": round(overlap["overlap_area_mm2"], 4),
+            }
+        )
+
+    collisions.sort(key=lambda item: item.get("overlap_area_mm2", 0.0), reverse=True)
+    result["collisions"] = collisions
+    result["collision_count"] = len(collisions)
+
+    kicad_pcb = getattr(pcb_file, "kicad_pcb", None)
+    if kicad_pcb is None:
+        return result
+
+    edge_points = _extract_edge_cuts_points(kicad_pcb)
+    if not edge_points:
+        return result
+
+    min_x = min(point[0] for point in edge_points)
+    min_y = min(point[1] for point in edge_points)
+    max_x = max(point[0] for point in edge_points)
+    max_y = max(point[1] for point in edge_points)
+    result["board_outline_available"] = True
+    result["board_bbox_mm"] = {
+        "min_x": round(min_x, 4),
+        "min_y": round(min_y, 4),
+        "max_x": round(max_x, 4),
+        "max_y": round(max_y, 4),
+    }
+
+    within_bbox = (
+        moved_bbox[0] >= min_x
+        and moved_bbox[1] >= min_y
+        and moved_bbox[2] <= max_x
+        and moved_bbox[3] <= max_y
+    )
+
+    outside_area_mm2: float | None = None
+    try:
+        from shapely.geometry import MultiPoint, box
+
+        hull = MultiPoint(edge_points).convex_hull
+        footprint_box = box(*moved_bbox)
+        if not hull.is_empty and hull.geom_type in {"Polygon", "MultiPolygon"}:
+            covered = bool(hull.buffer(1e-6).covers(footprint_box))
+            outside_area_mm2 = float(footprint_box.difference(hull).area)
+            result["on_board"] = covered
+        else:
+            result["on_board"] = within_bbox
+    except Exception:
+        result["on_board"] = within_bbox
+
+    if outside_area_mm2 is None:
+        footprint_area = max(
+            0.0,
+            (moved_bbox[2] - moved_bbox[0]) * (moved_bbox[3] - moved_bbox[1]),
+        )
+        if result["on_board"] is False:
+            outside_area_mm2 = footprint_area
+        else:
+            outside_area_mm2 = 0.0
+
+    result["outside_board_area_mm2"] = round(float(outside_area_mm2), 4)
+    return result
+
+
+def _resolve_highlight_components(
+    *,
+    layout_path: Path,
+    queries: list[str],
+    fuzzy_limit: int,
+) -> tuple[list[_LayoutComponentRecord], list[dict[str, Any]]]:
+    if not queries:
+        return [], []
+
+    _, records = _load_layout_component_index(layout_path)
+    resolved: list[_LayoutComponentRecord] = []
+    unresolved: list[dict[str, Any]] = []
+    seen_refs: set[str] = set()
+
+    for query in queries:
+        lookup = _lookup_layout_component(
+            records=records,
+            query=query,
+            fuzzy_limit=fuzzy_limit,
+        )
+        if not lookup.found or lookup.record is None:
+            unresolved.append(
+                {
+                    "query": query,
+                    "message": lookup.message,
+                    "suggestions": lookup.suggestions,
+                }
+            )
+            continue
+
+        reference_key = lookup.record.reference_norm or lookup.record.address_norm
+        if reference_key and reference_key in seen_refs:
+            continue
+        if reference_key:
+            seen_refs.add(reference_key)
+        resolved.append(lookup.record)
+
+    return resolved, unresolved
+
+
+def _apply_component_highlight_overlay(
+    *,
+    base_svg_path: Path,
+    layout_path: Path,
+    project_dir: Path,
+    layers: list[str],
+    highlighted_references: set[str],
+    dim_opacity: float,
+) -> dict[str, Any]:
+    from faebryk.exporters.pcb.kicad.artifacts import export_svg
+    from faebryk.libs.kicad.fileformats import kicad
+
+    if not highlighted_references:
+        return {"applied": False, "reason": "no_highlighted_references"}
+
+    with tempfile.TemporaryDirectory(prefix="ato-highlight-") as tmpdir:
+        try:
+            tmp_root = Path(tmpdir)
+            overlay_layout_path = tmp_root / "highlight.kicad_pcb"
+            overlay_svg_path = tmp_root / "highlight.svg"
+
+            if hasattr(kicad.loads, "cache"):
+                kicad.loads.cache.pop(layout_path, None)
+            pcb_file = kicad.loads(kicad.pcb.PcbFile, layout_path)
+            pcb = pcb_file.kicad_pcb
+
+            selected_footprints = []
+            for footprint in pcb.footprints:
+                if _footprint_reference(footprint) in highlighted_references:
+                    selected_footprints.append(footprint)
+            if not selected_footprints:
+                return {"applied": False, "reason": "highlight_components_not_found"}
+
+            pcb.footprints = selected_footprints
+            kicad.dumps(pcb_file, overlay_layout_path)
+            if hasattr(kicad.loads, "cache"):
+                kicad.loads.cache.pop(overlay_layout_path, None)
+
+            highlight_layers = [layer for layer in layers if layer != "Edge.Cuts"]
+            if not highlight_layers:
+                highlight_layers = list(layers)
+            export_svg(
+                pcb_file=overlay_layout_path,
+                svg_file=overlay_svg_path,
+                project_dir=project_dir,
+                layers=",".join(highlight_layers),
+            )
+
+            base_tree = ET.parse(base_svg_path)
+            base_root = base_tree.getroot()
+            overlay_root = ET.parse(overlay_svg_path).getroot()
+
+            viewbox = _parse_svg_viewbox(base_root)
+            if viewbox is None:
+                return {"applied": False, "reason": "missing_viewbox"}
+            x_min, y_min, width, height = viewbox
+
+            namespace = _svg_namespace_from_tag(base_root.tag)
+            rect = ET.Element(
+                _svg_tag(namespace, "rect"),
+                {
+                    "x": f"{x_min:.4f}",
+                    "y": f"{y_min:.4f}",
+                    "width": f"{width:.4f}",
+                    "height": f"{height:.4f}",
+                    "fill": "#000000",
+                    "fill-opacity": f"{dim_opacity:.3f}",
+                    "id": "atopile-dim-overlay",
+                },
+            )
+            base_root.append(rect)
+
+            highlight_group = ET.Element(
+                _svg_tag(namespace, "g"),
+                {
+                    "id": "atopile-highlight-components",
+                },
+            )
+            overlay_namespace = _svg_namespace_from_tag(overlay_root.tag)
+            skip_tags = {
+                _svg_tag(overlay_namespace, "title"),
+                _svg_tag(overlay_namespace, "desc"),
+            }
+            for child in list(overlay_root):
+                if child.tag in skip_tags:
+                    continue
+                highlight_group.append(deepcopy(child))
+            base_root.append(highlight_group)
+
+            if namespace:
+                ET.register_namespace("", namespace)
+            base_tree.write(base_svg_path, encoding="utf-8", xml_declaration=True)
+        finally:
+            if hasattr(kicad.loads, "cache"):
+                kicad.loads.cache.pop(layout_path, None)
+
+    return {
+        "applied": True,
+        "highlight_count": len(highlighted_references),
+        "dim_opacity": dim_opacity,
+    }
+
+
 def _estimate_layout_component_count(layout_path: Path) -> int | None:
     if not layout_path.exists():
         return None
@@ -788,43 +1254,27 @@ def _recommended_autolayout_timeout(
 ) -> dict[str, Any]:
     normalized_job_type = job_type.strip().lower()
     if component_count is None:
-        return {
-            "component_count": None,
-            "bucket": "unknown",
-            "start_timeout_minutes": 10,
-            "resume_increment_minutes": 10,
-            "note": (
-                "Could not estimate component count from layout. Start at 10 minutes "
-                "and resume in 10-minute increments."
-            ),
-        }
-
-    if component_count <= 50:
-        start = 2 if normalized_job_type == "placement" else 4
-        resume = 2 if normalized_job_type == "placement" else 4
+        bucket = "unknown"
+    elif component_count <= 50:
         bucket = "simple"
     elif component_count <= 100:
-        start = 10 if normalized_job_type == "placement" else 15
-        resume = 5 if normalized_job_type == "placement" else 10
         bucket = "medium"
     elif component_count <= 200:
-        start = 20 if normalized_job_type == "placement" else 30
-        resume = 10 if normalized_job_type == "placement" else 15
         bucket = "complex"
     else:
-        start = 30 if normalized_job_type == "placement" else 45
-        resume = 15 if normalized_job_type == "placement" else 20
         bucket = "very_complex"
 
     return {
         "component_count": component_count,
         "bucket": bucket,
-        "start_timeout_minutes": start,
-        "resume_increment_minutes": resume,
+        "job_type": normalized_job_type or "routing",
+        "start_timeout_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
+        "resume_increment_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
+        "per_run_cap_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
         "note": (
-            "Heuristic guidance based on component count and DeepPCB's stop/resume "
-            "workflow. Use autolayout_status checkpoints and resume when quality is "
-            "not sufficient."
+            "Per-run timeout is capped to 2 minutes. Run a short pass, review "
+            "candidate quality with autolayout_status/screenshots, then resume with "
+            "resume_board_id if quality is not yet sufficient."
         ),
     }
 
@@ -1458,18 +1908,22 @@ def _layout_set_component_position(
     PCB_Transformer.move_fp(record.footprint, target_coord, target_layer)
     _write_layout_component_file(layout_path, pcb_file)
 
-    after = _layout_component_payload(
-        _LayoutComponentRecord(
-            reference=record.reference,
-            atopile_address=record.atopile_address,
-            layer=str(getattr(record.footprint, "layer", target_layer) or target_layer),
-            x_mm=float(getattr(record.footprint.at, "x", target_x) or target_x),
-            y_mm=float(getattr(record.footprint.at, "y", target_y) or target_y),
-            rotation_deg=float(
-                getattr(record.footprint.at, "r", target_rotation) or target_rotation
-            ),
-            footprint=record.footprint,
-        )
+    after_record = _LayoutComponentRecord(
+        reference=record.reference,
+        atopile_address=record.atopile_address,
+        layer=str(getattr(record.footprint, "layer", target_layer) or target_layer),
+        x_mm=float(getattr(record.footprint.at, "x", target_x) or target_x),
+        y_mm=float(getattr(record.footprint.at, "y", target_y) or target_y),
+        rotation_deg=float(
+            getattr(record.footprint.at, "r", target_rotation) or target_rotation
+        ),
+        footprint=record.footprint,
+    )
+    after = _layout_component_payload(after_record)
+    placement_check = _analyze_layout_component_placement(
+        pcb_file=pcb_file,
+        moved_record=after_record,
+        all_records=records,
     )
 
     return {
@@ -1487,6 +1941,7 @@ def _layout_set_component_position(
             "dy_mm": after["y_mm"] - before["y_mm"],
             "drotation_deg": after["rotation_deg"] - before["rotation_deg"],
         },
+        "placement_check": placement_check,
     }
 
 
@@ -1667,25 +2122,353 @@ def _search_example_ato_files(
     return matches
 
 
-def get_tool_definitions_for_actor(actor: str) -> list[dict[str, Any]]:
-    actor_clean = (actor or "worker").strip().lower()
-    definitions = get_tool_definitions()
-    if actor_clean != "manager":
-        return definitions
-    return [
-        tool_def
-        for tool_def in definitions
-        if str(tool_def.get("name", "")) in _MANAGER_ALLOWED_TOOL_NAMES
-    ]
+def _resolve_package_reference_roots(project_root: Path) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_root(path: Path | None) -> None:
+        if path is None:
+            return
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        if not resolved.exists() or not resolved.is_dir():
+            return
+        seen.add(resolved)
+        roots.append(resolved)
+
+    project_cfg = ProjectConfig.from_path(project_root)
+    if project_cfg is not None:
+        add_root(project_cfg.paths.modules)
+    else:
+        add_root(project_root / ".ato" / "modules")
+
+    raw_extra_roots = os.getenv("ATOPILE_AGENT_PACKAGE_REFERENCE_ROOTS", "")
+    if raw_extra_roots.strip():
+        for token in raw_extra_roots.split(","):
+            cleaned = token.strip()
+            if not cleaned:
+                continue
+            candidate = Path(cleaned).expanduser()
+            if not candidate.is_absolute():
+                candidate = (project_root / candidate).resolve()
+            add_root(candidate)
+
+    return roots
 
 
-def _assert_tool_allowed_for_actor(name: str, actor: str) -> None:
-    actor_clean = (actor or "worker").strip().lower()
-    if actor_clean != "manager":
-        return
-    if name in _MANAGER_ALLOWED_TOOL_NAMES:
-        return
-    raise ValueError(f"Tool '{name}' is not allowed for actor '{actor_clean}'")
+def _infer_package_reference_metadata(
+    *,
+    root: Path,
+    file_path: Path,
+) -> tuple[str | None, str, str]:
+    rel = file_path.relative_to(root)
+    rel_path = str(rel)
+    parts = rel.parts
+
+    if len(parts) >= 3:
+        package_identifier = f"{parts[0]}/{parts[1]}"
+        path_in_package = str(Path(*parts[2:]))
+    else:
+        package_identifier = None
+        path_in_package = rel_path
+
+    return package_identifier, path_in_package, rel_path
+
+
+def _iter_package_reference_files(
+    *,
+    roots: list[Path],
+    package_query: str | None = None,
+    path_query: str | None = None,
+    max_files_scanned: int = _PACKAGE_REFERENCE_MAX_FILES_SCANNED,
+) -> tuple[list[dict[str, Any]], int, bool]:
+    package_needle = (package_query or "").strip().lower()
+    path_needle = (path_query or "").strip().lower()
+    scanned = 0
+    truncated = False
+    records: list[dict[str, Any]] = []
+
+    for root in roots:
+        for file_path in root.rglob("*.ato"):
+            rel = file_path.relative_to(root)
+            if any(part.startswith(".") for part in rel.parts[:-1]):
+                continue
+            if ".cache" in rel.parts:
+                continue
+
+            scanned += 1
+            if scanned > max_files_scanned:
+                truncated = True
+                return records, scanned, truncated
+
+            package_identifier, path_in_package, rel_path = (
+                _infer_package_reference_metadata(
+                    root=root,
+                    file_path=file_path,
+                )
+            )
+            package_value = package_identifier or ""
+
+            if package_needle and package_needle not in package_value.lower():
+                continue
+            if path_needle and path_needle not in rel_path.lower():
+                continue
+
+            records.append(
+                {
+                    "source_root": str(root),
+                    "path": rel_path,
+                    "absolute_path": str(file_path),
+                    "package_identifier": package_identifier,
+                    "path_in_package": path_in_package,
+                }
+            )
+
+    return records, scanned, truncated
+
+
+def _list_package_reference_files(
+    *,
+    project_root: Path,
+    package_query: str | None,
+    path_query: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    roots = _resolve_package_reference_roots(project_root)
+    if not roots:
+        return {
+            "roots": [],
+            "files": [],
+            "packages": [],
+            "total_files": 0,
+            "returned": 0,
+            "message": (
+                "No package reference roots found. Install dependencies (creating "
+                "`.ato/modules`) or configure ATOPILE_AGENT_PACKAGE_REFERENCE_ROOTS."
+            ),
+        }
+
+    records, scanned, truncated = _iter_package_reference_files(
+        roots=roots,
+        package_query=package_query,
+        path_query=path_query,
+    )
+    returned = records[:limit]
+
+    package_counts: dict[str, int] = {}
+    for record in records:
+        package_identifier = record.get("package_identifier")
+        key = (
+            str(package_identifier)
+            if isinstance(package_identifier, str) and package_identifier
+            else "<unscoped>"
+        )
+        package_counts[key] = package_counts.get(key, 0) + 1
+    top_packages = sorted(
+        package_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+
+    return {
+        "roots": [str(root) for root in roots],
+        "filters": {
+            "package_query": package_query,
+            "path_query": path_query,
+        },
+        "files": returned,
+        "packages": [
+            {"package_identifier": package_identifier, "file_count": count}
+            for package_identifier, count in top_packages[:50]
+        ],
+        "total_files": len(records),
+        "returned": len(returned),
+        "scanned_files": scanned,
+        "scan_truncated": truncated,
+        "scan_cap_files": _PACKAGE_REFERENCE_MAX_FILES_SCANNED,
+    }
+
+
+def _search_package_reference_files(
+    *,
+    project_root: Path,
+    query: str,
+    package_query: str | None,
+    path_query: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    needle = query.strip().lower()
+    if not needle:
+        return {
+            "roots": [],
+            "query": query,
+            "matches": [],
+            "total": 0,
+            "scanned_files": 0,
+            "scan_truncated": False,
+            "scan_cap_files": _PACKAGE_REFERENCE_MAX_FILES_SCANNED,
+        }
+
+    roots = _resolve_package_reference_roots(project_root)
+    if not roots:
+        return {
+            "roots": [],
+            "query": query,
+            "matches": [],
+            "total": 0,
+            "message": (
+                "No package reference roots found. Install dependencies (creating "
+                "`.ato/modules`) or configure ATOPILE_AGENT_PACKAGE_REFERENCE_ROOTS."
+            ),
+        }
+
+    records, scanned, truncated = _iter_package_reference_files(
+        roots=roots,
+        package_query=package_query,
+        path_query=path_query,
+    )
+
+    matches: list[dict[str, Any]] = []
+    for record in records:
+        file_path = Path(str(record["absolute_path"]))
+        try:
+            text = file_path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if needle not in line.lower():
+                continue
+            matches.append(
+                {
+                    "package_identifier": record.get("package_identifier"),
+                    "path": record.get("path"),
+                    "path_in_package": record.get("path_in_package"),
+                    "source_root": record.get("source_root"),
+                    "line": line_no,
+                    "text": line.strip()[:260],
+                }
+            )
+            if len(matches) >= limit:
+                return {
+                    "roots": [str(root) for root in roots],
+                    "query": query,
+                    "filters": {
+                        "package_query": package_query,
+                        "path_query": path_query,
+                    },
+                    "matches": matches,
+                    "total": len(matches),
+                    "scanned_files": scanned,
+                    "scan_truncated": truncated,
+                    "scan_cap_files": _PACKAGE_REFERENCE_MAX_FILES_SCANNED,
+                }
+
+    return {
+        "roots": [str(root) for root in roots],
+        "query": query,
+        "filters": {
+            "package_query": package_query,
+            "path_query": path_query,
+        },
+        "matches": matches,
+        "total": len(matches),
+        "scanned_files": scanned,
+        "scan_truncated": truncated,
+        "scan_cap_files": _PACKAGE_REFERENCE_MAX_FILES_SCANNED,
+    }
+
+
+def _read_package_reference_file(
+    *,
+    project_root: Path,
+    package_identifier: str,
+    path_in_package: str | None,
+    start_line: int,
+    max_lines: int,
+) -> dict[str, Any]:
+    roots = _resolve_package_reference_roots(project_root)
+    if not roots:
+        raise ValueError(
+            "No package reference roots found. Install dependencies (creating "
+            "`.ato/modules`) or configure ATOPILE_AGENT_PACKAGE_REFERENCE_ROOTS."
+        )
+
+    package_clean = package_identifier.strip().strip("/")
+    if not package_clean or "/" not in package_clean:
+        raise ValueError("package_identifier must look like 'owner/package'")
+
+    rel_hint = (
+        str(path_in_package).strip().lstrip("/")
+        if isinstance(path_in_package, str) and path_in_package.strip()
+        else None
+    )
+
+    selected_root: Path | None = None
+    selected_file: Path | None = None
+    selected_rel_path: str | None = None
+    candidates_for_suggestions: list[str] = []
+    for root in roots:
+        package_root = (root / package_clean).resolve()
+        if not package_root.exists() or not package_root.is_dir():
+            continue
+
+        candidates_for_suggestions.append(str(package_clean))
+        if rel_hint:
+            candidate = (package_root / rel_hint).resolve()
+            if (
+                candidate.exists()
+                and candidate.is_file()
+                and candidate.suffix.lower() == ".ato"
+                and candidate.is_relative_to(package_root)
+            ):
+                selected_root = root
+                selected_file = candidate
+                selected_rel_path = str(candidate.relative_to(root))
+                break
+        else:
+            ato_files = sorted(
+                path for path in package_root.rglob("*.ato") if path.is_file()
+            )
+            if ato_files:
+                selected_root = root
+                selected_file = ato_files[0]
+                selected_rel_path = str(ato_files[0].relative_to(root))
+                break
+
+    if selected_root is None or selected_file is None or selected_rel_path is None:
+        available_records, _, _ = _iter_package_reference_files(roots=roots)
+        available_packages = sorted(
+            {
+                str(record["package_identifier"])
+                for record in available_records
+                if isinstance(record.get("package_identifier"), str)
+                and str(record["package_identifier"]).strip()
+            }
+        )
+        suggestions = difflib.get_close_matches(
+            package_clean,
+            available_packages,
+            n=8,
+            cutoff=0.45,
+        )
+        raise ValueError(
+            f"Package reference '{package_clean}' not found."
+            + (f" Try one of: {', '.join(suggestions)}" if suggestions else "")
+        )
+
+    chunk = policy.read_file_chunk(
+        selected_root,
+        selected_rel_path,
+        start_line=start_line,
+        max_lines=max_lines,
+    )
+    return {
+        "package_identifier": package_clean,
+        "source_root": str(selected_root),
+        "path_in_package": str(Path(selected_rel_path).relative_to(package_clean)),
+        **chunk,
+    }
 
 
 def get_tool_definitions() -> list[dict[str, Any]]:
@@ -1846,6 +2629,76 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     },
                 },
                 "required": ["example"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_ato_list",
+            "description": (
+                "List available package .ato reference files from `.ato/modules` "
+                "and optional configured package reference roots."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "package_query": {"type": ["string", "null"]},
+                    "path_query": {"type": ["string", "null"]},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "default": 200,
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_ato_search",
+            "description": (
+                "Search package .ato reference files by substring with optional "
+                "package/path filtering."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "package_query": {"type": ["string", "null"]},
+                    "path_query": {"type": ["string", "null"]},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "default": 120,
+                    },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_ato_read",
+            "description": (
+                "Read one package .ato reference file by package identifier "
+                "(owner/package) and optional path within that package."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "package_identifier": {"type": "string"},
+                    "path_in_package": {"type": ["string", "null"]},
+                    "start_line": {"type": "integer", "minimum": 1, "default": 1},
+                    "max_lines": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 400,
+                        "default": 220,
+                    },
+                },
+                "required": ["package_identifier"],
                 "additionalProperties": False,
             },
         },
@@ -2255,13 +3108,14 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "type": "function",
             "name": "autolayout_run",
             "description": (
-                "Start an autolayout placement or routing run as a background task."
+                "Start an autolayout placement or routing run as a background task. "
+                "Per-run timeout is capped at 2 minutes; use resume cycles for "
+                "longer optimization."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "build_target": {"type": "string", "default": "default"},
-                    "provider": {"type": ["string", "null"]},
                     "job_type": {
                         "type": "string",
                         "enum": ["Routing", "Placement"],
@@ -2271,7 +3125,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     "timeout_minutes": {
                         "type": ["integer", "null"],
                         "minimum": 1,
-                        "maximum": 240,
+                        "maximum": 2,
                     },
                     "max_batch_timeout": {
                         "type": ["integer", "null"],
@@ -2293,7 +3147,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "name": "autolayout_status",
             "description": (
                 "Refresh an autolayout job and return state, candidates, and "
-                "provider refs."
+                "DeepPCB refs."
             ),
             "parameters": {
                 "type": "object",
@@ -2343,7 +3197,8 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "Render screenshot(s) of the current board layout (2D/3D) and "
                 "return artifact paths. 2D rendering excludes the drawing sheet "
-                "by default."
+                "by default and can spotlight selected components by dimming the "
+                "rest of the board."
             ),
             "parameters": {
                 "type": "object",
@@ -2362,6 +3217,23 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     "layers": {
                         "type": ["array", "null"],
                         "items": {"type": "string"},
+                    },
+                    "highlight_components": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                    },
+                    "highlight_fuzzy_limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 6,
+                    },
+                    "dim_others": {"type": "boolean", "default": True},
+                    "dim_opacity": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "default": 0.72,
                     },
                 },
                 "additionalProperties": False,
@@ -2425,6 +3297,33 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     },
                 },
                 "required": ["address"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "layout_run_drc",
+            "description": (
+                "Run KiCad PCB DRC for the current layout and return summary counts "
+                "plus a saved JSON report path."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "default": "default"},
+                    "max_findings": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 500,
+                        "default": 120,
+                    },
+                    "max_items_per_finding": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 4,
+                    },
+                },
                 "additionalProperties": False,
             },
         },
@@ -2552,11 +3451,8 @@ async def execute_tool(
     arguments: dict[str, Any],
     project_root: Path,
     ctx: AppContext,
-    actor: str = "worker",
 ) -> dict[str, Any]:
     """Execute a named agent tool with typed arguments."""
-    _assert_tool_allowed_for_actor(name, actor)
-
     if name == "project_list_files":
         limit = int(arguments.get("limit", 300))
         files = await asyncio.to_thread(policy.list_context_files, project_root, limit)
@@ -2673,6 +3569,72 @@ async def execute_tool(
             "example_root": str(example_project_root),
             **chunk,
         }
+
+    if name == "package_ato_list":
+        package_query = (
+            str(arguments.get("package_query")).strip()
+            if isinstance(arguments.get("package_query"), str)
+            and str(arguments.get("package_query")).strip()
+            else None
+        )
+        path_query = (
+            str(arguments.get("path_query")).strip()
+            if isinstance(arguments.get("path_query"), str)
+            and str(arguments.get("path_query")).strip()
+            else None
+        )
+        limit = max(1, min(1000, int(arguments.get("limit", 200))))
+        return _list_package_reference_files(
+            project_root=project_root,
+            package_query=package_query,
+            path_query=path_query,
+            limit=limit,
+        )
+
+    if name == "package_ato_search":
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            raise ValueError("query is required")
+        package_query = (
+            str(arguments.get("package_query")).strip()
+            if isinstance(arguments.get("package_query"), str)
+            and str(arguments.get("package_query")).strip()
+            else None
+        )
+        path_query = (
+            str(arguments.get("path_query")).strip()
+            if isinstance(arguments.get("path_query"), str)
+            and str(arguments.get("path_query")).strip()
+            else None
+        )
+        limit = max(1, min(1000, int(arguments.get("limit", 120))))
+        return _search_package_reference_files(
+            project_root=project_root,
+            query=query,
+            package_query=package_query,
+            path_query=path_query,
+            limit=limit,
+        )
+
+    if name == "package_ato_read":
+        package_identifier = str(arguments.get("package_identifier", "")).strip()
+        if not package_identifier:
+            raise ValueError("package_identifier is required")
+        path_in_package = (
+            str(arguments.get("path_in_package")).strip()
+            if isinstance(arguments.get("path_in_package"), str)
+            and str(arguments.get("path_in_package")).strip()
+            else None
+        )
+        start_line = max(1, int(arguments.get("start_line", 1)))
+        max_lines = max(1, min(400, int(arguments.get("max_lines", 220))))
+        return _read_package_reference_file(
+            project_root=project_root,
+            package_identifier=package_identifier,
+            path_in_package=path_in_package,
+            start_line=start_line,
+            max_lines=max_lines,
+        )
 
     if name == "project_list_modules":
         type_filter = arguments.get("type_filter")
@@ -2908,42 +3870,20 @@ async def execute_tool(
         resolution: dict[str, Any] = {}
         fallback_sources: list[dict[str, Any]] = []
         if lcsc_id:
-            graph_result: dict[str, Any] | None = None
-            graph_error: dict[str, str] | None = None
-            try:
-                graph_result = await asyncio.to_thread(
-                    datasheets_domain.handle_collect_project_datasheets,
-                    str(project_root),
-                    build_target=target,
-                    lcsc_ids=[lcsc_id],
-                )
-            except Exception as exc:
-                graph_error = {
-                    "type": type(exc).__name__,
-                    "message": _trim_message(str(exc), 420),
+            cached_path = await asyncio.to_thread(
+                parts_domain.handle_get_cached_datasheet_path,
+                lcsc_id,
+                str(project_root),
+            )
+            if cached_path:
+                source_path = cached_path
+                source_url = None
+                resolution = {
+                    "mode": "install_cache",
+                    "path": cached_path,
                 }
-
-            if graph_result is not None:
-                matches = graph_result.get("matches", [])
-                match = matches[0] if isinstance(matches, list) and matches else None
-                if isinstance(match, dict):
-                    candidate_path = str(match.get("path") or "").strip()
-                    if candidate_path:
-                        source_path = candidate_path
-                        source_url = None
-                        resolution = {
-                            "mode": "project_graph",
-                            "build_target": graph_result.get("build_target"),
-                            "directory": graph_result.get("directory"),
-                            "record": {
-                                "url": match.get("url"),
-                                "filename": match.get("filename"),
-                                "lcsc_ids": match.get("lcsc_ids"),
-                                "modules": match.get("modules"),
-                                "downloaded": match.get("downloaded"),
-                                "skipped_existing": match.get("skipped_existing"),
-                            },
-                        }
+                if target:
+                    resolution["requested_target"] = target
 
             if not source_path:
                 details = await asyncio.to_thread(
@@ -2968,18 +3908,13 @@ async def execute_tool(
                 source_path = None
                 resolution = {
                     "mode": "parts_api_fallback",
-                    "build_target": (
-                        graph_result.get("build_target")
-                        if isinstance(graph_result, dict)
-                        else target
-                    ),
                     "reason": (
-                        "No datasheet match for the requested lcsc_id was found in "
-                        "the instantiated project graph."
+                        "No cached datasheet was found for this lcsc_id in the "
+                        "project install cache."
                     ),
                 }
-                if graph_error is not None:
-                    resolution["graph_error"] = graph_error
+                if target:
+                    resolution["requested_target"] = target
                 source_meta["part"] = {
                     "manufacturer": details.get("manufacturer"),
                     "part_number": details.get("part_number"),
@@ -3430,12 +4365,6 @@ async def execute_tool(
         build_target = (
             str(arguments.get("build_target", "default")).strip() or "default"
         )
-        provider = arguments.get("provider")
-        provider_name = (
-            str(provider).strip()
-            if isinstance(provider, str) and str(provider).strip()
-            else None
-        )
 
         raw_constraints = arguments.get("constraints")
         if raw_constraints is None:
@@ -3473,19 +4402,30 @@ async def execute_tool(
             job_type=guidance_job_type,
         )
 
-        timeout_source = "provider_default"
+        timeout_source = "service_default"
         timeout_minutes = arguments.get("timeout_minutes")
+        requested_timeout_minutes: int
         if timeout_minutes is not None:
-            options.setdefault("timeout", int(timeout_minutes))
+            requested_timeout_minutes = int(timeout_minutes)
             timeout_source = "explicit_argument"
-        elif "timeout" in options or "timeout_minutes" in options:
+        elif "timeout" in options:
+            requested_timeout_minutes = int(options["timeout"])
+            timeout_source = "options_object"
+        elif "timeout_minutes" in options:
+            requested_timeout_minutes = int(options["timeout_minutes"])
             timeout_source = "options_object"
         else:
-            options.setdefault(
-                "timeout",
-                int(timeout_guidance["start_timeout_minutes"]),
-            )
+            requested_timeout_minutes = int(timeout_guidance["start_timeout_minutes"])
             timeout_source = "heuristic_component_count"
+
+        normalized_requested_timeout = max(1, requested_timeout_minutes)
+        applied_timeout_minutes = min(
+            normalized_requested_timeout,
+            _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
+        )
+        timeout_capped = applied_timeout_minutes != normalized_requested_timeout
+        options["timeout"] = applied_timeout_minutes
+        options.pop("timeout_minutes", None)
 
         max_batch_timeout = arguments.get("max_batch_timeout")
         if max_batch_timeout is not None:
@@ -3512,7 +4452,6 @@ async def execute_tool(
             service.start_job,
             str(project_root),
             build_target,
-            provider_name,
             constraints,
             options,
         )
@@ -3523,7 +4462,10 @@ async def execute_tool(
             "build_target": job.build_target,
             "state": _autolayout_state_value(job.state),
             "provider_job_ref": job.provider_job_ref,
-            "applied_timeout_minutes": int(options.get("timeout", 10)),
+            "requested_timeout_minutes": normalized_requested_timeout,
+            "applied_timeout_minutes": applied_timeout_minutes,
+            "timeout_cap_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
+            "timeout_capped": timeout_capped,
             "timeout_source": timeout_source,
             "timeout_guidance": timeout_guidance,
             "options": dict(job.options),
@@ -3540,8 +4482,7 @@ async def execute_tool(
         requested_job_id = arguments.get("job_id")
         job_id = (
             str(requested_job_id).strip()
-            if isinstance(requested_job_id, str)
-            and str(requested_job_id).strip()
+            if isinstance(requested_job_id, str) and str(requested_job_id).strip()
             else ""
         )
         refresh = bool(arguments.get("refresh", True))
@@ -3554,7 +4495,6 @@ async def execute_tool(
 
         service = get_autolayout_service()
         if not job_id:
-            await asyncio.to_thread(service.recover_project_jobs, str(project_root), 20)
             jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
             summaries = [_summarize_autolayout_job(job) for job in jobs[:20]]
             latest_job = jobs[0] if jobs else None
@@ -3582,42 +4522,24 @@ async def execute_tool(
             else:
                 job = await asyncio.to_thread(service.get_job, job_id)
         except KeyError:
-            recovered = await asyncio.to_thread(
-                service.recover_job,
-                str(project_root),
-                job_id,
-                None,
-            )
-            if recovered is None:
-                await asyncio.to_thread(
-                    service.recover_project_jobs,
-                    str(project_root),
-                    20,
-                )
-                jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-                summaries = [_summarize_autolayout_job(item) for item in jobs[:20]]
-                latest_job = jobs[0] if jobs else None
-                return {
-                    "job_id": job_id,
-                    "found": False,
-                    "recommended_action": (
-                        "inspect_or_fetch_latest_job"
-                        if latest_job is not None
-                        else "run_autolayout"
-                    ),
-                    "latest_job_id": latest_job.job_id if latest_job else None,
-                    "message": (
-                        f"Unknown autolayout job '{job_id}'. Returning recent jobs "
-                        "for this project."
-                    ),
-                    "jobs": summaries,
-                }
-            job = recovered
-            if refresh:
-                try:
-                    job = await asyncio.to_thread(service.refresh_job, job_id)
-                except KeyError:
-                    job = recovered
+            jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+            summaries = [_summarize_autolayout_job(item) for item in jobs[:20]]
+            latest_job = jobs[0] if jobs else None
+            return {
+                "job_id": job_id,
+                "found": False,
+                "recommended_action": (
+                    "inspect_or_fetch_latest_job"
+                    if latest_job is not None
+                    else "run_autolayout"
+                ),
+                "latest_job_id": latest_job.job_id if latest_job else None,
+                "message": (
+                    f"Unknown autolayout job '{job_id}'. Returning recent jobs "
+                    "for this project."
+                ),
+                "jobs": summaries,
+            }
 
         polls = 0
         waited_seconds = 0
@@ -3690,8 +4612,7 @@ async def execute_tool(
         requested_job_id = arguments.get("job_id")
         job_id = (
             str(requested_job_id).strip()
-            if isinstance(requested_job_id, str)
-            and str(requested_job_id).strip()
+            if isinstance(requested_job_id, str) and str(requested_job_id).strip()
             else ""
         )
         requested_candidate_id = arguments.get("candidate_id")
@@ -3705,7 +4626,6 @@ async def execute_tool(
 
         service = get_autolayout_service()
         if not job_id:
-            await asyncio.to_thread(service.recover_project_jobs, str(project_root), 20)
             known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
             selected_job = _select_latest_fetchable_job(known_jobs)
             if selected_job is None:
@@ -3725,39 +4645,26 @@ async def execute_tool(
         try:
             job = await asyncio.to_thread(service.refresh_job, job_id)
         except KeyError:
-            recovered = await asyncio.to_thread(
-                service.recover_job,
-                str(project_root),
-                job_id,
-                None,
-            )
-            if recovered is None:
-                await asyncio.to_thread(service.recover_project_jobs, str(project_root), 20)
-                known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-                summaries = [_summarize_autolayout_job(item) for item in known_jobs[:20]]
-                latest_job = known_jobs[0] if known_jobs else None
-                return {
-                    "job_id": job_id,
-                    "ready_to_apply": False,
-                    "applied": False,
-                    "found": False,
-                    "recommended_action": (
-                        "inspect_or_fetch_latest_job"
-                        if latest_job is not None
-                        else "run_autolayout"
-                    ),
-                    "latest_job_id": latest_job.job_id if latest_job else None,
-                    "message": (
-                        f"Unknown autolayout job '{job_id}'. Returning recent jobs "
-                        "for this project."
-                    ),
-                    "jobs": summaries,
-                }
-            job = recovered
-            try:
-                job = await asyncio.to_thread(service.refresh_job, job_id)
-            except KeyError:
-                job = recovered
+            known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+            summaries = [_summarize_autolayout_job(item) for item in known_jobs[:20]]
+            latest_job = known_jobs[0] if known_jobs else None
+            return {
+                "job_id": job_id,
+                "ready_to_apply": False,
+                "applied": False,
+                "found": False,
+                "recommended_action": (
+                    "inspect_or_fetch_latest_job"
+                    if latest_job is not None
+                    else "run_autolayout"
+                ),
+                "latest_job_id": latest_job.job_id if latest_job else None,
+                "message": (
+                    f"Unknown autolayout job '{job_id}'. Returning recent jobs "
+                    "for this project."
+                ),
+                "jobs": summaries,
+            }
 
         candidates = await asyncio.to_thread(service.list_candidates, job_id, False)
         state_value = _autolayout_state_value(job.state)
@@ -3786,7 +4693,10 @@ async def execute_tool(
                 "job": job.to_dict(),
             }
 
-        if state_value in {AutolayoutState.FAILED.value, AutolayoutState.CANCELLED.value}:
+        if state_value in {
+            AutolayoutState.FAILED.value,
+            AutolayoutState.CANCELLED.value,
+        }:
             return {
                 "job_id": job.job_id,
                 "provider_job_ref": job.provider_job_ref,
@@ -3829,7 +4739,6 @@ async def execute_tool(
             service.apply_candidate,
             job_id,
             selected_candidate_id,
-            None,
         )
 
         downloaded_candidate_path: str | None = None
@@ -3902,17 +4811,43 @@ async def execute_tool(
 
         explicit_layers = _normalize_screenshot_layers(arguments.get("layers"))
         layers = explicit_layers or _default_screenshot_layers(side)
+        highlight_components = _normalize_highlight_components(
+            arguments.get("highlight_components")
+        )
+        highlight_fuzzy_limit = max(
+            1, min(20, int(arguments.get("highlight_fuzzy_limit", 6)))
+        )
+        dim_others = bool(arguments.get("dim_others", True))
+        dim_opacity = float(arguments.get("dim_opacity", 0.72))
+        if dim_opacity < 0.0 or dim_opacity > 1.0:
+            raise ValueError("dim_opacity must be between 0.0 and 1.0")
 
         build_cfg = _resolve_build_target(project_root, target)
         layout_path = build_cfg.paths.layout
         if not layout_path.exists():
             raise ValueError(f"Layout file does not exist: {layout_path}")
 
+        highlighted_records: list[_LayoutComponentRecord] = []
+        unresolved_highlights: list[dict[str, Any]] = []
+        if highlight_components:
+            highlighted_records, unresolved_highlights = await asyncio.to_thread(
+                _resolve_highlight_components,
+                layout_path=layout_path,
+                queries=highlight_components,
+                fuzzy_limit=highlight_fuzzy_limit,
+            )
+        highlighted_references = {
+            record.reference
+            for record in highlighted_records
+            if isinstance(record.reference, str) and record.reference.strip()
+        }
+
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
         output_dir = build_cfg.paths.output_base.parent / "autolayout" / "screenshots"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         output_paths: dict[str, str] = {}
+        highlight_overlay_result: dict[str, Any] | None = None
         try:
             if view in {"2d", "both"}:
                 two_d = output_dir / f"{target}.{timestamp}.2d.svg"
@@ -3924,6 +4859,17 @@ async def execute_tool(
                     layers=",".join(layers),
                 )
                 output_paths["2d"] = str(two_d)
+
+                if dim_others and highlighted_references:
+                    highlight_overlay_result = await asyncio.to_thread(
+                        _apply_component_highlight_overlay,
+                        base_svg_path=two_d,
+                        layout_path=layout_path,
+                        project_dir=layout_path.parent,
+                        layers=layers,
+                        highlighted_references=highlighted_references,
+                        dim_opacity=dim_opacity,
+                    )
 
             if view in {"3d", "both"}:
                 three_d = output_dir / f"{target}.{timestamp}.3d.png"
@@ -3947,6 +4893,19 @@ async def execute_tool(
             "layers": layers if view in {"2d", "both"} else None,
             "drawing_sheet_excluded": True,
             "screenshot_paths": output_paths,
+            "highlight": {
+                "requested": highlight_components,
+                "resolved": [
+                    _layout_component_payload(record) for record in highlighted_records
+                ],
+                "unresolved": unresolved_highlights,
+                "dim_others": dim_others,
+                "dim_opacity": dim_opacity if dim_others else None,
+                "applied": bool(
+                    highlight_overlay_result and highlight_overlay_result.get("applied")
+                ),
+                "overlay_result": highlight_overlay_result,
+            },
         }
 
     if name == "layout_get_component_position":
@@ -4002,6 +4961,145 @@ async def execute_tool(
             layer=layer,
             fuzzy_limit=fuzzy_limit,
         )
+
+    if name == "layout_run_drc":
+        from faebryk.libs.kicad.drc import run_drc
+
+        target = str(arguments.get("target", "default")).strip() or "default"
+        max_findings = max(1, min(500, int(arguments.get("max_findings", 120))))
+        max_items_per_finding = max(
+            1, min(20, int(arguments.get("max_items_per_finding", 4)))
+        )
+
+        build_cfg = _resolve_build_target(project_root, target)
+        layout_path = _resolve_layout_file_for_tool(
+            project_root=project_root,
+            target=target,
+        )
+        if not layout_path.exists():
+            raise ValueError(f"Layout file does not exist: {layout_path}")
+
+        try:
+            drc_report = await asyncio.to_thread(run_drc, layout_path)
+        except Exception as exc:  # pragma: no cover - passthrough for runtime failures
+            raise RuntimeError(f"Failed to run KiCad DRC: {exc}") from exc
+
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+        report_dir = build_cfg.paths.output_base.parent / "autolayout" / "drc"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_path = report_dir / f"{target}.{timestamp}.drc.json"
+        await asyncio.to_thread(drc_report.dumps, report_path)
+
+        severity_rank = {
+            "error": 0,
+            "warning": 1,
+            "action": 2,
+            "info": 3,
+            "debug": 4,
+            "exclusion": 5,
+            "": 6,
+        }
+
+        findings: list[dict[str, Any]] = []
+        severity_counts: dict[str, int] = {}
+        type_counts: dict[str, int] = {}
+
+        for category_name, entries in (
+            ("violations", list(getattr(drc_report, "violations", []) or [])),
+            (
+                "unconnected_items",
+                list(getattr(drc_report, "unconnected_items", []) or []),
+            ),
+            (
+                "schematic_parity",
+                list(getattr(drc_report, "schematic_parity", []) or []),
+            ),
+        ):
+            for entry in entries:
+                severity = str(getattr(entry, "severity", "") or "").lower()
+                violation_type = str(getattr(entry, "type", "") or "").lower()
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                type_counts[violation_type] = type_counts.get(violation_type, 0) + 1
+
+                if len(findings) >= max_findings:
+                    continue
+
+                items_payload: list[dict[str, Any]] = []
+                for item in list(getattr(entry, "items", []) or [])[
+                    :max_items_per_finding
+                ]:
+                    position = getattr(item, "pos", None)
+                    items_payload.append(
+                        {
+                            "description": str(
+                                getattr(item, "description", "") or ""
+                            ).strip(),
+                            "uuid": str(getattr(item, "uuid", "") or "").strip(),
+                            "x_mm": float(getattr(position, "x", 0.0) or 0.0)
+                            if position is not None
+                            else None,
+                            "y_mm": float(getattr(position, "y", 0.0) or 0.0)
+                            if position is not None
+                            else None,
+                        }
+                    )
+
+                findings.append(
+                    {
+                        "category": category_name,
+                        "severity": severity or None,
+                        "type": violation_type or None,
+                        "description": str(
+                            getattr(entry, "description", "") or ""
+                        ).strip(),
+                        "item_count": len(list(getattr(entry, "items", []) or [])),
+                        "items": items_payload,
+                    }
+                )
+
+        findings.sort(
+            key=lambda finding: (
+                severity_rank.get(str(finding.get("severity", "")).lower(), 99),
+                str(finding.get("category", "")),
+                str(finding.get("type", "")),
+            )
+        )
+
+        total_findings = (
+            len(list(getattr(drc_report, "violations", []) or []))
+            + len(list(getattr(drc_report, "unconnected_items", []) or []))
+            + len(list(getattr(drc_report, "schematic_parity", []) or []))
+        )
+
+        error_count = severity_counts.get("error", 0)
+        warning_count = severity_counts.get("warning", 0)
+
+        top_types = sorted(
+            type_counts.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        return {
+            "success": True,
+            "target": target,
+            "layout_path": str(layout_path),
+            "report_path": str(report_path),
+            "kicad_version": str(getattr(drc_report, "kicad_version", "") or ""),
+            "date": str(getattr(drc_report, "date", "") or ""),
+            "total_findings": total_findings,
+            "error_count": error_count,
+            "warning_count": warning_count,
+            "severity_counts": severity_counts,
+            "top_types": [
+                {"type": violation_type, "count": count}
+                for violation_type, count in top_types[:20]
+                if violation_type
+            ],
+            "clean": error_count == 0 and warning_count == 0 and total_findings == 0,
+            "findings": findings,
+            "findings_truncated": total_findings > len(findings),
+        }
 
     if name == "autolayout_configure_board_intent":
         build_target = (
@@ -4124,11 +5222,11 @@ async def execute_tool(
             "provider_note": (
                 "DeepPCB public API does not currently document first-class "
                 "ground-pour/stackup parameters; this stores intent in project "
-                "config for agent workflows and future provider mapping."
+                "config for agent workflows and future DeepPCB mapping."
             ),
             "next_step": (
-                "Run autolayout_run for placement/routing so provider options can "
-                "use the updated board intent."
+                "Run autolayout_run for placement/routing so the updated board "
+                "intent is applied."
             ),
         }
 
@@ -4312,3 +5410,2300 @@ def parse_tool_arguments(raw_arguments: str) -> dict[str, Any]:
 def validate_tool_scope(project_root: str, ctx: AppContext) -> Path:
     """Validate and resolve project root for tool execution."""
     return policy.resolve_project_root(project_root, ctx)
+
+
+# Colocated tests moved from `test/server/agent/test_agent_tools_hashline.py`.
+try:
+    import pytest
+except Exception:  # pragma: no cover - runtime deployments may omit pytest
+    pytest = None
+
+if pytest is not None:
+    import asyncio
+    import re
+    from dataclasses import dataclass, field
+    from pathlib import Path
+
+    from atopile.dataclasses import (
+        AppContext,
+        BuildStatus,
+    )
+    from atopile.server.agent import policy, tools
+    from atopile.server.domains.autolayout.models import (
+        AutolayoutCandidate,
+        AutolayoutJob,
+        AutolayoutState,
+        utc_now_iso,
+    )
+
+    def _run(coro):
+        return asyncio.run(coro)
+
+    @pytest.fixture(autouse=True)
+    def _clear_agent_tool_caches() -> None:
+        tools._openai_file_cache.clear()
+        tools._datasheet_read_cache.clear()
+
+    def _test_tool_definitions_advertise_hashline_editor() -> None:
+        names = {tool_def["name"] for tool_def in tools.get_tool_definitions()}
+
+        assert "project_edit_file" in names
+        assert "project_list_modules" in names
+        assert "project_module_children" in names
+        assert "web_search" in names
+        assert "examples_list" in names
+        assert "examples_search" in names
+        assert "examples_read_ato" in names
+        assert "stdlib_list" in names
+        assert "stdlib_get_item" in names
+        assert "datasheet_read" in names
+        assert "design_diagnostics" in names
+        assert "project_rename_path" in names
+        assert "project_delete_path" in names
+        assert "manufacturing_generate" in names
+        assert "autolayout_run" in names
+        assert "autolayout_status" in names
+        assert "autolayout_fetch_to_layout" in names
+        assert "autolayout_request_screenshot" in names
+        assert "layout_get_component_position" in names
+        assert "layout_set_component_position" in names
+        assert "autolayout_configure_board_intent" in names
+        assert "project_write_file" not in names
+        assert "project_replace_text" not in names
+
+    def _test_execute_tool_allows_read_tool(tmp_path: Path) -> None:
+        (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
+
+        result = _run(
+            tools.execute_tool(
+                name="project_read_file",
+                arguments={"path": "main.ato", "start_line": 1, "max_lines": 20},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["path"] == "main.ato"
+        assert "module App:" in result["content"]
+
+    def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_exa_web_search(
+            *,
+            query: str,
+            num_results: int,
+            search_type: str,
+            include_domains: list[str],
+            exclude_domains: list[str],
+            include_text: bool,
+            timeout_s: float,
+        ) -> dict[str, object]:
+            captured["query"] = query
+            captured["num_results"] = num_results
+            captured["search_type"] = search_type
+            captured["include_domains"] = include_domains
+            captured["exclude_domains"] = exclude_domains
+            captured["include_text"] = include_text
+            captured["timeout_s"] = timeout_s
+            return {
+                "query": query,
+                "returned_results": 1,
+                "results": [
+                    {
+                        "rank": 1,
+                        "title": "Example",
+                        "url": "https://example.com",
+                        "text": "snippet",
+                    }
+                ],
+                "source": "exa",
+            }
+
+        monkeypatch.setattr(tools, "_exa_web_search", fake_exa_web_search)
+
+        result = _run(
+            tools.execute_tool(
+                name="web_search",
+                arguments={
+                    "query": "stm32 usb bootloader notes",
+                    "num_results": 5,
+                    "search_type": "neural",
+                    "include_domains": ["st.com"],
+                    "exclude_domains": ["example.com"],
+                    "include_text": True,
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["source"] == "exa"
+        assert result["returned_results"] == 1
+        assert captured["query"] == "stm32 usb bootloader notes"
+        assert captured["num_results"] == 5
+        assert captured["search_type"] == "neural"
+        assert captured["include_domains"] == ["st.com"]
+        assert captured["exclude_domains"] == ["example.com"]
+        assert captured["include_text"] is True
+
+    def _test_execute_tool_allows_layout_screenshot(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "layouts" / "default").mkdir(parents=True)
+        (tmp_path / "layouts" / "default" / "default.kicad_pcb").write_text(
+            "(kicad_pcb (version 20221018) (generator test))\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "ato.yaml").write_text(
+            (
+                "paths:\n"
+                "  src: ./\n"
+                "  layout: ./layouts\n"
+                "builds:\n"
+                "  default:\n"
+                "    entry: main.ato:App\n"
+            ),
+            encoding="utf-8",
+        )
+
+        def fake_export_svg(
+            pcb_file: Path,
+            svg_file: Path,
+            flip_board: bool = False,
+            project_dir: Path | None = None,
+            layers: str | None = None,
+        ) -> None:
+            svg_file.write_text("<svg />\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "faebryk.exporters.pcb.kicad.artifacts.export_svg",
+            fake_export_svg,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_request_screenshot",
+                arguments={"target": "default", "view": "2d", "side": "top"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["success"] is True
+        assert Path(result["screenshot_paths"]["2d"]).exists()
+
+    @dataclass
+    class _FakeAt:
+        x: float
+        y: float
+        r: float
+
+    @dataclass
+    class _FakeFootprint:
+        at: _FakeAt
+        layer: str
+
+    def _make_layout_record(
+        *,
+        reference: str,
+        atopile_address: str,
+        x: float,
+        y: float,
+        r: float,
+        layer: str = "F.Cu",
+    ) -> tools._LayoutComponentRecord:
+        footprint = _FakeFootprint(at=_FakeAt(x=x, y=y, r=r), layer=layer)
+        return tools._LayoutComponentRecord(
+            reference=reference,
+            atopile_address=atopile_address,
+            layer=layer,
+            x_mm=x,
+            y_mm=y,
+            rotation_deg=r,
+            footprint=footprint,
+        )
+
+    def _test_layout_get_component_position_returns_exact_match(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        layout_path = tmp_path / "layouts" / "default" / "default.kicad_pcb"
+        layout_path.parent.mkdir(parents=True)
+        layout_path.write_text("(kicad_pcb)\n", encoding="utf-8")
+        records = [
+            _make_layout_record(
+                reference="U1",
+                atopile_address="App.mcu",
+                x=12.5,
+                y=8.0,
+                r=90.0,
+            )
+        ]
+
+        monkeypatch.setattr(
+            tools,
+            "_resolve_layout_file_for_tool",
+            lambda *, project_root, target: layout_path,
+        )
+        monkeypatch.setattr(
+            tools,
+            "_load_layout_component_index",
+            lambda _layout_path: (object(), records),
+        )
+
+        result = tools._layout_get_component_position(
+            project_root=tmp_path,
+            target="default",
+            address="App.mcu",
+            fuzzy_limit=5,
+        )
+
+        assert result["found"] is True
+        assert result["matched_by"] == "atopile_address_exact"
+        assert result["component"]["reference"] == "U1"
+        assert result["component"]["x_mm"] == pytest.approx(12.5)
+        assert result["component"]["rotation_deg"] == pytest.approx(90.0)
+
+    def _test_layout_get_component_position_returns_fuzzy_suggestions(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        layout_path = tmp_path / "layouts" / "default" / "default.kicad_pcb"
+        layout_path.parent.mkdir(parents=True)
+        layout_path.write_text("(kicad_pcb)\n", encoding="utf-8")
+        records = [
+            _make_layout_record(
+                reference="U1",
+                atopile_address="App.mcu",
+                x=10.0,
+                y=10.0,
+                r=0.0,
+            ),
+            _make_layout_record(
+                reference="J1",
+                atopile_address="App.usb",
+                x=2.0,
+                y=4.0,
+                r=180.0,
+            ),
+        ]
+
+        monkeypatch.setattr(
+            tools,
+            "_resolve_layout_file_for_tool",
+            lambda *, project_root, target: layout_path,
+        )
+        monkeypatch.setattr(
+            tools,
+            "_load_layout_component_index",
+            lambda _layout_path: (object(), records),
+        )
+
+        result = tools._layout_get_component_position(
+            project_root=tmp_path,
+            target="default",
+            address="App.mcc",
+            fuzzy_limit=3,
+        )
+
+        assert result["found"] is False
+        assert result["suggestions"]
+        assert result["suggestions"][0]["reference"] == "U1"
+        assert result["suggestions"][0]["score"] >= 0.35
+
+    def _test_layout_set_component_position_supports_absolute_and_relative(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        layout_path = tmp_path / "layouts" / "default" / "default.kicad_pcb"
+        layout_path.parent.mkdir(parents=True)
+        layout_path.write_text("(kicad_pcb)\n", encoding="utf-8")
+        record = _make_layout_record(
+            reference="U1",
+            atopile_address="App.mcu",
+            x=10.0,
+            y=6.0,
+            r=15.0,
+            layer="F.Cu",
+        )
+
+        monkeypatch.setattr(
+            tools,
+            "_resolve_layout_file_for_tool",
+            lambda *, project_root, target: layout_path,
+        )
+        footprint = record.footprint
+
+        def fake_load_layout_index(_layout_path: Path):
+            refreshed = tools._LayoutComponentRecord(
+                reference="U1",
+                atopile_address="App.mcu",
+                layer=footprint.layer,
+                x_mm=footprint.at.x,
+                y_mm=footprint.at.y,
+                rotation_deg=footprint.at.r,
+                footprint=footprint,
+            )
+            return object(), [refreshed]
+
+        monkeypatch.setattr(
+            tools,
+            "_load_layout_component_index",
+            fake_load_layout_index,
+        )
+        monkeypatch.setattr(
+            tools,
+            "_write_layout_component_file",
+            lambda _layout_path, _pcb_file: None,
+        )
+
+        def fake_move_fp(footprint: _FakeFootprint, coord, layer: str) -> None:
+            footprint.at.x = float(coord.x)
+            footprint.at.y = float(coord.y)
+            footprint.at.r = float(coord.r)
+            footprint.layer = layer
+
+        monkeypatch.setattr(
+            "faebryk.exporters.pcb.kicad.transformer.PCB_Transformer.move_fp",
+            fake_move_fp,
+        )
+
+        absolute = tools._layout_set_component_position(
+            project_root=tmp_path,
+            target="default",
+            address="App.mcu",
+            mode="absolute",
+            x_mm=25.0,
+            y_mm=30.0,
+            rotation_deg=45.0,
+            dx_mm=None,
+            dy_mm=None,
+            drotation_deg=None,
+            layer="B.Cu",
+            fuzzy_limit=5,
+        )
+        assert absolute["updated"] is True
+        assert absolute["after"]["x_mm"] == pytest.approx(25.0)
+        assert absolute["after"]["y_mm"] == pytest.approx(30.0)
+        assert absolute["after"]["rotation_deg"] == pytest.approx(45.0)
+        assert absolute["after"]["layer"] == "B.Cu"
+
+        relative = tools._layout_set_component_position(
+            project_root=tmp_path,
+            target="default",
+            address="App.mcu",
+            mode="relative",
+            x_mm=None,
+            y_mm=None,
+            rotation_deg=None,
+            dx_mm=-1.5,
+            dy_mm=2.0,
+            drotation_deg=10.0,
+            layer=None,
+            fuzzy_limit=5,
+        )
+        assert relative["updated"] is True
+        assert relative["after"]["x_mm"] == pytest.approx(23.5)
+        assert relative["after"]["y_mm"] == pytest.approx(32.0)
+        assert relative["after"]["rotation_deg"] == pytest.approx(55.0)
+        assert relative["delta"]["dx_mm"] == pytest.approx(-1.5)
+        assert relative["delta"]["dy_mm"] == pytest.approx(2.0)
+        assert relative["delta"]["drotation_deg"] == pytest.approx(10.0)
+
+    def _test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> None:
+        examples_root = tmp_path / "examples"
+        quickstart = examples_root / "quickstart"
+        quickstart.mkdir(parents=True)
+        (quickstart / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+        (quickstart / "quickstart.ato").write_text(
+            "import Resistor\n\nmodule App:\n    r1 = new Resistor\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            tools,
+            "_resolve_examples_root",
+            lambda _project_root: examples_root,
+        )
+
+        listed = _run(
+            tools.execute_tool(
+                name="examples_list",
+                arguments={},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert listed["total"] == 1
+        assert listed["examples"][0]["name"] == "quickstart"
+        assert listed["examples"][0]["ato_files"] == ["quickstart.ato"]
+
+        searched = _run(
+            tools.execute_tool(
+                name="examples_search",
+                arguments={"query": "new Resistor"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert searched["total"] == 1
+        assert searched["matches"][0]["example"] == "quickstart"
+        assert searched["matches"][0]["line"] == 4
+
+        read = _run(
+            tools.execute_tool(
+                name="examples_read_ato",
+                arguments={"example": "quickstart", "start_line": 1, "max_lines": 20},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert read["example"] == "quickstart"
+        assert read["path"] == "quickstart.ato"
+        assert "module App:" in read["content"]
+
+    def _test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
+        file_path = tmp_path / "main.ato"
+        file_path.write_text("a\nb\n", encoding="utf-8")
+
+        result = _run(
+            tools.execute_tool(
+                name="project_read_file",
+                arguments={"path": "main.ato", "start_line": 1, "max_lines": 10},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["path"] == "main.ato"
+        lines = result["content"].splitlines()
+        assert re.fullmatch(r"1:[0-9a-f]{4}\|a", lines[0])
+        assert re.fullmatch(r"2:[0-9a-f]{4}\|b", lines[1])
+
+    def _test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
+        file_path = tmp_path / "main.ato"
+        file_path.write_text("a\nb\nc\n", encoding="utf-8")
+        anchor = f"2:{policy.compute_line_hash(2, 'b')}"
+
+        result = _run(
+            tools.execute_tool(
+                name="project_edit_file",
+                arguments={
+                    "path": "main.ato",
+                    "edits": [
+                        {
+                            "set_line": {
+                                "anchor": anchor,
+                                "new_text": "B",
+                            }
+                        }
+                    ],
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["operations_applied"] == 1
+        assert result["first_changed_line"] == 2
+        assert file_path.read_text(encoding="utf-8") == "a\nB\nc\n"
+
+    def _test_project_rename_and_delete_path_execute(tmp_path: Path) -> None:
+        source = tmp_path / "notes.md"
+        source.write_text("hello\n", encoding="utf-8")
+
+        renamed = _run(
+            tools.execute_tool(
+                name="project_rename_path",
+                arguments={"old_path": "notes.md", "new_path": "docs/notes.md"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert renamed["old_path"] == "notes.md"
+        assert renamed["new_path"] == "docs/notes.md"
+        assert renamed["kind"] == "file"
+        assert (tmp_path / "docs" / "notes.md").exists()
+        assert not source.exists()
+
+        deleted = _run(
+            tools.execute_tool(
+                name="project_delete_path",
+                arguments={"path": "docs/notes.md"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        assert deleted["path"] == "docs/notes.md"
+        assert deleted["deleted"] is True
+        assert not (tmp_path / "docs" / "notes.md").exists()
+
+    def _test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
+        def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
+            assert lcsc_id == "C521608"
+            assert project_root == "/tmp/project"
+            return {
+                "identifier": "STMicroelectronics_STM32G474RET6_package",
+                "path": "/tmp/project/elec/src/parts/stm32g4/stm32g4.ato",
+            }
+
+        monkeypatch.setattr(
+            tools.parts_domain, "handle_install_part", fake_install_part
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="parts_install",
+                arguments={"lcsc_id": "c521608"},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["success"] is True
+        assert result["lcsc_id"] == "C521608"
+        assert "datasheet_read" in result["implementation_hint"]
+
+    def _test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeService:
+            def start_job(
+                self,
+                project_root: str,
+                build_target: str,
+                constraints: dict,
+                options: dict,
+            ) -> AutolayoutJob:
+                captured["project_root"] = project_root
+                captured["build_target"] = build_target
+                captured["constraints"] = constraints
+                captured["options"] = options
+                return AutolayoutJob(
+                    job_id="al-123456789abc",
+                    project_root=project_root,
+                    build_target=build_target,
+                    provider="deeppcb",
+                    state=AutolayoutState.RUNNING,
+                    created_at=utc_now_iso(),
+                    updated_at=utc_now_iso(),
+                    provider_job_ref="board-123",
+                    constraints=constraints,
+                    options=options,
+                )
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_run",
+                arguments={
+                    "build_target": "default",
+                    "job_type": "Routing",
+                    "timeout_minutes": 15,
+                    "max_batch_timeout": 45,
+                    "webhook_url": "https://example.com/hook",
+                    "webhook_token": "tok",
+                    "constraints": {"keepouts": []},
+                    "options": {"responseBoardFormat": 3},
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["job_id"] == "al-123456789abc"
+        assert result["background"] is True
+        assert result["requested_timeout_minutes"] == 15
+        assert result["applied_timeout_minutes"] == 2
+        assert result["timeout_cap_minutes"] == 2
+        assert result["timeout_capped"] is True
+        assert captured["build_target"] == "default"
+        assert captured["constraints"] == {"keepouts": []}
+        options = captured["options"]
+        assert isinstance(options, dict)
+        assert options["jobType"] == "Routing"
+        assert options["timeout"] == 2
+        assert options["maxBatchTimeout"] == 45
+        assert options["responseBoardFormat"] == 3
+
+    def _test_autolayout_fetch_to_layout_archives_iteration(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        layout_dir = tmp_path / "layouts" / "default"
+        layout_dir.mkdir(parents=True)
+        layout_path = layout_dir / "default.kicad_pcb"
+        layout_path.write_text("old-board", encoding="utf-8")
+
+        work_dir = tmp_path / "build" / "builds" / "default" / "autolayout" / "al-job"
+        downloads_dir = work_dir / "downloads"
+        downloads_dir.mkdir(parents=True)
+        (downloads_dir / "cand-1.kicad_pcb").write_text("new-board", encoding="utf-8")
+
+        base_job = AutolayoutJob(
+            job_id="al-123456789abc",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.AWAITING_SELECTION,
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
+            provider_job_ref="board-123",
+            layout_path=str(layout_path),
+            work_dir=str(work_dir),
+        )
+
+        class FakeService:
+            def refresh_job(self, job_id: str) -> AutolayoutJob:
+                assert job_id == "al-123456789abc"
+                return base_job
+
+            def list_candidates(
+                self,
+                job_id: str,
+                refresh: bool = True,
+            ) -> list[AutolayoutCandidate]:
+                assert job_id == "al-123456789abc"
+                return [AutolayoutCandidate(candidate_id="cand-1", score=0.91)]
+
+            def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
+                assert job_id == "al-123456789abc"
+                assert candidate_id == "cand-1"
+                return base_job
+
+            def apply_candidate(
+                self,
+                job_id: str,
+                candidate_id: str | None = None,
+                manual_layout_path: str | None = None,
+            ) -> AutolayoutJob:
+                assert job_id == "al-123456789abc"
+                assert candidate_id == "cand-1"
+                return AutolayoutJob(
+                    job_id=base_job.job_id,
+                    project_root=base_job.project_root,
+                    build_target=base_job.build_target,
+                    provider=base_job.provider,
+                    state=AutolayoutState.COMPLETED,
+                    created_at=base_job.created_at,
+                    updated_at=utc_now_iso(),
+                    provider_job_ref=base_job.provider_job_ref,
+                    layout_path=base_job.layout_path,
+                    work_dir=base_job.work_dir,
+                    applied_layout_path=str(layout_path),
+                    selected_candidate_id="cand-1",
+                    applied_candidate_id="cand-1",
+                )
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_fetch_to_layout",
+                arguments={"job_id": "al-123456789abc"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["selected_candidate_id"] == "cand-1"
+        assert result["downloaded_candidate_path"]
+        artifacts = result["downloaded_artifacts"]
+        assert isinstance(artifacts, dict)
+        assert artifacts["kicad_pcb"].endswith("cand-1.kicad_pcb")
+        archived = result["archived_iteration_path"]
+        assert isinstance(archived, str)
+        assert "autolayout_iterations" in archived
+        assert Path(archived).exists()
+
+    def _test_autolayout_fetch_to_layout_waits_while_running(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        base_job = AutolayoutJob(
+            job_id="al-123456789abc",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.RUNNING,
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
+            provider_job_ref="board-123",
+        )
+
+        apply_called = False
+        select_called = False
+
+        class FakeService:
+            def refresh_job(self, job_id: str) -> AutolayoutJob:
+                assert job_id == "al-123456789abc"
+                return base_job
+
+            def list_candidates(
+                self,
+                job_id: str,
+                refresh: bool = True,
+            ) -> list[AutolayoutCandidate]:
+                assert job_id == "al-123456789abc"
+                return [AutolayoutCandidate(candidate_id="cand-1", score=0.91)]
+
+            def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
+                nonlocal select_called
+                select_called = True
+                return base_job
+
+            def apply_candidate(
+                self,
+                job_id: str,
+                candidate_id: str | None = None,
+                manual_layout_path: str | None = None,
+            ) -> AutolayoutJob:
+                nonlocal apply_called
+                apply_called = True
+                return base_job
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_fetch_to_layout",
+                arguments={"job_id": "al-123456789abc"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["ready_to_apply"] is False
+        assert result["applied"] is False
+        assert result["state"] == AutolayoutState.RUNNING.value
+        assert result["recommended_wait_seconds"] >= 1
+        assert "do not fetch/apply yet" in result["message"]
+        assert apply_called is False
+        assert select_called is False
+
+    def _test_autolayout_status_without_job_id_returns_project_summary(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        job_recent = AutolayoutJob(
+            job_id="al-new",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.AWAITING_SELECTION,
+            created_at="2026-02-14T18:00:00+00:00",
+            updated_at="2026-02-14T18:05:00+00:00",
+            provider_job_ref="board-new",
+            candidates=[AutolayoutCandidate(candidate_id="55")],
+        )
+        job_old = AutolayoutJob(
+            job_id="al-old",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.COMPLETED,
+            created_at="2026-02-14T17:00:00+00:00",
+            updated_at="2026-02-14T17:05:00+00:00",
+            provider_job_ref="board-old",
+        )
+
+        class FakeService:
+            def recover_project_jobs(
+                self,
+                project_root: str,
+                limit: int = 20,
+            ) -> list[AutolayoutJob]:
+                _ = (project_root, limit)
+                return [job_recent, job_old]
+
+            def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+                _ = project_root
+                return [job_recent, job_old]
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_status",
+                arguments={},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["job_id"] is None
+        assert result["latest_job_id"] == "al-new"
+        assert result["total_jobs"] == 2
+        assert result["jobs"][0]["job_id"] == "al-new"
+        assert result["jobs"][0]["recommended_action"] == "fetch_candidate_to_layout"
+
+    def _test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        base_job = AutolayoutJob(
+            job_id="al-new",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.AWAITING_SELECTION,
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
+            provider_job_ref="board-123",
+            layout_path=str(tmp_path / "layouts" / "default" / "default.kicad_pcb"),
+            work_dir=str(
+                tmp_path / "build" / "builds" / "default" / "autolayout" / "al-new"
+            ),
+            candidates=[AutolayoutCandidate(candidate_id="cand-1", score=0.91)],
+        )
+        apply_called = False
+
+        class FakeService:
+            def recover_project_jobs(
+                self,
+                project_root: str,
+                limit: int = 20,
+            ) -> list[AutolayoutJob]:
+                _ = (project_root, limit)
+                return [base_job]
+
+            def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+                _ = project_root
+                return [base_job]
+
+            def refresh_job(self, job_id: str) -> AutolayoutJob:
+                assert job_id == "al-new"
+                return base_job
+
+            def list_candidates(
+                self,
+                job_id: str,
+                refresh: bool = True,
+            ) -> list[AutolayoutCandidate]:
+                _ = refresh
+                assert job_id == "al-new"
+                return [AutolayoutCandidate(candidate_id="cand-1", score=0.91)]
+
+            def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
+                assert job_id == "al-new"
+                assert candidate_id == "cand-1"
+                return base_job
+
+            def apply_candidate(
+                self,
+                job_id: str,
+                candidate_id: str | None = None,
+                manual_layout_path: str | None = None,
+            ) -> AutolayoutJob:
+                nonlocal apply_called
+                apply_called = True
+                _ = manual_layout_path
+                assert job_id == "al-new"
+                assert candidate_id == "cand-1"
+                return AutolayoutJob(
+                    job_id=base_job.job_id,
+                    project_root=base_job.project_root,
+                    build_target=base_job.build_target,
+                    provider=base_job.provider,
+                    state=AutolayoutState.COMPLETED,
+                    created_at=base_job.created_at,
+                    updated_at=utc_now_iso(),
+                    provider_job_ref=base_job.provider_job_ref,
+                    layout_path=base_job.layout_path,
+                    work_dir=base_job.work_dir,
+                    applied_layout_path=base_job.layout_path,
+                    selected_candidate_id="cand-1",
+                    applied_candidate_id="cand-1",
+                )
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+        monkeypatch.setattr(
+            tools,
+            "_discover_downloaded_artifacts",
+            lambda **kwargs: {"kicad_pcb": str(tmp_path / "cand-1.kicad_pcb")},
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_fetch_to_layout",
+                arguments={},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert apply_called is True
+        assert result["job_id"] == "al-new"
+        assert result["selected_candidate_id"] == "cand-1"
+
+    def _test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        recent_job = AutolayoutJob(
+            job_id="al-recent",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.AWAITING_SELECTION,
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
+            provider_job_ref="board-xyz",
+            candidates=[AutolayoutCandidate(candidate_id="cand-9")],
+        )
+
+        class FakeService:
+            def refresh_job(self, job_id: str) -> AutolayoutJob:
+                raise KeyError(f"Unknown autolayout job: {job_id}")
+
+            def recover_job(
+                self,
+                project_root: str,
+                job_id: str,
+                build_target_hint: str | None = None,
+            ) -> AutolayoutJob | None:
+                _ = (project_root, job_id, build_target_hint)
+                return None
+
+            def recover_project_jobs(
+                self,
+                project_root: str,
+                limit: int = 20,
+            ) -> list[AutolayoutJob]:
+                _ = (project_root, limit)
+                return [recent_job]
+
+            def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+                _ = project_root
+                return [recent_job]
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_fetch_to_layout",
+                arguments={"job_id": "al-missing"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["found"] is False
+        assert result["latest_job_id"] == "al-recent"
+        assert result["jobs"][0]["job_id"] == "al-recent"
+
+    def _test_autolayout_status_unknown_job_returns_recent_summary(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        recent_job = AutolayoutJob(
+            job_id="al-recent",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.AWAITING_SELECTION,
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
+            provider_job_ref="board-xyz",
+            candidates=[AutolayoutCandidate(candidate_id="cand-9")],
+        )
+        refresh_calls = 0
+
+        class FakeService:
+            def refresh_job(self, job_id: str) -> AutolayoutJob:
+                nonlocal refresh_calls
+                refresh_calls += 1
+                assert job_id == "al-recovered"
+                raise KeyError("Unknown autolayout job: al-recovered")
+
+            def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+                _ = project_root
+                return [recent_job]
+
+        monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_status",
+                arguments={
+                    "job_id": "al-recovered",
+                    "refresh": True,
+                    "include_candidates": True,
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert refresh_calls == 1
+        assert result["found"] is False
+        assert result["job_id"] == "al-recovered"
+        assert result["latest_job_id"] == "al-recent"
+        assert result["jobs"][0]["job_id"] == "al-recent"
+
+    def _test_autolayout_request_screenshot_renders_images(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "layouts" / "default").mkdir(parents=True)
+        (tmp_path / "layouts" / "default" / "default.kicad_pcb").write_text(
+            "(kicad_pcb (version 20221018) (generator test))\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "ato.yaml").write_text(
+            (
+                "paths:\n"
+                "  src: ./\n"
+                "  layout: ./layouts\n"
+                "builds:\n"
+                "  default:\n"
+                "    entry: main.ato:App\n"
+            ),
+            encoding="utf-8",
+        )
+
+        calls: dict[str, object] = {}
+
+        def fake_export_svg(
+            pcb_file: Path,
+            svg_file: Path,
+            flip_board: bool = False,
+            project_dir: Path | None = None,
+            layers: str | None = None,
+        ) -> None:
+            calls["svg_layers"] = layers
+            calls["svg_pcb_file"] = str(pcb_file)
+            svg_file.write_text("<svg />\n", encoding="utf-8")
+
+        def fake_export_3d_board_render(
+            pcb_file: Path,
+            image_file: Path,
+            project_dir: Path | None = None,
+        ) -> None:
+            calls["render_pcb_file"] = str(pcb_file)
+            image_file.write_bytes(b"PNG")
+
+        monkeypatch.setattr(
+            "faebryk.exporters.pcb.kicad.artifacts.export_svg",
+            fake_export_svg,
+        )
+        monkeypatch.setattr(
+            "faebryk.exporters.pcb.kicad.artifacts.export_3d_board_render",
+            fake_export_3d_board_render,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_request_screenshot",
+                arguments={
+                    "target": "default",
+                    "view": "both",
+                    "side": "top",
+                    "layers": ["F.Cu", "Edge.Cuts"],
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["success"] is True
+        assert result["view"] == "both"
+        assert result["drawing_sheet_excluded"] is True
+        assert result["layers"] == ["F.Cu", "Edge.Cuts"]
+        assert calls["svg_layers"] == "F.Cu,Edge.Cuts"
+        assert Path(result["screenshot_paths"]["2d"]).exists()
+        assert Path(result["screenshot_paths"]["3d"]).exists()
+
+    def _test_autolayout_request_screenshot_uses_default_bottom_layers(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "layouts" / "default").mkdir(parents=True)
+        (tmp_path / "layouts" / "default" / "default.kicad_pcb").write_text(
+            "(kicad_pcb (version 20221018) (generator test))\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "ato.yaml").write_text(
+            (
+                "paths:\n"
+                "  src: ./\n"
+                "  layout: ./layouts\n"
+                "builds:\n"
+                "  default:\n"
+                "    entry: main.ato:App\n"
+            ),
+            encoding="utf-8",
+        )
+
+        captured: dict[str, object] = {}
+
+        def fake_export_svg(
+            pcb_file: Path,
+            svg_file: Path,
+            flip_board: bool = False,
+            project_dir: Path | None = None,
+            layers: str | None = None,
+        ) -> None:
+            captured["layers"] = layers
+            svg_file.write_text("<svg />\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "faebryk.exporters.pcb.kicad.artifacts.export_svg",
+            fake_export_svg,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_request_screenshot",
+                arguments={"target": "default", "view": "2d", "side": "bottom"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["layers"] == ["B.Cu", "B.Paste", "B.Mask", "Edge.Cuts"]
+        assert captured["layers"] == "B.Cu,B.Paste,B.Mask,Edge.Cuts"
+
+    def _test_autolayout_configure_board_intent_updates_ato_yaml(
+        tmp_path: Path,
+    ) -> None:
+        ato_yaml = tmp_path / "ato.yaml"
+        ato_yaml.write_text(
+            (
+                "paths:\n"
+                "  src: ./\n"
+                "  layout: ./layouts\n"
+                "builds:\n"
+                "  default:\n"
+                "    entry: main.ato:App\n"
+            ),
+            encoding="utf-8",
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="autolayout_configure_board_intent",
+                arguments={
+                    "build_target": "default",
+                    "enable_ground_pours": True,
+                    "plane_nets": ["GND", "5V"],
+                    "layer_count": 4,
+                    "board_thickness_mm": 1.6,
+                    "outer_copper_oz": 1.0,
+                    "dielectric_er": 4.2,
+                    "preserve_existing_routing": True,
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["success"] is True
+        assert result["build_target"] == "default"
+        after = result["constraints_after"]
+        assert after["plane_intent"]["enabled"] is True
+        assert after["plane_intent"]["nets"] == ["GND", "5V"]
+        assert after["stackup_intent"]["layer_count"] == 4
+        assert after["stackup_intent"]["board_thickness_mm"] == 1.6
+        assert after["preserve_existing_routing"] is True
+
+    def _test_datasheet_read_uploads_pdf_and_returns_file_id(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        def fake_get_cached_datasheet_path(
+            lcsc_id: str, project_root: str
+        ) -> str | None:
+            assert lcsc_id == "C521608"
+            assert project_root == str(tmp_path)
+            return str(
+                tmp_path / "build" / "cache" / "parts" / "datasheets" / "tps7a02.pdf"
+            )
+
+        def fake_read_datasheet_file(
+            project_root: Path,
+            *,
+            path: str | None = None,
+            url: str | None = None,
+        ) -> tuple[bytes, dict[str, object]]:
+            assert project_root == tmp_path
+            assert path and path.endswith("tps7a02.pdf")
+            assert url is None
+            return (
+                b"%PDF-1.4\n",
+                {
+                    "source_kind": "path",
+                    "source": "build/cache/parts/datasheets/tps7a02.pdf",
+                    "format": "pdf",
+                    "content_type": "application/pdf",
+                    "filename": "tps7a02.pdf",
+                    "sha256": "deadbeef",
+                    "size_bytes": 9,
+                },
+            )
+
+        async def fake_upload_openai_user_file(
+            *,
+            filename: str,
+            content: bytes,
+            cache_key: str,
+        ) -> tuple[str, bool]:
+            assert filename == "tps7a02.pdf"
+            assert content.startswith(b"%PDF-")
+            assert cache_key == "deadbeef"
+            return ("file-test-123", False)
+
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "handle_get_cached_datasheet_path",
+            fake_get_cached_datasheet_path,
+        )
+        monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
+        monkeypatch.setattr(
+            tools,
+            "_upload_openai_user_file",
+            fake_upload_openai_user_file,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="datasheet_read",
+                arguments={
+                    "lcsc_id": "C521608",
+                    "target": "default",
+                    "query": "decoupling around vdd/vdda/vref+",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["found"] is True
+        assert result["openai_file_id"] == "file-test-123"
+        assert result["openai_file_cached"] is False
+        assert result["filename"] == "tps7a02.pdf"
+        assert result["lcsc_id"] == "C521608"
+        assert result["resolution"]["mode"] == "install_cache"
+
+    def _test_datasheet_read_falls_back_when_graph_resolution_fails(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        def fake_get_cached_datasheet_path(
+            lcsc_id: str, project_root: str
+        ) -> str | None:
+            assert lcsc_id == "C521608"
+            assert project_root == str(tmp_path)
+            return None
+
+        def fake_get_part_details(lcsc_id: str) -> dict | None:
+            assert lcsc_id == "C521608"
+            return {
+                "datasheet_url": "https://example.com/stm32g4.pdf",
+                "manufacturer": "STMicroelectronics",
+                "part_number": "STM32G474RET6",
+                "description": "MCU",
+            }
+
+        def fake_read_datasheet_file(
+            project_root: Path,
+            *,
+            path: str | None = None,
+            url: str | None = None,
+        ) -> tuple[bytes, dict[str, object]]:
+            assert project_root == tmp_path
+            assert path is None
+            assert url == "https://example.com/stm32g4.pdf"
+            return (
+                b"%PDF-1.7\n",
+                {
+                    "source_kind": "url",
+                    "source": "https://example.com/stm32g4.pdf",
+                    "format": "pdf",
+                    "content_type": "application/pdf",
+                    "filename": "stm32g4.pdf",
+                    "sha256": "feedface",
+                    "size_bytes": 9,
+                },
+            )
+
+        async def fake_upload_openai_user_file(
+            *,
+            filename: str,
+            content: bytes,
+            cache_key: str,
+        ) -> tuple[str, bool]:
+            assert filename == "stm32g4.pdf"
+            assert content.startswith(b"%PDF-")
+            assert cache_key == "feedface"
+            return ("file-test-fallback", False)
+
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "handle_get_cached_datasheet_path",
+            fake_get_cached_datasheet_path,
+        )
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "handle_get_part_details",
+            fake_get_part_details,
+        )
+        monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
+        monkeypatch.setattr(
+            tools,
+            "_upload_openai_user_file",
+            fake_upload_openai_user_file,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="datasheet_read",
+                arguments={"lcsc_id": "C521608", "target": "default"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["found"] is True
+        assert result["openai_file_id"] == "file-test-fallback"
+        assert result["resolution"]["mode"] == "parts_api_fallback"
+        assert result["resolution"]["fallback_sources"][0]["source"] == "parts_api"
+
+    def _test_datasheet_read_uses_cached_reference_for_repeat_calls(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        counters = {"cache_lookup": 0, "read": 0, "upload": 0}
+
+        def fake_get_cached_datasheet_path(
+            lcsc_id: str, project_root: str
+        ) -> str | None:
+            counters["cache_lookup"] += 1
+            assert lcsc_id == "C123456"
+            assert project_root == str(tmp_path)
+            return str(
+                tmp_path / "build" / "cache" / "parts" / "datasheets" / "component.pdf"
+            )
+
+        def fake_read_datasheet_file(
+            project_root: Path,
+            *,
+            path: str | None = None,
+            url: str | None = None,
+        ) -> tuple[bytes, dict[str, object]]:
+            counters["read"] += 1
+            assert project_root == tmp_path
+            assert path and path.endswith("component.pdf")
+            assert url is None
+            return (
+                b"%PDF-1.7\ncached\n",
+                {
+                    "source_kind": "path",
+                    "source": "build/cache/parts/datasheets/component.pdf",
+                    "format": "pdf",
+                    "content_type": "application/pdf",
+                    "filename": "component.pdf",
+                    "sha256": "cafebabe",
+                    "size_bytes": 16,
+                },
+            )
+
+        async def fake_upload_openai_user_file(
+            *,
+            filename: str,
+            content: bytes,
+            cache_key: str,
+        ) -> tuple[str, bool]:
+            counters["upload"] += 1
+            assert filename == "component.pdf"
+            assert content.startswith(b"%PDF-")
+            assert cache_key == "cafebabe"
+            return ("file-cached-1", False)
+
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "handle_get_cached_datasheet_path",
+            fake_get_cached_datasheet_path,
+        )
+        monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
+        monkeypatch.setattr(
+            tools,
+            "_upload_openai_user_file",
+            fake_upload_openai_user_file,
+        )
+
+        first = _run(
+            tools.execute_tool(
+                name="datasheet_read",
+                arguments={
+                    "lcsc_id": "C123456",
+                    "target": "default",
+                    "query": "first query",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+        second = _run(
+            tools.execute_tool(
+                name="datasheet_read",
+                arguments={
+                    "lcsc_id": "C123456",
+                    "target": "default",
+                    "query": "second query",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert first["openai_file_id"] == "file-cached-1"
+        assert first["datasheet_cache_hit"] is False
+        assert second["openai_file_id"] == "file-cached-1"
+        assert second["datasheet_cache_hit"] is True
+        assert second["openai_file_cached"] is True
+        assert second["query"] == "second query"
+        assert counters == {"cache_lookup": 1, "read": 1, "upload": 1}
+
+    def _test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        read_attempts: list[str] = []
+
+        def fake_get_cached_datasheet_path(
+            lcsc_id: str, project_root: str
+        ) -> str | None:
+            assert lcsc_id == "C5360602"
+            assert project_root == str(tmp_path)
+            return None
+
+        def fake_get_part_details(lcsc_id: str) -> dict | None:
+            assert lcsc_id == "C5360602"
+            return {
+                "datasheet_url": "https://example.com/dead.pdf",
+                "manufacturer": "Sensirion",
+                "part_number": "SHT4x",
+                "description": "Humidity sensor",
+            }
+
+        def fake_search_jlc_parts(
+            query: str,
+            *,
+            limit: int = 50,
+        ) -> tuple[list[dict], str | None]:
+            assert query == "C5360602"
+            assert limit == 6
+            return (
+                [
+                    {
+                        "lcsc": "C5360602",
+                        "mpn": "SHT40-AD1B-R2",
+                        "datasheet_url": "https://example.com/working.pdf",
+                    }
+                ],
+                None,
+            )
+
+        def fake_read_datasheet_file(
+            project_root: Path,
+            *,
+            path: str | None = None,
+            url: str | None = None,
+        ) -> tuple[bytes, dict[str, object]]:
+            assert project_root == tmp_path
+            assert path is None
+            assert url is not None
+            read_attempts.append(url)
+            if url.endswith("/dead.pdf"):
+                raise policy.ScopeError("Failed to fetch datasheet url: dead")
+            assert url.endswith("/working.pdf")
+            return (
+                b"%PDF-1.7\n",
+                {
+                    "source_kind": "url",
+                    "source": url,
+                    "format": "pdf",
+                    "content_type": "application/pdf",
+                    "filename": "sht4x.pdf",
+                    "sha256": "11223344",
+                    "size_bytes": 9,
+                },
+            )
+
+        async def fake_upload_openai_user_file(
+            *,
+            filename: str,
+            content: bytes,
+            cache_key: str,
+        ) -> tuple[str, bool]:
+            assert filename == "sht4x.pdf"
+            assert content.startswith(b"%PDF-")
+            assert cache_key == "11223344"
+            return ("file-sht4x", False)
+
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "handle_get_cached_datasheet_path",
+            fake_get_cached_datasheet_path,
+        )
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "handle_get_part_details",
+            fake_get_part_details,
+        )
+        monkeypatch.setattr(
+            tools.parts_domain,
+            "search_jlc_parts",
+            fake_search_jlc_parts,
+        )
+        monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
+        monkeypatch.setattr(
+            tools,
+            "_upload_openai_user_file",
+            fake_upload_openai_user_file,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="datasheet_read",
+                arguments={"lcsc_id": "C5360602", "target": "default"},
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
+
+        assert result["found"] is True
+        assert result["openai_file_id"] == "file-sht4x"
+        assert read_attempts == [
+            "https://example.com/dead.pdf",
+            "https://example.com/working.pdf",
+        ]
+        assert result["resolution"]["url_fallback"]["selected_url"].endswith(
+            "/working.pdf"
+        )
+
+    def _test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeResponse:
+            def model_dump(self, by_alias: bool = False) -> dict:
+                _ = by_alias
+                return {"success": True, "message": "queued", "buildTargets": []}
+
+        def fake_start_build(request):
+            captured["include_targets"] = list(request.include_targets)
+            captured["exclude_targets"] = list(request.exclude_targets)
+            return FakeResponse()
+
+        monkeypatch.setattr(tools.builds_domain, "handle_start_build", fake_start_build)
+
+        result = _run(
+            tools.execute_tool(
+                name="build_run",
+                arguments={
+                    "targets": ["default"],
+                    "include_targets": ["power-tree"],
+                    "exclude_targets": ["mfg-data"],
+                },
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["success"] is True
+        assert captured["include_targets"] == ["power-tree"]
+        assert captured["exclude_targets"] == ["mfg-data"]
+
+    def _test_report_bom_returns_summary_fields(monkeypatch) -> None:
+        def fake_get_bom(project_root: str, target: str):
+            assert project_root == "/tmp/project"
+            assert target == "default"
+            return {
+                "build_id": "abc123",
+                "items": [
+                    {"designator": "R1", "mpn": "RC0603", "quantity": 1},
+                    {"designator": "C1", "mpn": "CL10A", "quantity": 2},
+                ],
+                "meta": {"currency": "USD"},
+            }
+
+        monkeypatch.setattr(tools.artifacts_domain, "handle_get_bom", fake_get_bom)
+
+        result = _run(
+            tools.execute_tool(
+                name="report_bom",
+                arguments={"target": "default"},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["found"] is True
+        assert result["summary"]["records_key"] == "items"
+        assert result["summary"]["records_count"] == 2
+        assert "designator" in result["summary"]["sample_fields"]
+
+    def _test_report_variables_not_found_returns_actionable_message(
+        monkeypatch,
+    ) -> None:
+        def fake_get_variables(project_root: str, target: str):
+            assert project_root == "/tmp/project"
+            assert target == "default"
+            return None
+
+        monkeypatch.setattr(
+            tools.artifacts_domain,
+            "handle_get_variables",
+            fake_get_variables,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="report_variables",
+                arguments={"target": "default"},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["found"] is False
+        assert "build_run" in result["message"]
+
+    def _test_manufacturing_generate_queues_mfg_data_build(monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeResponse:
+            success = True
+            message = "Build queued for project"
+
+            @property
+            def build_targets(self):
+                @dataclass
+                class _Target:
+                    target: str
+                    build_id: str
+
+                return [_Target(target="default", build_id="build-xyz")]
+
+        def fake_start_build(request):
+            captured["project_root"] = request.project_root
+            captured["targets"] = list(request.targets)
+            captured["frozen"] = request.frozen
+            captured["include_targets"] = list(request.include_targets)
+            captured["exclude_targets"] = list(request.exclude_targets)
+            return FakeResponse()
+
+        @dataclass
+        class FakeOutputs:
+            gerbers: str | None = None
+            bom_json: str | None = None
+            bom_csv: str | None = None
+            pick_and_place: str | None = None
+            step: str | None = None
+            glb: str | None = None
+            kicad_pcb: str | None = None
+            kicad_sch: str | None = None
+            pcb_summary: str | None = None
+
+        def fake_get_build_outputs(project_root: str, target: str):
+            assert project_root == "/tmp/project"
+            assert target == "default"
+            return FakeOutputs(
+                gerbers="/tmp/project/build/builds/default/default.gerber.zip",
+                bom_json="/tmp/project/build/builds/default/default.bom.json",
+            )
+
+        monkeypatch.setattr(tools.builds_domain, "handle_start_build", fake_start_build)
+        monkeypatch.setattr(
+            tools.manufacturing_domain,
+            "get_build_outputs",
+            fake_get_build_outputs,
+        )
+
+        result = _run(
+            tools.execute_tool(
+                name="manufacturing_generate",
+                arguments={"target": "default"},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["success"] is True
+        assert result["queued_build_id"] == "build-xyz"
+        assert result["include_targets"] == ["mfg-data"]
+        assert "gerbers" in result["present_outputs_before"]
+        assert "pick_and_place" in result["missing_outputs_before"]
+        assert captured == {
+            "project_root": "/tmp/project",
+            "targets": ["default"],
+            "frozen": False,
+            "include_targets": ["mfg-data"],
+            "exclude_targets": [],
+        }
+
+    def _test_build_logs_search_defaults_to_non_debug_levels(monkeypatch) -> None:
+        @dataclass
+        class FakeBuild:
+            build_id: str = "abc123"
+            status: BuildStatus = BuildStatus.FAILED
+            return_code: int = 1
+            error: str = "compile failed"
+            stages: list[dict] = field(
+                default_factory=lambda: [
+                    {"name": "compile", "status": "success", "elapsedSeconds": 1.2},
+                    {"name": "route", "status": "failed", "elapsedSeconds": 0.7},
+                ]
+            )
+            total_stages: int = 2
+
+        captured: dict[str, object] = {}
+
+        def fake_build_get(build_id: str):
+            assert build_id == "abc123"
+            return FakeBuild()
+
+        def fake_load_build_logs(
+            *,
+            build_id: str,
+            stage: str | None,
+            log_levels: list[str] | None,
+            audience: str | None,
+            count: int,
+        ) -> list[dict]:
+            captured.update(
+                {
+                    "build_id": build_id,
+                    "stage": stage,
+                    "log_levels": log_levels,
+                    "audience": audience,
+                    "count": count,
+                }
+            )
+            return [
+                {
+                    "build_id": build_id,
+                    "stage": "compile",
+                    "level": "ERROR",
+                    "audience": "developer",
+                    "message": "compile failed",
+                }
+            ]
+
+        monkeypatch.setattr(tools.BuildHistory, "get", fake_build_get)
+        monkeypatch.setattr(tools, "load_build_logs", fake_load_build_logs)
+
+        result = _run(
+            tools.execute_tool(
+                name="build_logs_search",
+                arguments={"build_id": "abc123", "limit": 25},
+                project_root=Path("."),
+                ctx=AppContext(),
+            )
+        )
+
+        assert captured["log_levels"] == ["INFO", "WARNING", "ERROR", "ALERT"]
+        assert captured["stage"] is None
+        assert result["filters"]["log_levels"] == ["INFO", "WARNING", "ERROR", "ALERT"]
+        assert result["stage_summary"]["counts"]["failed"] == 1
+
+    def _test_build_logs_search_honors_explicit_filters(monkeypatch) -> None:
+        @dataclass
+        class FakeBuild:
+            build_id: str = "abc123"
+            status: BuildStatus = BuildStatus.SUCCESS
+            return_code: int = 0
+            error: str | None = None
+            stages: list[dict] = field(default_factory=list)
+            total_stages: int = 0
+
+        captured: dict[str, object] = {}
+
+        def fake_build_get(build_id: str):
+            assert build_id == "abc123"
+            return FakeBuild()
+
+        def fake_load_build_logs(
+            *,
+            build_id: str,
+            stage: str | None,
+            log_levels: list[str] | None,
+            audience: str | None,
+            count: int,
+        ) -> list[dict]:
+            captured.update(
+                {
+                    "build_id": build_id,
+                    "stage": stage,
+                    "log_levels": log_levels,
+                    "audience": audience,
+                    "count": count,
+                }
+            )
+            return []
+
+        monkeypatch.setattr(tools.BuildHistory, "get", fake_build_get)
+        monkeypatch.setattr(tools, "load_build_logs", fake_load_build_logs)
+
+        result = _run(
+            tools.execute_tool(
+                name="build_logs_search",
+                arguments={
+                    "build_id": "abc123",
+                    "stage": "compile",
+                    "log_levels": ["DEBUG"],
+                    "audience": "developer",
+                    "limit": 10,
+                },
+                project_root=Path("."),
+                ctx=AppContext(),
+            )
+        )
+
+        assert captured["stage"] == "compile"
+        assert captured["log_levels"] == ["DEBUG"]
+        assert captured["audience"] == "developer"
+        assert result["filters"]["stage"] == "compile"
+        assert result["filters"]["log_levels"] == ["DEBUG"]
+
+    def _test_build_logs_search_null_query_does_not_filter_to_literal_none(
+        monkeypatch,
+    ) -> None:
+        @dataclass
+        class FakeBuild:
+            build_id: str = "abc123"
+            status: BuildStatus = BuildStatus.SUCCESS
+            return_code: int = 0
+            error: str | None = None
+            stages: list[dict] = field(default_factory=list)
+            total_stages: int = 0
+
+        def fake_build_get(build_id: str):
+            assert build_id == "abc123"
+            return FakeBuild()
+
+        def fake_load_build_logs(
+            *,
+            build_id: str,
+            stage: str | None,
+            log_levels: list[str] | None,
+            audience: str | None,
+            count: int,
+        ) -> list[dict]:
+            return [
+                {
+                    "build_id": build_id,
+                    "stage": "compile",
+                    "level": "INFO",
+                    "audience": "developer",
+                    "message": "compile started",
+                }
+            ]
+
+        monkeypatch.setattr(tools.BuildHistory, "get", fake_build_get)
+        monkeypatch.setattr(tools, "load_build_logs", fake_load_build_logs)
+
+        result = _run(
+            tools.execute_tool(
+                name="build_logs_search",
+                arguments={"build_id": "abc123", "query": None, "limit": 10},
+                project_root=Path("."),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["total"] == 1
+        assert result["logs"][0]["message"] == "compile started"
+        assert result["filters"]["query"] is None
+
+    def _test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
+        @dataclass
+        class FakeItem:
+            id: str
+            name: str
+
+            def model_dump(self) -> dict:
+                return {"id": self.id, "name": self.name}
+
+        @dataclass
+        class FakeResponse:
+            items: list[FakeItem]
+            total: int
+
+        def fake_get_stdlib(
+            type_filter: str | None,
+            search: str | None,
+            refresh: bool,
+            max_depth: int | None,
+        ) -> FakeResponse:
+            assert type_filter == "module"
+            assert search == "usb"
+            assert refresh is False
+            assert max_depth == 1
+            return FakeResponse(
+                items=[
+                    FakeItem(id="USB_C", name="USB_C"),
+                    FakeItem(id="Resistor", name="Resistor"),
+                ],
+                total=2,
+            )
+
+        def fake_get_item(item_id: str) -> FakeItem | None:
+            if item_id == "USB_C":
+                return FakeItem(id="USB_C", name="USB_C")
+            return None
+
+        monkeypatch.setattr(tools.stdlib_domain, "handle_get_stdlib", fake_get_stdlib)
+        monkeypatch.setattr(
+            tools.stdlib_domain, "handle_get_stdlib_item", fake_get_item
+        )
+
+        listed = _run(
+            tools.execute_tool(
+                name="stdlib_list",
+                arguments={
+                    "type_filter": "module",
+                    "search": "usb",
+                    "max_depth": 1,
+                    "limit": 1,
+                },
+                project_root=Path("."),
+                ctx=AppContext(),
+            )
+        )
+        assert listed["total"] == 2
+        assert listed["returned"] == 1
+        assert listed["items"][0]["id"] == "USB_C"
+
+        found = _run(
+            tools.execute_tool(
+                name="stdlib_get_item",
+                arguments={"item_id": "USB_C"},
+                project_root=Path("."),
+                ctx=AppContext(),
+            )
+        )
+        assert found["found"] is True
+        assert found["item"]["id"] == "USB_C"
+
+    def _test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
+        @dataclass
+        class FakeModule:
+            name: str
+            type: str
+            file: str
+            entry: str
+
+            def model_dump(self, by_alias: bool = False) -> dict:
+                _ = by_alias
+                return {
+                    "name": self.name,
+                    "type": self.type,
+                    "file": self.file,
+                    "entry": self.entry,
+                }
+
+        @dataclass
+        class FakeModulesResponse:
+            modules: list[FakeModule]
+            total: int
+
+        @dataclass
+        class FakeChild:
+            name: str
+            item_type: str
+            children: list["FakeChild"]
+
+            def model_dump(self, by_alias: bool = False) -> dict:
+                _ = by_alias
+                return {
+                    "name": self.name,
+                    "itemType": self.item_type,
+                    "children": [
+                        child.model_dump(by_alias=True) for child in self.children
+                    ],
+                }
+
+        def fake_get_modules(project_root: str, type_filter: str | None):
+            assert project_root == "/tmp/project"
+            assert type_filter == "module"
+            return FakeModulesResponse(
+                modules=[
+                    FakeModule(
+                        name="App",
+                        type="module",
+                        file="main.ato",
+                        entry="main.ato:App",
+                    )
+                ],
+                total=1,
+            )
+
+        def fake_introspect_module(
+            project_root: Path, entry_point: str, max_depth: int
+        ) -> list[FakeChild]:
+            assert str(project_root) == "/tmp/project"
+            assert entry_point == "main.ato:App"
+            assert max_depth == 2
+            return [FakeChild(name="i2c", item_type="interface", children=[])]
+
+        monkeypatch.setattr(
+            tools.projects_domain, "handle_get_modules", fake_get_modules
+        )
+        monkeypatch.setattr(
+            tools.module_introspection,
+            "introspect_module",
+            fake_introspect_module,
+        )
+
+        listed = _run(
+            tools.execute_tool(
+                name="project_list_modules",
+                arguments={"type_filter": "module", "limit": 10},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+        assert listed["total"] == 1
+        assert listed["returned"] == 1
+        assert listed["types"]["module"] == 1
+        assert listed["modules"][0]["entry"] == "main.ato:App"
+
+        children = _run(
+            tools.execute_tool(
+                name="project_module_children",
+                arguments={"entry_point": "main.ato:App", "max_depth": 2},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+        assert children["found"] is True
+        assert children["counts"]["interface"] == 1
+
+    def _test_build_logs_search_returns_stub_for_silent_failure(monkeypatch) -> None:
+        @dataclass
+        class FakeBuild:
+            build_id: str
+            project_root: str
+            target: str
+            status: BuildStatus
+            started_at: float
+            elapsed_seconds: float
+            warnings: int
+            errors: int
+            return_code: int | None
+            error: str | None
+            timestamp: str | None
+
+        def fake_load_build_logs(**kwargs):
+            assert kwargs["build_id"] == "build-123"
+            return []
+
+        def fake_get(build_id: str):
+            assert build_id == "build-123"
+            return FakeBuild(
+                build_id="build-123",
+                project_root="/tmp/project",
+                target="default",
+                status=BuildStatus.FAILED,
+                started_at=1.0,
+                elapsed_seconds=2.0,
+                warnings=0,
+                errors=0,
+                return_code=1,
+                error="compiler crashed",
+                timestamp=None,
+            )
+
+        monkeypatch.setattr(tools, "load_build_logs", fake_load_build_logs)
+        monkeypatch.setattr(tools.BuildHistory, "get", fake_get)
+
+        result = _run(
+            tools.execute_tool(
+                name="build_logs_search",
+                arguments={"build_id": "build-123", "limit": 10},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["synthesized_stub"] is True
+        assert result["total"] == 1
+        assert "No log lines were captured" in result["logs"][0]["message"]
+        assert result["status"] == "failed"
+
+    def _test_build_logs_search_normalizes_interrupted_history(monkeypatch) -> None:
+        @dataclass
+        class FakeBuild:
+            build_id: str
+            project_root: str
+            target: str
+            status: BuildStatus
+            started_at: float
+            elapsed_seconds: float
+            warnings: int
+            errors: int
+            return_code: int | None
+            error: str | None
+            timestamp: str | None
+
+        def fake_get_all(limit: int):
+            assert limit == 120
+            return [
+                FakeBuild(
+                    build_id="stale-build",
+                    project_root="/tmp/project",
+                    target="default",
+                    status=BuildStatus.BUILDING,
+                    started_at=1.0,
+                    elapsed_seconds=20.0,
+                    warnings=0,
+                    errors=0,
+                    return_code=None,
+                    error=None,
+                    timestamp=None,
+                )
+            ]
+
+        monkeypatch.setattr(tools.BuildHistory, "get_all", fake_get_all)
+        monkeypatch.setattr(tools, "_active_or_pending_build_ids", lambda: set())
+
+        result = _run(
+            tools.execute_tool(
+                name="build_logs_search",
+                arguments={},
+                project_root=Path("/tmp/project"),
+                ctx=AppContext(),
+            )
+        )
+
+        assert result["total"] == 1
+        assert result["builds"][0]["status"] == "failed"
+        assert "interrupted" in result["builds"][0]["error"]
+
+    class TestAgentToolsHashline:
+        test_tool_definitions_advertise_hashline_editor = staticmethod(
+            _test_tool_definitions_advertise_hashline_editor
+        )
+        test_execute_tool_allows_read_tool = staticmethod(
+            _test_execute_tool_allows_read_tool
+        )
+        test_web_search_executes_with_exa_adapter = staticmethod(
+            _test_web_search_executes_with_exa_adapter
+        )
+        test_execute_tool_allows_layout_screenshot = staticmethod(
+            _test_execute_tool_allows_layout_screenshot
+        )
+        test_layout_get_component_position_returns_exact_match = staticmethod(
+            _test_layout_get_component_position_returns_exact_match
+        )
+        test_layout_get_component_position_returns_fuzzy_suggestions = staticmethod(
+            _test_layout_get_component_position_returns_fuzzy_suggestions
+        )
+        test_layout_set_component_position_supports_absolute_and_relative = (
+            staticmethod(
+                _test_layout_set_component_position_supports_absolute_and_relative
+            )
+        )
+        test_examples_tools_list_search_and_read = staticmethod(
+            _test_examples_tools_list_search_and_read
+        )
+        test_project_read_file_returns_hashline_content = staticmethod(
+            _test_project_read_file_returns_hashline_content
+        )
+        test_project_edit_file_executes_atomic_edit = staticmethod(
+            _test_project_edit_file_executes_atomic_edit
+        )
+        test_project_rename_and_delete_path_execute = staticmethod(
+            _test_project_rename_and_delete_path_execute
+        )
+        test_parts_install_returns_datasheet_followup_hint = staticmethod(
+            _test_parts_install_returns_datasheet_followup_hint
+        )
+        test_autolayout_run_maps_common_options = staticmethod(
+            _test_autolayout_run_maps_common_options
+        )
+        test_autolayout_fetch_to_layout_archives_iteration = staticmethod(
+            _test_autolayout_fetch_to_layout_archives_iteration
+        )
+        test_autolayout_fetch_to_layout_waits_while_running = staticmethod(
+            _test_autolayout_fetch_to_layout_waits_while_running
+        )
+        test_autolayout_status_without_job_id_returns_project_summary = staticmethod(
+            _test_autolayout_status_without_job_id_returns_project_summary
+        )
+        test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable = (
+            staticmethod(
+                _test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable
+            )
+        )
+        test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary = (
+            staticmethod(
+                _test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary
+            )
+        )
+        test_autolayout_status_unknown_job_returns_recent_summary = staticmethod(
+            _test_autolayout_status_unknown_job_returns_recent_summary
+        )
+        test_autolayout_request_screenshot_renders_images = staticmethod(
+            _test_autolayout_request_screenshot_renders_images
+        )
+        test_autolayout_request_screenshot_uses_default_bottom_layers = staticmethod(
+            _test_autolayout_request_screenshot_uses_default_bottom_layers
+        )
+        test_autolayout_configure_board_intent_updates_ato_yaml = staticmethod(
+            _test_autolayout_configure_board_intent_updates_ato_yaml
+        )
+        test_datasheet_read_uploads_pdf_and_returns_file_id = staticmethod(
+            _test_datasheet_read_uploads_pdf_and_returns_file_id
+        )
+        test_datasheet_read_falls_back_when_graph_resolution_fails = staticmethod(
+            _test_datasheet_read_falls_back_when_graph_resolution_fails
+        )
+        test_datasheet_read_uses_cached_reference_for_repeat_calls = staticmethod(
+            _test_datasheet_read_uses_cached_reference_for_repeat_calls
+        )
+        test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails = (
+            staticmethod(
+                _test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails
+            )
+        )
+        test_build_run_forwards_include_and_exclude_targets = staticmethod(
+            _test_build_run_forwards_include_and_exclude_targets
+        )
+        test_report_bom_returns_summary_fields = staticmethod(
+            _test_report_bom_returns_summary_fields
+        )
+        test_report_variables_not_found_returns_actionable_message = staticmethod(
+            _test_report_variables_not_found_returns_actionable_message
+        )
+        test_manufacturing_generate_queues_mfg_data_build = staticmethod(
+            _test_manufacturing_generate_queues_mfg_data_build
+        )
+        test_build_logs_search_defaults_to_non_debug_levels = staticmethod(
+            _test_build_logs_search_defaults_to_non_debug_levels
+        )
+        test_build_logs_search_honors_explicit_filters = staticmethod(
+            _test_build_logs_search_honors_explicit_filters
+        )
+        test_build_logs_search_null_query_does_not_filter_to_literal_none = (
+            staticmethod(
+                _test_build_logs_search_null_query_does_not_filter_to_literal_none
+            )
+        )
+        test_stdlib_tools_execute_with_expected_shape = staticmethod(
+            _test_stdlib_tools_execute_with_expected_shape
+        )
+        test_project_module_tools_execute_with_expected_shape = staticmethod(
+            _test_project_module_tools_execute_with_expected_shape
+        )
+        test_build_logs_search_returns_stub_for_silent_failure = staticmethod(
+            _test_build_logs_search_returns_stub_for_silent_failure
+        )
+        test_build_logs_search_normalizes_interrupted_history = staticmethod(
+            _test_build_logs_search_normalizes_interrupted_history
+        )

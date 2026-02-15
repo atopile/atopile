@@ -1,18 +1,107 @@
-import zipfile
+import shutil
+import uuid
 from pathlib import Path
+
+import pytest
 
 from atopile.config import ProjectConfig
 from atopile.server.domains.autolayout.models import (
     AutolayoutCandidate,
     AutolayoutJob,
     AutolayoutState,
+    DownloadResult,
     ProviderCapabilities,
     ProviderStatus,
+    SubmitResult,
     utc_now_iso,
 )
-from atopile.server.domains.autolayout.providers.base import AutolayoutProvider
-from atopile.server.domains.autolayout.providers import MockAutolayoutProvider
 from atopile.server.domains.autolayout.service import AutolayoutService
+
+
+class MockAutolayoutProvider:
+    name = "mock"
+    capabilities = ProviderCapabilities(
+        supports_cancel=True,
+        supports_candidates=True,
+        supports_download=True,
+    )
+
+    def __init__(self) -> None:
+        self._jobs: dict[str, dict[str, object]] = {}
+
+    def submit(self, request) -> SubmitResult:
+        external_job_id = f"mock-{uuid.uuid4().hex[:12]}"
+        candidate = AutolayoutCandidate(
+            candidate_id="baseline",
+            label="Baseline (current layout)",
+            score=1.0,
+        )
+        self._jobs[external_job_id] = {
+            "layout_path": request.layout_path,
+            "state": AutolayoutState.AWAITING_SELECTION,
+            "candidates": [candidate],
+        }
+        return SubmitResult(
+            external_job_id=external_job_id,
+            state=AutolayoutState.AWAITING_SELECTION,
+            message="Mock provider generated a baseline candidate",
+            candidates=[candidate],
+        )
+
+    def status(self, external_job_id: str) -> ProviderStatus:
+        job = self._jobs.get(external_job_id)
+        if not isinstance(job, dict):
+            return ProviderStatus(
+                state=AutolayoutState.FAILED,
+                message=f"Unknown mock job: {external_job_id}",
+            )
+        return ProviderStatus(
+            state=job["state"],  # type: ignore[arg-type]
+            message="Mock provider ready",
+            progress=1.0,
+            candidates=list(job["candidates"]),  # type: ignore[arg-type]
+        )
+
+    def download_candidate(
+        self,
+        external_job_id: str,
+        candidate_id: str,
+        out_dir: Path,
+        target_layout_path: Path | None = None,
+    ) -> DownloadResult:
+        _ = target_layout_path
+        job = self._jobs.get(external_job_id)
+        if not isinstance(job, dict):
+            raise RuntimeError(f"Unknown mock job: {external_job_id}")
+
+        candidates = job.get("candidates")
+        if not isinstance(candidates, list) or not any(
+            isinstance(candidate, AutolayoutCandidate)
+            and candidate.candidate_id == candidate_id
+            for candidate in candidates
+        ):
+            raise RuntimeError(
+                f"Unknown mock candidate '{candidate_id}' for job {external_job_id}"
+            )
+
+        layout_path = job.get("layout_path")
+        if not isinstance(layout_path, Path):
+            raise RuntimeError(f"Missing mock layout for job {external_job_id}")
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_path = out_dir / f"{candidate_id}.kicad_pcb"
+        shutil.copy2(layout_path, output_path)
+        return DownloadResult(
+            candidate_id=candidate_id,
+            layout_path=output_path,
+            files={"kicad_pcb": str(output_path)},
+        )
+
+    def cancel(self, external_job_id: str) -> None:
+        job = self._jobs.get(external_job_id)
+        if not isinstance(job, dict):
+            return
+        job["state"] = AutolayoutState.CANCELLED
 
 
 def _write_test_project(tmp_path: Path) -> Path:
@@ -70,12 +159,12 @@ def test_build_target_config_parses_autolayout(tmp_path: Path):
 def test_autolayout_service_mock_lifecycle(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
 
-    service = AutolayoutService(providers={"mock": MockAutolayoutProvider()})
+    service = AutolayoutService()
+    service._autolayout = MockAutolayoutProvider()
 
     job = service.start_job(
         project_root=str(project_root),
         build_target="default",
-        provider_name="mock",
     )
 
     assert job.provider == "mock"
@@ -94,76 +183,32 @@ def test_autolayout_service_mock_lifecycle(tmp_path: Path):
     assert Path(applied.layout_path or "").exists()
 
 
-def test_export_quilter_package_contains_constraints(tmp_path: Path):
-    project_root = _write_test_project(tmp_path)
-
-    service = AutolayoutService(providers={"mock": MockAutolayoutProvider()})
-    package_path = Path(service.export_quilter_package(str(project_root), "default"))
-
-    assert package_path.exists()
-    with zipfile.ZipFile(package_path) as archive:
-        names = set(archive.namelist())
-
-    assert "default.kicad_pcb" in names
-    assert "autolayout_constraints.json" in names
-
-
-def test_autolayout_service_persists_jobs_to_state_file(tmp_path: Path):
+def test_autolayout_service_keeps_job_state_in_memory_only(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
     state_path = tmp_path / "autolayout_jobs_state.json"
 
     service = AutolayoutService(
-        providers={"mock": MockAutolayoutProvider()},
         state_path=state_path,
     )
+    service._autolayout = MockAutolayoutProvider()
     job = service.start_job(
         project_root=str(project_root),
         build_target="default",
-        provider_name="mock",
     )
-    assert state_path.exists()
+    assert not state_path.exists()
 
     reloaded = AutolayoutService(
-        providers={"mock": MockAutolayoutProvider()},
         state_path=state_path,
     )
-    restored = reloaded.get_job(job.job_id)
-    assert restored.job_id == job.job_id
-    assert restored.project_root == str(project_root.resolve())
-    assert restored.provider == "mock"
-
-
-def test_autolayout_service_recover_job_from_local_download(tmp_path: Path):
-    project_root = _write_test_project(tmp_path)
-    build_cfg = ProjectConfig.from_path(project_root).builds["default"]  # type: ignore[union-attr]
-
-    job_id = "al-recover123456"
-    work_dir = build_cfg.paths.output_base.parent / "autolayout" / job_id
-    downloads_dir = work_dir / "downloads"
-    downloads_dir.mkdir(parents=True, exist_ok=True)
-    (downloads_dir / "cand-local.kicad_pcb").write_text("new-layout", encoding="utf-8")
-
-    service = AutolayoutService(
-        providers={"mock": MockAutolayoutProvider()},
-        state_path=tmp_path / "autolayout_jobs_state.json",
-    )
-
-    recovered = service.recover_job(str(project_root), job_id)
-    assert recovered is not None
-    assert recovered.job_id == job_id
-    assert recovered.state == AutolayoutState.AWAITING_SELECTION
-    assert recovered.candidates
-    assert recovered.candidates[0].candidate_id == "cand-local"
-
-    applied = service.apply_candidate(job_id, candidate_id="cand-local")
-    assert applied.applied_candidate_id == "cand-local"
-    assert Path(applied.layout_path or "").read_text(encoding="utf-8") == "new-layout"
+    reloaded._autolayout = MockAutolayoutProvider()
+    with pytest.raises(KeyError):
+        reloaded.get_job(job.job_id)
 
 
 def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
 
-    class CompletedRefreshProvider(AutolayoutProvider):
+    class CompletedRefreshProvider:
         name = "custom"
         capabilities = ProviderCapabilities(
             supports_cancel=False,
@@ -186,10 +231,6 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
                 ],
             )
 
-        def _resolve_board_ids_single(self, request_id: str):
-            _ = request_id
-            return ["board-123"]
-
         def list_candidates(self, external_job_id: str):  # pragma: no cover - unused
             _ = external_job_id
             return []
@@ -209,9 +250,9 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
             raise NotImplementedError
 
     service = AutolayoutService(
-        providers={"custom": CompletedRefreshProvider()},
         state_path=tmp_path / "autolayout_jobs_state.json",
     )
+    service._autolayout = CompletedRefreshProvider()
     build_cfg = ProjectConfig.from_path(project_root).builds["default"]  # type: ignore[union-attr]
     job = AutolayoutJob(
         job_id="al-refresh123456",
@@ -221,7 +262,7 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
         state=AutolayoutState.COMPLETED,
         created_at=utc_now_iso(),
         updated_at=utc_now_iso(),
-        provider_job_ref=None,
+        provider_job_ref="board-123",
         layout_path=str(build_cfg.paths.layout),
         candidates=[AutolayoutCandidate(candidate_id="0")],
     )
@@ -229,6 +270,8 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
         service._jobs[job.job_id] = job
 
     refreshed = service.refresh_job("al-refresh123456")
-    assert refreshed.provider_job_ref == "board-123"
     assert refreshed.state == AutolayoutState.AWAITING_SELECTION
-    assert [candidate.candidate_id for candidate in refreshed.candidates] == ["42", "41"]
+    assert [candidate.candidate_id for candidate in refreshed.candidates] == [
+        "42",
+        "41",
+    ]

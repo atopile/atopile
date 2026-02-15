@@ -5,7 +5,7 @@ import pytest
 
 
 def _reload_deeppcb_module():
-    import atopile.server.domains.autolayout.providers.deeppcb as deeppcb_module
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
 
     return importlib.reload(deeppcb_module)
 
@@ -86,7 +86,7 @@ def test_deeppcb_optional_webhook_overrides(monkeypatch):
 
 
 def test_extract_board_candidates_prefers_explicit_board_keys():
-    import atopile.server.domains.autolayout.providers.deeppcb as deeppcb_module
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
 
     payload = {
         "id": "generic-id",
@@ -99,7 +99,7 @@ def test_extract_board_candidates_prefers_explicit_board_keys():
 
 
 def test_extract_board_candidates_falls_back_to_top_level_id():
-    import atopile.server.domains.autolayout.providers.deeppcb as deeppcb_module
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
 
     payload = {"id": "generic-id"}
     assert deeppcb_module._extract_board_candidates(payload)[0] == "generic-id"
@@ -231,7 +231,7 @@ def test_resume_option_parsing(monkeypatch):
 
 
 def test_extract_workflow_statuses_and_running_detection():
-    import atopile.server.domains.autolayout.providers.deeppcb as deeppcb_module
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
 
     payload = {
         "workflows": [
@@ -281,7 +281,11 @@ def test_status_prefers_workflow_revisions_for_candidates(monkeypatch):
     status = provider.status("board-1")
 
     assert status.state == deeppcb_module.AutolayoutState.AWAITING_SELECTION
-    assert [candidate.candidate_id for candidate in status.candidates] == ["2", "1", "0"]
+    assert [candidate.candidate_id for candidate in status.candidates] == [
+        "2",
+        "1",
+        "0",
+    ]
     assert status.candidates[0].metadata.get("revisionId") == "rev-uuid-2"
     assert status.candidates[0].metadata.get("workflowId") == "workflow-1"
 
