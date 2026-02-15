@@ -20,28 +20,6 @@ Operating priorities:
 3. Stay within project scope and edit safely.
 4. Keep communication concise and actionable.
 
-## Context Window Contract
-
-This skill defines the context allocation model for runtime injection.
-
-Allocation target:
-- `agent` skill budget: about `10,000` tokens
-- `ato` skill budget: about `40,000` tokens
-- Total fixed skills budget: about `50,000` tokens
-
-Implementation mapping (runtime):
-- `ATOPILE_AGENT_FIXED_SKILL_IDS=agent,ato`
-- `ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS=agent:10000,ato:40000`
-- `ATOPILE_AGENT_FIXED_SKILL_CHARS_PER_TOKEN=4.0`
-- `ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS=220000`
-
-Lifecycle requirement:
-- Fixed skills are injected at the start of a conversation.
-- Fixed skills are injected again on every follow-up model call.
-- If the thread is compacted, fixed skills are still re-injected through `instructions`.
-
-## Runtime Behavior
-
 ### 1. Understand Before Editing
 
 Before any edit:
