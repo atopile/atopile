@@ -11,8 +11,10 @@ const type_registry = pyzig.type_registry;
 const graph = graph_mod.graph;
 
 const StringWrapper = bind.PyObjectWrapper(fabll.literals.String);
+const StringsWrapper = bind.PyObjectWrapper(fabll.literals.Strings);
 
 var string_type: ?*py.PyTypeObject = null;
+var strings_type: ?*py.PyTypeObject = null;
 
 fn unwrap_zig_address_ptr(comptime T: type, obj: *py.PyObject) ?*T {
     const zig_address = py.PyObject_GetAttrString(obj, "__zig_address__");
@@ -49,6 +51,20 @@ fn unwrap_zig_address_ptr(comptime T: type, obj: *py.PyObject) ?*T {
 
 fn string_dealloc(self: *py.PyObject) callconv(.c) void {
     const wrapper = @as(*StringWrapper, @ptrCast(@alignCast(self)));
+    std.heap.c_allocator.destroy(wrapper.data);
+
+    if (py.Py_TYPE(self)) |type_obj| {
+        if (type_obj.tp_free) |free_fn_any| {
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
+            free_fn(self);
+            return;
+        }
+    }
+    py._Py_Dealloc(self);
+}
+
+fn strings_dealloc(self: *py.PyObject) callconv(.c) void {
+    const wrapper = @as(*StringsWrapper, @ptrCast(@alignCast(self)));
     std.heap.c_allocator.destroy(wrapper.data);
 
     if (py.Py_TYPE(self)) |type_obj| {
@@ -101,6 +117,42 @@ fn wrap_string_create_instance() type {
     };
 }
 
+fn wrap_string_bind_instance() type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "bind_instance",
+            .doc = "Bind an existing node instance as a Zig fabll String",
+            .args_def = struct {
+                instance: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .instance = bind.ARG{ .Wrapper = graph_py.BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const literal = faebryk.fabll.Node.bind_instance(fabll.literals.String, kwarg_obj.instance.*);
+
+            const allocator = std.heap.c_allocator;
+            const literal_ptr = allocator.create(fabll.literals.String) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            literal_ptr.* = literal;
+
+            const pyobj = bind.wrap_obj("String", &string_type, StringWrapper, literal_ptr);
+            if (pyobj == null) {
+                allocator.destroy(literal_ptr);
+                return null;
+            }
+            return pyobj;
+        }
+    };
+}
+
 fn wrap_string_get_value() type {
     return struct {
         pub const descr = bind.method_descr{
@@ -136,6 +188,7 @@ fn wrap_string_get_instance() type {
 fn wrap_string(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_string_create_instance(),
+        wrap_string_bind_instance(),
         wrap_string_get_value(),
         wrap_string_get_instance(),
     };
@@ -147,11 +200,208 @@ fn wrap_string(root: *py.PyObject) void {
     }
 }
 
+fn wrap_strings_create_instance() type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "create_instance",
+            .doc = "Create a new Zig fabll Strings literal instance",
+            .args_def = struct {
+                g: *py.PyObject,
+                tg: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const g_ptr = unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
+            const tg_ptr = unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
+            const literal = faebryk.fabll.Node.bind_typegraph(fabll.literals.Strings, tg_ptr).create_instance(g_ptr);
+
+            const allocator = std.heap.c_allocator;
+            const literal_ptr = allocator.create(fabll.literals.Strings) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            literal_ptr.* = literal;
+
+            const pyobj = bind.wrap_obj("Strings", &strings_type, StringsWrapper, literal_ptr);
+            if (pyobj == null) {
+                allocator.destroy(literal_ptr);
+                return null;
+            }
+            return pyobj;
+        }
+    };
+}
+
+fn wrap_strings_bind_instance() type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "bind_instance",
+            .doc = "Bind an existing node instance as a Zig fabll Strings literal",
+            .args_def = struct {
+                instance: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .instance = bind.ARG{ .Wrapper = graph_py.BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const literal = faebryk.fabll.Node.bind_instance(fabll.literals.Strings, kwarg_obj.instance.*);
+
+            const allocator = std.heap.c_allocator;
+            const literal_ptr = allocator.create(fabll.literals.Strings) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            literal_ptr.* = literal;
+
+            const pyobj = bind.wrap_obj("Strings", &strings_type, StringsWrapper, literal_ptr);
+            if (pyobj == null) {
+                allocator.destroy(literal_ptr);
+                return null;
+            }
+            return pyobj;
+        }
+    };
+}
+
+fn wrap_strings_get_instance() type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "get_instance",
+            .doc = "Get bound node instance for this literal set",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
+            return graph_py.makeBoundNodePyObject(wrapper.data.node.instance);
+        }
+    };
+}
+
+fn wrap_strings_setup_from_values() type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "setup_from_values",
+            .doc = "Populate this Strings literal set from provided values",
+            .args_def = struct {
+                values: *py.PyObject,
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (py.PySequence_Check(kwarg_obj.values) == 0) {
+                py.PyErr_SetString(py.PyExc_TypeError, "values must be a sequence of strings");
+                return null;
+            }
+
+            const size = py.PySequence_Size(kwarg_obj.values);
+            if (size < 0) {
+                return null;
+            }
+
+            const allocator = std.heap.c_allocator;
+            var values = std.array_list.Managed([]const u8).init(allocator);
+            defer values.deinit();
+
+            var i: isize = 0;
+            while (i < size) : (i += 1) {
+                const item = py.PySequence_GetItem(kwarg_obj.values, i);
+                if (item == null) {
+                    return null;
+                }
+                defer py.Py_DECREF(item.?);
+
+                const value_copy = bind.unwrap_str_copy(item) orelse return null;
+                values.append(value_copy) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                    return null;
+                };
+            }
+
+            _ = wrapper.data.setup_from_values(values.items);
+            const self_obj = self orelse return null;
+            py.Py_INCREF(self_obj);
+            return self_obj;
+        }
+    };
+}
+
+fn wrap_strings_get_values() type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "get_values",
+            .doc = "Return all string values in this literal set",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
+            const allocator = std.heap.c_allocator;
+            const values = wrapper.data.get_values(allocator) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to retrieve values");
+                return null;
+            };
+            defer allocator.free(values);
+
+            const out_list = py.PyList_New(@intCast(values.len));
+            if (out_list == null) {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            }
+
+            for (values, 0..) |value, idx| {
+                const py_value = bind.wrap_str(value) orelse {
+                    py.Py_DECREF(out_list.?);
+                    return null;
+                };
+                if (py.PyList_SetItem(out_list, @intCast(idx), py_value) < 0) {
+                    py.Py_DECREF(py_value);
+                    py.Py_DECREF(out_list.?);
+                    return null;
+                }
+            }
+
+            return out_list;
+        }
+    };
+}
+
+fn wrap_strings(root: *py.PyObject) void {
+    const extra_methods = [_]type{
+        wrap_strings_create_instance(),
+        wrap_strings_bind_instance(),
+        wrap_strings_get_instance(),
+        wrap_strings_setup_from_values(),
+        wrap_strings_get_values(),
+    };
+    bind.wrap_namespace_struct(root, fabll.literals.Strings, extra_methods);
+    strings_type = type_registry.getRegisteredTypeObject("Strings");
+
+    if (strings_type) |typ| {
+        typ.tp_dealloc = @ptrCast(&strings_dealloc);
+    }
+}
+
 fn wrap_literals(root: *py.PyObject) void {
     wrap_string(root);
+    wrap_strings(root);
 
     const extra_methods = [_]type{};
-    bind.wrap_namespace_struct(root, fabll.literals.Strings, extra_methods);
     bind.wrap_namespace_struct(root, fabll.literals.Interval, extra_methods);
     bind.wrap_namespace_struct(root, fabll.literals.Numbers, extra_methods);
     bind.wrap_namespace_struct(root, fabll.literals.Booleans, extra_methods);

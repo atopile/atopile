@@ -28,22 +28,6 @@ PRINT_DIGITS = 3
 # TODO all creating functions need g as param
 
 
-@once
-def _get_zig_string_literal_type():
-    try:
-        import faebryk.core.zig as zig
-
-        string_type = zig.gen.fabll.literals.String
-        return (
-            string_type
-            if hasattr(string_type, "create_instance")
-            and hasattr(string_type, "get_value")
-            else None
-        )
-    except Exception:
-        return None
-
-
 class UnitsNotCommensurableError(Exception):
     """
     Raised when operations are attempted on values with incompatible units.
@@ -458,19 +442,6 @@ class Strings(fabll.Node):
     values = F.Collections.PointerSet.MakeChild()
 
     def setup_from_values(self, *values: str) -> Self:
-        zig_string_lit_t = _get_zig_string_literal_type()
-        if zig_string_lit_t is not None:
-            for value in values:
-                zig_string = zig_string_lit_t.create_instance(
-                    g=self.instance.g(),
-                    tg=self.tg,
-                    value=value,
-                )
-                self.values.get().append(
-                    fabll.Node.bind_instance(instance=zig_string.get_instance())
-                )
-            return self
-
         StirngLitT = String.bind_typegraph(tg=self.tg)
         for value in values:
             self.values.get().append(
@@ -485,10 +456,11 @@ class Strings(fabll.Node):
         out: list[str] = []
         for lit in self.values.get().as_list():
             value = lit.instance.node().get_attr(key="value")
-            if isinstance(value, str):
-                out.append(value)
-                continue
-            out.append(lit.cast(String).get_value())
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"String literal has invalid value attribute: {value!r}"
+                )
+            out.append(value)
         return out
 
     @classmethod
@@ -679,6 +651,13 @@ class Strings(fabll.Node):
             raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
 
         return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
+
+
+# Prefer Zig runtime for Strings operations when available.
+Strings = fabll.ZigNodeAdapter.bind_set_literal(
+    Strings,
+    "gen.fabll.literals.Strings",
+)
 
 
 @dataclass

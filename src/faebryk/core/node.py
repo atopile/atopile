@@ -1817,6 +1817,116 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         )
 
 
+class ZigNodeAdapter:
+    """
+    Utility for attaching Zig-backed runtime implementations to existing Node classes.
+    Falls back to the original Python implementation when Zig bindings are unavailable.
+    """
+
+    @staticmethod
+    def _resolve_zig_type(zig_type_or_path: Any) -> Any | None:
+        if zig_type_or_path is None:
+            return None
+        if not isinstance(zig_type_or_path, str):
+            return zig_type_or_path
+
+        try:
+            import faebryk.core.zig as zig
+        except Exception:
+            return None
+
+        current: Any = zig
+        for part in zig_type_or_path.split("."):
+            current = getattr(current, part, None)
+            if current is None:
+                return None
+        return current
+
+    @staticmethod
+    def _coerce_result(py_type: type["Node"], self_obj: "Node", result: Any) -> Any:
+        get_instance = getattr(result, "get_instance", None)
+        if not callable(get_instance):
+            return result
+
+        try:
+            instance = get_instance()
+            if isinstance(instance, graph.BoundNode):
+                if Node.nodes_match(self_obj.instance, instance):
+                    return self_obj
+                return py_type.bind_instance(instance=instance)
+        except Exception:
+            return result
+
+        return result
+
+    @staticmethod
+    def install_instance_methods(
+        py_type: type["Node"],
+        zig_type_or_path: Any,
+        delegated_methods: dict[
+            str, Callable[[Any, tuple[Any, ...], dict[str, Any]], Any]
+        ],
+        required_methods: tuple[str, ...] = (),
+    ) -> type["Node"]:
+        zig_type = ZigNodeAdapter._resolve_zig_type(zig_type_or_path)
+        if zig_type is None:
+            return py_type
+
+        bind_instance = getattr(zig_type, "bind_instance", None)
+        if not callable(bind_instance):
+            return py_type
+
+        required = {"bind_instance", *required_methods, *delegated_methods.keys()}
+        if any(not callable(getattr(zig_type, name, None)) for name in required):
+            return py_type
+
+        for method_name, zig_call in delegated_methods.items():
+            fallback = getattr(py_type, method_name, None)
+            setattr(py_type, f"__zig_fallback_{method_name}", fallback)
+
+            def _wrapped(
+                self: "Node",
+                *args: Any,
+                __name: str = method_name,
+                __call: Callable[
+                    [Any, tuple[Any, ...], dict[str, Any]], Any
+                ] = zig_call,
+                **kwargs: Any,
+            ) -> Any:
+                try:
+                    zig_bound = bind_instance(instance=self.instance)
+                    zig_result = __call(zig_bound, args, kwargs)
+                    return ZigNodeAdapter._coerce_result(py_type, self, zig_result)
+                except Exception:
+                    fallback_method = getattr(
+                        type(self), f"__zig_fallback_{__name}", None
+                    )
+                    if callable(fallback_method):
+                        return fallback_method(self, *args, **kwargs)
+                    raise
+
+            setattr(py_type, method_name, _wrapped)
+
+        setattr(py_type, "__zig_runtime_type__", zig_type)
+        return py_type
+
+    @staticmethod
+    def bind_set_literal(
+        py_type: type["Node"],
+        zig_type_or_path: Any,
+    ) -> type["Node"]:
+        return ZigNodeAdapter.install_instance_methods(
+            py_type=py_type,
+            zig_type_or_path=zig_type_or_path,
+            delegated_methods={
+                "setup_from_values": lambda zig_bound, args, _kwargs: (
+                    zig_bound.setup_from_values(values=list(args))
+                ),
+            },
+            required_methods=("setup_from_values",),
+        )
+
+
 type NodeT = Node[Any]
 RefPath = list[str | _ChildField[Any] | type[NodeT]]
 
