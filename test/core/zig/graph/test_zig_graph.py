@@ -2,6 +2,21 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 
 
+def test_fabll_import_surface():
+    import faebryk.core.zig as zig
+
+    assert hasattr(zig.gen, "fabll")
+    assert hasattr(zig.gen.fabll, "literals")
+    assert hasattr(zig.gen.fabll, "parameters")
+    assert hasattr(zig.gen.fabll, "expressions")
+    assert hasattr(zig.gen.fabll, "units")
+
+    assert hasattr(zig.gen.fabll.literals, "Interval")
+    assert hasattr(zig.gen.fabll.parameters, "NumericParameter")
+    assert hasattr(zig.gen.fabll.expressions, "Add")
+    assert hasattr(zig.gen.fabll.units, "Volt")
+
+
 def test_minimal_graph():
     g = graph.GraphView.create()
 
