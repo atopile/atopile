@@ -92,10 +92,6 @@ def create_app(pcb_path: Path) -> FastAPI:
         allow_headers=["*"],
     )
 
-    async def _broadcast_model() -> None:
-        model = await asyncio.to_thread(manager.get_render_model)
-        await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
-
     @app.get("/api/render-model", response_model=RenderModel)
     async def get_render_model() -> RenderModel:
         return await asyncio.to_thread(manager.get_render_model)
@@ -107,6 +103,12 @@ def create_app(pcb_path: Path) -> FastAPI:
     async def get_footprints() -> list[FootprintSummary]:
         return await asyncio.to_thread(manager.get_footprints)
 
+    async def _save_and_broadcast() -> RenderModel:
+        await asyncio.to_thread(manager.save)
+        model = await asyncio.to_thread(manager.get_render_model)
+        await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
+        return model
+
     @app.post("/api/execute-action", response_model=StatusResponse)
     async def execute_action(req: ActionRequest) -> StatusResponse:
         method_name = ACTION_HANDLERS.get(req.type)
@@ -114,33 +116,31 @@ def create_app(pcb_path: Path) -> FastAPI:
             return StatusResponse(status=f"unknown_action:{req.type}")
         method = getattr(manager, method_name)
         await asyncio.to_thread(method, **req.details)
-        await asyncio.to_thread(manager.save)
-        await _broadcast_model()
-        return StatusResponse(status="ok")
+        model = await _save_and_broadcast()
+        return StatusResponse(status="ok", model=model)
 
     @app.post("/api/undo", response_model=StatusResponse)
     async def undo() -> StatusResponse:
         ok = await asyncio.to_thread(manager.undo)
         if ok:
-            await asyncio.to_thread(manager.save)
-            await _broadcast_model()
-            return StatusResponse(status="ok")
+            model = await _save_and_broadcast()
+            return StatusResponse(status="ok", model=model)
         return StatusResponse(status="nothing_to_undo")
 
     @app.post("/api/redo", response_model=StatusResponse)
     async def redo() -> StatusResponse:
         ok = await asyncio.to_thread(manager.redo)
         if ok:
-            await asyncio.to_thread(manager.save)
-            await _broadcast_model()
-            return StatusResponse(status="ok")
+            model = await _save_and_broadcast()
+            return StatusResponse(status="ok", model=model)
         return StatusResponse(status="nothing_to_redo")
 
     @app.post("/api/reload", response_model=StatusResponse)
     async def reload() -> StatusResponse:
         await asyncio.to_thread(manager.load, pcb_path)
-        await _broadcast_model()
-        return StatusResponse(status="ok")
+        model = await asyncio.to_thread(manager.get_render_model)
+        await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
+        return StatusResponse(status="ok", model=model)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):

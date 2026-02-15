@@ -176,6 +176,7 @@ class ActionRequest(BaseModel):
 
 class StatusResponse(BaseModel):
     status: str
+    model: RenderModel | None = None
 
 
 class WsMessage(BaseModel):

@@ -50,16 +50,17 @@ export class Editor {
 
     private async fetchAndPaint() {
         const resp = await fetch(`${this.baseUrl}/api/render-model`);
-        this.applyModel(await resp.json());
+        this.applyModel(await resp.json(), true);
     }
 
-    private applyModel(model: RenderModel) {
+    private applyModel(model: RenderModel, fitToView = false) {
         this.model = model;
         this.paint();
 
-        const bbox = computeBBox(this.model);
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
-        this.camera.bbox = bbox;
+        if (fitToView) {
+            this.camera.bbox = computeBBox(this.model);
+        }
         this.requestRedraw();
     }
 
@@ -203,11 +204,13 @@ export class Editor {
 
     private async executeAction(type: string, details: Record<string, unknown>) {
         try {
-            await fetch(`${this.baseUrl}/api/execute-action`, {
+            const resp = await fetch(`${this.baseUrl}/api/execute-action`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ type, details }),
             });
+            const data = await resp.json();
+            if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
         }
@@ -215,7 +218,9 @@ export class Editor {
 
     private async serverAction(endpoint: string) {
         try {
-            await fetch(`${this.baseUrl}${endpoint}`, { method: "POST" });
+            const resp = await fetch(`${this.baseUrl}${endpoint}`, { method: "POST" });
+            const data = await resp.json();
+            if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error(`Failed ${endpoint}:`, err);
         }
