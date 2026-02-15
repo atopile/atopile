@@ -92,7 +92,28 @@ for lib_table in ("fp-lib-table", "sym-lib-table"):
 
 PYEOF
 
-echo "[web-ide] Starting OpenVSCode Server..."
+echo "[web-ide] Starting Caddy reverse proxy and OpenVSCode Server..."
 
-# Exec into OpenVSCode Server (replaces this shell process)
-exec "${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" "$@"
+# --- Dual-process management: Caddy + OpenVSCode Server ---
+# Both run in background; we forward signals and exit when either dies.
+
+cleanup() {
+    echo "[web-ide] Shutting down..."
+    kill "$CADDY_PID" "$OPENVSCODE_PID" 2>/dev/null
+    wait "$CADDY_PID" "$OPENVSCODE_PID" 2>/dev/null
+}
+trap cleanup SIGTERM SIGINT
+
+# Start Caddy (reverse proxy on :3000 → OpenVSCode :3001 + backend :8501)
+caddy run --config "${HOME}/.local/etc/Caddyfile" &
+CADDY_PID=$!
+
+# Start OpenVSCode Server (listens on 127.0.0.1:3001, behind Caddy)
+"${OPENVSCODE_SERVER_ROOT}/bin/openvscode-server" "$@" &
+OPENVSCODE_PID=$!
+
+# Wait for either process to exit, then tear down the other
+wait -n "$CADDY_PID" "$OPENVSCODE_PID" 2>/dev/null
+EXIT_CODE=$?
+cleanup
+exit $EXIT_CODE

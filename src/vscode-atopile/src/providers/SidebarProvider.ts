@@ -23,6 +23,7 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
+import { WebSocket as NodeWebSocket } from 'ws';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -55,6 +56,26 @@ interface FetchProxyRequest {
   method: string;
   headers: Record<string, string>;
   body: string | null;
+}
+
+// WebSocket proxy: bridges webview WebSocket connections through the extension host.
+// In OpenVSCode Server, webviews are served from HTTPS CDN which blocks
+// ws:// connections to the local backend (Mixed Content).
+interface WsProxyConnect {
+  type: 'wsProxyConnect';
+  id: number;
+  url: string;
+}
+interface WsProxySend {
+  type: 'wsProxySend';
+  id: number;
+  data: string;
+}
+interface WsProxyClose {
+  type: 'wsProxyClose';
+  id: number;
+  code?: number;
+  reason?: string;
 }
 
 interface SelectionChangedMessage {
@@ -213,7 +234,10 @@ type WebviewMessage =
   | FetchProxyRequest
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | WsProxyConnect
+  | WsProxySend
+  | WsProxyClose;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -232,6 +256,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
   private _lastAtopileSettingsKey: string | null = null;
+  private _wsProxies: Map<number, NodeWebSocket> = new Map();
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
@@ -282,6 +307,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._disposables = [];
     this._disposeFileWatcher();
+    // Clean up all WebSocket proxy connections
+    for (const ws of this._wsProxies.values()) {
+      ws.removeAllListeners();
+      ws.close();
+    }
+    this._wsProxies.clear();
   }
 
   private _disposeFileWatcher(): void {
@@ -703,6 +734,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // HTTP fetch() to the local backend (Mixed Content).
         this._handleFetchProxy(message);
         break;
+      case 'wsProxyConnect':
+        this._handleWsProxyConnect(message as WsProxyConnect);
+        break;
+      case 'wsProxySend':
+        this._handleWsProxySend(message as WsProxySend);
+        break;
+      case 'wsProxyClose':
+        this._handleWsProxyClose(message as WsProxyClose);
+        break;
       case 'threeDModelBuildResult':
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
@@ -752,6 +792,79 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           error: String(err),
         });
       });
+  }
+
+  // --- WebSocket proxy: bridge webview WS connections through the extension host ---
+
+  private _handleWsProxyConnect(msg: WsProxyConnect): void {
+    // Close any existing proxy with the same id
+    const existing = this._wsProxies.get(msg.id);
+    if (existing) {
+      existing.removeAllListeners();
+      existing.close();
+      this._wsProxies.delete(msg.id);
+    }
+
+    // Rewrite the URL to use the internal backend address.
+    // The webview sends the browser-visible URL (e.g. ws://host:3000/ws/state)
+    // but the extension host needs the container-internal address.
+    let targetUrl = msg.url;
+    try {
+      const parsed = new URL(msg.url);
+      const internalBase = backendServer.apiUrl; // e.g., http://127.0.0.1:8501
+      if (internalBase) {
+        const internal = new URL(internalBase);
+        targetUrl = `ws://${internal.hostname}:${internal.port}${parsed.pathname}${parsed.search}`;
+      }
+    } catch {
+      // Use the URL as-is if parsing fails
+    }
+
+    traceInfo(`[WsProxy] Connecting id=${msg.id} to ${targetUrl}`);
+    const ws = new NodeWebSocket(targetUrl);
+
+    ws.on('open', () => {
+      traceInfo(`[WsProxy] Connected id=${msg.id}`);
+      this._view?.webview.postMessage({ type: 'wsProxyOpen', id: msg.id });
+    });
+
+    ws.on('message', (data: Buffer | string) => {
+      const payload = typeof data === 'string' ? data : data.toString('utf-8');
+      this._view?.webview.postMessage({ type: 'wsProxyMessage', id: msg.id, data: payload });
+    });
+
+    ws.on('close', (code: number, reason: Buffer) => {
+      traceInfo(`[WsProxy] Closed id=${msg.id} code=${code}`);
+      this._wsProxies.delete(msg.id);
+      this._view?.webview.postMessage({
+        type: 'wsProxyClose',
+        id: msg.id,
+        code,
+        reason: reason.toString('utf-8'),
+      });
+    });
+
+    ws.on('error', (err: Error) => {
+      traceError(`[WsProxy] Error id=${msg.id}: ${err.message}`);
+      this._view?.webview.postMessage({ type: 'wsProxyError', id: msg.id, error: err.message });
+    });
+
+    this._wsProxies.set(msg.id, ws);
+  }
+
+  private _handleWsProxySend(msg: WsProxySend): void {
+    const ws = this._wsProxies.get(msg.id);
+    if (ws?.readyState === NodeWebSocket.OPEN) {
+      ws.send(msg.data);
+    }
+  }
+
+  private _handleWsProxyClose(msg: WsProxyClose): void {
+    const ws = this._wsProxies.get(msg.id);
+    if (ws) {
+      ws.close(msg.code ?? 1000, msg.reason ?? '');
+      this._wsProxies.delete(msg.id);
+    }
   }
 
   private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
@@ -1355,7 +1468,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data: https: http:;
-    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} blob:;
+    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ws: wss: blob:;
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -1448,6 +1561,82 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           }
         });
       };
+
+      // WebSocket proxy: route backend WebSocket connections through the
+      // extension host. Same Mixed Content issue as fetch — the HTTPS CDN
+      // iframe cannot open ws:// connections to localhost.
+      var OriginalWebSocket = window.WebSocket;
+      var wsProxyId = 0;
+      var wsProxyInstances = new Map();
+
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (!msg || !msg.type) return;
+        var instance = msg.id != null ? wsProxyInstances.get(msg.id) : null;
+        if (!instance) return;
+        switch (msg.type) {
+          case 'wsProxyOpen':
+            instance._readyState = 1; // OPEN
+            if (instance.onopen) instance.onopen(new Event('open'));
+            instance.dispatchEvent(new Event('open'));
+            break;
+          case 'wsProxyMessage':
+            if (instance.onmessage) instance.onmessage(new MessageEvent('message', { data: msg.data }));
+            instance.dispatchEvent(new MessageEvent('message', { data: msg.data }));
+            break;
+          case 'wsProxyClose':
+            instance._readyState = 3; // CLOSED
+            var closeEvt = new CloseEvent('close', { code: msg.code || 1000, reason: msg.reason || '', wasClean: true });
+            if (instance.onclose) instance.onclose(closeEvt);
+            instance.dispatchEvent(closeEvt);
+            wsProxyInstances.delete(msg.id);
+            break;
+          case 'wsProxyError':
+            var errEvt = new Event('error');
+            if (instance.onerror) instance.onerror(errEvt);
+            instance.dispatchEvent(errEvt);
+            break;
+        }
+      });
+
+      function ProxyWebSocket(url, protocols) {
+        var target = new EventTarget();
+        var id = ++wsProxyId;
+        target._readyState = 0; // CONNECTING
+        target.url = url;
+        target.onopen = null;
+        target.onmessage = null;
+        target.onclose = null;
+        target.onerror = null;
+        target.addEventListener = EventTarget.prototype.addEventListener.bind(target);
+        target.removeEventListener = EventTarget.prototype.removeEventListener.bind(target);
+        target.dispatchEvent = EventTarget.prototype.dispatchEvent.bind(target);
+        Object.defineProperty(target, 'readyState', { get: function() { return target._readyState; } });
+        target.send = function(data) {
+          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+          if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
+        };
+        target.close = function(code, reason) {
+          target._readyState = 2; // CLOSING
+          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+          if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
+        };
+        // Static constants
+        target.CONNECTING = 0;
+        target.OPEN = 1;
+        target.CLOSING = 2;
+        target.CLOSED = 3;
+
+        wsProxyInstances.set(id, target);
+        var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+        if (api) api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
+        return target;
+      }
+      ProxyWebSocket.CONNECTING = 0;
+      ProxyWebSocket.OPEN = 1;
+      ProxyWebSocket.CLOSING = 2;
+      ProxyWebSocket.CLOSED = 3;
+      window.WebSocket = ProxyWebSocket;
     })();
   </script>
 </head>

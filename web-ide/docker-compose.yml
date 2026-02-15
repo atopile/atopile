@@ -19,8 +19,9 @@ services:
     container_name: atopile-web-ide
     ports:
       - "3000:3000"
-      # Ports 6080 (VNC) and 8501 (backend) are internal only —
-      # accessed via the VS Code extension, not exposed to the host.
+      # Port 3000 is Caddy (reverse proxy). It routes /ws/* to the backend
+      # (8501) and everything else to OpenVSCode Server (3001).
+      # Ports 3001, 6080 (VNC), and 8501 (backend) are internal only.
     # Note: read_only: true is not used because the entrypoint needs to write
     # KiCad config (~/.config/kicad) and the uv tools live at ~/.local/share/uv.
     # For production, use Docker --pids-limit, --memory, --cpus, and network

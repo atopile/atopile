@@ -298,6 +298,22 @@ async function main() {
 
   await screenshot(page, '02-workbench-render');
 
+  // ------- Open atopile sidebar (lazy-loaded, needs click to trigger WebSocket) -------
+  try {
+    const atoBarItem = await page.waitForSelector(
+      '.action-item a[aria-label="atopile"]',
+      { timeout: 15_000 }
+    );
+    if (atoBarItem) {
+      await atoBarItem.click();
+      console.log('  → Clicked atopile activity bar icon');
+      // Give the sidebar a moment to start loading
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch {
+    console.log('  → atopile activity bar icon not found (sidebar may already be open)');
+  }
+
   // ------- Check 3: atopile_status_bar -------
   try {
     await page.waitForFunction(

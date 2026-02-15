@@ -14,6 +14,11 @@ ARG ATOPILE_VERSION=0.0.0dev
 FROM gitpod/openvscode-server:${OPENVSCODE_VERSION} AS openvscode
 
 # ──────────────────────────────────────────────────────────────────
+# Stage 1b: Caddy reverse proxy (for WebSocket routing)
+# ──────────────────────────────────────────────────────────────────
+FROM docker.io/library/caddy:2 AS caddy
+
+# ──────────────────────────────────────────────────────────────────
 # Stage 2: Build atopile Python wheel from source
 # ──────────────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS wheel-builder
@@ -102,6 +107,9 @@ RUN useradd -m -s /usr/local/bin/restricted-shell.sh -d ${HOME} openvscode-serve
 COPY --from=openvscode --chown=openvscode-server:openvscode-server \
     /home/.openvscode-server ${OPENVSCODE_SERVER_ROOT}
 
+# Install Caddy reverse proxy (routes /ws/* to backend, everything else to OpenVSCode)
+COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
+
 # Install uv for Python management
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
 
@@ -141,8 +149,10 @@ RUN cp /tmp/scripts/settings.json ${HOME}/.openvscode-server/data/Machine/settin
 # User data volume mount shadows this directory on subsequent container starts
 
 # Set up entrypoint and VNC startup script
-RUN cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
+RUN mkdir -p ${HOME}/.local/etc && \
+    cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
     cp /tmp/scripts/start-pcbnew-vnc.sh ${HOME}/.local/bin/start-pcbnew-vnc.sh && \
+    cp /tmp/scripts/Caddyfile ${HOME}/.local/etc/Caddyfile && \
     chmod +x ${HOME}/.local/bin/entrypoint.sh ${HOME}/.local/bin/start-pcbnew-vnc.sh
 
 # Create workspace directory
@@ -151,15 +161,15 @@ RUN mkdir -p ${HOME}/workspace
 # Clean up build artifacts (keep default-workspace for entrypoint seeding)
 RUN rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
 
-# Expose only the OpenVSCode Server port (backend and VNC are internal only)
+# Expose Caddy's port (OpenVSCode on 3001 and backend on 8501 are internal only)
 EXPOSE 3000
 
 # Health check (uses Python since curl is not installed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:3000/')" || exit 1
 
-# Entrypoint seeds workspace on first run, then starts server
+# Entrypoint seeds workspace on first run, then starts Caddy + OpenVSCode Server
 ENTRYPOINT ["entrypoint.sh"]
-CMD ["--host", "0.0.0.0", "--port", "3000", "--without-connection-token", \
+CMD ["--host", "127.0.0.1", "--port", "3001", "--without-connection-token", \
      "--disable-workspace-trust", \
      "--default-folder", "/home/openvscode-server/workspace"]
