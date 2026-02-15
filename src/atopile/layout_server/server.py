@@ -11,10 +11,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from atopile.layout_server.models import (
+    ActionRequest,
     FootprintSummary,
-    MoveFootprintRequest,
+    MoveActionRequest,
     RenderModel,
-    RotateFootprintRequest,
+    RotateActionRequest,
     StatusResponse,
     WsMessage,
 )
@@ -72,20 +73,14 @@ def create_app(pcb_path: Path) -> FastAPI:
     async def get_footprints() -> list[FootprintSummary]:
         return await asyncio.to_thread(manager.get_footprints)
 
-    @app.post("/api/move-footprint", response_model=StatusResponse)
-    async def move_footprint(
-        req: MoveFootprintRequest,
-    ) -> StatusResponse:
-        await asyncio.to_thread(manager.move_footprint, req.uuid, req.x, req.y, req.r)
-        await asyncio.to_thread(manager.save)
-        await _broadcast_update()
-        return StatusResponse(status="ok")
-
-    @app.post("/api/rotate-footprint", response_model=StatusResponse)
-    async def rotate_footprint(
-        req: RotateFootprintRequest,
-    ) -> StatusResponse:
-        await asyncio.to_thread(manager.rotate_footprint, req.uuid, req.angle)
+    @app.post("/api/execute-action", response_model=StatusResponse)
+    async def execute_action(req: ActionRequest) -> StatusResponse:
+        if isinstance(req, MoveActionRequest):
+            await asyncio.to_thread(
+                manager.move_footprint, req.uuid, req.x, req.y, req.r
+            )
+        elif isinstance(req, RotateActionRequest):
+            await asyncio.to_thread(manager.rotate_footprint, req.uuid, req.angle)
         await asyncio.to_thread(manager.save)
         await _broadcast_update()
         return StatusResponse(status="ok")

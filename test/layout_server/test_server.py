@@ -79,14 +79,28 @@ async def test_redo_empty(client: AsyncClient):
 
 
 @pytest.mark.anyio
-async def test_rotate_footprint(client: AsyncClient):
+async def test_execute_action_rotate(client: AsyncClient):
     fps_resp = await client.get("/api/footprints")
     fps = fps_resp.json()
     uuid = fps[0]["uuid"]
 
     resp = await client.post(
-        "/api/rotate-footprint",
-        json={"uuid": uuid, "angle": 90},
+        "/api/execute-action",
+        json={"type": "rotate", "uuid": uuid, "angle": 90},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+
+
+@pytest.mark.anyio
+async def test_execute_action_move(client: AsyncClient):
+    fps_resp = await client.get("/api/footprints")
+    fps = fps_resp.json()
+    uuid = fps[0]["uuid"]
+
+    resp = await client.post(
+        "/api/execute-action",
+        json={"type": "move", "uuid": uuid, "x": 10.0, "y": 20.0},
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"

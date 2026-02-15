@@ -129,29 +129,22 @@ export class Editor {
             if (!this.model || this.selectedFpIndex < 0) return;
             const fp = this.model.footprints[this.selectedFpIndex]!;
 
-            try {
-                await fetch(`${this.baseUrl}/api/move-footprint`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        uuid: fp.uuid,
-                        x: fp.at.x,
-                        y: fp.at.y,
-                        r: fp.at.r || null,
-                    }),
-                });
-            } catch (err) {
-                console.error("Failed to save footprint position:", err);
-            }
+            await this.executeAction({
+                type: "move",
+                uuid: fp.uuid,
+                x: fp.at.x,
+                y: fp.at.y,
+                r: fp.at.r || null,
+            });
         });
     }
 
     private setupKeyboardHandlers() {
         window.addEventListener("keydown", async (e: KeyboardEvent) => {
-            // R — rotate footprint under cursor by 90 degrees
+            // R — rotate selected footprint by 90 degrees
             if (e.key === "r" || e.key === "R") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
-                await this.rotateUnderCursor();
+                await this.rotateSelected();
                 return;
             }
 
@@ -178,21 +171,21 @@ export class Editor {
         });
     }
 
-    private async rotateUnderCursor() {
-        if (!this.model) return;
-        const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
-        const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
-        if (hitIdx < 0) return;
+    private async rotateSelected() {
+        if (!this.model || this.selectedFpIndex < 0) return;
+        const fp = this.model.footprints[this.selectedFpIndex]!;
+        await this.executeAction({ type: "rotate", uuid: fp.uuid, angle: 90 });
+    }
 
-        const fp = this.model.footprints[hitIdx]!;
+    private async executeAction(action: Record<string, unknown>) {
         try {
-            await fetch(`${this.baseUrl}/api/rotate-footprint`, {
+            await fetch(`${this.baseUrl}/api/execute-action`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ uuid: fp.uuid, angle: 90 }),
+                body: JSON.stringify(action),
             });
         } catch (err) {
-            console.error("Failed to rotate footprint:", err);
+            console.error("Failed to execute action:", err);
         }
     }
 

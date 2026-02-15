@@ -1777,20 +1777,13 @@ var Editor = class {
       if (!this.model || this.selectedFpIndex < 0)
         return;
       const fp = this.model.footprints[this.selectedFpIndex];
-      try {
-        await fetch(`${this.baseUrl}/api/move-footprint`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            uuid: fp.uuid,
-            x: fp.at.x,
-            y: fp.at.y,
-            r: fp.at.r || null
-          })
-        });
-      } catch (err) {
-        console.error("Failed to save footprint position:", err);
-      }
+      await this.executeAction({
+        type: "move",
+        uuid: fp.uuid,
+        x: fp.at.x,
+        y: fp.at.y,
+        r: fp.at.r || null
+      });
     });
   }
   setupKeyboardHandlers() {
@@ -1798,7 +1791,7 @@ var Editor = class {
       if (e.key === "r" || e.key === "R") {
         if (e.ctrlKey || e.metaKey || e.altKey)
           return;
-        await this.rotateUnderCursor();
+        await this.rotateSelected();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -1818,22 +1811,21 @@ var Editor = class {
       this.requestRedraw();
     });
   }
-  async rotateUnderCursor() {
-    if (!this.model)
+  async rotateSelected() {
+    if (!this.model || this.selectedFpIndex < 0)
       return;
-    const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
-    const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
-    if (hitIdx < 0)
-      return;
-    const fp = this.model.footprints[hitIdx];
+    const fp = this.model.footprints[this.selectedFpIndex];
+    await this.executeAction({ type: "rotate", uuid: fp.uuid, angle: 90 });
+  }
+  async executeAction(action) {
     try {
-      await fetch(`${this.baseUrl}/api/rotate-footprint`, {
+      await fetch(`${this.baseUrl}/api/execute-action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uuid: fp.uuid, angle: 90 })
+        body: JSON.stringify(action)
       });
     } catch (err) {
-      console.error("Failed to rotate footprint:", err);
+      console.error("Failed to execute action:", err);
     }
   }
   async serverAction(endpoint) {
