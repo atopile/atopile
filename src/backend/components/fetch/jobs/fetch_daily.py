@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 
+from ...shared.telemetry import log_event
 from ..config import FetchConfig
 from ..models import FetchArtifactRecord
 from .fetch_once import run_fetch_once, run_lcsc_asset_roundtrip_once
@@ -48,6 +49,14 @@ def run_fetch_daily(
     ] = run_lcsc_asset_roundtrip_once,
     roundtrip_run_root: Path | None = None,
 ) -> DailyFetchResult:
+    log_event(
+        service="components-fetch",
+        event="fetch.daily.start",
+        max_pages=max_pages,
+        fetch_details=fetch_details,
+        max_details=max_details,
+        roundtrip_lcsc_ids=list(roundtrip_lcsc_ids),
+    )
     jlc_snapshot_dir = run_fetch_once_fn(
         config,
         max_pages=max_pages,
@@ -77,6 +86,20 @@ def run_fetch_daily(
         }
         report_path = run_dir / "roundtrip_report.json"
         report_path.write_text(json.dumps(summary, ensure_ascii=True, indent=2))
+        log_event(
+            service="components-fetch",
+            event="fetch.daily.roundtrip_summary",
+            report_path=report_path,
+            record_count=summary["record_count"],
+            lcsc_ids=summary["lcsc_ids"],
+            artifact_types=summary["artifact_types"],
+        )
+    log_event(
+        service="components-fetch",
+        event="fetch.daily.complete",
+        jlc_snapshot_dir=jlc_snapshot_dir,
+        roundtrip_report_path=report_path,
+    )
     return DailyFetchResult(
         jlc_snapshot_dir=jlc_snapshot_dir,
         roundtrip_report_path=report_path,

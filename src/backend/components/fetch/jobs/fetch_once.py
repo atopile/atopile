@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from ...shared.telemetry import log_event
 from ..config import FetchConfig
 from ..models import FetchArtifactRecord
 from ..sources.jlc_api import JlcApiClient
@@ -52,6 +53,30 @@ def _extract_lcsc_part(component: dict[str, Any]) -> str | None:
     return None
 
 
+def _load_previous_snapshot_metadata(
+    cache_dir: Path, *, current_run_name: str
+) -> dict[str, Any] | None:
+    history_root = cache_dir / "fetch" / "jlc_api"
+    if not history_root.exists():
+        return None
+    candidates = sorted(
+        path
+        for path in history_root.iterdir()
+        if path.is_dir() and path.name < current_run_name
+    )
+    for candidate in reversed(candidates):
+        metadata_path = candidate / "metadata.json"
+        if not metadata_path.exists():
+            continue
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
 def run_fetch_once(
     config: FetchConfig,
     *,
@@ -60,7 +85,17 @@ def run_fetch_once(
     max_details: int | None = None,
     api_factory: Callable[[FetchConfig], JlcApiClient] = JlcApiClient,
 ) -> Path:
-    out_dir = config.cache_dir / "fetch" / "jlc_api" / _utc_stamp()
+    run_name = _utc_stamp()
+    out_dir = config.cache_dir / "fetch" / "jlc_api" / run_name
+    log_event(
+        service="components-fetch",
+        event="fetch.once.start",
+        out_dir=out_dir,
+        max_pages=max_pages,
+        fetch_details=fetch_details,
+        max_details=max_details,
+        target_categories=list(config.target_categories),
+    )
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError as ex:
@@ -74,6 +109,8 @@ def run_fetch_once(
     component_count = 0
     detail_count = 0
     last_trace_id: str | None = None
+    category_counts: Counter[str] = Counter()
+    started_at = datetime.now(UTC)
 
     with ExitStack() as stack:
         api = stack.enter_context(api_factory(config))
@@ -89,6 +126,11 @@ def run_fetch_once(
             )
             components_handle.write("\n")
             component_count += 1
+            category = component.get("firstCategory")
+            if isinstance(category, str) and category.strip():
+                category_counts[category.strip()] += 1
+            else:
+                category_counts["<unknown>"] += 1
 
             if not fetch_details:
                 continue
@@ -107,16 +149,37 @@ def run_fetch_once(
 
         last_trace_id = api.last_trace_id
 
+    previous_snapshot = _load_previous_snapshot_metadata(
+        config.cache_dir,
+        current_run_name=run_name,
+    )
+    previous_record_count: int | None = None
+    if previous_snapshot is not None:
+        try:
+            previous_record_count = int(previous_snapshot.get("record_count"))
+        except Exception:
+            previous_record_count = None
+    record_count_delta = (
+        component_count - previous_record_count
+        if previous_record_count is not None
+        else None
+    )
+    duration_seconds = round((datetime.now(UTC) - started_at).total_seconds(), 3)
+
     metadata = {
-        "fetched_at_utc": _utc_stamp(),
+        "fetched_at_utc": run_name,
         "source": "jlc_api",
         "target_categories": list(config.target_categories),
         "record_count": component_count,
+        "record_count_delta": record_count_delta,
+        "previous_record_count": previous_record_count,
+        "category_counts": dict(sorted(category_counts.items())),
         "detail_record_count": detail_count,
         "fetch_details": fetch_details,
         "max_pages": max_pages,
         "max_details": max_details,
         "last_trace_id": last_trace_id,
+        "duration_seconds": duration_seconds,
         "config": _config_payload_without_secrets(config),
     }
     (out_dir / "metadata.json").write_text(
@@ -125,6 +188,17 @@ def run_fetch_once(
     )
     if not fetch_details and detail_file.exists():
         detail_file.unlink()
+    log_event(
+        service="components-fetch",
+        event="fetch.once.complete",
+        out_dir=out_dir,
+        record_count=component_count,
+        detail_record_count=detail_count,
+        record_count_delta=record_count_delta,
+        category_counts=dict(sorted(category_counts.items())),
+        duration_seconds=duration_seconds,
+        last_trace_id=last_trace_id,
+    )
     return out_dir
 
 
@@ -148,10 +222,17 @@ def run_lcsc_asset_roundtrip_once(
     client: httpx.Client | None = None,
     easyeda_footprint_converter: Callable[[dict[str, Any]], bytes] | None = None,
 ) -> list[FetchArtifactRecord]:
+    started_at = datetime.now(UTC)
+    log_event(
+        service="components-fetch",
+        event="fetch.roundtrip.start",
+        lcsc_id=lcsc_id,
+        has_datasheet_url=bool(datasheet_url),
+    )
     object_store = LocalObjectStore(config.cache_dir)
     manifest_store = LocalManifestStore(config.cache_dir)
     seed = LcscFetchSeed(lcsc_id=lcsc_id, datasheet_url=datasheet_url)
-    return fetch_lcsc_artifacts_with_roundtrip(
+    records = fetch_lcsc_artifacts_with_roundtrip(
         seed=seed,
         config=config,
         object_store=object_store,
@@ -159,6 +240,18 @@ def run_lcsc_asset_roundtrip_once(
         client=client,
         easyeda_footprint_converter=easyeda_footprint_converter,
     )
+    artifact_counts = Counter(record.artifact_type.value for record in records)
+    duration_seconds = round((datetime.now(UTC) - started_at).total_seconds(), 3)
+    log_event(
+        service="components-fetch",
+        event="fetch.roundtrip.complete",
+        lcsc_id=lcsc_id,
+        record_count=len(records),
+        artifact_counts=dict(sorted(artifact_counts.items())),
+        compare_ok=all(record.compare_ok for record in records),
+        duration_seconds=duration_seconds,
+    )
+    return records
 
 
 def write_roundtrip_report(
@@ -190,6 +283,14 @@ def write_roundtrip_report(
     }
     report_path = report_dir / f"C{lcsc_id}.json"
     report_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2))
+    log_event(
+        service="components-fetch",
+        event="fetch.roundtrip.report_written",
+        lcsc_id=lcsc_id,
+        report_path=report_path,
+        record_count=len(records),
+        compare_ok=compare_ok,
+    )
     return report_path
 
 
