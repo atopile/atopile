@@ -22,7 +22,7 @@ echo "log_path=$LOG_PATH"
 
 nohup sudo env \
   PYTHONPATH="$PYTHONPATH_DIR" \
-  "$PYTHON_BIN" "$RUNNER" \
+  "$PYTHON_BIN" -u "$RUNNER" \
   --source-sqlite "$SOURCE_SQLITE" \
   --cache-dir "$CACHE_DIR" \
   --chunk-size "$CHUNK_SIZE" \
