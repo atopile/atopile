@@ -17,6 +17,7 @@ import * as path from 'path';
 import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
+import { openLayoutEditor } from './layout-editor';
 import * as modelviewer from './modelviewer';
 import {
     getBuildTarget,
@@ -474,7 +475,7 @@ async function atoPackageExplorer() {
 }
 
 async function atoKicanvasPreview() {
-    await kicanvas.openKiCanvasPreview();
+    await openLayoutEditor();
 }
 
 async function atoModelViewerPreview() {
