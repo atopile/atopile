@@ -9,6 +9,8 @@ from pathlib import Path
 from time import sleep
 from typing import Any, Callable
 
+import httpx
+
 from ...shared.telemetry import log_event
 from ..config import FetchConfig
 from ..models import FetchArtifactRecord
@@ -143,6 +145,34 @@ def _parse_roundtrip_lcsc_ids(value: str | None) -> tuple[int, ...]:
     return tuple(out)
 
 
+def _is_retryable_roundtrip_error(ex: Exception) -> bool:
+    if isinstance(ex, httpx.HTTPStatusError):
+        status = ex.response.status_code
+        return status == 429 or status >= 500
+    return isinstance(
+        ex,
+        (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+            httpx.TransportError,
+        ),
+    )
+
+
+def _retry_delay_seconds(
+    ex: Exception, *, attempt: int, default_backoff_s: float
+) -> float:
+    if isinstance(ex, httpx.HTTPStatusError):
+        retry_after = ex.response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(float(retry_after), default_backoff_s)
+            except ValueError:
+                pass
+    return default_backoff_s * attempt
+
+
 def run_fetch_daily(
     config: FetchConfig,
     *,
@@ -214,12 +244,14 @@ def run_fetch_daily(
                     )
                     break
                 except Exception as ex:
-                    if attempt >= roundtrip_retry_attempts:
+                    is_retryable = _is_retryable_roundtrip_error(ex)
+                    if attempt >= roundtrip_retry_attempts or not is_retryable:
                         failures.append(
                             {
                                 "lcsc_id": seed.lcsc_id,
                                 "datasheet_url": seed.datasheet_url,
                                 "attempts": attempt,
+                                "retryable": is_retryable,
                                 "error": repr(ex),
                             }
                         )
@@ -232,7 +264,12 @@ def run_fetch_daily(
                             error=repr(ex),
                         )
                         break
-                    sleep(roundtrip_retry_backoff_s * attempt)
+                    delay_s = _retry_delay_seconds(
+                        ex,
+                        attempt=attempt,
+                        default_backoff_s=roundtrip_retry_backoff_s,
+                    )
+                    sleep(delay_s)
 
         summary = {
             "created_at_utc": _utc_stamp(),
@@ -438,6 +475,22 @@ def test_load_lcsc_seed_map_from_snapshot(tmp_path) -> None:
     assert set(seed_map) == {2040, 3000, 21190}
     assert seed_map[21190].datasheet_url == "https://example.com/C21190.pdf"
     assert seed_map[2040].datasheet_url is None
+
+
+def test_is_retryable_roundtrip_error_http_status() -> None:
+    request = httpx.Request("GET", "https://example.com")
+    retryable = httpx.HTTPStatusError(
+        "throttled",
+        request=request,
+        response=httpx.Response(429, request=request),
+    )
+    non_retryable = httpx.HTTPStatusError(
+        "not found",
+        request=request,
+        response=httpx.Response(404, request=request),
+    )
+    assert _is_retryable_roundtrip_error(retryable) is True
+    assert _is_retryable_roundtrip_error(non_retryable) is False
 
 
 if __name__ == "__main__":
