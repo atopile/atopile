@@ -128,6 +128,13 @@ fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
     return field_type.Identifier orelse decl_name;
 }
 
+fn type_identifier(comptime T: type) []const u8 {
+    if (@hasDecl(T, "TypeIdentifier")) {
+        return T.TypeIdentifier;
+    }
+    return @typeName(T);
+}
+
 fn visit_fields(
     comptime T: type,
     comptime R: type,
@@ -215,7 +222,7 @@ pub const Node = struct {
 
     pub fn try_cast(self: @This(), comptime T: type) ?T {
         var tg = self.typegraph();
-        const type_node = tg.get_type_by_name(@typeName(T)) orelse return null;
+        const type_node = tg.get_type_by_name(type_identifier(T)) orelse return null;
         if (!faebryk.node_type.EdgeType.is_node_instance_of(self.instance, type_node.node)) {
             return null;
         }
@@ -294,13 +301,13 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
 
         pub fn get_or_create_type(self: @This()) graph.BoundNodeReference {
             const Self = @This();
-            const type_identifier = @typeName(T);
-            if (self.tg.get_type_by_name(type_identifier)) |existing| {
+            const t_id = type_identifier(T);
+            if (self.tg.get_type_by_name(t_id)) |existing| {
                 return existing;
             }
 
-            const type_node = self.tg.add_type(type_identifier) catch |err| switch (err) {
-                error.TypeAlreadyExists => self.tg.get_type_by_name(type_identifier) orelse unreachable,
+            const type_node = self.tg.add_type(t_id) catch |err| switch (err) {
+                error.TypeAlreadyExists => self.tg.get_type_by_name(t_id) orelse unreachable,
                 else => @panic("failed to add type"),
             };
 
@@ -568,13 +575,32 @@ fn attribute_value_to_literal(comptime V: type, value: V) graph.Literal {
 
 fn literal_to_attribute_value(comptime V: type, lit: graph.Literal) V {
     return switch (@typeInfo(V)) {
-        .float => @as(V, @floatCast(lit.Float)),
-        .int => @as(V, @intCast(lit.Int)),
-        .comptime_int => @as(V, @intCast(lit.Int)),
-        .bool => lit.Bool,
+        .float => switch (lit) {
+            .Float => |value| @as(V, @floatCast(value)),
+            .Int => |value| @as(V, @floatFromInt(value)),
+            else => @panic("attribute type mismatch: expected float-compatible literal"),
+        },
+        .int => switch (lit) {
+            .Int => |value| @as(V, @intCast(value)),
+            .Float => |value| @as(V, @intFromFloat(value)),
+            else => @panic("attribute type mismatch: expected int-compatible literal"),
+        },
+        .comptime_int => switch (lit) {
+            .Int => |value| @as(V, @intCast(value)),
+            .Float => |value| @as(V, @intFromFloat(value)),
+            else => @panic("attribute type mismatch: expected int-compatible literal"),
+        },
+        .bool => switch (lit) {
+            .Bool => |value| value,
+            .Int => |value| value != 0,
+            else => @panic("attribute type mismatch: expected bool-compatible literal"),
+        },
         .pointer => |ptr| blk: {
             if (ptr.size == .slice and ptr.child == u8) {
-                break :blk lit.String;
+                break :blk switch (lit) {
+                    .String => |value| value,
+                    else => @panic("attribute type mismatch: expected string literal"),
+                };
             }
             @compileError("Unsupported pointer attribute type");
         },

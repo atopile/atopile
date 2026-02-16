@@ -1417,7 +1417,9 @@ pub const TypeGraph = struct {
         path: []const ChildReferenceNode.EdgeTraversal,
         validate: bool,
     ) !BoundNodeReference {
-        return self.ensure_path_reference_mountaware(type_node, path, validate, null);
+        _ = type_node;
+        _ = validate;
+        return self.ensure_path_reference_mountaware(path, null);
     }
 
     /// Create a child reference with optional validation and failure reporting.

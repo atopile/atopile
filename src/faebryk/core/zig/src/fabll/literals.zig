@@ -160,9 +160,33 @@ pub const StringsSerialized = struct {
     },
 };
 
+pub const is_literal_trait = struct {
+    node: fabll.Node,
+    _is_trait: is_trait.MakeChild(),
+    pub const TypeIdentifier = "is_literal";
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+};
+
 pub const Strings = struct {
     node: fabll.Node,
+    is_literal: is_trait.MakeEdge(is_literal_trait.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     values: collections.PointerSetOf(String).MakeChild(),
+
+    fn create_instance_compatible(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        if (tg.get_type_by_name("Strings")) |strings_type| {
+            const result = tg.instantiate_node(strings_type);
+            const instance = switch (result) {
+                .ok => |n| n,
+                .err => @panic("failed to instantiate Strings"),
+            };
+            return fabll.Node.bind_instance(@This(), instance);
+        }
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -187,7 +211,20 @@ pub const Strings = struct {
         for (nodes) |node| {
             try raw.append(node.get_value());
         }
-        return dedup_sort_strings(raw.items, allocator);
+
+        var seen = std.StringHashMap(void).init(allocator);
+        defer seen.deinit();
+
+        var out = std.array_list.Managed(str).init(allocator);
+        errdefer out.deinit();
+
+        for (raw.items) |value| {
+            if (seen.contains(value)) continue;
+            try seen.put(value, {});
+            try out.append(value);
+        }
+
+        return out.toOwnedSlice();
     }
 
     pub fn is_singleton(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -288,7 +325,7 @@ pub const Strings = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
+        var out = create_instance_compatible(g, &tg);
         return out.setup_from_values(inter.items);
     }
 
@@ -308,7 +345,7 @@ pub const Strings = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
+        var out = create_instance_compatible(g, &tg);
         return out.setup_from_values(merged);
     }
 
@@ -333,7 +370,7 @@ pub const Strings = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
+        var out = create_instance_compatible(g, &tg);
         return out.setup_from_values(outvals.items);
     }
 
@@ -356,7 +393,7 @@ pub const Strings = struct {
 
     pub fn deserialize(data: StringsSerialized, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) !@This() {
         if (!std.mem.eql(u8, data.@"type", "StringSet")) return Error.InvalidSerializedType;
-        var out = fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+        var out = create_instance_compatible(g, tg);
         return out.setup_from_values(data.data.values);
     }
 };
@@ -1459,6 +1496,18 @@ pub const Counts = struct {
     node: fabll.Node,
     values: collections.PointerSetOf(Count).MakeChild(),
 
+    fn create_instance_compatible(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        if (tg.get_type_by_name("Counts")) |counts_type| {
+            const result = tg.instantiate_node(counts_type);
+            const instance = switch (result) {
+                .ok => |n| n,
+                .err => @panic("failed to instantiate Counts"),
+            };
+            return fabll.Node.bind_instance(@This(), instance);
+        }
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
     }
@@ -1580,7 +1629,7 @@ pub const Counts = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
+        var out = create_instance_compatible(g, &tg);
         return out.setup_from_values(outvals.items);
     }
 
@@ -1600,7 +1649,7 @@ pub const Counts = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
+        var out = create_instance_compatible(g, &tg);
         return out.setup_from_values(merged);
     }
 
@@ -1623,7 +1672,7 @@ pub const Counts = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
+        var out = create_instance_compatible(g, &tg);
         return out.setup_from_values(outvals.items);
     }
 
@@ -1634,7 +1683,7 @@ pub const Counts = struct {
 
     pub fn deserialize(data: CountsSerialized, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) !@This() {
         if (!std.mem.eql(u8, data.@"type", "CountSet")) return Error.InvalidSerializedType;
-        var out = fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+        var out = create_instance_compatible(g, tg);
         return out.setup_from_values(data.data.values);
     }
 };
@@ -1667,6 +1716,18 @@ pub const BooleansSerialized = struct {
 pub const Booleans = struct {
     node: fabll.Node,
     values: collections.PointerSetOf(Boolean).MakeChild(),
+
+    fn create_instance_compatible(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        if (tg.get_type_by_name("Booleans")) |booleans_type| {
+            const result = tg.instantiate_node(booleans_type);
+            const instance = switch (result) {
+                .ok => |n| n,
+                .err => @panic("failed to instantiate Booleans"),
+            };
+            return fabll.Node.bind_instance(@This(), instance);
+        }
+        return create_instance(g, tg);
+    }
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -1775,7 +1836,7 @@ pub const Booleans = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        const out = create_instance(g, &tg);
+        const out = create_instance_compatible(g, &tg);
         return out.setup_from_values(vals.items);
     }
 
@@ -1801,7 +1862,7 @@ pub const Booleans = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        const out = create_instance(g, &tg);
+        const out = create_instance_compatible(g, &tg);
         return out.setup_from_values(dedup);
     }
 
@@ -1821,7 +1882,7 @@ pub const Booleans = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        const out = create_instance(g, &tg);
+        const out = create_instance_compatible(g, &tg);
         return out.setup_from_values(dedup);
     }
 
@@ -1849,7 +1910,7 @@ pub const Booleans = struct {
 
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
-        const out = create_instance(g, &tg);
+        const out = create_instance_compatible(g, &tg);
         return out.setup_from_values(outvals.items);
     }
 
@@ -1860,7 +1921,7 @@ pub const Booleans = struct {
 
     pub fn deserialize(data: BooleansSerialized, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) !@This() {
         if (!std.mem.eql(u8, data.@"type", "BooleanSet")) return Error.InvalidSerializedType;
-        const out = create_instance(g, tg);
+        const out = create_instance_compatible(g, tg);
         return out.setup_from_values(data.data.values);
     }
 };
