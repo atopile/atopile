@@ -679,6 +679,40 @@ async function fetchBuildErrors(
     }
 }
 
+function postLastSuccessfulSchematicIfAvailable(): void {
+    if (!lastSuccessfulSchematicData) return;
+    schematicViewer?.postMessage({
+        type: 'update-schematic',
+        data: lastSuccessfulSchematicData,
+    });
+}
+
+function applyBuildFailureState(
+    message: string,
+    errors: SchematicBuildError[],
+): void {
+    setSchematicBuildErrors(errors);
+    updateSchematicBuildState({
+        phase: 'failed',
+        dirty: true,
+        viewingLastSuccessful: !!lastSuccessfulSchematicData,
+        message,
+    });
+    postLastSuccessfulSchematicIfAvailable();
+}
+
+function queueFollowupBuildIfNeeded(): void {
+    if (!buildQueued) return;
+    buildQueued = false;
+    if (buildDebounceTimer) {
+        clearTimeout(buildDebounceTimer);
+    }
+    buildDebounceTimer = setTimeout(() => {
+        buildDebounceTimer = null;
+        void runAutoSchematicBuild();
+    }, SCHEMATIC_BUILD_DEBOUNCE_MS);
+}
+
 async function runAutoSchematicBuild(): Promise<void> {
     if (buildInFlight) return;
     const build = getBuildTarget();
@@ -709,12 +743,7 @@ async function runAutoSchematicBuild(): Promise<void> {
         const result = await waitForBuildCompletion(buildId);
         if (result.status === 'success' || result.status === 'warning') {
             const updated = sendSchematicUpdate(true);
-            if (!updated && lastSuccessfulSchematicData) {
-                schematicViewer?.postMessage({
-                    type: 'update-schematic',
-                    data: lastSuccessfulSchematicData,
-                });
-            }
+            if (!updated) postLastSuccessfulSchematicIfAvailable();
             updateSchematicBuildState({
                 phase: 'success',
                 dirty: false,
@@ -723,32 +752,18 @@ async function runAutoSchematicBuild(): Promise<void> {
             });
             setSchematicBuildErrors([]);
         } else {
+            const message = result.error || `Build ${result.status}`;
             const errors = await fetchBuildErrors(build.root, build.name, startedAtMs);
-            if (errors.length === 0) {
-                errors.push({
-                    message: result.error || `Build ${result.status}`,
-                    filePath: null,
-                    line: null,
-                    column: null,
-                });
-            }
-            setSchematicBuildErrors(errors);
-            updateSchematicBuildState({
-                phase: 'failed',
-                dirty: true,
-                viewingLastSuccessful: !!lastSuccessfulSchematicData,
-                message: result.error || `Build ${result.status}`,
-            });
-            if (lastSuccessfulSchematicData) {
-                schematicViewer?.postMessage({
-                    type: 'update-schematic',
-                    data: lastSuccessfulSchematicData,
-                });
-            }
+            applyBuildFailureState(
+                message,
+                errors.length > 0
+                    ? errors
+                    : [{ message, filePath: null, line: null, column: null }],
+            );
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setSchematicBuildErrors([
+        applyBuildFailureState(message, [
             {
                 message,
                 filePath: null,
@@ -756,30 +771,9 @@ async function runAutoSchematicBuild(): Promise<void> {
                 column: null,
             },
         ]);
-        updateSchematicBuildState({
-            phase: 'failed',
-            dirty: true,
-            viewingLastSuccessful: !!lastSuccessfulSchematicData,
-            message,
-        });
-        if (lastSuccessfulSchematicData) {
-            schematicViewer?.postMessage({
-                type: 'update-schematic',
-                data: lastSuccessfulSchematicData,
-            });
-        }
     } finally {
         buildInFlight = false;
-        if (buildQueued) {
-            buildQueued = false;
-            if (buildDebounceTimer) {
-                clearTimeout(buildDebounceTimer);
-            }
-            buildDebounceTimer = setTimeout(() => {
-                buildDebounceTimer = null;
-                void runAutoSchematicBuild();
-            }, SCHEMATIC_BUILD_DEBOUNCE_MS);
-        }
+        queueFollowupBuildIfNeeded();
     }
 }
 
