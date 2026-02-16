@@ -152,33 +152,18 @@ export ATOPILE_COMPONENTS_FAST_DB_FILENAME=fast.sqlite
 
 ## Deployment-Oriented Orchestration
 
-Use the role wrapper to keep deployment flexible between:
+Use a single declarative file to describe stage1/stage2 dataflow and execution:
 
-- single host (`all-in-one`)
-- dedicated processor host (stage1/stage2)
-- multiple serve hosts (stage3 only)
+```bash
+components-pipeline.toml
+```
 
-Wrapper commands:
+Then plan/apply from that file:
 
 ```bash
 cd /Users/narayanpowderly/projects/atopile
-
-# Processor role: build + publish one snapshot cycle
-./scripts/components_pipeline.sh processor-once
-
-# Serve role: run API against snapshots/current
-./scripts/components_pipeline.sh serve
-
-# Single host: start stage1 job, then build + publish snapshot
-./scripts/components_pipeline.sh all-in-one-once
-```
-
-Stage-level commands:
-
-```bash
-./scripts/components_pipeline.sh stage1-all
-./scripts/components_pipeline.sh stage2-build
-./scripts/components_pipeline.sh stage2-publish <snapshot-name>
+./scripts/components_pipeline_apply.py --config ./components-pipeline.toml --plan
+./scripts/components_pipeline_apply.py --config ./components-pipeline.toml --apply
 ```
 
 Unified status/monitor snapshot:
@@ -193,6 +178,14 @@ The status report includes:
 - stage1 manifest artifact count
 - stage2 `snapshots/current` resolution + metadata
 - serve `/healthz` check payload (if reachable)
+
+Notes:
+
+- Set `paths.cache_dir` once in `components-pipeline.toml` to keep stage1/stage2/serve aligned.
+- Use `workflow.mode` for deployment topology:
+  - `processor-once` for processor host
+  - `serve` for serve-only host
+  - `all-in-one-once` for single host
 
 Compare Zig vs SQLite on the same source rows (offline benchmark only):
 

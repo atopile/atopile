@@ -1,0 +1,51 @@
+# Declarative components pipeline config.
+# Edit this one file, then run:
+#   ./scripts/components_pipeline_apply.py --config ./components-pipeline.toml --plan
+#   ./scripts/components_pipeline_apply.py --config ./components-pipeline.toml --apply
+
+[paths]
+repo_root = "/home/np/projects/atopile_parts_backend"
+cache_dir = "/var/cache/atopile/components"
+source_sqlite = "/home/jlc/cache.sqlite3"
+
+[workflow]
+# Modes: stage1-all | stage2-build | stage2-publish | processor-once | serve | all-in-one-once
+mode = "all-in-one-once"
+snapshot_name = "auto"
+max_components = 0
+
+[dataflow]
+# Human-readable dataflow (authoritative intent for stage1/stage2).
+stage1_input = "paths.source_sqlite:components filtered by stage1.where"
+stage1_outputs = [
+  "paths.cache_dir/fetch/manifest.sqlite3",
+  "paths.cache_dir/fetch/roundtrip_state.sqlite3",
+  "paths.cache_dir/objects/<artifact_type>/<sha256>.zst",
+]
+stage2_inputs = [
+  "paths.source_sqlite",
+  "paths.cache_dir/fetch/manifest.sqlite3",
+]
+stage2_outputs = [
+  "paths.cache_dir/snapshots/<snapshot_name>/fast.sqlite",
+  "paths.cache_dir/snapshots/<snapshot_name>/detail.sqlite",
+  "paths.cache_dir/snapshots/<snapshot_name>/metadata.json",
+]
+publish = "paths.cache_dir/snapshots/current -> <snapshot_name> (atomic symlink swap)"
+
+[stage1]
+where = "stock > 0"
+chunk_size = 50000
+workers = 32
+retry_attempts = 3
+retry_backoff_s = 2.0
+sleep_s = 0.0
+log_path = "/tmp/stage1_fetch_all.log"
+
+[stage2]
+keep_snapshots = 2
+allow_partial = false
+
+[serve]
+host = "127.0.0.1"
+port = 8079
