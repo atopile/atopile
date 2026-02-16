@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 import { Text, RoundedBox } from '@react-three/drei';
 import type { KicadSymbol } from '../types/symbol';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 
 interface SymbolBodyProps {
   symbol: KicadSymbol;

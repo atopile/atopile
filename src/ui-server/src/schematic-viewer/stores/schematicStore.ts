@@ -23,8 +23,8 @@ import type {
 } from '../types/schematic';
 import { getRootSheet, resolveSheet, derivePortsFromModule, derivePowerPorts } from '../types/schematic';
 import type { SchematicPowerPort } from '../types/schematic';
-import { autoLayoutSheet, mergePositions, snapToGrid } from '../lib/schematicLayout';
-import { postToExtension } from '../lib/vscodeApi';
+import { autoLayoutSheet, mergePositions, snapToGrid } from '../utils/schematicLayout';
+import { postToExtension } from '../utils/vscodeApi';
 
 // ── Alignment types ─────────────────────────────────────────────
 

@@ -5,9 +5,9 @@ import type {
   TreeGraphData,
   ViewerMode,
 } from '../types/tree';
-import type { LayoutResult } from '../lib/layoutEngine';
-import { computeTreeLayout } from '../lib/layoutEngine';
-import { powerTreeToGraph, i2cTreeToGraph } from '../lib/dataTransform';
+import type { LayoutResult } from '../utils/layoutEngine';
+import { computeTreeLayout } from '../utils/layoutEngine';
+import { powerTreeToGraph, i2cTreeToGraph } from '../utils/dataTransform';
 
 interface TreeState {
   mode: ViewerMode;

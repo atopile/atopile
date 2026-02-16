@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   anchorFromVisualSide,
   getVisualSide,
-} from '../schematic-viewer/lib/itemTransform';
+} from '../schematic-viewer/utils/itemTransform';
 
 describe('itemTransform visual side + anchor policy', () => {
   it('maps sides through mirror/rotation using mirror-first semantics', () => {

@@ -1,4 +1,4 @@
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { getStandardInterfaceColor } from '../../interfaceColors';
 
 const SEMANTIC_CONNECTION_COLORS: Readonly<Record<string, string>> = {

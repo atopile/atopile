@@ -3,9 +3,9 @@ import { useFrame } from '@react-three/fiber';
 import { Text, RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import type { TreeNode, TreeNodeType } from '../types/tree';
-import type { NodePosition } from '../lib/layoutEngine';
+import type { NodePosition } from '../utils/layoutEngine';
 import { useTreeStore } from '../stores/treeStore';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 
 // ── Warning color (Catppuccin yellow) ──
 const WARN_COLOR = '#f9e2af';

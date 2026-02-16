@@ -15,8 +15,8 @@ import { useMemo, useRef, useEffect, useCallback, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import type { ThemeColors } from '../lib/theme';
-import { useTheme } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
+import { useTheme } from '../utils/theme';
 import {
   getRootSheet,
   resolveSheet,
@@ -37,7 +37,7 @@ import { DraggablePowerPort } from './DraggablePowerPort';
 import { NetLines } from './NetLines';
 import { GridBackground } from './GridBackground';
 import { ContextMenu } from './ContextMenu';
-import { getModuleRenderSize } from '../lib/moduleInterfaces';
+import { getModuleRenderSize } from '../utils/moduleInterfaces';
 import { SymbolDevTunerPanel, useSymbolDevModeEnabled } from '../components/SymbolDevTunerPanel';
 
 /** Stable singleton for items with no net connections. */

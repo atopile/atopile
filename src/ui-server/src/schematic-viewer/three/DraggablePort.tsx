@@ -12,7 +12,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SchematicPort } from '../types/schematic';
 import { getPortGridAlignmentOffset } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { PortSymbol } from './PortSymbol';
 import {
   useSchematicStore,

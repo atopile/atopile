@@ -1,5 +1,5 @@
 import { useTreeStore } from '../stores/treeStore';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../utils/theme';
 
 const WARN_COLOR = '#f9e2af';
 const WARN_BG = 'rgba(249, 226, 175, 0.08)';

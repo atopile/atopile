@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { useSymbolStore, useActiveSymbol } from '../stores/symbolStore';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../utils/theme';
 import { SymbolBody } from './SymbolBody';
 import { PinElement } from './PinElement';
 

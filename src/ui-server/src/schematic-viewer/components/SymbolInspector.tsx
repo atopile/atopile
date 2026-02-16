@@ -15,10 +15,10 @@ import {
   useModule,
   useComponentNets,
 } from '../stores/schematicStore';
-import { useTheme } from '../lib/theme';
-import type { ThemeColors } from '../lib/theme';
-import { getPinColor } from '../lib/theme';
-import { postToExtension } from '../lib/vscodeApi';
+import { useTheme } from '../utils/theme';
+import type { ThemeColors } from '../utils/theme';
+import { getPinColor } from '../utils/theme';
+import { postToExtension } from '../utils/vscodeApi';
 
 // ── Color helpers (exported for reuse) ─────────────────────────
 

@@ -17,12 +17,12 @@ import type { KicadArc } from '../types/symbol';
 import {
   getComponentGridAlignmentOffset,
 } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { getCanonicalKicadSymbol } from '../symbol-catalog/canonicalSymbolCatalog';
 import { getSymbolRenderTuning } from '../symbol-catalog/symbolTuning';
 import { getSymbolVisualTuning } from '../symbol-catalog/symbolVisualTuning';
 import { inferSymbolFamily } from '../symbol-catalog/symbolFamilyInference';
-import { anchorFromVisualSide, getUprightTextTransform } from '../lib/itemTransform';
+import { anchorFromVisualSide, getUprightTextTransform } from '../utils/itemTransform';
 import { getConnectionColor } from './connectionColor';
 import {
   CUSTOM_SYMBOL_BODY_BASE_Y,

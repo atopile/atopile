@@ -7,7 +7,7 @@ import {
   Layout,
   Target,
 } from 'lucide-react';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../utils/theme';
 import { useCurrentSheet, useSchematicStore } from '../stores/schematicStore';
 import type { SchematicBOMData, SchematicVariablesData } from '../types/artifacts';
 import { componentColor, moduleColor, netTypeColor } from './SymbolInspector';

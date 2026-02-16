@@ -26,7 +26,7 @@ import {
   type SchematicSymbolFamily,
   transformPinOffset,
 } from '../../src/schematic-viewer/types/schematic';
-import { getUprightTextTransform } from '../../src/schematic-viewer/lib/itemTransform';
+import { getUprightTextTransform } from '../../src/schematic-viewer/utils/itemTransform';
 import {
   CUSTOM_SYMBOL_BODY_BASE_Y,
   getCanonicalGlyphTransform,

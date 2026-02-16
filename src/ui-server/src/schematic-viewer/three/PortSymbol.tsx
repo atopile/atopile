@@ -14,12 +14,12 @@ import {
   PORT_STUB_LEN,
   type GridAlignmentOffset,
 } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import {
   getUprightTextTransform,
   anchorFromVisualSide,
   getVisualSide,
-} from '../lib/itemTransform';
+} from '../utils/itemTransform';
 import {
   isBusInterface,
   getInterfaceDotRadius,

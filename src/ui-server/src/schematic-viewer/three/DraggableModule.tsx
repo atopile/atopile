@@ -11,7 +11,7 @@ import { useRef, useCallback, useMemo, useState, memo } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SchematicModule } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { ModuleBlock } from './ModuleBlock';
 import {
   useSchematicStore,
@@ -26,7 +26,7 @@ import {
   getOrderedModuleInterfacePins,
   modulePinOrderKey,
   sortInterfacePinsForSide,
-} from '../lib/moduleInterfaces';
+} from '../utils/moduleInterfaces';
 
 const DRAG_THRESHOLD = 3;
 

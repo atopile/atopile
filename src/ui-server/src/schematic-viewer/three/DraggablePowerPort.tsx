@@ -8,7 +8,7 @@ import { useRef, useCallback, memo } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SchematicPowerPort } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { PowerPortSymbol } from './PowerPortSymbol';
 import {
   useSchematicStore,

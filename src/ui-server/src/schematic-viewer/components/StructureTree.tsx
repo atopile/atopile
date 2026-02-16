@@ -13,8 +13,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSchematicStore } from '../stores/schematicStore';
 import { getRootSheet } from '../types/schematic';
 import type { SchematicSheet } from '../types/schematic';
-import { useTheme } from '../lib/theme';
-import type { ThemeColors } from '../lib/theme';
+import { useTheme } from '../utils/theme';
+import type { ThemeColors } from '../utils/theme';
 import { componentColor, moduleColor } from './SymbolInspector';
 
 // ── Tree node types ─────────────────────────────────────────────

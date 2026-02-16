@@ -10,8 +10,8 @@ import {
   useCurrentSheet,
 } from '../stores/schematicStore';
 import { getRootSheet, getPathLabels } from '../types/schematic';
-import { useTheme } from '../lib/theme';
-import type { ThemeColors } from '../lib/theme';
+import { useTheme } from '../utils/theme';
+import type { ThemeColors } from '../utils/theme';
 import './Toolbar.css';
 
 export type SchematicBuildPhase = 'idle' | 'building' | 'queued' | 'success' | 'failed';

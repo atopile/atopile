@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { detectBuses, type NetForBus } from '../schematic-viewer/lib/busDetector';
-import type { ThemeColors } from '../schematic-viewer/lib/theme';
+import { detectBuses, type NetForBus } from '../schematic-viewer/utils/busDetector';
+import type { ThemeColors } from '../schematic-viewer/utils/theme';
 
 const theme: ThemeColors = {
   bgPrimary: '#000000',

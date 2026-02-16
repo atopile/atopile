@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type { TreeEdge } from '../types/tree';
-import type { NodePosition } from '../lib/layoutEngine';
-import type { ThemeColors } from '../lib/theme';
+import type { NodePosition } from '../utils/layoutEngine';
+import type { ThemeColors } from '../utils/theme';
 
 /** Build smooth cubic bezier points for an edge. */
 function buildEdgeCurve(from: NodePosition, to: NodePosition, segments = 40): THREE.Vector3[] {

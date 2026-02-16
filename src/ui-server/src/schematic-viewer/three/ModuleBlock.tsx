@@ -1,12 +1,12 @@
 import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
-import { isThemeLight } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
+import { isThemeLight } from '../utils/theme';
 import {
   getUprightTextTransform,
   anchorFromVisualSide,
-} from '../lib/itemTransform';
+} from '../utils/itemTransform';
 import {
   isBusInterface,
   getInterfaceDotRadius,
@@ -19,7 +19,7 @@ import {
   getModuleGridOffsetFromPins,
   getModuleRenderSize,
   getOrderedModuleInterfacePins,
-} from '../lib/moduleInterfaces';
+} from '../utils/moduleInterfaces';
 import { getConnectionColor } from './connectionColor';
 
 const NO_RAYCAST = () => {};

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Text, RoundedBox } from '@react-three/drei';
-import type { NodePosition } from '../lib/layoutEngine';
-import type { ThemeColors } from '../lib/theme';
+import type { NodePosition } from '../utils/layoutEngine';
+import type { ThemeColors } from '../utils/theme';
 
 interface GroupBoxProps {
   groupId: string;

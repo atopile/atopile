@@ -16,7 +16,7 @@ import { useFrame } from '@react-three/fiber';
 import { Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type { KicadPin } from '../types/symbol';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { useSymbolStore } from '../stores/symbolStore';
 import { getConnectionColor } from './connectionColor';
 

@@ -14,8 +14,8 @@ import { memo } from 'react';
 import { Text, Line } from '@react-three/drei';
 import type { SchematicPowerPort } from '../types/schematic';
 import { POWER_PORT_W, getPowerPortGridAlignmentOffset } from '../types/schematic';
-import type { ThemeColors } from '../lib/theme';
-import { getUprightTextTransform } from '../lib/itemTransform';
+import type { ThemeColors } from '../utils/theme';
+import { getUprightTextTransform } from '../utils/itemTransform';
 import { neutralConnectionColor } from './connectionColor';
 
 const NO_RAYCAST = () => {};

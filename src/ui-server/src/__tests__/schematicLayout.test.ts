@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoLayoutSheet } from '../schematic-viewer/lib/schematicLayout';
+import { autoLayoutSheet } from '../schematic-viewer/utils/schematicLayout';
 import type {
   NetType,
   SchematicComponent,

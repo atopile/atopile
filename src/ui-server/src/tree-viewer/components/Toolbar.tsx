@@ -1,5 +1,5 @@
 import { useTreeStore } from '../stores/treeStore';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../utils/theme';
 import type { ViewerMode } from '../types/tree';
 
 export function Toolbar() {

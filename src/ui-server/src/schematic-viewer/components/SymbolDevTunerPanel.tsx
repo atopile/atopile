@@ -5,7 +5,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { useCurrentSheet, useSchematicStore } from '../stores/schematicStore';
 import type { SchematicComponent } from '../types/schematic';
 import { inferSymbolFamily } from '../symbol-catalog/symbolFamilyInference';

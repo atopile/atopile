@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   routeOrthogonalWithHeuristics,
   type RouteSegment,
-} from '../schematic-viewer/lib/orthoRouter';
+} from '../schematic-viewer/utils/orthoRouter';
 
 const PITCH = 2.54;
 

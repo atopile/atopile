@@ -6,7 +6,7 @@ import { useTreeStore } from '../stores/treeStore';
 import { TreeNodeMesh } from './TreeNodeMesh';
 import { TreeEdgeLines } from './TreeEdgeLines';
 import { GroupBox } from './GroupBox';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../utils/theme';
 
 function ZoomToCursor({ controlsRef }: { controlsRef: MutableRefObject<any> }) {
   const { camera, gl } = useThree();

@@ -16,8 +16,8 @@ import type {
   SchematicVariableNode,
   SchematicVariablesData,
 } from '../types/artifacts';
-import { useTheme } from '../lib/theme';
-import { getPinColor } from '../lib/theme';
+import { useTheme } from '../utils/theme';
+import { getPinColor } from '../utils/theme';
 import {
   componentColor,
   moduleColor,
@@ -26,7 +26,7 @@ import {
 import {
   requestOpenSource,
   requestRevealInExplorer,
-} from '../lib/vscodeApi';
+} from '../utils/vscodeApi';
 
 interface SelectionDetailsProps {
   showTopBorder?: boolean;

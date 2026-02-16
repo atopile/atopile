@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TreeGraphData } from '../tree-viewer/types/tree';
-import { computeTreeLayout } from '../tree-viewer/lib/layoutEngine';
+import { computeTreeLayout } from '../tree-viewer/utils/layoutEngine';
 
 function getX(data: ReturnType<typeof computeTreeLayout>, nodeId: string): number {
   const pos = data.positions.get(nodeId);

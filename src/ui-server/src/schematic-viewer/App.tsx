@@ -13,11 +13,11 @@ import type {
   SchematicSheet,
   SchematicSourceRef,
 } from './types/schematic';
-import { useTheme } from './lib/theme';
+import { useTheme } from './utils/theme';
 import {
   onExtensionMessage,
   postToExtension,
-} from './lib/vscodeApi';
+} from './utils/vscodeApi';
 import type {
   SchematicBOMData,
   SchematicVariablesData,

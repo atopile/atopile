@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SchematicInterfacePin } from '../schematic-viewer/types/schematic';
-import { getModuleRenderSize } from '../schematic-viewer/lib/moduleInterfaces';
+import { getModuleRenderSize } from '../schematic-viewer/utils/moduleInterfaces';
 
 function makePin(id: string, side: SchematicInterfacePin['side']): SchematicInterfacePin {
   return {

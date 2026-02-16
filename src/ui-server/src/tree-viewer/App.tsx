@@ -4,7 +4,7 @@ import { Toolbar } from './components/Toolbar';
 import { Inspector } from './components/Inspector';
 import { Legend } from './components/Legend';
 import { useTreeStore } from './stores/treeStore';
-import { useTheme } from './lib/theme';
+import { useTheme } from './utils/theme';
 import type { ViewerMode } from './types/tree';
 
 function App() {

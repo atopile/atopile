@@ -11,7 +11,7 @@
 
 import { useMemo, memo } from 'react';
 import * as THREE from 'three';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 
 const NO_RAYCAST = () => {};
 

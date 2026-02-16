@@ -5,9 +5,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import type { ThemeColors } from '../lib/theme';
+import type { ThemeColors } from '../utils/theme';
 import { useCurrentPorts, useCurrentSheet, useSchematicStore, type AlignMode } from '../stores/schematicStore';
-import { postToExtension } from '../lib/vscodeApi';
+import { postToExtension } from '../utils/vscodeApi';
 
 interface Props {
   theme: ThemeColors;

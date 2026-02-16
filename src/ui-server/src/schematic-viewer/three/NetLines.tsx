@@ -32,7 +32,7 @@ import {
   transformPinSide,
 } from '../types/schematic';
 import { useCurrentPorts, useCurrentPowerPorts } from '../stores/schematicStore';
-import { type ThemeColors } from '../lib/theme';
+import { type ThemeColors } from '../utils/theme';
 import { useSchematicStore, liveDrag } from '../stores/schematicStore';
 import {
   computeOrthogonalRoute,
@@ -44,19 +44,19 @@ import {
   JUMP_RADIUS,
   type RouteSegment,
   type Crossing,
-} from '../lib/orthoRouter';
+} from '../utils/orthoRouter';
 import {
   detectBuses,
   type BusGroup,
   type BusEndpoint,
   type NetForBus,
-} from '../lib/busDetector';
+} from '../utils/busDetector';
 import { routeHitsObstacle, type RouteObstacle } from './routeObstacles';
 import {
   getModulePinOrderForPath,
   getModuleRenderSize,
   getOrderedModuleInterfacePins,
-} from '../lib/moduleInterfaces';
+} from '../utils/moduleInterfaces';
 import {
   getSemanticConnectionColor,
   neutralConnectionColor,
