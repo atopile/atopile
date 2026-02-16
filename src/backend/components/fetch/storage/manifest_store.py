@@ -35,6 +35,29 @@ class LocalManifestStore:
                 )
             """)
             conn.execute("""
+                delete from fetch_manifest
+                where id not in (
+                    select min(id)
+                    from fetch_manifest
+                    group by
+                        lcsc_id,
+                        artifact_type,
+                        source_url,
+                        raw_sha256,
+                        stored_key
+                )
+            """)
+            conn.execute("""
+                create unique index if not exists fetch_manifest_identity_uidx
+                on fetch_manifest (
+                    lcsc_id,
+                    artifact_type,
+                    source_url,
+                    raw_sha256,
+                    stored_key
+                )
+            """)
+            conn.execute("""
                 create index if not exists fetch_manifest_lcsc_artifact_idx
                 on fetch_manifest (lcsc_id, artifact_type)
             """)
@@ -43,7 +66,7 @@ class LocalManifestStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                insert into fetch_manifest (
+                insert or ignore into fetch_manifest (
                     lcsc_id,
                     artifact_type,
                     source_url,
@@ -132,3 +155,21 @@ def test_manifest_store_append_and_read(tmp_path) -> None:
     assert len(rows) == 1
     assert rows[0].artifact_type == ArtifactType.DATASHEET_PDF
     assert rows[0].source_meta["status_code"] == 200
+
+
+def test_manifest_store_append_is_idempotent(tmp_path) -> None:
+    store = LocalManifestStore(tmp_path)
+    record = FetchArtifactRecord.now(
+        lcsc_id=2289,
+        artifact_type=ArtifactType.DATASHEET_PDF,
+        source_url="https://example.com/C2289.pdf",
+        raw_sha256="deadbeef",
+        raw_size_bytes=42,
+        stored_key="objects/datasheet_pdf/deadbeef.zst",
+        source_meta={"status_code": 200},
+        mime="application/pdf",
+    )
+    store.append(record)
+    store.append(record)
+    rows = store.list_for_lcsc(2289)
+    assert len(rows) == 1
