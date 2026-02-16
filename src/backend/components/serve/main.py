@@ -11,19 +11,91 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.routing import APIRouter
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .bundle_builder import TarZstdBundleBuilder
-from .dashboard_metrics import DashboardMetrics
-from .dashboard_routes import router as dashboard_router
 from .detail_store_sqlite import SQLiteDetailStore
 from .fast_lookup_zig import ZigFastLookupStore
-from .interfaces import SnapshotNotFoundError
+from .interfaces import ServeError, SnapshotNotFoundError
 from .routes import ServeServices, router
-from .telemetry import log_event, set_dashboard_metrics
+from .telemetry import log_event
+from .vector_search_service import PrototypeVectorSearchService, VectorSearchConfig
+
+try:
+    from .dashboard_metrics import DashboardMetrics
+    from .dashboard_routes import router as dashboard_router
+except ModuleNotFoundError:
+    DashboardMetrics = None  # type: ignore[assignment]
+    dashboard_router = None
+
+
+def set_dashboard_metrics(_value: object | None) -> None:
+    # Dashboard metrics integration is optional in this branch.
+    return None
 
 DEFAULT_CACHE_DIR = Path("/var/cache/atopile/components")
+
+
+class _UnavailableFastLookupStore:
+    def __init__(self, message: str):
+        self._message = message
+
+    def query_component(self, _component_type, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_components_batch(self, _queries):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_resistors(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_capacitors(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_capacitors_polarized(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_inductors(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_diodes(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_leds(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_bjts(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+    def query_mosfets(self, _query):
+        raise SnapshotNotFoundError(self._message)
+
+
+class _UnavailableDetailStore:
+    def __init__(self, message: str):
+        self._message = message
+
+    def get_components(self, _lcsc_ids):
+        raise SnapshotNotFoundError(self._message)
+
+    def get_asset_manifest(self, _lcsc_ids):
+        raise SnapshotNotFoundError(self._message)
+
+    def lookup_component_ids_by_manufacturer_part(
+        self, _manufacturer_name, _part_number, *, limit=50
+    ):
+        del limit
+        raise SnapshotNotFoundError(self._message)
+
+
+class _UnavailableBundleStore:
+    def __init__(self, message: str):
+        self._message = message
+
+    def build_bundle(self, _lcsc_ids):
+        raise SnapshotNotFoundError(self._message)
 
 
 @dataclass(frozen=True)
@@ -32,6 +104,8 @@ class ServeConfig:
     current_snapshot_name: str = "current"
     fast_db_filename: str = "fast.sqlite"
     detail_db_filename: str = "detail.sqlite"
+    vector_index_dir: Path | None = None
+    vector_max_cores: int = 32
     host: str = "127.0.0.1"
     port: int = 8079
 
@@ -53,6 +127,14 @@ class ServeConfig:
                 "ATOPILE_COMPONENTS_DETAIL_DB_FILENAME",
                 "detail.sqlite",
             ),
+            vector_index_dir=(
+                Path(path)
+                if (path := os.getenv("ATOPILE_COMPONENTS_VECTOR_INDEX_DIR"))
+                else None
+            ),
+            vector_max_cores=int(
+                os.getenv("ATOPILE_COMPONENTS_VECTOR_MAX_CORES", "32")
+            ),
             host=os.getenv("ATOPILE_COMPONENTS_SERVE_HOST", "127.0.0.1"),
             port=int(os.getenv("ATOPILE_COMPONENTS_SERVE_PORT", "8079")),
         )
@@ -71,34 +153,53 @@ class ServeConfig:
 
 
 def build_services(config: ServeConfig) -> ServeServices:
-    if not config.current_snapshot_path.exists():
+    vector_search: PrototypeVectorSearchService | None = None
+    if config.vector_index_dir is not None:
+        vector_search = PrototypeVectorSearchService(
+            VectorSearchConfig(
+                index_dir=config.vector_index_dir,
+                max_cores=min(config.vector_max_cores, 32),
+            )
+        )
+
+    snapshot_message = (
+        "snapshot fast/detail stores are unavailable. "
+        f"expected current snapshot under {config.current_snapshot_path}"
+    )
+    has_snapshot = (
+        config.current_snapshot_path.exists()
+        and config.detail_db_path.exists()
+        and config.fast_db_path.exists()
+    )
+    if has_snapshot:
+        fast_lookup = ZigFastLookupStore(
+            config.fast_db_path,
+            cache_root=config.cache_dir,
+        )
+        detail_store = SQLiteDetailStore(config.detail_db_path)
+        bundle_store = TarZstdBundleBuilder(
+            detail_store=detail_store, cache_root=config.cache_dir
+        )
+    elif vector_search is not None:
+        fast_lookup = _UnavailableFastLookupStore(snapshot_message)
+        detail_store = _UnavailableDetailStore(snapshot_message)
+        bundle_store = _UnavailableBundleStore(snapshot_message)
+    else:
         raise SnapshotNotFoundError(
             f"snapshot path not found: {config.current_snapshot_path}"
         )
-    if not config.detail_db_path.exists():
-        raise SnapshotNotFoundError(f"detail DB not found: {config.detail_db_path}")
 
-    if not config.fast_db_path.exists():
-        raise SnapshotNotFoundError(f"fast DB not found: {config.fast_db_path}")
-    fast_lookup = ZigFastLookupStore(
-        config.fast_db_path,
-        cache_root=config.cache_dir,
-    )
-
-    detail_store = SQLiteDetailStore(config.detail_db_path)
-    bundle_store = TarZstdBundleBuilder(
-        detail_store=detail_store, cache_root=config.cache_dir
-    )
     return ServeServices(
         fast_lookup=fast_lookup,
         detail_store=detail_store,
         bundle_store=bundle_store,
+        vector_search=vector_search,
     )
 
 
 def create_app(config: ServeConfig | None = None) -> FastAPI:
     serve_config = config or ServeConfig.from_env()
-    dashboard_metrics = DashboardMetrics()
+    dashboard_metrics = DashboardMetrics() if DashboardMetrics is not None else None
     app = FastAPI(
         title="atopile-components-serve",
         version="0.1.0",
@@ -108,7 +209,8 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
     app.state.dashboard_metrics = dashboard_metrics
     app.state.snapshot_package_stats = {}
     set_dashboard_metrics(dashboard_metrics)
-    app.include_router(dashboard_router)
+    if isinstance(dashboard_router, APIRouter):
+        app.include_router(dashboard_router)
     app.include_router(router)
     _mount_dashboard_frontend(app)
 
@@ -163,6 +265,11 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
             fast_engine="zig",
             fast_db=serve_config.fast_db_path,
             detail_db=serve_config.detail_db_path,
+            vector_index_dir=(
+                None
+                if serve_config.vector_index_dir is None
+                else str(serve_config.vector_index_dir)
+            ),
             source_component_count=metadata.get("source_component_count"),
             fast_component_count=metadata.get("fast_component_count"),
             detail_component_count=metadata.get("detail_component_count"),

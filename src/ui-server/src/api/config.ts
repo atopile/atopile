@@ -6,6 +6,7 @@
 interface AtopileWindow extends Window {
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
+  __ATOPILE_COMPONENTS_API_URL__?: string;
   __ATOPILE_WORKSPACE_FOLDERS__?: string[];
 }
 
@@ -37,6 +38,25 @@ if (!API_URL) {
     'Backend API URL not configured. Use the extension webview or run `ato serve frontend` to set VITE_API_URL.'
   );
 }
+
+/**
+ * Base URL for the components search service.
+ * Defaults to an explicit injected/configured value. If absent, falls back
+ * to the same host as API_URL on port 8079.
+ */
+function defaultComponentsUrl(apiUrl: string): string {
+  try {
+    const url = new URL(apiUrl);
+    return `${url.protocol}//${url.hostname}:8079`;
+  } catch {
+    return 'http://127.0.0.1:8079';
+  }
+}
+
+export const COMPONENTS_API_URL =
+  win.__ATOPILE_COMPONENTS_API_URL__
+  || import.meta.env.VITE_COMPONENTS_API_URL
+  || defaultComponentsUrl(API_URL);
 
 /**
  * Get the base WebSocket URL (without path).

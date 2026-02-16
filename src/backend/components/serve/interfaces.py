@@ -97,6 +97,14 @@ class QueryValidationError(ServeError):
     """Raised when client-supplied query constraints are invalid."""
 
 
+class BatchQueryValidationError(QueryValidationError):
+    """Raised when one or more batch query items are invalid."""
+
+    def __init__(self, errors: list[str | None]):
+        super().__init__("batch query contains invalid items")
+        self.errors = errors
+
+
 class AssetLoadError(ServeError):
     """Raised when an asset cannot be safely loaded into a response bundle."""
 

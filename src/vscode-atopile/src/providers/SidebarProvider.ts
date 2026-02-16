@@ -1274,6 +1274,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
+    const componentsApiUrl = (() => {
+      try {
+        const url = new URL(apiUrl);
+        return `${url.protocol}//${url.hostname}:8079`;
+      } catch {
+        return 'http://127.0.0.1:8079';
+      }
+    })();
     const workspaceRoot = this._getWorkspaceRootSync();
 
     // Debug: log URLs being used
@@ -1291,7 +1299,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data: https: http:;
-    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} blob:;
+    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ${componentsApiUrl} blob:;
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -1305,6 +1313,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
+    window.__ATOPILE_COMPONENTS_API_URL__ = '${componentsApiUrl}';
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
     window.__ATOPILE_WASM_URL__ = '${wasmUri}';

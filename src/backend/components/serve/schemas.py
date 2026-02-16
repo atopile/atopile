@@ -70,6 +70,54 @@ class ParametersQueryResponse(BaseModel):
     total: int
 
 
+class ParametersBatchQueryRequest(BaseModel):
+    queries: list[ParametersQueryRequest] = Field(..., min_length=1, max_length=500)
+
+
+class ParametersBatchQueryResponse(BaseModel):
+    results: list[ParametersQueryResponse]
+    total_queries: int
+
+
+class ManufacturerPartLookupResponse(BaseModel):
+    manufacturer_name: str
+    part_number: str
+    component_ids: list[int]
+    total: int
+
+
+class ComponentsSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=512)
+    limit: int = Field(default=20, ge=1, le=100)
+    component_type: str | None = None
+    package: str | None = None
+    in_stock_only: bool = False
+    raw_vector_only: bool = True
+    prefer_in_stock: bool = False
+    prefer_basic: bool = False
+
+
+class ComponentsSearchResultModel(BaseModel):
+    lcsc_id: int
+    score: float
+    cosine_score: float
+    reasons: list[str]
+    component_type: str
+    manufacturer_name: str | None = None
+    part_number: str
+    package: str
+    description: str
+    stock: int
+    is_basic: bool
+    is_preferred: bool
+
+
+class ComponentsSearchResponse(BaseModel):
+    query: str
+    total: int
+    results: list[ComponentsSearchResultModel]
+
+
 class ComponentsFullRequest(BaseModel):
     component_ids: list[int] = Field(..., min_length=1, max_length=1000)
 

@@ -1,0 +1,5 @@
+{"query":"C25804","expected_lcsc_ids":[25804],"filters":{"in_stock_only":true}}
+{"query":"10k 1% 0402 resistor","expected_lcsc_ids":[],"filters":{"component_type":"resistor","in_stock_only":true}}
+{"query":"100nF 16V 0402 capacitor","expected_lcsc_ids":[],"filters":{"component_type":"capacitor","in_stock_only":true}}
+{"query":"3.3V LDO regulator","expected_lcsc_ids":[],"filters":{"in_stock_only":true}}
+{"query":"green led 0603","expected_lcsc_ids":[],"filters":{"component_type":"led","in_stock_only":true}}

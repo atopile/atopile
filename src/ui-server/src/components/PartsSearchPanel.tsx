@@ -331,7 +331,7 @@ export function PartsSearchPanel({
           <PanelSearchBox
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Search JLCPCB parts..."
+            placeholder="Search components..."
             autoFocus={isExpanded && activeTab === 'search'}
           />
 
@@ -349,7 +349,7 @@ export function PartsSearchPanel({
             {!searchLoading && !hasSearchQuery && (
               <div className="parts-empty-state">
                 <PackageSearch size={32} />
-                <span>Search JLCPCB parts by name, description, or part number</span>
+                <span>Search components by intent, description, or part number</span>
               </div>
             )}
             {!searchLoading && hasSearchQuery && searchResults.length === 0 && (

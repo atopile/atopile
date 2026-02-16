@@ -33,6 +33,7 @@ declare global {
         };
         __ATOPILE_API_URL__?: string;
         __ATOPILE_WS_URL__?: string;
+        __ATOPILE_COMPONENTS_API_URL__?: string;
     }
 }
 
@@ -45,6 +46,7 @@ window.acquireVsCodeApi = () => ({
 
 window.__ATOPILE_API_URL__ = window.__ATOPILE_API_URL__ || 'http://127.0.0.1';
 window.__ATOPILE_WS_URL__ = window.__ATOPILE_WS_URL__ || 'ws://127.0.0.1';
+window.__ATOPILE_COMPONENTS_API_URL__ = window.__ATOPILE_COMPONENTS_API_URL__ || 'http://127.0.0.1:8079';
 
 // Export mocks for test access
 export const vscodeApiMocks = {

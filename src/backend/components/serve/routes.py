@@ -26,6 +26,9 @@ from .query_normalization import normalize_package
 from .schemas import (
     AssetRecordModel,
     ComponentCandidateModel,
+    ComponentsSearchRequest,
+    ComponentsSearchResponse,
+    ComponentsSearchResultModel,
     ComponentsFullRequest,
     FullResponseMetadata,
     ManufacturerPartLookupResponse,
@@ -44,6 +47,7 @@ class ServeServices:
     fast_lookup: FastLookupStore
     detail_store: DetailStore
     bundle_store: BundleStore
+    vector_search: Any | None = None
 
 
 def get_services(request: Request) -> ServeServices:
@@ -129,6 +133,80 @@ async def query_component_parameters(
         component_type=payload.component_type,
         candidates=response_items,
         total=len(response_items),
+    )
+
+
+@router.post("/search", response_model=ComponentsSearchResponse)
+async def search_components(
+    request: Request,
+    payload: ComponentsSearchRequest,
+    services: ServeServices = Depends(get_services),
+) -> ComponentsSearchResponse:
+    started_at = time.perf_counter()
+    request_id = get_request_id(request)
+    if services.vector_search is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "vector search index is not configured; "
+                "set ATOPILE_COMPONENTS_VECTOR_INDEX_DIR"
+            ),
+        )
+    try:
+        results = await asyncio.to_thread(
+            services.vector_search.search,
+            query=payload.query,
+            limit=payload.limit,
+            component_type=payload.component_type,
+            package=payload.package,
+            in_stock_only=payload.in_stock_only,
+            prefer_in_stock=payload.prefer_in_stock,
+            prefer_basic=payload.prefer_basic,
+            raw_vector_only=payload.raw_vector_only,
+        )
+    except Exception as exc:
+        log_event(
+            "serve.search.error",
+            level=logging.ERROR,
+            request_id=request_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    response_results = [
+        ComponentsSearchResultModel(
+            lcsc_id=item.lcsc_id,
+            score=item.score,
+            cosine_score=item.cosine_score,
+            reasons=item.reasons,
+            component_type=item.component_type,
+            manufacturer_name=item.manufacturer_name,
+            part_number=item.part_number,
+            package=item.package,
+            description=item.description,
+            stock=item.stock,
+            is_basic=item.is_basic,
+            is_preferred=item.is_preferred,
+        )
+        for item in results
+    ]
+    log_event(
+        "serve.search",
+        request_id=request_id,
+        query=payload.query,
+        limit=payload.limit,
+        component_type=payload.component_type,
+        package=payload.package,
+        in_stock_only=payload.in_stock_only,
+        raw_vector_only=payload.raw_vector_only,
+        result_count=len(response_results),
+        lookup_ms=_duration_ms(started_at),
+    )
+    return ComponentsSearchResponse(
+        query=payload.query,
+        total=len(response_results),
+        results=response_results,
     )
 
 

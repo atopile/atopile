@@ -23,7 +23,7 @@ import type {
   VariablesData,
   ProjectDependency,
 } from '../types/build';
-import { API_URL } from './config';
+import { API_URL, COMPONENTS_API_URL } from './config';
 
 // Base URL - from centralized config
 const BASE_URL = API_URL;
@@ -80,6 +80,85 @@ async function fetchJSON<T>(
   if (!text) return {} as T;
 
   return JSON.parse(text);
+}
+
+/**
+ * Generic fetch wrapper for alternate base URLs.
+ */
+async function fetchJSONFromBase<T>(
+  baseUrl: string,
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${baseUrl}${path}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    let detail: unknown;
+    try {
+      detail = await response.json();
+    } catch {
+      detail = response.statusText;
+    }
+    throw new APIError(
+      response.status,
+      typeof detail === 'object' && detail && 'detail' in detail
+        ? String((detail as { detail: unknown }).detail)
+        : response.statusText,
+      detail
+    );
+  }
+
+  const text = await response.text();
+  if (!text) return {} as T;
+  return JSON.parse(text);
+}
+
+interface ComponentsSearchResult {
+  lcsc_id: number;
+  manufacturer_name: string | null;
+  part_number: string;
+  package: string;
+  description: string;
+  stock: number;
+  is_basic: boolean;
+  is_preferred: boolean;
+}
+
+interface ComponentsSearchResponse {
+  query: string;
+  total: number;
+  results: ComponentsSearchResult[];
+}
+
+function mapComponentsSearchToPartSearch(
+  payload: ComponentsSearchResponse
+): PartSearchResponse {
+  return {
+    query: payload.query,
+    total: payload.total,
+    parts: (payload.results || []).map((item) => ({
+      lcsc: `C${item.lcsc_id}`,
+      manufacturer: item.manufacturer_name || '',
+      mpn: item.part_number || '',
+      package: item.package || '',
+      description: item.description || '',
+      datasheet_url: '',
+      image_url: null,
+      stock: item.stock ?? 0,
+      unit_cost: 0,
+      is_basic: !!item.is_basic,
+      is_preferred: !!item.is_preferred,
+      price: [],
+      attributes: {},
+    })),
+  };
 }
 
 // Response types
@@ -291,10 +370,30 @@ export const api = {
           target: options?.target ?? undefined,
         }),
       }),
-    search: (query: string, limit = 50) =>
-      fetchJSON<PartSearchResponse>(
-        `/api/parts/search?query=${encodeURIComponent(query)}&limit=${limit}`
-      ),
+    search: async (query: string, limit = 50) => {
+      const safeLimit = Math.min(Math.max(limit, 1), 100);
+      try {
+        const payload = await fetchJSONFromBase<ComponentsSearchResponse>(
+          COMPONENTS_API_URL,
+          '/v1/components/search',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              query,
+              limit: safeLimit,
+              raw_vector_only: true,
+              in_stock_only: true,
+            }),
+          }
+        );
+        return mapComponentsSearchToPartSearch(payload);
+      } catch (error) {
+        console.warn('[parts.search] components search failed, falling back to legacy API:', error);
+        return fetchJSON<PartSearchResponse>(
+          `/api/parts/search?query=${encodeURIComponent(query)}&limit=${safeLimit}`
+        );
+      }
+    },
     details: (lcscId: string) =>
       fetchJSON<PartDetailsResponse>(`/api/parts/${encodeURIComponent(lcscId)}/details`),
     installed: (projectRoot: string) =>
