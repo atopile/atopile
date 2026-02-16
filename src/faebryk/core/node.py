@@ -195,6 +195,40 @@ class ChildFieldLike(Protocol):
     def is_dependant(self) -> bool: ...
 
 
+class TypeNodeBoundLike(Protocol):
+    def get_or_create_type(self) -> graph.BoundNode: ...
+
+
+@runtime_checkable
+class NodeLikeInstance(Protocol):
+    def get_instance(self) -> graph.BoundNode: ...
+
+
+@runtime_checkable
+class NodeLikeType(Protocol):
+    @classmethod
+    def bind_instance(cls, instance: graph.BoundNode) -> NodeLikeInstance: ...
+
+    @classmethod
+    def bind_typegraph(cls, tg: fbrk.TypeGraph) -> TypeNodeBoundLike: ...
+
+    @classmethod
+    def _type_identifier(cls) -> str: ...
+
+
+def _is_node_like_instance(value: Any) -> bool:
+    return isinstance(value, NodeLikeInstance)
+
+
+def _is_node_like_type(value: Any) -> bool:
+    if not isinstance(value, type):
+        return False
+    try:
+        return issubclass(value, NodeLikeType)
+    except TypeError:
+        return False
+
+
 def _is_child_field_like(value: Any) -> bool:
     return isinstance(value, _ChildField) or (
         callable(getattr(value, "_set_locator", None))
@@ -272,9 +306,8 @@ def _field_get_nodetype(field: Any) -> type[Any] | None:
 def _bind_contract_instance[T: NodeT](
     nodetype: type[T], instance: graph.BoundNode
 ) -> T:
-    bind_instance = getattr(nodetype, "bind_instance", None)
-    if callable(bind_instance):
-        return cast(T, bind_instance(instance=instance))
+    if _is_node_like_type(nodetype):
+        return cast(T, nodetype.bind_instance(instance=instance))
     return nodetype(instance=instance)
 
 
@@ -911,11 +944,10 @@ class NodeMeta(type):
         node_cls = globals().get("Node")
         if node_cls is None or cls is not node_cls:
             return False
-        get_instance = getattr(instance, "get_instance", None)
-        if not callable(get_instance):
+        if not _is_node_like_instance(instance):
             return False
         try:
-            return isinstance(get_instance(), graph.BoundNode)
+            return isinstance(instance.get_instance(), graph.BoundNode)
         except Exception:
             return False
 
@@ -926,9 +958,7 @@ class NodeMeta(type):
         node_cls = globals().get("Node")
         if node_cls is None or cls is not node_cls:
             return False
-        bind_instance = getattr(subclass, "bind_instance", None)
-        get_identifier = getattr(subclass, "_type_identifier", None)
-        return callable(bind_instance) and callable(get_identifier)
+        return _is_node_like_type(subclass)
 
 
 _ATTR_UNSET = object()
@@ -1188,11 +1218,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if isinstance(t, type) and issubclass(t, Node):
             return cast(type["Node"], t)
 
-        identifier = getattr(t, "_type_identifier", None)
-        if callable(identifier):
-            type_name = identifier()
+        if _is_node_like_type(t):
+            type_name = t._type_identifier()
+        elif isinstance(t, type):
+            type_name = t.__name__
         else:
-            type_name = getattr(t, "__name__", None)
+            type_name = None
 
         if type_name and (resolved := cls._seen_types.get(type_name)):
             return resolved
@@ -1722,9 +1753,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # a bit of a hack, but this should be fast
         # also internally thats exactly what would happen
         for t in type_node:
-            identifier = getattr(t, "_type_identifier", None)
-            if callable(identifier):
-                if tn == identifier():
+            if _is_node_like_type(t):
+                if tn == t._type_identifier():
                     return True
                 continue
             try:
@@ -1950,18 +1980,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             raise FabLLException(f"Node {self} is not an instance of {t}")
         if isinstance(t, type) and Node in t.__mro__:
             return t(self.instance)
-        bind_instance = getattr(t, "bind_instance", None)
-        if callable(bind_instance):
-            return cast(N, bind_instance(instance=self.instance))
+        if _is_node_like_type(t):
+            return cast(N, t.bind_instance(instance=self.instance))
         raise FabLLException(f"Type {t} does not provide bind_instance()")
 
     def try_cast[N: NodeT](self, t: type[N]) -> N | None:
         if not self.isinstance(t):
             return None
-        bind_instance = getattr(t, "bind_instance", None)
-        if not callable(bind_instance):
+        if not _is_node_like_type(t):
             return None
-        return cast(N, bind_instance(instance=self.instance))
+        return cast(N, t.bind_instance(instance=self.instance))
 
     def __repr__(self) -> str:
         cls_name = type(self).__name__
@@ -2137,9 +2165,8 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
                 return typenode
             return t.bind_typegraph(tg).get_or_create_type()
 
-        bind_typegraph = getattr(t, "bind_typegraph", None)
-        if callable(bind_typegraph):
-            return bind_typegraph(tg=tg).get_or_create_type()
+        if _is_node_like_type(t):
+            return t.bind_typegraph(tg=tg).get_or_create_type()
 
         resolved = Node._resolve_contract_type(cast(type[Any], t))
         if typenode := resolved._type_cache.get(TypeNodeBoundTG._get_tg_hash(tg)):
