@@ -66,3 +66,23 @@ void main() {
     outColor = c;
     gl_FragDepth = u_depth;
 }`;
+
+export const point_vert = `#version 300 es
+uniform mat3 u_matrix;
+uniform float u_pointSize;
+in vec2 a_position;
+void main() {
+    gl_Position = vec4((u_matrix * vec3(a_position, 1)).xy, 0, 1);
+    gl_PointSize = u_pointSize;
+}`;
+
+export const point_frag = `#version 300 es
+precision highp float;
+uniform vec4 u_color;
+out vec4 o_color;
+void main() {
+    vec2 coord = gl_PointCoord - vec2(0.5);
+    if (dot(coord, coord) > 0.25) discard;
+    o_color = u_color;
+    gl_FragDepth = 0.001;
+}`;

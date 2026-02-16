@@ -31,6 +31,9 @@ export class Editor {
     // Track current mouse position
     private lastMouseScreen: Vec2 = new Vec2(0, 0);
 
+    // Mouse coordinate callback
+    private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
+
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
         this.baseUrl = baseUrl;
@@ -124,6 +127,11 @@ export class Editor {
         this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
             const rect = this.canvas.getBoundingClientRect();
             this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+
+            if (this.onMouseMoveCallback) {
+                const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
+                this.onMouseMoveCallback(worldPos.x, worldPos.y);
+            }
 
             if (!this.isDragging || !this.model || this.selectedFpIndex < 0) return;
 
@@ -292,6 +300,10 @@ export class Editor {
         this.onLayersChanged = cb;
     }
 
+    setOnMouseMove(cb: (x: number, y: number) => void) {
+        this.onMouseMoveCallback = cb;
+    }
+
     private repaintWithSelection() {
         this.paint();
         this.requestRedraw();
@@ -306,6 +318,7 @@ export class Editor {
             if (this.needsRedraw) {
                 this.needsRedraw = false;
                 this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+                this.renderer.updateGrid(this.camera.bbox, 1.0);
                 this.renderer.draw(this.camera.matrix);
             }
             requestAnimationFrame(loop);

@@ -7,6 +7,7 @@ class Uniform {
     ) {}
 
     f1(x: number) { this.gl.uniform1f(this.location, x); }
+    f4(x: number, y: number, z: number, w: number) { this.gl.uniform4f(this.location, x, y, z, w); }
     mat3f(transpose: boolean, data: Float32Array) {
         this.gl.uniformMatrix3fv(this.location, transpose, data);
     }

@@ -1,6 +1,6 @@
-import { Vec2, Matrix3 } from "../math";
+import { Vec2, Matrix3, BBox } from "../math";
 import { ShaderProgram, VertexArray, Buffer } from "./helpers";
-import { polygon_vert, polygon_frag, polyline_vert, polyline_frag } from "./shaders";
+import { polygon_vert, polygon_frag, polyline_vert, polyline_frag, point_vert, point_frag } from "./shaders";
 import {
     tessellate_polyline, tessellate_circle, triangulate_polygon,
     type TessPolylineResult, type TessCircleResult, type TessPolygonResult,
@@ -159,8 +159,12 @@ export class Renderer {
 
     private polylineShader!: ShaderProgram;
     private polygonShader!: ShaderProgram;
+    private pointShader!: ShaderProgram;
     private activeLayer: RenderLayer | null = null;
     private nextDepth = 0.01;
+    private gridVao: VertexArray | null = null;
+    private gridPosBuf: Buffer | null = null;
+    private gridVertexCount = 0;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -180,6 +184,7 @@ export class Renderer {
 
         this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
         this.polygonShader = new ShaderProgram(gl, polygon_vert, polygon_frag);
+        this.pointShader = new ShaderProgram(gl, point_vert, point_frag);
 
         this.update_size();
     }
@@ -229,10 +234,51 @@ export class Renderer {
         return this.activeLayer!.geometry;
     }
 
+    /** Build grid vertex data for the visible area */
+    updateGrid(viewBBox: BBox, spacing: number) {
+        const maxDots = 100000;
+        const cols = Math.floor(viewBBox.w / spacing) + 2;
+        const rows = Math.floor(viewBBox.h / spacing) + 2;
+        if (cols * rows > maxDots || cols <= 0 || rows <= 0) {
+            this.gridVertexCount = 0;
+            return;
+        }
+
+        const startX = Math.floor(viewBBox.x / spacing) * spacing;
+        const startY = Math.floor(viewBBox.y / spacing) * spacing;
+        const data = new Float32Array(cols * rows * 2);
+        let i = 0;
+        for (let r = 0; r < rows; r++) {
+            const y = startY + r * spacing;
+            for (let c = 0; c < cols; c++) {
+                data[i++] = startX + c * spacing;
+                data[i++] = y;
+            }
+        }
+
+        if (!this.gridVao) {
+            this.gridVao = new VertexArray(this.gl);
+            this.gridPosBuf = this.gridVao.buffer(this.pointShader.attribs["a_position"]!, 2);
+        }
+        this.gridPosBuf!.set(data.subarray(0, i));
+        this.gridVertexCount = i / 2;
+    }
+
     /** Draw all layers with the given camera transform */
     draw(cameraMatrix: Matrix3) {
         this.clear();
         const total = this.projection_matrix.multiply(cameraMatrix);
+
+        // Draw grid dots behind everything
+        if (this.gridVertexCount > 0) {
+            this.pointShader.bind();
+            this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
+            this.pointShader.uniforms["u_pointSize"]!.f1(1.5 * window.devicePixelRatio);
+            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
+            this.gridVao!.bind();
+            this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
+        }
+
         for (const layer of this.layers) {
             layer.render(this.polylineShader, this.polygonShader, total);
         }

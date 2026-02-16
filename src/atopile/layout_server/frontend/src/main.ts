@@ -242,6 +242,14 @@ function buildLayerPanel() {
     }
 }
 
+const statusEl = document.getElementById("status");
+
+editor.setOnMouseMove((x, y) => {
+    if (statusEl) {
+        statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
+    }
+});
+
 editor.init().then(() => {
     buildLayerPanel();
     editor.setOnLayersChanged(buildLayerPanel);

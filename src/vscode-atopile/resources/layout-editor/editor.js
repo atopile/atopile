@@ -337,6 +337,9 @@ var Uniform = class {
   f1(x) {
     this.gl.uniform1f(this.location, x);
   }
+  f4(x, y, z, w2) {
+    this.gl.uniform4f(this.location, x, y, z, w2);
+  }
   mat3f(transpose, data) {
     this.gl.uniformMatrix3fv(this.location, transpose, data);
   }
@@ -505,6 +508,24 @@ void main() {
     }
     outColor = c;
     gl_FragDepth = u_depth;
+}`;
+var point_vert = `#version 300 es
+uniform mat3 u_matrix;
+uniform float u_pointSize;
+in vec2 a_position;
+void main() {
+    gl_Position = vec4((u_matrix * vec3(a_position, 1)).xy, 0, 1);
+    gl_PointSize = u_pointSize;
+}`;
+var point_frag = `#version 300 es
+precision highp float;
+uniform vec4 u_color;
+out vec4 o_color;
+void main() {
+    vec2 coord = gl_PointCoord - vec2(0.5);
+    if (dot(coord, coord) > 0.25) discard;
+    o_color = u_color;
+    gl_FragDepth = 0.001;
 }`;
 
 // node_modules/earcut/src/earcut.js
@@ -1181,8 +1202,12 @@ var Renderer = class {
   projection_matrix = Matrix3.identity();
   polylineShader;
   polygonShader;
+  pointShader;
   activeLayer = null;
   nextDepth = 0.01;
+  gridVao = null;
+  gridPosBuf = null;
+  gridVertexCount = 0;
   constructor(canvas2) {
     this.canvas = canvas2;
     const gl = canvas2.getContext("webgl2", { alpha: false });
@@ -1200,6 +1225,7 @@ var Renderer = class {
     gl.clearDepth(0);
     this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
     this.polygonShader = new ShaderProgram(gl, polygon_vert, polygon_frag);
+    this.pointShader = new ShaderProgram(gl, point_vert, point_frag);
     this.update_size();
   }
   update_size() {
@@ -1244,10 +1270,45 @@ var Renderer = class {
   get active() {
     return this.activeLayer.geometry;
   }
+  /** Build grid vertex data for the visible area */
+  updateGrid(viewBBox, spacing) {
+    const maxDots = 1e5;
+    const cols = Math.floor(viewBBox.w / spacing) + 2;
+    const rows = Math.floor(viewBBox.h / spacing) + 2;
+    if (cols * rows > maxDots || cols <= 0 || rows <= 0) {
+      this.gridVertexCount = 0;
+      return;
+    }
+    const startX = Math.floor(viewBBox.x / spacing) * spacing;
+    const startY = Math.floor(viewBBox.y / spacing) * spacing;
+    const data = new Float32Array(cols * rows * 2);
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      const y = startY + r * spacing;
+      for (let c = 0; c < cols; c++) {
+        data[i++] = startX + c * spacing;
+        data[i++] = y;
+      }
+    }
+    if (!this.gridVao) {
+      this.gridVao = new VertexArray(this.gl);
+      this.gridPosBuf = this.gridVao.buffer(this.pointShader.attribs["a_position"], 2);
+    }
+    this.gridPosBuf.set(data.subarray(0, i));
+    this.gridVertexCount = i / 2;
+  }
   /** Draw all layers with the given camera transform */
   draw(cameraMatrix) {
     this.clear();
     const total = this.projection_matrix.multiply(cameraMatrix);
+    if (this.gridVertexCount > 0) {
+      this.pointShader.bind();
+      this.pointShader.uniforms["u_matrix"].mat3f(false, total.elements);
+      this.pointShader.uniforms["u_pointSize"].f1(1.5 * window.devicePixelRatio);
+      this.pointShader.uniforms["u_color"].f4(1, 1, 1, 0.15);
+      this.gridVao.bind();
+      this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
+    }
     for (const layer of this.layers) {
       layer.render(this.polylineShader, this.polygonShader, total);
     }
@@ -1751,6 +1812,8 @@ var Editor = class {
   onLayersChanged = null;
   // Track current mouse position
   lastMouseScreen = new Vec2(0, 0);
+  // Mouse coordinate callback
+  onMouseMoveCallback = null;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
     this.baseUrl = baseUrl2;
@@ -1833,6 +1896,10 @@ var Editor = class {
     this.canvas.addEventListener("mousemove", (e) => {
       const rect = this.canvas.getBoundingClientRect();
       this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+      if (this.onMouseMoveCallback) {
+        const worldPos2 = this.camera.screen_to_world(this.lastMouseScreen);
+        this.onMouseMoveCallback(worldPos2.x, worldPos2.y);
+      }
       if (!this.isDragging || !this.model || this.selectedFpIndex < 0)
         return;
       const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
@@ -1985,6 +2052,9 @@ var Editor = class {
   setOnLayersChanged(cb) {
     this.onLayersChanged = cb;
   }
+  setOnMouseMove(cb) {
+    this.onMouseMoveCallback = cb;
+  }
   repaintWithSelection() {
     this.paint();
     this.requestRedraw();
@@ -1997,6 +2067,7 @@ var Editor = class {
       if (this.needsRedraw) {
         this.needsRedraw = false;
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+        this.renderer.updateGrid(this.camera.bbox, 1);
         this.renderer.draw(this.camera.matrix);
       }
       requestAnimationFrame(loop);
@@ -2188,6 +2259,12 @@ function buildLayerPanel() {
     expandTab.classList.add("visible");
   }
 }
+var statusEl = document.getElementById("status");
+editor.setOnMouseMove((x, y) => {
+  if (statusEl) {
+    statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
+  }
+});
 editor.init().then(() => {
   buildLayerPanel();
   editor.setOnLayersChanged(buildLayerPanel);
