@@ -251,7 +251,7 @@ var PanAndZoom = class {
         dragStart = cur;
       }
     });
-    this.target.addEventListener("mouseup", (e) => {
+    window.addEventListener("mouseup", (e) => {
       if (e.button === 1 || e.button === 2) {
         dragging = false;
         dragStart = null;
@@ -1439,6 +1439,10 @@ function collectConcreteLayers(model) {
   const layers = /* @__PURE__ */ new Set();
   for (const fp of model.footprints) {
     layers.add(fp.layer);
+    for (const pad of fp.pads) {
+      for (const l of pad.layers)
+        layers.add(l);
+    }
     for (const d of fp.drawings)
       if (d.layer)
         layers.add(d.layer);
@@ -1958,7 +1962,7 @@ var Editor = class {
         await this.serverAction("/undo");
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey || (e.ctrlKey || e.metaKey) && e.key === "y") {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && e.shiftKey || (e.ctrlKey || e.metaKey) && e.key === "y") {
         e.preventDefault();
         await this.serverAction("/redo");
         return;

@@ -99,6 +99,9 @@ function collectConcreteLayers(model: RenderModel): Set<string> {
     const layers = new Set<string>();
     for (const fp of model.footprints) {
         layers.add(fp.layer);
+        for (const pad of fp.pads) {
+            for (const l of pad.layers) layers.add(l);
+        }
         for (const d of fp.drawings) if (d.layer) layers.add(d.layer);
     }
     for (const t of model.tracks) if (t.layer) layers.add(t.layer);

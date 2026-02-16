@@ -191,7 +191,7 @@ export class Editor {
             }
 
             // Ctrl+Shift+Z or Ctrl+Y — redo
-            if (((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) ||
+            if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && e.shiftKey) ||
                 ((e.ctrlKey || e.metaKey) && e.key === "y")) {
                 e.preventDefault();
                 await this.serverAction("/redo");

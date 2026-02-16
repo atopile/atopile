@@ -11,7 +11,7 @@ def main():
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
     args = parser.parse_args()
 
-    if not args.pcb_path.exists():
+    if not args.pcb_path.is_file():
         parser.error(f"File not found: {args.pcb_path}")
 
     from atopile.layout_server.server import create_app

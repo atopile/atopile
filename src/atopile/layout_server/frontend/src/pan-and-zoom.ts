@@ -39,7 +39,7 @@ export class PanAndZoom {
             }
         });
 
-        this.target.addEventListener("mouseup", (e: MouseEvent) => {
+        window.addEventListener("mouseup", (e: MouseEvent) => {
             if (e.button === 1 || e.button === 2) {
                 dragging = false;
                 dragStart = null;

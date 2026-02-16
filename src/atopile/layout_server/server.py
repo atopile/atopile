@@ -42,10 +42,16 @@ class ConnectionManager:
 
     async def broadcast(self, message: WsMessage) -> None:
         data = message.model_dump(exclude_none=True)
+        stale: list[WebSocket] = []
         for connection in self.active_connections:
             try:
                 await connection.send_json(data)
             except Exception:
+                stale.append(connection)
+        for ws in stale:
+            try:
+                self.active_connections.remove(ws)
+            except ValueError:
                 pass
 
 

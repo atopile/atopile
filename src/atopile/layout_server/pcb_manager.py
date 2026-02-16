@@ -88,6 +88,7 @@ class RotateAction(Action):
     def __init__(self, uuid: str, delta_degrees: float) -> None:
         self.uuid = uuid
         self.delta_degrees = delta_degrees
+        self._old_r: float | None = None
 
     def _find(self, pcb: kicad.pcb.KicadPcb):
         for fp in pcb.footprints:
@@ -97,11 +98,12 @@ class RotateAction(Action):
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         fp = self._find(pcb)
+        self._old_r = fp.at.r
         fp.at.r = ((fp.at.r or 0) + self.delta_degrees) % 360
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
         fp = self._find(pcb)
-        fp.at.r = ((fp.at.r or 0) - self.delta_degrees) % 360
+        fp.at.r = self._old_r
 
 
 def _flip_layer(layer: str) -> str:
