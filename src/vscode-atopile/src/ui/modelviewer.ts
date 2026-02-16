@@ -6,7 +6,6 @@ import {
     getThreeDViewerState,
     type ThreeDViewerState,
 } from '../common/3dmodel';
-import { getExtension } from '../common/vscodeapi';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
 
@@ -118,19 +117,6 @@ class ModelViewerWebview extends BaseWebview {
         }
 
         const modelWebUri = this.getWebviewUri(webview, modelPath);
-        const extensionPath = getExtension().extensionUri.fsPath;
-        const threeRoot = path.join(extensionPath, 'node_modules', 'three');
-        const threeModulePath = path.join(threeRoot, 'build', 'three.module.js');
-        const threeAddonsPath = path.join(threeRoot, 'examples', 'jsm');
-        const dracoDecoderPath = path.join(threeRoot, 'examples', 'jsm', 'libs', 'draco');
-
-        if (!fs.existsSync(threeModulePath) || !fs.existsSync(dracoDecoderPath)) {
-            return this.getMissingResourceHtml('3D viewer runtime (three.js not packaged)');
-        }
-
-        const threeModuleUri = webview.asWebviewUri(vscode.Uri.file(threeModulePath));
-        const threeAddonsUri = webview.asWebviewUri(vscode.Uri.file(threeAddonsPath));
-        const dracoDecoderUri = webview.asWebviewUri(vscode.Uri.file(dracoDecoderPath));
 
         // Build status badge
         let statusBadge = '';
@@ -146,13 +132,13 @@ class ModelViewerWebview extends BaseWebview {
             </div>`;
         }
 
-        // Three.js viewer script using locally packaged dependencies
+        // Three.js enhanced viewer script
         const viewerScript = `
             <script type="importmap">
             {
                 "imports": {
-                    "three": "${threeModuleUri.toString()}",
-                    "three/addons/": "${threeAddonsUri.toString()}/"
+                    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
                 }
             }
             </script>
@@ -161,7 +147,7 @@ class ModelViewerWebview extends BaseWebview {
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
                 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-                import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+                import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
                 const container = document.getElementById('container');
 
@@ -180,8 +166,6 @@ class ModelViewerWebview extends BaseWebview {
                 renderer.toneMappingExposure = 1.2;
                 renderer.outputColorSpace = THREE.SRGBColorSpace;
                 container.appendChild(renderer.domElement);
-                const pmremGenerator = new THREE.PMREMGenerator(renderer);
-                pmremGenerator.compileEquirectangularShader();
 
                 // Controls
                 const controls = new OrbitControls(camera, renderer.domElement);
@@ -196,19 +180,26 @@ class ModelViewerWebview extends BaseWebview {
                     return new THREE.Color(bgColor || '#1e1e1e');
                 }
 
-                // Build local environment map from RoomEnvironment (no network dependency)
-                function loadEnvironment() {
-                    const envScene = new RoomEnvironment(renderer);
-                    const envMap = pmremGenerator.fromScene(envScene).texture;
-                    scene.environment = envMap;
-                    scene.background = getThemeBackground();
+                // Load HDR environment
+                async function loadEnvironment() {
+                    const bgColor = getThemeBackground();
+                    const rgbeLoader = new RGBELoader();
+                    try {
+                        const envMap = await rgbeLoader.loadAsync('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr');
+                        envMap.mapping = THREE.EquirectangularReflectionMapping;
+                        scene.environment = envMap;
+                        scene.background = bgColor;
+                    } catch (e) {
+                        console.warn('Failed to load HDR', e);
+                        scene.background = bgColor;
+                    }
                 }
 
                 // Load GLB model
                 async function loadModel() {
                     const loader = new GLTFLoader();
                     const dracoLoader = new DRACOLoader();
-                    dracoLoader.setDecoderPath('${dracoDecoderUri.toString()}/');
+                    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
                     loader.setDRACOLoader(dracoLoader);
 
                     try {
@@ -389,18 +380,6 @@ class ModelViewerWebview extends BaseWebview {
 
     protected getLocalResourceRoots(): vscode.Uri[] {
         const roots = super.getLocalResourceRoots();
-        const extensionPath = getExtension().extensionUri.fsPath;
-        const threeRoot = path.join(extensionPath, 'node_modules', 'three');
-        const threeBuildRoot = path.join(threeRoot, 'build');
-        const threeAddonsRoot = path.join(threeRoot, 'examples', 'jsm');
-
-        if (fs.existsSync(threeBuildRoot) && !roots.some((r) => r.fsPath === threeBuildRoot)) {
-            roots.push(vscode.Uri.file(threeBuildRoot));
-        }
-        if (fs.existsSync(threeAddonsRoot) && !roots.some((r) => r.fsPath === threeAddonsRoot)) {
-            roots.push(vscode.Uri.file(threeAddonsRoot));
-        }
-
         const state = getThreeDViewerState();
 
         if (state.state === 'showing' && state.modelPath) {

@@ -311,7 +311,6 @@
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
         "posthog-node": "^5.1.1",
-        "three": "^0.162.0",
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0",
