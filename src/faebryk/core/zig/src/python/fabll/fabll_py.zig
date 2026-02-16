@@ -5,7 +5,8 @@ const graph_mod = @import("graph");
 const faebryk = @import("faebryk");
 const graph_py = @import("../graph/graph_py.zig");
 const common = @import("common.zig");
-const strings_child_field_helpers = @import("strings_child_field.zig");
+const child_field_helpers = @import("child_field.zig");
+const strings_utils = @import("strings_utils.zig");
 
 const py = pyzig.pybindings;
 const bind = pyzig.pyzig;
@@ -15,9 +16,8 @@ const graph = graph_mod.graph;
 
 const StringWrapper = bind.PyObjectWrapper(fabll.literals.String);
 const StringsWrapper = bind.PyObjectWrapper(fabll.literals.Strings);
-const StringsChildFieldMode = strings_child_field_helpers.StringsChildFieldMode;
-const StringsChildField = strings_child_field_helpers.StringsChildField;
-const StringsChildFieldWrapper = strings_child_field_helpers.StringsChildFieldWrapper;
+const ChildField = strings_utils.ChildField;
+const ChildFieldWrapper = strings_utils.ChildFieldWrapper;
 const CountsWrapper = bind.PyObjectWrapper(fabll.literals.Counts);
 const BooleansWrapper = bind.PyObjectWrapper(fabll.literals.Booleans);
 const StringsBoundType = faebryk.fabll.TypeNodeBoundTG(fabll.literals.Strings);
@@ -36,6 +36,196 @@ var strings_bound_type: ?*py.PyTypeObject = null;
 var counts_bound_type: ?*py.PyTypeObject = null;
 var booleans_bound_type: ?*py.PyTypeObject = null;
 
+fn wrap_node_create_instance(
+    comptime NodeType: type,
+    comptime NodeWrapper: type,
+    comptime node_py_name: [:0]const u8,
+    node_storage: *?*py.PyTypeObject,
+) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "create_instance",
+            .doc = "Create a new Zig fabll node instance",
+            .args_def = struct {
+                g: *py.PyObject,
+                tg: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
+            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
+            const instance = faebryk.fabll.Node.bind_typegraph(NodeType, tg_ptr).create_instance(g_ptr);
+            return common.wrap_owned_obj(
+                node_py_name,
+                NodeType,
+                NodeWrapper,
+                node_storage,
+                instance,
+            );
+        }
+    };
+}
+
+fn wrap_node_bind_instance(
+    comptime NodeType: type,
+    comptime NodeWrapper: type,
+    comptime node_py_name: [:0]const u8,
+    node_storage: *?*py.PyTypeObject,
+) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "bind_instance",
+            .doc = "Bind an existing node instance as a Zig fabll node",
+            .args_def = struct {
+                instance: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .instance = bind.ARG{ .Wrapper = graph_py.BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const bound = faebryk.fabll.Node.bind_instance(NodeType, kwarg_obj.instance.*);
+            return common.wrap_owned_obj(
+                node_py_name,
+                NodeType,
+                NodeWrapper,
+                node_storage,
+                bound,
+            );
+        }
+    };
+}
+
+fn wrap_node_get_instance(
+    comptime node_py_name: [:0]const u8,
+    comptime NodeWrapper: type,
+    node_storage: *?*py.PyTypeObject,
+) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "get_instance",
+            .doc = "Get bound node instance for this node",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper(node_py_name, node_storage, NodeWrapper, self) orelse return null;
+            return graph_py.makeBoundNodePyObject(wrapper.data.node.instance);
+        }
+    };
+}
+
+fn wrap_node_type_identifier(comptime NodeType: type) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "_type_identifier",
+            .doc = "Return Zig type identifier for this node type",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            return bind.wrap_str(@typeName(NodeType));
+        }
+    };
+}
+
+fn wrap_node_bind_typegraph(
+    comptime NodeType: type,
+    comptime BoundType: type,
+    comptime wrap_bound_obj: fn (BoundType) ?*py.PyObject,
+) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "bind_typegraph",
+            .doc = "Bind node type to a Zig TypeGraph",
+            .args_def = struct {
+                tg: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
+            const bound = faebryk.fabll.Node.bind_typegraph(NodeType, tg_ptr);
+            return wrap_bound_obj(bound);
+        }
+    };
+}
+
+fn wrap_bound_create_instance(
+    comptime BoundWrapper: type,
+    comptime bound_py_name: [:0]const u8,
+    bound_storage: *?*py.PyTypeObject,
+    comptime NodeType: type,
+    comptime NodeWrapper: type,
+    comptime node_py_name: [:0]const u8,
+    node_storage: *?*py.PyTypeObject,
+) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "create_instance",
+            .doc = "Create an instance from a bound Zig type",
+            .args_def = struct {
+                g: *py.PyObject,
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper(
+                bound_py_name,
+                bound_storage,
+                BoundWrapper,
+                self,
+            ) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
+            return common.wrap_owned_obj(
+                node_py_name,
+                NodeType,
+                NodeWrapper,
+                node_storage,
+                wrapper.data.create_instance(g_ptr),
+            );
+        }
+    };
+}
+
+fn wrap_bound_get_or_create_type(
+    comptime BoundWrapper: type,
+    comptime bound_py_name: [:0]const u8,
+    bound_storage: *?*py.PyTypeObject,
+) type {
+    return struct {
+        pub const descr = bind.method_descr{
+            .name = "get_or_create_type",
+            .doc = "Get or create the Zig type node for this bound type",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper(
+                bound_py_name,
+                bound_storage,
+                BoundWrapper,
+                self,
+            ) orelse return null;
+            return graph_py.makeBoundNodePyObject(wrapper.data.get_or_create_type());
+        }
+    };
+}
+
 fn wrap_strings_obj(value: fabll.literals.Strings) ?*py.PyObject {
     return common.wrap_owned_obj(
         "Strings",
@@ -46,11 +236,11 @@ fn wrap_strings_obj(value: fabll.literals.Strings) ?*py.PyObject {
     );
 }
 
-fn wrap_strings_child_field_obj(value: StringsChildField) ?*py.PyObject {
+fn wrap_strings_child_field_obj(value: ChildField) ?*py.PyObject {
     return common.wrap_owned_obj(
-        "StringsChildField",
-        StringsChildField,
-        StringsChildFieldWrapper,
+        "ChildField",
+        ChildField,
+        ChildFieldWrapper,
         &strings_child_field_type,
         value,
     );
@@ -189,7 +379,7 @@ fn wrap_strings_child_field_set_locator() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = kwargs;
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
 
             const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
             if (positional_count != 1) {
@@ -198,25 +388,13 @@ fn wrap_strings_child_field_set_locator() type {
             }
             const locator_obj = py.PyTuple_GetItem(args, 0) orelse return null;
 
-            if (wrapper.data.locator) |old| {
-                std.heap.c_allocator.free(old);
-                wrapper.data.locator = null;
-            }
+            child_field_helpers.set_locator(&wrapper.data.base, locator_obj) orelse return null;
 
-            if (locator_obj != py.Py_None()) {
-                const locator_copy = bind.unwrap_str_copy(locator_obj) orelse return null;
-                wrapper.data.locator = locator_copy;
-                if (wrapper.data.identifier == null) {
-                    wrapper.data.identifier = std.heap.c_allocator.dupe(u8, locator_copy) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                        return null;
-                    };
-                }
-            } else if (wrapper.data.identifier == null) {
-                wrapper.data.identifier = switch (wrapper.data.mode) {
-                    .literal => strings_child_field_helpers.next_strings_anon_identifier(),
-                    .set_superset => strings_child_field_helpers.next_is_subset_identifier(),
-                } orelse return null;
+            if (wrapper.data.base.identifier == null) {
+                wrapper.data.base.identifier = if (wrapper.data.ref_path != null)
+                    strings_utils.next_is_subset_identifier()
+                else
+                    strings_utils.next_strings_anon_identifier() orelse return null;
             }
 
             py.Py_INCREF(self.?);
@@ -235,12 +413,8 @@ fn wrap_strings_child_field_get_identifier() type {
         };
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
-            if (wrapper.data.identifier) |identifier| {
-                return bind.wrap_str(identifier);
-            }
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
+            return child_field_helpers.get_identifier_obj(&wrapper.data.base);
         }
     };
 }
@@ -255,8 +429,8 @@ fn wrap_strings_child_field_get_nodetype() type {
         };
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
-            if (wrapper.data.mode == .set_superset) {
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
+            if (wrapper.data.ref_path != null) {
                 py.Py_INCREF(py.Py_None());
                 return py.Py_None();
             }
@@ -282,8 +456,8 @@ fn wrap_strings_child_field_put_on_type() type {
         };
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
-            wrapper.data.type_child = true;
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
+            child_field_helpers.put_on_type(&wrapper.data.base);
             py.Py_INCREF(self.?);
             return self;
         }
@@ -300,8 +474,8 @@ fn wrap_strings_child_field_mark_dependant() type {
         };
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
-            wrapper.data.dependant = true;
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
+            child_field_helpers.mark_dependant(&wrapper.data.base);
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
         }
@@ -318,8 +492,8 @@ fn wrap_strings_child_field_is_dependant() type {
         };
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
-            return bind.wrap_bool(wrapper.data.dependant);
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
+            return bind.wrap_bool(child_field_helpers.is_dependant(&wrapper.data.base));
         }
     };
 }
@@ -334,8 +508,8 @@ fn wrap_strings_child_field_is_type_child() type {
         };
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
-            return bind.wrap_bool(wrapper.data.type_child);
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
+            return bind.wrap_bool(child_field_helpers.is_type_child(&wrapper.data.base));
         }
     };
 }
@@ -350,7 +524,7 @@ fn wrap_strings_child_field_exec_to_typegraph() type {
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("StringsChildField", &strings_child_field_type, StringsChildFieldWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
 
             var t_obj: ?*py.PyObject = null;
             var type_field = false;
@@ -384,10 +558,10 @@ fn wrap_strings_child_field_exec_to_typegraph() type {
                 return null;
             };
 
-            return strings_child_field_helpers.strings_child_field_exec(
+            return strings_utils.child_field_exec(
                 wrapper,
                 t,
-                type_field or wrapper.data.type_child,
+                type_field or wrapper.data.base.type_child,
             );
         }
     };
@@ -404,11 +578,11 @@ fn wrap_strings_child_field(root: *py.PyObject) void {
         wrap_strings_child_field_is_type_child(),
         wrap_strings_child_field_exec_to_typegraph(),
     };
-    bind.wrap_namespace_struct(root, StringsChildField, methods);
-    strings_child_field_type = type_registry.getRegisteredTypeObject(util.shortTypeName(StringsChildField));
+    bind.wrap_namespace_struct(root, ChildField, methods);
+    strings_child_field_type = type_registry.getRegisteredTypeObject(util.shortTypeName(ChildField));
 
     if (strings_child_field_type) |typ| {
-        typ.tp_dealloc = @ptrCast(&strings_child_field_helpers.strings_child_field_dealloc);
+        typ.tp_dealloc = @ptrCast(&strings_utils.child_field_dealloc);
     }
 }
 
@@ -422,7 +596,7 @@ fn wrap_strings_make_child() type {
         };
 
         pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const values = strings_child_field_helpers.parse_strings_makechild_values(args, kwargs, 0) orelse return null;
+            const values = strings_utils.parse_strings_makechild_values(args, kwargs, 0) orelse return null;
             return wrap_strings_child_field_obj(.{ .values = values }) orelse {
                 for (values) |value| std.heap.c_allocator.free(value);
                 std.heap.c_allocator.free(values);
@@ -465,10 +639,9 @@ fn wrap_strings_make_child_set_superset() type {
                 return null;
             }
 
-            const values = strings_child_field_helpers.parse_strings_makechild_values(args, kwargs, 1) orelse return null;
+            const values = strings_utils.parse_strings_makechild_values(args, kwargs, 1) orelse return null;
             py.Py_INCREF(ref_obj.?);
             return wrap_strings_child_field_obj(.{
-                .mode = .set_superset,
                 .values = values,
                 .ref_path = ref_obj.?,
             }) orelse {
@@ -587,80 +760,6 @@ fn wrap_string(root: *py.PyObject) void {
     if (string_type) |typ| {
         typ.tp_dealloc = @ptrCast(common.owned_dealloc(StringWrapper));
     }
-}
-
-fn wrap_strings_create_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "create_instance",
-            .doc = "Create a new Zig fabll Strings literal instance",
-            .args_def = struct {
-                g: *py.PyObject,
-                tg: *py.PyObject,
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
-            const literal = faebryk.fabll.Node.bind_typegraph(fabll.literals.Strings, tg_ptr).create_instance(g_ptr);
-            return common.wrap_owned_obj(
-                "Strings",
-                fabll.literals.Strings,
-                StringsWrapper,
-                &strings_type,
-                literal,
-            );
-        }
-    };
-}
-
-fn wrap_strings_bind_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "bind_instance",
-            .doc = "Bind an existing node instance as a Zig fabll Strings literal",
-            .args_def = struct {
-                instance: *graph.BoundNodeReference,
-
-                pub const fields_meta = .{
-                    .instance = bind.ARG{ .Wrapper = graph_py.BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                };
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const literal = faebryk.fabll.Node.bind_instance(fabll.literals.Strings, kwarg_obj.instance.*);
-            return common.wrap_owned_obj(
-                "Strings",
-                fabll.literals.Strings,
-                StringsWrapper,
-                &strings_type,
-                literal,
-            );
-        }
-    };
-}
-
-fn wrap_strings_get_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "get_instance",
-            .doc = "Get bound node instance for this literal set",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
-            return graph_py.makeBoundNodePyObject(wrapper.data.node.instance);
-        }
-    };
 }
 
 fn wrap_strings_setup_from_values() type {
@@ -1297,120 +1396,22 @@ fn wrap_strings_deserialize() type {
     };
 }
 
-fn wrap_strings_type_identifier() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "_type_identifier",
-            .doc = "Return Zig type identifier for this literal type",
-            .args_def = struct {},
-            .static = true,
-        };
-
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            return bind.wrap_str(@typeName(fabll.literals.Strings));
-        }
-    };
-}
-
-fn wrap_strings_bind_typegraph() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "bind_typegraph",
-            .doc = "Bind Strings type to a Zig TypeGraph",
-            .args_def = struct {
-                tg: *py.PyObject,
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            _ = self;
-            var tg_obj: ?*py.PyObject = null;
-
-            const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-            if (positional_count < 0) {
-                return null;
-            }
-            if (positional_count > 1) {
-                py.PyErr_SetString(py.PyExc_TypeError, "bind_typegraph accepts at most one positional argument");
-                return null;
-            }
-            if (positional_count == 1) {
-                tg_obj = py.PyTuple_GetItem(args, 0);
-            }
-
-            if (kwargs) |kw| {
-                if (py.PyDict_GetItemString(kw, "tg")) |kw_tg| {
-                    if (tg_obj != null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "bind_typegraph received duplicate 'tg' argument");
-                        return null;
-                    }
-                    tg_obj = kw_tg;
-                }
-            }
-
-            if (tg_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "bind_typegraph requires tg");
-                return null;
-            }
-
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, tg_obj.?) orelse return null;
-            const bound = faebryk.fabll.Node.bind_typegraph(fabll.literals.Strings, tg_ptr);
-            return wrap_strings_bound_obj(bound);
-        }
-    };
-}
-
-fn wrap_strings_bound_create_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "create_instance",
-            .doc = "Create a Strings instance from a bound Zig type",
-            .args_def = struct {
-                g: *py.PyObject,
-            },
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper(
-                "StringsBoundType",
-                &strings_bound_type,
-                StringsBoundWrapper,
-                self,
-            ) orelse return null;
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
-            return wrap_strings_obj(wrapper.data.create_instance(g_ptr));
-        }
-    };
-}
-
-fn wrap_strings_bound_get_or_create_type() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "get_or_create_type",
-            .doc = "Get or create the Zig type node for this bound Strings type",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper(
-                "StringsBoundType",
-                &strings_bound_type,
-                StringsBoundWrapper,
-                self,
-            ) orelse return null;
-            return graph_py.makeBoundNodePyObject(wrapper.data.get_or_create_type());
-        }
-    };
-}
-
 fn wrap_strings_bound(root: *py.PyObject) void {
     const extra_methods = [_]type{
-        wrap_strings_bound_create_instance(),
-        wrap_strings_bound_get_or_create_type(),
+        wrap_bound_create_instance(
+            StringsBoundWrapper,
+            "StringsBoundType",
+            &strings_bound_type,
+            fabll.literals.Strings,
+            StringsWrapper,
+            "Strings",
+            &strings_type,
+        ),
+        wrap_bound_get_or_create_type(
+            StringsBoundWrapper,
+            "StringsBoundType",
+            &strings_bound_type,
+        ),
     };
     bind.wrap_namespace_struct(root, StringsBoundType, extra_methods);
     strings_bound_type = type_registry.getRegisteredTypeObject(
@@ -1426,11 +1427,29 @@ fn wrap_strings(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_strings_make_child(),
         wrap_strings_make_child_set_superset(),
-        wrap_strings_create_instance(),
-        wrap_strings_bind_instance(),
-        wrap_strings_bind_typegraph(),
-        wrap_strings_type_identifier(),
-        wrap_strings_get_instance(),
+        wrap_node_create_instance(
+            fabll.literals.Strings,
+            StringsWrapper,
+            "Strings",
+            &strings_type,
+        ),
+        wrap_node_bind_instance(
+            fabll.literals.Strings,
+            StringsWrapper,
+            "Strings",
+            &strings_type,
+        ),
+        wrap_node_bind_typegraph(
+            fabll.literals.Strings,
+            StringsBoundType,
+            wrap_strings_bound_obj,
+        ),
+        wrap_node_type_identifier(fabll.literals.Strings),
+        wrap_node_get_instance(
+            "Strings",
+            StringsWrapper,
+            &strings_type,
+        ),
         wrap_strings_setup_from_values(),
         wrap_strings_get_values(),
         wrap_strings_is_singleton(),
@@ -1456,67 +1475,6 @@ fn wrap_strings(root: *py.PyObject) void {
     }
 
     wrap_strings_bound(root);
-}
-
-fn wrap_counts_create_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "create_instance",
-            .doc = "Create a new Zig fabll Counts literal instance",
-            .args_def = struct {
-                g: *py.PyObject,
-                tg: *py.PyObject,
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
-            const literal = faebryk.fabll.Node.bind_typegraph(fabll.literals.Counts, tg_ptr).create_instance(g_ptr);
-            return wrap_counts_obj(literal);
-        }
-    };
-}
-
-fn wrap_counts_bind_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "bind_instance",
-            .doc = "Bind an existing node instance as a Zig fabll Counts literal",
-            .args_def = struct {
-                instance: *graph.BoundNodeReference,
-
-                pub const fields_meta = .{
-                    .instance = bind.ARG{ .Wrapper = graph_py.BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                };
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const literal = faebryk.fabll.Node.bind_instance(fabll.literals.Counts, kwarg_obj.instance.*);
-            return wrap_counts_obj(literal);
-        }
-    };
-}
-
-fn wrap_counts_get_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "get_instance",
-            .doc = "Get bound node instance for this literal set",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("Counts", &counts_type, CountsWrapper, self) orelse return null;
-            return graph_py.makeBoundNodePyObject(wrapper.data.node.instance);
-        }
-    };
 }
 
 fn wrap_counts_setup_from_values() type {
@@ -1991,91 +1949,22 @@ fn wrap_counts_deserialize() type {
     };
 }
 
-fn wrap_counts_type_identifier() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "_type_identifier",
-            .doc = "Return Zig type identifier for this literal type",
-            .args_def = struct {},
-            .static = true,
-        };
-
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            return bind.wrap_str(@typeName(fabll.literals.Counts));
-        }
-    };
-}
-
-fn wrap_counts_bind_typegraph() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "bind_typegraph",
-            .doc = "Bind Counts type to a Zig TypeGraph",
-            .args_def = struct {
-                tg: *py.PyObject,
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
-            const bound = faebryk.fabll.Node.bind_typegraph(fabll.literals.Counts, tg_ptr);
-            return wrap_counts_bound_obj(bound);
-        }
-    };
-}
-
-fn wrap_counts_bound_create_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "create_instance",
-            .doc = "Create a Counts instance from a bound Zig type",
-            .args_def = struct {
-                g: *py.PyObject,
-            },
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper(
-                "CountsBoundType",
-                &counts_bound_type,
-                CountsBoundWrapper,
-                self,
-            ) orelse return null;
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
-            return wrap_counts_obj(wrapper.data.create_instance(g_ptr));
-        }
-    };
-}
-
-fn wrap_counts_bound_get_or_create_type() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "get_or_create_type",
-            .doc = "Get or create the Zig type node for this bound Counts type",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper(
-                "CountsBoundType",
-                &counts_bound_type,
-                CountsBoundWrapper,
-                self,
-            ) orelse return null;
-            return graph_py.makeBoundNodePyObject(wrapper.data.get_or_create_type());
-        }
-    };
-}
-
 fn wrap_counts_bound(root: *py.PyObject) void {
     const extra_methods = [_]type{
-        wrap_counts_bound_create_instance(),
-        wrap_counts_bound_get_or_create_type(),
+        wrap_bound_create_instance(
+            CountsBoundWrapper,
+            "CountsBoundType",
+            &counts_bound_type,
+            fabll.literals.Counts,
+            CountsWrapper,
+            "Counts",
+            &counts_type,
+        ),
+        wrap_bound_get_or_create_type(
+            CountsBoundWrapper,
+            "CountsBoundType",
+            &counts_bound_type,
+        ),
     };
     bind.wrap_namespace_struct(root, CountsBoundType, extra_methods);
     counts_bound_type = type_registry.getRegisteredTypeObject(
@@ -2089,11 +1978,29 @@ fn wrap_counts_bound(root: *py.PyObject) void {
 
 fn wrap_counts(root: *py.PyObject) void {
     const extra_methods = [_]type{
-        wrap_counts_create_instance(),
-        wrap_counts_bind_instance(),
-        wrap_counts_bind_typegraph(),
-        wrap_counts_type_identifier(),
-        wrap_counts_get_instance(),
+        wrap_node_create_instance(
+            fabll.literals.Counts,
+            CountsWrapper,
+            "Counts",
+            &counts_type,
+        ),
+        wrap_node_bind_instance(
+            fabll.literals.Counts,
+            CountsWrapper,
+            "Counts",
+            &counts_type,
+        ),
+        wrap_node_bind_typegraph(
+            fabll.literals.Counts,
+            CountsBoundType,
+            wrap_counts_bound_obj,
+        ),
+        wrap_node_type_identifier(fabll.literals.Counts),
+        wrap_node_get_instance(
+            "Counts",
+            CountsWrapper,
+            &counts_type,
+        ),
         wrap_counts_setup_from_values(),
         wrap_counts_get_values(),
         wrap_counts_is_singleton(),
@@ -2117,67 +2024,6 @@ fn wrap_counts(root: *py.PyObject) void {
     }
 
     wrap_counts_bound(root);
-}
-
-fn wrap_booleans_create_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "create_instance",
-            .doc = "Create a new Zig fabll Booleans literal instance",
-            .args_def = struct {
-                g: *py.PyObject,
-                tg: *py.PyObject,
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
-            const literal = fabll.literals.Booleans.create_instance(g_ptr, tg_ptr);
-            return wrap_booleans_obj(literal);
-        }
-    };
-}
-
-fn wrap_booleans_bind_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "bind_instance",
-            .doc = "Bind an existing node instance as a Zig fabll Booleans literal",
-            .args_def = struct {
-                instance: *graph.BoundNodeReference,
-
-                pub const fields_meta = .{
-                    .instance = bind.ARG{ .Wrapper = graph_py.BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                };
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const literal = faebryk.fabll.Node.bind_instance(fabll.literals.Booleans, kwarg_obj.instance.*);
-            return wrap_booleans_obj(literal);
-        }
-    };
-}
-
-fn wrap_booleans_get_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "get_instance",
-            .doc = "Get bound node instance for this literal set",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("Booleans", &booleans_type, BooleansWrapper, self) orelse return null;
-            return graph_py.makeBoundNodePyObject(wrapper.data.node.instance);
-        }
-    };
 }
 
 fn wrap_booleans_setup_from_values() type {
@@ -2667,91 +2513,22 @@ fn wrap_booleans_deserialize() type {
     };
 }
 
-fn wrap_booleans_type_identifier() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "_type_identifier",
-            .doc = "Return Zig type identifier for this literal type",
-            .args_def = struct {},
-            .static = true,
-        };
-
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            return bind.wrap_str(@typeName(fabll.literals.Booleans));
-        }
-    };
-}
-
-fn wrap_booleans_bind_typegraph() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "bind_typegraph",
-            .doc = "Bind Booleans type to a Zig TypeGraph",
-            .args_def = struct {
-                tg: *py.PyObject,
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
-            const bound = faebryk.fabll.Node.bind_typegraph(fabll.literals.Booleans, tg_ptr);
-            return wrap_booleans_bound_obj(bound);
-        }
-    };
-}
-
-fn wrap_booleans_bound_create_instance() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "create_instance",
-            .doc = "Create a Booleans instance from a bound Zig type",
-            .args_def = struct {
-                g: *py.PyObject,
-            },
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper(
-                "BooleansBoundType",
-                &booleans_bound_type,
-                BooleansBoundWrapper,
-                self,
-            ) orelse return null;
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
-            return wrap_booleans_obj(wrapper.data.create_instance(g_ptr));
-        }
-    };
-}
-
-fn wrap_booleans_bound_get_or_create_type() type {
-    return struct {
-        pub const descr = bind.method_descr{
-            .name = "get_or_create_type",
-            .doc = "Get or create the Zig type node for this bound Booleans type",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper(
-                "BooleansBoundType",
-                &booleans_bound_type,
-                BooleansBoundWrapper,
-                self,
-            ) orelse return null;
-            return graph_py.makeBoundNodePyObject(wrapper.data.get_or_create_type());
-        }
-    };
-}
-
 fn wrap_booleans_bound(root: *py.PyObject) void {
     const extra_methods = [_]type{
-        wrap_booleans_bound_create_instance(),
-        wrap_booleans_bound_get_or_create_type(),
+        wrap_bound_create_instance(
+            BooleansBoundWrapper,
+            "BooleansBoundType",
+            &booleans_bound_type,
+            fabll.literals.Booleans,
+            BooleansWrapper,
+            "Booleans",
+            &booleans_type,
+        ),
+        wrap_bound_get_or_create_type(
+            BooleansBoundWrapper,
+            "BooleansBoundType",
+            &booleans_bound_type,
+        ),
     };
     bind.wrap_namespace_struct(root, BooleansBoundType, extra_methods);
     booleans_bound_type = type_registry.getRegisteredTypeObject(
@@ -2765,11 +2542,29 @@ fn wrap_booleans_bound(root: *py.PyObject) void {
 
 fn wrap_booleans(root: *py.PyObject) void {
     const extra_methods = [_]type{
-        wrap_booleans_create_instance(),
-        wrap_booleans_bind_instance(),
-        wrap_booleans_bind_typegraph(),
-        wrap_booleans_type_identifier(),
-        wrap_booleans_get_instance(),
+        wrap_node_create_instance(
+            fabll.literals.Booleans,
+            BooleansWrapper,
+            "Booleans",
+            &booleans_type,
+        ),
+        wrap_node_bind_instance(
+            fabll.literals.Booleans,
+            BooleansWrapper,
+            "Booleans",
+            &booleans_type,
+        ),
+        wrap_node_bind_typegraph(
+            fabll.literals.Booleans,
+            BooleansBoundType,
+            wrap_booleans_bound_obj,
+        ),
+        wrap_node_type_identifier(fabll.literals.Booleans),
+        wrap_node_get_instance(
+            "Booleans",
+            BooleansWrapper,
+            &booleans_type,
+        ),
         wrap_booleans_setup_from_values(),
         wrap_booleans_get_values(),
         wrap_booleans_is_singleton(),
