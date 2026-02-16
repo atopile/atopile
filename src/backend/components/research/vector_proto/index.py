@@ -546,6 +546,7 @@ def build_index_files(
     )
 
     written = 0
+    last_logged = 0
     batch_records: list[CorpusRecord] = []
     batch_texts: list[str] = []
     with (out_dir / "records.jsonl").open("w", encoding="utf-8") as records_file:
@@ -562,8 +563,9 @@ def build_index_files(
                 records_file.write(json.dumps(asdict(item), ensure_ascii=True, sort_keys=True))
                 records_file.write("\n")
             written += batch_n
-            if written % progress_every == 0 or written == total:
+            if (written - last_logged) >= progress_every or written == total:
                 status(f"build-index embedded_rows={written}/{total}")
+                last_logged = written
             batch_records.clear()
             batch_texts.clear()
 
@@ -575,7 +577,9 @@ def build_index_files(
                 records_file.write(json.dumps(asdict(item), ensure_ascii=True, sort_keys=True))
                 records_file.write("\n")
             written += batch_n
-            status(f"build-index embedded_rows={written}/{total}")
+            if (written - last_logged) >= progress_every or written == total:
+                status(f"build-index embedded_rows={written}/{total}")
+                last_logged = written
 
     vectors_mm.flush()
     manifest = IndexManifest(
