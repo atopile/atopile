@@ -841,7 +841,7 @@ class is_unit(fabll.Node):
 
         return out
 
-    def serialize_for_api(self: "is_unit | None") -> str | dict | None:
+    def serialize_for_api(self: "is_unit | None") -> str | None:
         """
         Serialize unit for the component API backend.
 
