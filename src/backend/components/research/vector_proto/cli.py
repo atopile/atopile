@@ -34,6 +34,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export_balanced.add_argument("--target-count", type=int, default=10000)
     p_export_balanced.add_argument("--per-subcategory-cap", type=int, default=600)
 
+    p_export_full = sub.add_parser(
+        "export-full-stage1",
+        help="Export full corpus directly from stage-1 /home/jlc/cache.sqlite3",
+    )
+    p_export_full.add_argument("--cache-sqlite", type=Path, required=True)
+    p_export_full.add_argument("--out-jsonl", type=Path, required=True)
+    p_export_full.add_argument("--in-stock-only", action="store_true")
+
     p_index = sub.add_parser("build-index", help="Build vector index from corpus JSONL")
     p_index.add_argument("--corpus-jsonl", type=Path, required=True)
     p_index.add_argument("--out-dir", type=Path, required=True)
@@ -136,6 +144,27 @@ def main() -> None:
                     "out_jsonl": str(args.out_jsonl),
                     "target_count": args.target_count,
                     "per_subcategory_cap": args.per_subcategory_cap,
+                },
+                sort_keys=True,
+            )
+        )
+        return
+
+    if args.cmd == "export-full-stage1":
+        from .stage1_balanced import export_full_stage1_corpus
+
+        count = export_full_stage1_corpus(
+            cache_sqlite=args.cache_sqlite,
+            out_jsonl=args.out_jsonl,
+            in_stock_only=bool(args.in_stock_only),
+        )
+        print(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "rows": count,
+                    "out_jsonl": str(args.out_jsonl),
+                    "in_stock_only": bool(args.in_stock_only),
                 },
                 sort_keys=True,
             )

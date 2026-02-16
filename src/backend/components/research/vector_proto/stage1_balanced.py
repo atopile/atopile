@@ -211,3 +211,94 @@ def export_balanced_stage1_corpus(
     dt = time.perf_counter() - t0
     status(f"done rows={len(rows)} elapsed_s={dt:.1f}")
     return len(rows)
+
+
+def export_full_stage1_corpus(
+    *,
+    cache_sqlite: Path,
+    out_jsonl: Path,
+    in_stock_only: bool = False,
+) -> int:
+    t0 = time.perf_counter()
+    status("opening stage-1 cache sqlite (full export)")
+    conn = sqlite3.connect(cache_sqlite)
+    conn.row_factory = sqlite3.Row
+    try:
+        where_stock = "AND c.stock > 0" if in_stock_only else ""
+        rows = conn.execute(
+            f"""
+            SELECT
+                c.lcsc AS lcsc_id,
+                cat.category AS category,
+                cat.subcategory AS subcategory,
+                m.name AS manufacturer_name,
+                c.mfr AS part_number,
+                c.package AS package,
+                c.description AS description,
+                c.stock AS stock,
+                c.basic AS is_basic,
+                c.preferred AS is_preferred,
+                c.extra AS extra_json
+            FROM components c
+            JOIN categories cat ON c.category_id = cat.id
+            LEFT JOIN manufacturers m ON c.manufacturer_id = m.id
+            WHERE lower(cat.subcategory) NOT LIKE '%pre-ordered%'
+            {where_stock}
+            ORDER BY c.lcsc ASC
+            """
+        ).fetchall()
+
+        out_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        status(f"writing full corpus jsonl: {out_jsonl}")
+        with out_jsonl.open("w", encoding="utf-8") as f:
+            for row in rows:
+                attrs = _extract_attrs(row["extra_json"])
+                component_type = "unknown"
+                category_l = str(row["category"]).lower()
+                subcategory_l = str(row["subcategory"]).lower()
+                if "sensor" in category_l:
+                    component_type = "sensor"
+                elif (
+                    "single chip microcomputer" in category_l
+                    or "embedded processors & controllers" in category_l
+                    or "microcontroller" in subcategory_l
+                ):
+                    component_type = "mcu"
+                elif "interface" in category_l or "communication interface" in category_l:
+                    component_type = "interface_ic"
+                elif "power management" in category_l or "power supply chip" in category_l:
+                    component_type = "power_ic"
+                attributes_json = json.dumps(attrs, ensure_ascii=True, sort_keys=True)
+                record = CorpusRecord(
+                    lcsc_id=int(row["lcsc_id"]),
+                    component_type=component_type,
+                    category=str(row["category"]),
+                    subcategory=str(row["subcategory"]),
+                    manufacturer_name=row["manufacturer_name"],
+                    part_number=str(row["part_number"]),
+                    package=str(row["package"]),
+                    description=str(row["description"]),
+                    stock=int(row["stock"]),
+                    is_basic=bool(row["is_basic"]),
+                    is_preferred=bool(row["is_preferred"]),
+                    attrs=attrs,
+                    text=canonical_component_text(
+                        lcsc_id=int(row["lcsc_id"]),
+                        component_type=component_type,
+                        category=str(row["category"]),
+                        subcategory=str(row["subcategory"]),
+                        manufacturer_name=row["manufacturer_name"],
+                        part_number=str(row["part_number"]),
+                        package=str(row["package"]),
+                        description=str(row["description"]),
+                        attributes_json=attributes_json,
+                    ),
+                )
+                f.write(json.dumps(asdict(record), ensure_ascii=True, sort_keys=True))
+                f.write("\n")
+    finally:
+        conn.close()
+
+    dt = time.perf_counter() - t0
+    status(f"done rows={len(rows)} elapsed_s={dt:.1f}")
+    return len(rows)
