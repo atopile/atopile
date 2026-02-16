@@ -682,6 +682,10 @@ class Numeric(fabll.Node[NumericAttributes]):
         if value in [math.inf, -math.inf]:
             return value
         multiplier = 10**digits
+        if digits > 0 and abs(value) > 1e30:
+            raise ValueError(
+                f"Value {value} is too large to round reliably with digits={digits}"
+            )
         # Use floor(x + 0.5) for traditional rounding
         return math.floor(value * multiplier + 0.5) / multiplier
 
@@ -1794,6 +1798,27 @@ class TestNumericInterval:
         result = numeric_interval.op_round(g=g, tg=tg, ndigits=3)
         assert result.get_min_value() == 1.952
         assert result.get_max_value() == 2.498
+
+    def test_round_except_too_big_number(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        x = -1.32906894805911924079677428209e31
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup_from_singleton(value=x)
+
+        with pytest.raises(ValueError):
+            numeric_interval.op_round(g=g, tg=tg, ndigits=1)
+
+    def test_round_ok_too_big_number(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        x = -1.32906894805911924079677428209e31
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup_from_singleton(value=x)
+
+        result = numeric_interval.op_round(g=g, tg=tg)
+        assert result.get_min_value() == x
+        assert result.get_max_value() == x
 
     def test_op_abs(self):
         g = graph.GraphView.create()
@@ -3282,9 +3307,8 @@ class Numbers(fabll.Node):
         rel: float,
         unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField[Self]:
-        return cls.MakeChild(
-            min=center - rel * center, max=center + rel * center, unit=unit
-        )
+        delta = abs(rel * center)
+        return cls.MakeChild(min=center - delta, max=center + delta, unit=unit)
 
     @classmethod
     def MakeChild_SetSuperset(
@@ -3401,8 +3425,9 @@ class Numbers(fabll.Node):
         """Create a Numbers literal from a center and relative tolerance."""
         g = self.g
         tg = self.tg
+        delta = abs(rel * center)
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            values=[(center - rel * center, center + rel * center)]
+            values=[(center - delta, center + delta)]
         )
         return self.setup(numeric_set=numeric_set, unit=unit)
 
@@ -5031,6 +5056,16 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set.setup_from_singleton(value=1.0, unit=meter_instance.is_unit.get())
         assert quantity_set.get_numeric_set().get_min_value() == 1.0
+
+    def test_setup_from_center_rel_negative_center(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        quantity_set = Numbers.create_instance(g=g, tg=tg)
+
+        quantity_set.setup_from_center_rel(center=-10.0, rel=0.1)
+
+        assert quantity_set.get_numeric_set().get_min_value() == -11.0
+        assert quantity_set.get_numeric_set().get_max_value() == -9.0
 
     def test_get_min_quantity(self):
         from faebryk.library.Units import is_unit

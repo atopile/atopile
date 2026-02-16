@@ -1,0 +1,21 @@
+name: prek
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  prek:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version-file: 'pyproject.toml'
+
+    - uses: j178/prek-action@v1

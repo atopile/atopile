@@ -361,6 +361,7 @@ export default defineConfig(({ mode }) => {
               pinout: resolve(__dirname, 'pinout.html'),
               schematic: resolve(__dirname, 'schematic.html'),
               treeViewer: resolve(__dirname, 'tree-viewer.html'),
+              migrate: resolve(__dirname, 'migrate.html'),
             },
         output: {
           entryFileNames: '[name].js',

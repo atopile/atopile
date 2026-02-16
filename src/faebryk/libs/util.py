@@ -2779,6 +2779,7 @@ class FileChangedWatcher:
         return {
             f: self._get_file_stamp(f)
             for path in self.paths
+            if path.exists()
             for f in (path.rglob(self.glob) if path.is_dir() else [path])
         }
 

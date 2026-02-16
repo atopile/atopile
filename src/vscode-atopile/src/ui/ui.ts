@@ -3,6 +3,7 @@ import * as setup from './setup';
 import * as buttons from './buttons';
 import * as example from './example';
 import * as kicanvas from './kicanvas';
+import * as layoutEditor from './layout-editor';
 import * as modelviewer from './modelviewer';
 import * as treeVisualizer from './tree-visualizer';
 import * as pinoutExplorer from './pinout-explorer';
@@ -33,6 +34,7 @@ export async function activate(context: vscode.ExtensionContext) {
         buttons.activate(context),
         example.activate(context),
         kicanvas.activate(context),
+        layoutEditor.activate(context),
         modelviewer.activate(context),
         treeVisualizer.activate(context),
         pinoutExplorer.activate(context),
@@ -51,6 +53,7 @@ export function deactivate() {
     buttons.deactivate();
     example.deactivate();
     kicanvas.deactivate();
+    layoutEditor.deactivate();
     modelviewer.deactivate();
     treeVisualizer.deactivate();
     pinoutExplorer.deactivate();

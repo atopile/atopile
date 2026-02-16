@@ -1,6 +1,6 @@
 ---
-name: Solver
-description: "How the Faebryk parameter solver works (Sets/Literals, Parameters, Expressions), the core invariants enforced during mutation, and practical workflows for debugging and extending the solver."
+name: solver
+description: "How the Faebryk parameter solver works (Sets/Literals, Parameters, Expressions), the core invariants enforced during mutation, and practical workflows for debugging and extending the solver. Use when implementing or modifying constraint solving, parameter bounds, or debugging expression simplification."
 ---
 
 # Solver Module

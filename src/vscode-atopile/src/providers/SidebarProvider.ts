@@ -3,16 +3,13 @@
  *
  * This provider is minimal - it just opens the webview and loads the UI.
  * All state management and backend communication happens in the React app.
- *
- * In development: Loads from Vite dev server (http://localhost:5173)
- * In production: Loads from compiled assets
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
-import { traceInfo, traceError } from '../common/log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
@@ -21,7 +18,10 @@ import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dm
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
+import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
+import { openLayoutEditor } from '../ui/layout-editor';
+import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -189,6 +189,15 @@ interface OpenSchematicPreviewMessage {
   type: 'openSchematicPreview';
 }
 
+interface WebviewReadyMessage {
+  type: 'webviewReady';
+}
+
+interface OpenMigrateTabMessage {
+  type: 'openMigrateTab';
+  projectRoot: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -222,47 +231,23 @@ type WebviewMessage =
   | OpenLayoutPreviewMessage
   | Open3DPreviewMessage
   | OpenPinoutExplorerMessage
-  | OpenSchematicPreviewMessage;
-
-/**
- * Check if we're running in development mode.
- * Dev mode is detected by checking if the Vite manifest exists.
- */
-function isDevelopmentMode(extensionPath: string): boolean {
-  // In production, webviews are in resources/webviews/
-  // In development, we use the Vite dev server
-  const prodPath = path.join(extensionPath, 'resources', 'webviews', 'sidebar.js');
-  return !fs.existsSync(prodPath);
-}
-
-/**
- * Generate a nonce for Content Security Policy.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-function getWsOrigin(wsUrl: string): string {
-  try {
-    return new URL(wsUrl).origin;
-  } catch {
-    return wsUrl;
-  }
-}
+  | OpenSchematicPreviewMessage
+  | WebviewReadyMessage
+  | OpenMigrateTabMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
   public static readonly viewType = 'atopile.sidebar';
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = [
+    'resources',
+    'resources/webviews',
+    'resources/model-viewer',
+    'webviews/dist',
+  ];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
-  private _lastMode: 'dev' | 'prod' | null = null;
-  private _hasHtml: boolean = false;
+  private _hasHtml = false;
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
@@ -273,7 +258,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _extensionVersion: string
+    private readonly _extensionVersion: string,
+    private readonly _activationTime: number = Date.now()
   ) {
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
@@ -379,36 +365,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private _refreshWebview(): void {
     if (!this._view) {
-      traceInfo('[SidebarProvider] _refreshWebview called but no view');
       return;
     }
-
-    traceInfo('[SidebarProvider] Refreshing webview with URLs:', {
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-      port: backendServer.port,
-      isConnected: backendServer.isConnected,
-    });
 
     const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
-    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
-      traceInfo('[SidebarProvider] Skipping refresh (already loaded)', { mode });
+
+    // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
+    if (this._hasHtml && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
-    if (isDev) {
-      this._view.webview.html = this._getDevHtml();
-    } else {
-      this._view.webview.html = this._getProdHtml(this._view.webview);
-    }
+    this._view.webview.options = createWebviewOptions({
+      extensionPath,
+      port: backendServer.port,
+      prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
+    });
+    this._view.webview.html = this._getProdHtml(this._view.webview);
     this._hasHtml = true;
-    this._lastMode = mode;
     this._lastApiUrl = apiUrl;
     this._lastWsUrl = wsUrl;
   }
@@ -419,54 +394,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-
-    const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
-    traceInfo('[SidebarProvider] resolveWebviewView called', {
-      extensionPath,
-      isDev,
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-    });
-
-    const webviewOptions: vscode.WebviewOptions & {
-      retainContextWhenHidden?: boolean;
-    } = {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: isDev
-        ? [] // No local resources in dev mode
-        : [
-          vscode.Uri.file(path.join(extensionPath, 'resources')),
-          vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-          vscode.Uri.file(path.join(extensionPath, 'resources', 'model-viewer')),
-          vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-        ],
-    };
-    webviewView.webview.options = webviewOptions;
-
-    if (isDev) {
-      traceInfo('[SidebarProvider] Using dev HTML');
-      webviewView.webview.html = this._getDevHtml();
-    } else {
-      traceInfo('[SidebarProvider] Using prod HTML');
-      const html = this._getProdHtml(webviewView.webview);
-      traceInfo('[SidebarProvider] Generated HTML length:', html.length);
-      webviewView.webview.html = html;
-    }
-    this._hasHtml = true;
-    this._lastMode = mode;
-    this._lastApiUrl = backendServer.apiUrl;
-    this._lastWsUrl = backendServer.wsUrl;
+    this._refreshWebview();
     this._postWorkspaceRoot();
-    // Send current active file to webview
     this._postActiveFile(vscode.window.activeTextEditor);
-    // Send current atopile settings to webview so slider reflects the correct state
     this._sendAtopileSettings();
 
-    // Listen for messages from webview
     this._disposables.push(
       webviewView.webview.onDidReceiveMessage(
         (message: WebviewMessage) => this._handleWebviewMessage(message),
@@ -528,7 +460,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   private _postToWebview(message: Record<string, unknown>): void {
     if (!this._view) {
-      traceInfo('[SidebarProvider] Cannot post message - no view');
+      traceVerbose('[SidebarProvider] Cannot post message - no view');
       return;
     }
     this._view.webview.postMessage(message);
@@ -603,6 +535,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'showInfo':
         void vscode.window.showInformationMessage(message.message);
         break;
+      case 'webviewReady': {
+        traceMilestone('sidebar webview ready');
+        break;
+      }
       case 'showError':
         void vscode.window.showErrorMessage(message.message);
         break;
@@ -624,7 +560,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand('atopile.logViewer.focus');
         break;
       case 'showBackendMenu':
-        void vscode.commands.executeCommand('atopile.backendStatus');
+        void vscode.commands.executeCommand('atopile.showMenu');
         break;
       case 'openPowerTree':
         void vscode.commands.executeCommand('atopile.power_tree_preview');
@@ -804,6 +740,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
         handleThreeDModelBuildResult(message.success, message.error);
         break;
+      case 'openMigrateTab':
+        traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
+        openMigratePreview(this._extensionUri, message.projectRoot);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -921,15 +861,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     return null;
   }
 
-  private _openLayoutPreview(filePath: string): void {
-    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
-    if (!pcbPath) {
-      traceError(`[SidebarProvider] Layout file not found: ${filePath}`);
-      vscode.window.showErrorMessage('Layout file not found. Run a build to generate it.');
-      return;
-    }
-    setCurrentPCB({ path: pcbPath, exists: true });
-    void openKiCanvasPreview();
+  private _openLayoutPreview(_filePath: string): void {
+    // The server already loaded the PCB via the openLayout action.
+    // Just open the editor webview.
+    void openLayoutEditor();
   }
 
   private _openWithKicad(filePath: string): void {
@@ -1191,18 +1126,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Handle request to browse for a local atopile path.
-   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   * Handle request to browse for a local atopile binary.
+   * Shows a native file picker dialog and sends the selected path back to the webview.
    */
   private async _handleBrowseAtopilePath(): Promise<void> {
     traceInfo('[SidebarProvider] Browsing for local atopile path');
 
     const result = await vscode.window.showOpenDialog({
       canSelectFiles: true,
-      canSelectFolders: true,
+      canSelectFolders: false,
       canSelectMany: false,
-      openLabel: 'Select atopile installation',
-      title: 'Select atopile installation directory or binary',
+      openLabel: 'Select atopile binary',
+      title: 'Select atopile binary',
+      filters: process.platform === 'win32'
+        ? { 'Executables': ['exe', 'cmd'], 'All files': ['*'] }
+        : undefined,
     });
 
     const selectedPath = result?.[0]?.fsPath ?? null;
@@ -1324,81 +1262,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Development HTML - loads from Vite dev server.
-   * The React app connects directly to the Python backend.
-   * Workspace folders are passed via URL query params since iframe can't access parent window.
-   */
-  private _getDevHtml(): string {
-    const viteDevServer = 'http://localhost:5173';
-    const backendUrl = backendServer.apiUrl;
-    const wsUrl = backendServer.wsUrl;
-    const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceRoot = this._getWorkspaceRootSync();
-
-    const workspaceParam = workspaceRoot
-      ? `?workspace=${encodeURIComponent(workspaceRoot)}`
-      : '';
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    frame-src ${viteDevServer};
-    style-src 'unsafe-inline';
-    script-src 'unsafe-inline';
-    img-src https: http: data:;
-    connect-src ${viteDevServer} ${backendUrl} ${wsOrigin};
-  ">
-  <title>atopile</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .dev-banner {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ff6b35;
-      color: white;
-      padding: 2px 8px;
-      font-size: 10px;
-      text-align: center;
-      z-index: 1000;
-    }
-  </style>
-</head>
-<body>
-  <div class="dev-banner">DEV MODE - Loading from Vite</div>
-  <iframe src="${viteDevServer}/sidebar.html${workspaceParam}"></iframe>
-  <script>
-    window.addEventListener('message', (event) => {
-      const data = event && event.data;
-      if (!data || (data.type !== 'workspace-root' && data.type !== 'activeFile')) return;
-      const iframe = document.querySelector('iframe');
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage(data, '*');
-      }
-    });
-  </script>
-</body>
-</html>`;
-  }
-
-  /**
-   * Production HTML - loads from compiled assets.
+   * Get the webview HTML - loads from compiled assets.
    * The React app connects directly to the Python backend.
    */
   private _getProdHtml(webview: vscode.Webview): string {

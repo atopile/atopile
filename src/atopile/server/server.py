@@ -44,8 +44,8 @@ from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
 from atopile.model.sqlite import BuildHistory
 from atopile.server.connections import server_state
-from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
+from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
 
@@ -60,18 +60,33 @@ _debounce_tasks: dict[str, asyncio.Task] = {}
 _last_packages_registry_refresh: float = 0.0
 
 
-async def _load_projects_background(ctx: AppContext) -> None:
-    """Background task to load projects without blocking startup."""
+async def _load_initial_state(ctx: AppContext) -> None:
+    """Load startup state, emitting events as each piece becomes available."""
     if not ctx.workspace_paths:
         await server_state.emit_event("projects_changed")
         return
-    # No try/except - let exceptions crash the server for visibility
+
     log.info(f"Loading projects from {ctx.workspace_paths}")
-    await asyncio.to_thread(
-        core_projects.discover_projects_in_paths, ctx.workspace_paths
-    )
-    await server_state.emit_event("projects_changed")
-    log.info("Project discovery complete")
+
+    async def _discover_projects() -> None:
+        t0 = time.perf_counter()
+        projects = await asyncio.to_thread(
+            projects_domain.discover_projects_in_paths, ctx.workspace_paths
+        )
+        log.info(
+            "[project discovery] found %d projects in %.1fms",
+            len(projects),
+            (time.perf_counter() - t0) * 1000,
+        )
+        await server_state.emit_event("projects_changed")
+        # Re-notify so the frontend picks up installed-package status.
+        await server_state.emit_event("packages_changed")
+
+    async def _fetch_registry() -> None:
+        await asyncio.to_thread(packages_domain.get_all_registry_packages)
+        await server_state.emit_event("packages_changed")
+
+    await asyncio.gather(_discover_projects(), _fetch_registry())
 
 
 async def _refresh_projects_state() -> None:
@@ -81,18 +96,8 @@ async def _refresh_projects_state() -> None:
         return
 
     # No try/except - let exceptions crash the server for visibility
-    await asyncio.to_thread(core_projects.discover_projects_in_paths, workspace_paths)
+    await asyncio.to_thread(projects_domain.discover_projects_in_paths, workspace_paths)
     await server_state.emit_event("projects_changed")
-
-
-async def _load_packages_background(ctx: AppContext) -> None:
-    """Background task to load packages without blocking startup."""
-    # No try/except - let exceptions crash the server for visibility
-    log.info("Loading packages from registry")
-    # Use first workspace path for package scanning
-    scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
-    await packages_domain.refresh_packages_state(scan_path=scan_path)
-    log.info("Packages refresh complete")
 
 
 async def _refresh_stdlib_state() -> None:
@@ -538,10 +543,8 @@ def create_app(
             log.info("No workspace paths configured, skipping initial state population")
             return
 
-        # Fire background tasks - don't await, server starts immediately
-        asyncio.create_task(_load_projects_background(ctx))
-        asyncio.create_task(_load_packages_background(ctx))
-        log.info("Server started - background loaders running")
+        asyncio.create_task(_load_initial_state(ctx))
+        log.info("Server started - loading initial state in background")
 
     # Health check endpoint for extension to verify server is running
     @app.get("/health")
@@ -557,6 +560,9 @@ def create_app(
     )
     from atopile.server.routes import (
         files as files_routes,
+    )
+    from atopile.server.routes import (
+        layout as layout_routes,
     )
     from atopile.server.routes import (
         logs as logs_routes,
@@ -592,6 +598,7 @@ def create_app(
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
     app.include_router(files_routes.router)
+    app.include_router(layout_routes.router)
     app.include_router(parts_search_routes.router)
     app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)
@@ -761,6 +768,7 @@ def run_server(
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
     ato_from_spec: Optional[str] = None,
+    no_gen: bool = False,
 ) -> None:
     """
     Run the dashboard server.
@@ -791,6 +799,7 @@ def run_server(
             ato_local_path=ato_local_path,
             ato_from_branch=ato_from_branch,
             ato_from_spec=ato_from_spec,
+            no_gen=no_gen,
         )
     except KeyboardInterrupt:
         print("\nShutting down...")
@@ -812,16 +821,20 @@ def _run_server_impl(
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
     ato_from_spec: Optional[str] = None,
+    no_gen: bool = False,
 ) -> None:
     """Server implementation (called by run_server with exception handling)."""
-    # Generate types if in dev environment
-    repo_root = Path(__file__).resolve().parents[3]
-    gen_script = repo_root / "scripts" / "generate_types.py"
-    ui_server_dir = repo_root / "src" / "ui-server"
-    if gen_script.exists() and ui_server_dir.exists():
-        result = subprocess.run([sys.executable, str(gen_script)], cwd=str(repo_root))
-        if result.returncode != 0:
-            sys.exit(result.returncode)
+    # Generate types if in dev environment (skip with --no-gen)
+    if not no_gen:
+        repo_root = Path(__file__).resolve().parents[3]
+        gen_script = repo_root / "scripts" / "generate_types.py"
+        ui_server_dir = repo_root / "src" / "ui-server"
+        if gen_script.exists() and ui_server_dir.exists():
+            result = subprocess.run(
+                [sys.executable, str(gen_script)], cwd=str(repo_root)
+            )
+            if result.returncode != 0:
+                sys.exit(result.returncode)
 
     # Default to cwd if no workspace paths provided
     if not workspace_paths:

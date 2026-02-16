@@ -15,11 +15,12 @@ import {
   buildTestLogRequest,
   LogDisplay,
   ChevronDown,
+  HeaderSearchBox,
   getStoredSetting,
   LoggerFilter,
   loadEnabledLoggers,
-  calculateSourceColumnWidth,
 } from './log-viewer';
+import { LOG_COL_WIDTHS } from './LogViewer';
 import './LogViewer.css';
 
 export interface TestLogViewerProps {
@@ -176,16 +177,23 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     setExpandKey(k => k + 1);
   }, []);
 
-  // Calculate dynamic source column width based on content
-  const sourceColumnWidth = useMemo(
-    () => calculateSourceColumnWidth(logs, sourceMode),
-    [logs, sourceMode]
+  const gridTemplateColumns = useMemo(
+    () => [
+      timeMode === 'delta' ? '60px' : '72px',
+      levelFull ? 'max-content' : '3ch',
+      `${LOG_COL_WIDTHS.source}px`,
+      `${LOG_COL_WIDTHS.stage}px`,
+      'minmax(0, 1fr)',
+    ].join(' '),
+    [timeMode, levelFull]
   );
 
   return (
     <div
       className="lv-container"
-      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+      style={{
+        '--lv-grid-template-columns': gridTemplateColumns,
+      } as React.CSSProperties}
     >
       {/* Toolbar */}
       <div className="lv-toolbar">
@@ -243,17 +251,6 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
           </div>
 
           <div className="lv-controls-right">
-            {/* Source filter */}
-            <input
-              type="text"
-              className="lv-input lv-input-search"
-              placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-            />
-
-            <span className="lv-separator" />
-
             {/* Source/Logger toggle */}
             <button
               className="lv-btn lv-btn-small"
@@ -292,62 +289,57 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
         )}
       </div>
 
-      {/* Column Headers */}
-      <div className={`lv-column-headers ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-        <div className="lv-col-header lv-col-ts">
-          <button
-            className="lv-col-btn"
-            onClick={() => setTimeMode(m => m === 'wall' ? 'delta' : 'wall')}
-          >
-            {timeMode === 'wall' ? 'Time' : 'Δ'}
-          </button>
+      <div className="lv-log-grid">
+        {/* Column Headers */}
+        <div className="lv-column-headers">
+          <div className="lv-col-header lv-col-ts">
+            <span className="lv-col-label">Time</span>
+          </div>
+          <div className="lv-col-header lv-col-level">
+            <span className="lv-col-label">Level</span>
+          </div>
+          <div className="lv-col-header lv-col-source">
+            <HeaderSearchBox
+              value={sourceFilter}
+              onChange={setSourceFilter}
+              placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
+            />
+          </div>
+          <div className="lv-col-header lv-col-stage">
+            <span className="lv-col-label">Stage</span>
+          </div>
+          <div className="lv-col-header lv-col-message">
+            <HeaderSearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Message"
+              inputClassName="lv-col-search-message"
+              wrapperClassName="lv-search-wrapper-message"
+            />
+          </div>
         </div>
-        <div className="lv-col-header lv-col-level">
-          <button
-            className="lv-col-btn"
-            onClick={() => setLevelFull(f => !f)}
-          >
-            {levelFull ? 'Level' : 'Lv'}
-          </button>
-        </div>
-        <div className="lv-col-header lv-col-source">
-          <button
-            className="lv-col-btn"
-            onClick={() => setSourceMode(m => m === 'source' ? 'logger' : 'source')}
-          >
-            {sourceMode === 'source' ? 'Src' : 'Log'}
-          </button>
-        </div>
-        <div className="lv-col-header lv-col-message">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Message"
-            className="lv-col-search lv-col-search-message"
-          />
-        </div>
-      </div>
 
-      {/* Log Display */}
-      <LogDisplay
-        logs={logs}
-        search={search}
-        sourceFilter={sourceFilter}
-        enabledLoggers={enabledLoggers}
-        levelFull={levelFull}
-        timeMode={timeMode}
-        sourceMode={sourceMode}
-        autoScroll={autoScroll}
-        streaming={streaming}
-        onAutoScrollChange={handleAutoScrollChange}
-        setLevelFull={setLevelFull}
-        setTimeMode={setTimeMode}
-        allExpanded={allExpanded}
-        expandKey={expandKey}
-        onExpandAll={handleExpandAll}
-        onCollapseAll={handleCollapseAll}
-      />
+        {/* Log Display */}
+        <LogDisplay
+          logs={logs}
+          search={search}
+          sourceFilter={sourceFilter}
+          enabledLoggers={enabledLoggers}
+          levelFull={levelFull}
+          timeMode={timeMode}
+          sourceMode={sourceMode}
+          autoScroll={autoScroll}
+          streaming={streaming}
+          onAutoScrollChange={handleAutoScrollChange}
+          setLevelFull={setLevelFull}
+          setTimeMode={setTimeMode}
+          setSourceMode={setSourceMode}
+          allExpanded={allExpanded}
+          expandKey={expandKey}
+          onExpandAll={handleExpandAll}
+          onCollapseAll={handleCollapseAll}
+        />
+      </div>
     </div>
   );
 }
