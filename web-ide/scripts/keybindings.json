@@ -1,0 +1,8 @@
+[
+    { "key": "ctrl+k ctrl+o", "command": "-workbench.action.openFolder" },
+    { "key": "ctrl+o",        "command": "-workbench.action.files.openFile" },
+    { "key": "ctrl+shift+`",  "command": "-workbench.action.terminal.new" },
+    { "key": "ctrl+`",        "command": "-workbench.action.terminal.toggleTerminal" },
+    { "key": "f5",            "command": "-workbench.action.debug.start" },
+    { "key": "ctrl+shift+b",  "command": "-workbench.action.tasks.build" }
+]

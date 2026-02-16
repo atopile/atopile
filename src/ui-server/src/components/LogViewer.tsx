@@ -7,6 +7,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { sendAction } from '../api/websocket';
+import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '../utils/storage';
 import {
   LOG_LEVELS,
   AUDIENCES,
@@ -56,7 +57,7 @@ export function LogViewer() {
 
   // Query parameters - shared (logLevels persisted in localStorage)
   const [logLevels, setLogLevels] = useState<LogLevel[]>(() => {
-    const stored = localStorage.getItem('lv-logLevels');
+    const stored = safeLocalStorageGetItem('lv-logLevels');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -161,16 +162,16 @@ export function LogViewer() {
 
   // Persist display states to localStorage
   useEffect(() => {
-    localStorage.setItem('lv-levelFull', String(levelFull));
+    safeLocalStorageSetItem('lv-levelFull', String(levelFull));
   }, [levelFull]);
   useEffect(() => {
-    localStorage.setItem('lv-timeMode', timeMode);
+    safeLocalStorageSetItem('lv-timeMode', timeMode);
   }, [timeMode]);
   useEffect(() => {
-    localStorage.setItem('lv-sourceMode', sourceMode);
+    safeLocalStorageSetItem('lv-sourceMode', sourceMode);
   }, [sourceMode]);
   useEffect(() => {
-    localStorage.setItem('lv-logLevels', JSON.stringify(logLevels));
+    safeLocalStorageSetItem('lv-logLevels', JSON.stringify(logLevels));
   }, [logLevels]);
 
   // Close dropdown when clicking outside

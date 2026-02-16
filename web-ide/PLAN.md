@@ -113,7 +113,7 @@ Key design decisions:
 cd web-ide
 docker compose up --build
 
-# Open http://localhost:3000
+# Open https://localhost:3443
 ```
 
 ### Test Cases
@@ -121,7 +121,7 @@ docker compose up --build
 1. **Container Health**
    - Container starts without errors
    - Health check passes
-   - Port 3000 is accessible
+   - Port 3443 is accessible
 
 2. **Workspace**
    - IDE opens in workspace directory

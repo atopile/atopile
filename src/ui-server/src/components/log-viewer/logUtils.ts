@@ -6,6 +6,7 @@ import AnsiToHtml from 'ansi-to-html';
 import { SOURCE_COLORS, LogEntry, TreeNode, LogTreeGroup, TimeMode, SourceMode } from './logTypes';
 import type { StructuredTraceback } from '../StackInspector';
 import { highlightMatches, createSearchMatcher, SearchOptions } from '../../utils/searchUtils';
+import { safeLocalStorageGetItem } from '../../utils/storage';
 
 // Re-export search utilities for convenience
 export { isValidRegex } from '../../utils/searchUtils';
@@ -235,7 +236,7 @@ export function filterLogs(
 
 // Get stored display setting with default
 export function getStoredSetting<T>(key: string, defaultValue: T, validator?: (v: unknown) => boolean): T {
-  const stored = localStorage.getItem(key);
+  const stored = safeLocalStorageGetItem(key);
   if (stored !== null) {
     if (typeof defaultValue === 'boolean') {
       return (stored === 'true') as unknown as T;

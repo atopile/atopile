@@ -28,5 +28,7 @@
 
     "telemetry.telemetryLevel": "off",
 
+    "task.quickOpen.skip": true,
+
     "security.workspace.trust.enabled": false
 }

@@ -29,8 +29,7 @@
         "Snippets"
     ],
     "extensionDependencies": [
-        "ms-python.python",
-        "vscode.git"
+        "ms-python.python"
     ],
     "capabilities": {
         "virtualWorkspaces": {
@@ -48,8 +47,7 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run build:novnc && npm run build:webviews && npm run package",
-        "build:novnc": "node -e \"require('fs').mkdirSync('resources/novnc',{recursive:true})\" && esbuild node_modules/@novnc/novnc/lib/rfb.js --bundle --format=esm --outfile=resources/novnc/novnc.bundle.js --minify",
+        "vscode:prepublish": "npm run build:webviews && npm run package",
         "build:webviews": "cd ../ui-server && npm install && npm run build -- --outDir ../vscode-atopile/resources/webviews",
         "compile": "webpack",
         "watch": "webpack --watch",
@@ -224,11 +222,6 @@
                 "category": "atopile"
             },
             {
-                "command": "atopile.pcbnew_vnc",
-                "title": "Open PCBnew (VNC)",
-                "category": "atopile"
-            },
-            {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
@@ -285,7 +278,6 @@
         "@gltf-transform/cli": "^4.1.0"
     },
     "devDependencies": {
-        "@novnc/novnc": "~1.5.0",
         "@types/fs-extra": "^11.0.4",
         "@types/glob": "^8.1.0",
         "@types/js-yaml": "^4.0.9",

@@ -377,6 +377,7 @@ function getOrCreateBuildTerminal(name: string, cwd: string | undefined, hideFro
     // Create new terminal and track it
     g_buildTerminal = vscode.window.createTerminal({
         name: `ato: ${name}`,
+        shellPath: '/bin/bash',
         cwd: cwd,
         hideFromUser: hideFromUser,
     });
@@ -405,6 +406,7 @@ export async function runAtoCommandInTerminal(
         } else {
             terminal = vscode.window.createTerminal({
                 name: `ato: ${terminal_or_name}`,
+                shellPath: '/bin/bash',
                 cwd: cwd,
                 hideFromUser: hideFromUser,
             });

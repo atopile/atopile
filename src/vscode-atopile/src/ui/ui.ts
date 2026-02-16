@@ -4,7 +4,6 @@ import * as buttons from './buttons';
 import * as example from './example';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
-import * as pcbnewVnc from './pcbnew-vnc';
 import * as pcb from '../common/pcb';
 import * as threeDModel from '../common/3dmodel';
 import { traceInfo } from '../common/log/logging';
@@ -28,7 +27,6 @@ export async function activate(context: vscode.ExtensionContext) {
         example.activate(context),
         kicanvas.activate(context),
         modelviewer.activate(context),
-        pcbnewVnc.activate(context),
         pcb.activate(context),
         threeDModel.activate(context),
     ]);
@@ -40,7 +38,6 @@ export function deactivate() {
     example.deactivate();
     kicanvas.deactivate();
     modelviewer.deactivate();
-    pcbnewVnc.deactivate();
     pcb.deactivate();
     threeDModel.deactivate();
 }

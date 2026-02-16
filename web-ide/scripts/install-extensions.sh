@@ -41,6 +41,21 @@ rm -rf "${EXT_DIR}"/ms-python.debugpy*
 rm -rf "${EXT_DIR}"/debug-auto-launch
 rm -rf "${EXT_DIR}"/debug-server-ready
 
+# Remove task runner extensions (can execute arbitrary shell commands via tasks.json)
+rm -rf "${EXT_DIR}"/npm
+rm -rf "${EXT_DIR}"/grunt
+rm -rf "${EXT_DIR}"/gulp
+rm -rf "${EXT_DIR}"/jake
+
+# Remove git extensions (prevent clone/push/pull from command palette)
+rm -rf "${EXT_DIR}"/git
+rm -rf "${EXT_DIR}"/git-base
+rm -rf "${EXT_DIR}"/github*
+
+# Remove other dangerous extensions
+rm -rf "${EXT_DIR}"/tunnel-forwarding
+rm -rf "${EXT_DIR}"/configuration-editing
+
 echo ""
 echo "=== Installed extensions ==="
 ${OVSCODE} --list-extensions --extensions-dir "${EXT_DIR}"
