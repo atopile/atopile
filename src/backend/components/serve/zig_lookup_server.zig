@@ -45,6 +45,16 @@ const RequestPayload = struct {
     range_filters: ?[]const RangeFilter = null,
 };
 
+const RequestEnvelope = struct {
+    queries: ?[]const RequestPayload = null,
+    component_type: ?[]const u8 = null,
+    qty: i32 = 1,
+    limit: usize = 50,
+    package: ?[]const u8 = null,
+    exact_filters: ?[]const ExactFilter = null,
+    range_filters: ?[]const RangeFilter = null,
+};
+
 const ErrorResponse = struct {
     ok: bool = false,
     @"error": []const u8,
@@ -285,7 +295,7 @@ pub fn main() !void {
         defer arena.deinit();
         const request_alloc = arena.allocator();
 
-        const parsed_request = std.json.parseFromSlice(RequestPayload, request_alloc, line, .{}) catch {
+        const parsed_request = std.json.parseFromSlice(RequestEnvelope, request_alloc, line, .{}) catch {
             try writeError(out, "invalid request json", "validation");
             try stdout_buffer.flush();
             continue;
@@ -293,7 +303,61 @@ pub fn main() !void {
         defer parsed_request.deinit();
         const req = parsed_request.value;
 
-        const dataset = findDataset(datasets, req.component_type) orelse {
+        if (req.queries) |queries| {
+            try out.writeAll("{\"ok\":true,\"results\":[");
+            for (queries, 0..) |query, idx| {
+                if (idx != 0) try out.writeByte(',');
+
+                const dataset = findDataset(datasets, query.component_type) orelse {
+                    try writeResultError(out, "unsupported component_type", "validation");
+                    continue;
+                };
+
+                var candidate_indices: [MAX_LIMIT]u32 = undefined;
+                const query_count = executeQuery(
+                    request_alloc,
+                    dataset,
+                    query,
+                    &package_interner,
+                    &text_interner,
+                    &candidate_indices,
+                ) catch |err| {
+                    if (err == error.Validation) {
+                        try writeResultError(out, "invalid query filters", "validation");
+                    } else {
+                        try writeResultError(out, "query execution failed", "internal");
+                    }
+                    continue;
+                };
+
+                try writeResultSuccess(
+                    out,
+                    dataset,
+                    candidate_indices[0..query_count],
+                    &package_interner,
+                    &text_interner,
+                );
+            }
+            try out.writeAll("]}\n");
+            try stdout_buffer.flush();
+            continue;
+        }
+
+        const component_type = req.component_type orelse {
+            try writeError(out, "missing component_type", "validation");
+            try stdout_buffer.flush();
+            continue;
+        };
+        const single = RequestPayload{
+            .component_type = component_type,
+            .qty = req.qty,
+            .limit = req.limit,
+            .package = req.package,
+            .exact_filters = req.exact_filters,
+            .range_filters = req.range_filters,
+        };
+
+        const dataset = findDataset(datasets, single.component_type) orelse {
             try writeError(out, "unsupported component_type", "validation");
             try stdout_buffer.flush();
             continue;
@@ -303,7 +367,7 @@ pub fn main() !void {
         const query_count = executeQuery(
             request_alloc,
             dataset,
-            req,
+            single,
             &package_interner,
             &text_interner,
             &candidate_indices,
@@ -737,7 +801,43 @@ fn writeSuccessResponse(
     package_interner: *const Interner,
     text_interner: *const Interner,
 ) !void {
-    try out.writeAll("{\"ok\":true,\"candidates\":[");
+    try out.writeAll("{\"ok\":true,\"candidates\":");
+    try writeCandidates(
+        out,
+        dataset,
+        candidate_indices,
+        package_interner,
+        text_interner,
+    );
+    try out.writeAll("}\n");
+}
+
+fn writeResultSuccess(
+    out: anytype,
+    dataset: *const Dataset,
+    candidate_indices: []const u32,
+    package_interner: *const Interner,
+    text_interner: *const Interner,
+) !void {
+    try out.writeAll("{\"ok\":true,\"candidates\":");
+    try writeCandidates(
+        out,
+        dataset,
+        candidate_indices,
+        package_interner,
+        text_interner,
+    );
+    try out.writeByte('}');
+}
+
+fn writeCandidates(
+    out: anytype,
+    dataset: *const Dataset,
+    candidate_indices: []const u32,
+    package_interner: *const Interner,
+    text_interner: *const Interner,
+) !void {
+    try out.writeByte('[');
     for (candidate_indices, 0..) |row_idx, i| {
         if (i != 0) try out.writeByte(',');
         const row = dataset.rows[row_idx];
@@ -774,10 +874,10 @@ fn writeSuccessResponse(
 
         try out.writeByte('}');
     }
-    try out.writeAll("]}\n");
+    try out.writeByte(']');
 }
 
-fn writeError(out: anytype, message: []const u8, error_type: []const u8) !void {
+fn writeResultError(out: anytype, message: []const u8, error_type: []const u8) !void {
     try std.json.stringify(
         ErrorResponse{
             .@"error" = message,
@@ -786,5 +886,9 @@ fn writeError(out: anytype, message: []const u8, error_type: []const u8) !void {
         .{},
         out,
     );
+}
+
+fn writeError(out: anytype, message: []const u8, error_type: []const u8) !void {
+    try writeResultError(out, message, error_type);
     try out.writeByte('\n');
 }

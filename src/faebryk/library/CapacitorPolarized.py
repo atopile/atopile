@@ -38,16 +38,24 @@ class CapacitorPolarized(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    anode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode])
-    cathode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode])
+    anode_lead = F.Lead.is_lead.MakeChild()
+    cathode_lead = F.Lead.is_lead.MakeChild()
+
+    # Many polarized capacitor footprints use 1/2 pad names, where 1 is positive.
+    anode.add_dependant(fabll.Traits.MakeEdge(anode_lead, [anode]))
+    cathode.add_dependant(fabll.Traits.MakeEdge(cathode_lead, [cathode]))
 
     pad_names = [
         fabll.Traits.MakeEdge(
-            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"a|anode|\+"),
+            F.Lead.can_attach_to_pad_by_name.MakeChild(
+                regex=r"a|anode|\+|p|pos|positive|1"
+            ),
             [anode_lead],
         ),
         fabll.Traits.MakeEdge(
-            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"k|c|cathode|-"),
+            F.Lead.can_attach_to_pad_by_name.MakeChild(
+                regex=r"k|c|cathode|-|n|neg|negative|2"
+            ),
             [cathode_lead],
         ),
     ]

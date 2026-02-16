@@ -18,6 +18,7 @@ from .interfaces import (
 _VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DETAIL_TABLE = "components_full"
 _ASSET_TABLE = "component_assets"
+_MFR_LOOKUP_TABLE = "component_mfr_lookup"
 
 
 def _sqlite_readonly_uri(path: Path) -> str:
@@ -117,6 +118,43 @@ class SQLiteDetailStore(DetailStore):
             assets = _asset_records_from_row(_normalize_row(dict(row)))
             grouped[int(row["lcsc_id"])].extend(assets)
         return dict(grouped)
+
+    def lookup_component_ids_by_manufacturer_part(
+        self,
+        manufacturer_name: str,
+        part_number: str,
+        *,
+        limit: int = 50,
+    ) -> list[int]:
+        if limit < 1:
+            return []
+        mfr_norm = _normalize_lookup_token(manufacturer_name)
+        pn_norm = _normalize_lookup_token(part_number)
+        if mfr_norm is None or pn_norm is None:
+            return []
+
+        sql = f"""
+            select {_quote_ident("lcsc_id")}
+            from {_quote_ident(_MFR_LOOKUP_TABLE)}
+            where {_quote_ident("mfr_norm")} = ?
+              and {_quote_ident("part_number_norm")} = ?
+            order by {_quote_ident("lcsc_id")} asc
+            limit ?
+        """
+        with self._connect() as conn:
+            columns = self._table_columns(conn, _MFR_LOOKUP_TABLE)
+            missing = {"mfr_norm", "part_number_norm", "lcsc_id"} - columns
+            if missing:
+                raise SnapshotSchemaError(
+                    f"{_MFR_LOOKUP_TABLE} missing required columns: {sorted(missing)}"
+                )
+            try:
+                rows = conn.execute(sql, [mfr_norm, pn_norm, limit]).fetchall()
+            except sqlite3.Error as exc:
+                raise SnapshotSchemaError(
+                    f"failed querying {_MFR_LOOKUP_TABLE}: {exc}"
+                ) from exc
+        return [int(row["lcsc_id"]) for row in rows]
 
 
 def _asset_records_from_row(row: dict[str, Any]) -> list[AssetRecord]:
@@ -281,6 +319,15 @@ def _as_optional_str(value: object) -> str | None:
     return str(value)
 
 
+def _normalize_lookup_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split()).strip()
+    if not normalized:
+        return None
+    return normalized.casefold()
+
+
 def test_sqlite_detail_store_reads_components_and_assets(tmp_path) -> None:
     db_path = tmp_path / "detail.sqlite"
     with sqlite3.connect(db_path) as conn:
@@ -411,3 +458,43 @@ def test_sqlite_detail_store_reads_stage2_reference_assets(tmp_path) -> None:
         "model_3d_path",
         "easyeda_model_uuid",
     }
+
+
+def test_sqlite_detail_store_lookup_by_manufacturer_part(tmp_path) -> None:
+    db_path = tmp_path / "detail.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            create table components_full (
+                lcsc_id integer primary key
+            )
+        """)
+        conn.execute("""
+            create table component_assets (
+                lcsc_id integer primary key
+            )
+        """)
+        conn.execute("""
+            create table component_mfr_lookup (
+                id integer primary key autoincrement,
+                mfr_norm text not null,
+                part_number_norm text not null,
+                lcsc_id integer not null
+            )
+        """)
+        conn.execute(
+            """
+            insert into component_mfr_lookup (
+                mfr_norm,
+                part_number_norm,
+                lcsc_id
+            ) values (?, ?, ?)
+            """,
+            ("raspberry pi", "rp2040", 2040),
+        )
+
+    store = SQLiteDetailStore(db_path)
+    matches = store.lookup_component_ids_by_manufacturer_part(
+        "  Raspberry   PI ",
+        " RP2040 ",
+    )
+    assert matches == [2040]

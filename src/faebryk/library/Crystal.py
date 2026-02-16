@@ -61,7 +61,9 @@ class Crystal(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    gnd.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [gnd]))
+    # Package ground/shield pins are not universal across crystal footprints.
+    # Keep `gnd` as an electrical reference point, but do not require a
+    # corresponding pad during footprint pinmap matching.
 
     for e in unnamed:
         lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])

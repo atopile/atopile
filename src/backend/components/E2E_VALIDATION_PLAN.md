@@ -21,8 +21,9 @@ In scope:
 - `cache.sqlite3` fixture ingest path (current bootstrap path).
 - `fast.sqlite` and `detail.sqlite` snapshot correctness.
 - API routes:
-  - `POST /v1/components/parameters/query`
-  - `POST /v1/components/full`
+- `POST /v1/components/parameters/query`
+- `POST /v1/components/parameters/query/batch`
+- `POST /v1/components/full`
   - `GET /healthz`
 
 Out of scope:
@@ -264,6 +265,41 @@ curl -s http://127.0.0.1:8079/v1/components/parameters/query \
 Expect:
 
 - HTTP 200 and non-empty candidates for common ranges.
+
+### 4C2. Parameter Query Batch (pick-group style)
+
+```bash
+curl -s http://127.0.0.1:8079/v1/components/parameters/query/batch \
+  -H 'content-type: application/json' \
+  -d '{
+    "queries": [
+      {
+        "component_type": "resistor",
+        "qty": 100,
+        "limit": 10,
+        "package": "R0402",
+        "ranges": {
+          "resistance_ohm": {"minimum": 900, "maximum": 1100}
+        }
+      },
+      {
+        "component_type": "capacitor",
+        "qty": 100,
+        "limit": 10,
+        "package": "C0402",
+        "ranges": {
+          "capacitance_f": {"minimum": 9e-8, "maximum": 1.1e-7}
+        }
+      }
+    ]
+  }' | jq .
+```
+
+Expect:
+
+- HTTP 200.
+- `results` length equals input `queries` length.
+- Result ordering matches input query ordering.
 
 ### 4D. Full Endpoint
 

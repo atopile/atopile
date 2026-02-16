@@ -142,10 +142,12 @@ async def query_component_parameters_batch(
     request_id = get_request_id(request)
     queries: list[tuple[str, Any]] = []
     requested_package_counts: Counter[str] = Counter()
+    requested_component_counts: Counter[str] = Counter()
     for item in payload.queries:
         domain_query = item.to_domain_query()
         component_type = str(item.component_type)
         queries.append((component_type, domain_query))
+        requested_component_counts[component_type] += 1
         if domain_query.package is None:
             continue
         normalized_package = normalize_package(component_type, domain_query.package)
@@ -218,10 +220,13 @@ async def query_component_parameters_batch(
         raise HTTPException(status_code=500, detail="batch response size mismatch")
 
     ordered_results: list[ParametersQueryResponse] = []
+    zero_candidate_component_counts: Counter[str] = Counter()
     for item, candidates in zip(payload.queries, batch_candidates, strict=True):
         response_items = [
             ComponentCandidateModel.from_domain(candidate) for candidate in candidates
         ]
+        if not response_items:
+            zero_candidate_component_counts[str(item.component_type)] += 1
         ordered_results.append(
             ParametersQueryResponse(
                 component_type=item.component_type,
@@ -235,6 +240,15 @@ async def query_component_parameters_batch(
         request_id=request_id,
         total_queries=len(ordered_results),
         total_candidates=total_candidates,
+        zero_candidate_queries=sum(zero_candidate_component_counts.values()),
+        top_component_types_requested=[
+            {"component_type": component_type, "count": count}
+            for component_type, count in requested_component_counts.most_common(10)
+        ],
+        top_component_types_without_candidates=[
+            {"component_type": component_type, "count": count}
+            for component_type, count in zero_candidate_component_counts.most_common(10)
+        ],
         package_filter_queries=sum(requested_package_counts.values()),
         top_packages_requested=[
             {"package": package, "count": count}

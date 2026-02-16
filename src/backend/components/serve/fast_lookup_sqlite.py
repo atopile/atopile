@@ -19,7 +19,8 @@ from .interfaces import (
 )
 from .query_normalization import (
     _QUERY_ALIASES,
-    expanded_range_bounds,
+    expanded_range_bounds_for_column,
+    normalize_exact_filter_value,
     normalize_package,
 )
 
@@ -266,12 +267,15 @@ class SQLiteFastLookupStore(FastLookupStore):
 
         for key, value in sorted(query.exact.items()):
             column = self._resolve_query_column(columns, key)
+            value = normalize_exact_filter_value(column, value)
             where.append(f"{_quote_ident(column)} = ?")
             params.append(_to_sql_value(value))
 
         for key, numeric_range in sorted(query.ranges.items()):
             column = self._resolve_query_column(columns, key)
-            lower_bound, upper_bound = expanded_range_bounds(numeric_range)
+            lower_bound, upper_bound = expanded_range_bounds_for_column(
+                column, numeric_range
+            )
             if (
                 column in _RANGE_COLUMN_BOUNDS
                 and _RANGE_COLUMN_BOUNDS[column][0] in columns
@@ -631,6 +635,13 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
             },
         )
     )
+    crystal_ppm_si_candidates = store.query_crystals(
+        ParameterQuery(
+            ranges={
+                "frequency_tolerance": NumericRange(minimum=2e-5, maximum=2e-5),
+            },
+        )
+    )
     ferrite_candidates = store.query_ferrite_beads(
         ParameterQuery(
             package="L0603",
@@ -652,6 +663,7 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
     assert [candidate.lcsc_id for candidate in inductor_candidates] == [1]
     assert [candidate.lcsc_id for candidate in mosfet_candidates] == [2]
     assert [candidate.lcsc_id for candidate in crystal_candidates] == [3]
+    assert [candidate.lcsc_id for candidate in crystal_ppm_si_candidates] == [3]
     assert [candidate.lcsc_id for candidate in ferrite_candidates] == [4]
     assert [candidate.lcsc_id for candidate in ldo_candidates] == [5]
 

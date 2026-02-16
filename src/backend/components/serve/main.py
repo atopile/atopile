@@ -172,6 +172,7 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
             log_event(
                 "serve.snapshot.package_stats",
                 total_components=package_stats.get("total_components"),
+                component_type_counts=package_stats.get("component_type_counts"),
                 distinct_packages=package_stats.get("distinct_packages"),
                 distinct_packages_by_component_type=package_stats.get(
                     "distinct_packages_by_component_type"
@@ -260,6 +261,14 @@ def _load_package_stats(detail_db_path: Path, *, top_n: int = 20) -> dict[str, A
         total_components = conn.execute(
             "SELECT COUNT(*) FROM components_full"
         ).fetchone()[0]
+        component_type_rows = conn.execute(
+            """
+            SELECT component_type, COUNT(*) AS component_count
+            FROM components_full
+            GROUP BY component_type
+            ORDER BY component_count DESC, component_type ASC
+            """
+        ).fetchall()
         distinct_packages = conn.execute(
             "SELECT COUNT(DISTINCT package) FROM components_full"
         ).fetchone()[0]
@@ -288,6 +297,10 @@ def _load_package_stats(detail_db_path: Path, *, top_n: int = 20) -> dict[str, A
 
     return {
         "total_components": int(total_components or 0),
+        "component_type_counts": {
+            str(row["component_type"]): int(row["component_count"])
+            for row in component_type_rows
+        },
         "distinct_packages": int(distinct_packages or 0),
         "distinct_packages_by_component_type": {
             str(row["component_type"]): int(row["package_count"])
@@ -421,6 +434,7 @@ def test_load_package_stats_reads_detail_db(tmp_path) -> None:
 
     stats = _load_package_stats(db_path, top_n=5)
     assert stats["total_components"] == 3
+    assert stats["component_type_counts"] == {"resistor": 2, "capacitor": 1}
     assert stats["distinct_packages"] == 2
     assert stats["distinct_packages_by_component_type"] == {
         "capacitor": 1,

@@ -22,7 +22,8 @@ from .interfaces import (
 )
 from .query_normalization import (
     _QUERY_ALIASES,
-    expanded_range_bounds,
+    expanded_range_bounds_for_column,
+    normalize_exact_filter_value,
     normalize_package,
 )
 
@@ -181,6 +182,7 @@ class ZigFastLookupStore(FastLookupStore):
         exact_filters: list[dict[str, object]] = []
         for key, value in sorted(query.exact.items()):
             field = _QUERY_ALIASES.get(key, key)
+            value = normalize_exact_filter_value(field, value)
             if isinstance(value, bool):
                 exact_filters.append(
                     {"field": field, "number_value": 1.0 if value else 0.0}
@@ -199,7 +201,10 @@ class ZigFastLookupStore(FastLookupStore):
         range_filters: list[dict[str, object]] = []
         for key, numeric_range in sorted(query.ranges.items()):
             field = _QUERY_ALIASES.get(key, key)
-            lower_bound, upper_bound = expanded_range_bounds(numeric_range)
+            lower_bound, upper_bound = expanded_range_bounds_for_column(
+                field,
+                numeric_range,
+            )
             range_filters.append(
                 {
                     "field": field,

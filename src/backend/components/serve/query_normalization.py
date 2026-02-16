@@ -40,7 +40,9 @@ _QUERY_ALIASES = {
     "output_current": "output_current_a",
 }
 _EPSILON_RELATIVE = 1e-5
+_PPM_SI_TO_PPM_THRESHOLD = 0.01
 _PACKAGE_NUMERIC_RE = re.compile(r"^\d{4,5}$")
+_PACKAGE_NON_ALNUM_RE = re.compile(r"[^A-Z0-9]+")
 _COMPONENT_PACKAGE_PREFIX = {
     "resistor": "R",
     "capacitor": "C",
@@ -62,10 +64,34 @@ def expanded_range_bounds(
     return minimum, maximum
 
 
+def expanded_range_bounds_for_column(
+    column: str,
+    numeric_range: NumericRange,
+) -> tuple[float | None, float | None]:
+    minimum, maximum = expanded_range_bounds(numeric_range)
+    if _is_ppm_column(column):
+        minimum = _normalize_ppm_value(minimum)
+        maximum = _normalize_ppm_value(maximum)
+    return minimum, maximum
+
+
+def normalize_exact_filter_value(column: str, value: object) -> object:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and _is_ppm_column(column):
+        normalized = _normalize_ppm_value(float(value))
+        if normalized is not None:
+            return normalized
+    return value
+
+
 def normalize_package(component_type: str, raw_package: str) -> str | None:
     normalized = raw_package.strip().upper()
     if not normalized:
         return None
+    if component_type == "crystal":
+        canonical = _PACKAGE_NON_ALNUM_RE.sub("", normalized)
+        return canonical or normalized
 
     if component_type == "ferrite_bead":
         for prefix in ("L", "FB"):
@@ -86,6 +112,18 @@ def normalize_package(component_type: str, raw_package: str) -> str | None:
     return normalized
 
 
+def _is_ppm_column(column: str) -> bool:
+    return column.endswith("_ppm")
+
+
+def _normalize_ppm_value(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if abs(value) <= _PPM_SI_TO_PPM_THRESHOLD:
+        return value * 1_000_000.0
+    return value
+
+
 def test_normalize_package_passive_prefixes() -> None:
     assert normalize_package("resistor", "R0402") == "0402"
     assert normalize_package("capacitor", "C0603") == "0603"
@@ -93,3 +131,25 @@ def test_normalize_package_passive_prefixes() -> None:
     assert normalize_package("ferrite_bead", "L0603") == "0603"
     assert normalize_package("ferrite_bead", "FB0603") == "0603"
     assert normalize_package("resistor", "0402") == "0402"
+
+
+def test_normalize_package_crystal_is_separator_insensitive() -> None:
+    assert normalize_package("crystal", "HC-49U") == "HC49U"
+    assert normalize_package("crystal", "  hc49u ") == "HC49U"
+
+
+def test_normalize_exact_filter_value_scales_si_ppm() -> None:
+    assert normalize_exact_filter_value("frequency_tolerance_ppm", 2e-5) == 20.0
+    assert normalize_exact_filter_value("frequency_tolerance_ppm", 20.0) == 20.0
+    assert normalize_exact_filter_value("frequency_tolerance_ppm", True) is True
+    assert normalize_exact_filter_value("resistance_ohm", 2e-5) == 2e-5
+
+
+def test_expanded_range_bounds_for_column_scales_si_ppm() -> None:
+    minimum, maximum = expanded_range_bounds_for_column(
+        "frequency_tolerance_ppm",
+        NumericRange(minimum=2e-5, maximum=2e-5),
+    )
+    assert minimum is not None and maximum is not None
+    assert abs(minimum - 19.9998) < 1e-4
+    assert abs(maximum - 20.0002) < 1e-4

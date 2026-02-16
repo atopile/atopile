@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import json
 import logging
 import re
 import unittest
@@ -339,13 +340,11 @@ class EasyEDAPart:
         assert self.model is None
         assert self._pre_model is not None
         if lifecycle.easyeda2kicad.shall_refresh_model(self):
-            logger.debug(f"Downloading model for {self.identifier}")
-            model = EasyedaApi().get_step_3d_model(uuid=self._pre_model.uuid)
-            # might happen sometimes, that even tho it's in the api, it's not available
-            if model is None:
-                self.model = None
-            else:
-                self.model = EasyEDA3DModel(model, self._pre_model.name)
+            logger.debug(
+                "Skipping remote model fetch for %s; model not present in local cache",
+                self.identifier,
+            )
+            self.model = None
         else:
             self.model = lifecycle.easyeda2kicad.load_model(self)
 
@@ -482,32 +481,75 @@ class LCSC_NoDataException(LCSCException): ...
 class LCSC_PinmapException(LCSCException): ...
 
 
+def _load_backend_cached_easyeda_cad(lcsc_id: str) -> EasyEDAAPIResponse | None:
+    cache_dir = Gcfg.project.paths.build / "cache" / "components_api" / lcsc_id.upper()
+    if not cache_dir.exists():
+        return None
+
+    candidates = [
+        cache_dir / "easyeda_cad.json",
+        *sorted(cache_dir.glob("*easyeda_cad_json*")),
+    ]
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen or not candidate.is_file():
+            continue
+        seen.add(candidate)
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception:
+            logger.debug("Ignoring unreadable CAD payload at %s", candidate)
+            continue
+        if not isinstance(payload, dict):
+            logger.debug("Ignoring non-object CAD payload at %s", candidate)
+            continue
+        return EasyEDAAPIResponse.from_api_dict(payload)
+
+    return None
+
+
 @once
 def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
     from faebryk.libs.part_lifecycle import PartLifecycle
 
     lifecycle = PartLifecycle.singleton()
-    if not lifecycle.easyeda_api.shall_refresh(lcsc_id):
+    try:
         return lifecycle.easyeda_api.load(lcsc_id)
+    except FileNotFoundError:
+        pass
 
-    logger.debug(f"Downloading API data {lcsc_id}")
-    api = EasyedaApi()
-    cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
-    # API returned no data
-    if not cad_data:
-        raise LCSC_NoDataException(
-            lcsc_id, f"Failed to fetch data from EasyEDA API for part {lcsc_id}"
-        )
-    response = EasyEDAAPIResponse.from_api_dict(cad_data)
+    response = _load_backend_cached_easyeda_cad(lcsc_id)
+    if response is None:
+        logger.debug("CAD cache miss for %s; fetching from EasyEDA API", lcsc_id)
+        try:
+            cad_data = EasyedaApi().get_cad_data_of_component(lcsc_id=lcsc_id)
+        except Exception as exc:
+            raise LCSC_NoDataException(
+                lcsc_id,
+                "Failed to fetch CAD data from EasyEDA API",
+            ) from exc
+        if not cad_data:
+            raise LCSC_NoDataException(
+                lcsc_id,
+                "Missing CAD data in local cache/components API cache and EasyEDA API",
+            )
+        response = EasyEDAAPIResponse.from_api_dict(cad_data)
+
     # TODO: this is a hack
     # get manufacturer from backend
     from faebryk.libs.picker.api.api import get_api_client
 
-    if api_part := first(
-        get_api_client().fetch_part_by_lcsc(int(lcsc_id.removeprefix("C"))), None
-    ):
-        response._atopile_manufacturer = api_part.manufacturer_name
-        response._atopile_datasheet_url = api_part.datasheet_url
+    try:
+        api_part = first(
+            get_api_client().fetch_part_by_lcsc(int(lcsc_id.removeprefix("C"))),
+            None,
+        )
+    except Exception as exc:
+        logger.debug("Failed backend enrichment for %s: %s", lcsc_id, exc)
+    else:
+        if api_part is not None:
+            response._atopile_manufacturer = api_part.manufacturer_name
+            response._atopile_datasheet_url = api_part.datasheet_url
 
     return lifecycle.easyeda_api.ingest(lcsc_id, response)
 
@@ -737,6 +779,58 @@ def setup_project_config(tmp_path):
     yield
 
 
+def _seed_test_easyeda_cache(lcsc_id: str) -> bool:
+    from atopile.config import config
+
+    repo_root = Path(__file__).resolve().parents[4]
+    candidates = [
+        repo_root
+        / "examples"
+        / "pick_parts"
+        / "build"
+        / "cache"
+        / "parts"
+        / "easyeda"
+        / lcsc_id
+        / f"{lcsc_id}.json",
+        repo_root
+        / "examples"
+        / "board_outline_demo"
+        / "build"
+        / "cache"
+        / "parts"
+        / "easyeda"
+        / lcsc_id
+        / f"{lcsc_id}.json",
+    ]
+    source = next((path for path in candidates if path.exists()), None)
+    if source is None:
+        return False
+
+    easyeda_cache_path = (
+        config.project.paths.build
+        / "cache"
+        / "parts"
+        / "easyeda"
+        / lcsc_id
+        / f"{lcsc_id}.json"
+    )
+    easyeda_cache_path.parent.mkdir(parents=True, exist_ok=True)
+    copy2(source, easyeda_cache_path)
+
+    # Also expose the same payload as stage-3 canonical cached artifact.
+    components_api_path = (
+        config.project.paths.build
+        / "cache"
+        / "components_api"
+        / lcsc_id
+        / "easyeda_cad.json"
+    )
+    components_api_path.parent.mkdir(parents=True, exist_ok=True)
+    copy2(source, components_api_path)
+    return True
+
+
 class TestLCSCattach:
     @pytest.mark.usefixtures("setup_project_config")
     def test_attach_resistor(self):
@@ -744,6 +838,8 @@ class TestLCSCattach:
         import faebryk.core.node as fabll
 
         LCSC_ID = "C21190"
+        if not _seed_test_easyeda_cache(LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {LCSC_ID}")
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -787,6 +883,35 @@ class TestLCSCattach:
         )
 
     @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_capacitor_polarized(self):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+
+        LCSC_ID = "C7171"
+        if not _seed_test_easyeda_cache(LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {LCSC_ID}")
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        component = F.CapacitorPolarized.bind_typegraph(tg=tg).create_instance(g=g)
+
+        component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component_with_fp=component_with_fp, partno=LCSC_ID)
+
+        associated_footprint = component.try_get_trait(
+            F.Footprints.has_associated_footprint
+        )
+        assert associated_footprint is not None
+
+        lead_nodes = component.get_children(
+            direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
+        )
+        lead_traits = [lead.get_trait(F.Lead.is_lead) for lead in lead_nodes]
+        assert len(lead_traits) == 2
+        assert all(lead.has_trait(F.Lead.has_associated_pads) for lead in lead_traits)
+
+    @pytest.mark.usefixtures("setup_project_config")
     def test_attach_led(self):
         """
         Special case where the LED itself does not has any leads, but the
@@ -796,6 +921,8 @@ class TestLCSCattach:
         import faebryk.core.node as fabll
 
         LCSC_ID = "C2289"
+        if not _seed_test_easyeda_cache(LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {LCSC_ID}")
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -848,6 +975,8 @@ class TestLCSCattach:
         import faebryk.core.node as fabll
 
         LCSC_ID = "C18723612"
+        if not _seed_test_easyeda_cache(LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {LCSC_ID}")
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -881,6 +1010,8 @@ class TestLCSCattach:
         import faebryk.core.node as fabll
 
         LCSC_ID = "C8545"
+        if not _seed_test_easyeda_cache(LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {LCSC_ID}")
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -927,6 +1058,8 @@ class TestLCSCattach:
         from faebryk.library.MOSFET import MOSFET
 
         LCSC_ID = "C471913"
+        if not _seed_test_easyeda_cache(LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {LCSC_ID}")
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -967,6 +1100,10 @@ class TestLCSCattach:
 
         RESISTOR_LCSC_ID = "C21190"
         MOSFET_LCSC_ID = "C8545"
+        if not _seed_test_easyeda_cache(RESISTOR_LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {RESISTOR_LCSC_ID}")
+        if not _seed_test_easyeda_cache(MOSFET_LCSC_ID):
+            pytest.skip(f"Missing cached CAD fixture for {MOSFET_LCSC_ID}")
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)

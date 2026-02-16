@@ -1,27 +1,92 @@
 #pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
 import ElectricPower
 import LED
 import Resistor
+import Capacitor
+import CapacitorPolarized
+import Inductor
+import Diode
+import BJT
+import MOSFET
 
 module App:
-    # virtual power supply
-    power = new ElectricPower
+    # virtual power supply rail shared by all demo branches
+    # power = new ElectricPower
 
-    # automatically picked parts from LCSC
-    current_limiting_resistors = new Resistor[2]
-    for resistor in current_limiting_resistors:
-        resistor.resistance = 10kohm +/- 20%
-        resistor.package = "R0402"
+    # # Demo all currently pickable component types using parametric picking
+    # resistor = new Resistor
+    # resistor.resistance = 10kohm +/- 10%
+    # resistor.max_power = 100mW +/- 50%
+    # resistor.package = "R0603"
 
-    leds = new LED[2]
-    # Manual pick with supplier id (LCSC)
-    leds[0].lcsc_id = "C2286"
-    # Manual pick with manufacturer and part number
-    leds[1].manufacturer = "Hubei KENTO Elec"
-    leds[1].mpn = "KT-0603R"
+    # capacitor = new Capacitor
+    # capacitor.capacitance = 100nF +/- 10%
+    # capacitor.max_voltage = 16V +/- 50%
+    # capacitor.package = "C0603"
 
+    # capacitor_polarized = new CapacitorPolarized
+    # capacitor_polarized.capacitance = 10uF +/- 20%
+    # capacitor_polarized.max_voltage = 16V +/- 50%
 
-    power.hv ~> current_limiting_resistors[0] ~> leds[0] ~> power.lv  
-    power.hv ~> current_limiting_resistors[1] ~> leds[1] ~> power.lv
+    # inductor = new Inductor
+    # inductor.inductance = 10uH +/- 20%
+    # inductor.max_current = 500mA +/- 50%
 
+    # diode = new Diode
+    # diode.forward_voltage = 0.7V +/- 20%
+    # diode.max_current = 200mA +/- 50%
+    # diode.reverse_working_voltage = 20V +/- 50%
+
+    # led = new LED
+    # led.forward_voltage = 2.0V +/- 20%
+    # led.max_current = 20mA +/- 50%
+    # led.color = "RED"
+
+    # bjt = new BJT
+    # bjt.max_collector_emitter_voltage = 40V +/- 50%
+    # bjt.max_collector_current = 100mA +/- 50%
+
+    # mosfet = new MOSFET
+    # mosfet.max_drain_source_voltage = 20V +/- 50%
+    # mosfet.max_continuous_drain_current = 500mA +/- 50%
+    # mosfet.on_resistance = 200mohm +/- 50%
+
+    # # helper passives for LED / transistor demo branches
+    # led_resistor = new Resistor
+    # led_resistor.resistance = 1kohm +/- 20%
+    # led_resistor.package = "R0402"
+
+    # bjt_collector_resistor = new Resistor
+    # bjt_collector_resistor.resistance = 1kohm +/- 20%
+    # bjt_collector_resistor.package = "R0402"
+
+    # bjt_base_resistor = new Resistor
+    # bjt_base_resistor.resistance = 10kohm +/- 20%
+    # bjt_base_resistor.package = "R0402"
+
+    # mosfet_load_resistor = new Resistor
+    # mosfet_load_resistor.resistance = 1kohm +/- 20%
+    # mosfet_load_resistor.package = "R0402"
+
+    # mosfet_gate_resistor = new Resistor
+    # mosfet_gate_resistor.resistance = 10kohm +/- 20%
+    # mosfet_gate_resistor.package = "R0402"
+
+    crystal = new Crystal
+    crystal.frequency = 10MHz +/- 20%
+    crystal.load_capacitance = 18pF +/- 30%
+
+    # power.hv ~> resistor ~> diode ~> power.lv
+    # power.hv ~> capacitor ~> power.lv
+    # power.hv ~ capacitor_polarized.anode
+    # power.lv ~ capacitor_polarized.cathode
+    # power.hv ~> inductor ~> power.lv
+    # power.hv ~> led_resistor ~> led ~> power.lv
+
+    # power.hv ~> bjt_collector_resistor ~> bjt.collector
+    # power.hv ~> bjt_base_resistor ~> bjt.base
+    # bjt.emitter ~ power.lv
+
+    # power.hv ~> mosfet_load_resistor ~> mosfet.drain
+    # power.hv ~> mosfet_gate_resistor ~> mosfet.gate
+    # mosfet.source ~ power.lv

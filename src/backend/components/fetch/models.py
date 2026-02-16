@@ -11,6 +11,7 @@ class ArtifactType(StrEnum):
     KICAD_FOOTPRINT_MOD = "kicad_footprint_mod"
     MODEL_OBJ = "model_obj"
     MODEL_STEP = "model_step"
+    EASYEDA_CAD_JSON = "easyeda_cad_json"
 
 
 class ArtifactEncoding(StrEnum):

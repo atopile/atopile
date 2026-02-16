@@ -187,6 +187,28 @@ def fetch_store_easyeda_assets_with_roundtrip(
             client=http_client,
         )
         records: list[FetchArtifactRecord] = []
+        cad_payload_json = json.dumps(
+            cad_payload.cad_data,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        records.append(
+            _store_roundtrip_record(
+                lcsc_id=lcsc_id,
+                artifact_type=ArtifactType.EASYEDA_CAD_JSON,
+                source_url=cad_payload.source_url,
+                raw_payload=cad_payload_json,
+                mime="application/json",
+                source_meta=cad_payload.source_meta
+                | {
+                    "generated_from": "easyeda_cad",
+                    "format": "easyeda_cad_json",
+                },
+                object_store=object_store,
+                manifest_store=manifest_store,
+            )
+        )
 
         if footprint_converter is None:
             footprint_converter = convert_easyeda_cad_to_kicad_footprint
@@ -298,6 +320,7 @@ def test_fetch_store_easyeda_assets_with_roundtrip(tmp_path) -> None:
     client.close()
 
     artifact_types = {record.artifact_type for record in records}
+    assert ArtifactType.EASYEDA_CAD_JSON in artifact_types
     assert ArtifactType.KICAD_FOOTPRINT_MOD in artifact_types
     assert ArtifactType.MODEL_OBJ in artifact_types
     assert ArtifactType.MODEL_STEP in artifact_types
@@ -340,6 +363,7 @@ def test_fetch_store_easyeda_assets_partial_when_no_uuid(tmp_path) -> None:
 
     artifact_types = {record.artifact_type for record in records}
     assert artifact_types == {
+        ArtifactType.EASYEDA_CAD_JSON,
         ArtifactType.KICAD_FOOTPRINT_MOD,
     }
 

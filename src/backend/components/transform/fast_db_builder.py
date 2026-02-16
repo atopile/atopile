@@ -7,6 +7,7 @@ from pathlib import Path
 from .models import ComponentSink, NormalizedComponent
 
 _PACKAGE_NUMERIC_RE = re.compile(r"^\d{4,5}$")
+_PACKAGE_NON_ALNUM_RE = re.compile(r"[^A-Z0-9]+")
 _PASSIVE_PREFIX = {
     "resistor": "R",
     "capacitor": "C",
@@ -610,6 +611,10 @@ def _is_valid_package(raw_package: str) -> bool:
 
 def _normalize_package(component_type: str, raw_package: str) -> str:
     package = raw_package.strip().upper()
+    if component_type == "crystal":
+        canonical = _PACKAGE_NON_ALNUM_RE.sub("", package)
+        return canonical or package
+
     if component_type == "ferrite_bead":
         for prefix in ("L", "FB"):
             if package.startswith(prefix):
@@ -1131,3 +1136,8 @@ def test_fast_lookup_db_builder_prefilters_non_pickable_rows(tmp_path) -> None:
     conn = sqlite3.connect(db_path)
     assert conn.execute("SELECT COUNT(*) FROM mosfet_pick").fetchone()[0] == 1
     conn.close()
+
+
+def test_normalize_package_crystal_is_separator_insensitive() -> None:
+    assert _normalize_package("crystal", "HC-49U") == "HC49U"
+    assert _normalize_package("crystal", " hc49u ") == "HC49U"

@@ -48,3 +48,7 @@ Notes:
 - `/Users/narayanpowderly/projects/atopile/src/backend/components/research/components/LED.md`
 - `/Users/narayanpowderly/projects/atopile/src/backend/components/research/components/BJT.md`
 - `/Users/narayanpowderly/projects/atopile/src/backend/components/research/components/MOSFET.md`
+
+## Next Wave Planning
+
+- `/Users/narayanpowderly/projects/atopile/src/backend/components/research/AUTOPICK_NEXT20_COMPONENTS.md`

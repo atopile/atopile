@@ -70,6 +70,22 @@ class ParametersQueryResponse(BaseModel):
     total: int
 
 
+class ParametersBatchQueryRequest(BaseModel):
+    queries: list[ParametersQueryRequest] = Field(..., min_length=1, max_length=1000)
+
+
+class ParametersBatchQueryResponse(BaseModel):
+    results: list[ParametersQueryResponse]
+    total_queries: int
+
+
+class ManufacturerPartLookupResponse(BaseModel):
+    manufacturer_name: str
+    part_number: str
+    component_ids: list[int]
+    total: int
+
+
 class ComponentsFullRequest(BaseModel):
     component_ids: list[int] = Field(..., min_length=1, max_length=1000)
 
