@@ -63,7 +63,10 @@ class VectorStore:
         self._doc_tokens: list[set[str]] = []
         self._token_doc_freq: dict[str, int] = {}
         self._inverted_index: dict[str, list[int]] = {}
+        self._component_type_index: dict[str, np.ndarray] = {}
+        self._package_index: dict[str, np.ndarray] = {}
         self._build_lexical_index()
+        self._build_filter_indexes()
 
     @property
     def dimension(self) -> int:
@@ -147,6 +150,34 @@ class VectorStore:
         self._token_doc_freq = doc_freq
         self._inverted_index = inverted
 
+    def _build_filter_indexes(self) -> None:
+        component_type_idx: dict[str, list[int]] = {}
+        package_idx: dict[str, list[int]] = {}
+        for idx, record in enumerate(self.records):
+            component_type_idx.setdefault(record.component_type, []).append(idx)
+            package_idx.setdefault(record.package, []).append(idx)
+        self._component_type_index = {
+            key: np.array(values, dtype=np.int32)
+            for key, values in component_type_idx.items()
+        }
+        self._package_index = {
+            key: np.array(values, dtype=np.int32)
+            for key, values in package_idx.items()
+        }
+
+    def _candidate_idx_from_filters(self, filters: SearchFilters) -> np.ndarray | None:
+        idx: np.ndarray | None = None
+        if filters.component_type:
+            idx = self._component_type_index.get(filters.component_type)
+            if idx is None:
+                return np.array([], dtype=np.int32)
+        if filters.package:
+            pidx = self._package_index.get(filters.package)
+            if pidx is None:
+                return np.array([], dtype=np.int32)
+            idx = pidx if idx is None else np.intersect1d(idx, pidx, assume_unique=False)
+        return idx
+
     def _idf(self, token: str) -> float:
         df = self._token_doc_freq.get(token, 0)
         n = max(len(self.records), 1)
@@ -224,10 +255,9 @@ class VectorStore:
             return []
         filters = filters or SearchFilters()
         q_vec = embedder.embed_texts([query])[0]
-        cosine = np.dot(self.vectors, q_vec).astype(np.float32)
-        pool = min(max(limit * 5, candidate_pool), len(self.records))
-        dense_idx = np.argpartition(cosine, -pool)[-pool:]
-        dense_idx = dense_idx[np.argsort(cosine[dense_idx])[::-1]]
+        base_filter_idx = self._candidate_idx_from_filters(filters)
+        if base_filter_idx is not None and len(base_filter_idx) == 0:
+            return []
 
         query_lower = query.lower()
         query_tokens = self._tokenize_normalized(query_lower)
@@ -236,13 +266,51 @@ class VectorStore:
         if apply_hybrid:
             lexical_idx, lexical_scores = self._lexical_scores(
                 query_tokens=query_tokens,
-                top_k=pool,
+                top_k=min(
+                    len(self.records),
+                    max(max(limit * 10, candidate_pool * 4), 4000),
+                ),
             )
+
+        dense_candidates: np.ndarray | None = base_filter_idx
+        if apply_hybrid and len(lexical_idx):
+            dense_candidates = (
+                lexical_idx
+                if dense_candidates is None
+                else np.intersect1d(dense_candidates, lexical_idx, assume_unique=False)
+            )
+
+        # Fallback to filtered universe if lexical prefilter eliminated everything.
+        if dense_candidates is not None and len(dense_candidates) == 0:
+            dense_candidates = base_filter_idx
+
+        dense_scores: dict[int, float] = {}
+        if dense_candidates is None:
+            cosine = np.dot(self.vectors, q_vec).astype(np.float32)
+            pool = min(max(limit * 5, candidate_pool), len(self.records))
+            dense_idx = np.argpartition(cosine, -pool)[-pool:]
+            dense_idx = dense_idx[np.argsort(cosine[dense_idx])[::-1]]
+            for i in dense_idx:
+                dense_scores[int(i)] = float(cosine[int(i)])
+        else:
+            if len(dense_candidates) == 0:
+                dense_idx = np.array([], dtype=np.int32)
+            else:
+                sub_scores = np.dot(self.vectors[dense_candidates], q_vec).astype(np.float32)
+                pool = min(max(limit * 5, candidate_pool), len(dense_candidates))
+                local_idx = np.argpartition(sub_scores, -pool)[-pool:]
+                local_idx = local_idx[np.argsort(sub_scores[local_idx])[::-1]]
+                dense_idx = dense_candidates[local_idx]
+                for loc in local_idx:
+                    dense_scores[int(dense_candidates[int(loc)])] = float(sub_scores[int(loc)])
+
         if len(lexical_idx):
             idx = np.unique(np.concatenate([dense_idx, lexical_idx]))
-            idx = idx[np.argsort(cosine[idx])[::-1]]
         else:
             idx = dense_idx
+
+        if len(idx) == 0:
+            return []
 
         boosted: list[tuple[float, float, list[str], CorpusRecord]] = []
         for i in idx:
@@ -250,7 +318,9 @@ class VectorStore:
             if not self._match_filters(record, filters):
                 continue
             lexical_score = float(lexical_scores.get(int(i), 0.0))
-            dense_score = float(cosine[int(i)])
+            dense_score = dense_scores.get(int(i))
+            if dense_score is None:
+                dense_score = float(np.dot(self.vectors[int(i)], q_vec))
             base_score = (
                 dense_weight * dense_score + lexical_weight * lexical_score
                 if apply_hybrid
