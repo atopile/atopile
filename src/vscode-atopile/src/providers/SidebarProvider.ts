@@ -443,7 +443,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       const projectRoot = await getProjectRoot();
       const settings = await getWorkspaceSettings(projectRoot);
-      traceInfo(`[SidebarProvider] Sending atopile settings: ato=${settings.ato}, from=${settings.from}`);
+      traceInfo(
+        `[SidebarProvider] Sending atopile settings for ${projectRoot.uri.fsPath}: ato=${settings.ato}, from=${settings.from}`
+      );
       this._postToWebview({
         type: 'atopileSettingsResponse',
         settings: {
@@ -1175,8 +1177,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     traceInfo(`[SidebarProvider] _handleAtopileSettings received: ${JSON.stringify(atopile)}`);
 
+    const hasWorkspace = !!(vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0);
+    const projectRoot = hasWorkspace ? await getProjectRoot() : null;
+    const workspaceKey = projectRoot?.uri.toString() ?? 'global';
+
     // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
+      workspace: workspaceKey,
       source: atopile.source,
       localPath: atopile.localPath,
     });
@@ -1190,19 +1197,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     traceInfo(`[SidebarProvider] Processing new settings: ${settingsKey}`);
     this._lastAtopileSettingsKey = settingsKey;
 
-    const config = vscode.workspace.getConfiguration('atopile');
-    const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
-    const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+    // atopile.ato has "resource" scope, so in workspace mode we must write at folder scope.
+    const config = projectRoot
+      ? vscode.workspace.getConfiguration('atopile', projectRoot.uri)
+      : vscode.workspace.getConfiguration('atopile');
+    const target = projectRoot ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Global;
 
     try {
       // Only manage atopile.ato setting - atopile.from is only set manually in settings
       if (atopile.source === 'local' && atopile.localPath) {
         // Local mode: set ato path
-        traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
+        traceInfo(
+          `[SidebarProvider] Setting atopile.ato = ${atopile.localPath} (target=${projectRoot?.uri.fsPath ?? 'global'})`
+        );
         await config.update('ato', atopile.localPath, target);
       } else {
         // Release mode: clear ato setting so the default is used
-        traceInfo(`[SidebarProvider] Clearing atopile.ato (using default)`);
+        traceInfo(
+          `[SidebarProvider] Clearing atopile.ato (using default, target=${projectRoot?.uri.fsPath ?? 'global'})`
+        );
         await config.update('ato', undefined, target);
       }
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
