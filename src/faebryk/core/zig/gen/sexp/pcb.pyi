@@ -1155,11 +1155,21 @@ class Stackup:
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
+class Thickness:
+    thickness: float
+    locked: bool | None
+
+    def __init__(self, *, thickness: float, locked: bool | None) -> None: ...
+    def __repr__(self) -> str: ...
+    @staticmethod
+    def __field_names__() -> list[str]: ...
+    def __zig_address__(self) -> int: ...
+
 class StackupLayer:
     name: str
     type: str
     color: str | None
-    thickness: float | None
+    thickness: Thickness | None
     material: str | None
     epsilon_r: float | None
     loss_tangent: float | None
@@ -1170,7 +1180,7 @@ class StackupLayer:
         name: str,
         type: str,
         color: str | None,
-        thickness: float | None,
+        thickness: Thickness | None,
         material: str | None,
         epsilon_r: float | None,
         loss_tangent: float | None,

@@ -919,11 +919,21 @@ pub const Stackup = struct {
     };
 };
 
+pub const Thickness = struct {
+    thickness: f64,
+    locked: ?bool = null,
+
+    pub const fields_meta = .{
+        .thickness = structure.SexpField{ .positional = true },
+        .locked = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const StackupLayer = struct {
     name: str,
     type: str,
     color: ?str = null,
-    thickness: ?f64 = null,
+    thickness: ?Thickness = null,
     material: ?str = null,
     epsilon_r: ?f64 = null,
     loss_tangent: ?f64 = null,
