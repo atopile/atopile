@@ -138,6 +138,19 @@ def main(argv: list[str] | None = None) -> int:
     total_failures = 0
     chunk_index = 0
     total_chunks = max(1, ceil(total_rows / args.chunk_size))
+    print(
+        json.dumps(
+            {
+                "start": True,
+                "source_rows_total": total_rows,
+                "chunks_total": total_chunks,
+                "chunk_size": args.chunk_size,
+                "workers": args.workers,
+                "where": args.where,
+            },
+            ensure_ascii=True,
+        )
+    )
 
     with sqlite3.connect(args.source_sqlite) as conn:
         cur = conn.cursor()
@@ -148,6 +161,18 @@ def main(argv: list[str] | None = None) -> int:
                 break
             chunk_index += 1
             total_source += len(rows)
+            print(
+                json.dumps(
+                    {
+                        "chunk_start": True,
+                        "chunk": chunk_index,
+                        "chunks_total": total_chunks,
+                        "chunks_progress": f"{chunk_index}/{total_chunks}",
+                        "source_rows_progress": f"{min(total_source, total_rows)}/{total_rows}",
+                    },
+                    ensure_ascii=True,
+                )
+            )
             snapshot = _write_chunk_snapshot(
                 cache_dir=args.cache_dir,
                 chunk_index=chunk_index,
