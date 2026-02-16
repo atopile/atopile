@@ -167,10 +167,13 @@ class AgentOrchestrator:
         self.api_retry_max_delay_s = float(
             os.getenv("ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0")
         )
+        default_skills_dir = (
+            Path(__file__).resolve().parents[4] / ".claude" / "skills"
+        )
         self.skills_dir = Path(
             os.getenv(
                 "ATOPILE_AGENT_SKILLS_DIR",
-                "/Users/narayanpowderly/projects/atopile/.claude/skills",
+                str(default_skills_dir),
             )
         ).expanduser()
         self.fixed_skill_ids = ["agent", "ato"]
