@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,12 @@ def _utc_stamp() -> str:
 class DailyFetchResult:
     jlc_snapshot_dir: Path
     roundtrip_report_path: Path | None
+
+
+@dataclass(frozen=True)
+class _RoundtripPartResult:
+    records: list[FetchArtifactRecord]
+    failure: dict[str, object] | None
 
 
 def _coerce_lcsc_id(value: str | int | None) -> int | None:
@@ -190,6 +197,7 @@ def run_fetch_daily(
     roundtrip_retry_attempts: int = 3,
     roundtrip_retry_backoff_s: float = 2.0,
     roundtrip_sleep_s: float = 0.0,
+    roundtrip_workers: int = 1,
 ) -> DailyFetchResult:
     log_event(
         service="components-fetch",
@@ -203,6 +211,7 @@ def run_fetch_daily(
         roundtrip_retry_attempts=roundtrip_retry_attempts,
         roundtrip_retry_backoff_s=roundtrip_retry_backoff_s,
         roundtrip_sleep_s=roundtrip_sleep_s,
+        roundtrip_workers=roundtrip_workers,
     )
     jlc_snapshot_dir = run_fetch_once_fn(
         config,
@@ -228,33 +237,32 @@ def run_fetch_daily(
 
         records: list[FetchArtifactRecord] = []
         failures: list[dict[str, object]] = []
-        for seed in seeds:
+
+        def _run_seed(seed: LcscFetchSeed) -> _RoundtripPartResult:
             if roundtrip_sleep_s > 0:
                 sleep(roundtrip_sleep_s)
             attempt = 0
             while True:
                 attempt += 1
                 try:
-                    records.extend(
-                        run_roundtrip_fn(
+                    return _RoundtripPartResult(
+                        records=run_roundtrip_fn(
                             config=config,
                             lcsc_id=seed.lcsc_id,
                             datasheet_url=seed.datasheet_url,
-                        )
+                        ),
+                        failure=None,
                     )
-                    break
                 except Exception as ex:
                     is_retryable = _is_retryable_roundtrip_error(ex)
                     if attempt >= roundtrip_retry_attempts or not is_retryable:
-                        failures.append(
-                            {
-                                "lcsc_id": seed.lcsc_id,
-                                "datasheet_url": seed.datasheet_url,
-                                "attempts": attempt,
-                                "retryable": is_retryable,
-                                "error": repr(ex),
-                            }
-                        )
+                        failure = {
+                            "lcsc_id": seed.lcsc_id,
+                            "datasheet_url": seed.datasheet_url,
+                            "attempts": attempt,
+                            "retryable": is_retryable,
+                            "error": repr(ex),
+                        }
                         log_event(
                             service="components-fetch",
                             event="fetch.daily.roundtrip_part_failed",
@@ -263,7 +271,7 @@ def run_fetch_daily(
                             attempts=attempt,
                             error=repr(ex),
                         )
-                        break
+                        return _RoundtripPartResult(records=[], failure=failure)
                     delay_s = _retry_delay_seconds(
                         ex,
                         attempt=attempt,
@@ -271,9 +279,26 @@ def run_fetch_daily(
                     )
                     sleep(delay_s)
 
+        if roundtrip_workers <= 1:
+            for seed in seeds:
+                part_result = _run_seed(seed)
+                if part_result.failure is not None:
+                    failures.append(part_result.failure)
+                records.extend(part_result.records)
+        else:
+            max_workers = max(1, min(roundtrip_workers, len(seeds) or 1))
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [pool.submit(_run_seed, seed) for seed in seeds]
+                for future in as_completed(futures):
+                    part_result = future.result()
+                    if part_result.failure is not None:
+                        failures.append(part_result.failure)
+                    records.extend(part_result.records)
+
         summary = {
             "created_at_utc": _utc_stamp(),
             "seed_count": len(seeds),
+            "workers": max(1, roundtrip_workers),
             "record_count": len(records),
             "lcsc_ids": sorted({record.lcsc_id for record in records}),
             "artifact_types": sorted(
@@ -289,6 +314,7 @@ def run_fetch_daily(
             event="fetch.daily.roundtrip_summary",
             report_path=report_path,
             seed_count=summary["seed_count"],
+            workers=summary["workers"],
             record_count=summary["record_count"],
             failure_count=summary["failure_count"],
             lcsc_ids=summary["lcsc_ids"],
@@ -358,6 +384,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Sleep interval between part roundtrip attempts (for throttling).",
     )
     parser.add_argument(
+        "--roundtrip-workers",
+        type=int,
+        default=int(os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_WORKERS", "1")),
+        help="Number of parallel workers for roundtrip artifact fetches.",
+    )
+    parser.add_argument(
         "--roundtrip-lcsc-ids",
         type=str,
         default=os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_LCSC_IDS", ""),
@@ -379,6 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         roundtrip_retry_attempts=args.roundtrip_retry_attempts,
         roundtrip_retry_backoff_s=args.roundtrip_retry_backoff_s,
         roundtrip_sleep_s=args.roundtrip_sleep_s,
+        roundtrip_workers=args.roundtrip_workers,
     )
     print(result.jlc_snapshot_dir)
     if result.roundtrip_report_path is not None:
@@ -499,6 +532,58 @@ def test_is_retryable_roundtrip_error_http_status() -> None:
     )
     assert _is_retryable_roundtrip_error(retryable) is True
     assert _is_retryable_roundtrip_error(non_retryable) is False
+
+
+def test_run_fetch_daily_with_parallel_roundtrip(tmp_path) -> None:
+    snapshot_dir = tmp_path / "fetch" / "jlc_api" / "snapshot"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    (snapshot_dir / "components.ndjson").write_text(
+        "\n".join(
+            json.dumps({"lcscPart": f"C{lcsc_id}"}, ensure_ascii=True)
+            for lcsc_id in (1001, 1002, 1003, 1004)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_fetch_once(*args, **kwargs) -> Path:
+        del args, kwargs
+        return snapshot_dir
+
+    def _real_roundtrip(*args, **kwargs) -> list[FetchArtifactRecord]:
+        from ..models import ArtifactType
+
+        lcsc_id = int(kwargs["lcsc_id"])
+        return [
+            FetchArtifactRecord.now(
+                lcsc_id=lcsc_id,
+                artifact_type=ArtifactType.KICAD_FOOTPRINT_MOD,
+                source_url="https://example.com",
+                raw_sha256=f"sha-{lcsc_id}",
+                raw_size_bytes=3,
+                stored_key=f"objects/kicad_footprint_mod/{lcsc_id}.zst",
+            )
+        ]
+
+    config = FetchConfig.from_env()
+    result = run_fetch_daily(
+        config,
+        max_pages=1,
+        fetch_details=False,
+        max_details=0,
+        roundtrip_from_snapshot=True,
+        roundtrip_max_parts=4,
+        roundtrip_workers=3,
+        run_fetch_once_fn=fake_run_fetch_once,
+        run_roundtrip_fn=_real_roundtrip,
+        roundtrip_run_root=tmp_path / "daily",
+    )
+    assert result.roundtrip_report_path is not None
+    summary = json.loads(result.roundtrip_report_path.read_text(encoding="utf-8"))
+    assert summary["workers"] == 3
+    assert summary["failure_count"] == 0
+    assert summary["seed_count"] == 4
+    assert summary["record_count"] == 4
 
 
 if __name__ == "__main__":
