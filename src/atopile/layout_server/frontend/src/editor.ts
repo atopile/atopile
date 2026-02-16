@@ -69,6 +69,7 @@ export class Editor {
             this.camera.bbox = computeBBox(this.model);
         }
         this.requestRedraw();
+        if (this.onLayersChanged) this.onLayersChanged();
     }
 
     private paint() {
@@ -145,7 +146,7 @@ export class Editor {
             this.requestRedraw();
         });
 
-        this.canvas.addEventListener("mouseup", async (e: MouseEvent) => {
+        window.addEventListener("mouseup", async (e: MouseEvent) => {
             if (e.button !== 0 || !this.isDragging) return;
             this.isDragging = false;
 

@@ -13,15 +13,25 @@ function fpTransform(fpAt: Point3, localX: number, localY: number): Vec2 {
     );
 }
 
+function padTransform(fpAt: Point3, padAt: Point3, lx: number, ly: number): Vec2 {
+    const padRad = -(padAt.r || 0) * DEG_TO_RAD;
+    const pc = Math.cos(padRad), ps = Math.sin(padRad);
+    const px = lx * pc - ly * ps;
+    const py = lx * ps + ly * pc;
+    return fpTransform(fpAt, padAt.x + px, padAt.y + py);
+}
+
 /** Compute bounding box for a footprint in world coords */
 export function footprintBBox(fp: FootprintModel): BBox {
     const points: Vec2[] = [];
     for (const pad of fp.pads) {
-        const center = fpTransform(fp.at, pad.at.x, pad.at.y);
         const hw = pad.size.w / 2;
         const hh = pad.size.h / 2;
-        points.push(center.add(new Vec2(-hw, -hh)));
-        points.push(center.add(new Vec2(hw, hh)));
+        // Transform all four corners through pad + footprint rotation
+        points.push(padTransform(fp.at, pad.at, -hw, -hh));
+        points.push(padTransform(fp.at, pad.at, hw, -hh));
+        points.push(padTransform(fp.at, pad.at, hw, hh));
+        points.push(padTransform(fp.at, pad.at, -hw, hh));
     }
     for (const drawing of fp.drawings) {
         if (drawing.start) points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));

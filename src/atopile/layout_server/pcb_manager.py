@@ -129,11 +129,11 @@ class FlipAction(Action):
         # Flip the footprint layer
         fp.layer = _flip_layer(fp.layer)
         # Mirror rotation
-        fp.at.r = (((fp.at.r or 0) + 180) % 360) or None
+        fp.at.r = ((fp.at.r or 0) + 180) % 360
         # Flip pads
         for pad in fp.pads:
             pad.at.y = -pad.at.y
-            pad.at.r = (((pad.at.r or 0) + 180) % 360) or None
+            pad.at.r = ((pad.at.r or 0) + 180) % 360
             pad.layers = [_flip_layer(ly) for ly in pad.layers]
         # Flip drawings
         for line in fp.fp_lines:
@@ -241,6 +241,21 @@ class PcbManager:
 
     def flip_footprint(self, uuid: str) -> None:
         self.execute_action(FlipAction(uuid))
+
+    ACTION_HANDLERS: dict[str, str] = {
+        "move": "move_footprint",
+        "rotate": "rotate_footprint",
+        "flip": "flip_footprint",
+    }
+
+    def dispatch_action(self, action_type: str, details: dict) -> bool:
+        """Dispatch an action by type name. Returns False if unknown action."""
+        method_name = self.ACTION_HANDLERS.get(action_type)
+        if method_name is None:
+            return False
+        method = getattr(self, method_name)
+        method(**details)
+        return True
 
     def was_recently_saved(self, threshold: float = 2.0) -> bool:
         """Check if we saved within the last `threshold` seconds."""

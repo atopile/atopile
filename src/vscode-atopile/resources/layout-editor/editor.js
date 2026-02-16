@@ -1753,14 +1753,22 @@ function fpTransform2(fpAt, localX, localY) {
     fpAt.y + localX * sin + localY * cos
   );
 }
+function padTransform2(fpAt, padAt, lx, ly) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD2;
+  const pc = Math.cos(padRad), ps = Math.sin(padRad);
+  const px = lx * pc - ly * ps;
+  const py = lx * ps + ly * pc;
+  return fpTransform2(fpAt, padAt.x + px, padAt.y + py);
+}
 function footprintBBox(fp) {
   const points = [];
   for (const pad of fp.pads) {
-    const center = fpTransform2(fp.at, pad.at.x, pad.at.y);
     const hw = pad.size.w / 2;
     const hh = pad.size.h / 2;
-    points.push(center.add(new Vec2(-hw, -hh)));
-    points.push(center.add(new Vec2(hw, hh)));
+    points.push(padTransform2(fp.at, pad.at, -hw, -hh));
+    points.push(padTransform2(fp.at, pad.at, hw, -hh));
+    points.push(padTransform2(fp.at, pad.at, hw, hh));
+    points.push(padTransform2(fp.at, pad.at, -hw, hh));
   }
   for (const drawing of fp.drawings) {
     if (drawing.start)
@@ -1844,6 +1852,8 @@ var Editor = class {
       this.camera.bbox = computeBBox(this.model);
     }
     this.requestRedraw();
+    if (this.onLayersChanged)
+      this.onLayersChanged();
   }
   paint() {
     if (!this.model)
@@ -1910,7 +1920,7 @@ var Editor = class {
       this.paint();
       this.requestRedraw();
     });
-    this.canvas.addEventListener("mouseup", async (e) => {
+    window.addEventListener("mouseup", async (e) => {
       if (e.button !== 0 || !this.isDragging)
         return;
       this.isDragging = false;

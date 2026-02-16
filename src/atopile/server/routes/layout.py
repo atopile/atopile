@@ -24,12 +24,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["layout"])
 
-ACTION_HANDLERS: dict[str, str] = {
-    "move": "move_footprint",
-    "rotate": "rotate_footprint",
-    "flip": "flip_footprint",
-}
-
 
 def _require_loaded() -> None:
     if not layout_service.is_loaded:
@@ -51,11 +45,14 @@ async def get_footprints() -> list[FootprintSummary]:
 @router.post("/api/layout/execute-action", response_model=StatusResponse)
 async def execute_action(req: ActionRequest) -> StatusResponse:
     _require_loaded()
-    method_name = ACTION_HANDLERS.get(req.type)
-    if method_name is None:
+    try:
+        ok = await asyncio.to_thread(
+            layout_service.manager.dispatch_action, req.type, req.details
+        )
+    except TypeError as e:
+        return StatusResponse(status=f"invalid_details:{e}")
+    if not ok:
         return StatusResponse(status=f"unknown_action:{req.type}")
-    method = getattr(layout_service.manager, method_name)
-    await asyncio.to_thread(method, **req.details)
     model = await layout_service.save_and_broadcast()
     return StatusResponse(status="ok", model=model)
 

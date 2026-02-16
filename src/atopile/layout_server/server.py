@@ -25,12 +25,6 @@ log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-ACTION_HANDLERS: dict[str, str] = {
-    "move": "move_footprint",
-    "rotate": "rotate_footprint",
-    "flip": "flip_footprint",
-}
-
 
 class ConnectionManager:
     def __init__(self) -> None:
@@ -41,7 +35,10 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket) -> None:
-        self.active_connections.remove(websocket)
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass
 
     async def broadcast(self, message: WsMessage) -> None:
         data = message.model_dump(exclude_none=True)
@@ -111,11 +108,12 @@ def create_app(pcb_path: Path) -> FastAPI:
 
     @app.post("/api/execute-action", response_model=StatusResponse)
     async def execute_action(req: ActionRequest) -> StatusResponse:
-        method_name = ACTION_HANDLERS.get(req.type)
-        if method_name is None:
+        try:
+            ok = await asyncio.to_thread(manager.dispatch_action, req.type, req.details)
+        except TypeError as e:
+            return StatusResponse(status=f"invalid_details:{e}")
+        if not ok:
             return StatusResponse(status=f"unknown_action:{req.type}")
-        method = getattr(manager, method_name)
-        await asyncio.to_thread(method, **req.details)
         model = await _save_and_broadcast()
         return StatusResponse(status="ok", model=model)
 
