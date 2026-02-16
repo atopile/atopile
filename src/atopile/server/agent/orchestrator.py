@@ -170,12 +170,7 @@ class AgentOrchestrator:
         default_skills_dir = (
             Path(__file__).resolve().parents[4] / ".claude" / "skills"
         )
-        self.skills_dir = Path(
-            os.getenv(
-                "ATOPILE_AGENT_SKILLS_DIR",
-                str(default_skills_dir),
-            )
-        ).expanduser()
+        self.skills_dir = default_skills_dir
         self.fixed_skill_ids = ["agent", "ato"]
         self.fixed_skill_token_budgets = _parse_fixed_skill_token_budgets(
             os.getenv(
