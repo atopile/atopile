@@ -9,7 +9,6 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from atopile.dataclasses import AppContext
-from atopile.server.agent import skills as skills_domain
 from atopile.server.domains.deps import get_ctx
 
 from .models import (
@@ -513,20 +512,17 @@ async def get_session_skills(
         )
 
     skills_dir = orchestrator.skills_dir
-    docs = skills_domain.load_skill_docs(
-        skills_dir=skills_dir,
-        ttl_s=orchestrator.skill_index_ttl_s,
-    )
     state = dict(session.skill_state)
+    selected_skill_ids = [
+        str(value)
+        for value in state.get("selected_skill_ids", [])
+        if isinstance(value, str)
+    ]
     return SessionSkillsResponse(
         sessionId=session.session_id,
         projectRoot=session.project_root,
         skillsDir=str(skills_dir),
-        selectedSkillIds=[
-            str(value)
-            for value in state.get("selected_skill_ids", [])
-            if isinstance(value, str)
-        ],
+        selectedSkillIds=selected_skill_ids,
         selectedSkills=[
             item for item in state.get("selected_skills", []) if isinstance(item, dict)
         ],
@@ -539,5 +535,5 @@ async def get_session_skills(
             if isinstance(state.get("generated_at"), (int, float))
             else None
         ),
-        loadedSkillsCount=len(docs),
+        loadedSkillsCount=len(selected_skill_ids),
     )

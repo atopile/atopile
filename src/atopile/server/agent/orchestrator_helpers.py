@@ -11,8 +11,6 @@ from typing import Any
 
 from openai import APIStatusError
 
-from atopile.server.agent import skills as skills_domain
-
 _RETRY_AFTER_TEXT_PATTERN = re.compile(
     r"Please try again in\s*(\d+(?:\.\d+)?)\s*(ms|s)\b",
     re.IGNORECASE,
@@ -166,30 +164,39 @@ def _parse_fixed_skill_token_budgets(
 
 def _allocate_fixed_skill_char_caps(
     *,
-    docs: list[skills_domain.SkillDoc],
+    docs: list[Any],
     token_budgets: dict[str, int],
     chars_per_token: float,
     total_max_chars: int,
 ) -> dict[str, int]:
+    def _doc_id(doc: Any) -> str:
+        if isinstance(doc, dict):
+            value = doc.get("id", "")
+        else:
+            value = getattr(doc, "id", "")
+        return str(value or "")
+
     if not docs:
         return {}
     if total_max_chars <= 0:
-        return {doc.id: 0 for doc in docs}
+        return {_doc_id(doc): 0 for doc in docs}
 
     requested_caps: dict[str, int] = {}
     for doc in docs:
-        token_budget = max(0, int(token_budgets.get(doc.id, 0)))
+        doc_id = _doc_id(doc)
+        token_budget = max(0, int(token_budgets.get(doc_id, 0)))
         if token_budget <= 0:
             continue
-        requested_caps[doc.id] = int(token_budget * chars_per_token)
+        requested_caps[doc_id] = int(token_budget * chars_per_token)
 
     if not requested_caps:
         even_cap = max(1, total_max_chars // len(docs))
-        return {doc.id: even_cap for doc in docs}
+        return {_doc_id(doc): even_cap for doc in docs}
 
     fallback_cap = max(1, int(sum(requested_caps.values()) / len(requested_caps)))
     for doc in docs:
-        requested_caps.setdefault(doc.id, fallback_cap)
+        doc_id = _doc_id(doc)
+        requested_caps.setdefault(doc_id, fallback_cap)
 
     requested_total = sum(max(0, cap) for cap in requested_caps.values())
     if requested_total <= total_max_chars:
@@ -199,13 +206,14 @@ def _allocate_fixed_skill_char_caps(
     allocated: dict[str, int] = {}
     remaining_chars = total_max_chars
     for index, doc in enumerate(docs):
-        requested_cap = max(0, requested_caps.get(doc.id, 0))
+        doc_id = _doc_id(doc)
+        requested_cap = max(0, requested_caps.get(doc_id, 0))
         if index == len(docs) - 1:
             capped_value = remaining_chars
         else:
             scaled_cap = max(0, int(requested_cap * scale))
             capped_value = min(scaled_cap, remaining_chars)
-        allocated[doc.id] = capped_value
+        allocated[doc_id] = capped_value
         remaining_chars = max(0, remaining_chars - capped_value)
 
     return allocated

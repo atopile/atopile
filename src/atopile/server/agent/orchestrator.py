@@ -17,7 +17,6 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpe
 from atopile.dataclasses import AppContext
 from atopile.model import builds as builds_domain
 from atopile.server.agent import policy, tools
-from atopile.server.agent import skills as skills_domain
 from atopile.server.agent.orchestrator_helpers import (
     _allocate_fixed_skill_char_caps,
     _build_execution_guard_inputs_for_model,
@@ -38,7 +37,6 @@ from atopile.server.agent.orchestrator_helpers import (
     _is_context_length_exceeded,
     _limit_tool_output_for_model,
     _loop_has_concrete_progress,
-    _normalize_skill_id,
     _parse_fixed_skill_token_budgets,
     _payload_debug_summary,
     _payload_has_function_call_outputs,
@@ -142,6 +140,13 @@ class AgentTurnResult:
     context_metrics: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class FixedSkillDoc:
+    id: str
+    path: Path
+    body: str
+
+
 class AgentOrchestrator:
     def __init__(self) -> None:
         self.base_url = os.getenv("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1")
@@ -168,10 +173,7 @@ class AgentOrchestrator:
                 "/Users/narayanpowderly/projects/atopile/.claude/skills",
             )
         ).expanduser()
-        raw_fixed_skill_ids = os.getenv("ATOPILE_AGENT_FIXED_SKILL_IDS", "agent,ato")
-        self.fixed_skill_ids = [
-            part.strip() for part in raw_fixed_skill_ids.split(",") if part.strip()
-        ] or ["agent", "ato"]
+        self.fixed_skill_ids = ["agent", "ato"]
         self.fixed_skill_token_budgets = _parse_fixed_skill_token_budgets(
             os.getenv(
                 "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS",
@@ -187,9 +189,6 @@ class AgentOrchestrator:
         )
         self.fixed_skill_total_max_chars = int(
             os.getenv("ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "220000")
-        )
-        self.skill_index_ttl_s = float(
-            os.getenv("ATOPILE_AGENT_SKILL_INDEX_TTL_S", "10")
         )
         self.prefix_max_chars = int(
             os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", "220000")
@@ -251,6 +250,93 @@ class AgentOrchestrator:
             4, min(self.worker_no_progress_loop_limit, 60)
         )
         self._client: AsyncOpenAI | None = None
+
+    def _load_required_skill_docs(self) -> list[FixedSkillDoc]:
+        docs: list[FixedSkillDoc] = []
+        missing: list[str] = []
+        for skill_id in self.fixed_skill_ids:
+            skill_path = self.skills_dir / skill_id / "SKILL.md"
+            try:
+                body = skill_path.read_text(encoding="utf-8").strip()
+            except FileNotFoundError:
+                missing.append(skill_id)
+                continue
+            if not body:
+                missing.append(skill_id)
+                continue
+            docs.append(
+                FixedSkillDoc(
+                    id=skill_id,
+                    path=skill_path,
+                    body=body,
+                )
+            )
+
+        if missing:
+            missing_text = ", ".join(missing)
+            raise RuntimeError(
+                "Missing required fixed skill docs. "
+                f"Expected ids: {self.fixed_skill_ids}. Missing: {missing_text}."
+            )
+        return docs
+
+    def _render_fixed_skills_block(
+        self,
+        *,
+        docs: list[FixedSkillDoc],
+        per_skill_max_chars: dict[str, int],
+    ) -> str:
+        sections = ["ACTIVE SKILLS (FULL DOCS):"]
+        for doc in docs:
+            body = doc.body
+            skill_cap = int(per_skill_max_chars.get(doc.id, 0))
+            if skill_cap > 0:
+                body = _truncate_middle(body, skill_cap)
+            sections.append(
+                "\n".join(
+                    [
+                        f"SKILL {doc.id}",
+                        f"Source: {doc.path}",
+                        body.strip(),
+                    ]
+                ).strip()
+            )
+
+        block = "\n\n".join(sections)
+        return _truncate_middle(block, self.fixed_skill_total_max_chars)
+
+    def _build_fixed_skill_state(
+        self,
+        *,
+        docs: list[FixedSkillDoc],
+        rendered_total_chars: int,
+        per_skill_max_chars: dict[str, int],
+    ) -> dict[str, Any]:
+        return {
+            "mode": "fixed",
+            "skills_dir": str(self.skills_dir),
+            "requested_skill_ids": list(self.fixed_skill_ids),
+            "selected_skill_ids": [doc.id for doc in docs],
+            "selected_skills": [
+                {
+                    "id": doc.id,
+                    "path": str(doc.path),
+                    "chars": len(doc.body),
+                }
+                for doc in docs
+            ],
+            "missing_skill_ids": [],
+            "per_skill_max_chars": dict(per_skill_max_chars),
+            "reasoning": [
+                "mode=fixed",
+                "selected_ids=" + ",".join(doc.id for doc in docs),
+                f"rendered_chars={rendered_total_chars}",
+                f"max_chars={self.fixed_skill_total_max_chars}",
+            ],
+            "total_chars": rendered_total_chars,
+            "max_chars": self.fixed_skill_total_max_chars,
+            "generated_at": time.time(),
+        }
 
     async def run_turn(
         self,
@@ -318,17 +404,7 @@ class AgentOrchestrator:
             self.user_message_max_chars,
         )
 
-        fixed_docs, missing_skill_ids = skills_domain.load_fixed_skill_docs(
-            skills_dir=self.skills_dir,
-            skill_ids=self.fixed_skill_ids,
-            ttl_s=self.skill_index_ttl_s,
-        )
-        if missing_skill_ids:
-            missing_text = ", ".join(missing_skill_ids)
-            raise RuntimeError(
-                "Missing required fixed skill docs. "
-                f"Expected ids: {self.fixed_skill_ids}. Missing: {missing_text}."
-            )
+        fixed_docs = self._load_required_skill_docs()
 
         per_skill_max_chars = _allocate_fixed_skill_char_caps(
             docs=fixed_docs,
@@ -336,18 +412,13 @@ class AgentOrchestrator:
             chars_per_token=self.fixed_skill_chars_per_token,
             total_max_chars=self.fixed_skill_total_max_chars,
         )
-        skill_block = skills_domain.render_fixed_skills_block(
+        skill_block = self._render_fixed_skills_block(
             docs=fixed_docs,
-            max_chars=self.fixed_skill_total_max_chars,
             per_skill_max_chars=per_skill_max_chars,
         )
-        skill_state = skills_domain.build_fixed_skill_state(
-            skills_dir=self.skills_dir,
-            requested_skill_ids=self.fixed_skill_ids,
-            selected_docs=fixed_docs,
-            missing_skill_ids=missing_skill_ids,
+        skill_state = self._build_fixed_skill_state(
+            docs=fixed_docs,
             rendered_total_chars=len(skill_block),
-            max_chars=self.fixed_skill_total_max_chars,
             per_skill_max_chars=per_skill_max_chars,
         )
 
