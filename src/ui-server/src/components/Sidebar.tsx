@@ -280,7 +280,6 @@ export function Sidebar() {
         return;
       }
     } catch (error) {
-      console.warn('Failed to open output', error);
       action('uiLog', {
         level: 'error',
         message: `Failed to open ${outputName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
