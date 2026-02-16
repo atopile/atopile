@@ -2284,45 +2284,13 @@ def _load_subpcb_schematic_positions(
     return merged
 
 
-# ── Main export function ────────────────────────────────────────
+def _collect_components_with_footprints(app: fabll.Node) -> list[fabll.Node]:
+    """Collect component nodes that have associated footprints.
 
-
-def export_schematic_json(
-    app: fabll.Node,
-    solver: Solver,
-    *,
-    json_path: Path,
-) -> None:
+    Prefers picked/atomic-part trait implementors and falls back to a broad
+    graph walk when needed.
     """
-    Export hierarchical schematic data (v2 format).
-
-    Walks the module hierarchy, groups atomic parts into modules,
-    identifies module interfaces from lead function tracing,
-    and scopes nets to the appropriate hierarchy level.
-    """
-
-    # ═══════════════════════════════════════════════════════════════
-    # Phase 1: Discover modules
-    # ═══════════════════════════════════════════════════════════════
-
-    all_modules = _discover_modules(app)
-
-    logger.info(
-        "Discovered %d modules: %s",
-        len(all_modules),
-        [m.full_name for m in list(all_modules.values())[:15]],
-    )
-    module_by_fullname = {m.full_name: m for m in all_modules.values()}
-
-    # ═══════════════════════════════════════════════════════════════
-    # Phase 2: Collect components (picked/atomic parts with footprints)
-    # ═══════════════════════════════════════════════════════════════
-
-    # Collect from both:
-    # - picked parts (includes auto-picked parts)
-    # - explicit atomic parts
-    # and deduplicate by full name.
-    trait_nodes = []
+    trait_nodes: list[fabll.Node] = []
     try:
         trait_nodes.extend(
             fabll.Traits.get_implementors(
@@ -2368,7 +2336,72 @@ def export_schematic_json(
             except Exception:
                 continue
 
-    fp_nodes = list(fp_nodes_by_name.values())
+    return list(fp_nodes_by_name.values())
+
+
+def _load_existing_schematic_viewer_state(
+    json_path: Path,
+) -> tuple[dict, dict, dict]:
+    """Load saved viewer state from an existing .ato_sch file."""
+    if not json_path.exists():
+        return {}, {}, {}
+
+    try:
+        import json as _json
+
+        existing_data = _json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}, {}, {}
+
+    positions = existing_data.get("positions", {})
+    port_signal_orders = (
+        existing_data["portSignalOrders"]
+        if isinstance(existing_data.get("portSignalOrders"), dict)
+        else {}
+    )
+    route_overrides = (
+        existing_data["routeOverrides"]
+        if isinstance(existing_data.get("routeOverrides"), dict)
+        else {}
+    )
+    return positions, port_signal_orders, route_overrides
+
+
+# ── Main export function ────────────────────────────────────────
+
+
+def export_schematic_json(
+    app: fabll.Node,
+    solver: Solver,
+    *,
+    json_path: Path,
+) -> None:
+    """
+    Export hierarchical schematic data (v2 format).
+
+    Walks the module hierarchy, groups atomic parts into modules,
+    identifies module interfaces from lead function tracing,
+    and scopes nets to the appropriate hierarchy level.
+    """
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 1: Discover modules
+    # ═══════════════════════════════════════════════════════════════
+
+    all_modules = _discover_modules(app)
+
+    logger.info(
+        "Discovered %d modules: %s",
+        len(all_modules),
+        [m.full_name for m in list(all_modules.values())[:15]],
+    )
+    module_by_fullname = {m.full_name: m for m in all_modules.values()}
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 2: Collect components (picked/atomic parts with footprints)
+    # ═══════════════════════════════════════════════════════════════
+
+    fp_nodes = _collect_components_with_footprints(app)
 
     logger.info("Found %d components with footprints", len(fp_nodes))
 
@@ -3144,21 +3177,11 @@ def export_schematic_json(
     # ═══════════════════════════════════════════════════════════════
 
     # Preserve existing viewer state from the output file (if any)
-    existing_positions: dict = {}
-    existing_port_signal_orders: dict = {}
-    existing_route_overrides: dict = {}
-    if json_path.exists():
-        try:
-            import json as _json
-
-            existing_data = _json.loads(json_path.read_text(encoding="utf-8"))
-            existing_positions = existing_data.get("positions", {})
-            if isinstance(existing_data.get("portSignalOrders"), dict):
-                existing_port_signal_orders = existing_data["portSignalOrders"]
-            if isinstance(existing_data.get("routeOverrides"), dict):
-                existing_route_overrides = existing_data["routeOverrides"]
-        except Exception:
-            pass  # file corrupt or not JSON — start fresh
+    (
+        existing_positions,
+        existing_port_signal_orders,
+        existing_route_overrides,
+    ) = _load_existing_schematic_viewer_state(json_path)
 
     # Inject schematic positions from sub-PCB packages
     try:
