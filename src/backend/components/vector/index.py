@@ -6,7 +6,7 @@ import re
 import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 import numpy as np
 
@@ -44,6 +44,11 @@ class IndexManifest:
     embedding_dimension: int
     corpus_size: int
     corpus_path: str
+    ann_backend: str = "none"
+    ann_space: str = "cosine"
+    ann_filename: str | None = None
+    ann_m: int | None = None
+    ann_ef_construction: int | None = None
 
 
 class VectorStore:
@@ -53,6 +58,8 @@ class VectorStore:
         records: list[CorpusRecord],
         vectors: np.ndarray,
         embedding_backend: str,
+        ann_index: Any | None = None,
+        ann_space: str = "cosine",
     ):
         if vectors.ndim != 2:
             raise ValueError("vectors must be a 2D matrix")
@@ -61,6 +68,8 @@ class VectorStore:
         self.records = records
         self.vectors = vectors.astype(np.float32, copy=False)
         self.embedding_backend = embedding_backend
+        self._ann_index = ann_index
+        self._ann_space = ann_space
         self._id_to_idx = {record.lcsc_id: idx for idx, record in enumerate(records)}
         self._token_pattern = re.compile(r"[a-z0-9][a-z0-9._+\-/]*")
         self._doc_tokens: list[set[str]] = []
@@ -112,7 +121,29 @@ class VectorStore:
         vectors = np.load(index_dir / "vectors.npy", mmap_mode="r")
         manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
         backend = str(manifest["embedding_backend"])
-        return cls(records=records, vectors=vectors, embedding_backend=backend)
+        ann_index = None
+        ann_space = str(manifest.get("ann_space", "cosine"))
+        ann_backend = str(manifest.get("ann_backend", "none"))
+        ann_filename = manifest.get("ann_filename")
+        if (
+            ann_backend == "hnsw"
+            and isinstance(ann_filename, str)
+            and ann_filename
+            and (index_dir / ann_filename).exists()
+        ):
+            ann_index = _load_hnsw_index(
+                index_dir / ann_filename,
+                dim=int(vectors.shape[1]),
+                count=len(records),
+                space=ann_space,
+            )
+        return cls(
+            records=records,
+            vectors=vectors,
+            embedding_backend=backend,
+            ann_index=ann_index,
+            ann_space=ann_space,
+        )
 
     def _ensure_lexical_index(self) -> None:
         if self._lexical_ready:
@@ -274,6 +305,36 @@ class VectorStore:
             reasons.append("mpn_token_overlap")
         return score, reasons
 
+    def _ann_dense_scores(
+        self,
+        *,
+        q_vec: np.ndarray,
+        pool: int,
+    ) -> dict[int, float]:
+        if self._ann_index is None:
+            return {}
+        pool = max(1, min(pool, len(self.records)))
+        try:
+            labels, distances = self._ann_index.knn_query(q_vec, k=pool)
+        except Exception:
+            return {}
+        if labels.size == 0:
+            return {}
+        dense_scores: dict[int, float] = {}
+        ids = labels[0]
+        dists = distances[0]
+        for idx_raw, dist_raw in zip(ids, dists, strict=False):
+            idx = int(idx_raw)
+            if idx < 0:
+                continue
+            dist = float(dist_raw)
+            if self._ann_space == "cosine":
+                cosine = 1.0 - dist
+            else:
+                cosine = float(np.dot(self.vectors[idx], q_vec))
+            dense_scores[idx] = cosine
+        return dense_scores
+
     def search(
         self,
         *,
@@ -329,23 +390,59 @@ class VectorStore:
 
         dense_scores: dict[int, float] = {}
         if dense_candidates is None:
-            cosine = np.dot(self.vectors, q_vec).astype(np.float32)
-            pool = min(max(limit * 5, candidate_pool), len(self.records))
-            dense_idx = np.argpartition(cosine, -pool)[-pool:]
-            dense_idx = dense_idx[np.argsort(cosine[dense_idx])[::-1]]
-            for i in dense_idx:
-                dense_scores[int(i)] = float(cosine[int(i)])
+            ann_pool = min(max(limit * 20, candidate_pool * 5, 1200), len(self.records))
+            dense_scores = self._ann_dense_scores(q_vec=q_vec, pool=ann_pool)
+            if dense_scores:
+                dense_idx = np.array(
+                    sorted(dense_scores, key=dense_scores.get, reverse=True),
+                    dtype=np.int32,
+                )
+            else:
+                cosine = np.dot(self.vectors, q_vec).astype(np.float32)
+                pool = min(max(limit * 5, candidate_pool), len(self.records))
+                dense_idx = np.argpartition(cosine, -pool)[-pool:]
+                dense_idx = dense_idx[np.argsort(cosine[dense_idx])[::-1]]
+                for i in dense_idx:
+                    dense_scores[int(i)] = float(cosine[int(i)])
         else:
             if len(dense_candidates) == 0:
                 dense_idx = np.array([], dtype=np.int32)
             else:
-                sub_scores = np.dot(self.vectors[dense_candidates], q_vec).astype(np.float32)
-                pool = min(max(limit * 5, candidate_pool), len(dense_candidates))
-                local_idx = np.argpartition(sub_scores, -pool)[-pool:]
-                local_idx = local_idx[np.argsort(sub_scores[local_idx])[::-1]]
-                dense_idx = dense_candidates[local_idx]
-                for loc in local_idx:
-                    dense_scores[int(dense_candidates[int(loc)])] = float(sub_scores[int(loc)])
+                ann_pool = min(max(limit * 40, candidate_pool * 10, 3000), len(self.records))
+                ann_scores = self._ann_dense_scores(q_vec=q_vec, pool=ann_pool)
+                if ann_scores:
+                    dense_candidate_set = set(int(v) for v in dense_candidates.tolist())
+                    filtered = {
+                        idx: score
+                        for idx, score in ann_scores.items()
+                        if idx in dense_candidate_set
+                    }
+                    if filtered:
+                        dense_scores = filtered
+                        dense_idx = np.array(
+                            sorted(dense_scores, key=dense_scores.get, reverse=True),
+                            dtype=np.int32,
+                        )
+                    else:
+                        sub_scores = np.dot(
+                            self.vectors[dense_candidates], q_vec
+                        ).astype(np.float32)
+                        pool = min(max(limit * 5, candidate_pool), len(dense_candidates))
+                        local_idx = np.argpartition(sub_scores, -pool)[-pool:]
+                        local_idx = local_idx[np.argsort(sub_scores[local_idx])[::-1]]
+                        dense_idx = dense_candidates[local_idx]
+                        for loc in local_idx:
+                            dense_scores[int(dense_candidates[int(loc)])] = float(
+                                sub_scores[int(loc)]
+                            )
+                else:
+                    sub_scores = np.dot(self.vectors[dense_candidates], q_vec).astype(np.float32)
+                    pool = min(max(limit * 5, candidate_pool), len(dense_candidates))
+                    local_idx = np.argpartition(sub_scores, -pool)[-pool:]
+                    local_idx = local_idx[np.argsort(sub_scores[local_idx])[::-1]]
+                    dense_idx = dense_candidates[local_idx]
+                    for loc in local_idx:
+                        dense_scores[int(dense_candidates[int(loc)])] = float(sub_scores[int(loc)])
 
         if len(lexical_idx):
             idx = np.unique(np.concatenate([dense_idx, lexical_idx]))
@@ -663,6 +760,9 @@ def build_index_files(
     embedder: Embedder,
     batch_size: int = 2048,
     progress_every: int = 20000,
+    ann_backend: str = "auto",
+    ann_m: int = 32,
+    ann_ef_construction: int = 200,
 ) -> int:
     if batch_size <= 0:
         raise ValueError("batch_size must be > 0")
@@ -730,11 +830,46 @@ def build_index_files(
                 last_logged = written
 
     vectors_mm.flush()
+    ann_backend_resolved = "none"
+    ann_filename: str | None = None
+    if ann_backend not in {"auto", "none", "hnsw"}:
+        raise ValueError("ann_backend must be one of: auto, none, hnsw")
+    wants_hnsw = ann_backend in {"auto", "hnsw"}
+    if wants_hnsw:
+        hnsw = _hnswlib()
+        if hnsw is None:
+            if ann_backend == "hnsw":
+                raise RuntimeError(
+                    "ann_backend=hnsw requested but hnswlib is not installed"
+                )
+            status("build-index ann backend unavailable (hnswlib not installed); using brute-force fallback")
+        else:
+            status(
+                f"build-index ann backend=hnsw m={ann_m} ef_construction={ann_ef_construction}"
+            )
+            ann_index = hnsw.Index(space="cosine", dim=int(embedder.dimension))
+            ann_index.init_index(
+                max_elements=written,
+                ef_construction=max(8, int(ann_ef_construction)),
+                M=max(4, int(ann_m)),
+            )
+            ann_index.add_items(np.asarray(vectors_mm[:written]), np.arange(written))
+            ann_filename = "ann_hnsw.bin"
+            ann_index.save_index(str(out_dir / ann_filename))
+            ann_backend_resolved = "hnsw"
+
     manifest = IndexManifest(
         embedding_backend=embedder.name,
         embedding_dimension=int(embedder.dimension),
         corpus_size=written,
         corpus_path=str(corpus_path),
+        ann_backend=ann_backend_resolved,
+        ann_space="cosine",
+        ann_filename=ann_filename,
+        ann_m=(ann_m if ann_backend_resolved == "hnsw" else None),
+        ann_ef_construction=(
+            ann_ef_construction if ann_backend_resolved == "hnsw" else None
+        ),
     )
     (out_dir / "manifest.json").write_text(
         json.dumps(asdict(manifest), ensure_ascii=True, indent=2, sort_keys=True),
@@ -742,3 +877,30 @@ def build_index_files(
     )
     status(f"build-index complete rows={written} out_dir={out_dir}")
     return written
+
+
+def _hnswlib() -> Any | None:
+    try:
+        import hnswlib  # type: ignore
+    except ModuleNotFoundError:
+        return None
+    return hnswlib
+
+
+def _load_hnsw_index(
+    path: Path,
+    *,
+    dim: int,
+    count: int,
+    space: str,
+) -> Any | None:
+    hnsw = _hnswlib()
+    if hnsw is None:
+        return None
+    index = hnsw.Index(space=space, dim=dim)
+    try:
+        index.load_index(str(path), max_elements=count)
+        index.set_ef(max(100, min(500, int(math.sqrt(max(count, 1))) * 6)))
+        return index
+    except Exception:
+        return None

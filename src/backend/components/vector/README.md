@@ -9,6 +9,7 @@ CPU-first prototype for validating hybrid-ready vector retrieval on top of
 - Build vector index using:
   - `hashing` backend (dependency-free baseline)
   - `sentence-transformers` backend (optional, higher quality)
+  - optional HNSW ANN candidate index (`hnswlib`) for low-latency retrieval
 - Query with metadata filters + lightweight reranking.
 - Evaluate with labeled query sets (`hit@k`, `MRR`, `p50/p95 latency`).
 
@@ -30,7 +31,8 @@ uv run python -m backend.components.vector.cli --max-cores 32 build-index \
   --corpus-jsonl /tmp/vector_proto/corpus_10k.jsonl \
   --out-dir /tmp/vector_proto/index_hashing_10k \
   --embedding-backend hashing \
-  --embedding-dim 384
+  --embedding-dim 384 \
+  --ann-backend auto
 
 # 3) Interactive query (raw vector only by default)
 uv run python -m backend.components.vector.cli --max-cores 32 query \
@@ -111,6 +113,10 @@ uv run python -m backend.components.vector.cli build-index \
 ```
 
 Use the same backend/model at query and eval time.
+
+If you install `hnswlib`, `build-index --ann-backend auto` will emit
+`ann_hnsw.bin` and search will automatically use ANN candidates with fallback
+to brute-force when unavailable.
 
 ## Eval Query Format
 

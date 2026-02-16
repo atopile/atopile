@@ -47,6 +47,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index.add_argument("--out-dir", type=Path, required=True)
     p_index.add_argument("--batch-size", type=int, default=2048)
     p_index.add_argument(
+        "--ann-backend",
+        choices=["auto", "none", "hnsw"],
+        default="auto",
+        help="ANN index backend for dense retrieval candidates.",
+    )
+    p_index.add_argument("--ann-m", type=int, default=32)
+    p_index.add_argument("--ann-ef-construction", type=int, default=200)
+    p_index.add_argument(
         "--embedding-backend",
         choices=["hashing", "sentence-transformers"],
         default="hashing",
@@ -186,6 +194,9 @@ def main() -> None:
             out_dir=args.out_dir,
             embedder=embedder,
             batch_size=args.batch_size,
+            ann_backend=args.ann_backend,
+            ann_m=args.ann_m,
+            ann_ef_construction=args.ann_ef_construction,
         )
         print(
             json.dumps(
