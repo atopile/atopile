@@ -150,6 +150,50 @@ Optional overrides:
 export ATOPILE_COMPONENTS_FAST_DB_FILENAME=fast.sqlite
 ```
 
+## Deployment-Oriented Orchestration
+
+Use the role wrapper to keep deployment flexible between:
+
+- single host (`all-in-one`)
+- dedicated processor host (stage1/stage2)
+- multiple serve hosts (stage3 only)
+
+Wrapper commands:
+
+```bash
+cd /Users/narayanpowderly/projects/atopile
+
+# Processor role: build + publish one snapshot cycle
+./scripts/components_pipeline.sh processor-once
+
+# Serve role: run API against snapshots/current
+./scripts/components_pipeline.sh serve
+
+# Single host: start stage1 job, then build + publish snapshot
+./scripts/components_pipeline.sh all-in-one-once
+```
+
+Stage-level commands:
+
+```bash
+./scripts/components_pipeline.sh stage1-all
+./scripts/components_pipeline.sh stage2-build
+./scripts/components_pipeline.sh stage2-publish <snapshot-name>
+```
+
+Unified status/monitor snapshot:
+
+```bash
+./scripts/components_pipeline_status.py
+```
+
+The status report includes:
+
+- stage1 roundtrip state counts (`success/failed/running`)
+- stage1 manifest artifact count
+- stage2 `snapshots/current` resolution + metadata
+- serve `/healthz` check payload (if reachable)
+
 Compare Zig vs SQLite on the same source rows (offline benchmark only):
 
 ```bash
