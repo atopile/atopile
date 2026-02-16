@@ -580,144 +580,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
         break;
       case 'renameFile':
-        // Rename file using workspace.fs
-        {
-          const oldUri = vscode.Uri.file(message.oldPath);
-          const newUri = vscode.Uri.file(message.newPath);
-          vscode.workspace.fs.rename(oldUri, newUri).then(
-            () => {
-              traceInfo(`[SidebarProvider] Renamed ${message.oldPath} to ${message.newPath}`);
-            },
-            (err) => {
-              traceError(`[SidebarProvider] Failed to rename file: ${err}`);
-              vscode.window.showErrorMessage(`Failed to rename: ${err.message || err}`);
-            }
-          );
-        }
+        this._handleRenameFile(message.oldPath, message.newPath);
         break;
       case 'deleteFile':
-        // Delete file with confirmation
-        {
-          const deleteUri = vscode.Uri.file(message.path);
-          const fileName = path.basename(message.path);
-          vscode.window.showWarningMessage(
-            `Are you sure you want to delete "${fileName}"?`,
-            { modal: true },
-            'Delete'
-          ).then((choice) => {
-            if (choice === 'Delete') {
-              vscode.workspace.fs.delete(deleteUri, { recursive: true, useTrash: true }).then(
-                () => {
-                  traceInfo(`[SidebarProvider] Deleted ${message.path}`);
-                },
-                (err) => {
-                  traceError(`[SidebarProvider] Failed to delete file: ${err}`);
-                  vscode.window.showErrorMessage(`Failed to delete: ${err.message || err}`);
-                }
-              );
-            }
-          });
-        }
+        this._handleDeleteFile(message.path);
         break;
       case 'createFile':
-        // Create new file - open input box for name
-        {
-          vscode.window.showInputBox({
-            prompt: 'Enter the file name',
-            placeHolder: 'filename.ato',
-            validateInput: (value) => {
-              if (!value || !value.trim()) {
-                return 'File name cannot be empty';
-              }
-              if (value.includes('/') || value.includes('\\')) {
-                return 'File name cannot contain path separators';
-              }
-              return null;
-            }
-          }).then((fileName) => {
-            if (fileName) {
-              const newFilePath = path.join(message.path, fileName);
-              const newUri = vscode.Uri.file(newFilePath);
-              vscode.workspace.fs.writeFile(newUri, new Uint8Array()).then(
-                () => {
-                  traceInfo(`[SidebarProvider] Created file ${newFilePath}`);
-                  // Open the new file
-                  vscode.workspace.openTextDocument(newUri).then((doc) => {
-                    vscode.window.showTextDocument(doc);
-                  });
-                },
-                (err) => {
-                  traceError(`[SidebarProvider] Failed to create file: ${err}`);
-                  vscode.window.showErrorMessage(`Failed to create file: ${err.message || err}`);
-                }
-              );
-            }
-          });
-        }
+        this._handleCreateFile(message.path);
         break;
       case 'createFolder':
-        // Create new folder - open input box for name
-        {
-          vscode.window.showInputBox({
-            prompt: 'Enter the folder name',
-            placeHolder: 'new-folder',
-            validateInput: (value) => {
-              if (!value || !value.trim()) {
-                return 'Folder name cannot be empty';
-              }
-              if (value.includes('/') || value.includes('\\')) {
-                return 'Folder name cannot contain path separators';
-              }
-              return null;
-            }
-          }).then((folderName) => {
-            if (folderName) {
-              const newFolderPath = path.join(message.path, folderName);
-              const newUri = vscode.Uri.file(newFolderPath);
-              vscode.workspace.fs.createDirectory(newUri).then(
-                () => {
-                  traceInfo(`[SidebarProvider] Created folder ${newFolderPath}`);
-                },
-                (err) => {
-                  traceError(`[SidebarProvider] Failed to create folder: ${err}`);
-                  vscode.window.showErrorMessage(`Failed to create folder: ${err.message || err}`);
-                }
-              );
-            }
-          });
-        }
+        this._handleCreateFolder(message.path);
         break;
       case 'duplicateFile':
-        // Duplicate a file or folder
-        {
-          const sourceUri = vscode.Uri.file(message.sourcePath);
-          const destUri = vscode.Uri.file(message.destPath);
-          vscode.workspace.fs.copy(sourceUri, destUri, { overwrite: false }).then(
-            () => {
-              traceInfo(`[SidebarProvider] Duplicated ${message.sourcePath} to ${message.destPath}`);
-              // Notify webview to start rename mode on the new file
-              this._view?.webview.postMessage({
-                type: 'fileDuplicated',
-                newRelativePath: message.newRelativePath,
-              });
-            },
-            (err) => {
-              traceError(`[SidebarProvider] Failed to duplicate: ${err}`);
-              vscode.window.showErrorMessage(`Failed to duplicate: ${err.message || err}`);
-            }
-          );
-        }
+        this._handleDuplicateFile(message.sourcePath, message.destPath, message.newRelativePath);
         break;
       case 'openInTerminal':
-        // Open terminal at the specified path
-        {
-          const terminal = vscode.window.createTerminal({
-            cwd: message.path,
-            name: `Terminal: ${path.basename(message.path)}`,
-          });
-          terminal.show();
-          traceInfo(`[SidebarProvider] Opened terminal at ${message.path}`);
-        }
+        this._openInTerminal(message.path);
         break;
       case 'listFiles':
         // List files in a project directory
@@ -739,6 +617,129 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
+  }
+
+  private _handleRenameFile(oldPath: string, newPath: string): void {
+    const oldUri = vscode.Uri.file(oldPath);
+    const newUri = vscode.Uri.file(newPath);
+    vscode.workspace.fs.rename(oldUri, newUri).then(
+      () => {
+        traceInfo(`[SidebarProvider] Renamed ${oldPath} to ${newPath}`);
+      },
+      (err) => {
+        traceError(`[SidebarProvider] Failed to rename file: ${err}`);
+        vscode.window.showErrorMessage(`Failed to rename: ${err.message || err}`);
+      }
+    );
+  }
+
+  private _handleDeleteFile(filePath: string): void {
+    const deleteUri = vscode.Uri.file(filePath);
+    const fileName = path.basename(filePath);
+    vscode.window.showWarningMessage(
+      `Are you sure you want to delete "${fileName}"?`,
+      { modal: true },
+      'Delete'
+    ).then((choice) => {
+      if (choice !== 'Delete') return;
+      vscode.workspace.fs.delete(deleteUri, { recursive: true, useTrash: true }).then(
+        () => {
+          traceInfo(`[SidebarProvider] Deleted ${filePath}`);
+        },
+        (err) => {
+          traceError(`[SidebarProvider] Failed to delete file: ${err}`);
+          vscode.window.showErrorMessage(`Failed to delete: ${err.message || err}`);
+        }
+      );
+    });
+  }
+
+  private _handleCreateFile(parentPath: string): void {
+    vscode.window.showInputBox({
+      prompt: 'Enter the file name',
+      placeHolder: 'filename.ato',
+      validateInput: (value) => {
+        if (!value || !value.trim()) {
+          return 'File name cannot be empty';
+        }
+        if (value.includes('/') || value.includes('\\')) {
+          return 'File name cannot contain path separators';
+        }
+        return null;
+      }
+    }).then((fileName) => {
+      if (!fileName) return;
+      const newFilePath = path.join(parentPath, fileName);
+      const newUri = vscode.Uri.file(newFilePath);
+      vscode.workspace.fs.writeFile(newUri, new Uint8Array()).then(
+        () => {
+          traceInfo(`[SidebarProvider] Created file ${newFilePath}`);
+          vscode.workspace.openTextDocument(newUri).then((doc) => {
+            vscode.window.showTextDocument(doc);
+          });
+        },
+        (err) => {
+          traceError(`[SidebarProvider] Failed to create file: ${err}`);
+          vscode.window.showErrorMessage(`Failed to create file: ${err.message || err}`);
+        }
+      );
+    });
+  }
+
+  private _handleCreateFolder(parentPath: string): void {
+    vscode.window.showInputBox({
+      prompt: 'Enter the folder name',
+      placeHolder: 'new-folder',
+      validateInput: (value) => {
+        if (!value || !value.trim()) {
+          return 'Folder name cannot be empty';
+        }
+        if (value.includes('/') || value.includes('\\')) {
+          return 'Folder name cannot contain path separators';
+        }
+        return null;
+      }
+    }).then((folderName) => {
+      if (!folderName) return;
+      const newFolderPath = path.join(parentPath, folderName);
+      const newUri = vscode.Uri.file(newFolderPath);
+      vscode.workspace.fs.createDirectory(newUri).then(
+        () => {
+          traceInfo(`[SidebarProvider] Created folder ${newFolderPath}`);
+        },
+        (err) => {
+          traceError(`[SidebarProvider] Failed to create folder: ${err}`);
+          vscode.window.showErrorMessage(`Failed to create folder: ${err.message || err}`);
+        }
+      );
+    });
+  }
+
+  private _handleDuplicateFile(sourcePath: string, destPath: string, newRelativePath: string): void {
+    const sourceUri = vscode.Uri.file(sourcePath);
+    const destUri = vscode.Uri.file(destPath);
+    vscode.workspace.fs.copy(sourceUri, destUri, { overwrite: false }).then(
+      () => {
+        traceInfo(`[SidebarProvider] Duplicated ${sourcePath} to ${destPath}`);
+        this._view?.webview.postMessage({
+          type: 'fileDuplicated',
+          newRelativePath,
+        });
+      },
+      (err) => {
+        traceError(`[SidebarProvider] Failed to duplicate: ${err}`);
+        vscode.window.showErrorMessage(`Failed to duplicate: ${err.message || err}`);
+      }
+    );
+  }
+
+  private _openInTerminal(targetPath: string): void {
+    const terminal = vscode.window.createTerminal({
+      cwd: targetPath,
+      name: `Terminal: ${path.basename(targetPath)}`,
+    });
+    terminal.show();
+    traceInfo(`[SidebarProvider] Opened terminal at ${targetPath}`);
   }
 
   private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
