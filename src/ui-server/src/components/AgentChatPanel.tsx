@@ -140,23 +140,6 @@ interface AgentChatSnapshot {
   updatedAt: number;
 }
 
-interface AgentLiveProgressState {
-  phase: AgentProgressPhase | null;
-  statusText: string | null;
-  detailText: string | null;
-  loop: number | null;
-  toolIndex: number | null;
-  toolCount: number | null;
-  totalTokens: number | null;
-}
-
-interface ThinkingMeterSignal {
-  percent: number;
-  tokenText: string;
-  description: string;
-  isApproximate: boolean;
-}
-
 interface AgentChatPanelProps {
   projectRoot: string | null;
   selectedTargets: string[];
@@ -205,19 +188,6 @@ const MAX_PERSISTED_CHATS = 48;
 const MAX_PERSISTED_MESSAGES_PER_CHAT = 120;
 const MAX_PERSISTED_MESSAGE_CHARS = 12_000;
 const MAX_PERSISTED_INPUT_CHARS = 4_000;
-const THINKING_STREAM_MAX_ITEMS = 6;
-const THINKING_PROXY_TOKEN_BUDGET = 6_000;
-const PROGRESS_QUIET_THRESHOLD_SECONDS = 12;
-const DEFAULT_LIVE_PROGRESS_STATE: AgentLiveProgressState = {
-  phase: null,
-  statusText: null,
-  detailText: null,
-  loop: null,
-  toolIndex: null,
-  toolCount: null,
-  totalTokens: null,
-};
-
 function isSessionNotFoundError(error: unknown): boolean {
   return error instanceof AgentApiError
     && error.status === 404
@@ -740,161 +710,6 @@ function normalizeProgressPhase(value: unknown): AgentProgressPhase | null {
     return value;
   }
   return null;
-}
-
-function formatCompactTokenValue(value: number): string {
-  if (value >= 10_000) return `${Math.round(value / 1_000)}k`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return String(Math.round(value));
-}
-
-function summarizePendingTraceActivity(trace: AgentTraceView): string {
-  if (trace.running) {
-    return inferToolActivityDetail(trace.name, trace.args);
-  }
-  if (!trace.ok) {
-    const errorText = asNonEmptyString(trace.result.error);
-    if (errorText) return `Failed: ${trimSingleLine(errorText, 46)}`;
-    return `Failed ${trace.name}`;
-  }
-  if (trace.name === 'project_edit_file') {
-    const path = asNonEmptyString(trace.result.path) ?? asNonEmptyString(trace.args.path);
-    if (path) return `Edited ${compactPath(path)}`;
-  }
-  const message = asNonEmptyString(trace.result.message);
-  if (message) return trimSingleLine(message, 46);
-  return inferToolActivityDetail(trace.name, trace.args);
-}
-
-function buildThinkingThoughts(
-  {
-    isSessionLoading,
-    isWorking,
-    activityLabel,
-    activityElapsedSeconds,
-    progress,
-    pendingTraces,
-  }: {
-    isSessionLoading: boolean;
-    isWorking: boolean;
-    activityLabel: string;
-    activityElapsedSeconds: number;
-    progress: AgentLiveProgressState;
-    pendingTraces: AgentTraceView[];
-  },
-): string[] {
-  if (!isSessionLoading && !isWorking) return [];
-  const thoughts: string[] = [];
-
-  if (isSessionLoading) {
-    thoughts.push('Starting agent session');
-  }
-
-  if (progress.statusText || progress.detailText) {
-    const status = progress.statusText
-      ?? (progress.phase === 'compacting' ? 'Compacting context' : null)
-      ?? 'Thinking';
-    if (progress.detailText) {
-      thoughts.push(`${status}: ${trimSingleLine(progress.detailText, 56)}`);
-    } else {
-      thoughts.push(status);
-    }
-  } else if (isWorking) {
-    thoughts.push(activityLabel || 'Thinking');
-  }
-
-  if (progress.loop !== null) {
-    const stepSummary = progress.toolCount !== null
-      ? `Loop ${progress.loop} • tool ${Math.max(1, progress.toolIndex ?? 1)}/${Math.max(1, progress.toolCount)}`
-      : `Loop ${progress.loop}`;
-    thoughts.push(stepSummary);
-  }
-
-  pendingTraces
-    .slice()
-    .reverse()
-    .slice(0, 3)
-    .forEach((trace) => thoughts.push(summarizePendingTraceActivity(trace)));
-
-  if (isWorking && activityElapsedSeconds > 0) {
-    thoughts.push(`Working ${activityElapsedSeconds}s`);
-  }
-
-  const deduped = new Set<string>();
-  const ordered: string[] = [];
-  for (const thought of thoughts) {
-    const compact = trimSingleLine(thought, 72);
-    if (!compact || deduped.has(compact)) continue;
-    deduped.add(compact);
-    ordered.push(compact);
-    if (ordered.length >= THINKING_STREAM_MAX_ITEMS) break;
-  }
-  return ordered.length > 0 ? ordered : ['Thinking...'];
-}
-
-function estimateThinkingMeterSignal(
-  {
-    isWorking,
-    progress,
-    pendingMessage,
-    pendingTraces,
-    activityElapsedSeconds,
-  }: {
-    isWorking: boolean;
-    progress: AgentLiveProgressState;
-    pendingMessage: AgentMessage | null;
-    pendingTraces: AgentTraceView[];
-    activityElapsedSeconds: number;
-  },
-): ThinkingMeterSignal {
-  if (!isWorking) {
-    return {
-      percent: 0,
-      tokenText: '0',
-      description: 'Idle',
-      isApproximate: true,
-    };
-  }
-
-  if (progress.totalTokens !== null && progress.totalTokens > 0) {
-    const budget = Math.max(THINKING_PROXY_TOKEN_BUDGET, Math.ceil(progress.totalTokens * 1.2));
-    const percent = Math.max(6, Math.min(98, Math.round((progress.totalTokens / budget) * 100)));
-    return {
-      percent,
-      tokenText: formatCompactTokenValue(progress.totalTokens),
-      description: `${formatCompactTokenValue(progress.totalTokens)} tokens`,
-      isApproximate: false,
-    };
-  }
-
-  const messageChars = pendingMessage?.content.length ?? 0;
-  const running = pendingTraces.filter((trace) => trace.running).length;
-  const completed = pendingTraces.filter((trace) => !trace.running && trace.ok).length;
-  const failed = pendingTraces.filter((trace) => !trace.running && !trace.ok).length;
-  const loopBoost = progress.loop !== null ? Math.max(0, progress.loop - 1) * 190 : 0;
-  const toolBoost =
-    progress.toolCount !== null && progress.toolIndex !== null
-      ? Math.max(0, Math.min(progress.toolCount, progress.toolIndex)) * 52
-      : 0;
-
-  const approximateTokens = Math.round(
-    180
-    + (messageChars * 0.38)
-    + (activityElapsedSeconds * 6.5)
-    + (running * 210)
-    + (completed * 130)
-    + (failed * 95)
-    + loopBoost
-    + toolBoost
-  );
-  const clamped = Math.max(72, Math.min(THINKING_PROXY_TOKEN_BUDGET, approximateTokens));
-  const percent = Math.max(6, Math.min(98, Math.round((clamped / THINKING_PROXY_TOKEN_BUDGET) * 100)));
-  return {
-    percent,
-    tokenText: `~${formatCompactTokenValue(clamped)}`,
-    description: `~${formatCompactTokenValue(clamped)} token effort`,
-    isApproximate: true,
-  };
 }
 
 function renderLineDelta(added: number, removed: number, className?: string): JSX.Element {
@@ -1506,8 +1321,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const [error, setError] = useState<string | null>(null);
   const [activityLabel, setActivityLabel] = useState<string>('Idle');
   const [activityElapsedSeconds, setActivityElapsedSeconds] = useState(0);
-  const [liveProgress, setLiveProgress] = useState<AgentLiveProgressState>(DEFAULT_LIVE_PROGRESS_STATE);
-  const [lastProgressAt, setLastProgressAt] = useState<number | null>(null);
   const [dockHeight, setDockHeight] = useState<number>(defaultDockHeight);
   const [isMinimized, setIsMinimized] = useState(false);
   const [changesExpanded, setChangesExpanded] = useState(false);
@@ -1547,55 +1360,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   }, [activeChatId, chatSnapshots, projectRoot]);
   const isReady = Boolean(projectRoot && sessionId && !isSessionLoading);
   const isWorking = isSending || isStopping;
-  const pendingAssistantMessage = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (message.role === 'assistant' && message.pending) {
-        return message;
-      }
-    }
-    return null;
-  }, [messages]);
-  const pendingTraces = pendingAssistantMessage?.toolTraces ?? [];
-  const thinkingThoughts = useMemo(
-    () => buildThinkingThoughts({
-      isSessionLoading,
-      isWorking,
-      activityLabel,
-      activityElapsedSeconds,
-      progress: liveProgress,
-      pendingTraces,
-    }),
-    [
-      activityElapsedSeconds,
-      activityLabel,
-      isSessionLoading,
-      isWorking,
-      liveProgress,
-      pendingTraces,
-    ],
-  );
-  const thinkingMeterSignal = useMemo(
-    () => estimateThinkingMeterSignal({
-      isWorking: isSessionLoading || isWorking,
-      progress: liveProgress,
-      pendingMessage: pendingAssistantMessage,
-      pendingTraces,
-      activityElapsedSeconds,
-    }),
-    [
-      activityElapsedSeconds,
-      isSessionLoading,
-      isWorking,
-      liveProgress,
-      pendingAssistantMessage,
-      pendingTraces,
-    ],
-  );
-  const progressSilenceSeconds = (isSessionLoading || isWorking) && lastProgressAt
-    ? Math.max(0, Math.floor((Date.now() - lastProgressAt) / 1000))
-    : 0;
-  const isProgressQuiet = progressSilenceSeconds >= PROGRESS_QUIET_THRESHOLD_SECONDS;
   const headerTitle = useMemo(() => shortProjectName(projectRoot), [projectRoot]);
   const activeChatTitle = activeChatSnapshot?.title ?? DEFAULT_CHAT_TITLE;
   const projectFiles = useMemo(() => flattenFileNodes(projectFileNodes), [projectFileNodes]);
@@ -1732,8 +1496,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setChangesExpanded(false);
     setExpandedTraceGroups(new Set());
     setExpandedTraceKeys(new Set());
-    setLiveProgress(DEFAULT_LIVE_PROGRESS_STATE);
-    setLastProgressAt(null);
     activityStartedAtRef.current = null;
   }, []);
 
@@ -1751,12 +1513,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     resetChatUiState();
     if (snapshot.isSending || snapshot.isStopping) {
       activityStartedAtRef.current = Date.now() - (snapshot.activityElapsedSeconds * 1000);
-      setLastProgressAt(Date.now());
-      setLiveProgress({
-        ...DEFAULT_LIVE_PROGRESS_STATE,
-        phase: 'thinking',
-        statusText: snapshot.activityLabel || 'Thinking',
-      });
     }
   }, [resetChatUiState]);
 
@@ -2203,8 +1959,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (!isWorking) {
       activityStartedAtRef.current = null;
       setActivityElapsedSeconds(0);
-      setLiveProgress(DEFAULT_LIVE_PROGRESS_STATE);
-      setLastProgressAt(null);
       return;
     }
 
@@ -2329,16 +2083,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       });
 
       if (activeChatIdRef.current === targetChat.id) {
-        setLastProgressAt(Date.now());
-        setLiveProgress((previous) => ({
-          phase: parsed.phase ?? previous.phase,
-          statusText: parsed.statusText ?? previous.statusText,
-          detailText: parsed.detailText ?? previous.detailText,
-          loop: parsed.loop ?? previous.loop,
-          toolIndex: parsed.toolIndex ?? previous.toolIndex,
-          toolCount: parsed.toolCount ?? previous.toolCount,
-          totalTokens: parsed.totalTokens ?? previous.totalTokens,
-        }));
         if (nextActivity) {
           setActivityLabel(nextActivity);
         }
@@ -2547,13 +2291,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (!activeChatId || !sessionId || !isSending) return;
     setIsStopping(true);
     setActivityLabel('Stopping');
-    setLastProgressAt(Date.now());
-    setLiveProgress({
-      ...DEFAULT_LIVE_PROGRESS_STATE,
-      phase: 'thinking',
-      statusText: 'Stopping',
-      detailText: 'Cancelling active run',
-    });
     const pendingId = activeChatSnapshot?.pendingAssistantId ?? null;
     updateChatSnapshot(activeChatId, (chat) => ({
       ...chat,
@@ -2653,13 +2390,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (activeChatIdRef.current === chatId) {
       setMessages((previous) => applySteerPendingState(previous));
       setActivityLabel('Steering');
-      setLastProgressAt(Date.now());
-      setLiveProgress({
-        ...DEFAULT_LIVE_PROGRESS_STATE,
-        phase: 'thinking',
-        statusText: 'Steering',
-        detailText: 'Applying latest user guidance',
-      });
       setError(null);
     }
     setInput('');
@@ -2766,13 +2496,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setIsSending(true);
     setError(null);
     setActivityLabel('Planning');
-    setLastProgressAt(Date.now());
-    setLiveProgress({
-      ...DEFAULT_LIVE_PROGRESS_STATE,
-      phase: 'thinking',
-      statusText: 'Planning',
-      detailText: 'Reviewing request and project context',
-    });
 
     try {
       let currentSessionId = sessionId;
@@ -2938,11 +2661,10 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const statusText = isSessionLoading
     ? 'Starting'
     : isWorking
-      ? `${activityLabel}${activityElapsedSeconds >= 8 ? ` ${activityElapsedSeconds}s` : ''}`
+      ? 'Working'
       : isReady
         ? 'Ready'
         : 'Idle';
-  const showStatusText = isSessionLoading || isWorking;
 
   return (
     <div className={`agent-chat-dock ${isMinimized ? 'minimized' : ''}`} style={{ height: `${isMinimized ? minimizedDockHeight : dockHeight}px`, maxHeight: '88vh' }}>
@@ -2981,9 +2703,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                 aria-label={`Status: ${statusText}`}
                 title={`Status: ${statusText}`}
               >
-                {(isSessionLoading || isWorking) && <Loader2 size={10} className="agent-tool-spin" />}
                 <span className="agent-chat-thread-dot" />
-                {showStatusText && <span className="agent-chat-thread-status-text">{statusText}</span>}
               </span>
             </div>
           </div>
@@ -3010,41 +2730,6 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           </button>
         </div>
       </div>
-
-      {!isMinimized && (isSessionLoading || isWorking) && (
-        <div className="agent-chat-working-strip" role="status" aria-live="polite">
-          <div
-            className="agent-chat-thoughts"
-            title={thinkingThoughts.join(' • ')}
-          >
-            <div className="agent-chat-thoughts-track">
-              {[...thinkingThoughts, ...thinkingThoughts].map((thought, index) => (
-                <span key={`thought-${index}`} className="agent-chat-thought-chip">
-                  {thought}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="agent-chat-thinking-proxy">
-            <span className="agent-chat-thinking-label">{thinkingMeterSignal.tokenText}</span>
-            <div
-              className="agent-chat-thinking-meter"
-              title={thinkingMeterSignal.isApproximate ? 'Estimated from live activity and elapsed time.' : 'Reported token usage.'}
-            >
-              <div
-                className={`agent-chat-thinking-meter-fill ${isProgressQuiet ? 'quiet' : 'live'}`}
-                style={{ width: `${thinkingMeterSignal.percent}%` }}
-              />
-            </div>
-            <span
-              className={`agent-chat-thinking-heartbeat ${isProgressQuiet ? 'quiet' : 'live'}`}
-              title={thinkingMeterSignal.description}
-            >
-              {isProgressQuiet ? `waiting ${progressSilenceSeconds}s` : 'live'}
-            </span>
-          </div>
-        </div>
-      )}
 
       {!isMinimized && (
         <div className={`agent-chat-shell ${isChatsPanelOpen ? 'chats-open' : ''}`}>

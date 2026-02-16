@@ -144,16 +144,12 @@
 }
 
 .agent-chat-thread-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
   background: currentColor;
-  opacity: 0.76;
+  opacity: 0.84;
   flex-shrink: 0;
-}
-
-.agent-chat-thread-status-text {
-  color: inherit;
 }
 
 .agent-chat-thread-status.idle {
@@ -169,7 +165,7 @@
 }
 
 .agent-chat-thread-status.working .agent-chat-thread-dot {
-  display: none;
+  animation: agent-chat-status-pulse 1.6s ease-in-out infinite;
 }
 
 .agent-chat-actions {
@@ -221,141 +217,23 @@
   border-bottom: 0;
 }
 
-.agent-chat-working-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px 7px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--agent-accent) 7%, transparent) 0%,
-      color-mix(in srgb, var(--bg-primary) 92%, transparent) 38%,
-      color-mix(in srgb, var(--bg-primary) 92%, transparent) 100%
-    );
-}
-
-.agent-chat-thoughts {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  mask-image: linear-gradient(90deg, transparent 0%, black 6%, black 94%, transparent 100%);
-}
-
-.agent-chat-thoughts-track {
-  width: max-content;
-  min-width: 100%;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  animation: agent-thought-marquee 16s linear infinite;
-}
-
-.agent-chat-thought-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--agent-accent) 23%, transparent);
-  background: color-mix(in srgb, var(--bg-secondary) 54%, transparent);
-  color: color-mix(in srgb, var(--text-secondary) 90%, var(--text-primary));
-  font-size: 9.5px;
-  font-weight: 560;
-  letter-spacing: 0.1px;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.agent-chat-thinking-proxy {
-  width: 134px;
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-}
-
-.agent-chat-thinking-label {
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.22px;
-  color: color-mix(in srgb, var(--text-muted) 82%, var(--text-secondary));
-  min-width: 20px;
-  text-align: right;
-}
-
-.agent-chat-thinking-meter {
-  position: relative;
-  width: 100%;
-  height: 5px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--border-subtle) 76%, transparent);
-}
-
-.agent-chat-thinking-meter-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: inherit;
-  transition: width 360ms ease;
-}
-
-.agent-chat-thinking-meter-fill.live {
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--agent-accent) 84%, var(--text-primary)) 0%,
-      color-mix(in srgb, var(--accent) 70%, var(--text-primary)) 58%,
-      color-mix(in srgb, white 26%, var(--agent-accent)) 100%
-    );
-  background-size: 180% 100%;
-  animation: agent-thinking-sweep 1.8s linear infinite;
-}
-
-.agent-chat-thinking-meter-fill.quiet {
-  background: color-mix(in srgb, var(--text-muted) 64%, var(--border-subtle));
-  opacity: 0.72;
-}
-
-.agent-chat-thinking-heartbeat {
-  font-size: 9px;
-  font-weight: 620;
-  letter-spacing: 0.12px;
-  text-transform: lowercase;
-  white-space: nowrap;
-}
-
-.agent-chat-thinking-heartbeat.live {
-  color: color-mix(in srgb, var(--success) 78%, var(--text-secondary));
-}
-
-.agent-chat-thinking-heartbeat.quiet {
-  color: color-mix(in srgb, var(--warning) 66%, var(--text-secondary));
-}
-
-@keyframes agent-thought-marquee {
-  from {
-    transform: translateX(0);
+@keyframes agent-chat-status-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.5;
   }
-  to {
-    transform: translateX(-50%);
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
   }
-}
-
-@keyframes agent-thinking-sweep {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: 0 0;
+  100% {
+    transform: scale(0.92);
+    opacity: 0.5;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-chat-thoughts-track,
-  .agent-chat-thinking-meter-fill.live {
+  .agent-chat-thread-status.working .agent-chat-thread-dot {
     animation: none;
   }
 }
