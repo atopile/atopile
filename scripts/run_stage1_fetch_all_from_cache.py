@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import sqlite3
 from math import ceil
@@ -120,6 +121,24 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args.cache_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = args.cache_dir / "fetch" / "all_from_cache.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_path.open("w", encoding="utf-8")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print(
+            json.dumps(
+                {
+                    "start": False,
+                    "error": "all_from_cache_already_running",
+                    "lock_path": str(lock_path),
+                },
+                ensure_ascii=True,
+            )
+        )
+        return 2
+
     query = (
         "select lcsc, datasheet from components "
         f"where {args.where} "
@@ -142,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "start": True,
+                "lock_path": str(lock_path),
                 "source_rows_total": total_rows,
                 "chunks_total": total_chunks,
                 "chunk_size": args.chunk_size,
