@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--workers",
         type=int,
-        default=8,
+        default=32,
         help="Parallel workers for per-part artifact fetch.",
     )
     parser.add_argument(
