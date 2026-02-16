@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { sendAction, sendActionWithResponse } from '../../api/websocket';
+import { api } from '../../api/client';
 import { postMessage, onExtensionMessage, postToExtension, isVsCodeWebview } from '../../api/vscodeApi';
 import type { Project, BOMData, LcscPartData } from '../../types/build';
 import type {
@@ -158,16 +159,6 @@ function normalizeAutolayoutJob(raw: Record<string, unknown>): AutolayoutJob {
           : null,
     candidates,
   };
-}
-
-function getActionError(result: unknown, fallback: string): string {
-  if (typeof result === 'object' && result !== null) {
-    const maybeError = (result as { error?: unknown }).error;
-    if (typeof maybeError === 'string' && maybeError.length > 0) {
-      return maybeError;
-    }
-  }
-  return fallback;
 }
 
 export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps) {
@@ -648,18 +639,9 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
 
   const handleRefreshAutolayoutCandidates = useCallback(
     async (jobId: string, refresh = true) => {
-      const response = await sendActionWithResponse('listAutolayoutCandidates', {
-        jobId,
-        refresh,
-      });
-
-      if (!response.result?.success) {
-        throw new Error(getActionError(response.result, 'Failed to fetch autolayout candidates'));
-      }
-
-      const result = response.result as { candidates?: unknown[] } | undefined;
-      const rawCandidates = Array.isArray(result?.candidates)
-        ? (result.candidates as Record<string, unknown>[])
+      const response = await api.autolayout.listCandidates(jobId, refresh);
+      const rawCandidates = Array.isArray(response.candidates)
+        ? (response.candidates as Record<string, unknown>[])
         : [];
       const candidates = rawCandidates
         .map((candidate) => normalizeAutolayoutCandidate(candidate))
@@ -682,16 +664,8 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
     async (refresh = true) => {
       if (!autolayoutJob) return null;
 
-      const response = await sendActionWithResponse('getAutolayoutStatus', {
-        jobId: autolayoutJob.job_id,
-        refresh,
-      });
-
-      if (!response.result?.success) {
-        throw new Error(getActionError(response.result, 'Failed to refresh autolayout status'));
-      }
-
-      const jobPayload = (response.result as { job?: Record<string, unknown> }).job;
+      const response = await api.autolayout.getJob(autolayoutJob.job_id, refresh);
+      const jobPayload = response.job;
       if (!jobPayload) {
         throw new Error('Autolayout response missing job payload');
       }
@@ -716,16 +690,9 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
       setAutolayoutError(null);
 
       try {
-        const response = await sendActionWithResponse('listAutolayoutJobs', {
-          projectRoot: selectedBuild.projectRoot,
-        });
-        if (!response.result?.success) {
-          throw new Error(getActionError(response.result, 'Failed to load autolayout jobs'));
-        }
-
-        const result = response.result as { jobs?: unknown[] } | undefined;
-        const rawJobs = Array.isArray(result?.jobs)
-          ? (result.jobs as Record<string, unknown>[])
+        const response = await api.autolayout.listJobs(selectedBuild.projectRoot);
+        const rawJobs = Array.isArray(response.jobs)
+          ? (response.jobs as Record<string, unknown>[])
           : [];
         const jobs = rawJobs
           .map((job) => normalizeAutolayoutJob(job))
