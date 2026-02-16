@@ -46,6 +46,73 @@ function scenePathKey(path: string[]): string {
   return path.length === 0 ? '__root__' : path.join('/');
 }
 
+type SelectionItemDims = Map<string, { w: number; h: number }>;
+type SchematicStoreState = ReturnType<typeof useSchematicStore.getState>;
+
+function hasInteractiveMeshHit(
+  canvas: HTMLCanvasElement,
+  camera: THREE.Camera,
+  scene: THREE.Scene,
+  clientX: number,
+  clientY: number,
+  ndc: THREE.Vector2,
+  raycaster: THREE.Raycaster,
+): boolean {
+  const rect = canvas.getBoundingClientRect();
+  ndc.set(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(scene.children, true);
+  return hits.some(
+    (h) => h.object.type === 'Mesh' && !(h.object as any).__nonInteractive,
+  );
+}
+
+function buildSelectionItemDims(store: SchematicStoreState): SelectionItemDims {
+  const itemDims: SelectionItemDims = new Map();
+  if (!store.schematic) return itemDims;
+
+  const root = getRootSheet(store.schematic);
+  const sheet = resolveSheet(root, store.currentPath);
+  if (!sheet) return itemDims;
+
+  for (const comp of sheet.components) {
+    itemDims.set(comp.id, { w: comp.bodyWidth, h: comp.bodyHeight });
+  }
+  for (const mod of sheet.modules) {
+    const size = getModuleRenderSize(mod);
+    itemDims.set(mod.id, { w: size.width, h: size.height });
+  }
+  for (const pp of derivePowerPorts(sheet)) {
+    itemDims.set(pp.id, { w: pp.bodyWidth, h: pp.bodyHeight });
+  }
+
+  if (store.currentPath.length === 0) return itemDims;
+
+  const parentPath = store.currentPath.slice(0, -1);
+  const parentSheet = resolveSheet(root, parentPath);
+  const modId = store.currentPath[store.currentPath.length - 1];
+  const mod = parentSheet?.modules.find((m) => m.id === modId);
+  if (!mod) return itemDims;
+
+  const scopedSignalOrders: Record<string, string[]> = {};
+  const prefix = (store.currentPath.length === 0
+    ? '__root__'
+    : store.currentPath.join('/')) + ':';
+  for (const [k, order] of Object.entries(store.portSignalOrders)) {
+    if (!k.startsWith(prefix)) continue;
+    scopedSignalOrders[k.slice(prefix.length)] = order;
+  }
+  const ports = derivePortsFromModule(mod, scopedSignalOrders);
+  for (const port of ports) {
+    itemDims.set(port.id, { w: port.bodyWidth, h: port.bodyHeight });
+  }
+
+  return itemDims;
+}
+
 // ── Inner scene (has access to useThree) ───────────────────────
 
 function SceneContent({
@@ -445,18 +512,16 @@ export function SchematicScene() {
         const camera = cameraRef.current;
         const scene = sceneRef.current;
         if (canvas && camera && scene) {
-          const rect = canvas.getBoundingClientRect();
-          selectNdcRef.current.set(
-            ((e.clientX - rect.left) / rect.width) * 2 - 1,
-            -((e.clientY - rect.top) / rect.height) * 2 + 1,
+          const interactiveHit = hasInteractiveMeshHit(
+            canvas,
+            camera,
+            scene,
+            e.clientX,
+            e.clientY,
+            selectNdcRef.current,
+            selectRaycasterRef.current,
           );
-          selectRaycasterRef.current.setFromCamera(selectNdcRef.current, camera);
-          const hits = selectRaycasterRef.current.intersectObjects(scene.children, true);
-          // Filter out non-interactive meshes (grids, lines, etc.)
-          const interactiveHit = hits.some(
-            (h) => h.object.type === 'Mesh' && !(h.object as any).__nonInteractive,
-          );
-          if (interactiveHit) return; // Let the R3F event system handle it
+          if (interactiveHit) return;
         }
       }
 
@@ -529,44 +594,7 @@ export function SchematicScene() {
           ? '__root__'
           : store.currentPath.join('/');
       const prefix = pk + ':';
-      const itemDims = new Map<string, { w: number; h: number }>();
-      if (store.schematic) {
-        const root = getRootSheet(store.schematic);
-        const sheet = resolveSheet(root, store.currentPath);
-        if (sheet) {
-          for (const comp of sheet.components) {
-            itemDims.set(comp.id, { w: comp.bodyWidth, h: comp.bodyHeight });
-          }
-          for (const mod of sheet.modules) {
-            const size = getModuleRenderSize(mod);
-            itemDims.set(mod.id, { w: size.width, h: size.height });
-          }
-          const pports = derivePowerPorts(sheet);
-          for (const pp of pports) {
-            itemDims.set(pp.id, { w: pp.bodyWidth, h: pp.bodyHeight });
-          }
-          if (store.currentPath.length > 0) {
-            const parentPath = store.currentPath.slice(0, -1);
-            const parentSheet = resolveSheet(root, parentPath);
-            const modId = store.currentPath[store.currentPath.length - 1];
-            const mod = parentSheet?.modules.find((m) => m.id === modId);
-            if (mod) {
-              const scopedSignalOrders: Record<string, string[]> = {};
-              const prefix = (store.currentPath.length === 0
-                ? '__root__'
-                : store.currentPath.join('/')) + ':';
-              for (const [k, order] of Object.entries(store.portSignalOrders)) {
-                if (!k.startsWith(prefix)) continue;
-                scopedSignalOrders[k.slice(prefix.length)] = order;
-              }
-              const ports = derivePortsFromModule(mod, scopedSignalOrders);
-              for (const port of ports) {
-                itemDims.set(port.id, { w: port.bodyWidth, h: port.bodyHeight });
-              }
-            }
-          }
-        }
-      }
+      const itemDims = buildSelectionItemDims(store);
 
       const matchIds: string[] = [];
       for (const [key, pos] of Object.entries(store.positions)) {
