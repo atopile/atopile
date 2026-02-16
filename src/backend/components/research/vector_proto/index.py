@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -58,6 +59,11 @@ class VectorStore:
         self.vectors = vectors.astype(np.float32, copy=False)
         self.embedding_backend = embedding_backend
         self._id_to_idx = {record.lcsc_id: idx for idx, record in enumerate(records)}
+        self._token_pattern = re.compile(r"[a-z0-9][a-z0-9._+\-/]*")
+        self._doc_tokens: list[set[str]] = []
+        self._token_doc_freq: dict[str, int] = {}
+        self._inverted_index: dict[str, list[int]] = {}
+        self._build_lexical_index()
 
     @property
     def dimension(self) -> int:
@@ -113,6 +119,63 @@ class VectorStore:
             return None
         return int(match.group(1))
 
+    def _normalize_token(self, token: str) -> str:
+        token = token.lower()
+        if len(token) > 4 and token.endswith("ies"):
+            return token[:-3] + "y"
+        if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+            return token[:-1]
+        return token
+
+    def _tokenize_normalized(self, text: str) -> set[str]:
+        return {
+            self._normalize_token(token)
+            for token in self._token_pattern.findall(text.lower())
+        }
+
+    def _build_lexical_index(self) -> None:
+        doc_freq: dict[str, int] = {}
+        inverted: dict[str, list[int]] = {}
+        doc_tokens: list[set[str]] = []
+        for idx, record in enumerate(self.records):
+            tokens = self._tokenize_normalized(record.text)
+            doc_tokens.append(tokens)
+            for token in tokens:
+                doc_freq[token] = doc_freq.get(token, 0) + 1
+                inverted.setdefault(token, []).append(idx)
+        self._doc_tokens = doc_tokens
+        self._token_doc_freq = doc_freq
+        self._inverted_index = inverted
+
+    def _idf(self, token: str) -> float:
+        df = self._token_doc_freq.get(token, 0)
+        n = max(len(self.records), 1)
+        return math.log((n + 1.0) / (df + 1.0)) + 1.0
+
+    def _lexical_scores(
+        self,
+        *,
+        query_tokens: set[str],
+        top_k: int,
+    ) -> tuple[np.ndarray, dict[int, float]]:
+        if not query_tokens:
+            return np.array([], dtype=np.int32), {}
+        query_weight = sum(self._idf(token) for token in query_tokens)
+        if query_weight <= 0:
+            return np.array([], dtype=np.int32), {}
+        scores: dict[int, float] = {}
+        for token in query_tokens:
+            idf = self._idf(token)
+            for idx in self._inverted_index.get(token, []):
+                scores[idx] = scores.get(idx, 0.0) + idf
+        for idx, score in list(scores.items()):
+            scores[idx] = score / query_weight
+        if not scores:
+            return np.array([], dtype=np.int32), {}
+        ordered = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        ids = np.array([idx for idx, _score in ordered[:top_k]], dtype=np.int32)
+        return ids, scores
+
     def _boost(
         self,
         *,
@@ -152,6 +215,9 @@ class VectorStore:
         prefer_basic: bool = True,
         apply_boosts: bool = True,
         apply_exact_shortcuts: bool = True,
+        apply_hybrid: bool = False,
+        dense_weight: float = 0.75,
+        lexical_weight: float = 0.25,
         candidate_pool: int = 400,
     ) -> list[SearchResult]:
         if not self.records:
@@ -160,29 +226,51 @@ class VectorStore:
         q_vec = embedder.embed_texts([query])[0]
         cosine = np.dot(self.vectors, q_vec).astype(np.float32)
         pool = min(max(limit * 5, candidate_pool), len(self.records))
-        idx = np.argpartition(cosine, -pool)[-pool:]
-        idx = idx[np.argsort(cosine[idx])[::-1]]
+        dense_idx = np.argpartition(cosine, -pool)[-pool:]
+        dense_idx = dense_idx[np.argsort(cosine[dense_idx])[::-1]]
 
         query_lower = query.lower()
-        query_tokens = set(re.findall(r"[a-z0-9._+\-/]+", query_lower))
+        query_tokens = self._tokenize_normalized(query_lower)
+        lexical_scores: dict[int, float] = {}
+        lexical_idx = np.array([], dtype=np.int32)
+        if apply_hybrid:
+            lexical_idx, lexical_scores = self._lexical_scores(
+                query_tokens=query_tokens,
+                top_k=pool,
+            )
+        if len(lexical_idx):
+            idx = np.unique(np.concatenate([dense_idx, lexical_idx]))
+            idx = idx[np.argsort(cosine[idx])[::-1]]
+        else:
+            idx = dense_idx
+
         boosted: list[tuple[float, float, list[str], CorpusRecord]] = []
         for i in idx:
             record = self.records[int(i)]
             if not self._match_filters(record, filters):
                 continue
+            lexical_score = float(lexical_scores.get(int(i), 0.0))
+            dense_score = float(cosine[int(i)])
+            base_score = (
+                dense_weight * dense_score + lexical_weight * lexical_score
+                if apply_hybrid
+                else dense_score
+            )
             if apply_boosts:
                 score, reasons = self._boost(
                     query_lower=query_lower,
                     query_tokens=query_tokens,
                     record=record,
-                    cosine=float(cosine[int(i)]),
+                    cosine=base_score,
                     prefer_in_stock=prefer_in_stock,
                     prefer_basic=prefer_basic,
                 )
             else:
-                score = float(cosine[int(i)])
-                reasons = [f"semantic={score:.3f}"]
-            boosted.append((score, float(cosine[int(i)]), reasons, record))
+                score = base_score
+                reasons = [f"semantic={dense_score:.3f}"]
+                if apply_hybrid:
+                    reasons.append(f"lexical={lexical_score:.3f}")
+            boosted.append((score, dense_score, reasons, record))
 
         if apply_exact_shortcuts:
             lcsc_hint = self._extract_lcsc_hint(query)

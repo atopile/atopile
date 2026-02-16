@@ -381,7 +381,7 @@ export const api = {
             body: JSON.stringify({
               query,
               limit: safeLimit,
-              raw_vector_only: true,
+              search_mode: 'hybrid',
               in_stock_only: true,
             }),
           }

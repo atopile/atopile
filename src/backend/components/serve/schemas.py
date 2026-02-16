@@ -92,7 +92,8 @@ class ComponentsSearchRequest(BaseModel):
     component_type: str | None = None
     package: str | None = None
     in_stock_only: bool = False
-    raw_vector_only: bool = True
+    search_mode: str = Field(default="hybrid")
+    raw_vector_only: bool | None = None
     prefer_in_stock: bool = False
     prefer_basic: bool = False
 

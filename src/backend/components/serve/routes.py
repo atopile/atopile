@@ -153,6 +153,11 @@ async def search_components(
             ),
         )
     try:
+        search_mode = (
+            "raw_vector"
+            if payload.raw_vector_only is True
+            else payload.search_mode
+        )
         results = await asyncio.to_thread(
             services.vector_search.search,
             query=payload.query,
@@ -162,7 +167,7 @@ async def search_components(
             in_stock_only=payload.in_stock_only,
             prefer_in_stock=payload.prefer_in_stock,
             prefer_basic=payload.prefer_basic,
-            raw_vector_only=payload.raw_vector_only,
+            search_mode=search_mode,
         )
     except Exception as exc:
         log_event(
@@ -199,7 +204,11 @@ async def search_components(
         component_type=payload.component_type,
         package=payload.package,
         in_stock_only=payload.in_stock_only,
-        raw_vector_only=payload.raw_vector_only,
+        search_mode=(
+            "raw_vector"
+            if payload.raw_vector_only is True
+            else payload.search_mode
+        ),
         result_count=len(response_results),
         lookup_ms=_duration_ms(started_at),
     )

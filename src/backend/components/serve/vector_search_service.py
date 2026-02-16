@@ -56,13 +56,16 @@ class PrototypeVectorSearchService:
         in_stock_only: bool,
         prefer_in_stock: bool,
         prefer_basic: bool,
-        raw_vector_only: bool,
+        search_mode: str,
     ):
         filters = SearchFilters(
             component_type=component_type,
             package=package,
             in_stock_only=in_stock_only,
         )
+        mode = (search_mode or "hybrid").strip().lower()
+        if mode not in {"hybrid", "raw_vector"}:
+            mode = "hybrid"
         return self._store.search(
             query=query,
             embedder=self._embedder,
@@ -70,6 +73,7 @@ class PrototypeVectorSearchService:
             filters=filters,
             prefer_in_stock=prefer_in_stock,
             prefer_basic=prefer_basic,
-            apply_boosts=not raw_vector_only,
-            apply_exact_shortcuts=not raw_vector_only,
+            apply_boosts=False,
+            apply_exact_shortcuts=False,
+            apply_hybrid=mode == "hybrid",
         )

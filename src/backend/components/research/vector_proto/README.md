@@ -85,6 +85,19 @@ curl -sS http://127.0.0.1:8079/v1/components/search \
   }'
 ```
 
+Hybrid mode (recommended for sidebar UX):
+
+```bash
+curl -sS http://127.0.0.1:8079/v1/components/search \
+  -H 'content-type: application/json' \
+  -d '{
+    "query":"pressure sensor",
+    "limit":20,
+    "search_mode":"hybrid",
+    "in_stock_only":true
+  }'
+```
+
 ## Optional Semantic Embeddings
 
 If you install `sentence-transformers`, switch backend:
