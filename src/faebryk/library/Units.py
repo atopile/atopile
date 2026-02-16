@@ -95,6 +95,9 @@ class UnitNotFoundError(UnitException):
 class UnitExpressionError(UnitException): ...
 
 
+class UnitSerializationError(UnitException): ...
+
+
 @dataclass(frozen=True)
 class BasisVector(DataClassJsonMixin):
     ampere: int = field(default=0, metadata={"display_symbol": "A"})
@@ -859,18 +862,9 @@ class is_unit(fabll.Node):
             # Fallback to first symbol if no lowercase name found
             return symbols[0]
 
-        # For anonymous/complex units, return the full structure
-        out = {}
-        basis_vector = is_unit._extract_basis_vector(self)
-        multiplier = is_unit._extract_multiplier(self)
-        offset = is_unit._extract_offset(self)
-
-        out["symbols"] = symbols
-        out["basis_vector"] = basis_vector.to_dict()
-        out["multiplier"] = multiplier
-        out["offset"] = offset
-
-        return out
+        raise UnitSerializationError(
+            f"Unable to serialize unit with no symbols: {self}"
+        )
 
 
 class is_si_unit(fabll.Node):
