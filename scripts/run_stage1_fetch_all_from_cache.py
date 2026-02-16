@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from math import ceil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -125,10 +126,18 @@ def main(argv: list[str] | None = None) -> int:
         "order by lcsc"
     )
 
+    with sqlite3.connect(args.source_sqlite) as conn:
+        total_rows = int(
+            conn.execute(
+                f"select count(*) from components where {args.where}"
+            ).fetchone()[0]
+        )
+
     total_source = 0
     total_success = 0
     total_failures = 0
     chunk_index = 0
+    total_chunks = max(1, ceil(total_rows / args.chunk_size))
 
     with sqlite3.connect(args.source_sqlite) as conn:
         cur = conn.cursor()
@@ -162,11 +171,17 @@ def main(argv: list[str] | None = None) -> int:
             chunk_failures = int(report.get("failure_count", 0))
             total_success += chunk_success
             total_failures += chunk_failures
+            pct = (100.0 * total_source / total_rows) if total_rows else 100.0
             print(
                 json.dumps(
                     {
                         "chunk": chunk_index,
+                        "chunks_total": total_chunks,
+                        "chunks_progress": f"{chunk_index}/{total_chunks}",
                         "source_rows": len(rows),
+                        "source_rows_total": total_rows,
+                        "source_rows_progress": f"{total_source}/{total_rows}",
+                        "source_rows_progress_pct": round(pct, 3),
                         "success_parts": chunk_success,
                         "failures": chunk_failures,
                         "skipped_already_success": report.get(
@@ -183,7 +198,9 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "done": True,
                 "chunks": chunk_index,
+                "chunks_total": total_chunks,
                 "source_rows_seen": total_source,
+                "source_rows_total": total_rows,
                 "total_success_parts_in_runs": total_success,
                 "total_failures_in_runs": total_failures,
                 "state_db": str(args.cache_dir / "fetch" / "roundtrip_state.sqlite3"),
