@@ -3143,14 +3143,20 @@ def export_schematic_json(
     # Phase 8: Write output
     # ═══════════════════════════════════════════════════════════════
 
-    # Preserve existing positions from the output file (if any)
+    # Preserve existing viewer state from the output file (if any)
     existing_positions: dict = {}
+    existing_port_signal_orders: dict = {}
+    existing_route_overrides: dict = {}
     if json_path.exists():
         try:
             import json as _json
 
             existing_data = _json.loads(json_path.read_text(encoding="utf-8"))
             existing_positions = existing_data.get("positions", {})
+            if isinstance(existing_data.get("portSignalOrders"), dict):
+                existing_port_signal_orders = existing_data["portSignalOrders"]
+            if isinstance(existing_data.get("routeOverrides"), dict):
+                existing_route_overrides = existing_data["routeOverrides"]
         except Exception:
             pass  # file corrupt or not JSON — start fresh
 
@@ -3169,6 +3175,8 @@ def export_schematic_json(
         "version": "2.0",
         "root": root_sheet,
         "positions": existing_positions,
+        "portSignalOrders": existing_port_signal_orders,
+        "routeOverrides": existing_route_overrides,
     }
 
     write_json(result, json_path)
