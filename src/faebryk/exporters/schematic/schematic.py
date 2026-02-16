@@ -2367,6 +2367,68 @@ def _load_existing_schematic_viewer_state(
     return positions, port_signal_orders, route_overrides
 
 
+def _collect_raw_nets(
+    app: fabll.Node,
+    pad_to_comp: dict[fabll.Node, str],
+    pad_to_number: dict[fabll.Node, str],
+) -> list[dict]:
+    """Collect and normalize raw net records from the graph."""
+    raw_nets: list[dict] = []
+
+    try:
+        all_fbrk_nets = list(F.Net.bind_typegraph(app.tg).get_instances(app.g))
+    except Exception:
+        all_fbrk_nets = []
+
+    for fbrk_net in all_fbrk_nets:
+        try:
+            net_name = None
+            if fbrk_net.has_trait(F.has_net_name):
+                try:
+                    net_name = fbrk_net.get_trait(F.has_net_name).get_name()
+                except Exception:
+                    pass
+
+            if not net_name:
+                net_name = strip_root_hex(fbrk_net.get_full_name())
+
+            net_pins: list[dict] = []
+            try:
+                connected_pads = fbrk_net.get_connected_pads()
+                for pad in connected_pads:
+                    if pad in pad_to_comp:
+                        net_pins.append(
+                            {
+                                "componentId": pad_to_comp[pad],
+                                "pinNumber": pad_to_number.get(pad, "?"),
+                            }
+                        )
+            except Exception:
+                continue
+
+            if len(net_pins) < 1:
+                continue
+
+            unique_pins = _dedup_pins(net_pins)
+            if len(unique_pins) < 1:
+                continue
+
+            net_id = re.sub(r"[^a-zA-Z0-9_]", "_", net_name)
+            raw_nets.append(
+                {
+                    "id": net_id,
+                    "name": net_name,
+                    "type": _net_type(net_name),
+                    "pins": unique_pins,
+                }
+            )
+        except Exception as e:
+            logger.debug("Error processing net: %s", e, exc_info=True)
+            continue
+
+    return raw_nets
+
+
 # ── Main export function ────────────────────────────────────────
 
 
@@ -2898,61 +2960,7 @@ def export_schematic_json(
     # Phase 5: Collect all nets
     # ═══════════════════════════════════════════════════════════════
 
-    raw_nets: list[dict] = []
-
-    try:
-        all_fbrk_nets = list(F.Net.bind_typegraph(app.tg).get_instances(app.g))
-    except Exception:
-        all_fbrk_nets = []
-
-    for fbrk_net in all_fbrk_nets:
-        try:
-            # Net names are assigned by the build pipeline (attach_net_names)
-            # via the has_net_name trait — use get_name(), not get_net_name()
-            net_name = None
-            if fbrk_net.has_trait(F.has_net_name):
-                try:
-                    net_name = fbrk_net.get_trait(F.has_net_name).get_name()
-                except Exception:
-                    pass
-
-            if not net_name:
-                net_name = strip_root_hex(fbrk_net.get_full_name())
-
-            net_pins: list[dict] = []
-            try:
-                connected_pads = fbrk_net.get_connected_pads()
-                for pad in connected_pads:
-                    if pad in pad_to_comp:
-                        net_pins.append(
-                            {
-                                "componentId": pad_to_comp[pad],
-                                "pinNumber": pad_to_number.get(pad, "?"),
-                            }
-                        )
-            except Exception:
-                continue
-
-            if len(net_pins) < 1:
-                continue
-
-            unique_pins = _dedup_pins(net_pins)
-            if len(unique_pins) < 1:
-                continue
-            net_id = re.sub(r"[^a-zA-Z0-9_]", "_", net_name)
-
-            raw_nets.append(
-                {
-                    "id": net_id,
-                    "name": net_name,
-                    "type": _net_type(net_name),
-                    "pins": unique_pins,
-                }
-            )
-
-        except Exception as e:
-            logger.debug("Error processing net: %s", e, exc_info=True)
-            continue
+    raw_nets = _collect_raw_nets(app, pad_to_comp, pad_to_number)
 
     # ═══════════════════════════════════════════════════════════════
     # Phase 6: Scope nets to hierarchy levels
