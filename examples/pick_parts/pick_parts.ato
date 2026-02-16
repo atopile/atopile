@@ -1,92 +1,78 @@
 #pragma experiment("BRIDGE_CONNECT")
-import ElectricPower
-import LED
 import Resistor
 import Capacitor
 import CapacitorPolarized
 import Inductor
 import Diode
+import LED
 import BJT
 import MOSFET
+import Crystal
+import FerriteBead
+import LDO
 
 module App:
-    # virtual power supply rail shared by all demo branches
-    # power = new ElectricPower
+    # Demonstrates all currently pickable component types using parameter constraints.
 
-    # # Demo all currently pickable component types using parametric picking
-    # resistor = new Resistor
-    # resistor.resistance = 10kohm +/- 10%
-    # resistor.max_power = 100mW +/- 50%
-    # resistor.package = "R0603"
+    resistor = new Resistor
+    resistor.resistance = 10kohm +/- 10%
+    resistor.max_power = 100mW +/- 50%
+    resistor.package = "R0603"
 
-    # capacitor = new Capacitor
-    # capacitor.capacitance = 100nF +/- 10%
-    # capacitor.max_voltage = 16V +/- 50%
-    # capacitor.package = "C0603"
+    capacitor = new Capacitor
+    capacitor.capacitance = 100nF +/- 10%
+    capacitor.max_voltage = 16V +/- 50%
+    capacitor.package = "C0603"
 
-    # capacitor_polarized = new CapacitorPolarized
-    # capacitor_polarized.capacitance = 10uF +/- 20%
-    # capacitor_polarized.max_voltage = 16V +/- 50%
+    capacitor_polarized = new CapacitorPolarized
+    capacitor_polarized.capacitance = 10uF +/- 20%
+    capacitor_polarized.max_voltage = 16V +/- 50%
+    capacitor_polarized.package = "C1206"
 
-    # inductor = new Inductor
-    # inductor.inductance = 10uH +/- 20%
-    # inductor.max_current = 500mA +/- 50%
+    inductor = new Inductor
+    inductor.inductance = 10uH +/- 20%
+    inductor.max_current = 500mA +/- 50%
+    inductor.package = "L0805"
 
-    # diode = new Diode
-    # diode.forward_voltage = 0.7V +/- 20%
-    # diode.max_current = 200mA +/- 50%
-    # diode.reverse_working_voltage = 20V +/- 50%
+    diode = new Diode
+    diode.forward_voltage = 0.7V +/- 20%
+    diode.max_current = 200mA +/- 50%
+    diode.reverse_working_voltage = 20V +/- 50%
+    diode.package = "SOD-123"
 
-    # led = new LED
-    # led.forward_voltage = 2.0V +/- 20%
-    # led.max_current = 20mA +/- 50%
-    # led.color = "RED"
+    led = new LED
+    led.forward_voltage = 2.0V +/- 20%
+    led.max_current = 20mA +/- 50%
+    led.color = "RED"
+    led.package = "LED0603"
 
-    # bjt = new BJT
-    # bjt.max_collector_emitter_voltage = 40V +/- 50%
-    # bjt.max_collector_current = 100mA +/- 50%
+    bjt = new BJT
+    bjt.max_collector_emitter_voltage = 40V +/- 50%
+    bjt.max_collector_current = 100mA +/- 50%
+    bjt.dc_current_gain = 100 +/- 50%
+    bjt.package = "SOT-23"
 
-    # mosfet = new MOSFET
-    # mosfet.max_drain_source_voltage = 20V +/- 50%
-    # mosfet.max_continuous_drain_current = 500mA +/- 50%
-    # mosfet.on_resistance = 200mohm +/- 50%
-
-    # # helper passives for LED / transistor demo branches
-    # led_resistor = new Resistor
-    # led_resistor.resistance = 1kohm +/- 20%
-    # led_resistor.package = "R0402"
-
-    # bjt_collector_resistor = new Resistor
-    # bjt_collector_resistor.resistance = 1kohm +/- 20%
-    # bjt_collector_resistor.package = "R0402"
-
-    # bjt_base_resistor = new Resistor
-    # bjt_base_resistor.resistance = 10kohm +/- 20%
-    # bjt_base_resistor.package = "R0402"
-
-    # mosfet_load_resistor = new Resistor
-    # mosfet_load_resistor.resistance = 1kohm +/- 20%
-    # mosfet_load_resistor.package = "R0402"
-
-    # mosfet_gate_resistor = new Resistor
-    # mosfet_gate_resistor.resistance = 10kohm +/- 20%
-    # mosfet_gate_resistor.package = "R0402"
+    mosfet = new MOSFET
+    mosfet.max_drain_source_voltage = 20V +/- 50%
+    mosfet.max_continuous_drain_current = 500mA +/- 50%
+    mosfet.on_resistance = 200mohm +/- 50%
+    mosfet.package = "SOT-23"
 
     crystal = new Crystal
     crystal.frequency = 10MHz +/- 20%
+    crystal.frequency_tolerance = 30ppm +/- 50%
     crystal.load_capacitance = 18pF +/- 30%
+    crystal.package = "SMD-3225_4P"
 
-    # power.hv ~> resistor ~> diode ~> power.lv
-    # power.hv ~> capacitor ~> power.lv
-    # power.hv ~ capacitor_polarized.anode
-    # power.lv ~ capacitor_polarized.cathode
-    # power.hv ~> inductor ~> power.lv
-    # power.hv ~> led_resistor ~> led ~> power.lv
+    ferrite_bead = new FerriteBead
+    ferrite_bead.impedance_at_frequency = 120ohm +/- 50%
+    ferrite_bead.current_rating = 1A +/- 50%
+    ferrite_bead.dc_resistance = 100mohm +/- 50%
+    ferrite_bead.package = "L0603"
 
-    # power.hv ~> bjt_collector_resistor ~> bjt.collector
-    # power.hv ~> bjt_base_resistor ~> bjt.base
-    # bjt.emitter ~ power.lv
-
-    # power.hv ~> mosfet_load_resistor ~> mosfet.drain
-    # power.hv ~> mosfet_gate_resistor ~> mosfet.gate
-    # mosfet.source ~ power.lv
+    ldo = new LDO
+    ldo.output_voltage = 3.3V +/- 20%
+    ldo.max_input_voltage = 6V +/- 50%
+    ldo.output_current = 200mA +/- 50%
+    ldo.dropout_voltage = 300mV +/- 50%
+    ldo.package = "SOT-23-5"
