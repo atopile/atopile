@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Files, Package, Cpu, Library, Eye, SlidersHorizontal, ClipboardList } from 'lucide-react';
+import { Files, Package, Cpu, Library, Eye, SlidersHorizontal, ClipboardList, type LucideIcon } from 'lucide-react';
 import { ActiveProjectPanel, BuildQueueItem } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
@@ -31,6 +31,23 @@ import {
 import { ManufacturingPanel } from './manufacturing';
 import './Sidebar.css';
 import '../styles.css';
+
+type SidebarTab = 'files' | 'views' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom';
+
+const SIDEBAR_TABS: Array<{
+  id: SidebarTab;
+  tooltip: string;
+  label: string;
+  Icon: LucideIcon;
+}> = [
+  { id: 'files', tooltip: 'Files', label: 'Files', Icon: Files },
+  { id: 'packages', tooltip: 'Packages', label: 'Packages', Icon: Package },
+  { id: 'parts', tooltip: 'Parts', label: 'Parts', Icon: Cpu },
+  { id: 'stdlib', tooltip: 'Standard Library', label: 'Lib', Icon: Library },
+  { id: 'views', tooltip: 'Views', label: 'Views', Icon: Eye },
+  { id: 'parameters', tooltip: 'Parameters', label: 'Params', Icon: SlidersHorizontal },
+  { id: 'bom', tooltip: 'Bill of Materials', label: 'BOM', Icon: ClipboardList },
+];
 
 // Send action to backend via WebSocket (no VS Code dependency)
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -86,7 +103,7 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'views' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
+  const [activeTab, setActiveTab] = useState<SidebarTab>('files');
 
   // Build queue panel state
   const [buildQueueCollapsed, setBuildQueueCollapsed] = useState(false);
@@ -369,6 +386,77 @@ export function Sidebar() {
     }
   }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
+  const renderActiveTabPanel = () => {
+    switch (activeTab) {
+      case 'files':
+        return <FileExplorerPanel projectRoot={selectedProjectRoot} />;
+      case 'packages':
+        return (
+          <PackagesPanel
+            packages={packages || []}
+            installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
+            selectedProjectRoot={selectedProjectRoot}
+            installError={installError}
+            onOpenPackageDetail={handlers.handleOpenPackageDetail}
+            isExpanded
+          />
+        );
+      case 'parts':
+        return (
+          <PartsSearchPanel
+            selectedProjectRoot={selectedProjectRoot}
+            onOpenPartDetail={handlers.handleOpenPartDetail}
+            isExpanded
+          />
+        );
+      case 'stdlib':
+        return (
+          <StandardLibraryPanel
+            items={stdlibItems}
+            isLoading={isLoadingStdlib}
+            onRefresh={handleRefreshStdlib}
+            isExpanded
+          />
+        );
+      case 'views':
+        return (
+          <ViewsPanel
+            activeFilePath={activeEditorFile}
+            lastAtoFile={lastAtoFile}
+            projects={projects || []}
+            onRefreshStructure={handlers.handleStructureRefresh}
+            isExpanded
+            hasActiveProject={!!selectedProjectRoot}
+          />
+        );
+      case 'parameters':
+        return (
+          <VariablesPanel
+            variablesData={currentVariablesData}
+            isLoading={isLoadingVariables}
+            error={variablesError}
+            selectedTargetName={selectedTargetName}
+            hasActiveProject={!!selectedProjectRoot}
+            isExpanded
+          />
+        );
+      case 'bom':
+        return (
+          <BOMPanel
+            bomData={bomData}
+            isLoading={isLoadingBom}
+            error={bomError}
+            selectedProjectRoot={selectedProjectRoot}
+            selectedTargetNames={selectedTargetNames}
+            onGoToSource={handleGoToSource}
+            isExpanded
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   // Loading state
   if (!state) {
     return <div className="sidebar loading">Loading...</div>;
@@ -417,129 +505,24 @@ export function Sidebar() {
 
         {/* Tab Bar - outside tabbed-panels so tooltips aren't clipped */}
         <div className="tab-bar" ref={tabBarRef}>
-          <button
-            className={`tab-button ${activeTab === 'files' ? 'active' : ''}`}
-            onClick={() => setActiveTab('files')}
-            data-tooltip="Files"
-          >
-            <Files size={14} />
-            {showTabLabels && <span className="tab-label">Files</span>}
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
-            onClick={() => setActiveTab('packages')}
-            data-tooltip="Packages"
-          >
-            <Package size={14} />
-            {showTabLabels && <span className="tab-label">Packages</span>}
-            {isLoadingPackages && <span className="tab-loading" />}
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'parts' ? 'active' : ''}`}
-            onClick={() => setActiveTab('parts')}
-            data-tooltip="Parts"
-          >
-            <Cpu size={14} />
-            {showTabLabels && <span className="tab-label">Parts</span>}
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
-            onClick={() => setActiveTab('stdlib')}
-            data-tooltip="Standard Library"
-          >
-            <Library size={14} />
-            {showTabLabels && <span className="tab-label">Lib</span>}
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'views' ? 'active' : ''}`}
-            onClick={() => setActiveTab('views')}
-            data-tooltip="Views"
-          >
-            <Eye size={14} />
-            {showTabLabels && <span className="tab-label">Views</span>}
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
-            onClick={() => setActiveTab('parameters')}
-            data-tooltip="Parameters"
-          >
-            <SlidersHorizontal size={14} />
-            {showTabLabels && <span className="tab-label">Params</span>}
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
-            onClick={() => setActiveTab('bom')}
-            data-tooltip="Bill of Materials"
-          >
-            <ClipboardList size={14} />
-            {showTabLabels && <span className="tab-label">BOM</span>}
-          </button>
+          {SIDEBAR_TABS.map(({ id, tooltip, label, Icon }) => (
+            <button
+              key={id}
+              className={`tab-button ${activeTab === id ? 'active' : ''}`}
+              onClick={() => setActiveTab(id)}
+              data-tooltip={tooltip}
+            >
+              <Icon size={14} />
+              {showTabLabels && <span className="tab-label">{label}</span>}
+              {id === 'packages' && isLoadingPackages && <span className="tab-loading" />}
+            </button>
+          ))}
         </div>
 
         {/* Tabbed Panels Content */}
         <div className="tabbed-panels">
           <div className="tab-content">
-            {activeTab === 'files' && (
-              <FileExplorerPanel
-                projectRoot={selectedProjectRoot}
-              />
-            )}
-            {activeTab === 'packages' && (
-              <PackagesPanel
-                packages={packages || []}
-                installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
-                selectedProjectRoot={selectedProjectRoot}
-                installError={installError}
-                onOpenPackageDetail={handlers.handleOpenPackageDetail}
-                isExpanded={activeTab === 'packages'}
-              />
-            )}
-            {activeTab === 'parts' && (
-              <PartsSearchPanel
-                selectedProjectRoot={selectedProjectRoot}
-                onOpenPartDetail={handlers.handleOpenPartDetail}
-                isExpanded={activeTab === 'parts'}
-              />
-            )}
-            {activeTab === 'stdlib' && (
-              <StandardLibraryPanel
-                items={stdlibItems}
-                isLoading={isLoadingStdlib}
-                onRefresh={handleRefreshStdlib}
-                isExpanded={activeTab === 'stdlib'}
-              />
-            )}
-            {activeTab === 'views' && (
-              <ViewsPanel
-                activeFilePath={activeEditorFile}
-                lastAtoFile={lastAtoFile}
-                projects={projects || []}
-                onRefreshStructure={handlers.handleStructureRefresh}
-                isExpanded={activeTab === 'views'}
-                hasActiveProject={!!selectedProjectRoot}
-              />
-            )}
-            {activeTab === 'parameters' && (
-              <VariablesPanel
-                variablesData={currentVariablesData}
-                isLoading={isLoadingVariables}
-                error={variablesError}
-                selectedTargetName={selectedTargetName}
-                hasActiveProject={!!selectedProjectRoot}
-                isExpanded={activeTab === 'parameters'}
-              />
-            )}
-            {activeTab === 'bom' && (
-              <BOMPanel
-                bomData={bomData}
-                isLoading={isLoadingBom}
-                error={bomError}
-                selectedProjectRoot={selectedProjectRoot}
-                selectedTargetNames={selectedTargetNames}
-                onGoToSource={handleGoToSource}
-                isExpanded={activeTab === 'bom'}
-              />
-            )}
+            {renderActiveTabPanel()}
           </div>
         </div>
 
