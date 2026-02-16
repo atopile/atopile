@@ -224,6 +224,95 @@ function normalizePositionsMap(
   return out;
 }
 
+type PositionedItem = {
+  id: string;
+  key: string;
+  pos: ComponentPosition;
+};
+
+function applyAlignmentMode(
+  mode: AlignMode,
+  items: PositionedItem[],
+  newPositions: Record<string, ComponentPosition>,
+): void {
+  switch (mode) {
+    case 'left': {
+      const minX = Math.min(...items.map((i) => i.pos.x));
+      for (const item of items) {
+        newPositions[item.key] = { ...item.pos, x: minX };
+      }
+      return;
+    }
+    case 'right': {
+      const maxX = Math.max(...items.map((i) => i.pos.x));
+      for (const item of items) {
+        newPositions[item.key] = { ...item.pos, x: maxX };
+      }
+      return;
+    }
+    case 'top': {
+      const maxY = Math.max(...items.map((i) => i.pos.y));
+      for (const item of items) {
+        newPositions[item.key] = { ...item.pos, y: maxY };
+      }
+      return;
+    }
+    case 'bottom': {
+      const minY = Math.min(...items.map((i) => i.pos.y));
+      for (const item of items) {
+        newPositions[item.key] = { ...item.pos, y: minY };
+      }
+      return;
+    }
+    case 'center-h': {
+      const xs = items.map((i) => i.pos.x);
+      const center = (Math.min(...xs) + Math.max(...xs)) / 2;
+      for (const item of items) {
+        newPositions[item.key] = { ...item.pos, x: snapToGrid(center) };
+      }
+      return;
+    }
+    case 'center-v': {
+      const ys = items.map((i) => i.pos.y);
+      const center = (Math.min(...ys) + Math.max(...ys)) / 2;
+      for (const item of items) {
+        newPositions[item.key] = { ...item.pos, y: snapToGrid(center) };
+      }
+      return;
+    }
+    case 'distribute-h': {
+      const sorted = [...items].sort((a, b) => a.pos.x - b.pos.x);
+      if (sorted.length < 3) return;
+      const minX = sorted[0].pos.x;
+      const maxX = sorted[sorted.length - 1].pos.x;
+      const step = (maxX - minX) / (sorted.length - 1);
+      for (let i = 0; i < sorted.length; i++) {
+        const item = sorted[i];
+        newPositions[item.key] = {
+          ...item.pos,
+          x: snapToGrid(minX + step * i),
+        };
+      }
+      return;
+    }
+    case 'distribute-v': {
+      const sorted = [...items].sort((a, b) => a.pos.y - b.pos.y);
+      if (sorted.length < 3) return;
+      const minY = sorted[0].pos.y;
+      const maxY = sorted[sorted.length - 1].pos.y;
+      const step = (maxY - minY) / (sorted.length - 1);
+      for (let i = 0; i < sorted.length; i++) {
+        const item = sorted[i];
+        newPositions[item.key] = {
+          ...item.pos,
+          y: snapToGrid(minY + step * i),
+        };
+      }
+      return;
+    }
+  }
+}
+
 function getSignalOrderOverridesForPath(
   orders: Record<string, string[]>,
   path: string[],
@@ -998,87 +1087,11 @@ export const useSchematicStore = create<SchematicState>()(
       pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
-        const items = selectedComponentIds.map((id) => {
+        const items: PositionedItem[] = selectedComponentIds.map((id) => {
           const key = scopedId(currentPath, id);
           return { id, key, pos: newPositions[key] || { x: 0, y: 0 } };
         });
-
-        switch (mode) {
-          case 'left': {
-            const minX = Math.min(...items.map((i) => i.pos.x));
-            for (const item of items) {
-              newPositions[item.key] = { ...item.pos, x: minX };
-            }
-            break;
-          }
-          case 'right': {
-            const maxX = Math.max(...items.map((i) => i.pos.x));
-            for (const item of items) {
-              newPositions[item.key] = { ...item.pos, x: maxX };
-            }
-            break;
-          }
-          case 'top': {
-            const maxY = Math.max(...items.map((i) => i.pos.y));
-            for (const item of items) {
-              newPositions[item.key] = { ...item.pos, y: maxY };
-            }
-            break;
-          }
-          case 'bottom': {
-            const minY = Math.min(...items.map((i) => i.pos.y));
-            for (const item of items) {
-              newPositions[item.key] = { ...item.pos, y: minY };
-            }
-            break;
-          }
-          case 'center-h': {
-            const xs = items.map((i) => i.pos.x);
-            const center = (Math.min(...xs) + Math.max(...xs)) / 2;
-            for (const item of items) {
-              newPositions[item.key] = { ...item.pos, x: snapToGrid(center) };
-            }
-            break;
-          }
-          case 'center-v': {
-            const ys = items.map((i) => i.pos.y);
-            const center = (Math.min(...ys) + Math.max(...ys)) / 2;
-            for (const item of items) {
-              newPositions[item.key] = { ...item.pos, y: snapToGrid(center) };
-            }
-            break;
-          }
-          case 'distribute-h': {
-            const sorted = [...items].sort((a, b) => a.pos.x - b.pos.x);
-            if (sorted.length < 3) break;
-            const minX = sorted[0].pos.x;
-            const maxX = sorted[sorted.length - 1].pos.x;
-            const step = (maxX - minX) / (sorted.length - 1);
-            for (let i = 0; i < sorted.length; i++) {
-              const item = sorted[i];
-              newPositions[item.key] = {
-                ...item.pos,
-                x: snapToGrid(minX + step * i),
-              };
-            }
-            break;
-          }
-          case 'distribute-v': {
-            const sorted = [...items].sort((a, b) => a.pos.y - b.pos.y);
-            if (sorted.length < 3) break;
-            const minY = sorted[0].pos.y;
-            const maxY = sorted[sorted.length - 1].pos.y;
-            const step = (maxY - minY) / (sorted.length - 1);
-            for (let i = 0; i < sorted.length; i++) {
-              const item = sorted[i];
-              newPositions[item.key] = {
-                ...item.pos,
-                y: snapToGrid(minY + step * i),
-              };
-            }
-            break;
-          }
-        }
+        applyAlignmentMode(mode, items, newPositions);
 
         debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
