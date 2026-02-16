@@ -1,10 +1,11 @@
 const std = @import("std");
+const compat = @import("compat");
 const structure = @import("../structure.zig");
 
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return std.DoublyLinkedList(T);
+    return compat.DoublyLinkedList(T);
 }
 
 // https://docs.kicad.org/9.0/en/pcbnew/pcbnew.html#custom-design-rules
