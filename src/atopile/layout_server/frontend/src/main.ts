@@ -243,9 +243,21 @@ function buildLayerPanel() {
 }
 
 const statusEl = document.getElementById("status");
+const helpText = "scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip, Ctrl+Z undo, Ctrl+Shift+Z redo";
+if (statusEl) statusEl.textContent = helpText;
+
+canvas.addEventListener("mouseenter", () => {
+    if (statusEl) statusEl.dataset.hover = "1";
+});
+canvas.addEventListener("mouseleave", () => {
+    if (statusEl) {
+        delete statusEl.dataset.hover;
+        statusEl.textContent = helpText;
+    }
+});
 
 editor.setOnMouseMove((x, y) => {
-    if (statusEl) {
+    if (statusEl && statusEl.dataset.hover) {
         statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
     }
 });
