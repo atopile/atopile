@@ -122,7 +122,20 @@ def export_balanced_stage1_corpus(
                     ) AS rn
                 FROM tmp_candidates
             )
-            SELECT *
+            SELECT
+                lcsc_id,
+                category_id,
+                category,
+                subcategory,
+                manufacturer_name,
+                part_number,
+                package,
+                description,
+                stock,
+                is_basic,
+                is_preferred,
+                extra_json,
+                query_group
             FROM ranked
             WHERE rn <= ?;
             """,
@@ -198,4 +211,3 @@ def export_balanced_stage1_corpus(
     dt = time.perf_counter() - t0
     status(f"done rows={len(rows)} elapsed_s={dt:.1f}")
     return len(rows)
-

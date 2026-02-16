@@ -11,6 +11,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRouter
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -203,6 +204,20 @@ def create_app(config: ServeConfig | None = None) -> FastAPI:
     app = FastAPI(
         title="atopile-components-serve",
         version="0.1.0",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1",
+            "http://localhost",
+        ],
+        allow_origin_regex=(
+            r"^vscode-webview://.*$|^http://127\.0\.0\.1:\d+$|^http://localhost:\d+$"
+        ),
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["x-request-id"],
     )
     app.state.components_config = serve_config
     app.state.components_services = build_services(serve_config)

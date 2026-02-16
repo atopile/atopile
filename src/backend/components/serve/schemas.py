@@ -99,6 +99,11 @@ class ComponentsSearchRequest(BaseModel):
 
 
 class ComponentsSearchResultModel(BaseModel):
+    class PriceTier(BaseModel):
+        qFrom: int | None = None
+        qTo: int | None = None
+        price: float
+
     lcsc_id: int
     score: float
     cosine_score: float
@@ -111,6 +116,8 @@ class ComponentsSearchResultModel(BaseModel):
     stock: int
     is_basic: bool
     is_preferred: bool
+    unit_cost: float | None = None
+    price: list[PriceTier] = Field(default_factory=list)
 
 
 class ComponentsSearchResponse(BaseModel):

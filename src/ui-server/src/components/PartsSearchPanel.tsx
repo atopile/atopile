@@ -53,6 +53,7 @@ export function PartsSearchPanel({
   const [enrichingLcscs, setEnrichingLcscs] = useState<Set<string>>(new Set())
   const [installedLoading, setInstalledLoading] = useState(false)
   const [sort, setSort] = useState<SortState>({ column: 'stock', direction: 'desc' })
+  const [searchSortOverride, setSearchSortOverride] = useState(false)
   const [projectFilter, setProjectFilter] = useState('')
 
   const searchRequestId = useRef(0)
@@ -247,6 +248,10 @@ export function PartsSearchPanel({
   }, [installedParts, sort, projectFilter])
 
   const sortedSearchResults = useMemo(() => {
+    if (!searchSortOverride) {
+      // Keep backend order by default (relevance-ranked from /v1/components/search).
+      return searchResults
+    }
     return [...searchResults].sort((a, b) => {
       let cmp = 0
       switch (sort.column) {
@@ -268,9 +273,12 @@ export function PartsSearchPanel({
       }
       return sort.direction === 'desc' ? -cmp : cmp
     })
-  }, [searchResults, sort])
+  }, [searchResults, sort, searchSortOverride])
 
   const toggleSort = (column: SortColumn) => {
+    if (activeTab === 'search') {
+      setSearchSortOverride(true)
+    }
     setSort((prev) => ({
       column,
       direction: prev.column === column && prev.direction === 'desc' ? 'asc' : 'desc',

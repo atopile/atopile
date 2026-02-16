@@ -179,23 +179,56 @@ async def search_components(
         )
         raise HTTPException(status_code=500, detail=str(exc))
 
-    response_results = [
-        ComponentsSearchResultModel(
-            lcsc_id=item.lcsc_id,
-            score=item.score,
-            cosine_score=item.cosine_score,
-            reasons=item.reasons,
-            component_type=item.component_type,
-            manufacturer_name=item.manufacturer_name,
-            part_number=item.part_number,
-            package=item.package,
-            description=item.description,
-            stock=item.stock,
-            is_basic=item.is_basic,
-            is_preferred=item.is_preferred,
+    result_ids = [item.lcsc_id for item in results]
+    try:
+        detail_by_id = (
+            await asyncio.to_thread(
+                services.detail_store.get_components,
+                result_ids,
+            )
+            if result_ids
+            else {}
         )
-        for item in results
-    ]
+    except ServeError as exc:
+        log_event(
+            "serve.search.error",
+            level=logging.ERROR,
+            request_id=request_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    response_results: list[ComponentsSearchResultModel] = []
+    for item in results:
+        detail_row = detail_by_id.get(item.lcsc_id)
+        if detail_row is None:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "search/detail snapshot mismatch: "
+                    f"missing components_full row for lcsc_id={item.lcsc_id}"
+                ),
+            )
+        price_tiers = _price_tiers_from_detail(detail_row)
+        response_results.append(
+            ComponentsSearchResultModel(
+                lcsc_id=item.lcsc_id,
+                score=item.score,
+                cosine_score=item.cosine_score,
+                reasons=item.reasons,
+                component_type=item.component_type,
+                manufacturer_name=item.manufacturer_name,
+                part_number=item.part_number,
+                package=item.package,
+                description=str(detail_row.get("description") or ""),
+                stock=item.stock,
+                is_basic=item.is_basic,
+                is_preferred=item.is_preferred,
+                unit_cost=_unit_cost_from_price_tiers(price_tiers),
+                price=price_tiers,
+            )
+        )
     log_event(
         "serve.search",
         request_id=request_id,
@@ -217,6 +250,59 @@ async def search_components(
         total=len(response_results),
         results=response_results,
     )
+
+
+def _price_tiers_from_detail(
+    detail_row: dict[str, Any] | None,
+) -> list[ComponentsSearchResultModel.PriceTier]:
+    if not detail_row:
+        return []
+    raw = detail_row.get("price_json")
+    if not isinstance(raw, list):
+        return []
+
+    tiers: list[ComponentsSearchResultModel.PriceTier] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        price_val = entry.get("price")
+        try:
+            if price_val is None:
+                continue
+            price_num = float(price_val)
+        except (TypeError, ValueError):
+            continue
+        q_from = _as_optional_int(entry.get("qFrom"))
+        q_to = _as_optional_int(entry.get("qTo"))
+        tiers.append(
+            ComponentsSearchResultModel.PriceTier(
+                qFrom=q_from,
+                qTo=q_to,
+                price=price_num,
+            )
+        )
+    return tiers
+
+
+def _unit_cost_from_price_tiers(
+    tiers: list[ComponentsSearchResultModel.PriceTier],
+) -> float | None:
+    if not tiers:
+        return None
+    prioritized = sorted(
+        tiers,
+        key=lambda tier: (tier.qFrom is None, tier.qFrom if tier.qFrom is not None else 10**12),
+    )
+    return float(prioritized[0].price)
+
+
+def _as_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 @router.post("/parameters/query/batch", response_model=ParametersBatchQueryResponse)

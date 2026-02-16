@@ -129,6 +129,8 @@ interface ComponentsSearchResult {
   stock: number;
   is_basic: boolean;
   is_preferred: boolean;
+  unit_cost: number | null;
+  price: { qFrom: number | null; qTo: number | null; price: number }[];
 }
 
 interface ComponentsSearchResponse {
@@ -148,14 +150,14 @@ function mapComponentsSearchToPartSearch(
       manufacturer: item.manufacturer_name || '',
       mpn: item.part_number || '',
       package: item.package || '',
-      description: item.description || '',
+      description: item.description,
       datasheet_url: '',
       image_url: null,
       stock: item.stock ?? 0,
-      unit_cost: 0,
+      unit_cost: item.unit_cost,
       is_basic: !!item.is_basic,
       is_preferred: !!item.is_preferred,
-      price: [],
+      price: item.price,
       attributes: {},
     })),
   };
@@ -372,27 +374,20 @@ export const api = {
       }),
     search: async (query: string, limit = 50) => {
       const safeLimit = Math.min(Math.max(limit, 1), 100);
-      try {
-        const payload = await fetchJSONFromBase<ComponentsSearchResponse>(
-          COMPONENTS_API_URL,
-          '/v1/components/search',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              query,
-              limit: safeLimit,
-              search_mode: 'hybrid',
-              in_stock_only: true,
-            }),
-          }
-        );
-        return mapComponentsSearchToPartSearch(payload);
-      } catch (error) {
-        console.warn('[parts.search] components search failed, falling back to legacy API:', error);
-        return fetchJSON<PartSearchResponse>(
-          `/api/parts/search?query=${encodeURIComponent(query)}&limit=${safeLimit}`
-        );
-      }
+      const payload = await fetchJSONFromBase<ComponentsSearchResponse>(
+        COMPONENTS_API_URL,
+        '/v1/components/search',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            query,
+            limit: safeLimit,
+            search_mode: 'hybrid',
+            in_stock_only: true,
+          }),
+        }
+      );
+      return mapComponentsSearchToPartSearch(payload);
     },
     details: (lcscId: string) =>
       fetchJSON<PartDetailsResponse>(`/api/parts/${encodeURIComponent(lcscId)}/details`),

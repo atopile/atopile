@@ -393,7 +393,7 @@ export interface PartSearchItem {
   datasheet_url: string;
   image_url?: string | null;
   stock: number;
-  unit_cost: number;
+  unit_cost: number | null;
   is_basic: boolean;
   is_preferred: boolean;
   price: { qFrom: number | null; qTo: number | null; price: number }[];

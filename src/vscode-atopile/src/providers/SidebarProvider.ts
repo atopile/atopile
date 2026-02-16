@@ -349,6 +349,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view.webview.options = createWebviewOptions({
       extensionPath,
       port: backendServer.port,
+      additionalPorts: [8079],
       prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
     });
     this._view.webview.html = this._getProdHtml(this._view.webview);
