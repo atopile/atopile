@@ -194,6 +194,18 @@ class VectorStore:
             )
         return idx
 
+    @staticmethod
+    def _should_prefilter_with_lexical(
+        *,
+        lexical_count: int,
+        candidate_pool: int,
+    ) -> bool:
+        # Avoid over-constraining semantic recall on narrow lexical queries
+        # like exact MPN lookups ("BME280"), while still using lexical pruning
+        # to keep latency bounded on broad queries.
+        threshold = max(candidate_pool * 3, 5000)
+        return lexical_count >= threshold
+
     def _idf(self, token: str) -> float:
         df = self._token_doc_freq.get(token, 0)
         n = max(len(self.records), 1)
@@ -289,7 +301,10 @@ class VectorStore:
             )
 
         dense_candidates: np.ndarray | None = base_filter_idx
-        if apply_hybrid and len(lexical_idx):
+        if apply_hybrid and len(lexical_idx) and self._should_prefilter_with_lexical(
+            lexical_count=len(lexical_idx),
+            candidate_pool=candidate_pool,
+        ):
             dense_candidates = (
                 lexical_idx
                 if dense_candidates is None
@@ -535,6 +550,17 @@ def test_candidate_idx_filters_include_in_stock() -> None:
     )
     assert idx is not None
     assert idx.tolist() == [1]
+
+
+def test_should_prefilter_with_lexical_threshold() -> None:
+    assert not VectorStore._should_prefilter_with_lexical(
+        lexical_count=120,
+        candidate_pool=400,
+    )
+    assert VectorStore._should_prefilter_with_lexical(
+        lexical_count=5000,
+        candidate_pool=400,
+    )
 
 
 def _parse_corpus_line(line: str) -> CorpusRecord:
