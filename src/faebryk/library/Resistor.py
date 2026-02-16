@@ -44,6 +44,7 @@ class Resistor(fabll.Node):
                 "max_power": max_power,
                 "max_voltage": max_voltage,
             },
+            package_prefix="R",
         ),
     )
 

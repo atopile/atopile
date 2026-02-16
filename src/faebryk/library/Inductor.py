@@ -35,6 +35,7 @@ class Inductor(fabll.Node):
                 "saturation_current": saturation_current,
                 "self_resonant_frequency": self_resonant_frequency,
             },
+            package_prefix="L",
         )
     )
 
