@@ -379,7 +379,7 @@ def test_create_app_adds_request_id_header(monkeypatch, tmp_path) -> None:
         def get_components(self, _ids):
             return {}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {}
 
         def lookup_component_ids_by_manufacturer_part(
@@ -388,7 +388,7 @@ def test_create_app_adds_request_id_header(monkeypatch, tmp_path) -> None:
             return [][:limit]
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             raise AssertionError("bundle path should not be called in this test")
 
     monkeypatch.setattr(

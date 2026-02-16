@@ -88,26 +88,39 @@ class SQLiteDetailStore(DetailStore):
         return out
 
     def get_asset_manifest(
-        self, lcsc_ids: Sequence[int]
+        self,
+        lcsc_ids: Sequence[int],
+        artifact_types: Sequence[str] | None = None,
     ) -> dict[int, list[AssetRecord]]:
         ordered_ids = _unique_ids(lcsc_ids)
         if not ordered_ids:
             return {}
+        normalized_artifact_types = _normalize_artifact_types(artifact_types)
 
         placeholders = ",".join("?" for _ in ordered_ids)
-        sql = f"""
-            select *
-            from {_quote_ident(_ASSET_TABLE)}
-            where {_quote_ident("lcsc_id")} in ({placeholders})
-            order by {_quote_ident("lcsc_id")} asc
-        """
 
         with self._connect() as conn:
             columns = self._table_columns(conn, _ASSET_TABLE)
             if "lcsc_id" not in columns:
                 raise SnapshotSchemaError(f"{_ASSET_TABLE} missing required lcsc_id")
+            supports_sql_artifact_filter = (
+                normalized_artifact_types is not None and "artifact_type" in columns
+            )
+            params: list[Any] = list(ordered_ids)
+            sql = f"""
+                select *
+                from {_quote_ident(_ASSET_TABLE)}
+                where {_quote_ident("lcsc_id")} in ({placeholders})
+            """
+            if supports_sql_artifact_filter:
+                type_placeholders = ",".join("?" for _ in normalized_artifact_types)
+                sql += (
+                    f" and {_quote_ident('artifact_type')} in ({type_placeholders})"
+                )
+                params.extend(normalized_artifact_types)
+            sql += f" order by {_quote_ident('lcsc_id')} asc"
             try:
-                rows = conn.execute(sql, list(ordered_ids)).fetchall()
+                rows = conn.execute(sql, params).fetchall()
             except sqlite3.Error as exc:
                 raise SnapshotSchemaError(
                     f"failed querying component_assets: {exc}"
@@ -116,6 +129,12 @@ class SQLiteDetailStore(DetailStore):
         grouped: dict[int, list[AssetRecord]] = defaultdict(list)
         for row in rows:
             assets = _asset_records_from_row(_normalize_row(dict(row)))
+            if normalized_artifact_types is not None and not supports_sql_artifact_filter:
+                assets = [
+                    asset
+                    for asset in assets
+                    if asset.artifact_type in normalized_artifact_types
+                ]
             grouped[int(row["lcsc_id"])].extend(assets)
         return dict(grouped)
 
@@ -313,6 +332,22 @@ def _unique_ids(values: Sequence[int]) -> tuple[int, ...]:
     return tuple(out)
 
 
+def _normalize_artifact_types(
+    artifact_types: Sequence[str] | None,
+) -> tuple[str, ...] | None:
+    if artifact_types is None:
+        return None
+    seen: set[str] = set()
+    out: list[str] = []
+    for artifact_type in artifact_types:
+        normalized = str(artifact_type).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(normalized)
+    return tuple(out)
+
+
 def _as_optional_str(value: object) -> str | None:
     if value is None:
         return None
@@ -458,6 +493,44 @@ def test_sqlite_detail_store_reads_stage2_reference_assets(tmp_path) -> None:
         "model_3d_path",
         "easyeda_model_uuid",
     }
+
+
+def test_sqlite_detail_store_filters_assets_by_artifact_type(tmp_path) -> None:
+    db_path = tmp_path / "detail.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            create table components_full (
+                lcsc_id integer primary key
+            )
+        """)
+        conn.execute("""
+            create table component_assets (
+                id integer primary key,
+                lcsc_id integer not null,
+                artifact_type text not null,
+                stored_key text not null
+            )
+        """)
+        conn.execute("insert into components_full (lcsc_id) values (2040)")
+        conn.execute(
+            """
+            insert into component_assets (lcsc_id, artifact_type, stored_key)
+            values (?, ?, ?), (?, ?, ?)
+            """,
+            (
+                2040,
+                "datasheet_pdf",
+                "objects/datasheet_pdf/a.zst",
+                2040,
+                "model_step",
+                "objects/model_step/b.zst",
+            ),
+        )
+
+    store = SQLiteDetailStore(db_path)
+    assets = store.get_asset_manifest([2040], artifact_types=["model_step"])
+    assert len(assets[2040]) == 1
+    assert assets[2040][0].artifact_type == "model_step"
 
 
 def test_sqlite_detail_store_lookup_by_manufacturer_part(tmp_path) -> None:

@@ -165,7 +165,9 @@ class DetailStore(Protocol):
         raise NotImplementedError
 
     def get_asset_manifest(
-        self, lcsc_ids: Sequence[int]
+        self,
+        lcsc_ids: Sequence[int],
+        artifact_types: Sequence[str] | None = None,
     ) -> dict[int, list[AssetRecord]]:
         raise NotImplementedError
 
@@ -180,7 +182,11 @@ class DetailStore(Protocol):
 
 
 class BundleStore(Protocol):
-    def build_bundle(self, lcsc_ids: Sequence[int]) -> BundleArtifact:
+    def build_bundle(
+        self,
+        lcsc_ids: Sequence[int],
+        artifact_types: Sequence[str] | None = None,
+    ) -> BundleArtifact:
         raise NotImplementedError
 
 

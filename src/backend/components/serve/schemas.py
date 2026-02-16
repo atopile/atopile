@@ -88,6 +88,7 @@ class ManufacturerPartLookupResponse(BaseModel):
 
 class ComponentsFullRequest(BaseModel):
     component_ids: list[int] = Field(..., min_length=1, max_length=1000)
+    artifact_types: list[str] | None = Field(default=None, min_length=1, max_length=32)
 
     @field_validator("component_ids")
     @classmethod
@@ -105,6 +106,25 @@ class ComponentsFullRequest(BaseModel):
             seen.add(component_id)
             ordered.append(component_id)
         return ordered
+
+    @field_validator("artifact_types")
+    @classmethod
+    def _validate_artifact_types(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        out: list[str] = []
+        seen: set[str] = set()
+        for artifact_type in value:
+            normalized = artifact_type.strip()
+            if not normalized:
+                raise ValueError("artifact_types entries must be non-empty strings")
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(normalized)
+        if not out:
+            raise ValueError("artifact_types must include at least one entry")
+        return out
 
 
 class AssetRecordModel(BaseModel):
@@ -145,3 +165,11 @@ class FullResponseMetadata(BaseModel):
 def test_full_request_deduplicates_while_preserving_order() -> None:
     model = ComponentsFullRequest(component_ids=[3, 2, 3, 1, 2])
     assert model.deduplicated_ids() == [3, 2, 1]
+
+
+def test_full_request_deduplicates_artifact_types() -> None:
+    model = ComponentsFullRequest(
+        component_ids=[1],
+        artifact_types=[" model_step ", "datasheet_pdf", "model_step"],
+    )
+    assert model.artifact_types == ["model_step", "datasheet_pdf"]

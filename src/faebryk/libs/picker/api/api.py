@@ -368,7 +368,10 @@ class ApiClient:
         return component_ids
 
     def _fetch_components_v1_rows(
-        self, component_ids: list[int]
+        self,
+        component_ids: list[int],
+        *,
+        artifact_types: list[str] | None = None,
     ) -> dict[int, dict[str, Any]]:
         ordered_unique: list[int] = []
         seen: set[int] = set()
@@ -379,9 +382,20 @@ class ApiClient:
             ordered_unique.append(component_id)
 
         rows_by_id: dict[int, dict[str, Any]] = {}
+        normalized_artifact_types: list[str] = []
+        if artifact_types:
+            seen_types: set[str] = set()
+            for artifact_type in artifact_types:
+                normalized = str(artifact_type).strip()
+                if not normalized or normalized in seen_types:
+                    continue
+                seen_types.add(normalized)
+                normalized_artifact_types.append(normalized)
         for start in range(0, len(ordered_unique), _FULL_COMPONENTS_MAX_IDS):
             chunk = ordered_unique[start : start + _FULL_COMPONENTS_MAX_IDS]
             payload = {"component_ids": chunk}
+            if normalized_artifact_types:
+                payload["artifact_types"] = normalized_artifact_types
             response = self._post("/v1/components/full", payload)
             metadata, bundle_files = _parse_v1_full_multipart(response)
             _materialize_v1_assets(metadata=metadata, bundle_files=bundle_files)

@@ -23,10 +23,17 @@ class TarZstdBundleBuilder(BundleStore):
         self.detail_store = detail_store
         self.cache_root = Path(cache_root).resolve()
 
-    def build_bundle(self, lcsc_ids: Sequence[int]) -> BundleArtifact:
+    def build_bundle(
+        self,
+        lcsc_ids: Sequence[int],
+        artifact_types: Sequence[str] | None = None,
+    ) -> BundleArtifact:
         ordered_ids = _unique_ids(lcsc_ids)
         components_by_id = self.detail_store.get_components(ordered_ids)
-        assets_by_id = self.detail_store.get_asset_manifest(ordered_ids)
+        assets_by_id = self.detail_store.get_asset_manifest(
+            ordered_ids,
+            artifact_types=artifact_types,
+        )
 
         manifest: dict[str, Any] = {
             "component_ids": list(ordered_ids),
@@ -159,6 +166,8 @@ def _is_bundleable_asset(asset: AssetRecord) -> bool:
 
 
 def test_tar_zstd_bundle_builder_builds_manifest_and_assets(tmp_path) -> None:
+    captured: dict[str, Any] = {}
+
     class _DetailStore:
         def get_components(self, lcsc_ids):
             return {
@@ -166,7 +175,8 @@ def test_tar_zstd_bundle_builder_builds_manifest_and_assets(tmp_path) -> None:
                 for component_id in lcsc_ids
             }
 
-        def get_asset_manifest(self, lcsc_ids):
+        def get_asset_manifest(self, lcsc_ids, artifact_types=None):
+            captured["artifact_types"] = artifact_types
             out: dict[int, list[AssetRecord]] = {}
             for component_id in lcsc_ids:
                 out[int(component_id)] = [
@@ -184,7 +194,8 @@ def test_tar_zstd_bundle_builder_builds_manifest_and_assets(tmp_path) -> None:
     object_path.write_bytes(zstd.compress(b"pdf-bytes", 10))
 
     builder = TarZstdBundleBuilder(_DetailStore(), cache_root)
-    artifact = builder.build_bundle([42])
+    artifact = builder.build_bundle([42], artifact_types=["datasheet_pdf"])
+    assert captured["artifact_types"] == ["datasheet_pdf"]
     assert artifact.filename.endswith(".tar.zst")
     assert artifact.media_type == "application/zstd"
     assert len(artifact.sha256) == 64
@@ -205,7 +216,7 @@ def test_tar_zstd_bundle_builder_rejects_path_traversal(tmp_path) -> None:
         def get_components(self, _lcsc_ids):
             return {42: {"lcsc_id": 42}}
 
-        def get_asset_manifest(self, _lcsc_ids):
+        def get_asset_manifest(self, _lcsc_ids, artifact_types=None):
             return {
                 42: [
                     AssetRecord(
@@ -230,7 +241,7 @@ def test_tar_zstd_bundle_builder_keeps_reference_only_assets(tmp_path) -> None:
         def get_components(self, _lcsc_ids):
             return {42: {"lcsc_id": 42}}
 
-        def get_asset_manifest(self, _lcsc_ids):
+        def get_asset_manifest(self, _lcsc_ids, artifact_types=None):
             return {
                 42: [
                     AssetRecord(

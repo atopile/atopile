@@ -358,6 +358,7 @@ async def get_full_components(
     started_at = time.perf_counter()
     request_id = get_request_id(request)
     lcsc_ids = payload.deduplicated_ids()
+    artifact_types = payload.artifact_types
     try:
         detail_started = time.perf_counter()
         components_by_id = await asyncio.to_thread(
@@ -389,10 +390,15 @@ async def get_full_components(
         assets_by_id = await asyncio.to_thread(
             services.detail_store.get_asset_manifest,
             lcsc_ids,
+            artifact_types,
         )
         asset_lookup_ms = _duration_ms(assets_started)
         bundle_started = time.perf_counter()
-        bundle = await asyncio.to_thread(services.bundle_store.build_bundle, lcsc_ids)
+        bundle = await asyncio.to_thread(
+            services.bundle_store.build_bundle,
+            lcsc_ids,
+            artifact_types,
+        )
         bundle_build_ms = _duration_ms(bundle_started)
     except SnapshotSchemaError as exc:
         log_event(
@@ -559,7 +565,7 @@ def test_parameters_query_route_returns_candidates() -> None:
         def get_components(self, _ids):
             return {1: {"lcsc_id": 1}}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {1: []}
 
         def lookup_component_ids_by_manufacturer_part(
@@ -568,7 +574,7 @@ def test_parameters_query_route_returns_candidates() -> None:
             return [1][:limit]
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             return BundleArtifact(
                 data=b"payload",
                 filename="bundle.tar.zst",
@@ -660,7 +666,7 @@ def test_parameters_batch_query_route_returns_ordered_results() -> None:
         def get_components(self, _ids):
             return {}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {}
 
         def lookup_component_ids_by_manufacturer_part(
@@ -669,7 +675,7 @@ def test_parameters_batch_query_route_returns_ordered_results() -> None:
             return [1][:limit]
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             return BundleArtifact(
                 data=b"payload",
                 filename="bundle.tar.zst",
@@ -747,7 +753,7 @@ def test_full_route_returns_multipart() -> None:
         def get_components(self, _ids):
             return {1: {"lcsc_id": 1, "category": "Resistors"}}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {
                 1: [
                     AssetRecord(
@@ -764,7 +770,7 @@ def test_full_route_returns_multipart() -> None:
             return [1][:limit]
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             return BundleArtifact(
                 data=b"bundle-bytes",
                 filename="bundle.tar.zst",
@@ -785,6 +791,96 @@ def test_full_route_returns_multipart() -> None:
     response = client.post("/v1/components/full", json={"component_ids": [1]})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("multipart/mixed; boundary=")
+
+
+def test_full_route_filters_artifacts() -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from .interfaces import AssetRecord, BundleArtifact, ComponentCandidate
+
+    captured: dict[str, Any] = {}
+
+    class _FastLookup:
+        def query_component(self, component_type, _query):
+            if component_type != "resistor":
+                return []
+            return [
+                ComponentCandidate(lcsc_id=1, stock=1, is_basic=None, is_preferred=None)
+            ]
+
+        def query_resistors(self, _query):
+            return self.query_component("resistor", _query)
+
+        def query_capacitors(self, _query):
+            return self.query_component("capacitor", _query)
+
+        def query_capacitors_polarized(self, _query):
+            return self.query_component("capacitor_polarized", _query)
+
+        def query_inductors(self, _query):
+            return self.query_component("inductor", _query)
+
+        def query_diodes(self, _query):
+            return self.query_component("diode", _query)
+
+        def query_leds(self, _query):
+            return self.query_component("led", _query)
+
+        def query_bjts(self, _query):
+            return self.query_component("bjt", _query)
+
+        def query_mosfets(self, _query):
+            return self.query_component("mosfet", _query)
+
+    class _Detail:
+        def get_components(self, _ids):
+            return {1: {"lcsc_id": 1, "category": "Resistors"}}
+
+        def get_asset_manifest(self, _ids, artifact_types=None):
+            captured["detail_artifact_types"] = artifact_types
+            return {
+                1: [
+                    AssetRecord(
+                        lcsc_id=1,
+                        artifact_type="model_step",
+                        stored_key="objects/model_step/a.zst",
+                    )
+                ]
+            }
+
+        def lookup_component_ids_by_manufacturer_part(
+            self, _manufacturer_name, _part_number, *, limit=50
+        ):
+            return [1][:limit]
+
+    class _Bundle:
+        def build_bundle(self, _ids, artifact_types=None):
+            captured["bundle_artifact_types"] = artifact_types
+            return BundleArtifact(
+                data=b"bundle-bytes",
+                filename="bundle.tar.zst",
+                media_type="application/zstd",
+                sha256="b" * 64,
+                manifest={},
+            )
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.components_services = ServeServices(
+        fast_lookup=_FastLookup(),
+        detail_store=_Detail(),
+        bundle_store=_Bundle(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/components/full",
+        json={"component_ids": [1], "artifact_types": ["model_step", "model_step"]},
+    )
+    assert response.status_code == 200
+    assert captured["detail_artifact_types"] == ["model_step"]
+    assert captured["bundle_artifact_types"] == ["model_step"]
 
 
 def test_parameters_query_route_invalid_filter_returns_400() -> None:
@@ -825,7 +921,7 @@ def test_parameters_query_route_invalid_filter_returns_400() -> None:
         def get_components(self, _ids):
             return {}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {}
 
         def lookup_component_ids_by_manufacturer_part(
@@ -834,7 +930,7 @@ def test_parameters_query_route_invalid_filter_returns_400() -> None:
             return []
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             return BundleArtifact(
                 data=b"",
                 filename="bundle.tar.zst",
@@ -907,7 +1003,7 @@ def test_full_route_bundle_error_returns_500() -> None:
         def get_components(self, _ids):
             return {1: {"lcsc_id": 1}}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {1: []}
 
         def lookup_component_ids_by_manufacturer_part(
@@ -916,7 +1012,7 @@ def test_full_route_bundle_error_returns_500() -> None:
             return [1][:limit]
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             raise AssetLoadError("asset blob not found for key: objects/missing.zst")
 
     app = FastAPI()
@@ -971,7 +1067,7 @@ def test_mfr_lookup_route_returns_lcsc_ids() -> None:
         def get_components(self, _ids):
             return {}
 
-        def get_asset_manifest(self, _ids):
+        def get_asset_manifest(self, _ids, artifact_types=None):
             return {}
 
         def lookup_component_ids_by_manufacturer_part(
@@ -982,7 +1078,7 @@ def test_mfr_lookup_route_returns_lcsc_ids() -> None:
             return [2040, 1234][:limit]
 
     class _Bundle:
-        def build_bundle(self, _ids):
+        def build_bundle(self, _ids, artifact_types=None):
             return BundleArtifact(
                 data=b"",
                 filename="bundle.tar.zst",
