@@ -340,6 +340,8 @@ def run_fetch_daily(
     roundtrip_resume_state: bool = True,
     roundtrip_force_refetch: bool = False,
     roundtrip_state_db_path: Path | None = None,
+    skip_jlc_list: bool = False,
+    snapshot_dir: Path | None = None,
 ) -> DailyFetchResult:
     log_event(
         service="components-fetch",
@@ -357,13 +359,36 @@ def run_fetch_daily(
         roundtrip_resume_state=roundtrip_resume_state,
         roundtrip_force_refetch=roundtrip_force_refetch,
         roundtrip_state_db_path=roundtrip_state_db_path,
+        skip_jlc_list=skip_jlc_list,
+        snapshot_dir=snapshot_dir,
     )
-    jlc_snapshot_dir = run_fetch_once_fn(
-        config,
-        max_pages=max_pages,
-        fetch_details=fetch_details,
-        max_details=max_details,
-    )
+    if skip_jlc_list:
+        if snapshot_dir is not None:
+            jlc_snapshot_dir = snapshot_dir
+        else:
+            history_root = config.cache_dir / "fetch" / "jlc_api"
+            candidates = sorted(path for path in history_root.glob("*") if path.is_dir())
+            if not candidates:
+                raise FileNotFoundError(
+                    "No existing snapshot directories found under "
+                    f"{history_root}; provide --snapshot-dir or run without "
+                    "--skip-jlc-list first."
+                )
+            jlc_snapshot_dir = candidates[-1]
+        if not jlc_snapshot_dir.exists():
+            raise FileNotFoundError(f"Snapshot directory not found: {jlc_snapshot_dir}")
+        log_event(
+            service="components-fetch",
+            event="fetch.daily.skip_jlc_list",
+            jlc_snapshot_dir=jlc_snapshot_dir,
+        )
+    else:
+        jlc_snapshot_dir = run_fetch_once_fn(
+            config,
+            max_pages=max_pages,
+            fetch_details=fetch_details,
+            max_details=max_details,
+        )
     report_path: Path | None = None
     if roundtrip_lcsc_ids or roundtrip_from_snapshot:
         base_root = roundtrip_run_root or (config.cache_dir / "fetch" / "daily")
@@ -512,6 +537,20 @@ def run_fetch_daily(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run daily Stage 1 fetch jobs.")
     parser.add_argument("--max-pages", type=int, default=None)
+    parser.add_argument(
+        "--skip-jlc-list",
+        action="store_true",
+        help="Skip JLC API list ingest and use an existing snapshot directory.",
+    )
+    parser.add_argument(
+        "--snapshot-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Existing JLC snapshot dir to use when --skip-jlc-list is set. "
+            "Defaults to latest under <cache>/fetch/jlc_api."
+        ),
+    )
     parser.add_argument("--no-fetch-details", action="store_true")
     parser.add_argument(
         "--max-details",
@@ -608,6 +647,8 @@ def main(argv: list[str] | None = None) -> int:
         roundtrip_resume_state=not args.no_roundtrip_resume_state,
         roundtrip_force_refetch=args.roundtrip_force_refetch,
         roundtrip_state_db_path=args.roundtrip_state_db,
+        skip_jlc_list=args.skip_jlc_list,
+        snapshot_dir=args.snapshot_dir,
     )
     print(result.jlc_snapshot_dir)
     if result.roundtrip_report_path is not None:
@@ -853,6 +894,49 @@ def test_run_fetch_daily_resumes_from_state_db(tmp_path) -> None:
     assert second_summary["record_count"] == 0
     assert second_summary["skipped_already_success"] == 3
     assert call_ids == []
+
+
+def test_run_fetch_daily_skip_jlc_list_uses_snapshot_dir(tmp_path) -> None:
+    snapshot_dir = tmp_path / "fetch" / "jlc_api" / "snapshot"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    (snapshot_dir / "components.ndjson").write_text(
+        json.dumps({"lcscPart": "C2040"}, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_fetch_once(*args, **kwargs) -> Path:
+        raise AssertionError("run_fetch_once should not be called when skipping JLC list")
+
+    def _real_roundtrip(*args, **kwargs) -> list[FetchArtifactRecord]:
+        from ..models import ArtifactType
+
+        return [
+            FetchArtifactRecord.now(
+                lcsc_id=2040,
+                artifact_type=ArtifactType.KICAD_FOOTPRINT_MOD,
+                source_url="https://example.com",
+                raw_sha256="abc",
+                raw_size_bytes=3,
+                stored_key="objects/kicad_footprint_mod/abc.zst",
+            )
+        ]
+
+    config = FetchConfig.from_env()
+    result = run_fetch_daily(
+        config,
+        max_pages=1,
+        fetch_details=False,
+        max_details=0,
+        roundtrip_from_snapshot=True,
+        run_fetch_once_fn=fake_run_fetch_once,
+        run_roundtrip_fn=_real_roundtrip,
+        roundtrip_run_root=tmp_path / "daily",
+        roundtrip_resume_state=False,
+        skip_jlc_list=True,
+        snapshot_dir=snapshot_dir,
+    )
+    assert result.jlc_snapshot_dir == snapshot_dir
+    assert result.roundtrip_report_path is not None
 
 
 if __name__ == "__main__":
