@@ -766,7 +766,7 @@ function routesEqual(
 function buildRouteObstacles(
   sheet: SchematicSheet,
   ports: SchematicPort[],
-  positions: Record<string, { x: number; y: number; rotation?: number }>,
+  positions: Record<string, { x: number; y: number; rotation?: number; mirrorX?: boolean; mirrorY?: boolean }>,
   pk: string,
 ): RouteObstacle[] {
   const obstacles: RouteObstacle[] = [];
@@ -799,6 +799,479 @@ function buildRouteObstacles(
   }
 
   return obstacles;
+}
+
+function computeNetRenderData(params: {
+  sheet: SchematicSheet;
+  lookup: ItemLookup;
+  ports: SchematicPort[];
+  positions: Record<string, { x: number; y: number; rotation?: number; mirrorX?: boolean; mirrorY?: boolean }>;
+  pk: string;
+  netColorMap: Map<string, string>;
+  theme: ThemeColors;
+  routeOverrides: Record<string, [number, number, number][]>;
+}): {
+  directNets: DirectNetData[];
+  stubNets: StubNetData[];
+  busGroups: BusGroup[];
+  crossings: Crossing[];
+} {
+  const {
+    sheet,
+    lookup,
+    ports,
+    positions,
+    pk,
+    netColorMap,
+    theme,
+    routeOverrides,
+  } = params;
+  const directs: DirectNetData[] = [];
+  const stubs: StubNetData[] = [];
+  const pendingDirects: PendingDirectNetData[] = [];
+  const pendingMultiNets: PendingMultiNetData[] = [];
+  const allSegments: RouteSegment[] = [];
+  const routeObstacles = buildRouteObstacles(sheet, ports, positions, pk);
+  const moduleIds = new Set(sheet.modules.map((m) => m.id));
+  const portIds = new Set(ports.map((p) => p.id));
+  const breakoutPortIds = new Set(
+    ports
+      .filter((p) => !!p.signals && p.signals.length >= 2)
+      .map((p) => p.id),
+  );
+  const passThroughPortIds = new Set(
+    ports
+      .filter((p) => !!p.passThrough)
+      .map((p) => p.id),
+  );
+
+  // Collect bus candidates alongside direct/stub classification
+  const busInputs: NetForBus[] = [];
+
+  for (const net of sheet.nets) {
+    const color = netColorMap.get(net.id) || neutralConnectionColor(theme);
+
+    // ── Power/ground nets: draw individual wires from each
+    //    power port symbol to its connected component pin ──
+    if (net.type === 'power' || net.type === 'ground') {
+      const canUsePowerSymbols = net.pins.length > 0 && net.pins.every((np) => {
+        const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
+        return lookup.pinMap.has(ppId) && lookup.pinMap.has(np.componentId);
+      });
+
+      if (canUsePowerSymbols) {
+        for (const np of net.pins) {
+          const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
+          const ppPinMap = lookup.pinMap.get(ppId);
+          const compPinMap = lookup.pinMap.get(np.componentId);
+          if (!ppPinMap || !compPinMap) continue;
+
+          const ppResolved = resolvePinFromMap(ppPinMap, '1');
+          const compResolved = resolvePinFromMap(compPinMap, np.pinNumber);
+          if (!ppResolved || !compResolved) continue;
+          const ppPin = ppResolved.pin;
+          const compPin = compResolved.pin;
+
+          const ppPos = positions[pk + ppId] || { x: 0, y: 0 };
+          const compPos = positions[pk + np.componentId] || { x: 0, y: 0 };
+
+          const ppTp = transformPinOffset(ppPin.x, ppPin.y, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
+          const ppTs = transformPinSide(ppPin.side, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
+          const compTp = transformPinOffset(compPin.x, compPin.y, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
+          const compTs = transformPinSide(compPin.side, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
+
+          const wp0: WorldPin = {
+            x: ppPos.x + ppTp.x, y: ppPos.y + ppTp.y,
+            side: ppTs, compId: ppId, pinNumber: '1',
+          };
+          const wp1: WorldPin = {
+            x: compPos.x + compTp.x, y: compPos.y + compTp.y,
+            side: compTs, compId: np.componentId, pinNumber: np.pinNumber,
+          };
+
+          // Skip wire if power port pin is on (or very near) the component pin
+          const dx = wp0.x - wp1.x;
+          const dy = wp0.y - wp1.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dx * dx + dy * dy < 0.5) continue;
+
+          pendingDirects.push({
+            routeId: ppId,
+            net,
+            worldPins: [wp0, wp1],
+            color,
+            distance: dist,
+            forceDirect: true,
+            preferStub: dist > POWER_PORT_DIRECT_MAX_DISTANCE,
+            interfaceTrack: false,
+          });
+        }
+        continue; // this net is fully rendered through power symbols
+      }
+    }
+
+    // ── Normal nets (signal / bus) ──
+    const worldPins: WorldPin[] = [];
+    const uniqueItems = new Set<string>();
+    let hasBreakoutSignalEndpoint = false;
+
+    for (const np of net.pins) {
+      const pm = lookup.pinMap.get(np.componentId);
+      const resolved = resolvePinFromMap(pm, np.pinNumber);
+      if (!resolved) continue;
+      const pin = resolved.pin;
+      const pos = positions[pk + np.componentId] || { x: 0, y: 0 };
+      const tp = transformPinOffset(pin.x, pin.y, pos.rotation, pos.mirrorX, pos.mirrorY);
+      const ts = transformPinSide(pin.side, pos.rotation, pos.mirrorX, pos.mirrorY);
+      worldPins.push({
+        x: pos.x + tp.x,
+        y: pos.y + tp.y,
+        side: ts,
+        compId: np.componentId,
+        pinNumber: resolved.key,
+      });
+      if (breakoutPortIds.has(np.componentId) && resolved.key !== '1') {
+        hasBreakoutSignalEndpoint = true;
+      }
+      uniqueItems.add(np.componentId);
+    }
+
+    if (worldPins.length < 2) continue;
+    const interfaceTrack = worldPins.some(
+      (wp) => moduleIds.has(wp.compId) || portIds.has(wp.compId),
+    );
+    const endpointCategories = worldPins
+      .map((wp) => lookup.pinMap.get(wp.compId)?.get(wp.pinNumber)?.category)
+      .filter((category): category is string => !!category);
+
+    // 2-pin nets between exactly 2 items can be direct wires.
+    const isTwoPinDirect = uniqueItems.size === 2 && worldPins.length === 2;
+
+    if (isTwoPinDirect) {
+      const dx = worldPins[0].x - worldPins[1].x;
+      const dy = worldPins[0].y - worldPins[1].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      pendingDirects.push({
+        routeId: net.id,
+        net,
+        worldPins,
+        color,
+        distance: dist,
+        forceDirect: net.type !== 'signal',
+        preferStub: false,
+        interfaceTrack,
+      });
+
+      // Also register as bus candidate
+      if (net.type !== 'power' && net.type !== 'ground') {
+        // Promote interface-level electrical protocol lines (UART/SPI/I2C)
+        // into bus candidates so they render as one bundled module link.
+        const protocolType =
+          protocolTypeForName(net.name) ||
+          protocolTypeForCategory(dominantEndpointCategory(endpointCategories));
+        const busCandidateType =
+          net.type === 'bus' || (interfaceTrack && protocolType)
+            ? 'bus'
+            : net.type;
+        busInputs.push({
+          netId: net.id,
+          netName: protocolType ?? net.name,
+          netType: busCandidateType,
+          allowBundle: !hasBreakoutSignalEndpoint,
+          worldPins: worldPins.map((wp) => ({
+            x: wp.x,
+            y: wp.y,
+            side: wp.side,
+            compId: wp.compId,
+          })),
+        });
+      }
+    } else if (
+      net.type !== 'bus' &&
+      worldPins.length >= 3 &&
+      worldPins.length <= MAX_MULTI_ROUTE_PINS
+    ) {
+      const span = computePinSpan(worldPins);
+      const bridgeEdges = buildPassThroughBridgeEdges(worldPins, passThroughPortIds);
+      const edges = bridgeEdges ?? buildMstEdges(worldPins);
+      if (edges.length > 0 && span <= MULTI_ROUTE_MAX_SPAN) {
+        pendingMultiNets.push({
+          net,
+          worldPins,
+          edges,
+          color,
+          span,
+          interfaceTrack,
+        });
+      } else {
+        stubs.push({ net, worldPins, color, interfaceTrack });
+      }
+    } else {
+      stubs.push({ net, worldPins, color, interfaceTrack });
+    }
+  }
+
+  // ── Bus detection ───────────────────────────────────────
+  const buses = detectBuses(busInputs, theme).map((group) => {
+    const manualRoute = anchorManualRoute(
+      routeOverrides[pk + busRouteId(group)] ?? [],
+      {
+        x: group.endpointA.mergeX,
+        y: group.endpointA.mergeY,
+        side: group.endpointA.side,
+        compId: group.endpointA.itemId,
+        pinNumber: '1',
+      },
+      {
+        x: group.endpointB.mergeX,
+        y: group.endpointB.mergeY,
+        side: group.endpointB.side,
+        compId: group.endpointB.itemId,
+        pinNumber: '1',
+      },
+    );
+    if (!manualRoute) return group;
+    return {
+      ...group,
+      trunkRoute: manualRoute,
+    };
+  });
+
+  // Nets consumed by buses → suppress individual routes and add bus trunk.
+  const busNetIds = new Set<string>();
+  for (const bg of buses) {
+    for (const nid of bg.memberNetIds) {
+      busNetIds.add(nid);
+    }
+    allSegments.push(...segmentsFromRoute(bg.trunkRoute, bg.id));
+  }
+
+  const existingSegments: RouteSegment[] = [];
+  for (const bg of buses) {
+    existingSegments.push(...segmentsFromRoute(bg.trunkRoute, bg.id));
+  }
+
+  const routed = [...pendingDirects].sort((a, b) => {
+    if (a.forceDirect !== b.forceDirect) return a.forceDirect ? -1 : 1;
+    const pr = routePriority(a.net) - routePriority(b.net);
+    if (pr !== 0) return pr;
+    if (Math.abs(a.distance - b.distance) > 0.01) return a.distance - b.distance;
+    return a.routeId.localeCompare(b.routeId);
+  });
+
+  for (const pd of routed) {
+    if (busNetIds.has(pd.net.id)) continue;
+    const a = pd.worldPins[0];
+    const b = pd.worldPins[1];
+    const manualRoute = anchorManualRoute(
+      routeOverrides[pk + pd.routeId] ?? [],
+      a,
+      b,
+    );
+
+    if (manualRoute) {
+      directs.push({
+        routeId: pd.routeId,
+        net: pd.net,
+        worldPins: pd.worldPins,
+        route: manualRoute,
+        color: pd.color,
+        interfaceTrack: pd.interfaceTrack,
+      });
+      allSegments.push(...segmentsFromRoute(manualRoute, pd.net.id));
+      existingSegments.push(...segmentsFromRoute(manualRoute, pd.routeId));
+      continue;
+    }
+
+    if (pd.preferStub) {
+      stubs.push({
+        net: pd.net,
+        worldPins: pd.worldPins,
+        color: pd.color,
+        interfaceTrack: pd.interfaceTrack,
+      });
+      continue;
+    }
+
+    const routedResult = routeOrthogonalWithHeuristics(
+      a.x, a.y, routeSideForEndpoint(a, b),
+      b.x, b.y, routeSideForEndpoint(b, a),
+      {
+        existingSegments,
+        preferredSpacing: ROUTE_SPACING,
+        obstacles: routeObstacles,
+        ignoredObstacleIds: new Set([a.compId, b.compId]),
+      },
+    );
+
+    const q = routedResult.quality;
+    const shortSignalForcesDirect = pd.net.type === 'signal' && pd.distance <= 24;
+    const shouldFallbackToLabels = !pd.forceDirect &&
+      !shortSignalForcesDirect &&
+      pd.net.type === 'signal' &&
+      (
+        q.overlaps > 0 ||
+        q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
+        q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
+        q.score > COMPLEX_ROUTE_SCORE
+      );
+
+    if (shouldFallbackToLabels) {
+      stubs.push({
+        net: pd.net,
+        worldPins: pd.worldPins,
+        color: pd.color,
+        interfaceTrack: pd.interfaceTrack,
+      });
+      continue;
+    }
+
+    const route = simplifyOrthRoute(routedResult.route);
+    if (
+      routeHitsObstacle(
+        route,
+        routeObstacles,
+        new Set([a.compId, b.compId]),
+      )
+    ) {
+      stubs.push({
+        net: pd.net,
+        worldPins: pd.worldPins,
+        color: pd.color,
+        interfaceTrack: pd.interfaceTrack,
+      });
+      continue;
+    }
+    directs.push({
+      routeId: pd.routeId,
+      net: pd.net,
+      worldPins: pd.worldPins,
+      route,
+      color: pd.color,
+      interfaceTrack: pd.interfaceTrack,
+    });
+    allSegments.push(...segmentsFromRoute(route, pd.net.id));
+    existingSegments.push(...segmentsFromRoute(route, pd.routeId));
+  }
+
+  const routedMulti = [...pendingMultiNets].sort((a, b) => {
+    const pr = routePriority(a.net) - routePriority(b.net);
+    if (pr !== 0) return pr;
+    if (Math.abs(a.span - b.span) > 0.01) return a.span - b.span;
+    return a.net.id.localeCompare(b.net.id);
+  });
+
+  for (const pm of routedMulti) {
+    if (busNetIds.has(pm.net.id)) continue;
+
+    const edgeRoutes: Array<{
+      routeId: string;
+      worldPins: [WorldPin, WorldPin];
+      route: [number, number, number][];
+    }> = [];
+    const stagedSegments: RouteSegment[] = [];
+    let failed = false;
+
+    for (let i = 0; i < pm.edges.length; i++) {
+      const edge = pm.edges[i];
+      const routeId = `${pm.net.id}::${i}`;
+      const manualRoute = anchorManualRoute(
+        routeOverrides[pk + routeId] ?? [],
+        edge.a,
+        edge.b,
+      );
+      if (manualRoute) {
+        edgeRoutes.push({
+          routeId,
+          worldPins: [edge.a, edge.b],
+          route: manualRoute,
+        });
+        stagedSegments.push(...segmentsFromRoute(manualRoute, routeId));
+        continue;
+      }
+
+      const routedResult = routeOrthogonalWithHeuristics(
+        edge.a.x, edge.a.y, routeSideForEndpoint(edge.a, edge.b),
+        edge.b.x, edge.b.y, routeSideForEndpoint(edge.b, edge.a),
+        {
+          existingSegments: existingSegments.concat(stagedSegments),
+          preferredSpacing: ROUTE_SPACING,
+          obstacles: routeObstacles,
+          ignoredObstacleIds: new Set([edge.a.compId, edge.b.compId]),
+        },
+      );
+
+      const q = routedResult.quality;
+      const edgeDist = manhattanDistance(edge.a, edge.b);
+      const shortSignalForcesDirect = pm.net.type === 'signal' && edgeDist <= 24;
+      const shouldFallbackToLabels =
+        pm.net.type === 'signal' &&
+        !shortSignalForcesDirect &&
+        (
+          q.overlaps > 0 ||
+          q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
+          q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
+          q.score > COMPLEX_ROUTE_SCORE
+        );
+
+      if (shouldFallbackToLabels) {
+        failed = true;
+        break;
+      }
+
+      const route = simplifyOrthRoute(routedResult.route);
+      if (
+        routeHitsObstacle(
+          route,
+          routeObstacles,
+          new Set([edge.a.compId, edge.b.compId]),
+        )
+      ) {
+        failed = true;
+        break;
+      }
+      edgeRoutes.push({
+        routeId,
+        worldPins: [edge.a, edge.b],
+        route,
+      });
+      stagedSegments.push(...segmentsFromRoute(route, routeId));
+    }
+
+    if (failed || edgeRoutes.length === 0) {
+      stubs.push({
+        net: pm.net,
+        worldPins: pm.worldPins,
+        color: pm.color,
+        interfaceTrack: pm.interfaceTrack,
+      });
+      continue;
+    }
+
+    for (const er of edgeRoutes) {
+      directs.push({
+        routeId: er.routeId,
+        net: pm.net,
+        worldPins: er.worldPins,
+        route: er.route,
+        color: pm.color,
+        interfaceTrack: pm.interfaceTrack,
+      });
+      allSegments.push(...segmentsFromRoute(er.route, pm.net.id));
+    }
+    existingSegments.push(...stagedSegments);
+  }
+
+  // ── Crossing detection ──────────────────────────────────
+  const cx = findCrossings(allSegments);
+
+  return {
+    directNets: directs,
+    stubNets: stubs,
+    busGroups: buses,
+    crossings: cx,
+  };
 }
 
 // ── Main component ─────────────────────────────────────────────
@@ -860,453 +1333,16 @@ export const NetLines = memo(function NetLines({
         crossings: [] as Crossing[],
       };
     }
-
-    const directs: DirectNetData[] = [];
-    const stubs: StubNetData[] = [];
-    const pendingDirects: PendingDirectNetData[] = [];
-    const pendingMultiNets: PendingMultiNetData[] = [];
-    const allSegments: RouteSegment[] = [];
-    const routeObstacles = buildRouteObstacles(sheet, ports, positions, pk);
-    const moduleIds = new Set(sheet.modules.map((m) => m.id));
-    const portIds = new Set(ports.map((p) => p.id));
-    const breakoutPortIds = new Set(
-      ports
-        .filter((p) => !!p.signals && p.signals.length >= 2)
-        .map((p) => p.id),
-    );
-    const passThroughPortIds = new Set(
-      ports
-        .filter((p) => !!p.passThrough)
-        .map((p) => p.id),
-    );
-
-    // Collect bus candidates alongside direct/stub classification
-    const busInputs: NetForBus[] = [];
-
-    for (const net of sheet.nets) {
-      const color = netColorMap.get(net.id) || neutralConnectionColor(theme);
-
-      // ── Power/ground nets: draw individual wires from each
-      //    power port symbol to its connected component pin ──
-      if (net.type === 'power' || net.type === 'ground') {
-        const canUsePowerSymbols = net.pins.length > 0 && net.pins.every((np) => {
-          const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
-          return lookup.pinMap.has(ppId) && lookup.pinMap.has(np.componentId);
-        });
-
-        if (canUsePowerSymbols) {
-          for (const np of net.pins) {
-            const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
-            const ppPinMap = lookup.pinMap.get(ppId);
-            const compPinMap = lookup.pinMap.get(np.componentId);
-            if (!ppPinMap || !compPinMap) continue;
-
-            const ppResolved = resolvePinFromMap(ppPinMap, '1');
-            const compResolved = resolvePinFromMap(compPinMap, np.pinNumber);
-            if (!ppResolved || !compResolved) continue;
-            const ppPin = ppResolved.pin;
-            const compPin = compResolved.pin;
-
-            const ppPos = positions[pk + ppId] || { x: 0, y: 0 };
-            const compPos = positions[pk + np.componentId] || { x: 0, y: 0 };
-
-            const ppTp = transformPinOffset(ppPin.x, ppPin.y, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
-            const ppTs = transformPinSide(ppPin.side, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
-            const compTp = transformPinOffset(compPin.x, compPin.y, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
-            const compTs = transformPinSide(compPin.side, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
-
-            const wp0: WorldPin = {
-              x: ppPos.x + ppTp.x, y: ppPos.y + ppTp.y,
-              side: ppTs, compId: ppId, pinNumber: '1',
-            };
-            const wp1: WorldPin = {
-              x: compPos.x + compTp.x, y: compPos.y + compTp.y,
-              side: compTs, compId: np.componentId, pinNumber: np.pinNumber,
-            };
-
-            // Skip wire if power port pin is on (or very near) the component pin
-            const dx = wp0.x - wp1.x;
-            const dy = wp0.y - wp1.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dx * dx + dy * dy < 0.5) continue;
-
-            pendingDirects.push({
-              routeId: ppId,
-              net,
-              worldPins: [wp0, wp1],
-              color,
-              distance: dist,
-              forceDirect: true,
-              preferStub: dist > POWER_PORT_DIRECT_MAX_DISTANCE,
-              interfaceTrack: false,
-            });
-          }
-          continue; // this net is fully rendered through power symbols
-        }
-      }
-
-      // ── Normal nets (signal / bus) ──
-      const worldPins: WorldPin[] = [];
-      const uniqueItems = new Set<string>();
-      let hasBreakoutSignalEndpoint = false;
-
-      for (const np of net.pins) {
-        const pm = lookup.pinMap.get(np.componentId);
-        const resolved = resolvePinFromMap(pm, np.pinNumber);
-        if (!resolved) continue;
-        const pin = resolved.pin;
-        const pos = positions[pk + np.componentId] || { x: 0, y: 0 };
-        const tp = transformPinOffset(pin.x, pin.y, pos.rotation, pos.mirrorX, pos.mirrorY);
-        const ts = transformPinSide(pin.side, pos.rotation, pos.mirrorX, pos.mirrorY);
-        worldPins.push({
-          x: pos.x + tp.x,
-          y: pos.y + tp.y,
-          side: ts,
-          compId: np.componentId,
-          pinNumber: resolved.key,
-        });
-        if (breakoutPortIds.has(np.componentId) && resolved.key !== '1') {
-          hasBreakoutSignalEndpoint = true;
-        }
-        uniqueItems.add(np.componentId);
-      }
-
-      if (worldPins.length < 2) continue;
-      const interfaceTrack = worldPins.some(
-        (wp) => moduleIds.has(wp.compId) || portIds.has(wp.compId),
-      );
-      const endpointCategories = worldPins
-        .map((wp) => lookup.pinMap.get(wp.compId)?.get(wp.pinNumber)?.category)
-        .filter((category): category is string => !!category);
-
-      // 2-pin nets between exactly 2 items can be direct wires.
-      const isTwoPinDirect = uniqueItems.size === 2 && worldPins.length === 2;
-
-      if (isTwoPinDirect) {
-        const dx = worldPins[0].x - worldPins[1].x;
-        const dy = worldPins[0].y - worldPins[1].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        pendingDirects.push({
-          routeId: net.id,
-          net,
-          worldPins,
-          color,
-          distance: dist,
-          forceDirect: net.type !== 'signal',
-          preferStub: false,
-          interfaceTrack,
-        });
-
-        // Also register as bus candidate
-        if (net.type !== 'power' && net.type !== 'ground') {
-          // Promote interface-level electrical protocol lines (UART/SPI/I2C)
-          // into bus candidates so they render as one bundled module link.
-          const protocolType =
-            protocolTypeForName(net.name) ||
-            protocolTypeForCategory(dominantEndpointCategory(endpointCategories));
-          const busCandidateType =
-            net.type === 'bus' || (interfaceTrack && protocolType)
-              ? 'bus'
-              : net.type;
-          busInputs.push({
-            netId: net.id,
-            netName: protocolType ?? net.name,
-            netType: busCandidateType,
-            allowBundle: !hasBreakoutSignalEndpoint,
-            worldPins: worldPins.map((wp) => ({
-              x: wp.x,
-              y: wp.y,
-              side: wp.side,
-              compId: wp.compId,
-            })),
-          });
-        }
-      } else if (
-        net.type !== 'bus' &&
-        worldPins.length >= 3 &&
-        worldPins.length <= MAX_MULTI_ROUTE_PINS
-      ) {
-        const span = computePinSpan(worldPins);
-        const bridgeEdges = buildPassThroughBridgeEdges(worldPins, passThroughPortIds);
-        const edges = bridgeEdges ?? buildMstEdges(worldPins);
-        if (edges.length > 0 && span <= MULTI_ROUTE_MAX_SPAN) {
-          pendingMultiNets.push({
-            net,
-            worldPins,
-            edges,
-            color,
-            span,
-            interfaceTrack,
-          });
-        } else {
-          stubs.push({ net, worldPins, color, interfaceTrack });
-        }
-      } else {
-        stubs.push({ net, worldPins, color, interfaceTrack });
-      }
-    }
-
-    // ── Bus detection ───────────────────────────────────────
-    const buses = detectBuses(busInputs, theme).map((group) => {
-      const manualRoute = anchorManualRoute(
-        routeOverrides[pk + busRouteId(group)] ?? [],
-        {
-          x: group.endpointA.mergeX,
-          y: group.endpointA.mergeY,
-          side: group.endpointA.side,
-          compId: group.endpointA.itemId,
-          pinNumber: '1',
-        },
-        {
-          x: group.endpointB.mergeX,
-          y: group.endpointB.mergeY,
-          side: group.endpointB.side,
-          compId: group.endpointB.itemId,
-          pinNumber: '1',
-        },
-      );
-      if (!manualRoute) return group;
-      return {
-        ...group,
-        trunkRoute: manualRoute,
-      };
+    return computeNetRenderData({
+      sheet,
+      lookup,
+      ports,
+      positions,
+      pk,
+      netColorMap,
+      theme,
+      routeOverrides,
     });
-
-    // Nets consumed by buses → suppress individual routes and add bus trunk.
-    const busNetIds = new Set<string>();
-    for (const bg of buses) {
-      for (const nid of bg.memberNetIds) {
-        busNetIds.add(nid);
-      }
-      allSegments.push(...segmentsFromRoute(bg.trunkRoute, bg.id));
-    }
-
-    const existingSegments: RouteSegment[] = [];
-    for (const bg of buses) {
-      existingSegments.push(...segmentsFromRoute(bg.trunkRoute, bg.id));
-    }
-
-    const routed = [...pendingDirects].sort((a, b) => {
-      if (a.forceDirect !== b.forceDirect) return a.forceDirect ? -1 : 1;
-      const pr = routePriority(a.net) - routePriority(b.net);
-      if (pr !== 0) return pr;
-      if (Math.abs(a.distance - b.distance) > 0.01) return a.distance - b.distance;
-      return a.routeId.localeCompare(b.routeId);
-    });
-
-    for (const pd of routed) {
-      if (busNetIds.has(pd.net.id)) continue;
-      const a = pd.worldPins[0];
-      const b = pd.worldPins[1];
-      const manualRoute = anchorManualRoute(
-        routeOverrides[pk + pd.routeId] ?? [],
-        a,
-        b,
-      );
-
-      if (manualRoute) {
-        directs.push({
-          routeId: pd.routeId,
-          net: pd.net,
-          worldPins: pd.worldPins,
-          route: manualRoute,
-          color: pd.color,
-          interfaceTrack: pd.interfaceTrack,
-        });
-        allSegments.push(...segmentsFromRoute(manualRoute, pd.net.id));
-        existingSegments.push(...segmentsFromRoute(manualRoute, pd.routeId));
-        continue;
-      }
-
-      if (pd.preferStub) {
-        stubs.push({
-          net: pd.net,
-          worldPins: pd.worldPins,
-          color: pd.color,
-          interfaceTrack: pd.interfaceTrack,
-        });
-        continue;
-      }
-
-      const routedResult = routeOrthogonalWithHeuristics(
-        a.x, a.y, routeSideForEndpoint(a, b),
-        b.x, b.y, routeSideForEndpoint(b, a),
-        {
-          existingSegments,
-          preferredSpacing: ROUTE_SPACING,
-          obstacles: routeObstacles,
-          ignoredObstacleIds: new Set([a.compId, b.compId]),
-        },
-      );
-
-      const q = routedResult.quality;
-      const shortSignalForcesDirect = pd.net.type === 'signal' && pd.distance <= 24;
-      const shouldFallbackToLabels = !pd.forceDirect &&
-        !shortSignalForcesDirect &&
-        pd.net.type === 'signal' &&
-        (
-          q.overlaps > 0 ||
-          q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
-          q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
-          q.score > COMPLEX_ROUTE_SCORE
-        );
-
-      if (shouldFallbackToLabels) {
-        stubs.push({
-          net: pd.net,
-          worldPins: pd.worldPins,
-          color: pd.color,
-          interfaceTrack: pd.interfaceTrack,
-        });
-        continue;
-      }
-
-      const route = simplifyOrthRoute(routedResult.route);
-      if (
-        routeHitsObstacle(
-          route,
-          routeObstacles,
-          new Set([a.compId, b.compId]),
-        )
-      ) {
-        stubs.push({
-          net: pd.net,
-          worldPins: pd.worldPins,
-          color: pd.color,
-          interfaceTrack: pd.interfaceTrack,
-        });
-        continue;
-      }
-      directs.push({
-        routeId: pd.routeId,
-        net: pd.net,
-        worldPins: pd.worldPins,
-        route,
-        color: pd.color,
-        interfaceTrack: pd.interfaceTrack,
-      });
-      allSegments.push(...segmentsFromRoute(route, pd.net.id));
-      existingSegments.push(...segmentsFromRoute(route, pd.routeId));
-    }
-
-    const routedMulti = [...pendingMultiNets].sort((a, b) => {
-      const pr = routePriority(a.net) - routePriority(b.net);
-      if (pr !== 0) return pr;
-      if (Math.abs(a.span - b.span) > 0.01) return a.span - b.span;
-      return a.net.id.localeCompare(b.net.id);
-    });
-
-    for (const pm of routedMulti) {
-      if (busNetIds.has(pm.net.id)) continue;
-
-      const edgeRoutes: Array<{
-        routeId: string;
-        worldPins: [WorldPin, WorldPin];
-        route: [number, number, number][];
-      }> = [];
-      const stagedSegments: RouteSegment[] = [];
-      let failed = false;
-
-      for (let i = 0; i < pm.edges.length; i++) {
-        const edge = pm.edges[i];
-        const routeId = `${pm.net.id}::${i}`;
-        const manualRoute = anchorManualRoute(
-          routeOverrides[pk + routeId] ?? [],
-          edge.a,
-          edge.b,
-        );
-        if (manualRoute) {
-          edgeRoutes.push({
-            routeId,
-            worldPins: [edge.a, edge.b],
-            route: manualRoute,
-          });
-          stagedSegments.push(...segmentsFromRoute(manualRoute, routeId));
-          continue;
-        }
-
-        const routedResult = routeOrthogonalWithHeuristics(
-          edge.a.x, edge.a.y, routeSideForEndpoint(edge.a, edge.b),
-          edge.b.x, edge.b.y, routeSideForEndpoint(edge.b, edge.a),
-          {
-            existingSegments: existingSegments.concat(stagedSegments),
-            preferredSpacing: ROUTE_SPACING,
-            obstacles: routeObstacles,
-            ignoredObstacleIds: new Set([edge.a.compId, edge.b.compId]),
-          },
-        );
-
-        const q = routedResult.quality;
-        const edgeDist = manhattanDistance(edge.a, edge.b);
-        const shortSignalForcesDirect = pm.net.type === 'signal' && edgeDist <= 24;
-        const shouldFallbackToLabels =
-          pm.net.type === 'signal' &&
-          !shortSignalForcesDirect &&
-          (
-            q.overlaps > 0 ||
-            q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
-            q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
-            q.score > COMPLEX_ROUTE_SCORE
-          );
-
-        if (shouldFallbackToLabels) {
-          failed = true;
-          break;
-        }
-
-        const route = simplifyOrthRoute(routedResult.route);
-        if (
-          routeHitsObstacle(
-            route,
-            routeObstacles,
-            new Set([edge.a.compId, edge.b.compId]),
-          )
-        ) {
-          failed = true;
-          break;
-        }
-        edgeRoutes.push({
-          routeId,
-          worldPins: [edge.a, edge.b],
-          route,
-        });
-        stagedSegments.push(...segmentsFromRoute(route, routeId));
-      }
-
-      if (failed || edgeRoutes.length === 0) {
-        stubs.push({
-          net: pm.net,
-          worldPins: pm.worldPins,
-          color: pm.color,
-          interfaceTrack: pm.interfaceTrack,
-        });
-        continue;
-      }
-
-      for (const er of edgeRoutes) {
-        directs.push({
-          routeId: er.routeId,
-          net: pm.net,
-          worldPins: er.worldPins,
-          route: er.route,
-          color: pm.color,
-          interfaceTrack: pm.interfaceTrack,
-        });
-        allSegments.push(...segmentsFromRoute(er.route, pm.net.id));
-      }
-      existingSegments.push(...stagedSegments);
-    }
-
-    // ── Crossing detection ──────────────────────────────────
-    const cx = findCrossings(allSegments);
-
-    return {
-      directNets: directs,
-      stubNets: stubs,
-      busGroups: buses,
-      crossings: cx,
-    };
   }, [sheet, lookup, positions, pk, netColorMap, theme, ports, routeOverrides]);
 
   const highlightedNetIds = useMemo(() => {
