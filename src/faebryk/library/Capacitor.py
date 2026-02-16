@@ -82,6 +82,7 @@ class Capacitor(fabll.Node):
                 "max_voltage": max_voltage,
                 "temperature_coefficient": temperature_coefficient,
             },
+            package_prefix="C",
         )
     )
 
