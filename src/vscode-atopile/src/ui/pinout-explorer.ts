@@ -1,7 +1,7 @@
 /**
  * Pinout webview - Loads the React-based pinout viewer.
  *
- * In production: loads compiled assets from resources/pinout-viewer/
+ * In production: loads compiled assets from resources/webviews/
  * In development: loads from the Vite dev server.
  * Data is passed via window.__PINOUT_CONFIG__ with a webview URI to the JSON file.
  */
@@ -13,7 +13,7 @@ import { getCurrentPinout, onPinoutChanged } from '../common/pinout';
 import { BaseWebview } from './webview-base';
 
 /**
- * Locate the pinout-viewer dist directory.
+ * Locate the pinout viewer dist directory.
  */
 function getPinoutViewerDistPath(): string | null {
     const extensionPath = vscode.extensions.getExtension('atopile.atopile')?.extensionUri?.fsPath;
@@ -144,7 +144,7 @@ class PinoutWebview extends BaseWebview {
 <body>
     <div>
         <p>Pinout viewer not built.</p>
-        <p>Run <code>cd src/ui-server && npm run build</code> then copy dist to <code>resources/pinout-viewer/</code></p>
+        <p>Run <code>npm run build:webviews</code> in <code>src/vscode-atopile</code>.</p>
     </div>
 </body>
 </html>`;
