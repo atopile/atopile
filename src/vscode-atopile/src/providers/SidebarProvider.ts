@@ -9,17 +9,16 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
-import { traceInfo, traceError, traceVerbose, traceMilestone, traceWarn } from '../common/log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
-import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult, showThreeDModel } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds, type Build } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
-import { openKiCanvasPreview } from '../ui/kicanvas';
+import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
@@ -233,9 +232,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
-  private _lastThreeDBuildRequest: { projectRoot: string; targetName: string } | null = null;
-  private _didFallbackFromGlbOnly = false;
-
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _extensionVersion: string,
@@ -706,9 +702,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'threeDModelBuildResult':
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
-        if (!message.success && this._maybeRetryThreeDBuildWithGlb(message.error ?? null)) {
-          break;
-        }
         handleThreeDModelBuildResult(message.success, message.error);
         break;
       case 'openMigrateTab':
@@ -891,37 +884,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private _startThreeDModelBuild(projectRoot: string, targetName: string): void {
-    this._lastThreeDBuildRequest = { projectRoot, targetName };
-    this._didFallbackFromGlbOnly = false;
     this._triggerThreeDModelBuild(projectRoot, targetName, ['glb-only']);
   }
 
-  private _maybeRetryThreeDBuildWithGlb(error: string | null): boolean {
-    if (!error || this._didFallbackFromGlbOnly || !this._lastThreeDBuildRequest) {
-      return false;
-    }
-
-    // Older atopile versions do not expose the glb-only target.
-    if (!/Target [`'"]?glb-only[`'"]? not recognized/i.test(error)) {
-      return false;
-    }
-
-    const { projectRoot, targetName } = this._lastThreeDBuildRequest;
-    this._didFallbackFromGlbOnly = true;
-    traceWarn('[SidebarProvider] glb-only target unavailable, retrying 3D build with glb target');
-    this._triggerThreeDModelBuild(projectRoot, targetName, ['glb']);
-    return true;
-  }
-
   private _openLayoutPreview(filePath: string): void {
-    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
-    if (!pcbPath) {
-      traceError(`[SidebarProvider] Layout file not found: ${filePath}`);
-      vscode.window.showErrorMessage('Layout file not found. Run a build to generate it.');
-      return;
-    }
-    setCurrentPCB({ path: pcbPath, exists: true });
-    void openKiCanvasPreview();
+    // The server already loaded the PCB via the openLayout action.
+    // Just open the editor webview.
+    void openLayoutEditor();
   }
 
   private _openWithKicad(filePath: string): void {
@@ -951,8 +920,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     if (!build?.root || !build.name) {
       traceError(`[SidebarProvider] No build target selected for 3D export. Showing existing model without rebuild: ${modelPath}`);
-      this._lastThreeDBuildRequest = null;
-      this._didFallbackFromGlbOnly = false;
       showThreeDModel(modelPath);
       await openModelViewerPreview();
       return;

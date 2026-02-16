@@ -1442,6 +1442,229 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Migration failed: {error_msg}",
                 }
 
+        if action == "ping":
+            return {"success": True}
+
+        if action == "openFile":
+            file_path = payload.get("file")
+            line = payload.get("line")
+            column = payload.get("column")
+
+            if not file_path:
+                return {"success": False, "error": "Missing file path"}
+
+            workspace_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+            resolved = path_utils.resolve_workspace_file(file_path, workspace_path)
+            if not resolved:
+                return {
+                    "success": False,
+                    "error": f"File not found: {file_path}",
+                }
+
+            await server_state.emit_event(
+                "open_file",
+                {"path": str(resolved), "line": line, "column": column},
+            )
+            return {"success": True}
+
+        if action == "openSource":
+            project_root = payload.get("projectId", "")
+            entry = payload.get("entry", "")
+
+            if not project_root or not entry:
+                return {"success": False, "error": "Missing projectId or entry"}
+
+            project_path = Path(project_root)
+            entry_path = path_utils.resolve_entry_path(project_path, entry)
+            if not entry_path or not entry_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Entry file not found: {entry_path}",
+                }
+
+            await server_state.emit_event("open_file", {"path": str(entry_path)})
+            return {"success": True}
+
+        if action == "openLayout":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
+
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
+            if not target or not target.exists():
+                return {
+                    "success": False,
+                    "error": f"Layout not found for target: {target_name}",
+                }
+
+            from atopile.server.domains.layout import layout_service
+
+            await asyncio.to_thread(layout_service.load, target)
+            await layout_service.start_watcher()
+            await server_state.emit_event("open_layout", {"path": str(target)})
+            return {"success": True}
+
+        if action == "openKiCad":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
+
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
+            if not target or not target.exists():
+                return {
+                    "success": False,
+                    "error": f"Layout not found for target: {target_name}",
+                }
+
+            await server_state.emit_event("open_kicad", {"path": str(target)})
+            return {"success": True}
+
+        if action == "open3D":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
+
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_3d_path(project_path, target_name)
+            if target is None:
+                target = (
+                    project_path
+                    / "build"
+                    / "builds"
+                    / target_name
+                    / f"{target_name}.pcba.glb"
+                )
+
+            await server_state.emit_event("open_3d", {"path": str(target)})
+            return {"success": True}
+
+        elif action == "setLogViewCurrentId":
+            build_id = payload.get("buildId")
+            stage = payload.get("stage")
+            client_state.log_view_current_id = build_id
+            client_state.log_view_current_stage = stage
+            await server_state.emit_event(
+                "log_view_current_id_changed",
+                {"buildId": build_id, "stage": stage},
+            )
+            return {"success": True}
+
+        elif action == "getLogViewCurrentId":
+            return {
+                "success": True,
+                "buildId": client_state.log_view_current_id,
+                "stage": client_state.log_view_current_stage,
+            }
+
+        elif action == "setAtopileSource":
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {"source": payload.get("source", "release")},
+            )
+            return {"success": True}
+
+        elif action == "setAtopileLocalPath":
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "local_path": payload.get("path"),
+                    "source": "local",  # Also set source to 'local' so the UI knows
+                },
+            )
+            return {"success": True}
+
+        elif action == "setAtopileInstalling":
+            installing = payload.get("installing", False)
+            error = payload.get("error")
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {"is_installing": installing, "error": error},
+            )
+            return {"success": True}
+
+        elif action == "browseAtopilePath":
+            return {
+                "success": False,
+                "error": "browseAtopilePath is not supported in the UI server",
+            }
+
+        elif action == "validateAtopilePath":
+            from atopile.server.domains import atopile_install
+
+            path = payload.get("path", "")
+            result = await atopile_install.validate_local_path(path)
+            log.info(f"[validateAtopilePath] path={path}, result={result}")
+            return {"success": True, **result}
+
+        elif action == "getAtopileConfig":
+            # Return the current atopile config including actual version
+            # This is called when WebSocket connects to get the current state
+            from atopile import version as ato_version
+
+            try:
+                version_obj = ato_version.get_installed_atopile_version()
+                actual_version = str(version_obj)
+            except Exception:
+                actual_version = None
+
+            actual_source = ctx.ato_source or "unknown"
+            # Derive UI source: 'explicit-path' means user configured a local binary
+            ui_source = "local" if actual_source == "explicit-path" else "release"
+
+            # Emit the config so it gets to the frontend
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "actual_binary_path": ctx.ato_binary_path,
+                    "source": ui_source,
+                    "local_path": ctx.ato_local_path,
+                    "from_branch": ctx.ato_from_branch,
+                    "from_spec": ctx.ato_from_spec,
+                },
+            )
+            return {
+                "success": True,
+                "actual_version": actual_version,
+                "actual_source": actual_source,
+                "source": ui_source,
+            }
+
+        elif action == "setWorkspaceFolders":
+            folders = payload.get("folders", [])
+            workspace_paths = [Path(f) for f in folders] if folders else []
+            ctx.workspace_paths = workspace_paths
+            model_state.set_workspace_paths(workspace_paths)
+            await handle_data_action("refreshProjects", {}, ctx)
+            await handle_data_action("refreshPackages", {}, ctx)
+            return {"success": True}
         # Manufacturing wizard actions
         if action == "getManufacturingGitStatus":
             from atopile.server.domains import manufacturing as manufacturing_domain

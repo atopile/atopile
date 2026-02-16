@@ -19,7 +19,7 @@ fn genZigAddress(comptime WrapperType: type, comptime T: type) type {
 
     return struct {
         // Return a stable identifier for the Python-side wrapper
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = args; // No arguments needed
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
             // Use underlying Zig struct address (stable if buffer not reallocated)
@@ -38,21 +38,21 @@ fn genZigAddress(comptime WrapperType: type, comptime T: type) type {
 }
 
 /// static init function that raises a typeerror
-fn initRaise(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+fn initRaise(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
     _ = self;
     _ = args;
     py.PyErr_SetString(py.PyExc_TypeError, "Don't call __init__ on this type");
     return null;
 }
 
-fn return_none(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+fn return_none(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
     _ = self;
     _ = args;
     // return None
     return py.Py_None();
 }
 
-fn raise_not_implemented(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+fn raise_not_implemented(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
     _ = self;
     _ = args;
     py.PyErr_SetString(py.PyExc_NotImplementedError, "Not implemented");
