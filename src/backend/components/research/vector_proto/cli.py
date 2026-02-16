@@ -45,6 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index = sub.add_parser("build-index", help="Build vector index from corpus JSONL")
     p_index.add_argument("--corpus-jsonl", type=Path, required=True)
     p_index.add_argument("--out-dir", type=Path, required=True)
+    p_index.add_argument("--batch-size", type=int, default=2048)
     p_index.add_argument(
         "--embedding-backend",
         choices=["hashing", "sentence-transformers"],
@@ -173,26 +174,27 @@ def main() -> None:
 
     if args.cmd == "build-index":
         from .embedding import make_embedder
-        from .index import VectorStore
+        from .index import build_index_files
 
         embedder = make_embedder(
             backend=args.embedding_backend,
             dimension=args.embedding_dim,
             model_name=args.model_name,
         )
-        store = VectorStore.from_corpus(
+        rows = build_index_files(
             corpus_path=args.corpus_jsonl,
+            out_dir=args.out_dir,
             embedder=embedder,
+            batch_size=args.batch_size,
         )
-        store.save(args.out_dir, corpus_path=args.corpus_jsonl)
         print(
             json.dumps(
                 {
                     "status": "ok",
                     "index_dir": str(args.out_dir),
-                    "corpus_size": len(store.records),
-                    "embedding_backend": store.embedding_backend,
-                    "embedding_dim": store.dimension,
+                    "corpus_size": rows,
+                    "embedding_backend": embedder.name,
+                    "embedding_dim": int(embedder.dimension),
                 },
                 sort_keys=True,
             )

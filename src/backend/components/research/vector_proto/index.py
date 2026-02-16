@@ -5,11 +5,13 @@ import math
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Iterator
 
 import numpy as np
 
 from .corpus import CorpusRecord, load_corpus
 from .embedding import Embedder
+from .runtime import status
 
 
 @dataclass(frozen=True)
@@ -417,3 +419,174 @@ def test_vector_store_exact_lcsc_boosts_to_top() -> None:
     store = VectorStore(records=records, vectors=vectors, embedding_backend=emb.name)
     results = store.search(query="C2002", embedder=emb, limit=1)
     assert results[0].lcsc_id == 2002
+
+
+def test_build_index_files_streams_and_writes_manifest(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus.jsonl"
+    records = [
+        CorpusRecord(
+            lcsc_id=1,
+            component_type="sensor",
+            category="sensors",
+            subcategory="temperature",
+            manufacturer_name="Acme",
+            part_number="TMP-1",
+            package="SOT-23",
+            description="temperature sensor",
+            stock=10,
+            is_basic=False,
+            is_preferred=False,
+            attrs={},
+            text="lcsc C1 sensor temperature TMP-1",
+        ),
+        CorpusRecord(
+            lcsc_id=2,
+            component_type="mcu",
+            category="ics",
+            subcategory="microcontroller",
+            manufacturer_name="Acme",
+            part_number="MCU-2",
+            package="QFN-32",
+            description="small microcontroller",
+            stock=20,
+            is_basic=True,
+            is_preferred=False,
+            attrs={},
+            text="lcsc C2 mcu qfn32",
+        ),
+    ]
+    with corpus.open("w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(asdict(record), ensure_ascii=True, sort_keys=True))
+            f.write("\n")
+
+    from .embedding import HashingEmbedder
+
+    out_dir = tmp_path / "index"
+    rows = build_index_files(
+        corpus_path=corpus,
+        out_dir=out_dir,
+        embedder=HashingEmbedder(dimension=64),
+        batch_size=1,
+    )
+    assert rows == 2
+    loaded = VectorStore.load(out_dir)
+    assert len(loaded.records) == 2
+    assert loaded.vectors.shape == (2, 64)
+
+
+def _parse_corpus_line(line: str) -> CorpusRecord:
+    payload = json.loads(line)
+    return CorpusRecord(
+        lcsc_id=int(payload["lcsc_id"]),
+        component_type=str(payload["component_type"]),
+        category=str(payload["category"]),
+        subcategory=str(payload["subcategory"]),
+        manufacturer_name=payload.get("manufacturer_name"),
+        part_number=str(payload["part_number"]),
+        package=str(payload["package"]),
+        description=str(payload["description"]),
+        stock=int(payload["stock"]),
+        is_basic=bool(payload["is_basic"]),
+        is_preferred=bool(payload["is_preferred"]),
+        attrs=payload.get("attrs", {}),
+        text=str(payload["text"]),
+    )
+
+
+def _iter_corpus(corpus_path: Path) -> Iterator[CorpusRecord]:
+    with corpus_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            yield _parse_corpus_line(stripped)
+
+
+def _count_corpus_rows(corpus_path: Path) -> int:
+    with corpus_path.open("r", encoding="utf-8") as f:
+        return sum(1 for line in f if line.strip())
+
+
+def build_index_files(
+    *,
+    corpus_path: Path,
+    out_dir: Path,
+    embedder: Embedder,
+    batch_size: int = 2048,
+    progress_every: int = 20000,
+) -> int:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be > 0")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    total = _count_corpus_rows(corpus_path)
+    status(f"build-index total_rows={total} batch_size={batch_size}")
+    if total == 0:
+        vectors = np.zeros((0, int(embedder.dimension)), dtype=np.float32)
+        np.save(out_dir / "vectors.npy", vectors, allow_pickle=False)
+        (out_dir / "records.jsonl").write_text("", encoding="utf-8")
+        manifest = IndexManifest(
+            embedding_backend=embedder.name,
+            embedding_dimension=int(embedder.dimension),
+            corpus_size=0,
+            corpus_path=str(corpus_path),
+        )
+        (out_dir / "manifest.json").write_text(
+            json.dumps(asdict(manifest), ensure_ascii=True, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        return 0
+
+    vectors_mm = np.lib.format.open_memmap(
+        out_dir / "vectors.npy",
+        mode="w+",
+        dtype=np.float32,
+        shape=(total, int(embedder.dimension)),
+    )
+
+    written = 0
+    batch_records: list[CorpusRecord] = []
+    batch_texts: list[str] = []
+    with (out_dir / "records.jsonl").open("w", encoding="utf-8") as records_file:
+        for record in _iter_corpus(corpus_path):
+            batch_records.append(record)
+            batch_texts.append(record.text)
+            if len(batch_texts) < batch_size:
+                continue
+
+            batch_vectors = embedder.embed_texts(batch_texts)
+            batch_n = len(batch_records)
+            vectors_mm[written : written + batch_n] = batch_vectors
+            for item in batch_records:
+                records_file.write(json.dumps(asdict(item), ensure_ascii=True, sort_keys=True))
+                records_file.write("\n")
+            written += batch_n
+            if written % progress_every == 0 or written == total:
+                status(f"build-index embedded_rows={written}/{total}")
+            batch_records.clear()
+            batch_texts.clear()
+
+        if batch_records:
+            batch_vectors = embedder.embed_texts(batch_texts)
+            batch_n = len(batch_records)
+            vectors_mm[written : written + batch_n] = batch_vectors
+            for item in batch_records:
+                records_file.write(json.dumps(asdict(item), ensure_ascii=True, sort_keys=True))
+                records_file.write("\n")
+            written += batch_n
+            status(f"build-index embedded_rows={written}/{total}")
+
+    vectors_mm.flush()
+    manifest = IndexManifest(
+        embedding_backend=embedder.name,
+        embedding_dimension=int(embedder.dimension),
+        corpus_size=written,
+        corpus_path=str(corpus_path),
+    )
+    (out_dir / "manifest.json").write_text(
+        json.dumps(asdict(manifest), ensure_ascii=True, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    status(f"build-index complete rows={written} out_dir={out_dir}")
+    return written
