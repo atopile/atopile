@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -33,6 +34,144 @@ class DailyFetchResult:
 class _RoundtripPartResult:
     records: list[FetchArtifactRecord]
     failure: dict[str, object] | None
+
+
+class _RoundtripStateStore:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_path, timeout=30.0)
+
+    def _init_schema(self) -> None:
+        with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("""
+                create table if not exists roundtrip_part_state (
+                    lcsc_id integer primary key,
+                    datasheet_url text,
+                    status text not null,
+                    attempts integer not null default 0,
+                    artifact_count integer not null default 0,
+                    last_error text,
+                    last_started_utc text,
+                    last_finished_utc text,
+                    last_success_utc text,
+                    updated_at_utc text not null
+                )
+            """)
+            conn.execute("""
+                create index if not exists roundtrip_part_state_status_idx
+                on roundtrip_part_state (status)
+            """)
+
+    def successful_ids(self) -> set[int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                select lcsc_id
+                from roundtrip_part_state
+                where status = 'success'
+                """
+            ).fetchall()
+        return {int(row[0]) for row in rows}
+
+    def mark_started(self, *, lcsc_id: int, datasheet_url: str | None) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into roundtrip_part_state (
+                    lcsc_id,
+                    datasheet_url,
+                    status,
+                    attempts,
+                    artifact_count,
+                    last_error,
+                    last_started_utc,
+                    last_finished_utc,
+                    last_success_utc,
+                    updated_at_utc
+                ) values (?, ?, 'running', 1, 0, null, ?, null, null, ?)
+                on conflict(lcsc_id) do update set
+                    datasheet_url=excluded.datasheet_url,
+                    status='running',
+                    attempts=roundtrip_part_state.attempts + 1,
+                    last_started_utc=excluded.last_started_utc,
+                    updated_at_utc=excluded.updated_at_utc
+                """,
+                (lcsc_id, datasheet_url, now, now),
+            )
+
+    def mark_success(
+        self,
+        *,
+        lcsc_id: int,
+        datasheet_url: str | None,
+        artifact_count: int,
+    ) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into roundtrip_part_state (
+                    lcsc_id,
+                    datasheet_url,
+                    status,
+                    attempts,
+                    artifact_count,
+                    last_error,
+                    last_started_utc,
+                    last_finished_utc,
+                    last_success_utc,
+                    updated_at_utc
+                ) values (?, ?, 'success', 1, ?, null, ?, ?, ?, ?)
+                on conflict(lcsc_id) do update set
+                    datasheet_url=excluded.datasheet_url,
+                    status='success',
+                    artifact_count=excluded.artifact_count,
+                    last_error=null,
+                    last_finished_utc=excluded.last_finished_utc,
+                    last_success_utc=excluded.last_success_utc,
+                    updated_at_utc=excluded.updated_at_utc
+                """,
+                (lcsc_id, datasheet_url, artifact_count, now, now, now, now),
+            )
+
+    def mark_failed(
+        self,
+        *,
+        lcsc_id: int,
+        datasheet_url: str | None,
+        error: str,
+    ) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into roundtrip_part_state (
+                    lcsc_id,
+                    datasheet_url,
+                    status,
+                    attempts,
+                    artifact_count,
+                    last_error,
+                    last_started_utc,
+                    last_finished_utc,
+                    last_success_utc,
+                    updated_at_utc
+                ) values (?, ?, 'failed', 1, 0, ?, ?, ?, null, ?)
+                on conflict(lcsc_id) do update set
+                    datasheet_url=excluded.datasheet_url,
+                    status='failed',
+                    last_error=excluded.last_error,
+                    last_finished_utc=excluded.last_finished_utc,
+                    updated_at_utc=excluded.updated_at_utc
+                """,
+                (lcsc_id, datasheet_url, error, now, now, now),
+            )
 
 
 def _coerce_lcsc_id(value: str | int | None) -> int | None:
@@ -198,6 +337,9 @@ def run_fetch_daily(
     roundtrip_retry_backoff_s: float = 2.0,
     roundtrip_sleep_s: float = 0.0,
     roundtrip_workers: int = 1,
+    roundtrip_resume_state: bool = True,
+    roundtrip_force_refetch: bool = False,
+    roundtrip_state_db_path: Path | None = None,
 ) -> DailyFetchResult:
     log_event(
         service="components-fetch",
@@ -212,6 +354,9 @@ def run_fetch_daily(
         roundtrip_retry_backoff_s=roundtrip_retry_backoff_s,
         roundtrip_sleep_s=roundtrip_sleep_s,
         roundtrip_workers=roundtrip_workers,
+        roundtrip_resume_state=roundtrip_resume_state,
+        roundtrip_force_refetch=roundtrip_force_refetch,
+        roundtrip_state_db_path=roundtrip_state_db_path,
     )
     jlc_snapshot_dir = run_fetch_once_fn(
         config,
@@ -232,6 +377,19 @@ def run_fetch_daily(
             ]
         else:
             seeds = list(seed_map.values())
+        state_store: _RoundtripStateStore | None = None
+        skipped_already_success = 0
+        if roundtrip_resume_state:
+            state_store = _RoundtripStateStore(
+                roundtrip_state_db_path
+                or (config.cache_dir / "fetch" / "roundtrip_state.sqlite3")
+            )
+            if not roundtrip_force_refetch:
+                successful_ids = state_store.successful_ids()
+                skipped_already_success = sum(
+                    1 for seed in seeds if seed.lcsc_id in successful_ids
+                )
+                seeds = [seed for seed in seeds if seed.lcsc_id not in successful_ids]
         if roundtrip_max_parts is not None:
             seeds = seeds[:roundtrip_max_parts]
 
@@ -239,20 +397,29 @@ def run_fetch_daily(
         failures: list[dict[str, object]] = []
 
         def _run_seed(seed: LcscFetchSeed) -> _RoundtripPartResult:
+            if state_store is not None:
+                state_store.mark_started(
+                    lcsc_id=seed.lcsc_id,
+                    datasheet_url=seed.datasheet_url,
+                )
             if roundtrip_sleep_s > 0:
                 sleep(roundtrip_sleep_s)
             attempt = 0
             while True:
                 attempt += 1
                 try:
-                    return _RoundtripPartResult(
-                        records=run_roundtrip_fn(
+                    fetched_records = run_roundtrip_fn(
                             config=config,
                             lcsc_id=seed.lcsc_id,
                             datasheet_url=seed.datasheet_url,
-                        ),
-                        failure=None,
                     )
+                    if state_store is not None:
+                        state_store.mark_success(
+                            lcsc_id=seed.lcsc_id,
+                            datasheet_url=seed.datasheet_url,
+                            artifact_count=len(fetched_records),
+                        )
+                    return _RoundtripPartResult(records=fetched_records, failure=None)
                 except Exception as ex:
                     is_retryable = _is_retryable_roundtrip_error(ex)
                     if attempt >= roundtrip_retry_attempts or not is_retryable:
@@ -271,6 +438,12 @@ def run_fetch_daily(
                             attempts=attempt,
                             error=repr(ex),
                         )
+                        if state_store is not None:
+                            state_store.mark_failed(
+                                lcsc_id=seed.lcsc_id,
+                                datasheet_url=seed.datasheet_url,
+                                error=repr(ex),
+                            )
                         return _RoundtripPartResult(records=[], failure=failure)
                     delay_s = _retry_delay_seconds(
                         ex,
@@ -299,6 +472,7 @@ def run_fetch_daily(
             "created_at_utc": _utc_stamp(),
             "seed_count": len(seeds),
             "workers": max(1, roundtrip_workers),
+            "skipped_already_success": skipped_already_success,
             "record_count": len(records),
             "lcsc_ids": sorted({record.lcsc_id for record in records}),
             "artifact_types": sorted(
@@ -306,6 +480,8 @@ def run_fetch_daily(
             ),
             "failure_count": len(failures),
             "failures": failures,
+            "resume_state_enabled": roundtrip_resume_state,
+            "state_db_path": str(state_store.db_path) if state_store else None,
         }
         report_path = run_dir / "roundtrip_report.json"
         report_path.write_text(json.dumps(summary, ensure_ascii=True, indent=2))
@@ -315,6 +491,7 @@ def run_fetch_daily(
             report_path=report_path,
             seed_count=summary["seed_count"],
             workers=summary["workers"],
+            skipped_already_success=summary["skipped_already_success"],
             record_count=summary["record_count"],
             failure_count=summary["failure_count"],
             lcsc_ids=summary["lcsc_ids"],
@@ -390,6 +567,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Number of parallel workers for roundtrip artifact fetches.",
     )
     parser.add_argument(
+        "--no-roundtrip-resume-state",
+        action="store_true",
+        help="Disable persisted roundtrip state tracking/resume.",
+    )
+    parser.add_argument(
+        "--roundtrip-force-refetch",
+        action="store_true",
+        help="Ignore prior successful state and refetch all selected parts.",
+    )
+    parser.add_argument(
+        "--roundtrip-state-db",
+        type=Path,
+        default=None,
+        help="Override path for persisted roundtrip state sqlite DB.",
+    )
+    parser.add_argument(
         "--roundtrip-lcsc-ids",
         type=str,
         default=os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_LCSC_IDS", ""),
@@ -412,6 +605,9 @@ def main(argv: list[str] | None = None) -> int:
         roundtrip_retry_backoff_s=args.roundtrip_retry_backoff_s,
         roundtrip_sleep_s=args.roundtrip_sleep_s,
         roundtrip_workers=args.roundtrip_workers,
+        roundtrip_resume_state=not args.no_roundtrip_resume_state,
+        roundtrip_force_refetch=args.roundtrip_force_refetch,
+        roundtrip_state_db_path=args.roundtrip_state_db,
     )
     print(result.jlc_snapshot_dir)
     if result.roundtrip_report_path is not None:
@@ -478,6 +674,7 @@ def test_run_fetch_daily_with_roundtrip(tmp_path) -> None:
         run_fetch_once_fn=fake_run_fetch_once,
         run_roundtrip_fn=_real_roundtrip,
         roundtrip_run_root=tmp_path / "daily",
+        roundtrip_resume_state=False,
     )
     assert result.jlc_snapshot_dir == snapshot_dir
     assert result.roundtrip_report_path is not None
@@ -577,6 +774,7 @@ def test_run_fetch_daily_with_parallel_roundtrip(tmp_path) -> None:
         run_fetch_once_fn=fake_run_fetch_once,
         run_roundtrip_fn=_real_roundtrip,
         roundtrip_run_root=tmp_path / "daily",
+        roundtrip_resume_state=False,
     )
     assert result.roundtrip_report_path is not None
     summary = json.loads(result.roundtrip_report_path.read_text(encoding="utf-8"))
@@ -584,6 +782,77 @@ def test_run_fetch_daily_with_parallel_roundtrip(tmp_path) -> None:
     assert summary["failure_count"] == 0
     assert summary["seed_count"] == 4
     assert summary["record_count"] == 4
+
+
+def test_run_fetch_daily_resumes_from_state_db(tmp_path) -> None:
+    snapshot_dir = tmp_path / "fetch" / "jlc_api" / "snapshot"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    (snapshot_dir / "components.ndjson").write_text(
+        "\n".join(
+            json.dumps({"lcscPart": f"C{lcsc_id}"}, ensure_ascii=True)
+            for lcsc_id in (1201, 1202, 1203)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_fetch_once(*args, **kwargs) -> Path:
+        del args, kwargs
+        return snapshot_dir
+
+    call_ids: list[int] = []
+
+    def _real_roundtrip(*args, **kwargs) -> list[FetchArtifactRecord]:
+        from ..models import ArtifactType
+
+        lcsc_id = int(kwargs["lcsc_id"])
+        call_ids.append(lcsc_id)
+        return [
+            FetchArtifactRecord.now(
+                lcsc_id=lcsc_id,
+                artifact_type=ArtifactType.KICAD_FOOTPRINT_MOD,
+                source_url="https://example.com",
+                raw_sha256=f"sha-{lcsc_id}",
+                raw_size_bytes=3,
+                stored_key=f"objects/kicad_footprint_mod/{lcsc_id}.zst",
+            )
+        ]
+
+    config = FetchConfig.from_env()
+    state_db = tmp_path / "fetch" / "roundtrip_state.sqlite3"
+    first = run_fetch_daily(
+        config,
+        max_pages=1,
+        fetch_details=False,
+        max_details=0,
+        roundtrip_from_snapshot=True,
+        roundtrip_workers=2,
+        run_fetch_once_fn=fake_run_fetch_once,
+        run_roundtrip_fn=_real_roundtrip,
+        roundtrip_run_root=tmp_path / "daily",
+        roundtrip_state_db_path=state_db,
+    )
+    first_summary = json.loads(first.roundtrip_report_path.read_text(encoding="utf-8"))
+    assert first_summary["record_count"] == 3
+    assert set(call_ids) == {1201, 1202, 1203}
+
+    call_ids.clear()
+    second = run_fetch_daily(
+        config,
+        max_pages=1,
+        fetch_details=False,
+        max_details=0,
+        roundtrip_from_snapshot=True,
+        roundtrip_workers=2,
+        run_fetch_once_fn=fake_run_fetch_once,
+        run_roundtrip_fn=_real_roundtrip,
+        roundtrip_run_root=tmp_path / "daily",
+        roundtrip_state_db_path=state_db,
+    )
+    second_summary = json.loads(second.roundtrip_report_path.read_text(encoding="utf-8"))
+    assert second_summary["record_count"] == 0
+    assert second_summary["skipped_already_success"] == 3
+    assert call_ids == []
 
 
 if __name__ == "__main__":
