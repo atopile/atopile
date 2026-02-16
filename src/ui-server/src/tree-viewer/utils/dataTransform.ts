@@ -46,6 +46,25 @@ export function i2cTreeToGraph(data: I2CTreeData): TreeGraphData {
 
   for (const bus of data.buses) {
     const busId = `i2c:${compactId(bus.id)}`;
+    const targetNodeIds: string[] = [];
+
+    for (const target of bus.targets) {
+      const targetId = `${busId}:target:${compactId(target.id)}`;
+      targetNodeIds.push(targetId);
+      nodes.push({
+        id: targetId,
+        type: 'target',
+        label: target.name,
+        resolved: target.address_resolved,
+        sublabel: target.address || undefined,
+        group: target.parent_module || undefined,
+        groupLabel: target.parent_module || undefined,
+        meta: {
+          address: clean(target.address),
+          bus: bus.id,
+        },
+      });
+    }
 
     for (const ctrl of bus.controllers) {
       nodes.push({
@@ -60,25 +79,7 @@ export function i2cTreeToGraph(data: I2CTreeData): TreeGraphData {
         },
       });
 
-      for (const target of bus.targets) {
-        const targetId = `${busId}:target:${compactId(target.id)}`;
-        const existing = nodes.find((n) => n.id === targetId);
-        if (!existing) {
-          nodes.push({
-            id: targetId,
-            type: 'target',
-            label: target.name,
-            resolved: target.address_resolved,
-            sublabel: target.address || undefined,
-            group: target.parent_module || undefined,
-            groupLabel: target.parent_module || undefined,
-            meta: {
-              address: clean(target.address),
-              bus: bus.id,
-            },
-          });
-        }
-
+      for (const targetId of targetNodeIds) {
         edges.push({
           id: `i2c:${compactId(ctrl.id)}->${compactId(targetId)}`,
           source: ctrl.id,
