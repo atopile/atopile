@@ -436,10 +436,46 @@ def _stdlib_matches_parameter_query(item: Any, query: str) -> bool:
     return False
 
 
+_TOOL_REGISTRY_VALIDATED = False
+
+
+def _ensure_tool_registry_consistency(definitions: list[dict[str, Any]]) -> None:
+    schema_tool_names = {
+        str(item.get("name"))
+        for item in definitions
+        if isinstance(item, dict)
+        and item.get("type") == "function"
+        and isinstance(item.get("name"), str)
+        and str(item.get("name")).strip()
+    }
+    handler_tool_names = set(_TOOL_HANDLERS.keys())
+
+    missing_handlers = sorted(schema_tool_names - handler_tool_names)
+    missing_schemas = sorted(handler_tool_names - schema_tool_names)
+    if missing_handlers or missing_schemas:
+        parts: list[str] = []
+        if missing_handlers:
+            parts.append(
+                "schema without handler: " + ", ".join(missing_handlers[:20])
+            )
+        if missing_schemas:
+            parts.append(
+                "handler without schema: " + ", ".join(missing_schemas[:20])
+            )
+        raise RuntimeError("Tool registry/schema mismatch: " + " | ".join(parts))
+
+
 def get_tool_definitions() -> list[dict[str, Any]]:
     from atopile.server.agent.tool_definitions import get_tool_definitions as _impl
 
-    return _impl()
+    definitions = _impl()
+
+    global _TOOL_REGISTRY_VALIDATED
+    if not _TOOL_REGISTRY_VALIDATED:
+        _ensure_tool_registry_consistency(definitions)
+        _TOOL_REGISTRY_VALIDATED = True
+
+    return definitions
 
 
 
