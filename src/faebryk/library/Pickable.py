@@ -81,6 +81,7 @@ class is_pickable_by_type(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     endpoint_ = F.Parameters.EnumParameter.MakeChild(enum_t=Endpoint)
     params_ = F.Collections.PointerSet.MakeChild()
+    package_prefix_ = F.Parameters.StringParameter.MakeChild()
     # TODO: Forward this trait to parent
     _is_pickable = fabll.Traits.MakeEdge(is_pickable.MakeChild())
 
@@ -113,6 +114,10 @@ class is_pickable_by_type(fabll.Node):
         return self.endpoint_.get().force_extract_singleton()
 
     @property
+    def package_prefix(self) -> str | None:
+        return self.package_prefix_.get().try_extract_singleton()
+
+    @property
     def pick_type(self) -> graph.BoundNode:
         parent_info = self.get_parent()
         if parent_info is None:
@@ -121,13 +126,24 @@ class is_pickable_by_type(fabll.Node):
         return not_none(parent.get_type_node())
 
     @classmethod
-    def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll._ChildField]):
+    def MakeChild(
+        cls,
+        endpoint: Endpoint,
+        params: dict[str, fabll._ChildField],
+        package_prefix: str | None = None,
+    ):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_SetSuperset(
                 [out, cls.endpoint_], endpoint
             )
         )
+        if package_prefix is not None:
+            out.add_dependant(
+                F.Literals.Strings.MakeChild_SetSuperset(
+                    [out, cls.package_prefix_], package_prefix
+                )
+            )
         for param_name, param_ref in params.items():
             # Create tuple
             param_tuple = F.Collections.PointerTuple.MakeChild()
