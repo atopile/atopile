@@ -203,33 +203,32 @@ async def search_components(
                 services.detail_store.get_components,
                 [intent.exact_lcsc],
             )
-        except ServeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+        except ServeError:
+            detail_by_id = {}
         detail_row = detail_by_id.get(intent.exact_lcsc)
-        if detail_row is None:
-            return ComponentsSearchResponse(query=payload.query, total=0, results=[])
-        price_tiers = _price_tiers_from_detail(detail_row)
-        result = ComponentsSearchResultModel(
-            lcsc_id=int(intent.exact_lcsc),
-            score=2.0,
-            cosine_score=1.0,
-            reasons=["exact_lcsc"],
-            component_type=str(detail_row.get("component_type") or "unknown"),
-            manufacturer_name=(
-                str(detail_row.get("manufacturer_name"))
-                if detail_row.get("manufacturer_name")
-                else None
-            ),
-            part_number=str(detail_row.get("part_number") or ""),
-            package=str(detail_row.get("package") or ""),
-            description=str(detail_row.get("description") or ""),
-            stock=int(detail_row.get("stock") or 0),
-            is_basic=bool(detail_row.get("is_basic")),
-            is_preferred=bool(detail_row.get("is_preferred")),
-            unit_cost=_unit_cost_from_price_tiers(price_tiers),
-            price=price_tiers,
-        )
-        return ComponentsSearchResponse(query=payload.query, total=1, results=[result])
+        if detail_row is not None:
+            price_tiers = _price_tiers_from_detail(detail_row)
+            result = ComponentsSearchResultModel(
+                lcsc_id=int(intent.exact_lcsc),
+                score=2.0,
+                cosine_score=1.0,
+                reasons=["exact_lcsc"],
+                component_type=str(detail_row.get("component_type") or "unknown"),
+                manufacturer_name=(
+                    str(detail_row.get("manufacturer_name"))
+                    if detail_row.get("manufacturer_name")
+                    else None
+                ),
+                part_number=str(detail_row.get("part_number") or ""),
+                package=str(detail_row.get("package") or ""),
+                description=str(detail_row.get("description") or ""),
+                stock=int(detail_row.get("stock") or 0),
+                is_basic=bool(detail_row.get("is_basic")),
+                is_preferred=bool(detail_row.get("is_preferred")),
+                unit_cost=_unit_cost_from_price_tiers(price_tiers),
+                price=price_tiers,
+            )
+            return ComponentsSearchResponse(query=payload.query, total=1, results=[result])
 
     if services.vector_search is None:
         raise HTTPException(
@@ -281,25 +280,19 @@ async def search_components(
         )
     except ServeError as exc:
         log_event(
-            "serve.search.error",
-            level=logging.ERROR,
+            "serve.search.detail_unavailable",
+            level=logging.WARNING,
             request_id=request_id,
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        raise HTTPException(status_code=500, detail=str(exc))
+        detail_by_id = {}
 
     reranked: list[tuple[float, list[str], Any, dict[str, Any], list[ComponentsSearchResultModel.PriceTier]]] = []
     for item in results:
         detail_row = detail_by_id.get(item.lcsc_id)
         if detail_row is None:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "search/detail snapshot mismatch: "
-                    f"missing components_full row for lcsc_id={item.lcsc_id}"
-                ),
-            )
+            detail_row = {}
         price_tiers = _price_tiers_from_detail(detail_row)
         rerank_score, rerank_reasons = _rerank_score(
             item=item,
@@ -324,7 +317,7 @@ async def search_components(
                 manufacturer_name=item.manufacturer_name,
                 part_number=item.part_number,
                 package=item.package,
-                description=str(detail_row.get("description") or ""),
+                description=str(detail_row.get("description") or item.description or ""),
                 stock=item.stock,
                 is_basic=item.is_basic,
                 is_preferred=item.is_preferred,
@@ -394,7 +387,7 @@ def _price_tiers_from_detail(
 def _rerank_score(
     *,
     item: Any,
-    detail_row: dict[str, Any],
+    detail_row: dict[str, Any] | None,
     intent: ParsedSearchIntent,
     prefer_in_stock: bool,
     prefer_basic: bool,
@@ -437,6 +430,7 @@ def _rerank_score(
 
     # Automotive intent heuristic
     if intent.automotive:
+        detail_row = detail_row or {}
         text = " ".join(
             [
                 str(item.part_number or ""),
