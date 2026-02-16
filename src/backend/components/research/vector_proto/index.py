@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterator
@@ -64,11 +65,12 @@ class VectorStore:
         self._token_pattern = re.compile(r"[a-z0-9][a-z0-9._+\-/]*")
         self._doc_tokens: list[set[str]] = []
         self._token_doc_freq: dict[str, int] = {}
-        self._inverted_index: dict[str, list[int]] = {}
+        self._inverted_index: dict[str, list[int] | np.ndarray] = {}
         self._component_type_index: dict[str, np.ndarray] = {}
         self._package_index: dict[str, np.ndarray] = {}
         self._in_stock_index: np.ndarray | None = None
-        self._build_lexical_index()
+        self._lexical_ready = False
+        self._lexical_lock = threading.Lock()
         self._build_filter_indexes()
 
     @property
@@ -107,10 +109,19 @@ class VectorStore:
     @classmethod
     def load(cls, index_dir: Path) -> "VectorStore":
         records = load_corpus(index_dir / "records.jsonl")
-        vectors = np.load(index_dir / "vectors.npy")
+        vectors = np.load(index_dir / "vectors.npy", mmap_mode="r")
         manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
         backend = str(manifest["embedding_backend"])
         return cls(records=records, vectors=vectors, embedding_backend=backend)
+
+    def _ensure_lexical_index(self) -> None:
+        if self._lexical_ready:
+            return
+        with self._lexical_lock:
+            if self._lexical_ready:
+                return
+            self._build_lexical_index()
+            self._lexical_ready = True
 
     def _match_filters(self, record: CorpusRecord, filters: SearchFilters) -> bool:
         if filters.component_type and record.component_type != filters.component_type:
@@ -292,6 +303,7 @@ class VectorStore:
         lexical_scores: dict[int, float] = {}
         lexical_idx = np.array([], dtype=np.int32)
         if apply_hybrid:
+            self._ensure_lexical_index()
             lexical_idx, lexical_scores = self._lexical_scores(
                 query_tokens=query_tokens,
                 top_k=min(
@@ -561,6 +573,54 @@ def test_should_prefilter_with_lexical_threshold() -> None:
         lexical_count=5000,
         candidate_pool=400,
     )
+
+
+def test_lazy_lexical_index_builds_only_for_hybrid() -> None:
+    records = [
+        CorpusRecord(
+            lcsc_id=11,
+            component_type="sensor",
+            category="sensors",
+            subcategory="pressure",
+            manufacturer_name="A",
+            part_number="S-1",
+            package="QFN-16",
+            description="pressure sensor",
+            stock=10,
+            is_basic=False,
+            is_preferred=False,
+            attrs={},
+            text="pressure sensor qfn16",
+        ),
+        CorpusRecord(
+            lcsc_id=22,
+            component_type="sensor",
+            category="sensors",
+            subcategory="temperature",
+            manufacturer_name="B",
+            part_number="S-2",
+            package="QFN-16",
+            description="temperature sensor",
+            stock=12,
+            is_basic=False,
+            is_preferred=False,
+            attrs={},
+            text="temperature sensor qfn16",
+        ),
+    ]
+    from .embedding import HashingEmbedder
+
+    emb = HashingEmbedder(dimension=64)
+    store = VectorStore(
+        records=records,
+        vectors=emb.embed_texts([r.text for r in records]),
+        embedding_backend=emb.name,
+    )
+    assert store._lexical_ready is False  # type: ignore[attr-defined]
+    _ = store.search(query="pressure", embedder=emb, apply_hybrid=False, limit=2)
+    assert store._lexical_ready is False  # type: ignore[attr-defined]
+    _ = store.search(query="pressure", embedder=emb, apply_hybrid=True, limit=2)
+    assert store._lexical_ready is True  # type: ignore[attr-defined]
 
 
 def _parse_corpus_line(line: str) -> CorpusRecord:

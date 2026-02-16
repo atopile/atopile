@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from backend.components.research.vector_proto.embedding import make_embedder
 from backend.components.research.vector_proto.index import SearchFilters, VectorStore
@@ -34,17 +36,33 @@ class PrototypeVectorSearchService:
             backend = "hashing"
 
         apply_max_cores(config.max_cores)
-        self._embedder = make_embedder(
-            backend=backend,
-            dimension=dimension,
-            model_name=model_name,
-        )
-        self._store = VectorStore.load(config.index_dir)
+        self._backend = backend
+        self._dimension = dimension
+        self._model_name = model_name
+        self._embedder = None
+        self._store = None
+        self._init_lock = threading.Lock()
         self._index_dir = config.index_dir
 
     @property
     def index_dir(self) -> Path:
         return self._index_dir
+
+    def _ensure_loaded(self) -> tuple[VectorStore, Any]:
+        if self._store is not None and self._embedder is not None:
+            return self._store, self._embedder
+        with self._init_lock:
+            if self._store is None:
+                self._store = VectorStore.load(self._index_dir)
+            if self._embedder is None:
+                self._embedder = make_embedder(
+                    backend=self._backend,
+                    dimension=self._dimension,
+                    model_name=self._model_name,
+                )
+        if self._store is None or self._embedder is None:
+            raise RuntimeError("vector search service initialization failed")
+        return self._store, self._embedder
 
     def search(
         self,
@@ -66,9 +84,10 @@ class PrototypeVectorSearchService:
         mode = (search_mode or "hybrid").strip().lower()
         if mode not in {"hybrid", "raw_vector"}:
             mode = "hybrid"
-        return self._store.search(
+        store, embedder = self._ensure_loaded()
+        return store.search(
             query=query,
-            embedder=self._embedder,
+            embedder=embedder,
             limit=limit,
             filters=filters,
             prefer_in_stock=prefer_in_stock,
