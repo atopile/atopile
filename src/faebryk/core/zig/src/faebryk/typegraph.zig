@@ -950,7 +950,7 @@ pub const TypeGraph = struct {
         }
 
         // Collect target's existing MakeLinks to find soft ones to supersede
-        const target_links = self.collect_make_links(allocator, target_type) catch &[_]MakeLinkInfo{};
+        const target_links = self.collect_make_links(allocator, target_type) catch return;
         defer {
             for (target_links) |link_info| {
                 allocator.free(link_info.lhs_path);
