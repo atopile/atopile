@@ -100,7 +100,8 @@ jobs:
           FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
           PYTHON_UNBUFFERED: 1
           FBRK_TEST_LOG_VIEWER: 0
-          
+          FBRK_TEST_TEST_TIMEOUT: 60
+
       - name: Upload test report json artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,7 +109,7 @@ jobs:
           name: test-report.json
           path: artifacts/test-report.json
           if-no-files-found: error
-          
+
       - name: Upload test report html artifact
         uses: actions/upload-artifact@v4
         with:

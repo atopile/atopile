@@ -3,6 +3,7 @@ import * as setup from './setup';
 import * as buttons from './buttons';
 import * as example from './example';
 import * as kicanvas from './kicanvas';
+import * as layoutEditor from './layout-editor';
 import * as modelviewer from './modelviewer';
 import * as pcb from '../common/pcb';
 import * as threeDModel from '../common/3dmodel';
@@ -26,6 +27,7 @@ export async function activate(context: vscode.ExtensionContext) {
         buttons.activate(context),
         example.activate(context),
         kicanvas.activate(context),
+        layoutEditor.activate(context),
         modelviewer.activate(context),
         pcb.activate(context),
         threeDModel.activate(context),
@@ -37,6 +39,7 @@ export function deactivate() {
     buttons.deactivate();
     example.deactivate();
     kicanvas.deactivate();
+    layoutEditor.deactivate();
     modelviewer.deactivate();
     pcb.deactivate();
     threeDModel.deactivate();

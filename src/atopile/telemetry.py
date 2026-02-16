@@ -59,6 +59,12 @@ class _MockClient:
 
 @once
 def _get_posthog_client() -> Posthog | _MockClient:
+    # Disable telemetry in CI environments to avoid background threads
+    # that can hold pipes open and cause test hangs
+    if os.getenv("CI"):
+        log.debug("Telemetry disabled (CI or ATO_DISABLE_TELEMETRY set)")
+        return _MockClient()
+
     try:
         ph = Posthog(
             # write-only API key, intended to be made public

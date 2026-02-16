@@ -192,7 +192,7 @@ fn generateModule(
         };
 
         // Python wrapper for loads function
-        fn py_loads(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn py_loads(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self;
 
             // Parse the string argument
@@ -328,7 +328,7 @@ fn generateModule(
         }
 
         // Python wrapper for dumps function
-        fn py_dumps(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn py_dumps(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self;
 
             // args should be a File object

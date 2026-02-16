@@ -20,6 +20,7 @@ import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/ta
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
+import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
@@ -812,15 +813,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     return null;
   }
 
-  private _openLayoutPreview(filePath: string): void {
-    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
-    if (!pcbPath) {
-      traceError(`[SidebarProvider] Layout file not found: ${filePath}`);
-      vscode.window.showErrorMessage('Layout file not found. Run a build to generate it.');
-      return;
-    }
-    setCurrentPCB({ path: pcbPath, exists: true });
-    void openKiCanvasPreview();
+  private _openLayoutPreview(_filePath: string): void {
+    // The server already loaded the PCB via the openLayout action.
+    // Just open the editor webview.
+    void openLayoutEditor();
   }
 
   private _openWithKicad(filePath: string): void {

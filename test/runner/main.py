@@ -47,6 +47,7 @@ from test.runner.git_info import (
 )
 from test.runner.orchestrator import router as orchestrator_router
 from test.runner.orchestrator import set_globals as set_orchestrator_globals
+from test.runner.orchestrator import unbind_affinity_for_pid
 from test.runner.report import (
     REPORT_HTML_PATH,
     TestAggregator,
@@ -73,6 +74,14 @@ elif WORKER_COUNT < 0:
     WORKER_COUNT = max(((os.cpu_count() or 1) * -WORKER_COUNT) // 2, 1)
 ORCHESTRATOR_BIND_HOST = os.getenv("FBRK_TEST_BIND_HOST", "0.0.0.0")
 ORCHESTRATOR_REPORT_HOST = os.getenv("FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_HOST)
+
+# Orchestrator-level test timeout (hard backstop — kills worker via SIGKILL).
+# Set via FBRK_TEST_TEST_TIMEOUT (seconds). 0 or unset = disabled.
+ORCHESTRATOR_TIMEOUT = float(os.getenv("FBRK_TEST_TEST_TIMEOUT", "0"))
+
+# How long a test can stay "claimed" (dequeued but no START received) before
+# the orchestrator considers it stale and requeues it.
+CLAIM_TIMEOUT = float(os.getenv("FBRK_TEST_CLAIM_TIMEOUT", "30"))
 
 # Local baselines config
 BASELINES_DIR = Path("artifacts/baselines")
@@ -156,13 +165,17 @@ class ReportTimer:
             self._thread.join(timeout=1.0)
 
 
-def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
+def get_free_port(
+    start_port: int = 50000, fallback_port: int = 51000, max_attempts: int = 100
+) -> int:
     """
     Find a free port starting from start_port.
 
     First tries to kill any stale process on the preferred port to ensure
     consistent port usage across test runs. This prevents issues where old
     browser tabs connect to stale servers on different ports.
+
+    If the preferred port can't be freed, searches from fallback_port.
     """
     from atopile.server.server import is_port_in_use, kill_process_on_port
 
@@ -180,22 +193,23 @@ def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
     if not is_port_in_use(start_port):
         return start_port
 
-    # Fall back to finding any free port
+    # Fall back to finding any free port starting from fallback_port
+    _print(f"Port {start_port} still in use, searching from {fallback_port}...")
     for attempt in range(max_attempts):
-        port = start_port + attempt
+        port = fallback_port + attempt
         if not is_port_in_use(port):
             return port
     raise RuntimeError(
-        f"No free port found in range {start_port}-{start_port + max_attempts}"
+        f"No free port found in range {fallback_port}-{fallback_port + max_attempts}"
     )
 
 
 def collect_tests(
     pytest_args: list[str],
-) -> tuple[list[str], dict[str, str], dict[str, int]]:
+) -> tuple[list[str], dict[str, str], dict[str, int], dict[str, str]]:
     """Collects tests using pytest --collect-only.
 
-    Returns (test_nodeids, collection_errors, max_parallel_groups).
+    Returns (test_nodeids, collection_errors, max_parallel_groups, affinity_membership).
     """
     # Filter out empty strings if any
     pytest_args = [arg for arg in pytest_args if arg]
@@ -249,9 +263,10 @@ def collect_tests(
             if current_file and current_error:
                 errors_clean[current_file] = "\n".join(current_error)
 
-    # Parse tests and max_parallel markers from stdout
+    # Parse tests, max_parallel markers, and worker_affinity from stdout
     tests = []
     max_parallel: dict[str, int] = {}
+    affinity_membership: dict[str, str] = {}
     for line in stdout.strip().split("\n"):
         line = line.strip()
         # Skip empty lines and summary lines (but not test names containing 'error')
@@ -266,11 +281,20 @@ def collect_tests(
                 prefix = rest[: idx + 1]
                 max_parallel[prefix] = int(rest[idx + 1 :])
             continue
+        # Parse "@worker_affinity:<group_key>|<nodeid>" lines emitted by conftest
+        if line.startswith("@worker_affinity:"):
+            rest = line[len("@worker_affinity:") :]
+            sep_idx = rest.find("|")
+            if sep_idx > 0:
+                group_key = rest[:sep_idx]
+                nodeid = rest[sep_idx + 1 :]
+                affinity_membership[nodeid] = group_key
+            continue
         # Test nodeids contain "::" - skip actual error messages which don't
         if "::" in line:
             tests.append(line)
 
-    return tests, errors_clean, max_parallel
+    return tests, errors_clean, max_parallel, affinity_membership
 
 
 def start_server(port) -> uvicorn.Server:
@@ -348,7 +372,7 @@ def main(
     pytest_args = args if args is not None else sys.argv[1:]
 
     # 1. Collect tests
-    tests, errors, max_parallel = collect_tests(pytest_args)
+    tests, errors, max_parallel, affinity_membership = collect_tests(pytest_args)
     tests_total = len(tests)
     _print(f"Collected {tests_total} tests")
 
@@ -449,7 +473,7 @@ def main(
     )
 
     # Set up orchestrator and UI globals
-    set_orchestrator_globals(test_queue, aggregator, max_parallel)
+    set_orchestrator_globals(test_queue, aggregator, max_parallel, affinity_membership)
     set_ui_globals(aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR)
 
     for error_key, error_value in errors.items():
@@ -554,8 +578,21 @@ def main(
     timer = ReportTimer(aggregator, REPORT_INTERVAL_SECONDS)
     timer.start()
 
+    if ORCHESTRATOR_TIMEOUT > 0:
+        _print(f"Orchestrator timeout: {ORCHESTRATOR_TIMEOUT}s")
+
     try:
         while True:
+            # Kill workers that have exceeded the orchestrator timeout
+            if ORCHESTRATOR_TIMEOUT > 0:
+                timed_out = aggregator.get_timed_out_workers(ORCHESTRATOR_TIMEOUT)
+                for pid, nodeid in timed_out:
+                    if aggregator.handle_worker_timeout(pid, nodeid):
+                        for i, p in list(workers.items()):
+                            if p.pid == pid:
+                                p.kill()
+                                break
+
             # Check if workers are alive
             for i, p in list(workers.items()):
                 if p.poll() is None:
@@ -563,6 +600,8 @@ def main(
                 # Worker died.
                 # Handle crash in aggregator
                 aggregator.handle_worker_crash(p.pid)
+                # Release affinity bindings so respawned worker can claim those tests
+                unbind_affinity_for_pid(p.pid)
 
                 # Close old file
                 try:
@@ -575,15 +614,29 @@ def main(
                 if not test_queue.empty() or (aggregator.pending_count() > 0):
                     start_worker()
 
-            # If the queue is empty but we still have pending tests, it means
-            # some tests were claimed but we never received START/FINISH for them
-            # (or a worker died before we noticed). Requeue them and keep going.
+            # Recover tests that were claimed but never started within the
+            # timeout.  This runs every iteration so stale claims are caught
+            # even while the queue still has work.
+            stale = aggregator.recover_stale_claims(CLAIM_TIMEOUT)
+            if stale:
+                _print(f"WARNING: {len(stale)} stale claims recovered; requeueing.")
+                for nodeid in stale:
+                    test_queue.put(nodeid)
+
+            # Fallback: if the queue is drained but unstarted tests remain
+            # (and they are not freshly claimed by a live worker), requeue.
             if test_queue.empty():
                 pending_unstarted = aggregator.unstarted_pending_nodeids()
-                if pending_unstarted and aggregator.pending_count() > 0:
-                    n = len(pending_unstarted)
-                    _print(f"WARNING: {n} pending unstarted tests; requeueing.")
-                    for nodeid in pending_unstarted:
+                # Filter out tests that were just claimed (pid is set) —
+                # those are handled by the stale-claim path above.
+                lost = [
+                    nid
+                    for nid in pending_unstarted
+                    if aggregator._tests[nid].pid is None
+                ]
+                if lost and aggregator.pending_count() > 0:
+                    _print(f"WARNING: {len(lost)} pending unstarted tests; requeueing.")
+                    for nodeid in lost:
                         test_queue.put(nodeid)
 
             # Ensure we keep enough workers around while work remains.

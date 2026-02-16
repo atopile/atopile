@@ -13,7 +13,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
     const struct_info = info.@"struct";
     return struct {
         // Generate the __init__ function using a truly generic approach
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) c_int {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) c_int {
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
             wrapper_obj.data = std.heap.c_allocator.create(T) catch return -1;
 
@@ -546,14 +546,14 @@ pub fn genStructRepr(comptime WrapperType: type, comptime T: type) type {
     }
     return struct {
         // Generate the repr function
-        pub fn impl(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
             var buf: [65536]u8 = undefined; // 64KB buffer for very large structs
             const out = util.printStruct(wrapper_obj.data.*, &buf) catch |err| {
                 // If even 64KB is not enough, fall back to simple representation
                 if (err == error.NoSpaceLeft) {
                     const type_name = @typeName(T);
-                    const simple_repr = std.fmt.allocPrintZ(std.heap.c_allocator, "<{s} object at 0x{x}>", .{ type_name, @intFromPtr(wrapper_obj) }) catch {
+                    const simple_repr = std.fmt.allocPrintSentinel(std.heap.c_allocator, "<{s} object at 0x{x}>", .{ type_name, @intFromPtr(wrapper_obj) }, 0) catch {
                         _ = py.PyErr_SetString(py.PyExc_ValueError, "Failed to allocate memory for repr");
                         return null;
                     };
@@ -580,7 +580,7 @@ pub fn genStructFieldNames(comptime T: type) type {
     return struct {
 
         // Static function to get field names
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self; // Static method, don't need instance
             _ = args; // No arguments needed
 

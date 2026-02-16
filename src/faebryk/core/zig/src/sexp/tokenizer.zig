@@ -346,7 +346,7 @@ pub const Tokenizer = struct {
 
     pub fn tokenize(self: *Tokenizer) ![]Token {
         // Pre-allocate with a reasonable initial capacity
-        var tokens = try std.ArrayList(Token).initCapacity(self.allocator, 1024);
+        var tokens = try std.array_list.Managed(Token).initCapacity(self.allocator, 1024);
         defer tokens.deinit();
 
         while (try self.nextToken()) |token| {

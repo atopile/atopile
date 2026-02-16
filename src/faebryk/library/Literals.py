@@ -682,6 +682,10 @@ class Numeric(fabll.Node[NumericAttributes]):
         if value in [math.inf, -math.inf]:
             return value
         multiplier = 10**digits
+        if digits > 0 and abs(value) > 1e30:
+            raise ValueError(
+                f"Value {value} is too large to round reliably with digits={digits}"
+            )
         # Use floor(x + 0.5) for traditional rounding
         return math.floor(value * multiplier + 0.5) / multiplier
 
@@ -1794,6 +1798,27 @@ class TestNumericInterval:
         result = numeric_interval.op_round(g=g, tg=tg, ndigits=3)
         assert result.get_min_value() == 1.952
         assert result.get_max_value() == 2.498
+
+    def test_round_except_too_big_number(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        x = -1.32906894805911924079677428209e31
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup_from_singleton(value=x)
+
+        with pytest.raises(ValueError):
+            numeric_interval.op_round(g=g, tg=tg, ndigits=1)
+
+    def test_round_ok_too_big_number(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        x = -1.32906894805911924079677428209e31
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup_from_singleton(value=x)
+
+        result = numeric_interval.op_round(g=g, tg=tg)
+        assert result.get_min_value() == x
+        assert result.get_max_value() == x
 
     def test_op_abs(self):
         g = graph.GraphView.create()
