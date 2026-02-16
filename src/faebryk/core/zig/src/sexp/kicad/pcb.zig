@@ -1038,7 +1038,7 @@ pub const KicadPcb = struct {
     generator: str,
     generator_version: str,
     general: General = .{},
-    paper: ?E_paper_type = null,
+    paper: ?E_paper_type = .A4,
     title_block: ?TitleBlock = null,
     layers: list(Layer) = .{},
     setup: Setup = .{},
