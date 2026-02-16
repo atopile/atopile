@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.components.research.vector_proto.embedding import make_embedder
-from backend.components.research.vector_proto.index import SearchFilters, VectorStore
-from backend.components.research.vector_proto.runtime import apply_max_cores
+from backend.components.vector.embedding import make_embedder
+from backend.components.vector.index import SearchFilters, VectorStore
+from backend.components.vector.runtime import apply_max_cores
 
 
 @dataclass(frozen=True)

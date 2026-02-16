@@ -1,8 +1,5 @@
 # Vector Search Prototype (Sidebar)
 
-This path is kept for compatibility.
-Canonical production package is now `backend.components.vector`.
-
 CPU-first prototype for validating hybrid-ready vector retrieval on top of
 `detail.sqlite` (`components_full`) before wiring into stage-3 serve.
 
@@ -22,21 +19,21 @@ cd /home/np/projects/atopile_vector_db
 export PYTHONPATH=/home/np/projects/atopile_vector_db/src
 
 # 1) Export balanced stage-1 corpus with progress logs, capped to 32 cores
-uv run python -m backend.components.research.vector_proto.cli --max-cores 32 export-balanced-stage1 \
+uv run python -m backend.components.vector.cli --max-cores 32 export-balanced-stage1 \
   --cache-sqlite /home/jlc/cache.sqlite3 \
   --out-jsonl /tmp/vector_proto/corpus_10k.jsonl \
   --target-count 10000 \
   --per-subcategory-cap 600
 
 # 2) Build local vector index (baseline hashing embedder)
-uv run python -m backend.components.research.vector_proto.cli --max-cores 32 build-index \
+uv run python -m backend.components.vector.cli --max-cores 32 build-index \
   --corpus-jsonl /tmp/vector_proto/corpus_10k.jsonl \
   --out-dir /tmp/vector_proto/index_hashing_10k \
   --embedding-backend hashing \
   --embedding-dim 384
 
 # 3) Interactive query (raw vector only by default)
-uv run python -m backend.components.research.vector_proto.cli --max-cores 32 query \
+uv run python -m backend.components.vector.cli --max-cores 32 query \
   --index-dir /tmp/vector_proto/index_hashing_10k \
   --query "10k 1% 0402 resistor pull-up" \
   --limit 20 \
@@ -46,9 +43,9 @@ uv run python -m backend.components.research.vector_proto.cli --max-cores 32 que
   --prefer-basic
 
 # 4) Run eval and write report
-uv run python -m backend.components.research.vector_proto.cli --max-cores 32 eval \
+uv run python -m backend.components.vector.cli --max-cores 32 eval \
   --index-dir /tmp/vector_proto/index_hashing_10k \
-  --queries-jsonl src/backend/components/research/vector_proto/sample_eval_queries.jsonl \
+  --queries-jsonl src/backend/components/vector/sample_eval_queries.jsonl \
   --out-report /tmp/vector_proto/eval_hashing_10k.json \
   --embedding-backend hashing \
   --embedding-dim 384 \
@@ -106,7 +103,7 @@ curl -sS http://127.0.0.1:8079/v1/components/search \
 If you install `sentence-transformers`, switch backend:
 
 ```bash
-uv run python -m backend.components.research.vector_proto.cli build-index \
+uv run python -m backend.components.vector.cli build-index \
   --corpus-jsonl /tmp/vector_proto/corpus_10k.jsonl \
   --out-dir /tmp/vector_proto/index_minilm_10k \
   --embedding-backend sentence-transformers \
