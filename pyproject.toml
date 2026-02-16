@@ -88,7 +88,7 @@ dev = [
     "mkdocs-material>=9.5.49",
     "mkdocs>=1.6.1",
     "nanobind>=2.2,<3.0",
-    "pre-commit>=2.20,<4.0",
+
     "viztracer>=1.0.0,<2.0.0",
     "mkdocstrings[python]>=0.27.0",
     "griffe-typingdoc>=0.2.7",
