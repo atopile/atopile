@@ -254,12 +254,6 @@ pub const E_padstack_mode = enum {
     custom,
 };
 
-// Via tenting enum
-pub const E_via_tenting = enum {
-    front,
-    back,
-};
-
 // Zone hatch mode enum
 pub const E_zone_hatch_mode = enum {
     edge,
@@ -1013,23 +1007,17 @@ pub const PcbPlotParams = struct {
         .plot_on_all_layers_selection = structure.SexpField{ .symbol = true },
     };
 };
-
-// Special struct for tenting that encodes as positional symbols
-pub const Tenting = struct {
-    values: list(str) = .{},
+pub const E_tenting = enum {
+    front,
+    back,
 };
-
 pub const Setup = struct {
     stackup: ?Stackup = null,
     pad_to_mask_clearance: i32 = 0,
     allow_soldermask_bridges_in_footprints: bool = false,
-    tenting: list(str) = .{},
+    tenting: list(E_tenting) = .{},
     pcbplotparams: PcbPlotParams = .{},
     rules: ?Rules = null,
-
-    pub const fields_meta = .{
-        .tenting = structure.SexpField{ .symbol = true },
-    };
 };
 
 // Main PCB structure
