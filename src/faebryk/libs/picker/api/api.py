@@ -4,6 +4,7 @@
 import io
 import json
 import logging
+import re
 import sys
 import tarfile
 import tempfile
@@ -51,6 +52,15 @@ _V1_METHOD_TO_TYPE = {
     str(F.Pickable.is_pickable_by_type.Endpoint.FERRITE_BEADS): "ferrite_bead",
     str(F.Pickable.is_pickable_by_type.Endpoint.LDOS): "ldo",
 }
+_PACKAGE_NUMERIC_RE = re.compile(r"^\d{4,5}$")
+_PACKAGE_NON_ALNUM_RE = re.compile(r"[^A-Z0-9]+")
+_COMPONENT_PACKAGE_PREFIX = {
+    "resistor": "R",
+    "capacitor": "C",
+    "capacitor_polarized": "C",
+    "inductor": "L",
+    "ferrite_bead": "L",
+}
 
 
 class ApiError(Exception): ...
@@ -97,6 +107,55 @@ class ApiClient:
         if self._cfg.api_key:
             headers["Authorization"] = f"Bearer {self._cfg.api_key}"
         return headers
+
+    @property
+    @once
+    def _package_allowlists(self) -> dict[str, set[str]] | None:
+        try:
+            response = self._get("/v1/components/packages/allowlist", timeout=5)
+        except ApiHTTPError as exc:
+            if exc.response.status_code in {404, 405}:
+                logger.info("components package allowlist endpoint unavailable")
+                return None
+            logger.warning("failed to fetch package allowlist: %s", exc)
+            return None
+        except Exception as exc:
+            logger.warning("failed to fetch package allowlist: %s", exc)
+            return None
+
+        body = response.json()
+        if not isinstance(body, dict):
+            return None
+        if body.get("available") is False:
+            return {}
+
+        raw_allowlists = body.get("allowlists")
+        if not isinstance(raw_allowlists, dict):
+            return None
+
+        out: dict[str, set[str]] = {}
+        for component_type, packages in raw_allowlists.items():
+            if not isinstance(component_type, str) or not isinstance(packages, list):
+                continue
+            normalized: set[str] = set()
+            for package in packages:
+                if not isinstance(package, str):
+                    continue
+                normalized_package = _normalize_package_for_component(
+                    component_type, package
+                )
+                if normalized_package:
+                    normalized.add(normalized_package)
+            out[component_type] = normalized
+        return out
+
+    def _enforce_package_allowlist(self, payload: dict[str, Any]) -> None:
+        if not isinstance(payload.get("package"), str):
+            return
+        allowlists = self._package_allowlists
+        if allowlists is None:
+            return
+        _validate_payload_package_allowlist(payload, allowlists)
 
     def _get(self, url: str, timeout: float = 10) -> Response:
         try:
@@ -230,6 +289,8 @@ class ApiClient:
             raise ApiError(f"Unsupported query type: {type(param)}")
 
         if query_payloads:
+            for _, payload in query_payloads:
+                self._enforce_package_allowlist(payload)
             batch_payload = {"queries": [payload for _, payload in query_payloads]}
             response = self._post(
                 "/v1/components/parameters/query/batch",
@@ -284,6 +345,7 @@ class ApiClient:
         self, method: F.Pickable.is_pickable_by_type.Endpoint, params: BaseParams
     ) -> list[Component]:
         payload = _build_v1_query_payload(method=method, params=params)
+        self._enforce_package_allowlist(payload)
         response = self._post("/v1/components/parameters/query", payload)
         body = response.json()
         ordered_ids, pick_parameters_by_id = _extract_candidate_pick_parameters(
@@ -330,6 +392,7 @@ class ApiClient:
         if endpoint in _V1_METHOD_TO_TYPE:
             # Re-wrap into BaseParams-like shape and use v1 path.
             payload = _build_v1_query_payload_from_dict(endpoint=endpoint, raw=query)
+            self._enforce_package_allowlist(payload)
             response = self._post("/v1/components/parameters/query", payload)
             body = response.json()
             ordered_ids, pick_parameters_by_id = _extract_candidate_pick_parameters(
@@ -491,6 +554,54 @@ def _build_v1_query_payload_from_dict(
     if package is not None:
         payload["package"] = package
     return payload
+
+
+def _normalize_package_for_component(component_type: str, raw_package: str) -> str | None:
+    normalized = raw_package.strip().upper()
+    if not normalized:
+        return None
+    if component_type == "crystal":
+        canonical = _PACKAGE_NON_ALNUM_RE.sub("", normalized)
+        return canonical or normalized
+
+    if component_type == "ferrite_bead":
+        for prefix in ("L", "FB"):
+            if normalized.startswith(prefix):
+                suffix = normalized[len(prefix) :]
+                if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
+                    return suffix
+        return normalized
+
+    prefix = _COMPONENT_PACKAGE_PREFIX.get(component_type)
+    if prefix is None:
+        return normalized
+
+    if normalized.startswith(prefix):
+        suffix = normalized[len(prefix) :]
+        if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
+            return suffix
+    return normalized
+
+
+def _validate_payload_package_allowlist(
+    payload: dict[str, Any], allowlists: dict[str, set[str]]
+) -> None:
+    raw_package = payload.get("package")
+    if not isinstance(raw_package, str):
+        return
+    component_type = str(payload.get("component_type") or "")
+    if not component_type:
+        return
+    allowed = allowlists.get(component_type)
+    if allowed is None:
+        # Only enforce for known component types in the allowlist.
+        return
+    normalized = _normalize_package_for_component(component_type, raw_package)
+    if normalized is None or normalized not in allowed:
+        raise ApiError(
+            f"Unsupported package '{raw_package}' for component type "
+            f"'{component_type}'."
+        )
 
 
 def _extract_package_constraint(value: Any) -> str | None:
@@ -1054,13 +1165,6 @@ def _build_literal_attributes_for_component(
             pick_parameters.get("load_capacitance_f", row.get("load_capacitance_f")),
             unit="farad",
         )
-        attrs["frequency_tolerance"] = _quantity_literal(
-            pick_parameters.get(
-                "frequency_tolerance_ppm",
-                row.get("frequency_tolerance_ppm"),
-            ),
-            unit="ppm",
-        )
         attrs["frequency_temperature_tolerance"] = _quantity_literal(
             pick_parameters.get(
                 "frequency_stability_ppm",
@@ -1393,7 +1497,6 @@ def test_build_literal_attributes_for_component_new_types() -> None:
     )
     assert "frequency" in crystal
     assert "load_capacitance" in crystal
-    assert "frequency_tolerance" in crystal
 
     ferrite = _build_literal_attributes_for_component(
         {"component_type": "ferrite_bead"},
@@ -1478,3 +1581,18 @@ def test_materialize_v1_assets_uses_bundle_manifest_paths(
     assert (tmp_path / "C21190" / "easyeda_cad.json").read_bytes() == (
         b'{"description":"test"}'
     )
+
+
+def test_validate_payload_package_allowlist_accepts_normalized_passive_prefixes() -> None:
+    payload = {"component_type": "resistor", "package": "R0603"}
+    _validate_payload_package_allowlist(payload, {"resistor": {"0603"}})
+
+
+def test_validate_payload_package_allowlist_rejects_unsupported_package() -> None:
+    payload = {"component_type": "resistor", "package": "SOT-23"}
+    try:
+        _validate_payload_package_allowlist(payload, {"resistor": {"0603", "0805"}})
+    except ApiError as exc:
+        assert "Unsupported package" in str(exc)
+    else:
+        raise AssertionError("Expected ApiError for unsupported package")
