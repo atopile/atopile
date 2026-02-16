@@ -67,3 +67,17 @@ What was deferred:
 Why deferred:
 - Useful reliability improvement, but generic behavior change outside the minimum feature surface.
 - Better validated in a dedicated watcher/reload reliability PR.
+
+## 4) PinMuxSelector inline test suite (deferred)
+Removed from:
+- `src/faebryk/library/PinMuxSelector.py`
+
+What was deferred:
+- Large in-file pytest suite for PinMuxSelector behavior/scenarios/conflict checks.
+
+Why deferred:
+- Test code inside runtime library module bloats production code paths and introduces avoidable runtime coupling to `pytest`.
+- Keep this PR focused on feature runtime behavior; re-introduce tests in dedicated test modules.
+
+Suggested follow-up PR:
+- Add equivalent tests under the project test directories (not in `src/faebryk/library/` runtime modules).
