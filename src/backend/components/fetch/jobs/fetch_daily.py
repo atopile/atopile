@@ -178,7 +178,7 @@ def run_fetch_daily(
     *,
     max_pages: int | None = None,
     fetch_details: bool = True,
-    max_details: int | None = 500,
+    max_details: int | None = None,
     roundtrip_lcsc_ids: tuple[int, ...] = (),
     run_fetch_once_fn: Callable[..., Path] = run_fetch_once,
     run_roundtrip_fn: Callable[
@@ -310,7 +310,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run daily Stage 1 fetch jobs.")
     parser.add_argument("--max-pages", type=int, default=None)
     parser.add_argument("--no-fetch-details", action="store_true")
-    parser.add_argument("--max-details", type=int, default=500)
+    parser.add_argument(
+        "--max-details",
+        type=int,
+        default=None,
+        help=(
+            "Limit fetched component detail payloads for JLC ingest. "
+            "Default is unlimited."
+        ),
+    )
     parser.add_argument(
         "--roundtrip-from-snapshot",
         action="store_true",
