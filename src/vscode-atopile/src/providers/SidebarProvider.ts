@@ -1334,11 +1334,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
-    // Debug info
-    console.log('[atopile webview] Initializing...');
-    console.log('[atopile webview] API URL:', '${apiUrl}');
-    console.log('[atopile webview] WS URL:', '${wsUrl}');
-
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
