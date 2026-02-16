@@ -61,7 +61,7 @@ def test_deeppcb_defaults_match_public_api_paths(monkeypatch):
     assert cfg.board_ready_poll_s == 2.0
     assert cfg.api_key == ""
     assert cfg.bearer_token is None
-    assert cfg.webhook_url == "https://example.com/deeppcb-autolayout"
+    assert cfg.webhook_url is None
     assert cfg.webhook_token is None
 
 
@@ -144,6 +144,7 @@ def test_redact_sensitive_values():
 
 def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
     deeppcb_module = _reload_deeppcb_module()
 
     board = tmp_path / "demo.kicad_pcb"
@@ -188,6 +189,7 @@ def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
 
 def test_create_board_kicad_requires_project_file(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
     deeppcb_module = _reload_deeppcb_module()
 
     board = tmp_path / "demo.kicad_pcb"
@@ -228,6 +230,48 @@ def test_resume_option_parsing(monkeypatch):
 
     assert provider._resume_board_id(request) == "board-123"
     assert provider._resume_stop_first(request) is False
+
+
+def test_webhook_url_is_required_without_config(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.delenv("ATO_DEEPPCB_WEBHOOK_URL", raising=False)
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=Path("."),
+        build_target="default",
+        layout_path=Path("layout.kicad_pcb"),
+        input_zip_path=Path("input_bundle.zip"),
+        work_dir=Path("."),
+        options={},
+    )
+
+    with pytest.raises(RuntimeError, match="requires a webhook URL"):
+        provider._webhook_url(request)
+
+
+def test_webhook_token_fallback_is_not_predictable_job_id(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
+    monkeypatch.delenv("ATO_DEEPPCB_WEBHOOK_TOKEN", raising=False)
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=Path("."),
+        build_target="default",
+        layout_path=Path("layout.kicad_pcb"),
+        input_zip_path=Path("input_bundle.zip"),
+        work_dir=Path("."),
+        options={},
+    )
+    token = provider._webhook_token(request)
+    assert isinstance(token, str)
+    assert token
+    assert token != request.job_id
 
 
 def test_extract_workflow_statuses_and_running_detection():

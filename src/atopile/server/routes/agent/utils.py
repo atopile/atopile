@@ -49,6 +49,9 @@ DEFAULT_MAX_PERSISTED_HISTORY = 160
 MIN_PERSISTED_HISTORY = 20
 MAX_PERSISTED_HISTORY = 2_000
 DEFAULT_RUN_RETENTION_SECONDS = 3_600.0
+DEFAULT_MAX_RUN_MESSAGES = 10_000
+MIN_MAX_RUN_MESSAGES = 500
+MAX_MAX_RUN_MESSAGES = 500_000
 
 _PROGRESS_DISABLE_VALUES = {"0", "false", "no", "off"}
 _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
@@ -102,6 +105,15 @@ def _get_max_persisted_history_entries() -> int:
     except ValueError:
         return DEFAULT_MAX_PERSISTED_HISTORY
     return max(MIN_PERSISTED_HISTORY, min(parsed, MAX_PERSISTED_HISTORY))
+
+
+def _get_max_run_messages() -> int:
+    raw = os.getenv("ATOPILE_AGENT_MAX_RUN_MESSAGES", str(DEFAULT_MAX_RUN_MESSAGES))
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_RUN_MESSAGES
+    return max(MIN_MAX_RUN_MESSAGES, min(parsed, MAX_MAX_RUN_MESSAGES))
 
 
 def _normalize_history_entries(
@@ -541,6 +553,30 @@ def post_agent_run_message(run_id: str, message: dict[str, Any]) -> None:
             return
 
         run.message_log.append(dict(message))
+        max_messages = _get_max_run_messages()
+        overflow = len(run.message_log) - max_messages
+        if overflow > 0:
+            dropped_messages = run.message_log[:overflow]
+            run.message_log = run.message_log[overflow:]
+
+            # Keep per-agent cursors aligned to the shifted message_log window.
+            for agent_id, cursor in list(run.inbox_cursor.items()):
+                if not isinstance(cursor, int):
+                    run.inbox_cursor[agent_id] = 0
+                    continue
+                run.inbox_cursor[agent_id] = max(0, cursor - overflow)
+
+            # Remove pending ACKs for dropped messages to avoid stale counters.
+            dropped_ids = {
+                str(message_id)
+                for dropped in dropped_messages
+                if isinstance(dropped, dict)
+                for message_id in [dropped.get("message_id")]
+                if isinstance(message_id, str) and message_id
+            }
+            if dropped_ids:
+                run.pending_acks.difference_update(dropped_ids)
+
         run.updated_at = time.time()
 
         requires_ack = bool(message.get("requires_ack", False))

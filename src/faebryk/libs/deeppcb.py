@@ -199,7 +199,7 @@ class DeepPCBConfig(BaseSettings):
         ),
     )
     webhook_url: str | None = Field(
-        default="https://example.com/deeppcb-autolayout",
+        default=None,
         validation_alias=AliasChoices(
             "ATO_DEEPPCB_WEBHOOK_URL",
             "DEEPPCB_WEBHOOK_URL",

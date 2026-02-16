@@ -7,6 +7,7 @@ public docs/API payload examples are evolving.
 from __future__ import annotations
 
 import json
+import secrets
 import time
 import zipfile
 from pathlib import Path
@@ -965,8 +966,18 @@ class DeepPCBAutolayout:
         if self.config.webhook_url and self.config.webhook_url.strip():
             return self.config.webhook_url.strip()
 
-        # DeepPCB currently requires a non-empty webhook URL.
-        return "https://example.com/deeppcb-autolayout"
+        if str(request.options.get("allow_insecure_webhook_defaults", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return "https://example.com/deeppcb-autolayout"
+
+        raise RuntimeError(
+            "DeepPCB requires a webhook URL. Set ATO_DEEPPCB_WEBHOOK_URL "
+            "or pass options.webhook_url/webhookUrl."
+        )
 
     def _webhook_token(self, request: SubmitRequest) -> str | None:
         option_keys = (
@@ -982,7 +993,7 @@ class DeepPCBAutolayout:
         if self.config.webhook_token and self.config.webhook_token.strip():
             return self.config.webhook_token.strip()
 
-        return request.job_id
+        return secrets.token_urlsafe(32)
 
     def _extract_string(self, payload: Any, keys: tuple[str, ...]) -> str | None:
         lookup = {key.lower() for key in keys}

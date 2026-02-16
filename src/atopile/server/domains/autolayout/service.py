@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import shutil
 import threading
+import time
 import uuid
 import zipfile
 from pathlib import Path
@@ -25,6 +27,9 @@ from atopile.server.domains.autolayout.models import (
 )
 from atopile.server.events import event_bus
 from faebryk.exporters.pcb.autolayout.deeppcb import DeepPCBAutolayout
+from faebryk.libs.paths import get_log_dir
+
+log = logging.getLogger(__name__)
 
 
 class AutolayoutServiceSettings(BaseSettings):
@@ -55,11 +60,19 @@ class AutolayoutService:
         max_persisted_jobs: int = 200,
         settings: AutolayoutServiceSettings | None = None,
     ) -> None:
-        _ = (state_path, max_persisted_jobs)
         self._autolayout = DeepPCBAutolayout()
         self._settings = settings or AutolayoutServiceSettings()
         self._jobs: dict[str, AutolayoutJob] = {}
         self._lock = threading.RLock()
+        self._state_path = (
+            Path(state_path).expanduser()
+            if state_path is not None
+            else get_log_dir() / "autolayout_jobs_state.json"
+        )
+        self._max_persisted_jobs = max(20, min(int(max_persisted_jobs), 20_000))
+        self._state_version = 1
+        self._state_mtime_ns = 0
+        self._load_jobs_from_disk()
 
     def start_job(
         self,
@@ -69,6 +82,8 @@ class AutolayoutService:
         options: dict[str, Any] | None = None,
     ) -> AutolayoutJob:
         self._ensure_enabled()
+        with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
 
         target_files = self._resolve_target_files(project_root, build_target)
         provider = self._autolayout
@@ -110,6 +125,8 @@ class AutolayoutService:
 
         with self._lock:
             self._jobs[job_id] = job
+            self._trim_jobs_locked()
+            self._persist_jobs_locked()
 
         try:
             submit_result = provider.submit(
@@ -133,6 +150,7 @@ class AutolayoutService:
                 current.error = str(exc)
                 current.message = str(exc)
                 current.mark_updated()
+                self._persist_jobs_locked()
                 self._emit_job_event(current)
                 return copy.deepcopy(current)
 
@@ -145,11 +163,13 @@ class AutolayoutService:
             if current.candidates and current.state == AutolayoutState.COMPLETED:
                 current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
+            self._persist_jobs_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
     def get_job(self, job_id: str) -> AutolayoutJob:
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
@@ -157,6 +177,7 @@ class AutolayoutService:
 
     def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             values = list(self._jobs.values())
 
         if project_root is not None:
@@ -167,6 +188,7 @@ class AutolayoutService:
 
     def refresh_job(self, job_id: str) -> AutolayoutJob:
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
@@ -184,6 +206,7 @@ class AutolayoutService:
                 current.error = "Missing DeepPCB job reference"
                 current.message = "Missing DeepPCB job reference"
                 current.mark_updated()
+                self._persist_jobs_locked()
                 self._emit_job_event(current)
                 return copy.deepcopy(current)
 
@@ -196,6 +219,7 @@ class AutolayoutService:
                 current.error = str(exc)
                 current.message = str(exc)
                 current.mark_updated()
+                self._persist_jobs_locked()
                 self._emit_job_event(current)
                 return copy.deepcopy(current)
 
@@ -209,6 +233,7 @@ class AutolayoutService:
                 if current.state == AutolayoutState.COMPLETED:
                     current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
+            self._persist_jobs_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
@@ -228,16 +253,19 @@ class AutolayoutService:
         candidates = self._autolayout.list_candidates(job.provider_job_ref)
 
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             current = self._jobs[job_id]
             current.candidates = _dedupe_candidates(candidates)
             if current.candidates and current.state == AutolayoutState.COMPLETED:
                 current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
+            self._persist_jobs_locked()
             self._emit_job_event(current)
             return [copy.deepcopy(candidate) for candidate in current.candidates]
 
     def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
@@ -249,6 +277,7 @@ class AutolayoutService:
 
             job.selected_candidate_id = candidate_id
             job.mark_updated()
+            self._persist_jobs_locked()
             self._emit_job_event(job)
             return copy.deepcopy(job)
 
@@ -258,6 +287,7 @@ class AutolayoutService:
         candidate_id: str | None = None,
     ) -> AutolayoutJob:
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
@@ -294,11 +324,13 @@ class AutolayoutService:
             current.message = "Candidate applied"
             current.error = None
             current.mark_updated()
+            self._persist_jobs_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
     def cancel_job(self, job_id: str) -> AutolayoutJob:
         with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
@@ -311,8 +343,115 @@ class AutolayoutService:
             current = self._jobs[job_id]
             current.state = AutolayoutState.CANCELLED
             current.mark_updated()
+            self._persist_jobs_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
+
+    def _load_jobs_from_disk(self) -> None:
+        with self._lock:
+            if not self._state_path.exists():
+                return
+            try:
+                raw_payload = json.loads(self._state_path.read_text(encoding="utf-8"))
+            except Exception:
+                log.exception(
+                    "AutolayoutService: failed to parse persisted job state at %s",
+                    self._state_path,
+                )
+                return
+
+            raw_jobs = raw_payload.get("jobs", []) if isinstance(raw_payload, dict) else []
+            if not isinstance(raw_jobs, list):
+                return
+
+            restored: dict[str, AutolayoutJob] = {}
+            for raw_job in raw_jobs:
+                if not isinstance(raw_job, dict):
+                    continue
+                try:
+                    job = AutolayoutJob.model_validate(raw_job)
+                except Exception:
+                    continue
+                restored[job.job_id] = job
+
+            if restored:
+                self._jobs = restored
+                self._trim_jobs_locked()
+            self._update_state_mtime_locked()
+
+    def _update_state_mtime_locked(self) -> None:
+        try:
+            self._state_mtime_ns = self._state_path.stat().st_mtime_ns
+        except FileNotFoundError:
+            self._state_mtime_ns = 0
+        except Exception:
+            self._state_mtime_ns = int(time.time_ns())
+
+    def _maybe_reload_jobs_from_disk_locked(self) -> None:
+        try:
+            mtime_ns = self._state_path.stat().st_mtime_ns
+        except FileNotFoundError:
+            mtime_ns = 0
+        except Exception:
+            return
+        if mtime_ns <= self._state_mtime_ns:
+            return
+        try:
+            raw_payload = json.loads(self._state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        raw_jobs = raw_payload.get("jobs", []) if isinstance(raw_payload, dict) else []
+        if not isinstance(raw_jobs, list):
+            return
+        reloaded: dict[str, AutolayoutJob] = {}
+        for raw_job in raw_jobs:
+            if not isinstance(raw_job, dict):
+                continue
+            try:
+                job = AutolayoutJob.model_validate(raw_job)
+            except Exception:
+                continue
+            reloaded[job.job_id] = job
+        if reloaded:
+            self._jobs = reloaded
+            self._trim_jobs_locked()
+        self._state_mtime_ns = mtime_ns
+
+    def _trim_jobs_locked(self) -> None:
+        if len(self._jobs) <= self._max_persisted_jobs:
+            return
+        ordered = sorted(
+            self._jobs.values(),
+            key=lambda job: (job.created_at, job.updated_at, job.job_id),
+            reverse=True,
+        )
+        keep_ids = {job.job_id for job in ordered[: self._max_persisted_jobs]}
+        self._jobs = {job_id: job for job_id, job in self._jobs.items() if job_id in keep_ids}
+
+    def _persist_jobs_locked(self) -> None:
+        self._trim_jobs_locked()
+        payload = {
+            "version": self._state_version,
+            "saved_at": time.time(),
+            "jobs": [job.model_dump(mode="json") for job in self._jobs.values()],
+        }
+        tmp_path = self._state_path.with_suffix(f"{self._state_path.suffix}.tmp")
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            with tmp_path.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+            tmp_path.replace(self._state_path)
+            self._update_state_mtime_locked()
+        except Exception:
+            log.exception(
+                "AutolayoutService: failed to persist job state to %s",
+                self._state_path,
+            )
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except Exception:
+                pass
 
     def _resolve_target_files(
         self,

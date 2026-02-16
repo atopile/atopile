@@ -183,7 +183,7 @@ def test_autolayout_service_mock_lifecycle(tmp_path: Path):
     assert Path(applied.layout_path or "").exists()
 
 
-def test_autolayout_service_keeps_job_state_in_memory_only(tmp_path: Path):
+def test_autolayout_service_persists_and_restores_job_state(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
     state_path = tmp_path / "autolayout_jobs_state.json"
 
@@ -195,14 +195,15 @@ def test_autolayout_service_keeps_job_state_in_memory_only(tmp_path: Path):
         project_root=str(project_root),
         build_target="default",
     )
-    assert not state_path.exists()
+    assert state_path.exists()
 
     reloaded = AutolayoutService(
         state_path=state_path,
     )
     reloaded._autolayout = MockAutolayoutProvider()
-    with pytest.raises(KeyError):
-        reloaded.get_job(job.job_id)
+    restored = reloaded.get_job(job.job_id)
+    assert restored.job_id == job.job_id
+    assert restored.project_root == job.project_root
 
 
 def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
