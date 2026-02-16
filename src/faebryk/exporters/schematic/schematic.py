@@ -2568,6 +2568,66 @@ def _collect_interfaces_for_owner(
     return iface_map
 
 
+def _build_module_json(
+    mod_id: str,
+    all_modules: dict[str, _ModInfo],
+    module_by_fullname: dict[str, _ModInfo],
+    scoped_nets: dict[str | None, list[dict]],
+    comp_by_id: dict[str, _CompInfo],
+) -> dict | None:
+    """Recursively build module JSON payload for the schematic output."""
+    mod = all_modules.get(mod_id)
+    if not mod:
+        return None
+
+    module_source = _build_instance_source_ref(
+        mod.full_name,
+        module_by_fullname,
+    )
+
+    interface_pins, body_w, body_h = _build_interface_pins(
+        mod.interfaces,
+        module_source,
+    )
+
+    child_modules = []
+    for child_id in mod.child_module_ids:
+        child = _build_module_json(
+            child_id,
+            all_modules,
+            module_by_fullname,
+            scoped_nets,
+            comp_by_id,
+        )
+        if child:
+            child_modules.append(child)
+
+    components = []
+    for comp_id in mod.direct_component_ids:
+        ci = comp_by_id.get(comp_id)
+        if ci:
+            components.append(ci.json_component)
+
+    module_json = {
+        "kind": "module",
+        "id": mod.json_id,
+        "name": mod.name,
+        "typeName": mod.type_name,
+        "componentCount": mod.atomic_part_count,
+        "interfacePins": interface_pins,
+        "bodyWidth": body_w,
+        "bodyHeight": body_h,
+        "sheet": {
+            "modules": child_modules,
+            "components": components,
+            "nets": scoped_nets.get(mod_id, []),
+        },
+    }
+    if module_source:
+        module_json["source"] = module_source
+    return module_json
+
+
 # ── Main export function ────────────────────────────────────────
 
 
@@ -2977,59 +3037,6 @@ def export_schematic_json(
 
     comp_by_id = {c.json_id: c for c in comp_infos}
 
-    def _build_module(mod_id: str) -> dict | None:
-        """Recursively build a SchematicModule dict."""
-        mod = all_modules.get(mod_id)
-        if not mod:
-            return None
-
-        module_source = _build_instance_source_ref(
-            mod.full_name,
-            module_by_fullname,
-        )
-
-        # Build interface pins
-        interface_pins, body_w, body_h = _build_interface_pins(
-            mod.interfaces,
-            module_source,
-        )
-
-        # Build child modules
-        child_modules = []
-        for child_id in mod.child_module_ids:
-            child = _build_module(child_id)
-            if child:
-                child_modules.append(child)
-
-        # Build components (only those directly owned by this module)
-        components = []
-        for comp_id in mod.direct_component_ids:
-            ci = comp_by_id.get(comp_id)
-            if ci:
-                components.append(ci.json_component)
-
-        # Get nets for this module's sheet
-        nets = scoped_nets.get(mod_id, [])
-
-        module_json = {
-            "kind": "module",
-            "id": mod.json_id,
-            "name": mod.name,
-            "typeName": mod.type_name,
-            "componentCount": mod.atomic_part_count,
-            "interfacePins": interface_pins,
-            "bodyWidth": body_w,
-            "bodyHeight": body_h,
-            "sheet": {
-                "modules": child_modules,
-                "components": components,
-                "nets": nets,
-            },
-        }
-        if module_source:
-            module_json["source"] = module_source
-        return module_json
-
     # Root-level modules (interesting modules with no interesting parent)
     root_module_ids = [
         mid
@@ -3038,7 +3045,13 @@ def export_schematic_json(
     ]
     root_modules = []
     for mid in root_module_ids:
-        module_json = _build_module(mid)
+        module_json = _build_module_json(
+            mid,
+            all_modules,
+            module_by_fullname,
+            scoped_nets,
+            comp_by_id,
+        )
         if module_json:
             root_modules.append(module_json)
 
