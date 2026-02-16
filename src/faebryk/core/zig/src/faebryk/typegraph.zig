@@ -959,7 +959,11 @@ pub const TypeGraph = struct {
             allocator.free(target_links);
         }
 
-        // For each source link, mark any conflicting soft target links as superseded
+        // For each source link, mark any conflicting soft target links as superseded.
+        // Dedup key is (edge_type, lhs_path) — RHS is intentionally not compared.
+        // Multiple soft MakeLinks with the same key but different RHS targets can exist
+        // (e.g., from duplicate soft assignments to the same field), and ALL of them
+        // should be superseded when an authoritative inherited link arrives.
         for (source_links) |src_link| {
             const src_edge_type = MakeLinkNode.Attributes.of(src_link.make_link).get_edge_type();
             for (target_links) |tgt_link| {
@@ -2043,7 +2047,7 @@ pub const TypeGraph = struct {
         }
 
         // 3) Visit MakeLink nodes of type_node
-        // Soft MakeLinks are removed during copy_type_structure, so no filtering needed here.
+        // MakeLinks superseded during copy_type_structure are skipped via is_superseded().
         const VisitMakeLinks = struct {
             type_graph: *TypeGraph,
             parent_instance: graph.BoundNodeReference,
