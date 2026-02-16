@@ -226,6 +226,64 @@ fn wrap_bound_get_or_create_type(
     };
 }
 
+fn wrap_node_contract(
+    comptime NodeType: type,
+    comptime NodeWrapper: type,
+    comptime node_py_name: [:0]const u8,
+    node_storage: *?*py.PyTypeObject,
+    comptime BoundType: type,
+    comptime wrap_bound_obj: fn (BoundType) ?*py.PyObject,
+) [5]type {
+    return .{
+        wrap_node_create_instance(
+            NodeType,
+            NodeWrapper,
+            node_py_name,
+            node_storage,
+        ),
+        wrap_node_bind_instance(
+            NodeType,
+            NodeWrapper,
+            node_py_name,
+            node_storage,
+        ),
+        wrap_node_bind_typegraph(NodeType, BoundType, wrap_bound_obj),
+        wrap_node_type_identifier(NodeType),
+        wrap_node_get_instance(
+            node_py_name,
+            NodeWrapper,
+            node_storage,
+        ),
+    };
+}
+
+fn wrap_bound_contract(
+    comptime BoundWrapper: type,
+    comptime bound_py_name: [:0]const u8,
+    bound_storage: *?*py.PyTypeObject,
+    comptime NodeType: type,
+    comptime NodeWrapper: type,
+    comptime node_py_name: [:0]const u8,
+    node_storage: *?*py.PyTypeObject,
+) [2]type {
+    return .{
+        wrap_bound_create_instance(
+            BoundWrapper,
+            bound_py_name,
+            bound_storage,
+            NodeType,
+            NodeWrapper,
+            node_py_name,
+            node_storage,
+        ),
+        wrap_bound_get_or_create_type(
+            BoundWrapper,
+            bound_py_name,
+            bound_storage,
+        ),
+    };
+}
+
 fn wrap_strings_obj(value: fabll.literals.Strings) ?*py.PyObject {
     return common.wrap_owned_obj(
         "Strings",
@@ -1397,22 +1455,15 @@ fn wrap_strings_deserialize() type {
 }
 
 fn wrap_strings_bound(root: *py.PyObject) void {
-    const extra_methods = [_]type{
-        wrap_bound_create_instance(
-            StringsBoundWrapper,
-            "StringsBoundType",
-            &strings_bound_type,
-            fabll.literals.Strings,
-            StringsWrapper,
-            "Strings",
-            &strings_type,
-        ),
-        wrap_bound_get_or_create_type(
-            StringsBoundWrapper,
-            "StringsBoundType",
-            &strings_bound_type,
-        ),
-    };
+    const extra_methods = wrap_bound_contract(
+        StringsBoundWrapper,
+        "StringsBoundType",
+        &strings_bound_type,
+        fabll.literals.Strings,
+        StringsWrapper,
+        "Strings",
+        &strings_type,
+    );
     bind.wrap_namespace_struct(root, StringsBoundType, extra_methods);
     strings_bound_type = type_registry.getRegisteredTypeObject(
         util.shortTypeName(StringsBoundType),
@@ -1427,29 +1478,14 @@ fn wrap_strings(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_strings_make_child(),
         wrap_strings_make_child_set_superset(),
-        wrap_node_create_instance(
-            fabll.literals.Strings,
-            StringsWrapper,
-            "Strings",
-            &strings_type,
-        ),
-        wrap_node_bind_instance(
-            fabll.literals.Strings,
-            StringsWrapper,
-            "Strings",
-            &strings_type,
-        ),
-        wrap_node_bind_typegraph(
-            fabll.literals.Strings,
-            StringsBoundType,
-            wrap_strings_bound_obj,
-        ),
-        wrap_node_type_identifier(fabll.literals.Strings),
-        wrap_node_get_instance(
-            "Strings",
-            StringsWrapper,
-            &strings_type,
-        ),
+    } ++ wrap_node_contract(
+        fabll.literals.Strings,
+        StringsWrapper,
+        "Strings",
+        &strings_type,
+        StringsBoundType,
+        wrap_strings_bound_obj,
+    ) ++ [_]type{
         wrap_strings_setup_from_values(),
         wrap_strings_get_values(),
         wrap_strings_is_singleton(),
@@ -1950,22 +1986,15 @@ fn wrap_counts_deserialize() type {
 }
 
 fn wrap_counts_bound(root: *py.PyObject) void {
-    const extra_methods = [_]type{
-        wrap_bound_create_instance(
-            CountsBoundWrapper,
-            "CountsBoundType",
-            &counts_bound_type,
-            fabll.literals.Counts,
-            CountsWrapper,
-            "Counts",
-            &counts_type,
-        ),
-        wrap_bound_get_or_create_type(
-            CountsBoundWrapper,
-            "CountsBoundType",
-            &counts_bound_type,
-        ),
-    };
+    const extra_methods = wrap_bound_contract(
+        CountsBoundWrapper,
+        "CountsBoundType",
+        &counts_bound_type,
+        fabll.literals.Counts,
+        CountsWrapper,
+        "Counts",
+        &counts_type,
+    );
     bind.wrap_namespace_struct(root, CountsBoundType, extra_methods);
     counts_bound_type = type_registry.getRegisteredTypeObject(
         util.shortTypeName(CountsBoundType),
@@ -1977,30 +2006,14 @@ fn wrap_counts_bound(root: *py.PyObject) void {
 }
 
 fn wrap_counts(root: *py.PyObject) void {
-    const extra_methods = [_]type{
-        wrap_node_create_instance(
-            fabll.literals.Counts,
-            CountsWrapper,
-            "Counts",
-            &counts_type,
-        ),
-        wrap_node_bind_instance(
-            fabll.literals.Counts,
-            CountsWrapper,
-            "Counts",
-            &counts_type,
-        ),
-        wrap_node_bind_typegraph(
-            fabll.literals.Counts,
-            CountsBoundType,
-            wrap_counts_bound_obj,
-        ),
-        wrap_node_type_identifier(fabll.literals.Counts),
-        wrap_node_get_instance(
-            "Counts",
-            CountsWrapper,
-            &counts_type,
-        ),
+    const extra_methods = wrap_node_contract(
+        fabll.literals.Counts,
+        CountsWrapper,
+        "Counts",
+        &counts_type,
+        CountsBoundType,
+        wrap_counts_bound_obj,
+    ) ++ [_]type{
         wrap_counts_setup_from_values(),
         wrap_counts_get_values(),
         wrap_counts_is_singleton(),
@@ -2514,22 +2527,15 @@ fn wrap_booleans_deserialize() type {
 }
 
 fn wrap_booleans_bound(root: *py.PyObject) void {
-    const extra_methods = [_]type{
-        wrap_bound_create_instance(
-            BooleansBoundWrapper,
-            "BooleansBoundType",
-            &booleans_bound_type,
-            fabll.literals.Booleans,
-            BooleansWrapper,
-            "Booleans",
-            &booleans_type,
-        ),
-        wrap_bound_get_or_create_type(
-            BooleansBoundWrapper,
-            "BooleansBoundType",
-            &booleans_bound_type,
-        ),
-    };
+    const extra_methods = wrap_bound_contract(
+        BooleansBoundWrapper,
+        "BooleansBoundType",
+        &booleans_bound_type,
+        fabll.literals.Booleans,
+        BooleansWrapper,
+        "Booleans",
+        &booleans_type,
+    );
     bind.wrap_namespace_struct(root, BooleansBoundType, extra_methods);
     booleans_bound_type = type_registry.getRegisteredTypeObject(
         util.shortTypeName(BooleansBoundType),
@@ -2541,30 +2547,14 @@ fn wrap_booleans_bound(root: *py.PyObject) void {
 }
 
 fn wrap_booleans(root: *py.PyObject) void {
-    const extra_methods = [_]type{
-        wrap_node_create_instance(
-            fabll.literals.Booleans,
-            BooleansWrapper,
-            "Booleans",
-            &booleans_type,
-        ),
-        wrap_node_bind_instance(
-            fabll.literals.Booleans,
-            BooleansWrapper,
-            "Booleans",
-            &booleans_type,
-        ),
-        wrap_node_bind_typegraph(
-            fabll.literals.Booleans,
-            BooleansBoundType,
-            wrap_booleans_bound_obj,
-        ),
-        wrap_node_type_identifier(fabll.literals.Booleans),
-        wrap_node_get_instance(
-            "Booleans",
-            BooleansWrapper,
-            &booleans_type,
-        ),
+    const extra_methods = wrap_node_contract(
+        fabll.literals.Booleans,
+        BooleansWrapper,
+        "Booleans",
+        &booleans_type,
+        BooleansBoundType,
+        wrap_booleans_bound_obj,
+    ) ++ [_]type{
         wrap_booleans_setup_from_values(),
         wrap_booleans_get_values(),
         wrap_booleans_is_singleton(),
