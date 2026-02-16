@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
+import re
 import time
 import uuid
 from collections import Counter
@@ -61,6 +63,54 @@ def get_services(request: Request) -> ServeServices:
 
 def _duration_ms(started_at: float) -> float:
     return round((time.perf_counter() - started_at) * 1000.0, 3)
+
+
+@dataclass(frozen=True)
+class ParsedSearchIntent:
+    component_type: str | None = None
+    package: str | None = None
+    automotive: bool = False
+    exact_lcsc: int | None = None
+    query_tokens: tuple[str, ...] = ()
+
+
+_TOKEN_PATTERN = re.compile(r"[a-z0-9][a-z0-9_+./-]*")
+_PACKAGE_PATTERN = re.compile(
+    r"\b(0[2346]02|0603|0805|1206|0402|sot-?23(?:-\d+)?|sop-?\d+|ssop-?\d+|tssop-?\d+|qfn-?\d+|qfp-?\d+|lqfp-?\d+|dfn-?\d+|bga-?\d+)\b",
+    re.IGNORECASE,
+)
+_LCSC_PATTERN = re.compile(r"\bC?(\d{3,})\b", re.IGNORECASE)
+
+_COMPONENT_TYPE_HINTS: dict[str, tuple[str, ...]] = {
+    "sensor": ("sensor", "sensors", "imu", "accelerometer", "gyroscope", "pressure", "temperature", "humidity", "environmental"),
+    "mcu": ("mcu", "microcontroller", "micro-controller", "single-chip", "arm", "cortex-m", "stm32"),
+    "interface_ic": ("interface", "transceiver", "uart", "i2c", "spi", "usb", "can", "rs485", "isolated"),
+    "power_ic": ("power", "charger", "buck", "boost", "ldo", "regulator", "pmic", "battery"),
+}
+
+
+def _parse_search_intent(query: str) -> ParsedSearchIntent:
+    q = query.lower().strip()
+    tokens = tuple(sorted(set(_TOKEN_PATTERN.findall(q))))
+    package_match = _PACKAGE_PATTERN.search(q)
+    package = package_match.group(1).upper() if package_match else None
+    lcsc_match = _LCSC_PATTERN.search(query)
+    exact_lcsc = int(lcsc_match.group(1)) if lcsc_match else None
+    automotive = any(word in q for word in ("automotive", "aec-q", "q100", "grade 1", "grade1", "grade 2", "grade2"))
+
+    inferred_type: str | None = None
+    for component_type, hints in _COMPONENT_TYPE_HINTS.items():
+        if any(h in q for h in hints):
+            inferred_type = component_type
+            break
+
+    return ParsedSearchIntent(
+        component_type=inferred_type,
+        package=package,
+        automotive=automotive,
+        exact_lcsc=exact_lcsc,
+        query_tokens=tokens,
+    )
 
 
 @router.post("/parameters/query", response_model=ParametersQueryResponse)
@@ -144,6 +194,43 @@ async def search_components(
 ) -> ComponentsSearchResponse:
     started_at = time.perf_counter()
     request_id = get_request_id(request)
+    intent = _parse_search_intent(payload.query)
+
+    # Fast exact-ID path to avoid vector retrieval when query is explicit.
+    if intent.exact_lcsc is not None:
+        try:
+            detail_by_id = await asyncio.to_thread(
+                services.detail_store.get_components,
+                [intent.exact_lcsc],
+            )
+        except ServeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+        detail_row = detail_by_id.get(intent.exact_lcsc)
+        if detail_row is None:
+            return ComponentsSearchResponse(query=payload.query, total=0, results=[])
+        price_tiers = _price_tiers_from_detail(detail_row)
+        result = ComponentsSearchResultModel(
+            lcsc_id=int(intent.exact_lcsc),
+            score=2.0,
+            cosine_score=1.0,
+            reasons=["exact_lcsc"],
+            component_type=str(detail_row.get("component_type") or "unknown"),
+            manufacturer_name=(
+                str(detail_row.get("manufacturer_name"))
+                if detail_row.get("manufacturer_name")
+                else None
+            ),
+            part_number=str(detail_row.get("part_number") or ""),
+            package=str(detail_row.get("package") or ""),
+            description=str(detail_row.get("description") or ""),
+            stock=int(detail_row.get("stock") or 0),
+            is_basic=bool(detail_row.get("is_basic")),
+            is_preferred=bool(detail_row.get("is_preferred")),
+            unit_cost=_unit_cost_from_price_tiers(price_tiers),
+            price=price_tiers,
+        )
+        return ComponentsSearchResponse(query=payload.query, total=1, results=[result])
+
     if services.vector_search is None:
         raise HTTPException(
             status_code=503,
@@ -158,12 +245,15 @@ async def search_components(
             if payload.raw_vector_only is True
             else payload.search_mode
         )
+        effective_component_type = payload.component_type or intent.component_type
+        effective_package = payload.package or intent.package
+        retrieval_limit = min(max(payload.limit * 6, 120), 600)
         results = await asyncio.to_thread(
             services.vector_search.search,
             query=payload.query,
-            limit=payload.limit,
-            component_type=payload.component_type,
-            package=payload.package,
+            limit=retrieval_limit,
+            component_type=effective_component_type,
+            package=effective_package,
             in_stock_only=payload.in_stock_only,
             prefer_in_stock=payload.prefer_in_stock,
             prefer_basic=payload.prefer_basic,
@@ -199,7 +289,7 @@ async def search_components(
         )
         raise HTTPException(status_code=500, detail=str(exc))
 
-    response_results: list[ComponentsSearchResultModel] = []
+    reranked: list[tuple[float, list[str], Any, dict[str, Any], list[ComponentsSearchResultModel.PriceTier]]] = []
     for item in results:
         detail_row = detail_by_id.get(item.lcsc_id)
         if detail_row is None:
@@ -211,12 +301,25 @@ async def search_components(
                 ),
             )
         price_tiers = _price_tiers_from_detail(detail_row)
+        rerank_score, rerank_reasons = _rerank_score(
+            item=item,
+            detail_row=detail_row,
+            intent=intent,
+            prefer_in_stock=payload.prefer_in_stock,
+            prefer_basic=payload.prefer_basic,
+            price_tiers=price_tiers,
+        )
+        reranked.append((rerank_score, rerank_reasons, item, detail_row, price_tiers))
+
+    reranked.sort(key=lambda row: row[0], reverse=True)
+    response_results: list[ComponentsSearchResultModel] = []
+    for rerank_score, rerank_reasons, item, detail_row, price_tiers in reranked[: payload.limit]:
         response_results.append(
             ComponentsSearchResultModel(
                 lcsc_id=item.lcsc_id,
-                score=item.score,
+                score=rerank_score,
                 cosine_score=item.cosine_score,
-                reasons=item.reasons,
+                reasons=rerank_reasons,
                 component_type=item.component_type,
                 manufacturer_name=item.manufacturer_name,
                 part_number=item.part_number,
@@ -234,14 +337,18 @@ async def search_components(
         request_id=request_id,
         query=payload.query,
         limit=payload.limit,
-        component_type=payload.component_type,
-        package=payload.package,
+        component_type=effective_component_type,
+        package=effective_package,
         in_stock_only=payload.in_stock_only,
         search_mode=(
             "raw_vector"
             if payload.raw_vector_only is True
             else payload.search_mode
         ),
+        parsed_component_type=intent.component_type,
+        parsed_package=intent.package,
+        parsed_automotive=intent.automotive,
+        candidate_count=len(results),
         result_count=len(response_results),
         lookup_ms=_duration_ms(started_at),
     )
@@ -282,6 +389,67 @@ def _price_tiers_from_detail(
             )
         )
     return tiers
+
+
+def _rerank_score(
+    *,
+    item: Any,
+    detail_row: dict[str, Any],
+    intent: ParsedSearchIntent,
+    prefer_in_stock: bool,
+    prefer_basic: bool,
+    price_tiers: list[ComponentsSearchResultModel.PriceTier],
+) -> tuple[float, list[str]]:
+    score = float(item.score)
+    reasons = list(item.reasons)
+
+    # Intent alignment boosts
+    if intent.component_type and item.component_type == intent.component_type:
+        score += 0.22
+        reasons.append("type_match")
+    if intent.package and str(item.package).upper() == intent.package:
+        score += 0.16
+        reasons.append("package_match")
+    if intent.exact_lcsc is not None and int(item.lcsc_id) == intent.exact_lcsc:
+        score += 1.2
+        reasons.append("exact_lcsc")
+
+    # Domain-level soft features
+    if prefer_in_stock and item.stock > 0:
+        score += 0.05
+        reasons.append("in_stock")
+    if prefer_basic and item.is_basic:
+        score += 0.04
+        reasons.append("basic")
+    if item.is_preferred:
+        score += 0.03
+        reasons.append("preferred")
+
+    # Log stock keeps this bounded at scale while still preferring available parts.
+    score += min(0.12, math.log10(max(item.stock, 1)) * 0.02)
+    reasons.append("stock_boost")
+
+    # Slight preference for cheaper parts when prices are known.
+    unit_cost = _unit_cost_from_price_tiers(price_tiers)
+    if unit_cost is not None:
+        score += max(0.0, 0.04 - min(0.04, unit_cost))
+        reasons.append("price_boost")
+
+    # Automotive intent heuristic
+    if intent.automotive:
+        text = " ".join(
+            [
+                str(item.part_number or ""),
+                str(detail_row.get("description") or ""),
+                str(detail_row.get("category") or ""),
+                str(detail_row.get("subcategory") or ""),
+            ]
+        ).lower()
+        if any(token in text for token in ("q1", "q100", "aec", "automotive", "grade 1", "grade1")):
+            score += 0.10
+            reasons.append("automotive_match")
+
+    return score, reasons
 
 
 def _unit_cost_from_price_tiers(
