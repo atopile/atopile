@@ -181,10 +181,6 @@ interface Open3DPreviewMessage {
   type: 'open3DPreview';
 }
 
-interface OpenPinoutExplorerMessage {
-  type: 'openPinoutExplorer';
-}
-
 interface OpenSchematicPreviewMessage {
   type: 'openSchematicPreview';
 }
@@ -230,7 +226,6 @@ type WebviewMessage =
   | OpenI2CTreeMessage
   | OpenLayoutPreviewMessage
   | Open3DPreviewMessage
-  | OpenPinoutExplorerMessage
   | OpenSchematicPreviewMessage
   | WebviewReadyMessage
   | OpenMigrateTabMessage;
@@ -573,9 +568,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'open3DPreview':
         void vscode.commands.executeCommand('atopile.model_viewer_preview');
-        break;
-      case 'openPinoutExplorer':
-        void vscode.commands.executeCommand('atopile.pinout_explorer');
         break;
       case 'openSchematicPreview':
         void vscode.commands.executeCommand('atopile.schematic_preview');

@@ -358,7 +358,6 @@ export default defineConfig(({ mode }) => {
               sidebar: resolve(__dirname, 'sidebar.html'),
               logViewer: resolve(__dirname, 'log-viewer.html'),
               testExplorer: resolve(__dirname, 'test-explorer.html'),
-              pinout: resolve(__dirname, 'pinout.html'),
               schematic: resolve(__dirname, 'schematic.html'),
               treeViewer: resolve(__dirname, 'tree-viewer.html'),
               migrate: resolve(__dirname, 'migrate.html'),

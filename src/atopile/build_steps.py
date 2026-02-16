@@ -52,7 +52,6 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
-from faebryk.exporters.pinout.pinout import export_pinout_json
 from faebryk.exporters.power_tree.power_tree import (
     export_power_tree,
     export_power_tree_json,
@@ -1186,22 +1185,6 @@ def generate_i2c_tree(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
-    "pinout",
-    dependencies=[build_design],
-    produces_artifact=True,
-)
-def generate_pinout(ctx: BuildStepContext) -> None:
-    """Generate pinout visualization as JSON."""
-    app = ctx.require_app()
-    solver = ctx.require_solver()
-    export_pinout_json(
-        app,
-        solver,
-        json_path=config.build.paths.output_base.with_suffix(".pinout.json"),
-    )
-
-
-@muster.register(
     "schematic",
     dependencies=[build_design],
     produces_artifact=True,
@@ -1228,7 +1211,6 @@ def generate_schematic(ctx: BuildStepContext) -> None:
         generate_power_tree,
         generate_datasheets,
         generate_i2c_tree,
-        generate_pinout,
         generate_schematic,
     ],
     virtual=True,

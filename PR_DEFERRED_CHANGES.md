@@ -2,6 +2,19 @@
 
 These items were removed from this PR to reduce scope/noise. They appear useful, but are not required for delivering the core features in this PR (schematic viewer, I2C tree, power tree, pinout viewer).
 
+## 0) Pinout viewer slice (deferred)
+Removed/disabled:
+- `faebryk` pinout exporter files
+- `ui-server` pinout entry/viewer files
+- `vscode-atopile` pinout watcher/webview command wiring
+
+Why deferred:
+- Optional relative to the core branch goals (schematic + I2C tree + power tree).
+- Removing this slice significantly reduces PR breadth and review burden.
+
+Suggested follow-up PR:
+- Re-introduce pinout as a standalone feature PR with exporter, webview, and UX wiring together.
+
 ## 1) UI-server test suite expansion (deferred)
 Removed: new tests under `src/ui-server/src/__tests__/`.
 

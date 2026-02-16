@@ -11,7 +11,6 @@ import {
   GitBranch,
   LayoutGrid,
   Box,
-  Cpu,
   CircuitBoard,
   Eye,
   ChevronDown,
@@ -83,14 +82,6 @@ export function ViewsPanel({
       icon: <Box size={14} />,
       description: '3D board preview',
       messageType: 'open3DPreview',
-      available: hasActiveProject,
-    },
-    {
-      id: 'pinout',
-      label: 'Pinout',
-      icon: <Cpu size={14} />,
-      description: 'IC pinout visualization with bus highlighting',
-      messageType: 'openPinoutExplorer',
       available: hasActiveProject,
     },
     {
