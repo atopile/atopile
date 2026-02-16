@@ -6,9 +6,16 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .corpus import CorpusRecord, canonical_component_text
 from .runtime import status
+
+
+def _sqlite_readonly_uri(path: Path) -> str:
+    resolved = str(path.resolve())
+    escaped = quote(resolved, safe="/")
+    return f"file:{escaped}?mode=ro&immutable=1"
 
 
 def _component_type_from_group(group: str) -> str:
@@ -47,7 +54,7 @@ def export_balanced_stage1_corpus(
 ) -> int:
     t0 = time.perf_counter()
     status("opening stage-1 cache sqlite")
-    conn = sqlite3.connect(cache_sqlite)
+    conn = sqlite3.connect(_sqlite_readonly_uri(cache_sqlite), uri=True)
     conn.row_factory = sqlite3.Row
     try:
         status("building filtered candidate set (sensors/mcu/interface/power, in-stock)")
@@ -221,7 +228,7 @@ def export_full_stage1_corpus(
 ) -> int:
     t0 = time.perf_counter()
     status("opening stage-1 cache sqlite (full export)")
-    conn = sqlite3.connect(cache_sqlite)
+    conn = sqlite3.connect(_sqlite_readonly_uri(cache_sqlite), uri=True)
     conn.row_factory = sqlite3.Row
     try:
         where_stock = "AND c.stock > 0" if in_stock_only else ""
