@@ -58,6 +58,7 @@ from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
+from faebryk.library.PinMuxSelector import PinMuxSelector
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
@@ -116,7 +117,6 @@ from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.Addressor import Addressor
 from faebryk.library.HDMI import HDMI
-from faebryk.library.PinMuxSelector import PinMuxSelector
 from faebryk.library.USB3 import USB3
 from faebryk.library.USB_C import USB_C
 
@@ -164,6 +164,7 @@ __all__ = [
     "is_sum_bus_parameter",
     "Filter",
     "Lead",
+    "PinMuxSelector",
     "has_net_name_affix",
     "requires_external_usage",
     "XtalIF",
@@ -222,7 +223,6 @@ __all__ = [
     "USB3_IF",
     "Addressor",
     "HDMI",
-    "PinMuxSelector",
     "USB3",
     "USB_C",
 ]

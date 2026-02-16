@@ -519,4 +519,3 @@ class PinMuxSelector(fabll.Node):
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )
-
