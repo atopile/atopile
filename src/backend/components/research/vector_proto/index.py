@@ -67,6 +67,7 @@ class VectorStore:
         self._inverted_index: dict[str, list[int]] = {}
         self._component_type_index: dict[str, np.ndarray] = {}
         self._package_index: dict[str, np.ndarray] = {}
+        self._in_stock_index: np.ndarray | None = None
         self._build_lexical_index()
         self._build_filter_indexes()
 
@@ -155,9 +156,12 @@ class VectorStore:
     def _build_filter_indexes(self) -> None:
         component_type_idx: dict[str, list[int]] = {}
         package_idx: dict[str, list[int]] = {}
+        in_stock_idx: list[int] = []
         for idx, record in enumerate(self.records):
             component_type_idx.setdefault(record.component_type, []).append(idx)
             package_idx.setdefault(record.package, []).append(idx)
+            if record.stock > 0:
+                in_stock_idx.append(idx)
         self._component_type_index = {
             key: np.array(values, dtype=np.int32)
             for key, values in component_type_idx.items()
@@ -166,6 +170,7 @@ class VectorStore:
             key: np.array(values, dtype=np.int32)
             for key, values in package_idx.items()
         }
+        self._in_stock_index = np.array(in_stock_idx, dtype=np.int32)
 
     def _candidate_idx_from_filters(self, filters: SearchFilters) -> np.ndarray | None:
         idx: np.ndarray | None = None
@@ -178,6 +183,15 @@ class VectorStore:
             if pidx is None:
                 return np.array([], dtype=np.int32)
             idx = pidx if idx is None else np.intersect1d(idx, pidx, assume_unique=False)
+        if filters.in_stock_only:
+            stock_idx = self._in_stock_index
+            if stock_idx is None or len(stock_idx) == 0:
+                return np.array([], dtype=np.int32)
+            idx = (
+                stock_idx
+                if idx is None
+                else np.intersect1d(idx, stock_idx, assume_unique=False)
+            )
         return idx
 
     def _idf(self, token: str) -> float:
@@ -473,6 +487,54 @@ def test_build_index_files_streams_and_writes_manifest(tmp_path: Path) -> None:
     loaded = VectorStore.load(out_dir)
     assert len(loaded.records) == 2
     assert loaded.vectors.shape == (2, 64)
+
+
+def test_candidate_idx_filters_include_in_stock() -> None:
+    records = [
+        CorpusRecord(
+            lcsc_id=11,
+            component_type="sensor",
+            category="sensors",
+            subcategory="pressure",
+            manufacturer_name="A",
+            part_number="S-1",
+            package="QFN-16",
+            description="sensor one",
+            stock=0,
+            is_basic=False,
+            is_preferred=False,
+            attrs={},
+            text="sensor one",
+        ),
+        CorpusRecord(
+            lcsc_id=22,
+            component_type="sensor",
+            category="sensors",
+            subcategory="pressure",
+            manufacturer_name="B",
+            part_number="S-2",
+            package="QFN-16",
+            description="sensor two",
+            stock=12,
+            is_basic=False,
+            is_preferred=False,
+            attrs={},
+            text="sensor two",
+        ),
+    ]
+    from .embedding import HashingEmbedder
+
+    emb = HashingEmbedder(dimension=64)
+    store = VectorStore(
+        records=records,
+        vectors=emb.embed_texts([r.text for r in records]),
+        embedding_backend=emb.name,
+    )
+    idx = store._candidate_idx_from_filters(  # type: ignore[attr-defined]
+        SearchFilters(component_type="sensor", in_stock_only=True)
+    )
+    assert idx is not None
+    assert idx.tolist() == [1]
 
 
 def _parse_corpus_line(line: str) -> CorpusRecord:
