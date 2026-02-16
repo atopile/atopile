@@ -10,6 +10,7 @@ from fastapi import WebSocket
 
 from atopile.layout_server.models import RenderModel, WsMessage
 from atopile.layout_server.pcb_manager import PcbManager
+from atopile.server.file_watcher import FileWatcher
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class LayoutService:
         self._manager: PcbManager | None = None
         self._current_path: Path | None = None
         self._ws_clients: list[WebSocket] = []
+        self._watcher: FileWatcher | None = None
         self._watcher_task: asyncio.Task | None = None
 
     def load(self, path: Path) -> None:
@@ -73,33 +75,46 @@ class LayoutService:
     async def start_watcher(self) -> None:
         """(Re)start the file watcher.  Must be called from the event loop
         thread — typically right after ``await to_thread(load, ...)``."""
+        # Stop previous watcher if any
+        if self._watcher:
+            self._watcher.stop()
         if self._watcher_task and not self._watcher_task.done():
             self._watcher_task.cancel()
-        self._watcher_task = asyncio.create_task(self._watch_file())
 
-    async def _watch_file(self) -> None:
         if not self._current_path:
             return
-        import watchfiles
 
-        log.info("Layout file watcher started for %s", self._current_path)
-        async for _changes in watchfiles.awatch(self._current_path):
-            if self._manager and self._manager.was_recently_saved():
-                log.debug("Ignoring self-triggered file change")
-                continue
-            try:
-                log.info("PCB file changed on disk, reloading")
-                await asyncio.to_thread(self.manager.load, self._current_path)
-                model = await asyncio.to_thread(self.manager.get_render_model)
-                await self.broadcast(WsMessage(type="layout_updated", model=model))
-            except Exception:
-                log.exception("Error reloading PCB after file change")
+        self._watcher = FileWatcher(
+            "layout",
+            paths=[self._current_path.parent],
+            on_change=self._on_file_change,
+            glob=self._current_path.name,
+            debounce_s=1.0,
+        )
+        self._watcher_task = asyncio.create_task(self._watcher.run())
+
+    async def _on_file_change(self, _result) -> None:
+        """Called by FileWatcher when the PCB file actually changed on disk."""
+        if not self._current_path or not self._manager:
+            return
+        try:
+            log.info("PCB file changed on disk, reloading and broadcasting")
+            await asyncio.to_thread(self.manager.load, self._current_path)
+            model = await asyncio.to_thread(self.manager.get_render_model)
+            await self.broadcast(WsMessage(type="layout_updated", model=model))
+            log.info(
+                "Reload complete, broadcast sent to %d clients", len(self._ws_clients)
+            )
+        except Exception:
+            log.exception("Error reloading PCB after file change")
 
     # --- Save and broadcast helper ---
 
     async def save_and_broadcast(self) -> RenderModel:
         """Save the PCB to disk and broadcast the updated model to all WS clients."""
         await asyncio.to_thread(self.manager.save)
+        if self._watcher and self._current_path:
+            self._watcher.notify_saved(self._current_path)
         model = await asyncio.to_thread(self.manager.get_render_model)
         await self.broadcast(WsMessage(type="layout_updated", model=model))
         return model
