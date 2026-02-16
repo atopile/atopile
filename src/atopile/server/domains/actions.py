@@ -1548,6 +1548,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Layout not found for target: {target_name}",
                 }
 
+            from atopile.server.domains.layout import layout_service
+
+            await asyncio.to_thread(layout_service.load, target)
+            await layout_service.start_watcher()
             await server_state.emit_event("open_layout", {"path": str(target)})
             return {"success": True}
 

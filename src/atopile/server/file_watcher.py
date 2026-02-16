@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
@@ -120,6 +121,7 @@ class _EventDispatcher(PatternMatchingEventHandler):
         self._handlers: dict[int, _HandlerInfo] = {}
         self._pending: dict[int, FileChangeResult] = {}
         self._timers: dict[int, asyncio.TimerHandle] = {}
+        self._file_hashes: dict[Path, str] = {}
 
     def add_handler(
         self,
@@ -140,6 +142,13 @@ class _EventDispatcher(PatternMatchingEventHandler):
             timer = self._timers.pop(handler_id, None)
             if timer:
                 timer.cancel()
+
+    def update_hash(self, path: Path) -> None:
+        """Update the stored hash for a file we just wrote ourselves,
+        so the next change event for this file is correctly ignored."""
+        h = self._hash_file(path)
+        if h is not None:
+            self._file_hashes[path] = h
 
     def _matches(self, glob: str, path: str) -> bool:
         return fnmatch.fnmatch(path, glob) or fnmatch.fnmatch(
@@ -175,6 +184,11 @@ class _EventDispatcher(PatternMatchingEventHandler):
                             return
                         self._pending[hid] = FileChangeResult()
                         self._timers.pop(hid, None)
+
+                    # Filter by content hash — only report files
+                    # whose content actually changed.
+                    result = self._filter_by_hash(result)
+
                     if result.created or result.changed or result.deleted:
                         sample = (
                             result.created[:2] + result.changed[:2] + result.deleted[:2]
@@ -189,7 +203,7 @@ class _EventDispatcher(PatternMatchingEventHandler):
                             "File watcher sample: %s",
                             ", ".join(str(p) for p in sample[:3]),
                         )
-                    cb(result)
+                        cb(result)
 
                 self._timers[hid] = loop.call_later(debounce_s, fire)
 
@@ -228,6 +242,44 @@ class _EventDispatcher(PatternMatchingEventHandler):
     @staticmethod
     def _path_str(path: str | bytes) -> str:
         return path.decode() if isinstance(path, bytes) else path
+
+    @staticmethod
+    def _hash_file(path: Path) -> str | None:
+        """Return SHA-256 hex digest of a file, or None if unreadable."""
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        except (OSError, IOError):
+            return None
+
+    def _filter_by_hash(self, result: FileChangeResult) -> FileChangeResult:
+        """Drop 'changed' entries whose content hash hasn't actually changed.
+
+        Also updates stored hashes for created/changed files and removes
+        hashes for deleted files.
+        """
+        truly_changed: list[Path] = []
+        for p in result.changed:
+            new_hash = self._hash_file(p)
+            if new_hash is None:
+                continue
+            old_hash = self._file_hashes.get(p)
+            if old_hash != new_hash:
+                self._file_hashes[p] = new_hash
+                truly_changed.append(p)
+
+        for p in result.created:
+            h = self._hash_file(p)
+            if h is not None:
+                self._file_hashes[p] = h
+
+        for p in result.deleted:
+            self._file_hashes.pop(p, None)
+
+        return FileChangeResult(
+            created=result.created,
+            deleted=result.deleted,
+            changed=truly_changed,
+        )
 
     @staticmethod
     def _is_ignored(path: Path) -> bool:
@@ -413,3 +465,12 @@ class FileWatcher:
 
     def stop(self) -> None:
         self._stop_event.set()
+
+    def notify_saved(self, path: Path) -> None:
+        """Tell the watcher we just wrote this file ourselves.
+
+        Updates the content hash so the resulting filesystem event
+        is correctly recognised as unchanged and suppressed.
+        """
+        _, dispatcher = _get_observer()
+        dispatcher.update_hash(path.resolve())
