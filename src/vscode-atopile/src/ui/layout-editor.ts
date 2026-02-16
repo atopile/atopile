@@ -50,30 +50,94 @@ class LayoutEditorWebview extends BaseWebview {
                         pointer-events: none; z-index: 10;
                     }
                     #layer-panel {
-                        position: fixed; top: 8px; right: 8px;
-                        background: var(--vscode-sideBar-background, rgba(30,30,30,0.9));
-                        border: 1px solid var(--vscode-panel-border, #444);
-                        border-radius: 4px;
-                        padding: 8px;
-                        max-height: 80vh;
-                        overflow-y: auto;
+                        position: fixed; top: 0; right: 0; bottom: 0;
+                        width: 140px;
+                        background: var(--vscode-sideBar-background, rgba(30,30,30,0.95));
+                        border-left: 1px solid var(--vscode-panel-border, #444);
+                        border-radius: 4px 0 0 4px;
                         z-index: 20;
-                        font: 12px monospace;
+                        font: 11px/1.4 monospace;
                         color: var(--vscode-foreground, #ccc);
+                        transform: translateX(0);
+                        transition: transform 0.2s ease;
+                        display: flex;
+                        flex-direction: column;
                     }
+                    #layer-panel.collapsed {
+                        transform: translateX(100%);
+                    }
+                    .layer-panel-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 6px 8px;
+                        font-weight: bold;
+                        font-size: 12px;
+                        border-bottom: 1px solid var(--vscode-panel-border, #444);
+                        flex-shrink: 0;
+                    }
+                    .layer-collapse-btn {
+                        cursor: pointer;
+                        opacity: 0.6;
+                        font-size: 10px;
+                    }
+                    .layer-collapse-btn:hover { opacity: 1; }
+                    .layer-expand-tab {
+                        display: none;
+                        position: fixed;
+                        top: 50%;
+                        right: 0;
+                        transform: translateY(-50%);
+                        writing-mode: vertical-rl;
+                        background: var(--vscode-sideBar-background, rgba(30,30,30,0.95));
+                        border: 1px solid var(--vscode-panel-border, #444);
+                        border-right: none;
+                        border-radius: 4px 0 0 4px;
+                        padding: 8px 4px;
+                        cursor: pointer;
+                        font: 11px monospace;
+                        color: var(--vscode-foreground, #ccc);
+                        z-index: 21;
+                    }
+                    .layer-expand-tab.visible { display: block; }
+                    .layer-panel-content {
+                        overflow-y: auto;
+                        padding: 4px 0;
+                        flex: 1;
+                    }
+                    .layer-group-header {
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                        padding: 2px 8px;
+                        cursor: pointer;
+                        font-weight: 600;
+                        transition: opacity 0.15s;
+                    }
+                    .layer-group-header:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
+                    .layer-chevron {
+                        font-size: 10px;
+                        width: 10px;
+                        text-align: center;
+                        flex-shrink: 0;
+                    }
+                    .layer-group-name { flex: 1; }
+                    .layer-group-children { padding-left: 22px; }
                     .layer-row {
                         display: flex;
                         align-items: center;
-                        gap: 6px;
-                        padding: 2px 0;
+                        gap: 5px;
+                        padding: 1px 8px;
                         cursor: pointer;
+                        transition: opacity 0.15s;
                     }
-                    .layer-row:hover { color: var(--vscode-list-hoverForeground, #fff); }
+                    .layer-row:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
+                    .layer-top-level { padding-left: 22px; }
                     .layer-swatch {
                         display: inline-block;
-                        width: 12px; height: 12px;
-                        border-radius: 2px;
-                        border: 1px solid var(--vscode-panel-border, #666);
+                        width: 10px; height: 10px;
+                        border-radius: 50%;
+                        flex-shrink: 0;
                     }
                 </style>
             </head>

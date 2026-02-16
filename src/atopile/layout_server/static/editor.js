@@ -1355,8 +1355,52 @@ function arcToPoints(start, mid, end, segments = 32) {
   }
   return points;
 }
+function isPadLayerVisible(padLayer, hidden, concreteLayers) {
+  if (padLayer.includes("*")) {
+    const suffix = padLayer.substring(padLayer.indexOf("."));
+    for (const l of concreteLayers) {
+      if (l.endsWith(suffix) && !hidden.has(l))
+        return true;
+    }
+    return false;
+  }
+  if (padLayer.includes("&")) {
+    const dotIdx = padLayer.indexOf(".");
+    if (dotIdx >= 0) {
+      const prefixes = padLayer.substring(0, dotIdx).split("&");
+      const suffix = padLayer.substring(dotIdx);
+      return prefixes.some((p) => !hidden.has(p + suffix));
+    }
+  }
+  return !hidden.has(padLayer);
+}
+function collectConcreteLayers(model) {
+  const layers = /* @__PURE__ */ new Set();
+  for (const fp of model.footprints) {
+    layers.add(fp.layer);
+    for (const d of fp.drawings)
+      if (d.layer)
+        layers.add(d.layer);
+  }
+  for (const t of model.tracks)
+    if (t.layer)
+      layers.add(t.layer);
+  for (const a of model.arcs)
+    if (a.layer)
+      layers.add(a.layer);
+  for (const z of model.zones) {
+    for (const f of z.filled_polygons)
+      layers.add(f.layer);
+  }
+  for (const l of layers) {
+    if (l.includes("*") || l.includes("&"))
+      layers.delete(l);
+  }
+  return layers;
+}
 function paintAll(renderer, model, hiddenLayers) {
   const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
+  const concreteLayers = collectConcreteLayers(model);
   renderer.dispose_layers();
   if (!hidden.has("Edge.Cuts"))
     paintBoardEdges(renderer, model);
@@ -1365,7 +1409,7 @@ function paintAll(renderer, model, hiddenLayers) {
   if (!hidden.has("Vias"))
     paintVias(renderer, model);
   for (const fp of model.footprints) {
-    paintFootprint(renderer, fp, hidden);
+    paintFootprint(renderer, fp, hidden, concreteLayers);
   }
 }
 function paintBoardEdges(renderer, model) {
@@ -1469,7 +1513,7 @@ function paintVias(renderer, model) {
   }
   renderer.end_layer();
 }
-function paintFootprint(renderer, fp, hidden) {
+function paintFootprint(renderer, fp, hidden, concreteLayers) {
   const drawingsByLayer = /* @__PURE__ */ new Map();
   for (const drawing of fp.drawings) {
     const ln = drawing.layer ?? "F.SilkS";
@@ -1491,11 +1535,13 @@ function paintFootprint(renderer, fp, hidden) {
     renderer.end_layer();
   }
   if (fp.pads.length > 0) {
-    const anyVisible = fp.pads.some((pad) => pad.layers.some((l) => !hidden.has(l)));
+    const anyVisible = fp.pads.some(
+      (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
+    );
     if (anyVisible) {
       const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
       for (const pad of fp.pads) {
-        if (pad.layers.some((l) => !hidden.has(l))) {
+        if (pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))) {
           paintPad(layer, fp.at, pad);
         }
       }
@@ -1887,6 +1933,17 @@ var Editor = class {
     this.paint();
     this.requestRedraw();
   }
+  setLayersVisible(layers, visible) {
+    for (const layer of layers) {
+      if (visible) {
+        this.hiddenLayers.delete(layer);
+      } else {
+        this.hiddenLayers.add(layer);
+      }
+    }
+    this.paint();
+    this.requestRedraw();
+  }
   isLayerVisible(layer) {
     return !this.hiddenLayers.has(layer);
   }
@@ -1919,6 +1976,10 @@ var Editor = class {
     }
     layers.add("Edge.Cuts");
     layers.add("Vias");
+    for (const l of layers) {
+      if (l.includes("*") || l.includes("&"))
+        layers.delete(l);
+    }
     return [...layers].sort();
   }
   setOnLayersChanged(cb) {
@@ -1954,31 +2015,177 @@ var baseUrl = w.__LAYOUT_BASE_URL__ || window.location.origin;
 var apiPrefix = w.__LAYOUT_API_PREFIX__ || "/api";
 var wsPath = w.__LAYOUT_WS_PATH__ || "/ws";
 var editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
+var panelCollapsed = false;
+var collapsedGroups = /* @__PURE__ */ new Set();
+function groupLayers(layerNames) {
+  const groupMap = /* @__PURE__ */ new Map();
+  const topLevel = [];
+  for (const name of layerNames) {
+    const dotIdx = name.indexOf(".");
+    if (dotIdx >= 0) {
+      const prefix = name.substring(0, dotIdx);
+      const suffix = name.substring(dotIdx + 1);
+      if (!groupMap.has(prefix))
+        groupMap.set(prefix, []);
+      groupMap.get(prefix).push({ name, suffix });
+    } else {
+      topLevel.push(name);
+    }
+  }
+  const groups = [];
+  for (const [prefix, layers] of groupMap) {
+    groups.push({ prefix, layers });
+  }
+  return { groups, topLevel };
+}
+function colorToCSS(layerName) {
+  const [r, g, b] = getLayerColor(layerName);
+  return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+}
+function createSwatch(color) {
+  const swatch = document.createElement("span");
+  swatch.className = "layer-swatch";
+  swatch.style.background = color;
+  return swatch;
+}
+function updateRowVisual(row, visible) {
+  row.style.opacity = visible ? "1" : "0.3";
+}
+function updateGroupVisual(row, childLayers) {
+  const allVisible = childLayers.every((l) => editor.isLayerVisible(l));
+  const allHidden = childLayers.every((l) => !editor.isLayerVisible(l));
+  if (allVisible) {
+    row.style.opacity = "1";
+  } else if (allHidden) {
+    row.style.opacity = "0.3";
+  } else {
+    row.style.opacity = "0.6";
+  }
+}
 function buildLayerPanel() {
   const panel = document.getElementById("layer-panel");
   if (!panel)
     return;
   panel.innerHTML = "";
-  const layers = editor.getLayers();
-  for (const layerName of layers) {
-    const row = document.createElement("label");
-    row.className = "layer-row";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = editor.isLayerVisible(layerName);
-    cb.addEventListener("change", () => {
-      editor.setLayerVisible(layerName, cb.checked);
+  const header = document.createElement("div");
+  header.className = "layer-panel-header";
+  const headerTitle = document.createElement("span");
+  headerTitle.textContent = "Layers";
+  let expandTab = document.getElementById("layer-expand-tab");
+  if (!expandTab) {
+    expandTab = document.createElement("div");
+    expandTab.id = "layer-expand-tab";
+    expandTab.className = "layer-expand-tab";
+    expandTab.textContent = "Layers";
+    expandTab.addEventListener("click", () => {
+      panelCollapsed = false;
+      panel.classList.remove("collapsed");
+      expandTab.classList.remove("visible");
     });
-    const swatch = document.createElement("span");
-    swatch.className = "layer-swatch";
-    const [r, g, b] = getLayerColor(layerName);
-    swatch.style.background = `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+    document.body.appendChild(expandTab);
+  }
+  const collapseBtn = document.createElement("span");
+  collapseBtn.className = "layer-collapse-btn";
+  collapseBtn.textContent = "\u25C0";
+  collapseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panelCollapsed = true;
+    panel.classList.add("collapsed");
+    expandTab.classList.add("visible");
+  });
+  header.appendChild(headerTitle);
+  header.appendChild(collapseBtn);
+  panel.appendChild(header);
+  const content = document.createElement("div");
+  content.className = "layer-panel-content";
+  const layers = editor.getLayers();
+  const { groups, topLevel } = groupLayers(layers);
+  for (const group of groups) {
+    const childNames = group.layers.map((l) => l.name);
+    const isCollapsed = collapsedGroups.has(group.prefix);
+    const groupRow = document.createElement("div");
+    groupRow.className = "layer-group-header";
+    const chevron = document.createElement("span");
+    chevron.className = "layer-chevron";
+    chevron.textContent = isCollapsed ? "\u25B8" : "\u25BE";
+    const primaryColor = colorToCSS(childNames[0]);
+    const swatch = createSwatch(primaryColor);
     const label = document.createElement("span");
-    label.textContent = layerName;
-    row.appendChild(cb);
+    label.className = "layer-group-name";
+    label.textContent = group.prefix;
+    groupRow.appendChild(chevron);
+    groupRow.appendChild(swatch);
+    groupRow.appendChild(label);
+    updateGroupVisual(groupRow, childNames);
+    groupRow.addEventListener("click", () => {
+      const allVisible = childNames.every((l) => editor.isLayerVisible(l));
+      editor.setLayersVisible(childNames, !allVisible);
+      updateGroupVisual(groupRow, childNames);
+      const childContainer2 = groupRow.nextElementSibling;
+      if (childContainer2) {
+        const rows = childContainer2.querySelectorAll(".layer-row");
+        rows.forEach((row, i) => {
+          updateRowVisual(row, editor.isLayerVisible(childNames[i]));
+        });
+      }
+    });
+    chevron.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (collapsedGroups.has(group.prefix)) {
+        collapsedGroups.delete(group.prefix);
+        chevron.textContent = "\u25BE";
+      } else {
+        collapsedGroups.add(group.prefix);
+        chevron.textContent = "\u25B8";
+      }
+      const childContainer2 = groupRow.nextElementSibling;
+      if (childContainer2) {
+        childContainer2.style.display = collapsedGroups.has(group.prefix) ? "none" : "block";
+      }
+    });
+    content.appendChild(groupRow);
+    const childContainer = document.createElement("div");
+    childContainer.className = "layer-group-children";
+    childContainer.style.display = isCollapsed ? "none" : "block";
+    for (const child of group.layers) {
+      const row = document.createElement("div");
+      row.className = "layer-row";
+      const childSwatch = createSwatch(colorToCSS(child.name));
+      const childLabel = document.createElement("span");
+      childLabel.textContent = child.suffix;
+      row.appendChild(childSwatch);
+      row.appendChild(childLabel);
+      updateRowVisual(row, editor.isLayerVisible(child.name));
+      row.addEventListener("click", () => {
+        const vis = !editor.isLayerVisible(child.name);
+        editor.setLayerVisible(child.name, vis);
+        updateRowVisual(row, vis);
+        updateGroupVisual(groupRow, childNames);
+      });
+      childContainer.appendChild(row);
+    }
+    content.appendChild(childContainer);
+  }
+  for (const name of topLevel) {
+    const row = document.createElement("div");
+    row.className = "layer-row layer-top-level";
+    const swatch = createSwatch(colorToCSS(name));
+    const label = document.createElement("span");
+    label.textContent = name;
     row.appendChild(swatch);
     row.appendChild(label);
-    panel.appendChild(row);
+    updateRowVisual(row, editor.isLayerVisible(name));
+    row.addEventListener("click", () => {
+      const vis = !editor.isLayerVisible(name);
+      editor.setLayerVisible(name, vis);
+      updateRowVisual(row, vis);
+    });
+    content.appendChild(row);
+  }
+  panel.appendChild(content);
+  if (panelCollapsed) {
+    panel.classList.add("collapsed");
+    expandTab.classList.add("visible");
   }
 }
 editor.init().then(() => {

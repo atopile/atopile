@@ -68,16 +68,61 @@ function arcToPoints(start: Point2, mid: Point2, end: Point2, segments = 32): Ve
     return points;
 }
 
+/**
+ * Check if a pad layer (possibly a wildcard) has any visible concrete layer.
+ * Wildcards: "*.Cu" matches all layers ending in ".Cu",
+ *            "F&B.Cu" matches "F.Cu" and "B.Cu".
+ */
+function isPadLayerVisible(padLayer: string, hidden: Set<string>, concreteLayers: Set<string>): boolean {
+    if (padLayer.includes("*")) {
+        // *.Suffix — visible if any concrete layer with that suffix is not hidden
+        const suffix = padLayer.substring(padLayer.indexOf("."));
+        for (const l of concreteLayers) {
+            if (l.endsWith(suffix) && !hidden.has(l)) return true;
+        }
+        return false;
+    }
+    if (padLayer.includes("&")) {
+        // A&B.Suffix — expand to A.Suffix, B.Suffix
+        const dotIdx = padLayer.indexOf(".");
+        if (dotIdx >= 0) {
+            const prefixes = padLayer.substring(0, dotIdx).split("&");
+            const suffix = padLayer.substring(dotIdx);
+            return prefixes.some(p => !hidden.has(p + suffix));
+        }
+    }
+    return !hidden.has(padLayer);
+}
+
+/** Collect all concrete (non-wildcard) layer names from the model */
+function collectConcreteLayers(model: RenderModel): Set<string> {
+    const layers = new Set<string>();
+    for (const fp of model.footprints) {
+        layers.add(fp.layer);
+        for (const d of fp.drawings) if (d.layer) layers.add(d.layer);
+    }
+    for (const t of model.tracks) if (t.layer) layers.add(t.layer);
+    for (const a of model.arcs) if (a.layer) layers.add(a.layer);
+    for (const z of model.zones) {
+        for (const f of z.filled_polygons) layers.add(f.layer);
+    }
+    for (const l of layers) {
+        if (l.includes("*") || l.includes("&")) layers.delete(l);
+    }
+    return layers;
+}
+
 /** Paint the entire render model into renderer layers */
 export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>): void {
     const hidden = hiddenLayers ?? new Set<string>();
+    const concreteLayers = collectConcreteLayers(model);
     renderer.dispose_layers();
     if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
     paintZones(renderer, model, hidden);
     paintTracks(renderer, model, hidden);
     if (!hidden.has("Vias")) paintVias(renderer, model);
     for (const fp of model.footprints) {
-        paintFootprint(renderer, fp, hidden);
+        paintFootprint(renderer, fp, hidden, concreteLayers);
     }
 }
 
@@ -173,7 +218,7 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
-function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>) {
+function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
     for (const drawing of fp.drawings) {
         const ln = drawing.layer ?? "F.SilkS";
@@ -191,12 +236,14 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
         renderer.end_layer();
     }
     if (fp.pads.length > 0) {
-        // Check if any pad layer is visible
-        const anyVisible = fp.pads.some(pad => pad.layers.some(l => !hidden.has(l)));
+        // Check if any pad layer is visible (expanding wildcards)
+        const anyVisible = fp.pads.some(pad =>
+            pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
+        );
         if (anyVisible) {
             const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
             for (const pad of fp.pads) {
-                if (pad.layers.some(l => !hidden.has(l))) {
+                if (pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))) {
                     paintPad(layer, fp.at, pad);
                 }
             }

@@ -242,6 +242,18 @@ export class Editor {
         this.requestRedraw();
     }
 
+    setLayersVisible(layers: string[], visible: boolean) {
+        for (const layer of layers) {
+            if (visible) {
+                this.hiddenLayers.delete(layer);
+            } else {
+                this.hiddenLayers.add(layer);
+            }
+        }
+        this.paint();
+        this.requestRedraw();
+    }
+
     isLayerVisible(layer: string): boolean {
         return !this.hiddenLayers.has(layer);
     }
@@ -269,6 +281,10 @@ export class Editor {
         }
         layers.add("Edge.Cuts");
         layers.add("Vias");
+        // Filter out wildcard layers (*.Cu, F&B.Cu, etc.)
+        for (const l of layers) {
+            if (l.includes("*") || l.includes("&")) layers.delete(l);
+        }
         return [...layers].sort();
     }
 
