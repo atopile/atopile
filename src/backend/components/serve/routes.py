@@ -4,11 +4,14 @@ import asyncio
 import json
 import logging
 import math
+import os
 import re
+import sqlite3
 import time
 import uuid
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -206,6 +209,10 @@ async def search_components(
         except ServeError:
             detail_by_id = {}
         detail_row = detail_by_id.get(intent.exact_lcsc)
+        if detail_row is None:
+            detail_row = _load_stage1_fallback_rows([intent.exact_lcsc]).get(
+                intent.exact_lcsc
+            )
         if detail_row is not None:
             price_tiers = _price_tiers_from_detail(detail_row)
             result = ComponentsSearchResultModel(
@@ -287,12 +294,15 @@ async def search_components(
             error=str(exc),
         )
         detail_by_id = {}
+    stage1_fallback_by_id = (
+        _load_stage1_fallback_rows(result_ids) if result_ids else {}
+    )
 
     reranked: list[tuple[float, list[str], Any, dict[str, Any], list[ComponentsSearchResultModel.PriceTier]]] = []
     for item in results:
         detail_row = detail_by_id.get(item.lcsc_id)
         if detail_row is None:
-            detail_row = {}
+            detail_row = stage1_fallback_by_id.get(item.lcsc_id, {})
         price_tiers = _price_tiers_from_detail(detail_row)
         rerank_score, rerank_reasons = _rerank_score(
             item=item,
@@ -321,7 +331,10 @@ async def search_components(
                 stock=item.stock,
                 is_basic=item.is_basic,
                 is_preferred=item.is_preferred,
-                unit_cost=_unit_cost_from_price_tiers(price_tiers),
+                unit_cost=_unit_cost_from_price_tiers(
+                    price_tiers,
+                    fallback=_as_optional_float(getattr(item, "unit_cost", None)),
+                ),
                 price=price_tiers,
             )
         )
@@ -384,6 +397,128 @@ def _price_tiers_from_detail(
     return tiers
 
 
+def _stage1_sqlite_path() -> Path | None:
+    path = os.getenv("ATOPILE_COMPONENTS_STAGE1_SQLITE", "/home/jlc/cache.sqlite3")
+    p = Path(path)
+    if not p.exists():
+        return None
+    return p
+
+
+def _load_stage1_fallback_rows(lcsc_ids: list[int]) -> dict[int, dict[str, Any]]:
+    if not lcsc_ids:
+        return {}
+    sqlite_path = _stage1_sqlite_path()
+    if sqlite_path is None:
+        return {}
+
+    unique_ids = sorted({int(v) for v in lcsc_ids if int(v) > 0})
+    if not unique_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in unique_ids)
+    uri = f"file:{sqlite_path.resolve()}?mode=ro&immutable=1"
+    out: dict[int, dict[str, Any]] = {}
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            f"""
+            SELECT lcsc, description, price, extra
+            FROM components
+            WHERE lcsc IN ({placeholders})
+            """,
+            unique_ids,
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return {}
+
+    for row in rows:
+        try:
+            lcsc_id = int(row["lcsc"])
+        except (TypeError, ValueError):
+            continue
+        extra = _parse_json_object(row["extra"])
+        description = str(row["description"] or "").strip()
+        if not description:
+            description = str(extra.get("description") or extra.get("title") or "").strip()
+        price_json = _parse_stage1_price_json(row["price"], extra.get("prices"))
+        out[lcsc_id] = {
+            "description": description,
+            "price_json": price_json,
+        }
+    return out
+
+
+def _parse_json_object(value: Any) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if isinstance(parsed, dict):
+        return parsed
+    return {}
+
+
+def _parse_stage1_price_json(raw_price: Any, extra_prices: Any) -> list[dict[str, Any]]:
+    candidates: list[Any] = []
+    if isinstance(extra_prices, list):
+        candidates.extend(extra_prices)
+    if isinstance(raw_price, str) and raw_price.strip():
+        try:
+            parsed = json.loads(raw_price)
+            if isinstance(parsed, list):
+                candidates.extend(parsed)
+        except json.JSONDecodeError:
+            pass
+    elif isinstance(raw_price, list):
+        candidates.extend(raw_price)
+
+    out: list[dict[str, Any]] = []
+    for entry in candidates:
+        if not isinstance(entry, dict):
+            continue
+        price_val = entry.get("price")
+        try:
+            if price_val is None:
+                continue
+            price_num = float(price_val)
+        except (TypeError, ValueError):
+            continue
+        q_from = (
+            _as_optional_int(entry.get("qFrom"))
+            or _as_optional_int(entry.get("qty"))
+            or _as_optional_int(entry.get("quantity"))
+            or _as_optional_int(entry.get("minQty"))
+            or _as_optional_int(entry.get("min_qty"))
+            or _as_optional_int(entry.get("startQuantity"))
+        )
+        q_to = (
+            _as_optional_int(entry.get("qTo"))
+            or _as_optional_int(entry.get("maxQty"))
+            or _as_optional_int(entry.get("max_qty"))
+            or _as_optional_int(entry.get("endQuantity"))
+        )
+        out.append(
+            {
+                "qFrom": q_from,
+                "qTo": q_to,
+                "price": price_num,
+            }
+        )
+    out.sort(
+        key=lambda tier: (
+            tier.get("qFrom") is None,
+            tier.get("qFrom") if tier.get("qFrom") is not None else 10**12,
+            tier.get("price", 0.0),
+        )
+    )
+    return out
+
+
 def _rerank_score(
     *,
     item: Any,
@@ -423,7 +558,10 @@ def _rerank_score(
     reasons.append("stock_boost")
 
     # Slight preference for cheaper parts when prices are known.
-    unit_cost = _unit_cost_from_price_tiers(price_tiers)
+    unit_cost = _unit_cost_from_price_tiers(
+        price_tiers,
+        fallback=_as_optional_float(getattr(item, "unit_cost", None)),
+    )
     if unit_cost is not None:
         score += max(0.0, 0.04 - min(0.04, unit_cost))
         reasons.append("price_boost")
@@ -448,9 +586,11 @@ def _rerank_score(
 
 def _unit_cost_from_price_tiers(
     tiers: list[ComponentsSearchResultModel.PriceTier],
+    *,
+    fallback: float | None = None,
 ) -> float | None:
     if not tiers:
-        return None
+        return fallback
     prioritized = sorted(
         tiers,
         key=lambda tier: (tier.qFrom is None, tier.qFrom if tier.qFrom is not None else 10**12),
@@ -463,6 +603,15 @@ def _as_optional_int(value: Any) -> int | None:
         return None
     try:
         return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None
 
