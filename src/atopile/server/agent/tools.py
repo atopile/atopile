@@ -9,7 +9,7 @@ from collections import OrderedDict
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
@@ -442,841 +442,828 @@ def get_tool_definitions() -> list[dict[str, Any]]:
     return _impl()
 
 
-async def execute_tool(
-    *,
-    name: str,
-    arguments: dict[str, Any],
-    project_root: Path,
-    ctx: AppContext,
-) -> dict[str, Any]:
-    """Execute a named agent tool with typed arguments."""
-    if name == "project_list_files":
-        limit = int(arguments.get("limit", 300))
-        files = await asyncio.to_thread(policy.list_context_files, project_root, limit)
-        return {"files": files, "total": len(files)}
 
-    if name == "project_read_file":
-        return await asyncio.to_thread(
-            policy.read_file_chunk,
-            project_root,
-            str(arguments.get("path", "")),
-            start_line=int(arguments.get("start_line", 1)),
-            max_lines=int(arguments.get("max_lines", 220)),
-        )
 
-    if name == "project_search":
-        matches = await asyncio.to_thread(
-            policy.search_in_files,
-            project_root,
-            str(arguments.get("query", "")),
-            limit=int(arguments.get("limit", 60)),
-        )
-        return {
-            "matches": [asdict(match) for match in matches],
-            "total": len(matches),
-        }
+ToolHandler = Callable[[dict[str, Any], Path, AppContext], Awaitable[dict[str, Any]]]
+_TOOL_HANDLERS: dict[str, ToolHandler] = {}
 
-    if name == "web_search":
-        query = str(arguments.get("query", "")).strip()
-        if not query:
-            raise ValueError("query is required")
-        num_results = max(1, min(25, int(arguments.get("num_results", 8))))
-        search_type = str(arguments.get("search_type", "auto")).strip().lower()
-        if search_type not in {"auto", "fast", "neural", "deep", "instant"}:
-            raise ValueError(
-                "search_type must be one of: auto, fast, neural, deep, instant"
-            )
-        include_domains = _normalize_domain_filters(
-            arguments.get("include_domains"),
-            field_name="include_domains",
-        )
-        exclude_domains = _normalize_domain_filters(
-            arguments.get("exclude_domains"),
-            field_name="exclude_domains",
-        )
-        include_text = bool(arguments.get("include_text", True))
-        timeout_s = float(os.getenv("ATOPILE_AGENT_EXA_TIMEOUT_S", "30"))
-        timeout_s = max(3.0, min(timeout_s, 120.0))
 
-        return await asyncio.to_thread(
-            _exa_web_search,
-            query=query,
-            num_results=num_results,
-            search_type=search_type,
-            include_domains=include_domains,
-            exclude_domains=exclude_domains,
-            include_text=include_text,
-            timeout_s=timeout_s,
-        )
+def _register_tool(name: str):
+    def _decorator(func: ToolHandler) -> ToolHandler:
+        _TOOL_HANDLERS[name] = func
+        return func
 
-    if name == "examples_list":
-        limit = int(arguments.get("limit", 60))
-        include_without_ato_yaml = bool(
-            arguments.get("include_without_ato_yaml", False)
-        )
-        examples_root = _resolve_examples_root(project_root)
-        projects = _collect_example_projects(
-            examples_root,
-            include_without_ato_yaml=include_without_ato_yaml,
-        )
-        returned = projects[:limit]
-        return {
-            "examples_root": str(examples_root),
-            "examples": returned,
-            "total": len(projects),
-            "returned": len(returned),
-        }
+    return _decorator
 
-    if name == "examples_search":
-        query = str(arguments.get("query", "")).strip()
-        if not query:
-            raise ValueError("query is required")
-        limit = int(arguments.get("limit", 100))
-        examples_root = _resolve_examples_root(project_root)
-        matches = _search_example_ato_files(
-            examples_root=examples_root,
-            query=query,
-            limit=limit,
-        )
-        return {
-            "examples_root": str(examples_root),
-            "query": query,
-            "matches": matches,
-            "total": len(matches),
-        }
+@_register_tool("project_list_files")
+async def _tool_project_list_files(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    limit = int(arguments.get("limit", 300))
+    files = await asyncio.to_thread(policy.list_context_files, project_root, limit)
+    return {"files": files, "total": len(files)}
 
-    if name == "examples_read_ato":
-        example = str(arguments.get("example", "")).strip()
-        examples_root = _resolve_examples_root(project_root)
-        example_project_root = _resolve_example_project(examples_root, example)
-        example_file = _resolve_example_ato_file(
-            example_project_root,
-            arguments.get("path") if isinstance(arguments.get("path"), str) else None,
-        )
-        relative_path = str(example_file.relative_to(example_project_root))
-        chunk = await asyncio.to_thread(
-            policy.read_file_chunk,
-            example_project_root,
-            relative_path,
-            start_line=int(arguments.get("start_line", 1)),
-            max_lines=int(arguments.get("max_lines", 220)),
-        )
-        return {
-            "example": example,
-            "example_root": str(example_project_root),
-            **chunk,
-        }
+@_register_tool("project_read_file")
+async def _tool_project_read_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.read_file_chunk,
+        project_root,
+        str(arguments.get("path", "")),
+        start_line=int(arguments.get("start_line", 1)),
+        max_lines=int(arguments.get("max_lines", 220)),
+    )
 
-    if name == "package_ato_list":
-        package_query = (
-            str(arguments.get("package_query")).strip()
-            if isinstance(arguments.get("package_query"), str)
-            and str(arguments.get("package_query")).strip()
-            else None
-        )
-        path_query = (
-            str(arguments.get("path_query")).strip()
-            if isinstance(arguments.get("path_query"), str)
-            and str(arguments.get("path_query")).strip()
-            else None
-        )
-        limit = max(1, min(1000, int(arguments.get("limit", 200))))
-        return _list_package_reference_files(
-            project_root=project_root,
-            package_query=package_query,
-            path_query=path_query,
-            limit=limit,
-        )
+@_register_tool("project_search")
+async def _tool_project_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    matches = await asyncio.to_thread(
+        policy.search_in_files,
+        project_root,
+        str(arguments.get("query", "")),
+        limit=int(arguments.get("limit", 60)),
+    )
+    return {
+        "matches": [asdict(match) for match in matches],
+        "total": len(matches),
+    }
 
-    if name == "package_ato_search":
-        query = str(arguments.get("query", "")).strip()
-        if not query:
-            raise ValueError("query is required")
-        package_query = (
-            str(arguments.get("package_query")).strip()
-            if isinstance(arguments.get("package_query"), str)
-            and str(arguments.get("package_query")).strip()
-            else None
+@_register_tool("web_search")
+async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    query = str(arguments.get("query", "")).strip()
+    if not query:
+        raise ValueError("query is required")
+    num_results = max(1, min(25, int(arguments.get("num_results", 8))))
+    search_type = str(arguments.get("search_type", "auto")).strip().lower()
+    if search_type not in {"auto", "fast", "neural", "deep", "instant"}:
+        raise ValueError(
+            "search_type must be one of: auto, fast, neural, deep, instant"
         )
-        path_query = (
-            str(arguments.get("path_query")).strip()
-            if isinstance(arguments.get("path_query"), str)
-            and str(arguments.get("path_query")).strip()
-            else None
-        )
-        limit = max(1, min(1000, int(arguments.get("limit", 120))))
-        return _search_package_reference_files(
-            project_root=project_root,
-            query=query,
-            package_query=package_query,
-            path_query=path_query,
-            limit=limit,
-        )
+    include_domains = _normalize_domain_filters(
+        arguments.get("include_domains"),
+        field_name="include_domains",
+    )
+    exclude_domains = _normalize_domain_filters(
+        arguments.get("exclude_domains"),
+        field_name="exclude_domains",
+    )
+    include_text = bool(arguments.get("include_text", True))
+    timeout_s = float(os.getenv("ATOPILE_AGENT_EXA_TIMEOUT_S", "30"))
+    timeout_s = max(3.0, min(timeout_s, 120.0))
 
-    if name == "package_ato_read":
-        package_identifier = str(arguments.get("package_identifier", "")).strip()
-        if not package_identifier:
-            raise ValueError("package_identifier is required")
-        path_in_package = (
-            str(arguments.get("path_in_package")).strip()
-            if isinstance(arguments.get("path_in_package"), str)
-            and str(arguments.get("path_in_package")).strip()
-            else None
-        )
-        start_line = max(1, int(arguments.get("start_line", 1)))
-        max_lines = max(1, min(400, int(arguments.get("max_lines", 220))))
-        return _read_package_reference_file(
-            project_root=project_root,
-            package_identifier=package_identifier,
-            path_in_package=path_in_package,
-            start_line=start_line,
-            max_lines=max_lines,
-        )
+    return await asyncio.to_thread(
+        _exa_web_search,
+        query=query,
+        num_results=num_results,
+        search_type=search_type,
+        include_domains=include_domains,
+        exclude_domains=exclude_domains,
+        include_text=include_text,
+        timeout_s=timeout_s,
+    )
 
-    if name == "project_list_modules":
-        type_filter = arguments.get("type_filter")
-        limit = int(arguments.get("limit", 200))
-        response = await asyncio.to_thread(
-            projects_domain.handle_get_modules,
-            str(project_root),
-            str(type_filter) if isinstance(type_filter, str) and type_filter else None,
-        )
-        if response is None:
-            return {"modules": [], "total": 0, "returned": 0, "types": {}}
-        modules = [module.model_dump(by_alias=True) for module in response.modules][
-            :limit
-        ]
-        return {
-            "modules": modules,
-            "total": response.total,
-            "returned": len(modules),
-            "types": _count_modules_by_type(modules),
-        }
+@_register_tool("examples_list")
+async def _tool_examples_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    limit = int(arguments.get("limit", 60))
+    include_without_ato_yaml = bool(
+        arguments.get("include_without_ato_yaml", False)
+    )
+    examples_root = _resolve_examples_root(project_root)
+    projects = _collect_example_projects(
+        examples_root,
+        include_without_ato_yaml=include_without_ato_yaml,
+    )
+    returned = projects[:limit]
+    return {
+        "examples_root": str(examples_root),
+        "examples": returned,
+        "total": len(projects),
+        "returned": len(returned),
+    }
 
-    if name == "project_module_children":
-        entry_point = str(arguments.get("entry_point", "")).strip()
-        if not entry_point:
-            raise ValueError("entry_point is required")
-        max_depth = int(arguments.get("max_depth", 2))
-        max_depth = max(0, min(5, max_depth))
-        children = await asyncio.to_thread(
-            module_introspection.introspect_module,
-            project_root,
-            entry_point,
-            max_depth,
-        )
-        if children is None:
-            return {
-                "entry_point": entry_point,
-                "found": False,
-                "children": [],
-                "counts": {},
-            }
+@_register_tool("examples_search")
+async def _tool_examples_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    query = str(arguments.get("query", "")).strip()
+    if not query:
+        raise ValueError("query is required")
+    limit = int(arguments.get("limit", 100))
+    examples_root = _resolve_examples_root(project_root)
+    matches = _search_example_ato_files(
+        examples_root=examples_root,
+        query=query,
+        limit=limit,
+    )
+    return {
+        "examples_root": str(examples_root),
+        "query": query,
+        "matches": matches,
+        "total": len(matches),
+    }
+
+@_register_tool("examples_read_ato")
+async def _tool_examples_read_ato(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    example = str(arguments.get("example", "")).strip()
+    examples_root = _resolve_examples_root(project_root)
+    example_project_root = _resolve_example_project(examples_root, example)
+    example_file = _resolve_example_ato_file(
+        example_project_root,
+        arguments.get("path") if isinstance(arguments.get("path"), str) else None,
+    )
+    relative_path = str(example_file.relative_to(example_project_root))
+    chunk = await asyncio.to_thread(
+        policy.read_file_chunk,
+        example_project_root,
+        relative_path,
+        start_line=int(arguments.get("start_line", 1)),
+        max_lines=int(arguments.get("max_lines", 220)),
+    )
+    return {
+        "example": example,
+        "example_root": str(example_project_root),
+        **chunk,
+    }
+
+@_register_tool("package_ato_list")
+async def _tool_package_ato_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    package_query = (
+        str(arguments.get("package_query")).strip()
+        if isinstance(arguments.get("package_query"), str)
+        and str(arguments.get("package_query")).strip()
+        else None
+    )
+    path_query = (
+        str(arguments.get("path_query")).strip()
+        if isinstance(arguments.get("path_query"), str)
+        and str(arguments.get("path_query")).strip()
+        else None
+    )
+    limit = max(1, min(1000, int(arguments.get("limit", 200))))
+    return _list_package_reference_files(
+        project_root=project_root,
+        package_query=package_query,
+        path_query=path_query,
+        limit=limit,
+    )
+
+@_register_tool("package_ato_search")
+async def _tool_package_ato_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    query = str(arguments.get("query", "")).strip()
+    if not query:
+        raise ValueError("query is required")
+    package_query = (
+        str(arguments.get("package_query")).strip()
+        if isinstance(arguments.get("package_query"), str)
+        and str(arguments.get("package_query")).strip()
+        else None
+    )
+    path_query = (
+        str(arguments.get("path_query")).strip()
+        if isinstance(arguments.get("path_query"), str)
+        and str(arguments.get("path_query")).strip()
+        else None
+    )
+    limit = max(1, min(1000, int(arguments.get("limit", 120))))
+    return _search_package_reference_files(
+        project_root=project_root,
+        query=query,
+        package_query=package_query,
+        path_query=path_query,
+        limit=limit,
+    )
+
+@_register_tool("package_ato_read")
+async def _tool_package_ato_read(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    package_identifier = str(arguments.get("package_identifier", "")).strip()
+    if not package_identifier:
+        raise ValueError("package_identifier is required")
+    path_in_package = (
+        str(arguments.get("path_in_package")).strip()
+        if isinstance(arguments.get("path_in_package"), str)
+        and str(arguments.get("path_in_package")).strip()
+        else None
+    )
+    start_line = max(1, int(arguments.get("start_line", 1)))
+    max_lines = max(1, min(400, int(arguments.get("max_lines", 220))))
+    return _read_package_reference_file(
+        project_root=project_root,
+        package_identifier=package_identifier,
+        path_in_package=path_in_package,
+        start_line=start_line,
+        max_lines=max_lines,
+    )
+
+@_register_tool("project_list_modules")
+async def _tool_project_list_modules(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    type_filter = arguments.get("type_filter")
+    limit = int(arguments.get("limit", 200))
+    response = await asyncio.to_thread(
+        projects_domain.handle_get_modules,
+        str(project_root),
+        str(type_filter) if isinstance(type_filter, str) and type_filter else None,
+    )
+    if response is None:
+        return {"modules": [], "total": 0, "returned": 0, "types": {}}
+    modules = [module.model_dump(by_alias=True) for module in response.modules][
+        :limit
+    ]
+    return {
+        "modules": modules,
+        "total": response.total,
+        "returned": len(modules),
+        "types": _count_modules_by_type(modules),
+    }
+
+@_register_tool("project_module_children")
+async def _tool_project_module_children(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    entry_point = str(arguments.get("entry_point", "")).strip()
+    if not entry_point:
+        raise ValueError("entry_point is required")
+    max_depth = int(arguments.get("max_depth", 2))
+    max_depth = max(0, min(5, max_depth))
+    children = await asyncio.to_thread(
+        module_introspection.introspect_module,
+        project_root,
+        entry_point,
+        max_depth,
+    )
+    if children is None:
         return {
             "entry_point": entry_point,
-            "found": True,
-            "children": [child.model_dump(by_alias=True) for child in children],
-            "counts": _count_module_children(children),
+            "found": False,
+            "children": [],
+            "counts": {},
         }
+    return {
+        "entry_point": entry_point,
+        "found": True,
+        "children": [child.model_dump(by_alias=True) for child in children],
+        "counts": _count_module_children(children),
+    }
 
-    if name == "stdlib_list":
-        type_filter = arguments.get("type_filter")
-        search = arguments.get("search")
-        child_query = arguments.get("child_query")
-        parameter_query = arguments.get("parameter_query")
-        max_depth = int(arguments.get("max_depth", 2))
-        limit = int(arguments.get("limit", 120))
+@_register_tool("stdlib_list")
+async def _tool_stdlib_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    type_filter = arguments.get("type_filter")
+    search = arguments.get("search")
+    child_query = arguments.get("child_query")
+    parameter_query = arguments.get("parameter_query")
+    max_depth = int(arguments.get("max_depth", 2))
+    limit = int(arguments.get("limit", 120))
 
-        response = await asyncio.to_thread(
-            stdlib_domain.handle_get_stdlib,
-            str(type_filter) if isinstance(type_filter, str) and type_filter else None,
-            str(search) if isinstance(search, str) and search else None,
-            False,
-            max_depth,
-        )
-        items = list(response.items)
-        if isinstance(child_query, str) and child_query.strip():
-            items = [
-                item for item in items if _stdlib_matches_child_query(item, child_query)
-            ]
-        if isinstance(parameter_query, str) and parameter_query.strip():
-            items = [
-                item
-                for item in items
-                if _stdlib_matches_parameter_query(item, parameter_query)
-            ]
+    response = await asyncio.to_thread(
+        stdlib_domain.handle_get_stdlib,
+        str(type_filter) if isinstance(type_filter, str) and type_filter else None,
+        str(search) if isinstance(search, str) and search else None,
+        False,
+        max_depth,
+    )
+    items = list(response.items)
+    if isinstance(child_query, str) and child_query.strip():
+        items = [
+            item for item in items if _stdlib_matches_child_query(item, child_query)
+        ]
+    if isinstance(parameter_query, str) and parameter_query.strip():
+        items = [
+            item
+            for item in items
+            if _stdlib_matches_parameter_query(item, parameter_query)
+        ]
 
-        items = items[:limit]
-        return {
-            "items": [item.model_dump() for item in items],
-            "total": response.total,
-            "returned": len(items),
-            "filters": {
-                "type_filter": type_filter,
-                "search": search,
-                "child_query": child_query,
-                "parameter_query": parameter_query,
-            },
-            "hints": [
-                "Try search='usb' and child_query='i2c' for bus-related modules.",
-                "Try type_filter='component' and parameter_query='voltage'.",
-                "Use stdlib_get_item on a returned id for full details and usage.",
-            ],
-        }
+    items = items[:limit]
+    return {
+        "items": [item.model_dump() for item in items],
+        "total": response.total,
+        "returned": len(items),
+        "filters": {
+            "type_filter": type_filter,
+            "search": search,
+            "child_query": child_query,
+            "parameter_query": parameter_query,
+        },
+        "hints": [
+            "Try search='usb' and child_query='i2c' for bus-related modules.",
+            "Try type_filter='component' and parameter_query='voltage'.",
+            "Use stdlib_get_item on a returned id for full details and usage.",
+        ],
+    }
 
-    if name == "stdlib_get_item":
-        item_id = str(arguments.get("item_id", "")).strip()
-        if not item_id:
-            raise ValueError("item_id is required")
-        item = await asyncio.to_thread(stdlib_domain.handle_get_stdlib_item, item_id)
-        if item is None:
-            return {"found": False, "item_id": item_id}
-        return {
-            "found": True,
-            "item_id": item_id,
-            "item": item.model_dump(),
-        }
+@_register_tool("stdlib_get_item")
+async def _tool_stdlib_get_item(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    item_id = str(arguments.get("item_id", "")).strip()
+    if not item_id:
+        raise ValueError("item_id is required")
+    item = await asyncio.to_thread(stdlib_domain.handle_get_stdlib_item, item_id)
+    if item is None:
+        return {"found": False, "item_id": item_id}
+    return {
+        "found": True,
+        "item_id": item_id,
+        "item": item.model_dump(),
+    }
 
-    if name == "project_edit_file":
-        edits = arguments.get("edits")
-        if not isinstance(edits, list):
-            raise ValueError("edits must be a list")
-        return await asyncio.to_thread(
-            policy.apply_hashline_edits,
-            project_root,
-            str(arguments.get("path", "")),
-            edits,
-        )
+@_register_tool("project_edit_file")
+async def _tool_project_edit_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    edits = arguments.get("edits")
+    if not isinstance(edits, list):
+        raise ValueError("edits must be a list")
+    return await asyncio.to_thread(
+        policy.apply_hashline_edits,
+        project_root,
+        str(arguments.get("path", "")),
+        edits,
+    )
 
-    if name == "project_create_path":
-        content = arguments.get("content", "")
-        if content is None:
-            content = ""
-        if not isinstance(content, str):
-            raise ValueError("content must be a string")
-        kind = str(arguments.get("kind", "file")).strip().lower()
-        return await asyncio.to_thread(
-            policy.create_path,
-            project_root,
-            str(arguments.get("path", "")),
-            kind=kind,
-            content=content,
-            overwrite=bool(arguments.get("overwrite", False)),
-            parents=bool(arguments.get("parents", True)),
-        )
+@_register_tool("project_create_path")
+async def _tool_project_create_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    content = arguments.get("content", "")
+    if content is None:
+        content = ""
+    if not isinstance(content, str):
+        raise ValueError("content must be a string")
+    kind = str(arguments.get("kind", "file")).strip().lower()
+    return await asyncio.to_thread(
+        policy.create_path,
+        project_root,
+        str(arguments.get("path", "")),
+        kind=kind,
+        content=content,
+        overwrite=bool(arguments.get("overwrite", False)),
+        parents=bool(arguments.get("parents", True)),
+    )
 
-    if name in {"project_rename_path", "project_move_path"}:
-        return await asyncio.to_thread(
-            policy.rename_path,
-            project_root,
-            str(arguments.get("old_path", "")),
-            str(arguments.get("new_path", "")),
-            overwrite=bool(arguments.get("overwrite", False)),
-        )
+@_register_tool("project_rename_path")
+async def _tool_project_rename_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.rename_path,
+        project_root,
+        str(arguments.get("old_path", "")),
+        str(arguments.get("new_path", "")),
+        overwrite=bool(arguments.get("overwrite", False)),
+    )
 
-    if name == "project_delete_path":
-        return await asyncio.to_thread(
-            policy.delete_path,
-            project_root,
-            str(arguments.get("path", "")),
-            recursive=bool(arguments.get("recursive", True)),
-        )
 
-    if name == "project_write_file":
-        return await asyncio.to_thread(
-            policy.write_file,
-            project_root,
-            str(arguments.get("path", "")),
-            str(arguments.get("content", "")),
-        )
+@_register_tool("project_move_path")
+async def _tool_project_move_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.rename_path,
+        project_root,
+        str(arguments.get("old_path", "")),
+        str(arguments.get("new_path", "")),
+        overwrite=bool(arguments.get("overwrite", False)),
+    )
 
-    if name == "project_replace_text":
-        return await asyncio.to_thread(
-            policy.apply_text_replace,
-            project_root,
-            str(arguments.get("path", "")),
-            str(arguments.get("find_text", "")),
-            str(arguments.get("replace_with", "")),
-            max_replacements=int(arguments.get("max_replacements", 1)),
-        )
+@_register_tool("project_delete_path")
+async def _tool_project_delete_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.delete_path,
+        project_root,
+        str(arguments.get("path", "")),
+        recursive=bool(arguments.get("recursive", True)),
+    )
 
-    if name == "parts_search":
-        parts, error = await asyncio.to_thread(
-            parts_domain.handle_search_parts,
-            str(arguments.get("query", "")).strip(),
-            limit=int(arguments.get("limit", 20)),
-        )
-        return {"parts": parts, "total": len(parts), "error": error}
+@_register_tool("project_write_file")
+async def _tool_project_write_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.write_file,
+        project_root,
+        str(arguments.get("path", "")),
+        str(arguments.get("content", "")),
+    )
 
-    if name == "parts_install":
-        lcsc_id = str(arguments.get("lcsc_id", "")).strip().upper()
-        result = await asyncio.to_thread(
-            parts_domain.handle_install_part,
+@_register_tool("project_replace_text")
+async def _tool_project_replace_text(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.apply_text_replace,
+        project_root,
+        str(arguments.get("path", "")),
+        str(arguments.get("find_text", "")),
+        str(arguments.get("replace_with", "")),
+        max_replacements=int(arguments.get("max_replacements", 1)),
+    )
+
+@_register_tool("parts_search")
+async def _tool_parts_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    parts, error = await asyncio.to_thread(
+        parts_domain.handle_search_parts,
+        str(arguments.get("query", "")).strip(),
+        limit=int(arguments.get("limit", 20)),
+    )
+    return {"parts": parts, "total": len(parts), "error": error}
+
+@_register_tool("parts_install")
+async def _tool_parts_install(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    lcsc_id = str(arguments.get("lcsc_id", "")).strip().upper()
+    result = await asyncio.to_thread(
+        parts_domain.handle_install_part,
+        lcsc_id,
+        str(project_root),
+    )
+    return {
+        "success": True,
+        "lcsc_id": lcsc_id,
+        "implementation_hint": (
+            "For complex parts (MCUs/sensors/PMICs/radios), call "
+            "datasheet_read next and verify required support circuitry."
+        ),
+        **result,
+    }
+
+@_register_tool("datasheet_read")
+async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    raw_lcsc_id = arguments.get("lcsc_id")
+    raw_url = arguments.get("url")
+    raw_path = arguments.get("path")
+    raw_target = arguments.get("target")
+    raw_query = arguments.get("query")
+    lcsc_id = (
+        str(raw_lcsc_id).strip()
+        if isinstance(raw_lcsc_id, str) and raw_lcsc_id.strip()
+        else None
+    )
+    url = (
+        str(raw_url).strip()
+        if isinstance(raw_url, str) and raw_url.strip()
+        else None
+    )
+    path = (
+        str(raw_path).strip()
+        if isinstance(raw_path, str) and raw_path.strip()
+        else None
+    )
+    target = (
+        str(raw_target).strip()
+        if isinstance(raw_target, str) and raw_target.strip()
+        else None
+    )
+    query = (
+        str(raw_query).strip()
+        if isinstance(raw_query, str) and raw_query.strip()
+        else None
+    )
+
+    provided = [bool(lcsc_id), bool(url), bool(path)]
+    if sum(1 for value in provided if value) != 1:
+        raise ValueError("Provide exactly one of lcsc_id, url, or path")
+
+    request_cache_keys = _datasheet_cache_keys(
+        project_root=project_root,
+        lcsc_id=lcsc_id,
+        url=url,
+        path=path,
+    )
+    for cache_ref in request_cache_keys:
+        cached_payload = _cache_get_lru(_datasheet_read_cache, cache_ref)
+        if not cached_payload:
+            continue
+        result = dict(cached_payload)
+        result["query"] = query
+        result["message"] = "Reusing previously attached datasheet file."
+        result["openai_file_cached"] = True
+        result["datasheet_cache_hit"] = True
+        return result
+
+    source_url = url
+    source_path = path
+    source_meta: dict[str, Any] = {}
+    resolution: dict[str, Any] = {}
+    fallback_sources: list[dict[str, Any]] = []
+    if lcsc_id:
+        cached_path = await asyncio.to_thread(
+            parts_domain.handle_get_cached_datasheet_path,
             lcsc_id,
             str(project_root),
         )
-        return {
-            "success": True,
-            "lcsc_id": lcsc_id,
-            "implementation_hint": (
-                "For complex parts (MCUs/sensors/PMICs/radios), call "
-                "datasheet_read next and verify required support circuitry."
-            ),
-            **result,
+        if cached_path:
+            source_path = cached_path
+            source_url = None
+            resolution = {
+                "mode": "install_cache",
+                "path": cached_path,
+            }
+            if target:
+                resolution["requested_target"] = target
+
+        if not source_path:
+            details = await asyncio.to_thread(
+                parts_domain.handle_get_part_details,
+                lcsc_id,
+            )
+            if details is None:
+                return {
+                    "found": False,
+                    "lcsc_id": lcsc_id,
+                    "message": f"Part not found: {lcsc_id}",
+                }
+
+            datasheet_url = str(details.get("datasheet_url") or "").strip()
+            if not datasheet_url:
+                return {
+                    "found": False,
+                    "lcsc_id": lcsc_id,
+                    "message": "No datasheet URL available for this part",
+                }
+            source_url = datasheet_url
+            source_path = None
+            resolution = {
+                "mode": "parts_api_fallback",
+                "reason": (
+                    "No cached datasheet was found for this lcsc_id in the "
+                    "project install cache."
+                ),
+            }
+            if target:
+                resolution["requested_target"] = target
+            source_meta["part"] = {
+                "manufacturer": details.get("manufacturer"),
+                "part_number": details.get("part_number"),
+                "description": details.get("description"),
+            }
+            fallback_sources.append(
+                {
+                    "source": "parts_api",
+                    "url": datasheet_url,
+                }
+            )
+
+        source_meta = {
+            "lcsc_id": lcsc_id.upper(),
+            **source_meta,
         }
 
-    if name == "datasheet_read":
-        raw_lcsc_id = arguments.get("lcsc_id")
-        raw_url = arguments.get("url")
-        raw_path = arguments.get("path")
-        raw_target = arguments.get("target")
-        raw_query = arguments.get("query")
-        lcsc_id = (
-            str(raw_lcsc_id).strip()
-            if isinstance(raw_lcsc_id, str) and raw_lcsc_id.strip()
-            else None
+    datasheet_bytes: bytes
+    metadata: dict[str, Any]
+    if source_path:
+        datasheet_bytes, metadata = await asyncio.to_thread(
+            policy.read_datasheet_file,
+            project_root,
+            path=source_path,
+            url=None,
         )
-        url = (
-            str(raw_url).strip()
-            if isinstance(raw_url, str) and raw_url.strip()
-            else None
-        )
-        path = (
-            str(raw_path).strip()
-            if isinstance(raw_path, str) and raw_path.strip()
-            else None
-        )
-        target = (
-            str(raw_target).strip()
-            if isinstance(raw_target, str) and raw_target.strip()
-            else None
-        )
-        query = (
-            str(raw_query).strip()
-            if isinstance(raw_query, str) and raw_query.strip()
-            else None
-        )
+    else:
+        candidate_urls: list[str] = []
+        if source_url:
+            candidate_urls.append(source_url)
 
-        provided = [bool(lcsc_id), bool(url), bool(path)]
-        if sum(1 for value in provided if value) != 1:
-            raise ValueError("Provide exactly one of lcsc_id, url, or path")
-
-        request_cache_keys = _datasheet_cache_keys(
-            project_root=project_root,
-            lcsc_id=lcsc_id,
-            url=url,
-            path=path,
-        )
-        for cache_ref in request_cache_keys:
-            cached_payload = _cache_get_lru(_datasheet_read_cache, cache_ref)
-            if not cached_payload:
-                continue
-            result = dict(cached_payload)
-            result["query"] = query
-            result["message"] = "Reusing previously attached datasheet file."
-            result["openai_file_cached"] = True
-            result["datasheet_cache_hit"] = True
-            return result
-
-        source_url = url
-        source_path = path
-        source_meta: dict[str, Any] = {}
-        resolution: dict[str, Any] = {}
-        fallback_sources: list[dict[str, Any]] = []
         if lcsc_id:
-            cached_path = await asyncio.to_thread(
-                parts_domain.handle_get_cached_datasheet_path,
-                lcsc_id,
-                str(project_root),
-            )
-            if cached_path:
-                source_path = cached_path
-                source_url = None
-                resolution = {
-                    "mode": "install_cache",
-                    "path": cached_path,
-                }
-                if target:
-                    resolution["requested_target"] = target
-
-            if not source_path:
-                details = await asyncio.to_thread(
-                    parts_domain.handle_get_part_details,
+            try:
+                jlc_candidates, jlc_error = await asyncio.to_thread(
+                    parts_domain.search_jlc_parts,
                     lcsc_id,
+                    limit=6,
                 )
-                if details is None:
-                    return {
-                        "found": False,
-                        "lcsc_id": lcsc_id,
-                        "message": f"Part not found: {lcsc_id}",
-                    }
-
-                datasheet_url = str(details.get("datasheet_url") or "").strip()
-                if not datasheet_url:
-                    return {
-                        "found": False,
-                        "lcsc_id": lcsc_id,
-                        "message": "No datasheet URL available for this part",
-                    }
-                source_url = datasheet_url
-                source_path = None
-                resolution = {
-                    "mode": "parts_api_fallback",
-                    "reason": (
-                        "No cached datasheet was found for this lcsc_id in the "
-                        "project install cache."
-                    ),
-                }
-                if target:
-                    resolution["requested_target"] = target
-                source_meta["part"] = {
-                    "manufacturer": details.get("manufacturer"),
-                    "part_number": details.get("part_number"),
-                    "description": details.get("description"),
-                }
-                fallback_sources.append(
-                    {
-                        "source": "parts_api",
-                        "url": datasheet_url,
-                    }
-                )
-
-            source_meta = {
-                "lcsc_id": lcsc_id.upper(),
-                **source_meta,
-            }
-
-        datasheet_bytes: bytes
-        metadata: dict[str, Any]
-        if source_path:
-            datasheet_bytes, metadata = await asyncio.to_thread(
-                policy.read_datasheet_file,
-                project_root,
-                path=source_path,
-                url=None,
-            )
-        else:
-            candidate_urls: list[str] = []
-            if source_url:
-                candidate_urls.append(source_url)
-
-            if lcsc_id:
-                try:
-                    jlc_candidates, jlc_error = await asyncio.to_thread(
-                        parts_domain.search_jlc_parts,
-                        lcsc_id,
-                        limit=6,
-                    )
-                    if isinstance(jlc_error, str) and jlc_error.strip():
-                        fallback_sources.append(
-                            {
-                                "source": "jlc_search_error",
-                                "error": _trim_message(jlc_error, 220),
-                            }
-                        )
-                    for item in jlc_candidates or []:
-                        if not isinstance(item, dict):
-                            continue
-                        candidate_url = str(item.get("datasheet_url") or "").strip()
-                        if not candidate_url:
-                            continue
-                        candidate_urls.append(candidate_url)
-                        fallback_sources.append(
-                            {
-                                "source": "jlc_search",
-                                "url": candidate_url,
-                                "lcsc": item.get("lcsc"),
-                                "mpn": item.get("mpn"),
-                            }
-                        )
-                except Exception as exc:
+                if isinstance(jlc_error, str) and jlc_error.strip():
                     fallback_sources.append(
                         {
                             "source": "jlc_search_error",
-                            "error": _trim_message(
-                                f"{type(exc).__name__}: {exc}",
-                                220,
-                            ),
+                            "error": _trim_message(jlc_error, 220),
                         }
                     )
-
-            deduped_urls: list[str] = []
-            for candidate_url in candidate_urls:
-                if candidate_url and candidate_url not in deduped_urls:
-                    deduped_urls.append(candidate_url)
-
-            if not deduped_urls:
-                raise policy.ScopeError(
-                    "No datasheet URL could be resolved for this request."
+                for item in jlc_candidates or []:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate_url = str(item.get("datasheet_url") or "").strip()
+                    if not candidate_url:
+                        continue
+                    candidate_urls.append(candidate_url)
+                    fallback_sources.append(
+                        {
+                            "source": "jlc_search",
+                            "url": candidate_url,
+                            "lcsc": item.get("lcsc"),
+                            "mpn": item.get("mpn"),
+                        }
+                    )
+            except Exception as exc:
+                fallback_sources.append(
+                    {
+                        "source": "jlc_search_error",
+                        "error": _trim_message(
+                            f"{type(exc).__name__}: {exc}",
+                            220,
+                        ),
+                    }
                 )
 
-            last_error: Exception | None = None
-            selected_url: str | None = None
-            attempted_errors: list[str] = []
-            for candidate_url in deduped_urls:
-                try:
-                    datasheet_bytes, metadata = await asyncio.to_thread(
-                        policy.read_datasheet_file,
-                        project_root,
-                        path=None,
-                        url=candidate_url,
-                    )
-                    selected_url = candidate_url
-                    break
-                except Exception as exc:
-                    last_error = exc
-                    attempted_errors.append(
-                        _trim_message(f"{candidate_url} -> {exc}", 320)
-                    )
-            else:
-                details = "; ".join(attempted_errors[:3]) or "unknown"
-                raise policy.ScopeError(
-                    f"Failed to fetch datasheet from all resolved URLs ({details})"
-                ) from last_error
+        deduped_urls: list[str] = []
+        for candidate_url in candidate_urls:
+            if candidate_url and candidate_url not in deduped_urls:
+                deduped_urls.append(candidate_url)
 
-            if selected_url and source_url and selected_url != source_url:
-                resolution = {
-                    **resolution,
-                    "url_fallback": {
-                        "selected_url": selected_url,
-                        "primary_url": source_url,
-                        "attempted_urls": len(deduped_urls),
-                    },
-                }
-
-        if fallback_sources:
-            resolution = {
-                **resolution,
-                "fallback_sources": fallback_sources[:8],
-            }
-        cache_key = str(
-            metadata.get("sha256")
-            or f"{metadata.get('source_kind')}:{metadata.get('source')}"
-        )
-        filename = str(metadata.get("filename") or "datasheet.pdf")
-        file_id, cached = await _upload_openai_user_file(
-            filename=filename,
-            content=datasheet_bytes,
-            cache_key=cache_key,
-        )
-
-        result_payload = {
-            "found": True,
-            "query": query,
-            "message": (
-                "Datasheet uploaded and attached for model-native PDF reasoning."
-            ),
-            "openai_file_id": file_id,
-            "openai_file_cached": cached,
-            "datasheet_cache_hit": False,
-            "bytes_uploaded": len(datasheet_bytes),
-            "resolution": resolution or None,
-            **source_meta,
-            **metadata,
-        }
-
-        metadata_source_kind = metadata.get("source_kind")
-        metadata_source = metadata.get("source")
-        source_kind = (
-            str(metadata_source_kind).strip()
-            if isinstance(metadata_source_kind, str) and metadata_source_kind.strip()
-            else None
-        )
-        source_value = (
-            str(metadata_source).strip()
-            if isinstance(metadata_source, str) and metadata_source.strip()
-            else None
-        )
-
-        for cache_ref in _datasheet_cache_keys(
-            project_root=project_root,
-            lcsc_id=lcsc_id,
-            url=url,
-            path=path,
-            source_kind=source_kind,
-            source=source_value,
-        ):
-            _cache_set_lru(
-                _datasheet_read_cache,
-                cache_ref,
-                dict(result_payload),
-                max_entries=_DATASHEET_READ_CACHE_MAX_ENTRIES,
+        if not deduped_urls:
+            raise policy.ScopeError(
+                "No datasheet URL could be resolved for this request."
             )
 
-        return result_payload
+        last_error: Exception | None = None
+        selected_url: str | None = None
+        attempted_errors: list[str] = []
+        for candidate_url in deduped_urls:
+            try:
+                datasheet_bytes, metadata = await asyncio.to_thread(
+                    policy.read_datasheet_file,
+                    project_root,
+                    path=None,
+                    url=candidate_url,
+                )
+                selected_url = candidate_url
+                break
+            except Exception as exc:
+                last_error = exc
+                attempted_errors.append(
+                    _trim_message(f"{candidate_url} -> {exc}", 320)
+                )
+        else:
+            details = "; ".join(attempted_errors[:3]) or "unknown"
+            raise policy.ScopeError(
+                f"Failed to fetch datasheet from all resolved URLs ({details})"
+            ) from last_error
 
-    if name == "packages_search":
-        result = await asyncio.to_thread(
-            packages_domain.handle_search_registry,
-            str(arguments.get("query", "")),
-            project_root,
-        )
-        return result.model_dump(by_alias=True)
-
-    if name == "packages_install":
-        identifier = str(arguments.get("identifier", ""))
-        version = arguments.get("version")
-        clean_version = str(version) if isinstance(version, str) and version else None
-        await asyncio.to_thread(
-            packages_domain.install_package_to_project,
-            project_root,
-            identifier,
-            clean_version,
-        )
-        return {
-            "success": True,
-            "identifier": identifier,
-            "version": clean_version,
-            "message": "Package installed",
-        }
-
-    if name == "build_run":
-        targets = arguments.get("targets") or []
-        if not isinstance(targets, list):
-            raise ValueError("targets must be a list")
-        include_targets = arguments.get("include_targets") or []
-        if not isinstance(include_targets, list):
-            raise ValueError("include_targets must be a list")
-        exclude_targets = arguments.get("exclude_targets") or []
-        if not isinstance(exclude_targets, list):
-            raise ValueError("exclude_targets must be a list")
-
-        request = BuildRequest(
-            project_root=str(project_root),
-            targets=[str(target) for target in targets],
-            entry=(str(arguments["entry"]) if arguments.get("entry") else None),
-            standalone=bool(arguments.get("standalone", False)),
-            frozen=bool(arguments.get("frozen", False)),
-            include_targets=[str(target) for target in include_targets],
-            exclude_targets=[str(target) for target in exclude_targets],
-        )
-        response = await asyncio.to_thread(builds_domain.handle_start_build, request)
-        return response.model_dump(by_alias=True)
-
-    if name == "build_create":
-        request = AddBuildTargetRequest(
-            project_root=str(project_root),
-            name=str(arguments.get("name", "")),
-            entry=str(arguments.get("entry", "")),
-        )
-        result = await asyncio.to_thread(
-            projects_domain.handle_add_build_target, request
-        )
-        return result.model_dump(by_alias=True)
-
-    if name == "build_rename":
-        request = UpdateBuildTargetRequest(
-            project_root=str(project_root),
-            old_name=str(arguments.get("old_name", "")),
-            new_name=(
-                str(arguments["new_name"]) if arguments.get("new_name") else None
-            ),
-            new_entry=(
-                str(arguments["new_entry"]) if arguments.get("new_entry") else None
-            ),
-        )
-        result = await asyncio.to_thread(
-            projects_domain.handle_update_build_target,
-            request,
-        )
-        return result.model_dump(by_alias=True)
-
-    if name == "build_logs_search":
-        limit = int(arguments.get("limit", 200))
-        build_id = arguments.get("build_id")
-        raw_query = arguments.get("query")
-        query = raw_query.strip().lower() if isinstance(raw_query, str) else ""
-        stage = arguments.get("stage")
-        stage_filter = (
-            str(stage).strip()
-            if isinstance(stage, str) and str(stage).strip()
-            else None
-        )
-        log_levels = _parse_build_log_levels(arguments.get("log_levels"))
-        audience = _parse_build_log_audience(arguments.get("audience"))
-
-        if not build_id:
-            builds = await asyncio.to_thread(BuildHistory.get_all, min(limit, 120))
-            active_ids = _active_or_pending_build_ids()
-            normalized = [
-                _normalize_history_build(build, active_ids) for build in builds
-            ]
-            if query:
-                normalized = [
-                    build
-                    for build in normalized
-                    if query
-                    in " ".join(
-                        [
-                            str(build.get("build_id", "")),
-                            str(build.get("target", "")),
-                            str(build.get("status", "")),
-                            str(build.get("error", "")),
-                        ]
-                    ).lower()
-                ]
-            return {
-                "builds": normalized[:limit],
-                "total": len(normalized[:limit]),
-                "active_ids": sorted(_active_or_pending_build_ids()),
-                "filters": {
-                    "query": query or None,
-                    "stage": stage_filter,
-                    "log_levels": log_levels,
-                    "audience": audience,
+        if selected_url and source_url and selected_url != source_url:
+            resolution = {
+                **resolution,
+                "url_fallback": {
+                    "selected_url": selected_url,
+                    "primary_url": source_url,
+                    "attempted_urls": len(deduped_urls),
                 },
             }
 
-        clean_build_id = str(build_id)
-        history_build = await asyncio.to_thread(BuildHistory.get, clean_build_id)
-        logs = await asyncio.to_thread(
-            load_build_logs,
-            build_id=clean_build_id,
-            stage=stage_filter,
-            log_levels=log_levels,
-            audience=audience,
-            count=min(limit, 1000),
+    if fallback_sources:
+        resolution = {
+            **resolution,
+            "fallback_sources": fallback_sources[:8],
+        }
+    cache_key = str(
+        metadata.get("sha256")
+        or f"{metadata.get('source_kind')}:{metadata.get('source')}"
+    )
+    filename = str(metadata.get("filename") or "datasheet.pdf")
+    file_id, cached = await _upload_openai_user_file(
+        filename=filename,
+        content=datasheet_bytes,
+        cache_key=cache_key,
+    )
+
+    result_payload = {
+        "found": True,
+        "query": query,
+        "message": (
+            "Datasheet uploaded and attached for model-native PDF reasoning."
+        ),
+        "openai_file_id": file_id,
+        "openai_file_cached": cached,
+        "datasheet_cache_hit": False,
+        "bytes_uploaded": len(datasheet_bytes),
+        "resolution": resolution or None,
+        **source_meta,
+        **metadata,
+    }
+
+    metadata_source_kind = metadata.get("source_kind")
+    metadata_source = metadata.get("source")
+    source_kind = (
+        str(metadata_source_kind).strip()
+        if isinstance(metadata_source_kind, str) and metadata_source_kind.strip()
+        else None
+    )
+    source_value = (
+        str(metadata_source).strip()
+        if isinstance(metadata_source, str) and metadata_source.strip()
+        else None
+    )
+
+    for cache_ref in _datasheet_cache_keys(
+        project_root=project_root,
+        lcsc_id=lcsc_id,
+        url=url,
+        path=path,
+        source_kind=source_kind,
+        source=source_value,
+    ):
+        _cache_set_lru(
+            _datasheet_read_cache,
+            cache_ref,
+            dict(result_payload),
+            max_entries=_DATASHEET_READ_CACHE_MAX_ENTRIES,
         )
 
+    return result_payload
+
+@_register_tool("packages_search")
+async def _tool_packages_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    result = await asyncio.to_thread(
+        packages_domain.handle_search_registry,
+        str(arguments.get("query", "")),
+        project_root,
+    )
+    return result.model_dump(by_alias=True)
+
+@_register_tool("packages_install")
+async def _tool_packages_install(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    identifier = str(arguments.get("identifier", ""))
+    version = arguments.get("version")
+    clean_version = str(version) if isinstance(version, str) and version else None
+    await asyncio.to_thread(
+        packages_domain.install_package_to_project,
+        project_root,
+        identifier,
+        clean_version,
+    )
+    return {
+        "success": True,
+        "identifier": identifier,
+        "version": clean_version,
+        "message": "Package installed",
+    }
+
+@_register_tool("build_run")
+async def _tool_build_run(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    targets = arguments.get("targets") or []
+    if not isinstance(targets, list):
+        raise ValueError("targets must be a list")
+    include_targets = arguments.get("include_targets") or []
+    if not isinstance(include_targets, list):
+        raise ValueError("include_targets must be a list")
+    exclude_targets = arguments.get("exclude_targets") or []
+    if not isinstance(exclude_targets, list):
+        raise ValueError("exclude_targets must be a list")
+
+    request = BuildRequest(
+        project_root=str(project_root),
+        targets=[str(target) for target in targets],
+        entry=(str(arguments["entry"]) if arguments.get("entry") else None),
+        standalone=bool(arguments.get("standalone", False)),
+        frozen=bool(arguments.get("frozen", False)),
+        include_targets=[str(target) for target in include_targets],
+        exclude_targets=[str(target) for target in exclude_targets],
+    )
+    response = await asyncio.to_thread(builds_domain.handle_start_build, request)
+    return response.model_dump(by_alias=True)
+
+@_register_tool("build_create")
+async def _tool_build_create(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    request = AddBuildTargetRequest(
+        project_root=str(project_root),
+        name=str(arguments.get("name", "")),
+        entry=str(arguments.get("entry", "")),
+    )
+    result = await asyncio.to_thread(
+        projects_domain.handle_add_build_target, request
+    )
+    return result.model_dump(by_alias=True)
+
+@_register_tool("build_rename")
+async def _tool_build_rename(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    request = UpdateBuildTargetRequest(
+        project_root=str(project_root),
+        old_name=str(arguments.get("old_name", "")),
+        new_name=(
+            str(arguments["new_name"]) if arguments.get("new_name") else None
+        ),
+        new_entry=(
+            str(arguments["new_entry"]) if arguments.get("new_entry") else None
+        ),
+    )
+    result = await asyncio.to_thread(
+        projects_domain.handle_update_build_target,
+        request,
+    )
+    return result.model_dump(by_alias=True)
+
+@_register_tool("build_logs_search")
+async def _tool_build_logs_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    limit = int(arguments.get("limit", 200))
+    build_id = arguments.get("build_id")
+    raw_query = arguments.get("query")
+    query = raw_query.strip().lower() if isinstance(raw_query, str) else ""
+    stage = arguments.get("stage")
+    stage_filter = (
+        str(stage).strip()
+        if isinstance(stage, str) and str(stage).strip()
+        else None
+    )
+    log_levels = _parse_build_log_levels(arguments.get("log_levels"))
+    audience = _parse_build_log_audience(arguments.get("audience"))
+
+    if not build_id:
+        builds = await asyncio.to_thread(BuildHistory.get_all, min(limit, 120))
+        active_ids = _active_or_pending_build_ids()
+        normalized = [
+            _normalize_history_build(build, active_ids) for build in builds
+        ]
         if query:
-            logs = [
-                entry
-                for entry in logs
-                if query in str(entry.get("message", "")).lower()
+            normalized = [
+                build
+                for build in normalized
+                if query
+                in " ".join(
+                    [
+                        str(build.get("build_id", "")),
+                        str(build.get("target", "")),
+                        str(build.get("status", "")),
+                        str(build.get("error", "")),
+                    ]
+                ).lower()
             ]
-
-        synthesized_stub = False
-        if not logs:
-            logs = [
-                _build_empty_log_stub(
-                    build_id=clean_build_id,
-                    query=query,
-                    build=history_build,
-                )
-            ]
-            synthesized_stub = True
-
-        status = None
-        error = None
-        return_code = None
-        if history_build is not None:
-            raw_status = _get_build_attr(history_build, "status")
-            if isinstance(raw_status, BuildStatus):
-                status = raw_status.value
-            elif raw_status is not None:
-                status = str(raw_status)
-            error = _get_build_attr(history_build, "error")
-            return_code = _get_build_attr(history_build, "return_code")
-
         return {
-            "build_id": clean_build_id,
-            "logs": logs,
-            "total": len(logs),
-            "synthesized_stub": synthesized_stub,
-            "status": status,
-            "return_code": return_code,
-            "error": error,
-            "stage_summary": _summarize_build_stages(history_build),
+            "builds": normalized[:limit],
+            "total": len(normalized[:limit]),
+            "active_ids": sorted(_active_or_pending_build_ids()),
             "filters": {
                 "query": query or None,
                 "stage": stage_filter,
@@ -1285,1135 +1272,1217 @@ async def execute_tool(
             },
         }
 
-    if name == "design_diagnostics":
-        max_problems = int(arguments.get("max_problems", 25))
-        max_failure_logs = int(arguments.get("max_failure_logs", 50))
+    clean_build_id = str(build_id)
+    history_build = await asyncio.to_thread(BuildHistory.get, clean_build_id)
+    logs = await asyncio.to_thread(
+        load_build_logs,
+        build_id=clean_build_id,
+        stage=stage_filter,
+        log_levels=log_levels,
+        audience=audience,
+        count=min(limit, 1000),
+    )
 
-        module_response = await asyncio.to_thread(
-            projects_domain.handle_get_modules,
-            str(project_root),
-            None,
-        )
-        modules = (
-            [module.model_dump(by_alias=True) for module in module_response.modules]
-            if module_response
-            else []
-        )
-
-        active_ids = _active_or_pending_build_ids()
-        recent_builds = await asyncio.to_thread(BuildHistory.get_all, 25)
-        recent_for_project = [
-            _normalize_history_build(build, active_ids)
-            for build in recent_builds
-            if str(_get_build_attr(build, "project_root", "")) == str(project_root)
+    if query:
+        logs = [
+            entry
+            for entry in logs
+            if query in str(entry.get("message", "")).lower()
         ]
 
-        latest_failed = next(
-            (
-                build
-                for build in recent_for_project
-                if build.get("status")
-                in {BuildStatus.FAILED.value, BuildStatus.CANCELLED.value}
-            ),
-            None,
+    synthesized_stub = False
+    if not logs:
+        logs = [
+            _build_empty_log_stub(
+                build_id=clean_build_id,
+                query=query,
+                build=history_build,
+            )
+        ]
+        synthesized_stub = True
+
+    status = None
+    error = None
+    return_code = None
+    if history_build is not None:
+        raw_status = _get_build_attr(history_build, "status")
+        if isinstance(raw_status, BuildStatus):
+            status = raw_status.value
+        elif raw_status is not None:
+            status = str(raw_status)
+        error = _get_build_attr(history_build, "error")
+        return_code = _get_build_attr(history_build, "return_code")
+
+    return {
+        "build_id": clean_build_id,
+        "logs": logs,
+        "total": len(logs),
+        "synthesized_stub": synthesized_stub,
+        "status": status,
+        "return_code": return_code,
+        "error": error,
+        "stage_summary": _summarize_build_stages(history_build),
+        "filters": {
+            "query": query or None,
+            "stage": stage_filter,
+            "log_levels": log_levels,
+            "audience": audience,
+        },
+    }
+
+@_register_tool("design_diagnostics")
+async def _tool_design_diagnostics(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    max_problems = int(arguments.get("max_problems", 25))
+    max_failure_logs = int(arguments.get("max_failure_logs", 50))
+
+    module_response = await asyncio.to_thread(
+        projects_domain.handle_get_modules,
+        str(project_root),
+        None,
+    )
+    modules = (
+        [module.model_dump(by_alias=True) for module in module_response.modules]
+        if module_response
+        else []
+    )
+
+    active_ids = _active_or_pending_build_ids()
+    recent_builds = await asyncio.to_thread(BuildHistory.get_all, 25)
+    recent_for_project = [
+        _normalize_history_build(build, active_ids)
+        for build in recent_builds
+        if str(_get_build_attr(build, "project_root", "")) == str(project_root)
+    ]
+
+    latest_failed = next(
+        (
+            build
+            for build in recent_for_project
+            if build.get("status")
+            in {BuildStatus.FAILED.value, BuildStatus.CANCELLED.value}
+        ),
+        None,
+    )
+    failure_logs: list[dict[str, Any]] = []
+    if latest_failed and latest_failed.get("build_id"):
+        failure_logs = await asyncio.to_thread(
+            load_build_logs,
+            build_id=str(latest_failed["build_id"]),
+            stage=None,
+            log_levels=["ERROR", "ALERT", "WARNING"],
+            audience=None,
+            count=min(max_failure_logs, 200),
         )
-        failure_logs: list[dict[str, Any]] = []
-        if latest_failed and latest_failed.get("build_id"):
-            failure_logs = await asyncio.to_thread(
-                load_build_logs,
-                build_id=str(latest_failed["build_id"]),
-                stage=None,
-                log_levels=["ERROR", "ALERT", "WARNING"],
-                audience=None,
-                count=min(max_failure_logs, 200),
-            )
-            if not failure_logs:
-                failure_logs = [
-                    _build_empty_log_stub(
-                        build_id=str(latest_failed["build_id"]),
-                        query="",
-                        build=await asyncio.to_thread(
-                            BuildHistory.get, str(latest_failed["build_id"])
-                        ),
-                    )
-                ]
+        if not failure_logs:
+            failure_logs = [
+                _build_empty_log_stub(
+                    build_id=str(latest_failed["build_id"]),
+                    query="",
+                    build=await asyncio.to_thread(
+                        BuildHistory.get, str(latest_failed["build_id"])
+                    ),
+                )
+            ]
 
-        problems = await asyncio.to_thread(
-            problems_domain.handle_get_problems,
-            project_root=str(project_root),
-            build_name=None,
-            level=None,
-            developer_mode=False,
+    problems = await asyncio.to_thread(
+        problems_domain.handle_get_problems,
+        project_root=str(project_root),
+        build_name=None,
+        level=None,
+        developer_mode=False,
+    )
+    problems_list = [
+        problem.model_dump(by_alias=True) for problem in problems.problems
+    ][:max_problems]
+
+    recommendations: list[str] = []
+    if latest_failed:
+        recommendations.append(
+            "Inspect latest_failed_build and latest_failure_logs before rerunning."
         )
-        problems_list = [
-            problem.model_dump(by_alias=True) for problem in problems.problems
-        ][:max_problems]
+    if problems.error_count > 0:
+        recommendations.append(
+            "Resolve top ERROR-level problems before full rebuild."
+        )
+    if not recommendations:
+        recommendations.append(
+            "No immediate blockers detected by quick diagnostics."
+        )
 
-        recommendations: list[str] = []
-        if latest_failed:
-            recommendations.append(
-                "Inspect latest_failed_build and latest_failure_logs before rerunning."
-            )
-        if problems.error_count > 0:
-            recommendations.append(
-                "Resolve top ERROR-level problems before full rebuild."
-            )
-        if not recommendations:
-            recommendations.append(
-                "No immediate blockers detected by quick diagnostics."
-            )
+    return {
+        "project_root": str(project_root),
+        "modules_total": len(modules),
+        "module_types": _count_modules_by_type(modules),
+        "module_examples": [module.get("entry") for module in modules[:12]],
+        "recent_builds": recent_for_project[:10],
+        "latest_failed_build": latest_failed,
+        "latest_failure_logs": failure_logs,
+        "problems": {
+            "total": problems.total,
+            "error_count": problems.error_count,
+            "warning_count": problems.warning_count,
+            "items": problems_list,
+        },
+        "recommendations": recommendations,
+    }
 
+@_register_tool("autolayout_run")
+async def _tool_autolayout_run(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    build_target = (
+        str(arguments.get("build_target", "default")).strip() or "default"
+    )
+
+    raw_constraints = arguments.get("constraints")
+    if raw_constraints is None:
+        constraints: dict[str, Any] = {}
+    elif isinstance(raw_constraints, dict):
+        constraints = dict(raw_constraints)
+    else:
+        raise ValueError("constraints must be an object")
+
+    raw_options = arguments.get("options")
+    if raw_options is None:
+        options: dict[str, Any] = {}
+    elif isinstance(raw_options, dict):
+        options = dict(raw_options)
+    else:
+        raise ValueError("options must be an object")
+
+    job_type = arguments.get("job_type")
+    if isinstance(job_type, str) and job_type.strip():
+        options.setdefault("jobType", job_type.strip())
+
+    routing_type = arguments.get("routing_type")
+    if isinstance(routing_type, str) and routing_type.strip():
+        options.setdefault("routingType", routing_type.strip())
+
+    guidance_job_type = str(options.get("jobType", "Routing"))
+    component_count: int | None = None
+    try:
+        build_cfg = _resolve_build_target(project_root, build_target)
+        component_count = _estimate_layout_component_count(build_cfg.paths.layout)
+    except Exception:
+        component_count = None
+    timeout_guidance = _recommended_autolayout_timeout(
+        component_count=component_count,
+        job_type=guidance_job_type,
+    )
+
+    timeout_source = "service_default"
+    timeout_minutes = arguments.get("timeout_minutes")
+    requested_timeout_minutes: int
+    if timeout_minutes is not None:
+        requested_timeout_minutes = int(timeout_minutes)
+        timeout_source = "explicit_argument"
+    elif "timeout" in options:
+        requested_timeout_minutes = int(options["timeout"])
+        timeout_source = "options_object"
+    elif "timeout_minutes" in options:
+        requested_timeout_minutes = int(options["timeout_minutes"])
+        timeout_source = "options_object"
+    else:
+        requested_timeout_minutes = int(timeout_guidance["start_timeout_minutes"])
+        timeout_source = "heuristic_component_count"
+
+    normalized_requested_timeout = max(1, requested_timeout_minutes)
+    applied_timeout_minutes = min(
+        normalized_requested_timeout,
+        _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
+    )
+    timeout_capped = applied_timeout_minutes != normalized_requested_timeout
+    options["timeout"] = applied_timeout_minutes
+    options.pop("timeout_minutes", None)
+
+    max_batch_timeout = arguments.get("max_batch_timeout")
+    if max_batch_timeout is not None:
+        options.setdefault("maxBatchTimeout", int(max_batch_timeout))
+
+    webhook_url = arguments.get("webhook_url")
+    if isinstance(webhook_url, str) and webhook_url.strip():
+        options.setdefault("webhook_url", webhook_url.strip())
+
+    webhook_token = arguments.get("webhook_token")
+    if isinstance(webhook_token, str) and webhook_token.strip():
+        options.setdefault("webhook_token", webhook_token.strip())
+
+    resume_board_id = arguments.get("resume_board_id")
+    if isinstance(resume_board_id, str) and resume_board_id.strip():
+        options.setdefault("resume_board_id", resume_board_id.strip())
+        options.setdefault(
+            "resume_stop_first",
+            bool(arguments.get("resume_stop_first", True)),
+        )
+
+    service = get_autolayout_service()
+    job = await asyncio.to_thread(
+        service.start_job,
+        str(project_root),
+        build_target,
+        constraints,
+        options,
+    )
+
+    return {
+        "job_id": job.job_id,
+        "provider": job.provider,
+        "build_target": job.build_target,
+        "state": _autolayout_state_value(job.state),
+        "provider_job_ref": job.provider_job_ref,
+        "requested_timeout_minutes": normalized_requested_timeout,
+        "applied_timeout_minutes": applied_timeout_minutes,
+        "timeout_cap_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
+        "timeout_capped": timeout_capped,
+        "timeout_source": timeout_source,
+        "timeout_guidance": timeout_guidance,
+        "options": dict(job.options),
+        "constraints": dict(job.constraints),
+        "background": True,
+        "job": job.to_dict(),
+        "next_step": (
+            "Use autolayout_status with this job_id to monitor candidates, "
+            "then autolayout_fetch_to_layout to apply one into layouts/."
+        ),
+    }
+
+@_register_tool("autolayout_status")
+async def _tool_autolayout_status(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    requested_job_id = arguments.get("job_id")
+    job_id = (
+        str(requested_job_id).strip()
+        if isinstance(requested_job_id, str) and str(requested_job_id).strip()
+        else ""
+    )
+    refresh = bool(arguments.get("refresh", True))
+    include_candidates = bool(arguments.get("include_candidates", True))
+    wait_seconds = max(0, int(arguments.get("wait_seconds", 0)))
+    poll_interval_seconds = max(
+        1,
+        int(arguments.get("poll_interval_seconds", 10)),
+    )
+
+    service = get_autolayout_service()
+    if not job_id:
+        jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+        summaries = [_summarize_autolayout_job(job) for job in jobs[:20]]
+        latest_job = jobs[0] if jobs else None
         return {
+            "job_id": None,
             "project_root": str(project_root),
-            "modules_total": len(modules),
-            "module_types": _count_modules_by_type(modules),
-            "module_examples": [module.get("entry") for module in modules[:12]],
-            "recent_builds": recent_for_project[:10],
-            "latest_failed_build": latest_failed,
-            "latest_failure_logs": failure_logs,
-            "problems": {
-                "total": problems.total,
-                "error_count": problems.error_count,
-                "warning_count": problems.warning_count,
-                "items": problems_list,
-            },
-            "recommendations": recommendations,
-        }
-
-    if name == "autolayout_run":
-        build_target = (
-            str(arguments.get("build_target", "default")).strip() or "default"
-        )
-
-        raw_constraints = arguments.get("constraints")
-        if raw_constraints is None:
-            constraints: dict[str, Any] = {}
-        elif isinstance(raw_constraints, dict):
-            constraints = dict(raw_constraints)
-        else:
-            raise ValueError("constraints must be an object")
-
-        raw_options = arguments.get("options")
-        if raw_options is None:
-            options: dict[str, Any] = {}
-        elif isinstance(raw_options, dict):
-            options = dict(raw_options)
-        else:
-            raise ValueError("options must be an object")
-
-        job_type = arguments.get("job_type")
-        if isinstance(job_type, str) and job_type.strip():
-            options.setdefault("jobType", job_type.strip())
-
-        routing_type = arguments.get("routing_type")
-        if isinstance(routing_type, str) and routing_type.strip():
-            options.setdefault("routingType", routing_type.strip())
-
-        guidance_job_type = str(options.get("jobType", "Routing"))
-        component_count: int | None = None
-        try:
-            build_cfg = _resolve_build_target(project_root, build_target)
-            component_count = _estimate_layout_component_count(build_cfg.paths.layout)
-        except Exception:
-            component_count = None
-        timeout_guidance = _recommended_autolayout_timeout(
-            component_count=component_count,
-            job_type=guidance_job_type,
-        )
-
-        timeout_source = "service_default"
-        timeout_minutes = arguments.get("timeout_minutes")
-        requested_timeout_minutes: int
-        if timeout_minutes is not None:
-            requested_timeout_minutes = int(timeout_minutes)
-            timeout_source = "explicit_argument"
-        elif "timeout" in options:
-            requested_timeout_minutes = int(options["timeout"])
-            timeout_source = "options_object"
-        elif "timeout_minutes" in options:
-            requested_timeout_minutes = int(options["timeout_minutes"])
-            timeout_source = "options_object"
-        else:
-            requested_timeout_minutes = int(timeout_guidance["start_timeout_minutes"])
-            timeout_source = "heuristic_component_count"
-
-        normalized_requested_timeout = max(1, requested_timeout_minutes)
-        applied_timeout_minutes = min(
-            normalized_requested_timeout,
-            _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
-        )
-        timeout_capped = applied_timeout_minutes != normalized_requested_timeout
-        options["timeout"] = applied_timeout_minutes
-        options.pop("timeout_minutes", None)
-
-        max_batch_timeout = arguments.get("max_batch_timeout")
-        if max_batch_timeout is not None:
-            options.setdefault("maxBatchTimeout", int(max_batch_timeout))
-
-        webhook_url = arguments.get("webhook_url")
-        if isinstance(webhook_url, str) and webhook_url.strip():
-            options.setdefault("webhook_url", webhook_url.strip())
-
-        webhook_token = arguments.get("webhook_token")
-        if isinstance(webhook_token, str) and webhook_token.strip():
-            options.setdefault("webhook_token", webhook_token.strip())
-
-        resume_board_id = arguments.get("resume_board_id")
-        if isinstance(resume_board_id, str) and resume_board_id.strip():
-            options.setdefault("resume_board_id", resume_board_id.strip())
-            options.setdefault(
-                "resume_stop_first",
-                bool(arguments.get("resume_stop_first", True)),
-            )
-
-        service = get_autolayout_service()
-        job = await asyncio.to_thread(
-            service.start_job,
-            str(project_root),
-            build_target,
-            constraints,
-            options,
-        )
-
-        return {
-            "job_id": job.job_id,
-            "provider": job.provider,
-            "build_target": job.build_target,
-            "state": _autolayout_state_value(job.state),
-            "provider_job_ref": job.provider_job_ref,
-            "requested_timeout_minutes": normalized_requested_timeout,
-            "applied_timeout_minutes": applied_timeout_minutes,
-            "timeout_cap_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
-            "timeout_capped": timeout_capped,
-            "timeout_source": timeout_source,
-            "timeout_guidance": timeout_guidance,
-            "options": dict(job.options),
-            "constraints": dict(job.constraints),
-            "background": True,
-            "job": job.to_dict(),
-            "next_step": (
-                "Use autolayout_status with this job_id to monitor candidates, "
-                "then autolayout_fetch_to_layout to apply one into layouts/."
+            "total_jobs": len(summaries),
+            "latest_job_id": latest_job.job_id if latest_job else None,
+            "latest_build_target": latest_job.build_target if latest_job else None,
+            "recommended_action": (
+                "inspect_or_fetch_latest_job"
+                if latest_job is not None
+                else "run_autolayout"
             ),
+            "message": (
+                "No job_id provided; returning recent autolayout history for "
+                "this project."
+            ),
+            "jobs": summaries,
         }
 
-    if name == "autolayout_status":
-        requested_job_id = arguments.get("job_id")
-        job_id = (
-            str(requested_job_id).strip()
-            if isinstance(requested_job_id, str) and str(requested_job_id).strip()
-            else ""
-        )
-        refresh = bool(arguments.get("refresh", True))
-        include_candidates = bool(arguments.get("include_candidates", True))
-        wait_seconds = max(0, int(arguments.get("wait_seconds", 0)))
-        poll_interval_seconds = max(
-            1,
-            int(arguments.get("poll_interval_seconds", 10)),
-        )
+    try:
+        if refresh:
+            job = await asyncio.to_thread(service.refresh_job, job_id)
+        else:
+            job = await asyncio.to_thread(service.get_job, job_id)
+    except KeyError:
+        jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+        summaries = [_summarize_autolayout_job(item) for item in jobs[:20]]
+        latest_job = jobs[0] if jobs else None
+        return {
+            "job_id": job_id,
+            "found": False,
+            "recommended_action": (
+                "inspect_or_fetch_latest_job"
+                if latest_job is not None
+                else "run_autolayout"
+            ),
+            "latest_job_id": latest_job.job_id if latest_job else None,
+            "message": (
+                f"Unknown autolayout job '{job_id}'. Returning recent jobs "
+                "for this project."
+            ),
+            "jobs": summaries,
+        }
 
-        service = get_autolayout_service()
-        if not job_id:
-            jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-            summaries = [_summarize_autolayout_job(job) for job in jobs[:20]]
-            latest_job = jobs[0] if jobs else None
+    polls = 0
+    waited_seconds = 0
+    if refresh and wait_seconds > 0:
+        while (
+            _autolayout_state_value(job.state)
+            in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}
+            and isinstance(job.provider_job_ref, str)
+            and job.provider_job_ref.strip()
+            and waited_seconds < wait_seconds
+        ):
+            sleep_for = min(poll_interval_seconds, wait_seconds - waited_seconds)
+            await asyncio.sleep(sleep_for)
+            waited_seconds += sleep_for
+            polls += 1
+            job = await asyncio.to_thread(service.refresh_job, job_id)
+
+    candidates_payload: list[dict[str, Any]] = []
+    if include_candidates:
+        candidates = await asyncio.to_thread(
+            service.list_candidates,
+            job_id,
+            False,
+        )
+        candidates_payload = [candidate.to_dict() for candidate in candidates]
+
+    state_value = _autolayout_state_value(job.state)
+    terminal = state_value in {
+        AutolayoutState.COMPLETED.value,
+        AutolayoutState.FAILED.value,
+        AutolayoutState.CANCELLED.value,
+    }
+
+    candidate_count = (
+        len(candidates_payload) if include_candidates else len(job.candidates)
+    )
+    recommended_action = _autolayout_recommended_action(
+        state_value=state_value,
+        candidate_count=candidate_count,
+        provider_job_ref=job.provider_job_ref,
+    )
+    recent_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+    recent_summaries = [
+        _summarize_autolayout_job(item)
+        for item in recent_jobs[:10]
+        if item.job_id != job.job_id
+    ]
+
+    return {
+        "job_id": job.job_id,
+        "provider_job_ref": job.provider_job_ref,
+        "state": state_value,
+        "terminal": terminal,
+        "candidate_count": candidate_count,
+        "selected_candidate_id": job.selected_candidate_id,
+        "applied_candidate_id": job.applied_candidate_id,
+        "check_in": {
+            "wait_seconds": wait_seconds,
+            "waited_seconds": waited_seconds,
+            "poll_interval_seconds": poll_interval_seconds,
+            "polls": polls,
+        },
+        "recommended_action": recommended_action,
+        "job": job.to_dict(),
+        "candidates": candidates_payload if include_candidates else None,
+        "recent_jobs": recent_summaries,
+    }
+
+@_register_tool("autolayout_fetch_to_layout")
+async def _tool_autolayout_fetch_to_layout(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    requested_job_id = arguments.get("job_id")
+    job_id = (
+        str(requested_job_id).strip()
+        if isinstance(requested_job_id, str) and str(requested_job_id).strip()
+        else ""
+    )
+    requested_candidate_id = arguments.get("candidate_id")
+    candidate_id = (
+        str(requested_candidate_id).strip()
+        if isinstance(requested_candidate_id, str)
+        and str(requested_candidate_id).strip()
+        else None
+    )
+    archive_iteration = bool(arguments.get("archive_iteration", True))
+
+    service = get_autolayout_service()
+    if not job_id:
+        known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+        selected_job = _select_latest_fetchable_job(known_jobs)
+        if selected_job is None:
             return {
                 "job_id": None,
-                "project_root": str(project_root),
-                "total_jobs": len(summaries),
-                "latest_job_id": latest_job.job_id if latest_job else None,
-                "latest_build_target": latest_job.build_target if latest_job else None,
-                "recommended_action": (
-                    "inspect_or_fetch_latest_job"
-                    if latest_job is not None
-                    else "run_autolayout"
-                ),
+                "ready_to_apply": False,
+                "applied": False,
+                "recommended_action": "run_autolayout",
                 "message": (
-                    "No job_id provided; returning recent autolayout history for "
-                    "this project."
+                    "No autolayout jobs found for this project. Run "
+                    "autolayout_run first."
                 ),
-                "jobs": summaries,
+                "jobs": [],
             }
+        job_id = selected_job.job_id
 
-        try:
-            if refresh:
-                job = await asyncio.to_thread(service.refresh_job, job_id)
-            else:
-                job = await asyncio.to_thread(service.get_job, job_id)
-        except KeyError:
-            jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-            summaries = [_summarize_autolayout_job(item) for item in jobs[:20]]
-            latest_job = jobs[0] if jobs else None
-            return {
-                "job_id": job_id,
-                "found": False,
-                "recommended_action": (
-                    "inspect_or_fetch_latest_job"
-                    if latest_job is not None
-                    else "run_autolayout"
-                ),
-                "latest_job_id": latest_job.job_id if latest_job else None,
-                "message": (
-                    f"Unknown autolayout job '{job_id}'. Returning recent jobs "
-                    "for this project."
-                ),
-                "jobs": summaries,
-            }
-
-        polls = 0
-        waited_seconds = 0
-        if refresh and wait_seconds > 0:
-            while (
-                _autolayout_state_value(job.state)
-                in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}
-                and isinstance(job.provider_job_ref, str)
-                and job.provider_job_ref.strip()
-                and waited_seconds < wait_seconds
-            ):
-                sleep_for = min(poll_interval_seconds, wait_seconds - waited_seconds)
-                await asyncio.sleep(sleep_for)
-                waited_seconds += sleep_for
-                polls += 1
-                job = await asyncio.to_thread(service.refresh_job, job_id)
-
-        candidates_payload: list[dict[str, Any]] = []
-        if include_candidates:
-            candidates = await asyncio.to_thread(
-                service.list_candidates,
-                job_id,
-                False,
-            )
-            candidates_payload = [candidate.to_dict() for candidate in candidates]
-
-        state_value = _autolayout_state_value(job.state)
-        terminal = state_value in {
-            AutolayoutState.COMPLETED.value,
-            AutolayoutState.FAILED.value,
-            AutolayoutState.CANCELLED.value,
+    try:
+        job = await asyncio.to_thread(service.refresh_job, job_id)
+    except KeyError:
+        known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+        summaries = [_summarize_autolayout_job(item) for item in known_jobs[:20]]
+        latest_job = known_jobs[0] if known_jobs else None
+        return {
+            "job_id": job_id,
+            "ready_to_apply": False,
+            "applied": False,
+            "found": False,
+            "recommended_action": (
+                "inspect_or_fetch_latest_job"
+                if latest_job is not None
+                else "run_autolayout"
+            ),
+            "latest_job_id": latest_job.job_id if latest_job else None,
+            "message": (
+                f"Unknown autolayout job '{job_id}'. Returning recent jobs "
+                "for this project."
+            ),
+            "jobs": summaries,
         }
 
-        candidate_count = (
-            len(candidates_payload) if include_candidates else len(job.candidates)
-        )
-        recommended_action = _autolayout_recommended_action(
-            state_value=state_value,
-            candidate_count=candidate_count,
-            provider_job_ref=job.provider_job_ref,
-        )
-        recent_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-        recent_summaries = [
-            _summarize_autolayout_job(item)
-            for item in recent_jobs[:10]
-            if item.job_id != job.job_id
-        ]
+    candidates = await asyncio.to_thread(service.list_candidates, job_id, False)
+    state_value = _autolayout_state_value(job.state)
+    candidate_count = len(candidates)
 
+    if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
+        recommended_wait_seconds = _recommended_autolayout_check_back_seconds(
+            state=state_value,
+            candidate_count=candidate_count,
+        )
         return {
             "job_id": job.job_id,
             "provider_job_ref": job.provider_job_ref,
             "state": state_value,
-            "terminal": terminal,
             "candidate_count": candidate_count,
-            "selected_candidate_id": job.selected_candidate_id,
-            "applied_candidate_id": job.applied_candidate_id,
-            "check_in": {
-                "wait_seconds": wait_seconds,
-                "waited_seconds": waited_seconds,
-                "poll_interval_seconds": poll_interval_seconds,
-                "polls": polls,
-            },
-            "recommended_action": recommended_action,
+            "ready_to_apply": False,
+            "applied": False,
+            "recommended_wait_seconds": recommended_wait_seconds,
+            "recommended_action": "check_status_then_retry_fetch",
+            "message": (
+                f"Autolayout is still {state_value}; do not fetch/apply yet. "
+                f"Check back in {recommended_wait_seconds} seconds with "
+                "autolayout_status, then call autolayout_fetch_to_layout when "
+                "state is awaiting_selection or completed."
+            ),
             "job": job.to_dict(),
-            "candidates": candidates_payload if include_candidates else None,
-            "recent_jobs": recent_summaries,
         }
 
-    if name == "autolayout_fetch_to_layout":
-        requested_job_id = arguments.get("job_id")
-        job_id = (
-            str(requested_job_id).strip()
-            if isinstance(requested_job_id, str) and str(requested_job_id).strip()
-            else ""
+    if state_value in {
+        AutolayoutState.FAILED.value,
+        AutolayoutState.CANCELLED.value,
+    }:
+        return {
+            "job_id": job.job_id,
+            "provider_job_ref": job.provider_job_ref,
+            "state": state_value,
+            "candidate_count": candidate_count,
+            "ready_to_apply": False,
+            "applied": False,
+            "recommended_action": "retry_or_resume_with_adjusted_options",
+            "message": (
+                f"Autolayout is {state_value}; no candidate can be applied yet. "
+                "Use autolayout_status for details, then rerun or resume with "
+                "autolayout_run."
+            ),
+            "job": job.to_dict(),
+        }
+
+    selected_candidate_id = _choose_autolayout_candidate_id(
+        candidates=candidates,
+        requested_id=candidate_id,
+    )
+    if not selected_candidate_id and isinstance(job.provider_job_ref, str):
+        selected_candidate_id = job.provider_job_ref
+    if not selected_candidate_id:
+        raise ValueError(
+            "No candidate available yet. Wait for autolayout_status to show "
+            "candidates and retry."
         )
-        requested_candidate_id = arguments.get("candidate_id")
-        candidate_id = (
-            str(requested_candidate_id).strip()
-            if isinstance(requested_candidate_id, str)
-            and str(requested_candidate_id).strip()
-            else None
-        )
-        archive_iteration = bool(arguments.get("archive_iteration", True))
 
-        service = get_autolayout_service()
-        if not job_id:
-            known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-            selected_job = _select_latest_fetchable_job(known_jobs)
-            if selected_job is None:
-                return {
-                    "job_id": None,
-                    "ready_to_apply": False,
-                    "applied": False,
-                    "recommended_action": "run_autolayout",
-                    "message": (
-                        "No autolayout jobs found for this project. Run "
-                        "autolayout_run first."
-                    ),
-                    "jobs": [],
-                }
-            job_id = selected_job.job_id
-
-        try:
-            job = await asyncio.to_thread(service.refresh_job, job_id)
-        except KeyError:
-            known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-            summaries = [_summarize_autolayout_job(item) for item in known_jobs[:20]]
-            latest_job = known_jobs[0] if known_jobs else None
-            return {
-                "job_id": job_id,
-                "ready_to_apply": False,
-                "applied": False,
-                "found": False,
-                "recommended_action": (
-                    "inspect_or_fetch_latest_job"
-                    if latest_job is not None
-                    else "run_autolayout"
-                ),
-                "latest_job_id": latest_job.job_id if latest_job else None,
-                "message": (
-                    f"Unknown autolayout job '{job_id}'. Returning recent jobs "
-                    "for this project."
-                ),
-                "jobs": summaries,
-            }
-
-        candidates = await asyncio.to_thread(service.list_candidates, job_id, False)
-        state_value = _autolayout_state_value(job.state)
-        candidate_count = len(candidates)
-
-        if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
-            recommended_wait_seconds = _recommended_autolayout_check_back_seconds(
-                state=state_value,
-                candidate_count=candidate_count,
-            )
-            return {
-                "job_id": job.job_id,
-                "provider_job_ref": job.provider_job_ref,
-                "state": state_value,
-                "candidate_count": candidate_count,
-                "ready_to_apply": False,
-                "applied": False,
-                "recommended_wait_seconds": recommended_wait_seconds,
-                "recommended_action": "check_status_then_retry_fetch",
-                "message": (
-                    f"Autolayout is still {state_value}; do not fetch/apply yet. "
-                    f"Check back in {recommended_wait_seconds} seconds with "
-                    "autolayout_status, then call autolayout_fetch_to_layout when "
-                    "state is awaiting_selection or completed."
-                ),
-                "job": job.to_dict(),
-            }
-
-        if state_value in {
-            AutolayoutState.FAILED.value,
-            AutolayoutState.CANCELLED.value,
-        }:
-            return {
-                "job_id": job.job_id,
-                "provider_job_ref": job.provider_job_ref,
-                "state": state_value,
-                "candidate_count": candidate_count,
-                "ready_to_apply": False,
-                "applied": False,
-                "recommended_action": "retry_or_resume_with_adjusted_options",
-                "message": (
-                    f"Autolayout is {state_value}; no candidate can be applied yet. "
-                    "Use autolayout_status for details, then rerun or resume with "
-                    "autolayout_run."
-                ),
-                "job": job.to_dict(),
-            }
-
-        selected_candidate_id = _choose_autolayout_candidate_id(
-            candidates=candidates,
-            requested_id=candidate_id,
-        )
-        if not selected_candidate_id and isinstance(job.provider_job_ref, str):
-            selected_candidate_id = job.provider_job_ref
-        if not selected_candidate_id:
-            raise ValueError(
-                "No candidate available yet. Wait for autolayout_status to show "
-                "candidates and retry."
-            )
-
-        if any(
-            _extract_candidate_id(candidate) == selected_candidate_id
-            for candidate in candidates
-        ):
-            await asyncio.to_thread(
-                service.select_candidate,
-                job_id,
-                selected_candidate_id,
-            )
-
-        applied = await asyncio.to_thread(
-            service.apply_candidate,
+    if any(
+        _extract_candidate_id(candidate) == selected_candidate_id
+        for candidate in candidates
+    ):
+        await asyncio.to_thread(
+            service.select_candidate,
             job_id,
             selected_candidate_id,
         )
 
-        downloaded_candidate_path: str | None = None
-        downloaded_artifacts: dict[str, str] = {}
-        archived_iteration_path: str | None = None
-        work_dir_str = str(applied.work_dir or "").strip()
-        if work_dir_str:
-            work_dir = Path(work_dir_str)
-            downloads_dir = work_dir / "downloads"
-            downloaded_artifacts = _discover_downloaded_artifacts(
-                downloads_dir=downloads_dir,
-                candidate_id=selected_candidate_id,
-            )
-            downloaded_candidate_path = downloaded_artifacts.get("kicad_pcb")
+    applied = await asyncio.to_thread(
+        service.apply_candidate,
+        job_id,
+        selected_candidate_id,
+    )
 
-        applied_layout_str = str(
-            applied.applied_layout_path or applied.layout_path or ""
-        ).strip()
-        applied_layout: Path | None = None
-        if archive_iteration and applied_layout_str:
-            candidate_layout = Path(applied_layout_str)
-            if candidate_layout.exists():
-                applied_layout = candidate_layout
-
-        if archive_iteration and applied_layout is not None:
-            source_for_archive = (
-                Path(downloaded_candidate_path)
-                if isinstance(downloaded_candidate_path, str)
-                and downloaded_candidate_path
-                and Path(downloaded_candidate_path).exists()
-                else applied_layout
-            )
-            archived = await asyncio.to_thread(
-                _archive_autolayout_iteration,
-                source_layout=source_for_archive,
-                destination_layout_dir=applied_layout.parent,
-                layout_stem=applied_layout.stem,
-                build_target=applied.build_target,
-                job_id=applied.job_id,
-                candidate_id=selected_candidate_id,
-            )
-            archived_iteration_path = str(archived)
-
-        return {
-            "job_id": applied.job_id,
-            "provider_job_ref": applied.provider_job_ref,
-            "selected_candidate_id": selected_candidate_id,
-            "applied_layout_path": applied.applied_layout_path,
-            "backup_layout_path": applied.backup_layout_path,
-            "downloaded_candidate_path": downloaded_candidate_path,
-            "downloaded_artifacts": downloaded_artifacts,
-            "archived_iteration_path": archived_iteration_path,
-            "job": applied.to_dict(),
-        }
-
-    if name == "autolayout_request_screenshot":
-        from faebryk.exporters.pcb.kicad.artifacts import (
-            KicadCliExportError,
-            export_3d_board_render,
-            export_svg,
+    downloaded_candidate_path: str | None = None
+    downloaded_artifacts: dict[str, str] = {}
+    archived_iteration_path: str | None = None
+    work_dir_str = str(applied.work_dir or "").strip()
+    if work_dir_str:
+        work_dir = Path(work_dir_str)
+        downloads_dir = work_dir / "downloads"
+        downloaded_artifacts = _discover_downloaded_artifacts(
+            downloads_dir=downloads_dir,
+            candidate_id=selected_candidate_id,
         )
+        downloaded_candidate_path = downloaded_artifacts.get("kicad_pcb")
 
-        target = str(arguments.get("target", "default")).strip() or "default"
-        view = str(arguments.get("view", "2d")).strip().lower() or "2d"
-        if view not in {"2d", "3d", "both"}:
-            raise ValueError("view must be one of: 2d, 3d, both")
-        side = str(arguments.get("side", "top")).strip().lower() or "top"
-        if side not in {"top", "bottom", "both"}:
-            raise ValueError("side must be one of: top, bottom, both")
+    applied_layout_str = str(
+        applied.applied_layout_path or applied.layout_path or ""
+    ).strip()
+    applied_layout: Path | None = None
+    if archive_iteration and applied_layout_str:
+        candidate_layout = Path(applied_layout_str)
+        if candidate_layout.exists():
+            applied_layout = candidate_layout
 
-        explicit_layers = _normalize_screenshot_layers(arguments.get("layers"))
-        layers = explicit_layers or _default_screenshot_layers(side)
-        highlight_components = _normalize_highlight_components(
-            arguments.get("highlight_components")
+    if archive_iteration and applied_layout is not None:
+        source_for_archive = (
+            Path(downloaded_candidate_path)
+            if isinstance(downloaded_candidate_path, str)
+            and downloaded_candidate_path
+            and Path(downloaded_candidate_path).exists()
+            else applied_layout
         )
-        highlight_fuzzy_limit = max(
-            1, min(20, int(arguments.get("highlight_fuzzy_limit", 6)))
+        archived = await asyncio.to_thread(
+            _archive_autolayout_iteration,
+            source_layout=source_for_archive,
+            destination_layout_dir=applied_layout.parent,
+            layout_stem=applied_layout.stem,
+            build_target=applied.build_target,
+            job_id=applied.job_id,
+            candidate_id=selected_candidate_id,
         )
-        dim_others = bool(arguments.get("dim_others", True))
-        dim_opacity = float(arguments.get("dim_opacity", 0.72))
-        if dim_opacity < 0.0 or dim_opacity > 1.0:
-            raise ValueError("dim_opacity must be between 0.0 and 1.0")
+        archived_iteration_path = str(archived)
 
-        build_cfg = _resolve_build_target(project_root, target)
-        layout_path = build_cfg.paths.layout
-        if not layout_path.exists():
-            raise ValueError(f"Layout file does not exist: {layout_path}")
+    return {
+        "job_id": applied.job_id,
+        "provider_job_ref": applied.provider_job_ref,
+        "selected_candidate_id": selected_candidate_id,
+        "applied_layout_path": applied.applied_layout_path,
+        "backup_layout_path": applied.backup_layout_path,
+        "downloaded_candidate_path": downloaded_candidate_path,
+        "downloaded_artifacts": downloaded_artifacts,
+        "archived_iteration_path": archived_iteration_path,
+        "job": applied.to_dict(),
+    }
 
-        highlighted_records: list[_LayoutComponentRecord] = []
-        unresolved_highlights: list[dict[str, Any]] = []
-        if highlight_components:
-            highlighted_records, unresolved_highlights = await asyncio.to_thread(
-                _resolve_highlight_components,
-                layout_path=layout_path,
-                queries=highlight_components,
-                fuzzy_limit=highlight_fuzzy_limit,
+@_register_tool("autolayout_request_screenshot")
+async def _tool_autolayout_request_screenshot(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    from faebryk.exporters.pcb.kicad.artifacts import (
+        KicadCliExportError,
+        export_3d_board_render,
+        export_svg,
+    )
+
+    target = str(arguments.get("target", "default")).strip() or "default"
+    view = str(arguments.get("view", "2d")).strip().lower() or "2d"
+    if view not in {"2d", "3d", "both"}:
+        raise ValueError("view must be one of: 2d, 3d, both")
+    side = str(arguments.get("side", "top")).strip().lower() or "top"
+    if side not in {"top", "bottom", "both"}:
+        raise ValueError("side must be one of: top, bottom, both")
+
+    explicit_layers = _normalize_screenshot_layers(arguments.get("layers"))
+    layers = explicit_layers or _default_screenshot_layers(side)
+    highlight_components = _normalize_highlight_components(
+        arguments.get("highlight_components")
+    )
+    highlight_fuzzy_limit = max(
+        1, min(20, int(arguments.get("highlight_fuzzy_limit", 6)))
+    )
+    dim_others = bool(arguments.get("dim_others", True))
+    dim_opacity = float(arguments.get("dim_opacity", 0.72))
+    if dim_opacity < 0.0 or dim_opacity > 1.0:
+        raise ValueError("dim_opacity must be between 0.0 and 1.0")
+
+    build_cfg = _resolve_build_target(project_root, target)
+    layout_path = build_cfg.paths.layout
+    if not layout_path.exists():
+        raise ValueError(f"Layout file does not exist: {layout_path}")
+
+    highlighted_records: list[_LayoutComponentRecord] = []
+    unresolved_highlights: list[dict[str, Any]] = []
+    if highlight_components:
+        highlighted_records, unresolved_highlights = await asyncio.to_thread(
+            _resolve_highlight_components,
+            layout_path=layout_path,
+            queries=highlight_components,
+            fuzzy_limit=highlight_fuzzy_limit,
+        )
+    highlighted_references = {
+        record.reference
+        for record in highlighted_records
+        if isinstance(record.reference, str) and record.reference.strip()
+    }
+
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    output_dir = build_cfg.paths.output_base.parent / "autolayout" / "screenshots"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_paths: dict[str, str] = {}
+    highlight_overlay_result: dict[str, Any] | None = None
+    try:
+        if view in {"2d", "both"}:
+            two_d = output_dir / f"{target}.{timestamp}.2d.svg"
+            await asyncio.to_thread(
+                export_svg,
+                pcb_file=layout_path,
+                svg_file=two_d,
+                project_dir=layout_path.parent,
+                layers=",".join(layers),
             )
-        highlighted_references = {
-            record.reference
-            for record in highlighted_records
-            if isinstance(record.reference, str) and record.reference.strip()
-        }
+            output_paths["2d"] = str(two_d)
 
-        timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-        output_dir = build_cfg.paths.output_base.parent / "autolayout" / "screenshots"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        output_paths: dict[str, str] = {}
-        highlight_overlay_result: dict[str, Any] | None = None
-        try:
-            if view in {"2d", "both"}:
-                two_d = output_dir / f"{target}.{timestamp}.2d.svg"
-                await asyncio.to_thread(
-                    export_svg,
-                    pcb_file=layout_path,
-                    svg_file=two_d,
+            if dim_others and highlighted_references:
+                highlight_overlay_result = await asyncio.to_thread(
+                    _apply_component_highlight_overlay,
+                    base_svg_path=two_d,
+                    layout_path=layout_path,
                     project_dir=layout_path.parent,
-                    layers=",".join(layers),
+                    layers=layers,
+                    highlighted_references=highlighted_references,
+                    dim_opacity=dim_opacity,
                 )
-                output_paths["2d"] = str(two_d)
 
-                if dim_others and highlighted_references:
-                    highlight_overlay_result = await asyncio.to_thread(
-                        _apply_component_highlight_overlay,
-                        base_svg_path=two_d,
-                        layout_path=layout_path,
-                        project_dir=layout_path.parent,
-                        layers=layers,
-                        highlighted_references=highlighted_references,
-                        dim_opacity=dim_opacity,
-                    )
+        if view in {"3d", "both"}:
+            three_d = output_dir / f"{target}.{timestamp}.3d.png"
+            await asyncio.to_thread(
+                export_3d_board_render,
+                pcb_file=layout_path,
+                image_file=three_d,
+                project_dir=layout_path.parent,
+            )
+            output_paths["3d"] = str(three_d)
+    except KicadCliExportError as exc:
+        raise RuntimeError(f"Failed to render screenshot: {exc}") from exc
 
-            if view in {"3d", "both"}:
-                three_d = output_dir / f"{target}.{timestamp}.3d.png"
-                await asyncio.to_thread(
-                    export_3d_board_render,
-                    pcb_file=layout_path,
-                    image_file=three_d,
-                    project_dir=layout_path.parent,
-                )
-                output_paths["3d"] = str(three_d)
-        except KicadCliExportError as exc:
-            raise RuntimeError(f"Failed to render screenshot: {exc}") from exc
-
-        return {
-            "success": True,
-            "target": target,
-            "view": view,
-            "side": side,
-            "layout_path": str(layout_path),
-            "output_dir": str(output_dir),
-            "layers": layers if view in {"2d", "both"} else None,
-            "drawing_sheet_excluded": True,
-            "screenshot_paths": output_paths,
-            "highlight": {
-                "requested": highlight_components,
-                "resolved": [
-                    _layout_component_payload(record) for record in highlighted_records
-                ],
-                "unresolved": unresolved_highlights,
-                "dim_others": dim_others,
-                "dim_opacity": dim_opacity if dim_others else None,
-                "applied": bool(
-                    highlight_overlay_result and highlight_overlay_result.get("applied")
-                ),
-                "overlay_result": highlight_overlay_result,
-            },
-        }
-
-    if name == "layout_get_component_position":
-        target = str(arguments.get("target", "default")).strip() or "default"
-        address = str(arguments.get("address", "")).strip()
-        if not address:
-            raise ValueError("address is required")
-        fuzzy_limit = max(1, min(20, int(arguments.get("fuzzy_limit", 6))))
-
-        return await asyncio.to_thread(
-            _layout_get_component_position,
-            project_root=project_root,
-            target=target,
-            address=address,
-            fuzzy_limit=fuzzy_limit,
-        )
-
-    if name == "layout_set_component_position":
-        target = str(arguments.get("target", "default")).strip() or "default"
-        address = str(arguments.get("address", "")).strip()
-        if not address:
-            raise ValueError("address is required")
-
-        mode = str(arguments.get("mode", "absolute")).strip().lower() or "absolute"
-        x_mm = _to_float_or_none(arguments.get("x_mm"), field_name="x_mm")
-        y_mm = _to_float_or_none(arguments.get("y_mm"), field_name="y_mm")
-        rotation_deg = _to_float_or_none(
-            arguments.get("rotation_deg"),
-            field_name="rotation_deg",
-        )
-        dx_mm = _to_float_or_none(arguments.get("dx_mm"), field_name="dx_mm")
-        dy_mm = _to_float_or_none(arguments.get("dy_mm"), field_name="dy_mm")
-        drotation_deg = _to_float_or_none(
-            arguments.get("drotation_deg"),
-            field_name="drotation_deg",
-        )
-        layer_raw = arguments.get("layer")
-        layer = str(layer_raw).strip() if isinstance(layer_raw, str) else None
-        fuzzy_limit = max(1, min(20, int(arguments.get("fuzzy_limit", 6))))
-
-        return await asyncio.to_thread(
-            _layout_set_component_position,
-            project_root=project_root,
-            target=target,
-            address=address,
-            mode=mode,
-            x_mm=x_mm,
-            y_mm=y_mm,
-            rotation_deg=rotation_deg,
-            dx_mm=dx_mm,
-            dy_mm=dy_mm,
-            drotation_deg=drotation_deg,
-            layer=layer,
-            fuzzy_limit=fuzzy_limit,
-        )
-
-    if name == "layout_run_drc":
-        from faebryk.libs.kicad.drc import run_drc
-
-        target = str(arguments.get("target", "default")).strip() or "default"
-        max_findings = max(1, min(500, int(arguments.get("max_findings", 120))))
-        max_items_per_finding = max(
-            1, min(20, int(arguments.get("max_items_per_finding", 4)))
-        )
-
-        build_cfg = _resolve_build_target(project_root, target)
-        layout_path = _resolve_layout_file_for_tool(
-            project_root=project_root,
-            target=target,
-        )
-        if not layout_path.exists():
-            raise ValueError(f"Layout file does not exist: {layout_path}")
-
-        try:
-            drc_report = await asyncio.to_thread(run_drc, layout_path)
-        except Exception as exc:  # pragma: no cover - passthrough for runtime failures
-            raise RuntimeError(f"Failed to run KiCad DRC: {exc}") from exc
-
-        timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-        report_dir = build_cfg.paths.output_base.parent / "autolayout" / "drc"
-        report_dir.mkdir(parents=True, exist_ok=True)
-        report_path = report_dir / f"{target}.{timestamp}.drc.json"
-        await asyncio.to_thread(drc_report.dumps, report_path)
-
-        severity_rank = {
-            "error": 0,
-            "warning": 1,
-            "action": 2,
-            "info": 3,
-            "debug": 4,
-            "exclusion": 5,
-            "": 6,
-        }
-
-        findings: list[dict[str, Any]] = []
-        severity_counts: dict[str, int] = {}
-        type_counts: dict[str, int] = {}
-
-        for category_name, entries in (
-            ("violations", list(getattr(drc_report, "violations", []) or [])),
-            (
-                "unconnected_items",
-                list(getattr(drc_report, "unconnected_items", []) or []),
+    return {
+        "success": True,
+        "target": target,
+        "view": view,
+        "side": side,
+        "layout_path": str(layout_path),
+        "output_dir": str(output_dir),
+        "layers": layers if view in {"2d", "both"} else None,
+        "drawing_sheet_excluded": True,
+        "screenshot_paths": output_paths,
+        "highlight": {
+            "requested": highlight_components,
+            "resolved": [
+                _layout_component_payload(record) for record in highlighted_records
+            ],
+            "unresolved": unresolved_highlights,
+            "dim_others": dim_others,
+            "dim_opacity": dim_opacity if dim_others else None,
+            "applied": bool(
+                highlight_overlay_result and highlight_overlay_result.get("applied")
             ),
-            (
-                "schematic_parity",
-                list(getattr(drc_report, "schematic_parity", []) or []),
-            ),
-        ):
-            for entry in entries:
-                severity = str(getattr(entry, "severity", "") or "").lower()
-                violation_type = str(getattr(entry, "type", "") or "").lower()
-                severity_counts[severity] = severity_counts.get(severity, 0) + 1
-                type_counts[violation_type] = type_counts.get(violation_type, 0) + 1
+            "overlay_result": highlight_overlay_result,
+        },
+    }
 
-                if len(findings) >= max_findings:
-                    continue
+@_register_tool("layout_get_component_position")
+async def _tool_layout_get_component_position(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    target = str(arguments.get("target", "default")).strip() or "default"
+    address = str(arguments.get("address", "")).strip()
+    if not address:
+        raise ValueError("address is required")
+    fuzzy_limit = max(1, min(20, int(arguments.get("fuzzy_limit", 6))))
 
-                items_payload: list[dict[str, Any]] = []
-                for item in list(getattr(entry, "items", []) or [])[
-                    :max_items_per_finding
-                ]:
-                    position = getattr(item, "pos", None)
-                    items_payload.append(
-                        {
-                            "description": str(
-                                getattr(item, "description", "") or ""
-                            ).strip(),
-                            "uuid": str(getattr(item, "uuid", "") or "").strip(),
-                            "x_mm": float(getattr(position, "x", 0.0) or 0.0)
-                            if position is not None
-                            else None,
-                            "y_mm": float(getattr(position, "y", 0.0) or 0.0)
-                            if position is not None
-                            else None,
-                        }
-                    )
+    return await asyncio.to_thread(
+        _layout_get_component_position,
+        project_root=project_root,
+        target=target,
+        address=address,
+        fuzzy_limit=fuzzy_limit,
+    )
 
-                findings.append(
+@_register_tool("layout_set_component_position")
+async def _tool_layout_set_component_position(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    target = str(arguments.get("target", "default")).strip() or "default"
+    address = str(arguments.get("address", "")).strip()
+    if not address:
+        raise ValueError("address is required")
+
+    mode = str(arguments.get("mode", "absolute")).strip().lower() or "absolute"
+    x_mm = _to_float_or_none(arguments.get("x_mm"), field_name="x_mm")
+    y_mm = _to_float_or_none(arguments.get("y_mm"), field_name="y_mm")
+    rotation_deg = _to_float_or_none(
+        arguments.get("rotation_deg"),
+        field_name="rotation_deg",
+    )
+    dx_mm = _to_float_or_none(arguments.get("dx_mm"), field_name="dx_mm")
+    dy_mm = _to_float_or_none(arguments.get("dy_mm"), field_name="dy_mm")
+    drotation_deg = _to_float_or_none(
+        arguments.get("drotation_deg"),
+        field_name="drotation_deg",
+    )
+    layer_raw = arguments.get("layer")
+    layer = str(layer_raw).strip() if isinstance(layer_raw, str) else None
+    fuzzy_limit = max(1, min(20, int(arguments.get("fuzzy_limit", 6))))
+
+    return await asyncio.to_thread(
+        _layout_set_component_position,
+        project_root=project_root,
+        target=target,
+        address=address,
+        mode=mode,
+        x_mm=x_mm,
+        y_mm=y_mm,
+        rotation_deg=rotation_deg,
+        dx_mm=dx_mm,
+        dy_mm=dy_mm,
+        drotation_deg=drotation_deg,
+        layer=layer,
+        fuzzy_limit=fuzzy_limit,
+    )
+
+@_register_tool("layout_run_drc")
+async def _tool_layout_run_drc(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    from faebryk.libs.kicad.drc import run_drc
+
+    target = str(arguments.get("target", "default")).strip() or "default"
+    max_findings = max(1, min(500, int(arguments.get("max_findings", 120))))
+    max_items_per_finding = max(
+        1, min(20, int(arguments.get("max_items_per_finding", 4)))
+    )
+
+    build_cfg = _resolve_build_target(project_root, target)
+    layout_path = _resolve_layout_file_for_tool(
+        project_root=project_root,
+        target=target,
+    )
+    if not layout_path.exists():
+        raise ValueError(f"Layout file does not exist: {layout_path}")
+
+    try:
+        drc_report = await asyncio.to_thread(run_drc, layout_path)
+    except Exception as exc:  # pragma: no cover - passthrough for runtime failures
+        raise RuntimeError(f"Failed to run KiCad DRC: {exc}") from exc
+
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    report_dir = build_cfg.paths.output_base.parent / "autolayout" / "drc"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"{target}.{timestamp}.drc.json"
+    await asyncio.to_thread(drc_report.dumps, report_path)
+
+    severity_rank = {
+        "error": 0,
+        "warning": 1,
+        "action": 2,
+        "info": 3,
+        "debug": 4,
+        "exclusion": 5,
+        "": 6,
+    }
+
+    findings: list[dict[str, Any]] = []
+    severity_counts: dict[str, int] = {}
+    type_counts: dict[str, int] = {}
+
+    for category_name, entries in (
+        ("violations", list(getattr(drc_report, "violations", []) or [])),
+        (
+            "unconnected_items",
+            list(getattr(drc_report, "unconnected_items", []) or []),
+        ),
+        (
+            "schematic_parity",
+            list(getattr(drc_report, "schematic_parity", []) or []),
+        ),
+    ):
+        for entry in entries:
+            severity = str(getattr(entry, "severity", "") or "").lower()
+            violation_type = str(getattr(entry, "type", "") or "").lower()
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+            type_counts[violation_type] = type_counts.get(violation_type, 0) + 1
+
+            if len(findings) >= max_findings:
+                continue
+
+            items_payload: list[dict[str, Any]] = []
+            for item in list(getattr(entry, "items", []) or [])[
+                :max_items_per_finding
+            ]:
+                position = getattr(item, "pos", None)
+                items_payload.append(
                     {
-                        "category": category_name,
-                        "severity": severity or None,
-                        "type": violation_type or None,
                         "description": str(
-                            getattr(entry, "description", "") or ""
+                            getattr(item, "description", "") or ""
                         ).strip(),
-                        "item_count": len(list(getattr(entry, "items", []) or [])),
-                        "items": items_payload,
+                        "uuid": str(getattr(item, "uuid", "") or "").strip(),
+                        "x_mm": float(getattr(position, "x", 0.0) or 0.0)
+                        if position is not None
+                        else None,
+                        "y_mm": float(getattr(position, "y", 0.0) or 0.0)
+                        if position is not None
+                        else None,
                     }
                 )
 
-        findings.sort(
-            key=lambda finding: (
-                severity_rank.get(str(finding.get("severity", "")).lower(), 99),
-                str(finding.get("category", "")),
-                str(finding.get("type", "")),
-            )
-        )
-
-        total_findings = (
-            len(list(getattr(drc_report, "violations", []) or []))
-            + len(list(getattr(drc_report, "unconnected_items", []) or []))
-            + len(list(getattr(drc_report, "schematic_parity", []) or []))
-        )
-
-        error_count = severity_counts.get("error", 0)
-        warning_count = severity_counts.get("warning", 0)
-
-        top_types = sorted(
-            type_counts.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-
-        return {
-            "success": True,
-            "target": target,
-            "layout_path": str(layout_path),
-            "report_path": str(report_path),
-            "kicad_version": str(getattr(drc_report, "kicad_version", "") or ""),
-            "date": str(getattr(drc_report, "date", "") or ""),
-            "total_findings": total_findings,
-            "error_count": error_count,
-            "warning_count": warning_count,
-            "severity_counts": severity_counts,
-            "top_types": [
-                {"type": violation_type, "count": count}
-                for violation_type, count in top_types[:20]
-                if violation_type
-            ],
-            "clean": error_count == 0 and warning_count == 0 and total_findings == 0,
-            "findings": findings,
-            "findings_truncated": total_findings > len(findings),
-        }
-
-    if name == "autolayout_configure_board_intent":
-        build_target = (
-            str(arguments.get("build_target", "default")).strip() or "default"
-        )
-        enable_ground_pours = bool(arguments.get("enable_ground_pours", True))
-        plane_nets = _normalize_plane_nets(arguments.get("plane_nets"))
-        plane_mode = (
-            str(arguments.get("plane_mode", "solid")).strip().lower() or "solid"
-        )
-        if plane_mode not in {"solid", "hatched"}:
-            raise ValueError("plane_mode must be one of: solid, hatched")
-
-        min_plane_clearance_mm = _to_float_or_none(
-            arguments.get("min_plane_clearance_mm"),
-            field_name="min_plane_clearance_mm",
-        )
-        layer_count = _to_int_or_none(
-            arguments.get("layer_count"),
-            field_name="layer_count",
-        )
-        board_thickness_mm = _to_float_or_none(
-            arguments.get("board_thickness_mm"),
-            field_name="board_thickness_mm",
-        )
-        outer_copper_oz = _to_float_or_none(
-            arguments.get("outer_copper_oz"),
-            field_name="outer_copper_oz",
-        )
-        inner_copper_oz = _to_float_or_none(
-            arguments.get("inner_copper_oz"),
-            field_name="inner_copper_oz",
-        )
-        dielectric_er = _to_float_or_none(
-            arguments.get("dielectric_er"),
-            field_name="dielectric_er",
-        )
-        preserve_existing_raw = arguments.get("preserve_existing_routing")
-        preserve_existing_routing = (
-            bool(preserve_existing_raw)
-            if isinstance(preserve_existing_raw, bool)
-            else None
-        )
-        notes = arguments.get("notes")
-        notes_clean = (
-            str(notes).strip() if isinstance(notes, str) and notes.strip() else None
-        )
-
-        data, ato_file = await asyncio.to_thread(
-            projects_domain.load_ato_yaml,
-            project_root,
-        )
-        builds = data.get("builds")
-        if not isinstance(builds, dict):
-            raise ValueError("Invalid ato.yaml: missing builds mapping")
-        if build_target not in builds:
-            known = ", ".join(sorted(str(key) for key in builds.keys()))
-            raise ValueError(
-                f"Unknown build_target '{build_target}'. Available: {known}"
+            findings.append(
+                {
+                    "category": category_name,
+                    "severity": severity or None,
+                    "type": violation_type or None,
+                    "description": str(
+                        getattr(entry, "description", "") or ""
+                    ).strip(),
+                    "item_count": len(list(getattr(entry, "items", []) or [])),
+                    "items": items_payload,
+                }
             )
 
-        build_cfg = builds.get(build_target)
-        if not isinstance(build_cfg, dict):
-            raise ValueError(
-                "Unsupported build target shape for "
-                f"'{build_target}'; expected mapping."
-            )
-
-        autolayout_cfg = build_cfg.get("autolayout")
-        if not isinstance(autolayout_cfg, dict):
-            autolayout_cfg = {}
-            build_cfg["autolayout"] = autolayout_cfg
-
-        constraints = autolayout_cfg.get("constraints")
-        if not isinstance(constraints, dict):
-            constraints = {}
-            autolayout_cfg["constraints"] = constraints
-
-        previous_constraints = json.loads(json.dumps(constraints))
-
-        plane_intent: dict[str, Any] = {
-            "enabled": enable_ground_pours,
-            "nets": plane_nets,
-            "mode": plane_mode,
-        }
-        if min_plane_clearance_mm is not None:
-            plane_intent["min_clearance_mm"] = min_plane_clearance_mm
-        constraints["plane_intent"] = plane_intent
-
-        stackup_intent: dict[str, Any] = {}
-        if layer_count is not None:
-            stackup_intent["layer_count"] = layer_count
-        if board_thickness_mm is not None:
-            stackup_intent["board_thickness_mm"] = board_thickness_mm
-        if outer_copper_oz is not None:
-            stackup_intent["outer_copper_oz"] = outer_copper_oz
-        if inner_copper_oz is not None:
-            stackup_intent["inner_copper_oz"] = inner_copper_oz
-        if dielectric_er is not None:
-            stackup_intent["dielectric_er"] = dielectric_er
-        if notes_clean is not None:
-            stackup_intent["notes"] = notes_clean
-        if stackup_intent:
-            constraints["stackup_intent"] = stackup_intent
-
-        if preserve_existing_routing is not None:
-            constraints["preserve_existing_routing"] = preserve_existing_routing
-
-        await asyncio.to_thread(projects_domain.save_ato_yaml, ato_file, data)
-
-        return {
-            "success": True,
-            "build_target": build_target,
-            "ato_yaml_path": str(ato_file),
-            "plane_intent": plane_intent,
-            "stackup_intent": constraints.get("stackup_intent"),
-            "preserve_existing_routing": constraints.get("preserve_existing_routing"),
-            "constraints_before": previous_constraints,
-            "constraints_after": constraints,
-            "provider_note": (
-                "DeepPCB public API does not currently document first-class "
-                "ground-pour/stackup parameters; this stores intent in project "
-                "config for agent workflows and future DeepPCB mapping."
-            ),
-            "next_step": (
-                "Run autolayout_run for placement/routing so the updated board "
-                "intent is applied."
-            ),
-        }
-
-    if name == "report_bom":
-        target = str(arguments.get("target", "default"))
-        data = await asyncio.to_thread(
-            artifacts_domain.handle_get_bom, str(project_root), target
+    findings.sort(
+        key=lambda finding: (
+            severity_rank.get(str(finding.get("severity", "")).lower(), 99),
+            str(finding.get("category", "")),
+            str(finding.get("type", "")),
         )
-        if data is None:
-            return {
-                "target": target,
-                "found": False,
-                "message": "BOM not found for target. Run build_run and retry.",
-            }
+    )
+
+    total_findings = (
+        len(list(getattr(drc_report, "violations", []) or []))
+        + len(list(getattr(drc_report, "unconnected_items", []) or []))
+        + len(list(getattr(drc_report, "schematic_parity", []) or []))
+    )
+
+    error_count = severity_counts.get("error", 0)
+    warning_count = severity_counts.get("warning", 0)
+
+    top_types = sorted(
+        type_counts.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+    return {
+        "success": True,
+        "target": target,
+        "layout_path": str(layout_path),
+        "report_path": str(report_path),
+        "kicad_version": str(getattr(drc_report, "kicad_version", "") or ""),
+        "date": str(getattr(drc_report, "date", "") or ""),
+        "total_findings": total_findings,
+        "error_count": error_count,
+        "warning_count": warning_count,
+        "severity_counts": severity_counts,
+        "top_types": [
+            {"type": violation_type, "count": count}
+            for violation_type, count in top_types[:20]
+            if violation_type
+        ],
+        "clean": error_count == 0 and warning_count == 0 and total_findings == 0,
+        "findings": findings,
+        "findings_truncated": total_findings > len(findings),
+    }
+
+@_register_tool("autolayout_configure_board_intent")
+async def _tool_autolayout_configure_board_intent(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    build_target = (
+        str(arguments.get("build_target", "default")).strip() or "default"
+    )
+    enable_ground_pours = bool(arguments.get("enable_ground_pours", True))
+    plane_nets = _normalize_plane_nets(arguments.get("plane_nets"))
+    plane_mode = (
+        str(arguments.get("plane_mode", "solid")).strip().lower() or "solid"
+    )
+    if plane_mode not in {"solid", "hatched"}:
+        raise ValueError("plane_mode must be one of: solid, hatched")
+
+    min_plane_clearance_mm = _to_float_or_none(
+        arguments.get("min_plane_clearance_mm"),
+        field_name="min_plane_clearance_mm",
+    )
+    layer_count = _to_int_or_none(
+        arguments.get("layer_count"),
+        field_name="layer_count",
+    )
+    board_thickness_mm = _to_float_or_none(
+        arguments.get("board_thickness_mm"),
+        field_name="board_thickness_mm",
+    )
+    outer_copper_oz = _to_float_or_none(
+        arguments.get("outer_copper_oz"),
+        field_name="outer_copper_oz",
+    )
+    inner_copper_oz = _to_float_or_none(
+        arguments.get("inner_copper_oz"),
+        field_name="inner_copper_oz",
+    )
+    dielectric_er = _to_float_or_none(
+        arguments.get("dielectric_er"),
+        field_name="dielectric_er",
+    )
+    preserve_existing_raw = arguments.get("preserve_existing_routing")
+    preserve_existing_routing = (
+        bool(preserve_existing_raw)
+        if isinstance(preserve_existing_raw, bool)
+        else None
+    )
+    notes = arguments.get("notes")
+    notes_clean = (
+        str(notes).strip() if isinstance(notes, str) and notes.strip() else None
+    )
+
+    data, ato_file = await asyncio.to_thread(
+        projects_domain.load_ato_yaml,
+        project_root,
+    )
+    builds = data.get("builds")
+    if not isinstance(builds, dict):
+        raise ValueError("Invalid ato.yaml: missing builds mapping")
+    if build_target not in builds:
+        known = ", ".join(sorted(str(key) for key in builds.keys()))
+        raise ValueError(
+            f"Unknown build_target '{build_target}'. Available: {known}"
+        )
+
+    build_cfg = builds.get(build_target)
+    if not isinstance(build_cfg, dict):
+        raise ValueError(
+            "Unsupported build target shape for "
+            f"'{build_target}'; expected mapping."
+        )
+
+    autolayout_cfg = build_cfg.get("autolayout")
+    if not isinstance(autolayout_cfg, dict):
+        autolayout_cfg = {}
+        build_cfg["autolayout"] = autolayout_cfg
+
+    constraints = autolayout_cfg.get("constraints")
+    if not isinstance(constraints, dict):
+        constraints = {}
+        autolayout_cfg["constraints"] = constraints
+
+    previous_constraints = json.loads(json.dumps(constraints))
+
+    plane_intent: dict[str, Any] = {
+        "enabled": enable_ground_pours,
+        "nets": plane_nets,
+        "mode": plane_mode,
+    }
+    if min_plane_clearance_mm is not None:
+        plane_intent["min_clearance_mm"] = min_plane_clearance_mm
+    constraints["plane_intent"] = plane_intent
+
+    stackup_intent: dict[str, Any] = {}
+    if layer_count is not None:
+        stackup_intent["layer_count"] = layer_count
+    if board_thickness_mm is not None:
+        stackup_intent["board_thickness_mm"] = board_thickness_mm
+    if outer_copper_oz is not None:
+        stackup_intent["outer_copper_oz"] = outer_copper_oz
+    if inner_copper_oz is not None:
+        stackup_intent["inner_copper_oz"] = inner_copper_oz
+    if dielectric_er is not None:
+        stackup_intent["dielectric_er"] = dielectric_er
+    if notes_clean is not None:
+        stackup_intent["notes"] = notes_clean
+    if stackup_intent:
+        constraints["stackup_intent"] = stackup_intent
+
+    if preserve_existing_routing is not None:
+        constraints["preserve_existing_routing"] = preserve_existing_routing
+
+    await asyncio.to_thread(projects_domain.save_ato_yaml, ato_file, data)
+
+    return {
+        "success": True,
+        "build_target": build_target,
+        "ato_yaml_path": str(ato_file),
+        "plane_intent": plane_intent,
+        "stackup_intent": constraints.get("stackup_intent"),
+        "preserve_existing_routing": constraints.get("preserve_existing_routing"),
+        "constraints_before": previous_constraints,
+        "constraints_after": constraints,
+        "provider_note": (
+            "DeepPCB public API does not currently document first-class "
+            "ground-pour/stackup parameters; this stores intent in project "
+            "config for agent workflows and future DeepPCB mapping."
+        ),
+        "next_step": (
+            "Run autolayout_run for placement/routing so the updated board "
+            "intent is applied."
+        ),
+    }
+
+@_register_tool("report_bom")
+async def _tool_report_bom(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    target = str(arguments.get("target", "default"))
+    data = await asyncio.to_thread(
+        artifacts_domain.handle_get_bom, str(project_root), target
+    )
+    if data is None:
         return {
             "target": target,
-            "found": True,
-            "bom": data,
-            "summary": _build_artifact_summary(
-                data,
-                preferred_list_keys=(
-                    "items",
-                    "line_items",
-                    "rows",
-                    "components",
-                    "bom",
-                    "entries",
-                ),
-            ),
+            "found": False,
+            "message": "BOM not found for target. Run build_run and retry.",
         }
+    return {
+        "target": target,
+        "found": True,
+        "bom": data,
+        "summary": _build_artifact_summary(
+            data,
+            preferred_list_keys=(
+                "items",
+                "line_items",
+                "rows",
+                "components",
+                "bom",
+                "entries",
+            ),
+        ),
+    }
 
-    if name == "report_variables":
-        target = str(arguments.get("target", "default"))
-        data = await asyncio.to_thread(
-            artifacts_domain.handle_get_variables,
-            str(project_root),
-            target,
-        )
-        if data is None:
-            return {
-                "target": target,
-                "found": False,
-                "message": (
-                    "Variables report not found for target. Run build_run and retry."
-                ),
-            }
+@_register_tool("report_variables")
+async def _tool_report_variables(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    target = str(arguments.get("target", "default"))
+    data = await asyncio.to_thread(
+        artifacts_domain.handle_get_variables,
+        str(project_root),
+        target,
+    )
+    if data is None:
         return {
             "target": target,
-            "found": True,
-            "variables": data,
-            "summary": _build_artifact_summary(
-                data,
-                preferred_list_keys=(
-                    "variables",
-                    "parameters",
-                    "params",
-                    "values",
-                    "entries",
-                    "items",
-                ),
+            "found": False,
+            "message": (
+                "Variables report not found for target. Run build_run and retry."
             ),
         }
+    return {
+        "target": target,
+        "found": True,
+        "variables": data,
+        "summary": _build_artifact_summary(
+            data,
+            preferred_list_keys=(
+                "variables",
+                "parameters",
+                "params",
+                "values",
+                "entries",
+                "items",
+            ),
+        ),
+    }
 
-    if name == "manufacturing_generate":
-        target = str(arguments.get("target", "default")).strip() or "default"
-        frozen = bool(arguments.get("frozen", False))
+@_register_tool("manufacturing_generate")
+async def _tool_manufacturing_generate(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    target = str(arguments.get("target", "default")).strip() or "default"
+    frozen = bool(arguments.get("frozen", False))
 
-        raw_include_targets = arguments.get("include_targets")
-        if raw_include_targets is None:
-            include_targets = ["mfg-data"]
-        elif isinstance(raw_include_targets, list):
-            include_targets = [
-                str(value).strip()
-                for value in raw_include_targets
-                if str(value).strip()
-            ]
-        else:
-            raise ValueError("include_targets must be a list")
-        if not include_targets:
-            include_targets = ["mfg-data"]
-
-        raw_exclude_targets = arguments.get("exclude_targets")
-        if raw_exclude_targets is None:
-            exclude_targets: list[str] = []
-        elif isinstance(raw_exclude_targets, list):
-            exclude_targets = [
-                str(value).strip()
-                for value in raw_exclude_targets
-                if str(value).strip()
-            ]
-        else:
-            raise ValueError("exclude_targets must be a list")
-
-        outputs_before_obj = await asyncio.to_thread(
-            manufacturing_domain.get_build_outputs,
-            str(project_root),
-            target,
-        )
-        outputs_before = _manufacturing_outputs_dict(outputs_before_obj)
-        present_before = _present_output_keys(outputs_before)
-
-        request = BuildRequest(
-            project_root=str(project_root),
-            targets=[target],
-            frozen=frozen,
-            include_targets=include_targets,
-            exclude_targets=exclude_targets,
-        )
-        response = await asyncio.to_thread(builds_domain.handle_start_build, request)
-        build_targets = [
-            {"target": entry.target, "build_id": entry.build_id}
-            for entry in response.build_targets
+    raw_include_targets = arguments.get("include_targets")
+    if raw_include_targets is None:
+        include_targets = ["mfg-data"]
+    elif isinstance(raw_include_targets, list):
+        include_targets = [
+            str(value).strip()
+            for value in raw_include_targets
+            if str(value).strip()
         ]
-        queued_build_id = build_targets[0]["build_id"] if build_targets else None
+    else:
+        raise ValueError("include_targets must be a list")
+    if not include_targets:
+        include_targets = ["mfg-data"]
 
-        return {
-            "success": response.success,
-            "message": response.message,
-            "target": target,
-            "frozen": frozen,
-            "include_targets": include_targets,
-            "exclude_targets": exclude_targets,
-            "build_targets": build_targets,
-            "queued_build_id": queued_build_id,
-            "expected_outputs": list(_EXPECTED_MANUFACTURING_OUTPUT_KEYS),
-            "outputs_before": outputs_before,
-            "present_outputs_before": present_before,
-            "missing_outputs_before": [
-                key
-                for key in _EXPECTED_MANUFACTURING_OUTPUT_KEYS
-                if key not in set(present_before)
-            ],
-            "next_step": (
-                "Use build_logs_search with queued_build_id to track progress, "
-                "then use manufacturing_summary after completion."
-            ),
-        }
+    raw_exclude_targets = arguments.get("exclude_targets")
+    if raw_exclude_targets is None:
+        exclude_targets: list[str] = []
+    elif isinstance(raw_exclude_targets, list):
+        exclude_targets = [
+            str(value).strip()
+            for value in raw_exclude_targets
+            if str(value).strip()
+        ]
+    else:
+        raise ValueError("exclude_targets must be a list")
 
-    if name == "manufacturing_summary":
-        target = str(arguments.get("target", "default"))
-        quantity = int(arguments.get("quantity", 10))
+    outputs_before_obj = await asyncio.to_thread(
+        manufacturing_domain.get_build_outputs,
+        str(project_root),
+        target,
+    )
+    outputs_before = _manufacturing_outputs_dict(outputs_before_obj)
+    present_before = _present_output_keys(outputs_before)
 
-        outputs = await asyncio.to_thread(
-            manufacturing_domain.get_build_outputs,
-            str(project_root),
-            target,
-        )
-        estimate = await asyncio.to_thread(
-            manufacturing_domain.estimate_cost,
-            str(project_root),
-            [target],
-            quantity,
-        )
+    request = BuildRequest(
+        project_root=str(project_root),
+        targets=[target],
+        frozen=frozen,
+        include_targets=include_targets,
+        exclude_targets=exclude_targets,
+    )
+    response = await asyncio.to_thread(builds_domain.handle_start_build, request)
+    build_targets = [
+        {"target": entry.target, "build_id": entry.build_id}
+        for entry in response.build_targets
+    ]
+    queued_build_id = build_targets[0]["build_id"] if build_targets else None
 
-        return {
-            "target": target,
-            "outputs": _manufacturing_outputs_dict(outputs),
-            "cost_estimate": {
-                "total_cost": estimate.total_cost,
-                "currency": estimate.currency,
-                "quantity": estimate.quantity,
-                "pcb_cost": estimate.pcb_cost,
-                "components_cost": estimate.components_cost,
-                "assembly_cost": estimate.assembly_cost,
-            },
-        }
+    return {
+        "success": response.success,
+        "message": response.message,
+        "target": target,
+        "frozen": frozen,
+        "include_targets": include_targets,
+        "exclude_targets": exclude_targets,
+        "build_targets": build_targets,
+        "queued_build_id": queued_build_id,
+        "expected_outputs": list(_EXPECTED_MANUFACTURING_OUTPUT_KEYS),
+        "outputs_before": outputs_before,
+        "present_outputs_before": present_before,
+        "missing_outputs_before": [
+            key
+            for key in _EXPECTED_MANUFACTURING_OUTPUT_KEYS
+            if key not in set(present_before)
+        ],
+        "next_step": (
+            "Use build_logs_search with queued_build_id to track progress, "
+            "then use manufacturing_summary after completion."
+        ),
+    }
 
-    raise ValueError(f"Unknown tool: {name}")
+@_register_tool("manufacturing_summary")
+async def _tool_manufacturing_summary(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    target = str(arguments.get("target", "default"))
+    quantity = int(arguments.get("quantity", 10))
+
+    outputs = await asyncio.to_thread(
+        manufacturing_domain.get_build_outputs,
+        str(project_root),
+        target,
+    )
+    estimate = await asyncio.to_thread(
+        manufacturing_domain.estimate_cost,
+        str(project_root),
+        [target],
+        quantity,
+    )
+
+    return {
+        "target": target,
+        "outputs": _manufacturing_outputs_dict(outputs),
+        "cost_estimate": {
+            "total_cost": estimate.total_cost,
+            "currency": estimate.currency,
+            "quantity": estimate.quantity,
+            "pcb_cost": estimate.pcb_cost,
+            "components_cost": estimate.components_cost,
+            "assembly_cost": estimate.assembly_cost,
+        },
+    }
+
+async def execute_tool(
+    *,
+    name: str,
+    arguments: dict[str, Any],
+    project_root: Path,
+    ctx: AppContext,
+) -> dict[str, Any]:
+    """Execute a named agent tool with typed arguments."""
+    handler = _TOOL_HANDLERS.get(name)
+    if handler is None:
+        raise ValueError(f"Unknown tool: {name}")
+    return await handler(arguments, project_root, ctx)
 
 
 def parse_tool_arguments(raw_arguments: str) -> dict[str, Any]:
