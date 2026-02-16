@@ -845,7 +845,7 @@ class TestLCSCattach:
         assert kicad_library_footprint.get_pad_names() == ["1", "2", "3", "4", "5"]
         assert (
             kicad_library_footprint.get_kicad_identifier()
-            == "XBLW_LM321DTR_XBLW:SOT-23-5_L2.9-W1.6-P0.95-LS2.8-BR"
+            == "XBLW_LM321DTR_XBLW:SOT_23_5_L2_9_W1_6_P0_95_LS2_8_BR"
         )
         assert kicad_library_footprint.get_library_name() == "XBLW_LM321DTR_XBLW"
 
@@ -882,7 +882,7 @@ class TestLCSCattach:
 
         assert (
             kicad_library_footprint.get_kicad_identifier()
-            == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
+            == "Changjiang_Electronics_Tech_2N7002:SOT_23_3_L2_9_W1_3_P1_90_LS2_4_BR"
         )
         assert (
             kicad_library_footprint.get_library_name()
@@ -890,7 +890,7 @@ class TestLCSCattach:
         )
         assert kicad_library_footprint.get_pad_names() == ["1", "2", "3"]
         assert (
-            "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
+            "src/parts/Changjiang_Electronics_Tech_2N7002/SOT_23_3_L2_9_W1_3_P1_90_LS2_4_BR.kicad_mod"
             in kicad_library_footprint.get_kicad_footprint_file_path()
         )
 
@@ -924,7 +924,7 @@ class TestLCSCattach:
         assert kicad_library_footprint is not None
         assert (
             kicad_library_footprint.get_kicad_identifier()
-            == "ALLPOWER_AP30P30Q:PDFN3333-8_L3.1-W3.2-P0.65-LS3.4-BL"
+            == "ALLPOWER_AP30P30Q:PDFN3333_8_L3_1_W3_2_P0_65_LS3_4_BL"
         )
 
         # there should be 1 G pad, 5 D pads, and 3 S pads
