@@ -785,8 +785,12 @@ def _canonical_asset_filename(*, artifact_type: str) -> str | None:
         return "footprint.kicad_mod"
     if artifact_type == "model_step":
         return "model.step"
+    if artifact_type == "model_glb":
+        return "model.glb"
     if artifact_type == "model_obj":
         return "model.obj"
+    if artifact_type == "part_image":
+        return "image.jpg"
     if artifact_type == "datasheet_pdf":
         return "datasheet.pdf"
     if artifact_type == "easyeda_cad_json":
@@ -1450,15 +1454,27 @@ def test_materialize_v1_assets_uses_bundle_manifest_paths(
                             "artifact_type": "easyeda_cad_json",
                             "bundle_path": "assets/21190/002_easyeda_cad_hash",
                         },
+                        {
+                            "artifact_type": "model_glb",
+                            "bundle_path": "assets/21190/003_model_glb_hash",
+                        },
+                        {
+                            "artifact_type": "part_image",
+                            "bundle_path": "assets/21190/004_part_image_hash",
+                        },
                     ]
                 }
             }
         ).encode("utf-8"),
         "assets/21190/001_model_step_hash": b"step-bytes",
         "assets/21190/002_easyeda_cad_hash": b'{"description":"test"}',
+        "assets/21190/003_model_glb_hash": b"glb-bytes",
+        "assets/21190/004_part_image_hash": b"img-bytes",
     }
     _materialize_v1_assets(metadata=metadata, bundle_files=bundle_files)
     assert (tmp_path / "C21190" / "model.step").read_bytes() == b"step-bytes"
+    assert (tmp_path / "C21190" / "model.glb").read_bytes() == b"glb-bytes"
+    assert (tmp_path / "C21190" / "image.jpg").read_bytes() == b"img-bytes"
     assert (tmp_path / "C21190" / "easyeda_cad.json").read_bytes() == (
         b'{"description":"test"}'
     )

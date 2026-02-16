@@ -41,10 +41,15 @@ retry_attempts = 3
 retry_backoff_s = 2.0
 sleep_s = 0.0
 log_path = "/tmp/stage1_fetch_all.log"
+scrape_part_images = true
+image_workers = 16
 
 [stage2]
 keep_snapshots = 2
 allow_partial = false
+convert_step_to_glb = true
+glb_workers = 4
+glb_optimize = false
 
 [serve]
 host = "127.0.0.1"

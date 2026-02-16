@@ -166,10 +166,28 @@ cd /Users/narayanpowderly/projects/atopile
 ./scripts/components_pipeline_apply.py --config ./components-pipeline.toml --apply
 ```
 
+Run config checks only:
+
+```bash
+./scripts/components_pipeline_apply.py --config ./components-pipeline.toml --validate
+```
+
 Unified status/monitor snapshot:
 
 ```bash
 ./scripts/components_pipeline_status.py
+```
+
+End-to-end smoke:
+
+```bash
+./scripts/components_pipeline_smoke.sh
+```
+
+Cleanup/prune helper:
+
+```bash
+./scripts/components_cleanup.sh
 ```
 
 The status report includes:
