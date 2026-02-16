@@ -18,6 +18,7 @@ from .bundle_builder import TarZstdBundleBuilder
 from .dashboard_metrics import DashboardMetrics
 from .dashboard_routes import router as dashboard_router
 from .detail_store_sqlite import SQLiteDetailStore
+from .fast_lookup_sqlite import SQLiteFastLookupStore
 from .fast_lookup_zig import ZigFastLookupStore
 from .interfaces import SnapshotNotFoundError
 from .routes import ServeServices, router
@@ -80,10 +81,20 @@ def build_services(config: ServeConfig) -> ServeServices:
 
     if not config.fast_db_path.exists():
         raise SnapshotNotFoundError(f"fast DB not found: {config.fast_db_path}")
-    fast_lookup = ZigFastLookupStore(
-        config.fast_db_path,
-        cache_root=config.cache_dir,
-    )
+    try:
+        fast_lookup = ZigFastLookupStore(
+            config.fast_db_path,
+            cache_root=config.cache_dir,
+        )
+    except Exception as exc:
+        log_event(
+            "serve.fast_lookup.fallback",
+            level=logging.WARNING,
+            requested_engine="zig",
+            fallback_engine="sqlite",
+            reason=str(exc),
+        )
+        fast_lookup = SQLiteFastLookupStore(config.fast_db_path)
 
     detail_store = SQLiteDetailStore(config.detail_db_path)
     bundle_store = TarZstdBundleBuilder(
