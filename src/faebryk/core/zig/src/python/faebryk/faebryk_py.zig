@@ -4207,6 +4207,7 @@ fn wrap_typegraph_add_make_link() type {
                 lhs_reference: *graph.BoundNodeReference,
                 rhs_reference: *graph.BoundNodeReference,
                 edge_attributes: *faebryk.edgebuilder.EdgeCreationAttributes,
+                soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -4222,12 +4223,17 @@ fn wrap_typegraph_add_make_link() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
+            // Parse soft_create flag (default to false)
+            const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
+            const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
+
             const make_link = faebryk.typegraph.TypeGraph.add_make_link(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 kwarg_obj.lhs_reference.*,
                 kwarg_obj.rhs_reference.*,
                 kwarg_obj.edge_attributes.*,
+                soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_link failed");
                 return null;

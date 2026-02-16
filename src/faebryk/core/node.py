@@ -1011,9 +1011,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         field: Field,
         type_field: bool = False,
         source_chunk_node: "Node | None" = None,
+        soft_create: bool = False,
     ) -> None:
         type_field = type_field or field._type_child
         if isinstance(field, _ChildField):
+            # Inherit soft_create from parent or from the field itself
+            is_soft = soft_create or field._soft_create
             identifier = field.get_identifier()
             for dependant in field._prepend_dependants:
                 cls._exec_field(
@@ -1021,6 +1024,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     field=dependant,
                     type_field=type_field,
                     source_chunk_node=source_chunk_node,
+                    soft_create=is_soft,
                 )
             if type_field:
                 if isinstance(field.nodetype, str):
@@ -1044,7 +1048,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     nodetype=field.nodetype,
                     identifier=identifier,
                     attributes=cast(NodeAttributes, field.attributes),
-                    soft_create=field._soft_create,
+                    soft_create=is_soft,
                 )
                 makechild = mc._add_to_typegraph()
                 if source_chunk_node is not None:
@@ -1055,6 +1059,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     field=dependant,
                     type_field=type_field,
                     source_chunk_node=source_chunk_node,
+                    soft_create=is_soft,
                 )
         elif isinstance(field, ListField):
             for nested_field in field.get_fields():
@@ -1063,6 +1068,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     field=nested_field,
                     type_field=type_field,
                     source_chunk_node=source_chunk_node,
+                    soft_create=soft_create,
                 )
         elif isinstance(field, _EdgeField):
             if type_field:
@@ -1081,6 +1087,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     lhs_reference_path=field.lhs_resolved(),
                     rhs_reference_path=field.rhs_resolved(),
                     edge=field.edge,
+                    soft_create=soft_create,
                 )
                 if source_chunk_node is not None:
                     cls(make_link).set_source_pointer(source_chunk_node)
@@ -1971,6 +1978,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         lhs_reference_path: list[str | fbrk.EdgeTraversal],
         rhs_reference_path: list[str | fbrk.EdgeTraversal],
         edge: fbrk.EdgeCreationAttributes,
+        soft_create: bool = False,
     ) -> graph.BoundNode:
         tg = self.tg
         type_node = self.get_or_create_type()
@@ -2004,6 +2012,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             lhs_reference=lhs_ref,
             rhs_reference=rhs_ref,
             edge_attributes=edge,
+            soft_create=soft_create,
         )
 
     @staticmethod

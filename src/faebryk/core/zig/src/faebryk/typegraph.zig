@@ -553,8 +553,36 @@ pub const TypeGraph = struct {
         pub const Attributes = struct {
             node: BoundNodeReference,
 
+            pub const soft_create_key = "soft_create";
+
             pub fn of(node: BoundNodeReference) @This() {
                 return .{ .node = node };
+            }
+
+            pub fn init_soft(self: @This(), soft: bool) void {
+                if (soft) {
+                    self.node.node.put(soft_create_key, .{ .Bool = true });
+                }
+            }
+
+            pub fn soft_create(self: @This()) bool {
+                if (self.node.node.get(soft_create_key)) |value| {
+                    return value.Bool;
+                }
+                return false;
+            }
+
+            pub const superseded_key = "superseded";
+
+            pub fn mark_superseded(self: @This()) void {
+                self.node.node.put(superseded_key, .{ .Bool = true });
+            }
+
+            pub fn is_superseded(self: @This()) bool {
+                if (self.node.node.get(superseded_key)) |value| {
+                    return value.Bool;
+                }
+                return false;
             }
 
             pub fn store_edge_attributes(self: @This(), attributes: EdgeCreationAttributes) void {
@@ -595,6 +623,9 @@ pub const TypeGraph = struct {
                     pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _dynamic: bool) void {
                         const s: *@This() = @ptrCast(@alignCast(ctx));
                         if (!_dynamic) return;
+                        // Skip MakeLink-internal attributes that shouldn't propagate to edges
+                        if (std.mem.eql(u8, key, soft_create_key)) return;
+                        if (std.mem.eql(u8, key, superseded_key)) return;
                         s.dynamic.put(key, value);
                     }
                 };
@@ -820,6 +851,7 @@ pub const TypeGraph = struct {
         lhs_reference: BoundNodeReference,
         rhs_reference: BoundNodeReference,
         edge_attributes: EdgeCreationAttributes,
+        soft_create: bool,
     ) !BoundNodeReference {
         const attrs = edge_attributes;
 
@@ -828,6 +860,7 @@ pub const TypeGraph = struct {
             .err => return error.InstantiationFailed,
         };
         MakeLinkNode.Attributes.of(make_link).store_edge_attributes(attrs);
+        MakeLinkNode.Attributes.of(make_link).init_soft(soft_create);
 
         _ = try EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
         _ = try EdgeComposition.add_child(make_link, rhs_reference.node, "rhs");
@@ -906,7 +939,7 @@ pub const TypeGraph = struct {
             }
         }
 
-        // Copy MakeLink nodes from source
+        // Mark soft MakeLinks on target that conflict with source MakeLinks as superseded
         const source_links = self.collect_make_links(allocator, source_type) catch return;
         defer {
             for (source_links) |link_info| {
@@ -916,6 +949,44 @@ pub const TypeGraph = struct {
             allocator.free(source_links);
         }
 
+        // Collect target's existing MakeLinks to find soft ones to supersede
+        const target_links = self.collect_make_links(allocator, target_type) catch &[_]MakeLinkInfo{};
+        defer {
+            for (target_links) |link_info| {
+                allocator.free(link_info.lhs_path);
+                allocator.free(link_info.rhs_path);
+            }
+            allocator.free(target_links);
+        }
+
+        // For each source link, mark any conflicting soft target links as superseded
+        for (source_links) |src_link| {
+            const src_edge_type = MakeLinkNode.Attributes.of(src_link.make_link).get_edge_type();
+            for (target_links) |tgt_link| {
+                if (!MakeLinkNode.Attributes.of(tgt_link.make_link).soft_create()) continue;
+                if (MakeLinkNode.Attributes.of(tgt_link.make_link).is_superseded()) continue;
+
+                const tgt_edge_type = MakeLinkNode.Attributes.of(tgt_link.make_link).get_edge_type();
+                if (src_edge_type != tgt_edge_type) continue;
+
+                // Check if LHS paths match
+                if (src_link.lhs_path.len != tgt_link.lhs_path.len) continue;
+                var paths_match = true;
+                for (src_link.lhs_path, tgt_link.lhs_path) |src_seg, tgt_seg| {
+                    if (src_seg.edge_type != tgt_seg.edge_type or
+                        !std.mem.eql(u8, src_seg.identifier, tgt_seg.identifier))
+                    {
+                        paths_match = false;
+                        break;
+                    }
+                }
+                if (paths_match) {
+                    MakeLinkNode.Attributes.of(tgt_link.make_link).mark_superseded();
+                }
+            }
+        }
+
+        // Copy MakeLink nodes from source
         for (source_links) |link_info| {
             const self_ref_path = [_]ChildReferenceNode.EdgeTraversal{EdgeComposition.traverse("")};
             const lhs_path = if (link_info.lhs_path.len == 0) &self_ref_path else link_info.lhs_path;
@@ -939,6 +1010,7 @@ pub const TypeGraph = struct {
                 lhs_ref,
                 rhs_ref,
                 edge_attrs,
+                false, // inherited links are not soft-created
             ) catch continue;
             if (EdgePointer.get_pointed_node_by_identifier(link_info.make_link, "source")) |source_chunk| {
                 // Both nodes are in the same graph, cannot fail
@@ -1608,6 +1680,7 @@ pub const TypeGraph = struct {
         return segments.toOwnedSlice() catch @panic("OOM");
     }
 
+    /// Format a MakeLink dedup key from LHS path and edge type.
     pub fn visit_make_links(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -1970,6 +2043,7 @@ pub const TypeGraph = struct {
         }
 
         // 3) Visit MakeLink nodes of type_node
+        // Soft MakeLinks are removed during copy_type_structure, so no filtering needed here.
         const VisitMakeLinks = struct {
             type_graph: *TypeGraph,
             parent_instance: graph.BoundNodeReference,
@@ -1984,6 +2058,11 @@ pub const TypeGraph = struct {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
                 const make_link = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+
+                // Skip superseded soft MakeLinks (marked during copy_type_structure)
+                if (MakeLinkNode.Attributes.of(make_link).is_superseded()) {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
 
                 // 3.1) Get operand references (lhs and rhs)
                 const lhs_reference_node = EdgeComposition.get_child_by_identifier(make_link, "lhs");
@@ -2601,7 +2680,7 @@ test "basic instantiation" {
         .directional = true,
         .name = null,
         .dynamic = graph.DynamicAttributes.init_on_stack(),
-    });
+    }, false);
 
     const instantiated_resistor = switch (tg.instantiate("Resistor")) {
         .ok => |n| n,
@@ -2671,15 +2750,15 @@ test "typegraph iterators and mount chains" {
         .name = null,
         .dynamic = graph.DynamicAttributes.init_on_stack(),
     };
-    _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
+    _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs, false);
 
     const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("members")});
     const element0_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("0")});
     const element1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("1")});
     const ptr_link_attrs_0 = EdgePointer.build(null, 0);
-    _ = try tg.add_make_link(top, container_reference, element0_reference, ptr_link_attrs_0);
+    _ = try tg.add_make_link(top, container_reference, element0_reference, ptr_link_attrs_0, false);
     const ptr_link_attrs_1 = EdgePointer.build(null, 1);
-    _ = try tg.add_make_link(top, container_reference, element1_reference, ptr_link_attrs_1);
+    _ = try tg.add_make_link(top, container_reference, element1_reference, ptr_link_attrs_1, false);
 
     const children = tg.collect_make_children(a, top);
     defer a.free(children);
