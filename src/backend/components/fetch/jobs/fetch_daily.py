@@ -6,11 +6,13 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
+from time import sleep
+from typing import Any, Callable
 
 from ...shared.telemetry import log_event
 from ..config import FetchConfig
 from ..models import FetchArtifactRecord
+from ..sources.lcsc import LcscFetchSeed
 from .fetch_once import run_fetch_once, run_lcsc_asset_roundtrip_once
 
 
@@ -22,6 +24,111 @@ def _utc_stamp() -> str:
 class DailyFetchResult:
     jlc_snapshot_dir: Path
     roundtrip_report_path: Path | None
+
+
+def _coerce_lcsc_id(value: str | int | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    stripped = value.strip()
+    if not stripped:
+        return None
+    normalized = stripped.removeprefix("C").removeprefix("c")
+    if not normalized.isdigit():
+        return None
+    return int(normalized)
+
+
+def _normalize_datasheet_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("//"):
+        return f"https:{stripped}"
+    if stripped.startswith(("http://", "https://")):
+        return stripped
+    return None
+
+
+def _extract_datasheet_url(detail: dict[str, Any]) -> str | None:
+    direct_keys = (
+        "datasheet",
+        "datasheetUrl",
+        "datasheetURL",
+        "datasheet_url",
+        "dataManualUrl",
+    )
+    for key in direct_keys:
+        value = detail.get(key)
+        if isinstance(value, str):
+            normalized = _normalize_datasheet_url(value)
+            if normalized:
+                return normalized
+    extra = detail.get("extra")
+    if isinstance(extra, dict):
+        for key in direct_keys:
+            value = extra.get(key)
+            if isinstance(value, str):
+                normalized = _normalize_datasheet_url(value)
+                if normalized:
+                    return normalized
+    return None
+
+
+def _load_lcsc_seed_map_from_snapshot(snapshot_dir: Path) -> dict[int, LcscFetchSeed]:
+    seed_map: dict[int, LcscFetchSeed] = {}
+    detail_file = snapshot_dir / "component_details.ndjson"
+    if detail_file.exists():
+        for line in detail_file.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            detail = payload.get("detail")
+            if not isinstance(detail, dict):
+                continue
+            lcsc_id = _coerce_lcsc_id(
+                payload.get("lcscPart")
+                or detail.get("lcscPart")
+                or detail.get("componentCode")
+            )
+            if lcsc_id is None:
+                continue
+            seed_map[lcsc_id] = LcscFetchSeed(
+                lcsc_id=lcsc_id,
+                datasheet_url=_extract_datasheet_url(detail),
+            )
+
+    components_file = snapshot_dir / "components.ndjson"
+    if components_file.exists():
+        for line in components_file.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            lcsc_id = _coerce_lcsc_id(
+                payload.get("lcscPart")
+                or payload.get("componentCode")
+                or payload.get("lcsc")
+            )
+            if lcsc_id is None:
+                continue
+            if lcsc_id not in seed_map:
+                seed_map[lcsc_id] = LcscFetchSeed(lcsc_id=lcsc_id)
+    return seed_map
 
 
 def _parse_roundtrip_lcsc_ids(value: str | None) -> tuple[int, ...]:
@@ -48,6 +155,11 @@ def run_fetch_daily(
         ..., list[FetchArtifactRecord]
     ] = run_lcsc_asset_roundtrip_once,
     roundtrip_run_root: Path | None = None,
+    roundtrip_from_snapshot: bool = False,
+    roundtrip_max_parts: int | None = None,
+    roundtrip_retry_attempts: int = 3,
+    roundtrip_retry_backoff_s: float = 2.0,
+    roundtrip_sleep_s: float = 0.0,
 ) -> DailyFetchResult:
     log_event(
         service="components-fetch",
@@ -56,6 +168,11 @@ def run_fetch_daily(
         fetch_details=fetch_details,
         max_details=max_details,
         roundtrip_lcsc_ids=list(roundtrip_lcsc_ids),
+        roundtrip_from_snapshot=roundtrip_from_snapshot,
+        roundtrip_max_parts=roundtrip_max_parts,
+        roundtrip_retry_attempts=roundtrip_retry_attempts,
+        roundtrip_retry_backoff_s=roundtrip_retry_backoff_s,
+        roundtrip_sleep_s=roundtrip_sleep_s,
     )
     jlc_snapshot_dir = run_fetch_once_fn(
         config,
@@ -64,25 +181,69 @@ def run_fetch_daily(
         max_details=max_details,
     )
     report_path: Path | None = None
-    if roundtrip_lcsc_ids:
+    if roundtrip_lcsc_ids or roundtrip_from_snapshot:
         base_root = roundtrip_run_root or (config.cache_dir / "fetch" / "daily")
         run_dir = base_root / _utc_stamp()
         run_dir.mkdir(parents=True, exist_ok=True)
+        seed_map = _load_lcsc_seed_map_from_snapshot(jlc_snapshot_dir)
+        if roundtrip_lcsc_ids:
+            seeds = [
+                seed_map.get(lcsc_id) or LcscFetchSeed(lcsc_id=lcsc_id)
+                for lcsc_id in roundtrip_lcsc_ids
+            ]
+        else:
+            seeds = list(seed_map.values())
+        if roundtrip_max_parts is not None:
+            seeds = seeds[:roundtrip_max_parts]
+
         records: list[FetchArtifactRecord] = []
-        for lcsc_id in roundtrip_lcsc_ids:
-            records.extend(
-                run_roundtrip_fn(
-                    config=config,
-                    lcsc_id=lcsc_id,
-                )
-            )
+        failures: list[dict[str, object]] = []
+        for seed in seeds:
+            if roundtrip_sleep_s > 0:
+                sleep(roundtrip_sleep_s)
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    records.extend(
+                        run_roundtrip_fn(
+                            config=config,
+                            lcsc_id=seed.lcsc_id,
+                            datasheet_url=seed.datasheet_url,
+                        )
+                    )
+                    break
+                except Exception as ex:
+                    if attempt >= roundtrip_retry_attempts:
+                        failures.append(
+                            {
+                                "lcsc_id": seed.lcsc_id,
+                                "datasheet_url": seed.datasheet_url,
+                                "attempts": attempt,
+                                "error": repr(ex),
+                            }
+                        )
+                        log_event(
+                            service="components-fetch",
+                            event="fetch.daily.roundtrip_part_failed",
+                            lcsc_id=seed.lcsc_id,
+                            datasheet_url=seed.datasheet_url,
+                            attempts=attempt,
+                            error=repr(ex),
+                        )
+                        break
+                    sleep(roundtrip_retry_backoff_s * attempt)
+
         summary = {
             "created_at_utc": _utc_stamp(),
+            "seed_count": len(seeds),
             "record_count": len(records),
             "lcsc_ids": sorted({record.lcsc_id for record in records}),
             "artifact_types": sorted(
                 {record.artifact_type.value for record in records}
             ),
+            "failure_count": len(failures),
+            "failures": failures,
         }
         report_path = run_dir / "roundtrip_report.json"
         report_path.write_text(json.dumps(summary, ensure_ascii=True, indent=2))
@@ -90,7 +251,9 @@ def run_fetch_daily(
             service="components-fetch",
             event="fetch.daily.roundtrip_summary",
             report_path=report_path,
+            seed_count=summary["seed_count"],
             record_count=summary["record_count"],
+            failure_count=summary["failure_count"],
             lcsc_ids=summary["lcsc_ids"],
             artifact_types=summary["artifact_types"],
         )
@@ -112,6 +275,44 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-fetch-details", action="store_true")
     parser.add_argument("--max-details", type=int, default=500)
     parser.add_argument(
+        "--roundtrip-from-snapshot",
+        action="store_true",
+        default=os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_FROM_SNAPSHOT", "")
+        .strip()
+        .lower()
+        in {"1", "true", "yes"},
+        help=(
+            "Run stage-1 artifact roundtrip across fetched snapshot entries "
+            "(uses component_details.ndjson/component.ndjson)."
+        ),
+    )
+    parser.add_argument(
+        "--roundtrip-max-parts",
+        type=int,
+        default=None,
+        help="Limit number of parts processed by --roundtrip-from-snapshot.",
+    )
+    parser.add_argument(
+        "--roundtrip-retry-attempts",
+        type=int,
+        default=int(os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_RETRY_ATTEMPTS", "3")),
+        help="Retry attempts per part for roundtrip fetch.",
+    )
+    parser.add_argument(
+        "--roundtrip-retry-backoff-s",
+        type=float,
+        default=float(
+            os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_RETRY_BACKOFF_S", "2.0")
+        ),
+        help="Linear retry backoff base seconds per failed attempt.",
+    )
+    parser.add_argument(
+        "--roundtrip-sleep-s",
+        type=float,
+        default=float(os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_SLEEP_S", "0")),
+        help="Sleep interval between part roundtrip attempts (for throttling).",
+    )
+    parser.add_argument(
         "--roundtrip-lcsc-ids",
         type=str,
         default=os.getenv("ATOPILE_COMPONENTS_ROUNDTRIP_LCSC_IDS", ""),
@@ -128,6 +329,11 @@ def main(argv: list[str] | None = None) -> int:
         fetch_details=not args.no_fetch_details,
         max_details=args.max_details,
         roundtrip_lcsc_ids=_parse_roundtrip_lcsc_ids(args.roundtrip_lcsc_ids),
+        roundtrip_from_snapshot=args.roundtrip_from_snapshot,
+        roundtrip_max_parts=args.roundtrip_max_parts,
+        roundtrip_retry_attempts=args.roundtrip_retry_attempts,
+        roundtrip_retry_backoff_s=args.roundtrip_retry_backoff_s,
+        roundtrip_sleep_s=args.roundtrip_sleep_s,
     )
     print(result.jlc_snapshot_dir)
     if result.roundtrip_report_path is not None:
@@ -198,6 +404,40 @@ def test_run_fetch_daily_with_roundtrip(tmp_path) -> None:
     assert result.jlc_snapshot_dir == snapshot_dir
     assert result.roundtrip_report_path is not None
     assert result.roundtrip_report_path.exists()
+
+
+def test_load_lcsc_seed_map_from_snapshot(tmp_path) -> None:
+    snapshot = tmp_path / "fetch" / "jlc_api" / "snapshot"
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "component_details.ndjson").write_text(
+        "\n".join(
+            (
+                json.dumps(
+                    {
+                        "lcscPart": "C21190",
+                        "detail": {"datasheetUrl": "https://example.com/C21190.pdf"},
+                    },
+                    ensure_ascii=True,
+                ),
+                json.dumps(
+                    {
+                        "lcscPart": "C2040",
+                        "detail": {"componentCode": "C2040"},
+                    },
+                    ensure_ascii=True,
+                ),
+            )
+        ),
+        encoding="utf-8",
+    )
+    (snapshot / "components.ndjson").write_text(
+        json.dumps({"lcscPart": "C3000"}, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    seed_map = _load_lcsc_seed_map_from_snapshot(snapshot)
+    assert set(seed_map) == {2040, 3000, 21190}
+    assert seed_map[21190].datasheet_url == "https://example.com/C21190.pdf"
+    assert seed_map[2040].datasheet_url is None
 
 
 if __name__ == "__main__":
