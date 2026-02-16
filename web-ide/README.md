@@ -8,7 +8,7 @@ Browser-based VS Code environment for atopile using [OpenVSCode Server](https://
 cd web-ide
 docker compose up --build
 
-# Open http://localhost:3000
+# Open https://localhost:3443
 ```
 
 That's it. The Docker build compiles everything from source (wheel + extension) — no pre-build steps needed.
@@ -64,7 +64,39 @@ cd web-ide
 docker compose up --build
 ```
 
-Access at http://localhost:3000
+Podman control script (recommended for this repo):
+
+```bash
+cd web-ide
+cp .env.example .env   # first time only; then edit values
+./scripts/web-idectl.sh start
+./scripts/web-idectl.sh status
+./scripts/web-idectl.sh stop
+```
+
+Access at:
+- `https://localhost:3443` (required for reliable webviews on non-loopback hosts)
+- `https://<machine-ip>:3443` (direct IP access also supported)
+
+If you need remote access from other machines, publish on all interfaces
+and set the external hostname/IP used by clients:
+
+```bash
+WEB_IDE_BIND_ADDR=0.0.0.0 \
+WEB_IDE_HTTPS_PORT=3443 \
+WEB_IDE_PUBLIC_HOST=100.118.104.116 \
+docker compose up --build
+```
+
+Then open inbound firewall/security-group rules for your chosen host ports.
+
+### Podman Notes (Rootless)
+
+- Do not mix `podman` and `sudo podman` for the same compose project.
+  - Rootless and rootful runtimes keep separate container state and can conflict on host ports.
+- On some rootless setups, foreground `podman compose up` may fail with a `crun ... exec.fifo` error when the service is already running.
+  - Use `podman compose up -d` to start/recreate.
+  - Use `podman compose logs -f` to follow logs.
 
 ### Rebuild After Changes
 
@@ -79,7 +111,7 @@ To work on a local project instead of the built-in example:
 ```bash
 docker compose run --rm \
   -v "$(pwd)/my-project:/home/openvscode-server/workspace" \
-  -p 3000:3000 \
+  -p 3443:3443 \
   atopile-web-ide
 ```
 
@@ -95,7 +127,7 @@ Note: the wheel is platform-specific to your host OS and won't work in Docker.
 
 ## Testing Checklist
 
-- [ ] Container starts and is accessible at port 3000
+- [ ] Container starts and is accessible at port 3443
 - [ ] IDE opens in workspace with example project
 - [ ] atopile extension is installed and activated
 - [ ] Python extension works
@@ -133,5 +165,5 @@ The GitHub Actions workflow (`.github/workflows/web-ide.yml`) automatically buil
 docker pull ghcr.io/atopile/atopile-web-ide:latest
 
 # Run it
-docker run -p 3000:3000 ghcr.io/atopile/atopile-web-ide:latest
+docker run -p 3443:3443 ghcr.io/atopile/atopile-web-ide:latest
 ```

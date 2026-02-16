@@ -78,20 +78,12 @@ ENV PATH=${OPENVSCODE_SERVER_ROOT}/bin:${HOME}/.local/bin:$PATH
 ENV ATOPILE_BACKEND_HOST=127.0.0.1
 ENV ATOPILE_BACKEND_PORT=8501
 
-# Install runtime + build dependencies + VNC stack for PCBnew viewer
+# Install runtime + build dependencies
 # Note: build-essential/cmake are needed because pynng (transitive dep) compiles from source
-# Note: curl and xdotool removed — not needed at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
     ca-certificates \
     build-essential \
     cmake \
-    xserver-xorg-video-dummy \
-    x11-xserver-utils \
-    x11vnc \
-    openbox \
-    websockify \
-    novnc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install restricted shell (disables terminal access for the user)
@@ -138,6 +130,18 @@ RUN uv tool install --python 3.14 /tmp/artifacts/atopile-*.whl
 # Install VS Code extensions
 RUN /tmp/scripts/install-extensions.sh
 
+# Lock down extensions: make dirs root-owned so user can't install new ones.
+# "Install from VSIX" and drag-and-drop both fail with permission denied.
+USER root
+RUN chown -R root:root ${OPENVSCODE_SERVER_ROOT}/extensions && \
+    chmod -R 755 ${OPENVSCODE_SERVER_ROOT}/extensions
+# Pre-create user extensions dir as root-owned read-only (VS Code tries to write here)
+RUN mkdir -p ${HOME}/.openvscode-server/extensions && \
+    echo '[]' > ${HOME}/.openvscode-server/extensions/extensions.json && \
+    chown -R root:root ${HOME}/.openvscode-server/extensions && \
+    chmod -R 555 ${HOME}/.openvscode-server/extensions
+USER openvscode-server
+
 # Apply atopile branding (favicon, title, manifest)
 RUN /tmp/branding/apply-branding.sh
 
@@ -145,15 +149,21 @@ RUN /tmp/branding/apply-branding.sh
 # NOT $OPENVSCODE_SERVER_ROOT/data/ — the install-extensions.sh step already creates this tree)
 RUN cp /tmp/scripts/settings.json ${HOME}/.openvscode-server/data/Machine/settings.json
 
+# Copy keybindings that unbind dangerous shortcuts (terminal, debug, tasks)
+RUN mkdir -p ${HOME}/.openvscode-server/data/User && \
+    cp /tmp/scripts/keybindings.json ${HOME}/.openvscode-server/data/User/keybindings.json
+
 # Note: uv symlink is created by entrypoint.sh on each startup because the
 # User data volume mount shadows this directory on subsequent container starts
 
-# Set up entrypoint and VNC startup script
+# Set up entrypoint
+# Also stash keybindings in .local/etc so entrypoint can restore them
+# (the User data volume mount shadows the data/User/ directory)
 RUN mkdir -p ${HOME}/.local/etc && \
+    cp /tmp/scripts/keybindings.json ${HOME}/.local/etc/keybindings.json && \
     cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
-    cp /tmp/scripts/start-pcbnew-vnc.sh ${HOME}/.local/bin/start-pcbnew-vnc.sh && \
     cp /tmp/scripts/Caddyfile ${HOME}/.local/etc/Caddyfile && \
-    chmod +x ${HOME}/.local/bin/entrypoint.sh ${HOME}/.local/bin/start-pcbnew-vnc.sh
+    chmod +x ${HOME}/.local/bin/entrypoint.sh
 
 # Create workspace directory
 RUN mkdir -p ${HOME}/workspace
@@ -161,12 +171,12 @@ RUN mkdir -p ${HOME}/workspace
 # Clean up build artifacts (keep default-workspace for entrypoint seeding)
 RUN rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
 
-# Expose Caddy's port (OpenVSCode on 3001 and backend on 8501 are internal only)
-EXPOSE 3000
+# Expose Caddy HTTPS port (OpenVSCode on 3001 and backend on 8501 are internal only)
+EXPOSE 3443
 
 # Health check (uses Python since curl is not installed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:3000/')" || exit 1
+    CMD python3 -c "import ssl, urllib.request; ctx = ssl._create_unverified_context(); urllib.request.urlopen('https://localhost:3443/', context=ctx)" || exit 1
 
 # Entrypoint seeds workspace on first run, then starts Caddy + OpenVSCode Server
 ENTRYPOINT ["entrypoint.sh"]

@@ -10,12 +10,24 @@ if [ -d "${DEFAULT_WORKSPACE}" ] && [ -z "$(ls -A "${WORKSPACE}" 2>/dev/null)" ]
     cp -r "${DEFAULT_WORKSPACE}/." "${WORKSPACE}/"
 fi
 
+# Restrict browsing of sensitive directories (e.g. VS Code file picker)
+mkdir -p "${HOME}/.openvscode-server" "${HOME}/.local" "${HOME}/.config"
+chmod 700 "${HOME}/.openvscode-server" "${HOME}/.local" "${HOME}/.config"
+
 # Ensure uv symlink exists at the extension-managed globalStorage path.
 # The User data dir may be volume-mounted, so recreate this on every startup.
 # Runtime data dir is $HOME/.openvscode-server/data/, NOT $OPENVSCODE_SERVER_ROOT/data/
 UV_SYMLINK_DIR="${HOME}/.openvscode-server/data/User/globalStorage/atopile.atopile/uv-bin"
 mkdir -p "${UV_SYMLINK_DIR}"
 ln -sf /usr/local/bin/uv "${UV_SYMLINK_DIR}/uv"
+
+# Restore keybindings on every startup (volume mount shadows the build-time copy)
+KEYBINDINGS_SRC="${HOME}/.local/etc/keybindings.json"
+KEYBINDINGS_DST="${HOME}/.openvscode-server/data/User/keybindings.json"
+if [ -f "${KEYBINDINGS_SRC}" ]; then
+    mkdir -p "$(dirname "${KEYBINDINGS_DST}")"
+    cp "${KEYBINDINGS_SRC}" "${KEYBINDINGS_DST}"
+fi
 
 echo "[web-ide] atopile $(ato --version 2>/dev/null || echo 'not found')"
 
@@ -59,15 +71,12 @@ common["do_not_show_again"]["zone_fill_warning"] = True
 common.setdefault("api", {})
 common["api"]["enable_server"] = True
 
-# Disable "Center and warp cursor on zoom" — fights with VNC scroll handling
 common.setdefault("input", {})
 common["input"]["center_on_zoom"] = False
 
-# No antialiasing — unnecessary overhead on a virtual framebuffer
 common.setdefault("graphics", {})
 common["graphics"]["opengl_antialiasing_mode"] = 0
 
-# Small toolbar icons — save screen space in the VNC viewer
 common.setdefault("appearance", {})
 common["appearance"]["toolbar_icon_size"] = 16
 common["appearance"]["icon_theme"] = 2  # AUTO — adapts to GTK dark/light
@@ -104,7 +113,7 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# Start Caddy (reverse proxy on :3000 → OpenVSCode :3001 + backend :8501)
+# Start Caddy (reverse proxy on :3443 → OpenVSCode :3001 + backend :8501)
 caddy run --config "${HOME}/.local/etc/Caddyfile" &
 CADDY_PID=$!
 

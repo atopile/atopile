@@ -353,6 +353,10 @@ class BackendServerManager implements vscode.Disposable {
         return this._apiUrl;
     }
 
+    get internalApiUrl(): string {
+        return this._internalApiUrl;
+    }
+
     get wsUrl(): string {
         return this._wsUrl;
     }
@@ -454,6 +458,21 @@ class BackendServerManager implements vscode.Disposable {
             const port = preferredPort || envPort || await getAvailablePort();
             await this._setPort(port);
             traceInfo(`[BackendServer] Using port: ${port} (preferred=${preferredPort}, envPort=${envPort})`);
+
+            // When a new extension host connects (e.g. browser reconnect), another host may
+            // already be running the backend on this fixed port. Reuse it instead of spawning
+            // a second `ato serve` process that exits immediately with "already running".
+            if (await checkServerHealthHttp(this._internalApiUrl)) {
+                this._log('info', `server: Reusing existing backend on port ${this.port}`);
+                this._serverReady = true;
+                this._serverState = 'running';
+                this._updateStatusBar();
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstalling',
+                    message: 'Connecting to server...',
+                });
+                return true;
+            }
 
             const workspaceRoots = getWorkspaceRoots();
             traceInfo(`[BackendServer] Workspace roots: ${workspaceRoots.join(', ') || '(none)'}`);
@@ -564,9 +583,11 @@ class BackendServerManager implements vscode.Disposable {
 
             this._process = child;
 
+            let stdoutCollected = '';
             let stderrCollected = '';
             child.stdout?.on('data', (data: Buffer) => {
                 const text = data.toString();
+                stdoutCollected += text;
                 this._stdoutBuffer = this._processBufferedOutput(this._stdoutBuffer, text, 'info').newBuffer;
                 this._schedulePartialFlush('stdout');
             });
@@ -595,6 +616,12 @@ class BackendServerManager implements vscode.Disposable {
                     this._serverState = 'error';
                     this._updateStatusBar();
                 } else if (this._serverState === 'running') {
+                    const combinedOutput = `${stdoutCollected}\n${stderrCollected}`.toLowerCase();
+                    if (!signal && code === 0 && combinedOutput.includes('already running on port')) {
+                        this._log('info', `server: Backend already running on port ${this.port}, attached to existing process`);
+                        this._updateStatusBar();
+                        return;
+                    }
                     this._serverState = 'stopped';
                     this._lastError = exitMsg;
                     this._updateStatusBar();

@@ -13,7 +13,6 @@ import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/l
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
-import { openPcbnewVnc } from '../ui/pcbnew-vnc';
 import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
@@ -199,6 +198,12 @@ interface WebviewReadyMessage {
   type: 'webviewReady';
 }
 
+interface WebviewDiagnosticMessage {
+  type: 'webviewDiagnostic';
+  phase: string;
+  detail?: string;
+}
+
 interface OpenMigrateTabMessage {
   type: 'openMigrateTab';
   projectRoot: string;
@@ -234,6 +239,7 @@ type WebviewMessage =
   | FetchProxyRequest
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
+  | WebviewDiagnosticMessage
   | OpenMigrateTabMessage
   | WsProxyConnect
   | WsProxySend
@@ -405,17 +411,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-    this._refreshWebview();
-    this._postWorkspaceRoot();
-    this._postActiveFile(vscode.window.activeTextEditor);
-    this._sendAtopileSettings();
 
+    // Register message handler before setting HTML to avoid missing early
+    // bootstrap messages from the webview (e.g. wsProxyConnect).
     this._disposables.push(
       webviewView.webview.onDidReceiveMessage(
         (message: WebviewMessage) => this._handleWebviewMessage(message),
         undefined
       )
     );
+
+    this._refreshWebview();
+    this._postWorkspaceRoot();
+    this._postActiveFile(vscode.window.activeTextEditor);
+    this._sendAtopileSettings();
   }
 
   /**
@@ -548,6 +557,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'webviewReady': {
         traceMilestone('sidebar webview ready');
+        break;
+      }
+      case 'webviewDiagnostic': {
+        const detail = message.detail ? `: ${message.detail}` : '';
+        traceInfo(`[SidebarProvider][webview] ${message.phase}${detail}`);
         break;
       }
       case 'showError':
@@ -806,15 +820,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     // Rewrite the URL to use the internal backend address.
-    // The webview sends the browser-visible URL (e.g. ws://host:3000/ws/state)
-    // but the extension host needs the container-internal address.
+    // The webview sends the browser-visible URL (e.g. wss://host/ws/state),
+    // but the extension host should always connect directly to the local backend.
     let targetUrl = msg.url;
     try {
       const parsed = new URL(msg.url);
-      const internalBase = backendServer.apiUrl; // e.g., http://127.0.0.1:8501
+      const internalBase = backendServer.internalApiUrl || backendServer.apiUrl;
       if (internalBase) {
         const internal = new URL(internalBase);
-        targetUrl = `ws://${internal.hostname}:${internal.port}${parsed.pathname}${parsed.search}`;
+        const wsProtocol = internal.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = internal.port ? `:${internal.port}` : '';
+        targetUrl = `${wsProtocol}//${internal.hostname}${port}${parsed.pathname}${parsed.search}`;
       }
     } catch {
       // Use the URL as-is if parsing fails
@@ -999,11 +1015,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     if (vscode.env.uiKind === vscode.UIKind.Web) {
-      // In web IDE (OpenVSCode Server), use VNC viewer since we can't spawn pcbnew with a display
-      void openPcbnewVnc(pcbPath).catch((error) => {
-        traceError(`[SidebarProvider] Failed to open PCBnew VNC: ${error}`);
-        vscode.window.showErrorMessage(`Failed to open PCBnew: ${error instanceof Error ? error.message : error}`);
-      });
+      // Web IDE: open KiCanvas layout preview (PCBnew can't run without a display)
+      setCurrentPCB({ path: pcbPath, exists: true });
+      void openKiCanvasPreview();
     } else {
       // Desktop VS Code: spawn pcbnew directly
       void openPcb(pcbPath).catch((error) => {
@@ -1422,14 +1436,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return this._getNotBuiltHtml();
     }
 
-    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    const cacheVersion = (() => {
+      try {
+        return Math.floor(fs.statSync(jsPath).mtimeMs).toString();
+      } catch {
+        return Date.now().toString();
+      }
+    })();
+
+    const withCacheBust = (uri: vscode.Uri): string =>
+      `${uri.toString()}?v=${cacheVersion}`;
+
+    const jsUri = withCacheBust(webview.asWebviewUri(vscode.Uri.file(jsPath)));
     // Base URI for relative imports in bundled JS (e.g., ./index-xxx.js)
     const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
     const cssUri = fs.existsSync(cssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(cssPath))
+      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(cssPath)))
       : null;
     const baseCssUri = fs.existsSync(baseCssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
+      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(baseCssPath)))
       : null;
     const iconUri = fs.existsSync(iconPath)
       ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
@@ -1489,20 +1514,165 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
 
-    // Fetch proxy: route backend HTTP requests through the extension host.
-    // In OpenVSCode Server, webviews run at https://vscode-cdn.net which blocks
-    // HTTP fetch() to localhost (Mixed Content). The extension host runs server-side
-    // and can make HTTP requests without restrictions.
-    //
-    // IMPORTANT: acquireVsCodeApi() can only be called ONCE per webview. We wrap it
-    // so both our proxy and the React app share the same instance.
+    // Fetch/WS proxy: route backend traffic through the extension host.
+    // The webview often runs in a CDN iframe where direct localhost access
+    // is blocked (Mixed Content / cross-origin). This bridge keeps comms local.
     (function() {
       var originalAcquire = window.acquireVsCodeApi;
       var vsCodeApi = null;
-      window.acquireVsCodeApi = function() {
-        if (!vsCodeApi) vsCodeApi = originalAcquire();
-        return vsCodeApi;
-      };
+      if (typeof originalAcquire === 'function') {
+        window.acquireVsCodeApi = function() {
+          if (!vsCodeApi) vsCodeApi = originalAcquire();
+          return vsCodeApi;
+        };
+      }
+
+      function getVsCodeApi() {
+        try {
+          return vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+        } catch (err) {
+          console.error('[atopile webview] Failed to acquire VS Code API:', err);
+          return null;
+        }
+      }
+
+      function postWebviewDiagnostic(phase, detail) {
+        var payload = {
+          type: 'webviewDiagnostic',
+          phase: String(phase || ''),
+          detail: detail == null ? undefined : String(detail),
+        };
+        if (!window.__ATOPILE_DIAG_QUEUE__) {
+          window.__ATOPILE_DIAG_QUEUE__ = [];
+        }
+        window.__ATOPILE_DIAG_QUEUE__.push(payload);
+        var attempts = 0;
+        var flush = function() {
+          var api = getVsCodeApi();
+          if (!api) {
+            attempts += 1;
+            if (attempts < 40) {
+              setTimeout(flush, 250);
+            }
+            return;
+          }
+          while (window.__ATOPILE_DIAG_QUEUE__.length > 0) {
+            var msg = window.__ATOPILE_DIAG_QUEUE__.shift();
+            try {
+              api.postMessage(msg);
+            } catch (err) {
+              console.error('[atopile webview] Failed to post diagnostic:', err);
+              break;
+            }
+          }
+        };
+        try {
+          flush();
+        } catch (err) {
+          console.error('[atopile webview] Diagnostic flush failed:', err);
+        }
+      }
+
+      window.__ATOPILE_POST_DIAG__ = postWebviewDiagnostic;
+      postWebviewDiagnostic('inline-bootstrap-start');
+      window.addEventListener('error', function(event) {
+        var msg = (event && event.message) ? event.message : 'unknown error';
+        postWebviewDiagnostic('window-error', msg);
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event && event.reason;
+        var msg = reason && reason.message ? reason.message : String(reason);
+        postWebviewDiagnostic('unhandled-rejection', msg);
+      });
+
+      function normalizeHeaders(headers) {
+        if (!headers) return {};
+        if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+          var out = {};
+          headers.forEach(function(v, k) { out[k] = v; });
+          return out;
+        }
+        if (Array.isArray(headers)) {
+          var outArray = {};
+          for (var i = 0; i < headers.length; i++) {
+            var entry = headers[i];
+            if (Array.isArray(entry) && entry.length >= 2) {
+              outArray[String(entry[0])] = String(entry[1]);
+            }
+          }
+          return outArray;
+        }
+        return headers;
+      }
+
+      function createCompatEvent(type, init) {
+        var evt;
+        try {
+          if (type === 'message' && typeof MessageEvent === 'function') {
+            evt = new MessageEvent('message', { data: init && init.data });
+          } else if (type === 'close' && typeof CloseEvent === 'function') {
+            evt = new CloseEvent('close', {
+              code: (init && init.code) || 1000,
+              reason: (init && init.reason) || '',
+              wasClean: true,
+            });
+          } else {
+            evt = new Event(type);
+          }
+        } catch {
+          evt = document.createEvent('Event');
+          evt.initEvent(type, false, false);
+        }
+        if (init && init.data !== undefined && evt.data === undefined) evt.data = init.data;
+        if (init && init.code !== undefined && evt.code === undefined) evt.code = init.code;
+        if (init && init.reason !== undefined && evt.reason === undefined) evt.reason = init.reason;
+        return evt;
+      }
+
+      function createProxySocket(url, id) {
+        var listeners = { open: [], message: [], close: [], error: [] };
+        var target = {
+          _readyState: 0,
+          url: url,
+          onopen: null,
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+          CONNECTING: 0,
+          OPEN: 1,
+          CLOSING: 2,
+          CLOSED: 3,
+          addEventListener: function(type, cb) {
+            if (!listeners[type] || typeof cb !== 'function') return;
+            listeners[type].push(cb);
+          },
+          removeEventListener: function(type, cb) {
+            if (!listeners[type]) return;
+            listeners[type] = listeners[type].filter(function(fn) { return fn !== cb; });
+          },
+          dispatchEvent: function(evt) {
+            var type = evt && evt.type ? evt.type : '';
+            var fns = listeners[type] || [];
+            for (var i = 0; i < fns.length; i++) {
+              try { fns[i](evt); } catch (err) { console.error(err); }
+            }
+            return true;
+          },
+          send: function(data) {
+            var api = getVsCodeApi();
+            if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
+          },
+          close: function(code, reason) {
+            target._readyState = 2;
+            var api = getVsCodeApi();
+            if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
+          },
+        };
+        Object.defineProperty(target, 'readyState', {
+          get: function() { return target._readyState; },
+        });
+        return target;
+      }
 
       var backendBase = '${apiUrl}';
       var originalFetch = window.fetch;
@@ -1544,14 +1714,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
           });
 
-          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+          var api = getVsCodeApi();
           if (api) {
             api.postMessage({
               type: 'fetchProxy',
               id: id,
               url: url,
               method: (init && init.method) || 'GET',
-              headers: (init && init.headers) || {},
+              headers: normalizeHeaders(init && init.headers),
               body: (init && init.body) || null,
             });
           } else {
@@ -1562,12 +1732,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         });
       };
 
-      // WebSocket proxy: route backend WebSocket connections through the
-      // extension host. Same Mixed Content issue as fetch — the HTTPS CDN
-      // iframe cannot open ws:// connections to localhost.
-      var OriginalWebSocket = window.WebSocket;
       var wsProxyId = 0;
       var wsProxyInstances = new Map();
+      var NativeWebSocket = window.WebSocket;
+
+      function resolveFallbackWsUrl(url) {
+        try {
+          var parsed = new URL(url, window.location.href);
+          if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+            return url;
+          }
+
+          var parentOrigin = '';
+          try {
+            var params = new URLSearchParams(window.location.search);
+            parentOrigin = params.get('parentOrigin') || '';
+            if (parentOrigin) parentOrigin = decodeURIComponent(parentOrigin);
+          } catch {}
+
+          if (!parentOrigin && document.referrer) {
+            try {
+              parentOrigin = new URL(document.referrer).origin;
+            } catch {}
+          }
+
+          if (!parentOrigin) {
+            return url;
+          }
+
+          var parent = new URL(parentOrigin);
+          var wsProtocol = parent.protocol === 'https:' ? 'wss:' : 'ws:';
+          return wsProtocol + '//' + parent.host + parsed.pathname + parsed.search;
+        } catch {
+          return url;
+        }
+      }
 
       window.addEventListener('message', function(event) {
         var msg = event.data;
@@ -1575,61 +1774,61 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         var instance = msg.id != null ? wsProxyInstances.get(msg.id) : null;
         if (!instance) return;
         switch (msg.type) {
-          case 'wsProxyOpen':
-            instance._readyState = 1; // OPEN
-            if (instance.onopen) instance.onopen(new Event('open'));
-            instance.dispatchEvent(new Event('open'));
+          case 'wsProxyOpen': {
+            instance._readyState = 1;
+            var openEvt = createCompatEvent('open');
+            if (instance.onopen) instance.onopen(openEvt);
+            instance.dispatchEvent(openEvt);
             break;
-          case 'wsProxyMessage':
-            if (instance.onmessage) instance.onmessage(new MessageEvent('message', { data: msg.data }));
-            instance.dispatchEvent(new MessageEvent('message', { data: msg.data }));
+          }
+          case 'wsProxyMessage': {
+            var msgEvt = createCompatEvent('message', { data: msg.data });
+            if (instance.onmessage) instance.onmessage(msgEvt);
+            instance.dispatchEvent(msgEvt);
             break;
-          case 'wsProxyClose':
-            instance._readyState = 3; // CLOSED
-            var closeEvt = new CloseEvent('close', { code: msg.code || 1000, reason: msg.reason || '', wasClean: true });
+          }
+          case 'wsProxyClose': {
+            instance._readyState = 3;
+            var closeEvt = createCompatEvent('close', { code: msg.code || 1000, reason: msg.reason || '' });
             if (instance.onclose) instance.onclose(closeEvt);
             instance.dispatchEvent(closeEvt);
             wsProxyInstances.delete(msg.id);
             break;
-          case 'wsProxyError':
-            var errEvt = new Event('error');
+          }
+          case 'wsProxyError': {
+            var errEvt = createCompatEvent('error');
             if (instance.onerror) instance.onerror(errEvt);
             instance.dispatchEvent(errEvt);
             break;
+          }
         }
       });
 
       function ProxyWebSocket(url, protocols) {
-        var target = new EventTarget();
-        var id = ++wsProxyId;
-        target._readyState = 0; // CONNECTING
-        target.url = url;
-        target.onopen = null;
-        target.onmessage = null;
-        target.onclose = null;
-        target.onerror = null;
-        target.addEventListener = EventTarget.prototype.addEventListener.bind(target);
-        target.removeEventListener = EventTarget.prototype.removeEventListener.bind(target);
-        target.dispatchEvent = EventTarget.prototype.dispatchEvent.bind(target);
-        Object.defineProperty(target, 'readyState', { get: function() { return target._readyState; } });
-        target.send = function(data) {
-          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-          if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
-        };
-        target.close = function(code, reason) {
-          target._readyState = 2; // CLOSING
-          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-          if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
-        };
-        // Static constants
-        target.CONNECTING = 0;
-        target.OPEN = 1;
-        target.CLOSING = 2;
-        target.CLOSED = 3;
+        var api = getVsCodeApi();
+        if (!api && typeof NativeWebSocket === 'function') {
+          var fallbackUrl = resolveFallbackWsUrl(url);
+          return protocols !== undefined
+            ? new NativeWebSocket(fallbackUrl, protocols)
+            : new NativeWebSocket(fallbackUrl);
+        }
 
+        var id = ++wsProxyId;
+        var target = createProxySocket(url, id);
         wsProxyInstances.set(id, target);
-        var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-        if (api) api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
+        if (api) {
+          try {
+            api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
+          } catch {
+            wsProxyInstances.delete(id);
+            if (typeof NativeWebSocket === 'function') {
+              var fallbackUrl = resolveFallbackWsUrl(url);
+              return protocols !== undefined
+                ? new NativeWebSocket(fallbackUrl, protocols)
+                : new NativeWebSocket(fallbackUrl);
+            }
+          }
+        }
         return target;
       }
       ProxyWebSocket.CONNECTING = 0;
@@ -1638,11 +1837,67 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ProxyWebSocket.CLOSED = 3;
       window.WebSocket = ProxyWebSocket;
     })();
+
+    (function() {
+      var loading = document.getElementById('atopile-loading');
+      var root = document.getElementById('root');
+      function showFailure(message) {
+        if (!loading) return;
+        loading.textContent = message;
+        if (window.__ATOPILE_POST_DIAG__) {
+          window.__ATOPILE_POST_DIAG__('loading-failure', message);
+        }
+      }
+      function maybeHideLoading() {
+        if (!loading || !root) return;
+        if (root.childNodes.length > 0) {
+          loading.style.display = 'none';
+        }
+      }
+      window.addEventListener('error', function(event) {
+        if (event && event.message) {
+          showFailure('atopile UI failed to load: ' + event.message);
+        } else {
+          showFailure('atopile UI failed to load.');
+        }
+      });
+      if (root && typeof MutationObserver !== 'undefined') {
+        var observer = new MutationObserver(maybeHideLoading);
+        observer.observe(root, { childList: true, subtree: true });
+      }
+      setTimeout(function() {
+        if (root && root.childNodes.length === 0) {
+          showFailure('atopile UI failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
+        }
+      }, 7000);
+    })();
   </script>
 </head>
 <body>
+  <div id="atopile-loading" style="padding: 8px; font-size: 12px; opacity: 0.8;">Loading atopile...</div>
   <div id="root"></div>
-  <script nonce="${nonce}" type="module" src="${jsUri}"></script>
+  <script nonce="${nonce}">
+    (function() {
+      var postDiag = window.__ATOPILE_POST_DIAG__;
+      if (typeof postDiag === 'function') postDiag('module-script-insert');
+      var script = document.createElement('script');
+      script.type = 'module';
+      script.src = '${jsUri}';
+      script.onload = function() {
+        if (typeof postDiag === 'function') postDiag('module-script-loaded');
+      };
+      script.onerror = function() {
+        if (typeof postDiag === 'function') postDiag('module-script-error');
+      };
+      document.body.appendChild(script);
+      setTimeout(function() {
+        var root = document.getElementById('root');
+        if (root && root.childNodes.length === 0 && typeof postDiag === 'function') {
+          postDiag('module-timeout-no-root-content');
+        }
+      }, 8000);
+    })();
+  </script>
 </body>
 </html>`;
   }

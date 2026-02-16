@@ -76,7 +76,6 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-    this._refreshWebview();
 
     // Handle WebSocket proxy messages from the webview
     webviewView.webview.onDidReceiveMessage((message) => {
@@ -93,6 +92,10 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
           break;
       }
     }, null, this._disposables);
+
+    // Set HTML only after message handlers are attached so early
+    // bootstrap wsProxy messages are not dropped.
+    this._refreshWebview();
   }
 
   private _handleWsProxyConnect(msg: { id: number; url: string }): void {
@@ -106,10 +109,12 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     let targetUrl = msg.url;
     try {
       const parsed = new URL(msg.url);
-      const internalBase = backendServer.apiUrl;
+      const internalBase = backendServer.internalApiUrl || backendServer.apiUrl;
       if (internalBase) {
         const internal = new URL(internalBase);
-        targetUrl = `ws://${internal.hostname}:${internal.port}${parsed.pathname}${parsed.search}`;
+        const wsProtocol = internal.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = internal.port ? `:${internal.port}` : '';
+        targetUrl = `${wsProtocol}//${internal.hostname}${port}${parsed.pathname}${parsed.search}`;
       }
     } catch {
       // Use URL as-is
@@ -174,12 +179,23 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       return this._getNotBuiltHtml();
     }
 
-    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    const cacheVersion = (() => {
+      try {
+        return Math.floor(fs.statSync(jsPath).mtimeMs).toString();
+      } catch {
+        return Date.now().toString();
+      }
+    })();
+
+    const withCacheBust = (uri: vscode.Uri): string =>
+      `${uri.toString()}?v=${cacheVersion}`;
+
+    const jsUri = withCacheBust(webview.asWebviewUri(vscode.Uri.file(jsPath)));
     const cssUri = fs.existsSync(cssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(cssPath))
+      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(cssPath)))
       : null;
     const baseCssUri = fs.existsSync(baseCssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
+      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(baseCssPath)))
       : null;
 
     // Get backend URLs from backendServer (uses discovered port or config)
@@ -212,9 +228,119 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     // Webviews in OpenVSCode Server run in HTTPS iframes which block ws:// (Mixed Content).
     // This shim routes WebSocket connections through the extension host via postMessage.
     (function() {
-      var vsCodeApi = (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
+      function getVsCodeApi() {
+        try {
+          return (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
+        } catch (err) {
+          console.error('[atopile log webview] Failed to acquire VS Code API:', err);
+          return null;
+        }
+      }
+
+      function createCompatEvent(type, init) {
+        var evt;
+        try {
+          if (type === 'message' && typeof MessageEvent === 'function') {
+            evt = new MessageEvent('message', { data: init && init.data });
+          } else if (type === 'close' && typeof CloseEvent === 'function') {
+            evt = new CloseEvent('close', {
+              code: (init && init.code) || 1000,
+              reason: (init && init.reason) || '',
+              wasClean: true,
+            });
+          } else {
+            evt = new Event(type);
+          }
+        } catch {
+          evt = document.createEvent('Event');
+          evt.initEvent(type, false, false);
+        }
+        if (init && init.data !== undefined && evt.data === undefined) evt.data = init.data;
+        if (init && init.code !== undefined && evt.code === undefined) evt.code = init.code;
+        if (init && init.reason !== undefined && evt.reason === undefined) evt.reason = init.reason;
+        return evt;
+      }
+
+      function createProxySocket(url, id) {
+        var listeners = { open: [], message: [], close: [], error: [] };
+        var target = {
+          _readyState: 0,
+          url: url,
+          onopen: null,
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+          CONNECTING: 0,
+          OPEN: 1,
+          CLOSING: 2,
+          CLOSED: 3,
+          addEventListener: function(type, cb) {
+            if (!listeners[type] || typeof cb !== 'function') return;
+            listeners[type].push(cb);
+          },
+          removeEventListener: function(type, cb) {
+            if (!listeners[type]) return;
+            listeners[type] = listeners[type].filter(function(fn) { return fn !== cb; });
+          },
+          dispatchEvent: function(evt) {
+            var type = evt && evt.type ? evt.type : '';
+            var fns = listeners[type] || [];
+            for (var i = 0; i < fns.length; i++) {
+              try { fns[i](evt); } catch (err) { console.error(err); }
+            }
+            return true;
+          },
+          send: function(data) {
+            var api = getVsCodeApi();
+            if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
+          },
+          close: function(code, reason) {
+            target._readyState = 2;
+            var api = getVsCodeApi();
+            if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
+          },
+        };
+        Object.defineProperty(target, 'readyState', {
+          get: function() { return target._readyState; },
+        });
+        return target;
+      }
+
       var wsProxyId = 0;
       var wsProxyInstances = new Map();
+      var NativeWebSocket = window.WebSocket;
+
+      function resolveFallbackWsUrl(url) {
+        try {
+          var parsed = new URL(url, window.location.href);
+          if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+            return url;
+          }
+
+          var parentOrigin = '';
+          try {
+            var params = new URLSearchParams(window.location.search);
+            parentOrigin = params.get('parentOrigin') || '';
+            if (parentOrigin) parentOrigin = decodeURIComponent(parentOrigin);
+          } catch {}
+
+          if (!parentOrigin && document.referrer) {
+            try {
+              parentOrigin = new URL(document.referrer).origin;
+            } catch {}
+          }
+
+          if (!parentOrigin) {
+            return url;
+          }
+
+          var parent = new URL(parentOrigin);
+          var wsProtocol = parent.protocol === 'https:' ? 'wss:' : 'ws:';
+          return wsProtocol + '//' + parent.host + parsed.pathname + parsed.search;
+        } catch {
+          return url;
+        }
+      }
 
       window.addEventListener('message', function(event) {
         var msg = event.data;
@@ -222,59 +348,61 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
         var instance = msg.id != null ? wsProxyInstances.get(msg.id) : null;
         if (!instance) return;
         switch (msg.type) {
-          case 'wsProxyOpen':
+          case 'wsProxyOpen': {
             instance._readyState = 1;
-            if (instance.onopen) instance.onopen(new Event('open'));
-            instance.dispatchEvent(new Event('open'));
+            var openEvt = createCompatEvent('open');
+            if (instance.onopen) instance.onopen(openEvt);
+            instance.dispatchEvent(openEvt);
             break;
-          case 'wsProxyMessage':
-            if (instance.onmessage) instance.onmessage(new MessageEvent('message', { data: msg.data }));
-            instance.dispatchEvent(new MessageEvent('message', { data: msg.data }));
+          }
+          case 'wsProxyMessage': {
+            var msgEvt = createCompatEvent('message', { data: msg.data });
+            if (instance.onmessage) instance.onmessage(msgEvt);
+            instance.dispatchEvent(msgEvt);
             break;
-          case 'wsProxyClose':
+          }
+          case 'wsProxyClose': {
             instance._readyState = 3;
-            var closeEvt = new CloseEvent('close', { code: msg.code || 1000, reason: msg.reason || '', wasClean: true });
+            var closeEvt = createCompatEvent('close', { code: msg.code || 1000, reason: msg.reason || '' });
             if (instance.onclose) instance.onclose(closeEvt);
             instance.dispatchEvent(closeEvt);
             wsProxyInstances.delete(msg.id);
             break;
-          case 'wsProxyError':
-            var errEvt = new Event('error');
+          }
+          case 'wsProxyError': {
+            var errEvt = createCompatEvent('error');
             if (instance.onerror) instance.onerror(errEvt);
             instance.dispatchEvent(errEvt);
             break;
+          }
         }
       });
 
       function ProxyWebSocket(url, protocols) {
-        var target = new EventTarget();
+        var api = getVsCodeApi();
+        if (!api && typeof NativeWebSocket === 'function') {
+          var fallbackUrl = resolveFallbackWsUrl(url);
+          return protocols !== undefined
+            ? new NativeWebSocket(fallbackUrl, protocols)
+            : new NativeWebSocket(fallbackUrl);
+        }
+
         var id = ++wsProxyId;
-        target._readyState = 0;
-        target.url = url;
-        target.onopen = null;
-        target.onmessage = null;
-        target.onclose = null;
-        target.onerror = null;
-        target.addEventListener = EventTarget.prototype.addEventListener.bind(target);
-        target.removeEventListener = EventTarget.prototype.removeEventListener.bind(target);
-        target.dispatchEvent = EventTarget.prototype.dispatchEvent.bind(target);
-        Object.defineProperty(target, 'readyState', { get: function() { return target._readyState; } });
-        target.send = function(data) {
-          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-          if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
-        };
-        target.close = function(code, reason) {
-          target._readyState = 2;
-          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-          if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
-        };
-        target.CONNECTING = 0;
-        target.OPEN = 1;
-        target.CLOSING = 2;
-        target.CLOSED = 3;
+        var target = createProxySocket(url, id);
         wsProxyInstances.set(id, target);
-        var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-        if (api) api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
+        if (api) {
+          try {
+            api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
+          } catch {
+            wsProxyInstances.delete(id);
+            if (typeof NativeWebSocket === 'function') {
+              var fallbackUrl = resolveFallbackWsUrl(url);
+              return protocols !== undefined
+                ? new NativeWebSocket(fallbackUrl, protocols)
+                : new NativeWebSocket(fallbackUrl);
+            }
+          }
+        }
         return target;
       }
       ProxyWebSocket.CONNECTING = 0;
@@ -283,9 +411,41 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       ProxyWebSocket.CLOSED = 3;
       window.WebSocket = ProxyWebSocket;
     })();
+
+    (function() {
+      var loading = document.getElementById('atopile-log-loading');
+      var root = document.getElementById('root');
+      function showFailure(message) {
+        if (!loading) return;
+        loading.textContent = message;
+      }
+      function maybeHideLoading() {
+        if (!loading || !root) return;
+        if (root.childNodes.length > 0) {
+          loading.style.display = 'none';
+        }
+      }
+      window.addEventListener('error', function(event) {
+        if (event && event.message) {
+          showFailure('Log viewer failed to load: ' + event.message);
+        } else {
+          showFailure('Log viewer failed to load.');
+        }
+      });
+      if (root && typeof MutationObserver !== 'undefined') {
+        var observer = new MutationObserver(maybeHideLoading);
+        observer.observe(root, { childList: true, subtree: true });
+      }
+      setTimeout(function() {
+        if (root && root.childNodes.length === 0) {
+          showFailure('Log viewer failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
+        }
+      }, 7000);
+    })();
   </script>
 </head>
 <body>
+  <div id="atopile-log-loading" style="padding: 8px; font-size: 12px; opacity: 0.8;">Loading log viewer...</div>
   <div id="root"></div>
   <script nonce="${nonce}" type="module" src="${jsUri}"></script>
 </body>

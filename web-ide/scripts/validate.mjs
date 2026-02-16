@@ -9,7 +9,7 @@
  * Usage:
  *   node web-ide/scripts/validate.mjs [url] [--timeout=60000] [--headed]
  *
- * Default: http://127.0.0.1:3000, headless, 60s global timeout.
+ * Default: https://127.0.0.1:3443, headless, 60s global timeout.
  *
  * Requires the web IDE container to be running already.
  *
@@ -50,9 +50,12 @@ for (const arg of args) {
   }
 }
 
-const TARGET_URL = positional[0] || 'http://127.0.0.1:3000';
+const TARGET_URL = positional[0] || 'https://127.0.0.1:3443';
 const GLOBAL_TIMEOUT = parseInt(flags.timeout ?? '60000', 10);
 const HEADLESS = !flags.headed;
+const IGNORE_HTTPS_ERRORS =
+  flags['ignore-https-errors'] !== false &&
+  flags['ignore-https-errors'] !== 'false';
 
 // ---------------------------------------------------------------------------
 // Artifacts directory
@@ -137,16 +140,19 @@ async function main() {
   console.log(`\nWeb IDE Validation`);
   console.log(`  URL:     ${TARGET_URL}`);
   console.log(`  Timeout: ${GLOBAL_TIMEOUT}ms`);
-  console.log(`  Mode:    ${HEADLESS ? 'headless' : 'headed'}\n`);
+  console.log(`  Mode:    ${HEADLESS ? 'headless' : 'headed'}`);
+  console.log(`  HTTPS:   ${IGNORE_HTTPS_ERRORS ? 'ignore cert errors' : 'strict'}\n`);
 
   collectContainerLogs();
 
   const browser = await puppeteer.launch({
     headless: HEADLESS,
+    ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      ...(IGNORE_HTTPS_ERRORS ? ['--ignore-certificate-errors'] : []),
     ],
   });
 

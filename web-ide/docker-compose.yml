@@ -4,7 +4,7 @@
 #   cd web-ide
 #   docker compose up --build
 #
-# Access at: http://localhost:3000
+# Access at: https://localhost:3443
 
 services:
   atopile-web-ide:
@@ -18,14 +18,26 @@ services:
     image: atopile-web-ide:dev
     container_name: atopile-web-ide
     ports:
-      - "3000:3000"
-      # Port 3000 is Caddy (reverse proxy). It routes /ws/* to the backend
-      # (8501) and everything else to OpenVSCode Server (3001).
-      # Ports 3001, 6080 (VNC), and 8501 (backend) are internal only.
-    # Note: read_only: true is not used because the entrypoint needs to write
-    # KiCad config (~/.config/kicad) and the uv tools live at ~/.local/share/uv.
-    # For production, use Docker --pids-limit, --memory, --cpus, and network
-    # policies for additional isolation.
+      - "${WEB_IDE_BIND_ADDR:-0.0.0.0}:${WEB_IDE_HTTPS_PORT:-3443}:3443"
+      # Port 3443 is the HTTPS front door. Caddy terminates TLS and routes
+      # /ws/* to backend (8501), everything else to OpenVSCode Server (3001).
+      # WEB_IDE_BIND_ADDR controls which host interface publishes these ports.
+      # Ports 3001 and 8501 (backend) are internal only.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+          pids: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Caddy binary carries file capabilities; keep least privilege while allowing exec.
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
     volumes:
       # Persist workspace between restarts (seeded by entrypoint on first run)
       - workspace-data:/home/openvscode-server/workspace
@@ -33,6 +45,7 @@ services:
       - vscode-user-data:/home/openvscode-server/.openvscode-server/data/User
     environment:
       - OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
+      - WEB_IDE_PUBLIC_HOST=${WEB_IDE_PUBLIC_HOST:-code-vm}
     restart: unless-stopped
 
 volumes:
