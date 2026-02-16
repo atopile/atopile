@@ -7,6 +7,11 @@ from collections.abc import Collection, Sequence
 from pathlib import Path
 from urllib.parse import quote
 
+from backend.components.shared.package_allowlist import (
+    has_component_type_allowlist,
+    is_known_package,
+)
+
 from .interfaces import (
     BatchQueryValidationError,
     ComponentCandidate,
@@ -262,6 +267,13 @@ class SQLiteFastLookupStore(FastLookupStore):
             normalized_package = normalize_package(component_type, query.package)
             if normalized_package is None:
                 raise QueryValidationError("package cannot be empty")
+            if has_component_type_allowlist(
+                component_type
+            ) and not is_known_package(component_type, normalized_package):
+                raise QueryValidationError(
+                    f"Unsupported package '{query.package}' for component type "
+                    f"'{component_type}'. See /v1/components/packages/allowlist."
+                )
             where.append(f"{_quote_ident('package')} = ?")
             params.append(normalized_package)
 
@@ -635,13 +647,6 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
             },
         )
     )
-    crystal_ppm_si_candidates = store.query_crystals(
-        ParameterQuery(
-            ranges={
-                "frequency_tolerance": NumericRange(minimum=2e-5, maximum=2e-5),
-            },
-        )
-    )
     ferrite_candidates = store.query_ferrite_beads(
         ParameterQuery(
             package="L0603",
@@ -663,7 +668,6 @@ def test_sqlite_fast_lookup_store_supports_new_component_tables(tmp_path) -> Non
     assert [candidate.lcsc_id for candidate in inductor_candidates] == [1]
     assert [candidate.lcsc_id for candidate in mosfet_candidates] == [2]
     assert [candidate.lcsc_id for candidate in crystal_candidates] == [3]
-    assert [candidate.lcsc_id for candidate in crystal_ppm_si_candidates] == [3]
     assert [candidate.lcsc_id for candidate in ferrite_candidates] == [4]
     assert [candidate.lcsc_id for candidate in ldo_candidates] == [5]
 
@@ -704,6 +708,35 @@ def test_sqlite_lookup_store_query_component_supports_custom_pick_table(
         ),
     )
     assert [candidate.lcsc_id for candidate in candidates] == [9]
+
+
+def test_sqlite_lookup_store_query_component_rejects_unknown_allowlist_package(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "fast.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            create table resistor_pick (
+                lcsc_id integer primary key,
+                package text,
+                stock integer,
+                is_basic integer,
+                is_preferred integer,
+                resistance_ohm real
+            );
+            """
+        )
+        conn.execute("insert into resistor_pick values (1, '0603', 10, 1, 0, 1000.0)")
+        conn.commit()
+
+    store = SQLiteFastLookupStore(db_path)
+    try:
+        store.query_component("resistor", ParameterQuery(package="SOT-23"))
+    except QueryValidationError as exc:
+        assert "Unsupported package" in str(exc)
+    else:
+        assert False, "Expected QueryValidationError for unsupported package"
 
 
 def test_sqlite_lookup_store_query_components_batch_success(tmp_path) -> None:

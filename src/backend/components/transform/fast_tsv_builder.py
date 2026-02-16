@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from .models import ComponentSink, NormalizedComponent
+from backend.components.shared.package_normalization import (
+    normalize_package as _shared_normalize_package,
+)
 
-_PACKAGE_NUMERIC_RE = re.compile(r"^\d{4,5}$")
-_PASSIVE_PREFIX = {
-    "resistor": "R",
-    "capacitor": "C",
-}
+from .models import ComponentSink, NormalizedComponent
 
 
 class FastLookupTsvBuilder(ComponentSink):
@@ -132,16 +129,10 @@ def _format_tsv_field(value: object) -> str:
 
 
 def _normalize_package(component_type: str, raw_package: str) -> str | None:
-    package = raw_package.strip().upper()
+    package = raw_package.strip()
     if not package or package == "-":
         return None
-
-    prefix = _PASSIVE_PREFIX.get(component_type)
-    if prefix and package.startswith(prefix):
-        suffix = package[len(prefix) :]
-        if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
-            return suffix
-    return package
+    return _shared_normalize_package(component_type, raw_package)
 
 
 def _is_pickable_resistor(component: NormalizedComponent) -> bool:

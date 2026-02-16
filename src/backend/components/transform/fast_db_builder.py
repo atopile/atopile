@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-import re
 import sqlite3
 from pathlib import Path
 
-from .models import ComponentSink, NormalizedComponent
+from backend.components.shared.package_normalization import (
+    normalize_package as _shared_normalize_package,
+)
 
-_PACKAGE_NUMERIC_RE = re.compile(r"^\d{4,5}$")
-_PACKAGE_NON_ALNUM_RE = re.compile(r"[^A-Z0-9]+")
-_PASSIVE_PREFIX = {
-    "resistor": "R",
-    "capacitor": "C",
-    "capacitor_polarized": "C",
-    "inductor": "L",
-    "ferrite_bead": "L",
-}
+from .models import ComponentSink, NormalizedComponent
 
 
 class FastLookupDbBuilder(ComponentSink):
@@ -610,25 +603,9 @@ def _is_valid_package(raw_package: str) -> bool:
 
 
 def _normalize_package(component_type: str, raw_package: str) -> str:
-    package = raw_package.strip().upper()
-    if component_type == "crystal":
-        canonical = _PACKAGE_NON_ALNUM_RE.sub("", package)
-        return canonical or package
-
-    if component_type == "ferrite_bead":
-        for prefix in ("L", "FB"):
-            if package.startswith(prefix):
-                suffix = package[len(prefix) :]
-                if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
-                    return suffix
-        return package
-
-    prefix = _PASSIVE_PREFIX.get(component_type)
-    if prefix and package.startswith(prefix):
-        suffix = package[len(prefix) :]
-        if _PACKAGE_NUMERIC_RE.fullmatch(suffix):
-            return suffix
-    return package
+    normalized = _shared_normalize_package(component_type, raw_package)
+    assert normalized is not None
+    return normalized
 
 
 def _is_pickable_base(component: NormalizedComponent) -> bool:

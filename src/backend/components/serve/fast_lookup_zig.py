@@ -10,6 +10,11 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 
+from backend.components.shared.package_allowlist import (
+    has_component_type_allowlist,
+    is_known_package,
+)
+
 from .fast_lookup_sqlite import _quote_ident
 from .interfaces import (
     BatchQueryValidationError,
@@ -177,6 +182,13 @@ class ZigFastLookupStore(FastLookupStore):
             package = normalize_package(component_type, query.package)
             if package is None:
                 raise QueryValidationError("package cannot be empty")
+            if has_component_type_allowlist(
+                component_type
+            ) and not is_known_package(component_type, package):
+                raise QueryValidationError(
+                    f"Unsupported package '{query.package}' for component type "
+                    f"'{component_type}'. See /v1/components/packages/allowlist."
+                )
             payload["package"] = package
 
         exact_filters: list[dict[str, object]] = []

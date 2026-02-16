@@ -12,6 +12,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 
+from backend.components.shared.package_allowlist import get_allowlist_payload
+
 from .interfaces import (
     AssetLoadError,
     BatchQueryValidationError,
@@ -29,6 +31,7 @@ from .schemas import (
     ComponentsFullRequest,
     FullResponseMetadata,
     ManufacturerPartLookupResponse,
+    PackageAllowlistResponse,
     ParametersBatchQueryRequest,
     ParametersBatchQueryResponse,
     ParametersQueryRequest,
@@ -57,6 +60,12 @@ def get_services(request: Request) -> ServeServices:
 
 def _duration_ms(started_at: float) -> float:
     return round((time.perf_counter() - started_at) * 1000.0, 3)
+
+
+@router.get("/packages/allowlist", response_model=PackageAllowlistResponse)
+async def get_packages_allowlist() -> PackageAllowlistResponse:
+    payload = get_allowlist_payload()
+    return PackageAllowlistResponse(**payload)
 
 
 @router.post("/parameters/query", response_model=ParametersQueryResponse)

@@ -79,6 +79,16 @@ class ParametersBatchQueryResponse(BaseModel):
     total_queries: int
 
 
+class PackageAllowlistResponse(BaseModel):
+    available: bool
+    generated_at_utc: str | None = None
+    source_db: str | None = None
+    source_scope: str | None = None
+    policy: dict[str, float] = Field(default_factory=dict)
+    summary: dict[str, int] = Field(default_factory=dict)
+    allowlists: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class ManufacturerPartLookupResponse(BaseModel):
     manufacturer_name: str
     part_number: str
