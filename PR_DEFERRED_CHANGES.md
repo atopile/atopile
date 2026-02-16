@@ -15,6 +15,20 @@ Why deferred:
 Suggested follow-up PR:
 - Re-introduce pinout as a standalone feature PR with exporter, webview, and UX wiring together.
 
+## 0.1) Schematic symbol-dev tooling slice (deferred)
+Removed/disabled:
+- `SymbolDevTunerPanel` overlay and tuning revision plumbing
+- unused symbol playground/support files:
+  - `stores/symbolStore.ts`
+  - `three/SymbolScene.tsx`
+  - `three/PinElement.tsx`
+  - `parsers/kicadSymParser.ts`
+  - `parsers/kicadSymbolTemplates.ts`
+
+Why deferred:
+- High file-count and review bulk with limited impact on core schematic browsing/editing flows.
+- Better shipped as a focused “schematic symbol tooling” follow-up.
+
 ## 1) UI-server test suite expansion (deferred)
 Removed: new tests under `src/ui-server/src/__tests__/`.
 
