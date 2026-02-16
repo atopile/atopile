@@ -1,6 +1,0 @@
-"""Pin mux experiments"""
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
-
-import ElectricPower
-from "exp1_basic_param.ato" import App

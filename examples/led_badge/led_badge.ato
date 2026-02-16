@@ -11,9 +11,9 @@ import I2S
 import can_bridge_by_name
 
 from "atopile/usb-connectors/usb-connectors.ato" import USBTypeCConnector_driver
-# from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
-# from "atopile/ti-bq25185/ti-bq25185.ato" import TI_BQ25185
-# from "atopile/batteries/batteries.ato" import EMB_BATTERY_LP402535
+from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
+from "atopile/ti-bq25185/ti-bq25185.ato" import TI_BQ25185
+from "atopile/batteries/batteries.ato" import EMB_BATTERY_LP402535
 from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
 from "atopile/opsco-sk6805-ec20/opsco-sk6805-ec20.ato" import OPSCO_SK6805_EC20
 from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434
@@ -33,9 +33,9 @@ module LED_BADGE:
     microcontroller = new ESP32_C3_MINI_1
     microphone = new TDK_InvenSense_ICS_43434
     usb_c = new USBTypeCConnector_driver
-    # buck_boost = new TPS63020_driver
-    # charger = new TI_BQ25185
-    # battery = new EMB_BATTERY_LP402535
+    buck_boost = new TPS63020_driver
+    charger = new TI_BQ25185
+    battery = new EMB_BATTERY_LP402535
     led_grid = new OPSCO_SK6805_EC20_grid10x10
     atopile_logo = new atopile_logo_25x6mm
 
@@ -62,14 +62,14 @@ module LED_BADGE:
     charger.temp_sense.line ~> ts_mr_pull_down ~> charger.power_system.lv
 
     # Configure Power
-    # usb_c.usb.usb_if.buspower.voltage = 5V +/- 5%
-    # charger.input_current_limit = 500mA
-    # buck_boost.v_out = 3.3V +/- 5%
-    # battery.model.capacity = 300mAh
-    # assert battery.model.voltage is 3V to 4.2V
-    # # assert charger.battery_voltage_limit_high is 4.2V
-    # # assert charger.battery_voltage_limit_low is 3.0V
-    # assert charger.power_battery.voltage within 3.0V to 4.2V
+    usb_c.usb.usb_if.buspower.voltage = 5V +/- 5%
+    charger.input_current_limit = 500mA
+    buck_boost.v_out = 3.3V +/- 5%
+    battery.model.capacity = 300mAh
+    assert battery.model.voltage is 3V to 4.2V
+    # assert charger.battery_voltage_limit_high is 4.2V
+    # assert charger.battery_voltage_limit_low is 3.0V
+    assert charger.power_battery.voltage within 3.0V to 4.2V
 
     # Connect 3.3 V rail to loads
     power_3v3 ~ microcontroller.power

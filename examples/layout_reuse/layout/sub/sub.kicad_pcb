@@ -39,50 +39,6 @@
 		(55 "User.9" user)
 	)
 	(setup
-		(stackup
-			(layer "F.SilkS"
-				(type "Top Silk Screen")
-			)
-			(layer "F.Paste"
-				(type "Top Solder Paste")
-			)
-			(layer "F.Mask"
-				(type "Top Solder Mask")
-				(color "Black")
-				(thickness 0.01)
-				(material "Solder mask")
-				(epsilon_r 3.3)
-			)
-			(layer "F.Cu"
-				(type "copper")
-				(thickness 0.035)
-			)
-			(layer "dielectric 1"
-				(type "core")
-				(thickness 1.51)
-				(material "FR4")
-				(epsilon_r 4.5)
-				(loss_tangent 0.02)
-			)
-			(layer "B.Cu"
-				(type "copper")
-				(thickness 0.035)
-			)
-			(layer "B.Mask"
-				(type "Bottom Solder Mask")
-				(color "Black")
-				(thickness 0.01)
-				(material "Solder mask")
-				(epsilon_r 3.3)
-			)
-			(layer "B.Paste"
-				(type "Bottom Solder Paste")
-			)
-			(layer "B.SilkS"
-				(type "Bottom Silk Screen")
-			)
-			(copper_finish "ENIG")
-		)
 		(pad_to_mask_clearance 0)
 		(allow_soldermask_bridges_in_footprints no)
 		(tenting front back)
@@ -145,7 +101,7 @@
 				)
 			)
 		)
-		(property "Value" "1000Ω"
+		(property "Value" "1kΩ"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "f26799ab-8d58-47a6-8669-f6c84d23b86e")
@@ -162,19 +118,19 @@
 			(hide yes)
 			(uuid "acf45864-ff8b-47d0-817f-978a4642524b")
 		)
-		(property "resistance" "1000±1.0%Ω"
+		(property "resistance" "1±20.0%kΩ"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "6bca5c9c-fcd0-471e-935c-8ab24642524b")
 		)
-		(property "max_power" "0.062W"
+		(property "max_power" "any ≥0W"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "bf98d412-7d00-40ee-8565-9f014642524b")
 		)
-		(property "max_voltage" "50V"
+		(property "max_voltage" "any ≥0V"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -371,7 +327,7 @@
 				)
 			)
 		)
-		(property "Value" "1000Ω"
+		(property "Value" "1kΩ"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "f26799ab-8d58-47a6-8669-f6c84d23b86e")
@@ -388,19 +344,19 @@
 			(hide yes)
 			(uuid "1ff88fc7-e783-40d1-9082-1b814642524b")
 		)
-		(property "resistance" "1000±1.0%Ω"
+		(property "resistance" "1±20.0%kΩ"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "07e1212a-a7e2-4d41-b4ed-ef7c4642524b")
 		)
-		(property "max_power" "0.062W"
+		(property "max_power" "any ≥0W"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "047433c3-d183-4b95-8ea0-35c24642524b")
 		)
-		(property "max_voltage" "50V"
+		(property "max_voltage" "any ≥0V"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -597,7 +553,7 @@
 				)
 			)
 		)
-		(property "Value" "1000Ω"
+		(property "Value" "1kΩ"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "f26799ab-8d58-47a6-8669-f6c84d23b86e")
@@ -614,19 +570,19 @@
 			(hide yes)
 			(uuid "1020f97f-2556-4432-a78f-6b9e4642524b")
 		)
-		(property "resistance" "1000±1.0%Ω"
+		(property "resistance" "1±20.0%kΩ"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "6fb348d0-9f71-404c-8ae1-e8ae4642524b")
 		)
-		(property "max_power" "0.062W"
+		(property "max_power" "any ≥0W"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "9795c1f4-0a35-49b1-a770-83d24642524b")
 		)
-		(property "max_voltage" "50V"
+		(property "max_voltage" "any ≥0V"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)

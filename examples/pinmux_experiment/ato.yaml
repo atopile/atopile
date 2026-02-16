@@ -1,7 +1,0 @@
-requires-atopile: ^0.12.4
-paths:
-  src: ./
-  layout: ./layouts
-builds:
-  default:
-    entry: exp9_linked_param.ato:App_Conflict
