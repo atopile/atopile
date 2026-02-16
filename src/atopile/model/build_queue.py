@@ -473,22 +473,13 @@ class BuildQueue:
             return list(self._builds.values())
 
     def is_duplicate(
-        self,
-        project_root: str,
-        target: str,
-        entry: str | None,
-        include_targets: list[str] | None = None,
-        exclude_targets: list[str] | None = None,
-        frozen: bool | None = None,
-        keep_picked_parts: bool | None = None,
+        self, project_root: str, target: str, entry: str | None
     ) -> str | None:
         """
         Check if a build with the same config is already running or queued.
 
         Returns the existing build_id if duplicate, None otherwise.
         """
-        include_targets = include_targets or []
-        exclude_targets = exclude_targets or []
         with self._builds_lock:
             for build in self._builds.values():
                 if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
@@ -498,17 +489,6 @@ class BuildQueue:
                 if build.target != target:
                     continue
                 if build.entry != entry:
-                    continue
-                if build.include_targets != include_targets:
-                    continue
-                if build.exclude_targets != exclude_targets:
-                    continue
-                if frozen is not None and build.frozen != frozen:
-                    continue
-                if (
-                    keep_picked_parts is not None
-                    and build.keep_picked_parts != keep_picked_parts
-                ):
                     continue
                 return build.build_id
         return None

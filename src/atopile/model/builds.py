@@ -151,13 +151,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
 
     for target in targets:
         existing_build_id = _build_queue.is_duplicate(
-            request.project_root,
-            target,
-            request.entry,
-            include_targets=request.include_targets,
-            exclude_targets=request.exclude_targets,
-            frozen=request.frozen,
-            keep_picked_parts=request.keep_picked_parts,
+            request.project_root, target, request.entry
         )
         if existing_build_id:
             build_id = existing_build_id
@@ -172,9 +166,6 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
                     entry=request.entry,
                     standalone=request.standalone,
                     frozen=request.frozen,
-                    include_targets=request.include_targets,
-                    exclude_targets=request.exclude_targets,
-                    keep_picked_parts=request.keep_picked_parts,
                     status=BuildStatus.QUEUED,
                     started_at=time.time(),
                 )

@@ -106,11 +106,6 @@ export abstract class FileResourceWatcher<T extends FileResource> {
 
     public getCurrent(): T | undefined {
         if (this.current) {
-            // Keep `exists` in sync even if no create/delete edge was observed.
-            const existsNow = fs.existsSync(this.current.path);
-            if (this.current.exists !== existsNow) {
-                this.current = { ...this.current, exists: existsNow };
-            }
             return this.current;
         }
         const build = getBuildTarget();
@@ -158,10 +153,10 @@ export abstract class FileResourceWatcher<T extends FileResource> {
         traceInfo(`Setting up watcher for ${resource.path}`);
         this.watcher = new FileWatcher(resource.path, (type) => {
             traceInfo(`${this.resourceName} watcher triggered by ${type} for ${resource.path}`);
-            // Always refresh from the current build to avoid stale path/exists data.
-            this.setCurrent(this.getResourceForBuild(getBuildTarget()));
             if (type === FileEventType.Change) {
-                this.forceNotify();
+                this.notifyChange(resource);
+            } else {
+                this.setCurrent(this.getResourceForBuild(getBuildTarget()));
             }
         });
     }
