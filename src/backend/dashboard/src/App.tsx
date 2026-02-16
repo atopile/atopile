@@ -170,6 +170,23 @@ export default function App(): JSX.Element {
   const errorSeries = timeline.map((point) => point.error_count);
   const stalenessMs = data ? Date.now() - new Date(data.generated_at_utc).getTime() : 0;
   const freshness = data ? (stalenessMs > 20_000 ? "Delayed" : "Live") : "--";
+  const pipeline = data?.pipeline_status;
+  const stage1Success = pipeline?.stage1.state_counts.success ?? 0;
+  const stage1Failed = pipeline?.stage1.state_counts.failed ?? 0;
+  const stage1Running = pipeline?.stage1.state_counts.running ?? 0;
+  const stage2Components = Number(
+    pipeline?.stage2.current.metadata?.source_component_count ?? 0
+  );
+  const snapshotName = String(
+    pipeline?.stage2.current.metadata?.snapshot_name ?? "unpublished"
+  );
+  const assetTypeItems = (pipeline?.stage1.assets_by_type ?? [])
+    .slice(0, 8)
+    .map((entry) => ({
+      label: entry.artifact_type,
+      count: entry.artifact_count,
+      subtitle: `${formatCompactNumber(entry.part_count)} parts`
+    }));
 
   return (
     <main className="dashboard-root">
@@ -226,6 +243,56 @@ export default function App(): JSX.Element {
         <>
           <ServiceRail services={data.services} />
 
+          <section className="pipeline-flow" aria-label="Pipeline flow status">
+            <article className="pipeline-stage card">
+              <h3>Stage 1: Fetch</h3>
+              <p className="pipeline-number">
+                {formatCompactNumber(pipeline?.stage1.total_parts_seen ?? 0)} parts
+              </p>
+              <p className="pipeline-meta">
+                ok {formatCompactNumber(stage1Success)} | fail{" "}
+                {formatCompactNumber(stage1Failed)} | run{" "}
+                {formatCompactNumber(stage1Running)}
+              </p>
+              <p className="pipeline-meta">
+                artifacts{" "}
+                {formatCompactNumber(pipeline?.stage1.manifest_artifact_count ?? 0)}
+              </p>
+            </article>
+
+            <div className="pipeline-arrow" aria-hidden="true">
+              <span />
+            </div>
+
+            <article className="pipeline-stage card">
+              <h3>Stage 2: Snapshot</h3>
+              <p className="pipeline-number">{snapshotName}</p>
+              <p className="pipeline-meta">
+                components {formatCompactNumber(stage2Components)}
+              </p>
+              <p className="pipeline-meta">{pipeline?.stage2.snapshot_root ?? "--"}</p>
+            </article>
+
+            <div className="pipeline-arrow" aria-hidden="true">
+              <span />
+            </div>
+
+            <article className="pipeline-stage card">
+              <h3>Stage 3: Serve</h3>
+              <p className="pipeline-number">{pipeline?.serve.status ?? "unknown"}</p>
+              <p
+                className={`pipeline-meta ${
+                  pipeline?.serve.snapshot_mismatch_vs_cache_dir ? "warn" : ""
+                }`}
+              >
+                {pipeline?.serve.snapshot_mismatch_vs_cache_dir
+                  ? "snapshot/cache mismatch"
+                  : "snapshot/cache aligned"}
+              </p>
+              <p className="pipeline-meta">{pipeline?.serve.snapshot ?? "--"}</p>
+            </article>
+          </section>
+
           <section className="trend-grid">
             <MiniTrendCard
               title="Requests / minute"
@@ -269,6 +336,12 @@ export default function App(): JSX.Element {
               </div>
               <CorrelationChart points={timeline} />
             </article>
+
+            <BarList
+              title="Stage1 assets by type"
+              items={assetTypeItems}
+              emptyLabel="No stage1 artifacts yet"
+            />
 
             <BarList
               title="Hot routes"

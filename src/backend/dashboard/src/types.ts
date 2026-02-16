@@ -83,4 +83,45 @@ export interface DashboardMetricsResponse {
   package_returns: PackageCount[];
   origins: OriginPoint[];
   snapshot_package_stats: SnapshotPackageStats;
+  pipeline_status?: PipelineStatus;
+}
+
+export interface PipelineAssetTypeStat {
+  artifact_type: string;
+  artifact_count: number;
+  part_count: number;
+}
+
+export interface PipelineStatus {
+  cache_dir: string;
+  stage1: {
+    state_db: string;
+    state_counts: Record<string, number>;
+    total_parts_seen: number;
+    success_rate_pct: number | null;
+    manifest_db: string;
+    manifest_artifact_count: number | null;
+    assets_by_type: PipelineAssetTypeStat[];
+  };
+  stage2: {
+    snapshot_root: string;
+    current: {
+      current_link?: string;
+      resolved_snapshot?: string;
+      metadata?: Record<string, unknown>;
+    };
+  };
+  serve: {
+    status: string;
+    snapshot: string;
+    fast_db: string;
+    detail_db: string;
+    snapshot_mismatch_vs_cache_dir: boolean;
+  };
+  flow: {
+    stage1_success_parts: number;
+    stage1_failed_parts: number;
+    stage2_component_count: number;
+    serve_snapshot_mismatch: boolean;
+  };
 }
