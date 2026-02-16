@@ -1813,6 +1813,7 @@ var Editor = class {
   apiPrefix;
   wsPath;
   ws = null;
+  modelRetryTimer = null;
   // Selection & drag state
   selectedFpIndex = -1;
   isDragging = false;
@@ -1826,6 +1827,7 @@ var Editor = class {
   lastMouseScreen = new Vec2(0, 0);
   // Mouse coordinate callback
   onMouseMoveCallback = null;
+  onStatusChanged = null;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
     this.baseUrl = baseUrl2;
@@ -1843,13 +1845,30 @@ var Editor = class {
   async init() {
     await this.fetchAndPaint();
     this.connectWebSocket();
+    this.startModelRetryLoop();
   }
   async fetchAndPaint() {
-    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-    this.applyModel(await resp.json(), true);
+    try {
+      if (!this.model) {
+        this.onStatusChanged?.("loading", "building view");
+      }
+      const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
+      if (resp.status === 404) {
+        this.onStatusChanged?.("loading", "building view");
+        return;
+      }
+      if (!resp.ok) {
+        this.onStatusChanged?.("error", "failed to load view");
+        return;
+      }
+      this.applyModel(await resp.json(), true);
+    } catch {
+      this.onStatusChanged?.("error", "failed to load view");
+    }
   }
   applyModel(model, fitToView = false) {
     this.model = model;
+    this.onStatusChanged?.("ready");
     this.paint();
     this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
     if (fitToView) {
@@ -1881,6 +1900,16 @@ var Editor = class {
     this.ws.onclose = () => {
       setTimeout(() => this.connectWebSocket(), 2e3);
     };
+  }
+  startModelRetryLoop() {
+    if (this.modelRetryTimer !== null) {
+      return;
+    }
+    this.modelRetryTimer = window.setInterval(() => {
+      if (!this.model) {
+        void this.fetchAndPaint();
+      }
+    }, 1500);
   }
   setupMouseHandlers() {
     this.canvas.addEventListener("mousedown", (e) => {
@@ -2068,6 +2097,9 @@ var Editor = class {
   }
   setOnMouseMove(cb) {
     this.onMouseMoveCallback = cb;
+  }
+  setOnStatusChanged(cb) {
+    this.onStatusChanged = cb;
   }
   repaintWithSelection() {
     this.paint();
@@ -2274,6 +2306,8 @@ function buildLayerPanel() {
   }
 }
 var statusEl = document.getElementById("status");
+var buildStatusEl = document.getElementById("build-status");
+var buildStatusTextEl = document.getElementById("build-status-text");
 var helpText = "scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip, Ctrl+Z undo, Ctrl+Shift+Z redo";
 if (statusEl)
   statusEl.textContent = helpText;
@@ -2291,6 +2325,18 @@ editor.setOnMouseMove((x, y) => {
   if (statusEl && statusEl.dataset.hover) {
     statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
   }
+});
+editor.setOnStatusChanged((status, message) => {
+  if (!buildStatusEl)
+    return;
+  if (status === "loading") {
+    buildStatusEl.classList.add("visible");
+    if (buildStatusTextEl) {
+      buildStatusTextEl.textContent = message || "building view";
+    }
+    return;
+  }
+  buildStatusEl.classList.remove("visible");
 });
 editor.init().then(() => {
   buildLayerPanel();

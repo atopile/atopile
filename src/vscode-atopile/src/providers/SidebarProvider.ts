@@ -29,6 +29,8 @@ interface OpenSignalsMessage {
   openFileLine?: number | null;
   openFileColumn?: number | null;
   openLayout?: string | null;
+  openLayoutProjectRoot?: string | null;
+  openLayoutTargetName?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
 }
@@ -180,6 +182,11 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+interface ProjectFilesChangedMessage {
+  type: 'projectFilesChanged';
+  projectRoot: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -210,7 +217,8 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | ProjectFilesChangedMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -232,6 +240,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
+  private _activeLayoutBuild: Build | null = null;
+  private _layoutRebuildDebounce: NodeJS.Timeout | null = null;
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _extensionVersion: string,
@@ -278,6 +288,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._disposables = [];
     this._disposeFileWatcher();
+    if (this._layoutRebuildDebounce) {
+      clearTimeout(this._layoutRebuildDebounce);
+      this._layoutRebuildDebounce = null;
+    }
   }
 
   private _disposeFileWatcher(): void {
@@ -708,6 +722,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
         break;
+      case 'projectFilesChanged':
+        this._handleProjectFilesChanged(message.projectRoot);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -756,7 +773,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._openFile(msg.openFile, msg.openFileLine ?? undefined, msg.openFileColumn ?? undefined);
     }
     if (msg.openLayout) {
-      this._openLayoutPreview(msg.openLayout);
+      void this._openLayoutPreview(
+        msg.openLayout,
+        msg.openLayoutProjectRoot ?? undefined,
+        msg.openLayoutTargetName ?? undefined,
+      );
     }
     if (msg.openKicad) {
       this._openWithKicad(msg.openKicad);
@@ -887,10 +908,68 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._triggerThreeDModelBuild(projectRoot, targetName, ['glb-only']);
   }
 
-  private _openLayoutPreview(_filePath: string): void {
-    // The server already loaded the PCB via the openLayout action.
-    // Just open the editor webview.
-    void openLayoutEditor();
+  private _findBuildForPcbPath(pcbPath: string): Build | undefined {
+    const normalizedPcbPath = path.normalize(pcbPath);
+    return getBuilds().find((build) => path.normalize(build.pcb_path) === normalizedPcbPath);
+  }
+
+  private _startLayoutBuild(projectRoot: string, targetName: string): void {
+    backendServer.sendToWebview({
+      type: 'triggerBuild',
+      projectRoot,
+      targets: [targetName],
+    });
+  }
+
+  private _handleProjectFilesChanged(projectRoot: string): void {
+    const active = this._activeLayoutBuild;
+    if (!active || active.root !== projectRoot) {
+      return;
+    }
+    if (this._layoutRebuildDebounce) {
+      clearTimeout(this._layoutRebuildDebounce);
+    }
+    this._layoutRebuildDebounce = setTimeout(() => {
+      traceInfo(`[SidebarProvider] Project source change detected; rebuilding layout target: ${active.name}`);
+      this._startLayoutBuild(active.root, active.name);
+      this._layoutRebuildDebounce = null;
+    }, 500);
+  }
+
+  private async _openLayoutPreview(
+    filePath: string,
+    projectRoot?: string,
+    targetName?: string,
+  ): Promise<void> {
+    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb') ?? filePath;
+
+    let build: Build | undefined;
+    if (projectRoot && targetName) {
+      build = getBuilds().find((candidate) => candidate.root === projectRoot && candidate.name === targetName);
+      if (!build) {
+        await loadBuilds();
+        build = getBuilds().find((candidate) => candidate.root === projectRoot && candidate.name === targetName);
+      }
+    }
+
+    if (!build) {
+      build = this._findBuildForPcbPath(pcbPath);
+      if (!build) {
+        await loadBuilds();
+        build = this._findBuildForPcbPath(pcbPath);
+      }
+    }
+
+    this._activeLayoutBuild = build ?? null;
+
+    if (build?.root && build?.name) {
+      traceInfo(`[SidebarProvider] Opening layout preview and triggering rebuild for ${build.name}`);
+      this._startLayoutBuild(build.root, build.name);
+    } else {
+      traceInfo(`[SidebarProvider] Opening layout preview without resolved build target: ${pcbPath}`);
+    }
+
+    await openLayoutEditor();
   }
 
   private _openWithKicad(filePath: string): void {

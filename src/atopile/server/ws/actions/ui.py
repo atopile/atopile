@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from atopile.model import builds as builds_domain
 from atopile.server import path_utils
 from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
+from atopile.server.domains.layout import layout_service
 
 from .registry import register_action
 
@@ -101,15 +103,23 @@ async def handle_open_layout(
         }
 
     project_path = Path(resolved_project_root)
-    target = path_utils.resolve_layout_path(project_path, target_name)
-    if not target or not target.exists():
-        return {
-            "success": False,
-            "error": f"Layout not found for target: {target_name}",
-        }
+    target = path_utils.resolve_layout_file_path(project_path, target_name)
 
-    await server_state.emit_event(EventType.OPEN_LAYOUT, {"path": str(target)})
-    return {"success": True}
+    if target.exists() and target.is_file():
+        await asyncio.to_thread(layout_service.load, target)
+    else:
+        layout_service.set_target(target)
+    await layout_service.start_watcher()
+
+    await server_state.emit_event(
+        EventType.OPEN_LAYOUT,
+        {
+            "path": str(target),
+            "project_root": str(project_path),
+            "target_name": target_name,
+        },
+    )
+    return {"success": True, "path": str(target), "exists": target.exists()}
 
 
 @register_action("openKiCad")

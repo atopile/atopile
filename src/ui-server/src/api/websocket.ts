@@ -669,12 +669,26 @@ function handleEventMessage(message: EventMessage): void {
     }
     case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;
+      const openLayoutProjectRoot =
+        typeof data.project_root === 'string'
+          ? data.project_root
+          : typeof data.projectRoot === 'string'
+            ? data.projectRoot
+            : null;
+      const openLayoutTargetName =
+        typeof data.target_name === 'string'
+          ? data.target_name
+          : typeof data.targetName === 'string'
+            ? data.targetName
+            : null;
       postMessage({
         type: 'openSignals',
         openFile: null,
         openFileLine: null,
         openFileColumn: null,
         openLayout: path,
+        openLayoutProjectRoot,
+        openLayoutTargetName,
         openKicad: null,
         open3d: null,
       });
@@ -720,6 +734,12 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.BOMChanged:
       void refreshBom();
       break;
+    case EventType.ProjectFilesChanged: {
+      if (projectRoot) {
+        postMessage({ type: 'projectFilesChanged', projectRoot });
+      }
+      break;
+    }
     case EventType.VariablesChanged:
       void refreshVariables();
       break;

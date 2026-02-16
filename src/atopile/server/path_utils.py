@@ -100,6 +100,30 @@ def resolve_layout_path(project_root: Path, target_name: str) -> Path | None:
     return None
 
 
+def resolve_layout_file_path(project_root: Path, target_name: str) -> Path:
+    """Return the best layout file path for a target, even if it does not exist yet."""
+    resolved = resolve_layout_path(project_root, target_name)
+    if resolved and resolved.is_file():
+        return resolved
+
+    layout_root = _get_layout_root(project_root)
+    preferred = layout_root / target_name / f"{target_name}.kicad_pcb"
+
+    if resolved and resolved.is_dir():
+        nested = resolved / f"{target_name}.kicad_pcb"
+        if nested.exists():
+            return nested
+        found = _find_layout_in_dir(resolved)
+        if found is not None:
+            return found
+
+    direct = layout_root / f"{target_name}.kicad_pcb"
+    if direct.exists():
+        return direct
+
+    return preferred
+
+
 def resolve_3d_path(project_root: Path, target_name: str) -> Path | None:
     build_dir = project_root / "build" / "builds" / target_name
     if not build_dir.exists():
