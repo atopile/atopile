@@ -887,7 +887,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._triggerThreeDModelBuild(projectRoot, targetName, ['glb-only']);
   }
 
-  private _openLayoutPreview(filePath: string): void {
+  private _openLayoutPreview(_filePath: string): void {
     // The server already loaded the PCB via the openLayout action.
     // Just open the editor webview.
     void openLayoutEditor();
