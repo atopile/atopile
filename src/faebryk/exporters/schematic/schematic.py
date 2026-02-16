@@ -2429,6 +2429,145 @@ def _collect_raw_nets(
     return raw_nets
 
 
+def _assign_component_owners_and_hierarchy(
+    comp_infos: list[_CompInfo],
+    all_modules: dict[str, _ModInfo],
+) -> tuple[set[str], dict[str, str | None]]:
+    """Populate module part counts, ownership, and parent/child hierarchy."""
+    for mod in all_modules.values():
+        mod.atomic_part_count = 0
+        mod.direct_component_ids.clear()
+        mod.child_module_ids.clear()
+
+    for comp in comp_infos:
+        for mod in all_modules.values():
+            if comp.full_name.startswith(mod.full_name + "."):
+                mod.atomic_part_count += 1
+
+    logger.info(
+        "Module part counts: %s",
+        {m.full_name: m.atomic_part_count for m in all_modules.values()},
+    )
+
+    interesting_module_ids = {
+        mid for mid, m in all_modules.items() if m.atomic_part_count >= 2
+    }
+    logger.info(
+        "Interesting modules (>=2 parts): %s",
+        [all_modules[mid].full_name for mid in interesting_module_ids],
+    )
+
+    comp_to_owner: dict[str, str | None] = {}
+    for comp in comp_infos:
+        owner = None
+        best_match_len = 0
+        for mid in interesting_module_ids:
+            mod = all_modules[mid]
+            if comp.full_name.startswith(mod.full_name + "."):
+                if len(mod.full_name) > best_match_len:
+                    best_match_len = len(mod.full_name)
+                    owner = mid
+
+        comp.owner_module_id = owner
+        comp_to_owner[comp.json_id] = owner
+
+        logger.info(
+            "  Component %s (full=%s) -> owner=%s",
+            comp.json_id,
+            comp.full_name,
+            all_modules[owner].full_name if owner else "ROOT",
+        )
+
+        if owner and owner in all_modules:
+            all_modules[owner].direct_component_ids.append(comp.json_id)
+
+    for mid, mod in all_modules.items():
+        if mid not in interesting_module_ids:
+            continue
+        if mod.parent_id and mod.parent_id in interesting_module_ids:
+            all_modules[mod.parent_id].child_module_ids.append(mid)
+
+    return interesting_module_ids, comp_to_owner
+
+
+def _collect_interfaces_for_owner(
+    owner_module_id: str | None,
+    owner_full_name: str | None,
+    child_module_ids: list[str],
+    comp_infos: list[_CompInfo],
+    all_modules: dict[str, _ModInfo],
+) -> dict[str, dict]:
+    """Collect public interface maps for a module owner scope."""
+    iface_map: dict[str, dict] = {}
+    pin_map: dict[str, dict[str, dict[str, _PinBinding]]] = defaultdict(
+        lambda: defaultdict(dict)
+    )
+
+    internal_names: set[str] = set()
+    for comp in comp_infos:
+        if comp.owner_module_id != owner_module_id:
+            continue
+
+        rel_name = comp.full_name
+        if owner_full_name and comp.full_name.startswith(owner_full_name + "."):
+            rel_name = comp.full_name[len(owner_full_name) + 1 :]
+
+        child = rel_name.split(".")[0]
+        internal_names.add(child)
+
+        bare = re.sub(r"\[\d+\]", "", child)
+        if bare != child:
+            internal_names.add(bare)
+
+    for child_mid in child_module_ids:
+        child_mod = all_modules.get(child_mid)
+        if child_mod:
+            internal_names.add(child_mod.name)
+
+    for comp in comp_infos:
+        if comp.owner_module_id != owner_module_id:
+            continue
+        for pad_name, iface_list in comp.pin_to_iface.items():
+            for iface_name, signal_suffix, iface_type, is_line_level in iface_list:
+                if iface_name.startswith("_"):
+                    continue
+                bare_name = re.sub(r"\[\d+\]$", "", iface_name)
+                if bare_name in internal_names or iface_name in internal_names:
+                    continue
+
+                if iface_name not in iface_map:
+                    category = "signal"
+                    if iface_type in ("Power", "ElectricPower"):
+                        category = "power"
+                    elif iface_type == "I2C":
+                        category = "i2c"
+                    elif iface_type == "SPI":
+                        category = "spi"
+                    elif iface_type == "UART":
+                        category = "uart"
+                    elif iface_type in ("GPIO", "Control"):
+                        category = "control"
+                    elif iface_type == "Crystal":
+                        category = "crystal"
+
+                    iface_map[iface_name] = {
+                        "type": iface_type,
+                        "category": category,
+                        "signals": set(),
+                        "pin_map": pin_map[iface_name],
+                    }
+
+                iface_map[iface_name]["signals"].add(signal_suffix)
+                pin_map[iface_name][comp.json_id][pad_name] = (
+                    iface_name,
+                    signal_suffix,
+                    is_line_level,
+                )
+
+    _mark_passthrough_interfaces(iface_map)
+    return iface_map
+
+
 # ── Main export function ────────────────────────────────────────
 
 
@@ -2786,152 +2925,14 @@ def export_schematic_json(
     # Phase 3: Count atomic parts per module and determine hierarchy
     # ═══════════════════════════════════════════════════════════════
 
-    # Count atomic parts inside each module using original graph full_name
-    for comp in comp_infos:
-        for mod in all_modules.values():
-            # Check if component's full_name starts with the module's full_name
-            if comp.full_name.startswith(mod.full_name + "."):
-                mod.atomic_part_count += 1
-
-    logger.info(
-        "Module part counts: %s",
-        {m.full_name: m.atomic_part_count for m in all_modules.values()},
+    interesting_module_ids, comp_to_owner = _assign_component_owners_and_hierarchy(
+        comp_infos,
+        all_modules,
     )
-
-    # Determine "interesting" modules (>= 2 atomic parts)
-    interesting_module_ids = {
-        mid for mid, m in all_modules.items() if m.atomic_part_count >= 2
-    }
-
-    logger.info(
-        "Interesting modules (>=2 parts): %s",
-        [all_modules[mid].full_name for mid in interesting_module_ids],
-    )
-
-    # Assign components to their owner module
-    comp_to_owner: dict[str, str | None] = {}
-
-    for comp in comp_infos:
-        owner = None
-
-        # Find the deepest interesting module that contains this component
-        best_match_len = 0
-        for mid in interesting_module_ids:
-            mod = all_modules[mid]
-            if comp.full_name.startswith(mod.full_name + "."):
-                if len(mod.full_name) > best_match_len:
-                    best_match_len = len(mod.full_name)
-                    owner = mid
-
-        comp.owner_module_id = owner
-        comp_to_owner[comp.json_id] = owner
-
-        logger.info(
-            "  Component %s (full=%s) -> owner=%s",
-            comp.json_id,
-            comp.full_name,
-            all_modules[owner].full_name if owner else "ROOT",
-        )
-
-        # Register component with its owner module
-        if owner and owner in all_modules:
-            all_modules[owner].direct_component_ids.append(comp.json_id)
-
-    # Build child module relationships (only interesting modules)
-    for mid, mod in all_modules.items():
-        if mid not in interesting_module_ids:
-            continue
-        if mod.parent_id and mod.parent_id in interesting_module_ids:
-            all_modules[mod.parent_id].child_module_ids.append(mid)
 
     # ═══════════════════════════════════════════════════════════════
     # Phase 4: Discover interfaces from lead_functions data
     # ═══════════════════════════════════════════════════════════════
-
-    def _collect_interfaces_for_owner(
-        owner_module_id: str | None,
-        owner_full_name: str | None,
-        child_module_ids: list[str],
-    ) -> dict[str, dict]:
-        iface_map: dict[str, dict] = {}
-        pin_map: dict[str, dict[str, dict[str, _PinBinding]]] = defaultdict(
-            lambda: defaultdict(dict)
-        )
-
-        # Build a set of internal entity names for this owner scope.
-        # Interface names matching these are internal wiring, not public ports.
-        # Includes both internal components and child sub-modules.
-        internal_names: set[str] = set()
-        for comp in comp_infos:
-            if comp.owner_module_id != owner_module_id:
-                continue
-
-            rel_name = comp.full_name
-            if owner_full_name and comp.full_name.startswith(owner_full_name + "."):
-                rel_name = comp.full_name[len(owner_full_name) + 1 :]
-
-            child = rel_name.split(".")[0]
-            internal_names.add(child)
-
-            bare = re.sub(r"\[\d+\]", "", child)
-            if bare != child:
-                internal_names.add(bare)
-
-        for child_mid in child_module_ids:
-            child_mod = all_modules.get(child_mid)
-            if child_mod:
-                internal_names.add(child_mod.name)
-
-        for comp in comp_infos:
-            if comp.owner_module_id != owner_module_id:
-                continue
-            for pad_name, iface_list in comp.pin_to_iface.items():
-                for iface_name, signal_suffix, iface_type, is_line_level in iface_list:
-                    # Skip private interfaces (atopile convention: _ prefix)
-                    if iface_name.startswith("_"):
-                        continue
-                    # Skip interfaces that reference internal entities
-                    # (e.g., "core_power_decoupling_capacitor[0]" is wiring,
-                    #  not a module port)
-                    bare_name = re.sub(r"\[\d+\]$", "", iface_name)
-                    if bare_name in internal_names or iface_name in internal_names:
-                        continue
-
-                    if iface_name not in iface_map:
-                        category = "signal"
-                        if iface_type in ("Power", "ElectricPower"):
-                            category = "power"
-                        elif iface_type == "I2C":
-                            category = "i2c"
-                        elif iface_type == "SPI":
-                            category = "spi"
-                        elif iface_type == "UART":
-                            category = "uart"
-                        elif iface_type in ("GPIO", "Control"):
-                            category = "control"
-                        elif iface_type == "Crystal":
-                            category = "crystal"
-
-                        iface_map[iface_name] = {
-                            "type": iface_type,
-                            "category": category,
-                            "signals": set(),
-                            "pin_map": pin_map[iface_name],
-                        }
-
-                    iface_map[iface_name]["signals"].add(signal_suffix)
-
-                    # Build pin_map:
-                    # comp_id -> {pad -> (iface_id, signal_suffix, is_line_level)}
-                    # Tracks signal and connection mode each pad maps to.
-                    pin_map[iface_name][comp.json_id][pad_name] = (
-                        iface_name,
-                        signal_suffix,
-                        is_line_level,
-                    )
-
-        _mark_passthrough_interfaces(iface_map)
-        return iface_map
 
     # For each interesting module, collect interfaces from its components' pins
     module_interfaces: dict[str, dict[str, dict]] = {}
@@ -2942,6 +2943,8 @@ def export_schematic_json(
             owner_module_id=mid,
             owner_full_name=mod.full_name,
             child_module_ids=mod.child_module_ids,
+            comp_infos=comp_infos,
+            all_modules=all_modules,
         )
         mod.interfaces = iface_map
         module_interfaces[mid] = iface_map
@@ -3077,6 +3080,8 @@ def export_schematic_json(
         owner_module_id=None,
         owner_full_name=None,
         child_module_ids=root_module_ids,
+        comp_infos=comp_infos,
+        all_modules=all_modules,
     )
     if public_root_interface_bases:
         root_interfaces = {
