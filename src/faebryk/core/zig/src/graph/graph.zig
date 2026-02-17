@@ -76,7 +76,7 @@ pub const DynamicAttributes = struct {
     in_use: u3 = 0,
     // try to keep this low enough to fit in a 256b cache line
     // currently attribute is 40b, so max 6
-    values: [6]Attribute = undefined,
+    values: [6]Attribute = [_]Attribute{.{ .identifier = &.{}, .value = .{ .Int = 0 } }} ** 6,
 
     /// Create a new empty DynamicAttributes on the stack (for building before copy)
     pub fn init_on_stack() DynamicAttributes {
