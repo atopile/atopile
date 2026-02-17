@@ -940,7 +940,8 @@ pub const TypeGraph = struct {
         }
 
         // Mark soft MakeLinks on target that conflict with source MakeLinks as superseded
-        const source_links = self.collect_make_links(allocator, source_type) catch return;
+        const source_links = self.collect_make_links(allocator, source_type) catch
+            @panic("Invalid reference in source type MakeLinks during copy_type_structure");
         defer {
             for (source_links) |link_info| {
                 allocator.free(link_info.lhs_path);
