@@ -8,10 +8,12 @@ from collections.abc import Callable
 from typing import Iterable, Optional
 
 from atopile.dataclasses import Log
-from atopile.logging import AtoLogger
+from atopile.logging import get_logger
 from atopile.model import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
+
+log = get_logger(__name__)
 
 _LCSC_RE = re.compile(r"^C\d+$", re.IGNORECASE)
 _OUT_OF_STOCK_TTL_S = 24 * 60 * 60
@@ -110,14 +112,10 @@ def _log_out_of_stock(
     if last_logged and now - last_logged < _OUT_OF_STOCK_TTL_S:
         return False
 
-    logger = AtoLogger.get_build(
-        project_root,
-        target or "default",
-        stage="bom",
-        build_id=build_id,
-    )
-    logger.warning(
-        f"Out of stock: {component.lcsc_display} ({component.part_number})",
+    log.warning(
+        "Out of stock: %s (%s)",
+        component.lcsc_display,
+        component.part_number,
         audience=Log.Audience.USER,
         objects={
             "project_root": project_root,
