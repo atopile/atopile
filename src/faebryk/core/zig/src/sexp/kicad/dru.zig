@@ -73,11 +73,30 @@ pub const Expression = struct {
     };
 };
 
+pub const ValueWithUnit = struct {
+    value: f64,
+    unit: str,
+
+    pub const fields_meta = .{
+        .value = structure.SexpField{ .positional = true },
+        .unit = structure.SexpField{ .positional = true, .symbol = true },
+    };
+
+    // Custom encode: concatenate value and unit into a single symbol (e.g., "0.4mm")
+    pub fn encode(self: ValueWithUnit, allocator: std.mem.Allocator) structure.EncodeError!structure.SExp {
+        var buf: [32]u8 = undefined;
+        const rounded = std.math.round(self.value * 10e6) / 10e6;
+        const val_str = std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
+        const combined = std.fmt.allocPrint(allocator, "{s}{s}", .{ val_str, self.unit }) catch return error.OutOfMemory;
+        return structure.SExp{ .value = .{ .symbol = combined }, .location = null };
+    }
+};
+
 pub const Constraint = struct {
     constraint_type: E_constraint_type,
-    min: ?f64 = null,
-    opt: ?f64 = null,
-    max: ?f64 = null,
+    min: ?ValueWithUnit = null,
+    opt: ?ValueWithUnit = null,
+    max: ?ValueWithUnit = null,
 
     pub const fields_meta = .{
         .constraint_type = structure.SexpField{ .positional = true },
@@ -109,17 +128,15 @@ pub const KicadDru = struct {
 pub const DruFile = struct {
     kicad_dru: KicadDru,
 
-    const root_symbol = "kicad_dru";
-
     pub fn loads(allocator: std.mem.Allocator, in: structure.input) !DruFile {
-        const dru = try structure.loads(KicadDru, allocator, in, root_symbol);
+        const dru = try structure.loadsFlat(KicadDru, allocator, in);
         return DruFile{
             .kicad_dru = dru,
         };
     }
 
     pub fn dumps(self: DruFile, allocator: std.mem.Allocator, out: structure.output) !void {
-        try structure.dumps(self.kicad_dru, allocator, root_symbol, out);
+        try structure.dumpsFlat(self.kicad_dru, allocator, out);
     }
 
     pub fn free(self: *DruFile, allocator: std.mem.Allocator) void {

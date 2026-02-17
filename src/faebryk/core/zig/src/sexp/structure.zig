@@ -859,6 +859,16 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
+    // Check if type has a custom encode method
+    switch (type_info) {
+        .@"struct", .@"enum", .@"union", .@"opaque" => {
+            if (comptime @hasDecl(T, "encode")) {
+                return try T.encode(value, allocator);
+            }
+        },
+        else => {},
+    }
+
     // Special handling for enums
     if (type_info == .@"enum") {
         const enum_info = @typeInfo(T).@"enum";
@@ -1248,6 +1258,81 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
             }
         },
     }
+}
+
+// Load a struct from flat (unwrapped) top-level S-expressions
+// Unlike loads(), this does not expect a wrapping symbol like (kicad_dru ...)
+// Instead, it parses all top-level expressions and treats them as struct fields
+pub fn loadsFlat(comptime T: type, allocator: std.mem.Allocator, in: input) !T {
+    var sexp_val: SExp = undefined;
+    var should_deinit = false;
+
+    switch (in) {
+        .path => |p| {
+            const file_content = try std.fs.cwd().readFileAlloc(allocator, p, 200 * 1024 * 1024);
+            sexp_val = try parseAllExpressions(allocator, file_content);
+            should_deinit = true;
+        },
+        .string => |s| {
+            sexp_val = try parseAllExpressions(allocator, s);
+            should_deinit = true;
+        },
+        .sexp => |s| {
+            sexp_val = s;
+        },
+    }
+    defer if (should_deinit) sexp_val.deinit(allocator);
+
+    return try decodeWithMetadata(T, allocator, sexp_val, SexpField{});
+}
+
+// Dump a struct as flat top-level S-expressions (no wrapping symbol)
+pub fn dumpsFlat(data: anytype, allocator: std.mem.Allocator, out: output) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // Encode the data
+    const encoded = try encode(arena.allocator(), data, SexpField{}, "");
+    const encoded_items = ast.getList(encoded).?;
+
+    switch (out) {
+        .sexp => |sexp_out| {
+            sexp_out.* = encoded;
+        },
+        .string, .path => {
+            // Serialize all items to a raw string
+            var raw = std.array_list.Managed(u8).init(arena.allocator());
+            for (encoded_items) |item| {
+                try item.str(raw.writer());
+            }
+
+            const out_str = try ast.SExp.prettify_sexp_string(allocator, raw.items);
+            switch (out) {
+                .string => |s| s.* = out_str,
+                .path => |p| {
+                    defer allocator.free(out_str);
+                    const file = try std.fs.cwd().createFile(p, .{ .truncate = true });
+                    defer file.close();
+                    try file.writeAll(out_str);
+                },
+                .sexp => unreachable,
+            }
+        },
+    }
+}
+
+// Parse all top-level S-expressions from a string into a single list SExp
+fn parseAllExpressions(allocator: std.mem.Allocator, data: []const u8) !SExp {
+    const tokens = try tokenizer.tokenize(allocator, data);
+    defer allocator.free(tokens);
+
+    var parser = ast.Parser.init(allocator, tokens);
+    var items = std.array_list.Managed(SExp).init(allocator);
+    defer items.deinit();
+    while (try parser.parse()) |expr| {
+        try items.append(expr);
+    }
+    return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = null };
 }
 
 // Generic free function for structs decoded by this library

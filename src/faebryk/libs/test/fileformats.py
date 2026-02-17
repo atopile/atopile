@@ -60,6 +60,10 @@ def _PCB_DIR(version: int = DEFAULT_VERSION) -> Path:
     return _VERSION_DIR(version) / "pcb"
 
 
+def _DRU_DIR(version: int = DEFAULT_VERSION) -> Path:
+    return _VERSION_DIR(version) / "dru"
+
+
 PRJFILE = _PRJ_DIR() / "test.kicad_pro"
 PCBFILE = _PCB_DIR() / "test.kicad_pcb"
 FPFILE = _FP_DIR() / "test.kicad_mod"
@@ -67,3 +71,4 @@ NETFILE = _NETLIST_DIR() / "test_e.net"
 FPLIBFILE = _FPLIB_DIR(7) / "fp-lib-table"
 SCHFILE = _SCH_DIR() / "test.kicad_sch"
 SYMFILE = _SYM_DIR() / "test.kicad_sym"
+DRUFILE = _DRU_DIR() / "test.kicad_dru"

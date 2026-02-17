@@ -23,6 +23,7 @@ from faebryk.libs.test.fileformats import (
     _SYM_DIR,  # noqa: F401
     _VERSION_DIR,  # noqa: F401
     DEFAULT_VERSION,  # noqa: F401
+    DRUFILE,
     FPFILE,
     FPLIBFILE,
     NETFILE,
@@ -646,6 +647,92 @@ def test_malformed_sexp_key_only():
     except ValueError:
         # Expected - stroke may be required, but importantly no crash
         pass
+
+
+def test_dru_round_trip():
+    """Test that DRU files round-trip correctly (no root wrapper, mm unit suffixes)."""
+    original = DRUFILE.read_text()
+    dru = kicad.loads(kicad.dru.DruFile, DRUFILE)
+
+    # Verify parsed content
+    assert dru.kicad_dru.version == 1
+    assert len(dru.kicad_dru.rules) == 4
+
+    r0 = dru.kicad_dru.rules[0]
+    assert r0.name == "Min Clearance"
+    assert r0.severity == "error"
+    assert r0.constraints[0].constraint_type == "clearance"
+    r0_min = r0.constraints[0].min
+    assert r0_min is not None
+    assert r0_min.value == 0.4
+    assert r0_min.unit == "mm"
+
+    r1 = dru.kicad_dru.rules[1]
+    assert r1.name == "Track Width"
+    r1_min = r1.constraints[0].min
+    assert r1_min is not None
+    assert r1_min.value == 0.15
+    assert r1_min.unit == "mm"
+    r1_opt = r1.constraints[0].opt
+    assert r1_opt is not None
+    assert r1_opt.value == 0.25
+    assert r1_opt.unit == "mm"
+
+    r2 = dru.kicad_dru.rules[2]
+    assert r2.name == "Diff Pair Width"
+    assert r2.condition is not None
+    assert r2.condition.expression == "A.NetClass == 'Diff'"
+    assert len(r2.constraints) == 2
+
+    r3 = dru.kicad_dru.rules[3]
+    assert r3.layer == "F.SilkS"
+    assert r3.severity == "ignore"
+
+    # Round-trip: dump and reload
+    dumped = kicad.dumps(dru)
+    assert original == dumped, "DRU round-trip should produce identical output"
+
+    # Reload from dumped string
+    dru2 = kicad.loads(kicad.dru.DruFile, dumped)
+    dumped2 = kicad.dumps(dru2)
+    assert dumped == dumped2, "Double round-trip should be stable"
+
+
+def test_dru_programmatic_construction():
+    """Test constructing a DRU file programmatically."""
+    dru_file = kicad.dru.DruFile(
+        kicad_dru=kicad.dru.KicadDru(
+            version=1,
+            rules=[
+                kicad.dru.Rule(
+                    name="Test Rule",
+                    severity="warning",
+                    layer=None,
+                    condition=None,
+                    constraints=[
+                        kicad.dru.Constraint(
+                            constraint_type="clearance",
+                            min=kicad.dru.ValueWithUnit(value=0.2, unit="mm"),
+                            opt=None,
+                            max=None,
+                        ),
+                    ],
+                ),
+            ],
+        )
+    )
+
+    dumped = kicad.dumps(dru_file)
+    assert "(version 1)" in dumped
+    assert '(rule "Test Rule"' in dumped
+    assert "(min 0.2mm)" in dumped
+    assert "(severity warning)" in dumped
+
+    # Reload and verify
+    dru2 = kicad.loads(kicad.dru.DruFile, dumped)
+    assert dru2.kicad_dru.rules[0].name == "Test Rule"
+    assert dru2.kicad_dru.rules[0].constraints[0].min.value == 0.2
+    assert dru2.kicad_dru.rules[0].constraints[0].min.unit == "mm"
 
 
 def test_text_layer_with_knockout():

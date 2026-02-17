@@ -1,5 +1,37 @@
 const std = @import("std");
 
+// Check if a type is internal to the sexp framework and not exposed to Python
+fn isInternalType(comptime T: type) bool {
+    const name = @typeName(T);
+    // SExp and related ast types are internal to the sexp encode/decode framework
+    return std.mem.endsWith(u8, name, ".SExp") or
+        std.mem.endsWith(u8, name, ".SExpValue");
+}
+
+// Unwrap error unions, optionals, pointers to get the underlying type
+fn referencesInternalType(comptime T: type) bool {
+    if (isInternalType(T)) return true;
+    return switch (@typeInfo(T)) {
+        .error_union => |eu| referencesInternalType(eu.payload),
+        .optional => |opt| referencesInternalType(opt.child),
+        .pointer => |ptr| referencesInternalType(ptr.child),
+        else => false,
+    };
+}
+
+// Check if any parameter or return type of a function references internal types
+fn fnReferencesInternalType(comptime fn_info: std.builtin.Type.Fn) bool {
+    for (fn_info.params) |param| {
+        if (param.type) |pt| {
+            if (referencesInternalType(pt)) return true;
+        }
+    }
+    if (fn_info.return_type) |rt| {
+        if (referencesInternalType(rt)) return true;
+    }
+    return false;
+}
+
 pub const PyiGenerator = struct {
     allocator: std.mem.Allocator,
     output: std.array_list.Managed(u8),
@@ -282,6 +314,9 @@ pub const PyiGenerator = struct {
                     .@"fn" => |fn_info| {
                         // Skip if it's not a method (doesn't take self as first parameter)
                         if (fn_info.params.len == 0) continue;
+
+                        // Skip methods that reference internal types not exposed to Python
+                        if (comptime fnReferencesInternalType(fn_info)) continue;
 
                         const first_param_type_info = @typeInfo(fn_info.params[0].type.?);
                         const is_method = switch (first_param_type_info) {
