@@ -72,6 +72,7 @@ def create_method_wrapper(cls, method_name):
 
     wrapper.__name__ = method_name
     wrapper.__qualname__ = f"{cls.__name__}.{method_name}"
+    wrapper.__wrapped__ = method
     if hasattr(method, "pytestmark"):
         wrapper.pytestmark = method.pytestmark
     # Also copy dict for other attributes if needed
@@ -365,11 +366,9 @@ def run_tests(
     for filepath, test_func in matches:
         logger.info(f"Running {test_func.__name__}")
 
-        with tempfile.TemporaryDirectory() as tmp_path_:
-            tmp_path = Path(tmp_path_)
-
         # args: list[str] | None = None
         arg_def: _PytestArgDef | None = None
+        needs_setup_project_config = False
 
         # check if need to run fixtures
         if test_func.__dict__:
@@ -414,27 +413,29 @@ def run_tests(
                     )
                 if mark.name == "usefixtures":
                     if "setup_project_config" in mark.args:
-                        _fixture_setup_project_config(tmp_path)
+                        needs_setup_project_config = True
                     else:
                         raise ValueError(
                             f"Test {test_func.__name__} is using usefixtures. "
                             "Manual discovery does not support usefixtures."
                         )
-        # check if has argument called tmpdir or tmp_path
-        varnames = test_func.__code__.co_varnames
+
+        # Follow __wrapped__ chain to find the original function's parameters
+        inspect_target = test_func
+        while hasattr(inspect_target, "__wrapped__"):
+            inspect_target = inspect_target.__wrapped__
+        varnames = inspect_target.__code__.co_varnames
         needs_tmpdir = "tmpdir" in varnames
         needs_tmp_path = "tmp_path" in varnames
         if needs_tmpdir or needs_tmp_path:
             old_test_func = test_func
 
-            def _(*args, **kwargs):
-                with tempfile.TemporaryDirectory() as tmp_path_str:
-                    tmp_path_obj = Path(tmp_path_str)
-                    if needs_tmpdir:
-                        kwargs["tmpdir"] = tmp_path_obj
-                    if needs_tmp_path:
-                        kwargs["tmp_path"] = tmp_path_obj
-                    old_test_func(*args, **kwargs)
+            def _(*args, _old=old_test_func, **kwargs):
+                if needs_tmpdir:
+                    kwargs["tmpdir"] = tmp_path
+                if needs_tmp_path:
+                    kwargs["tmp_path"] = tmp_path
+                _old(*args, **kwargs)
 
             test_func = _
 
@@ -486,7 +487,11 @@ def run_tests(
                 )
 
         try:
-            fn()
+            with tempfile.TemporaryDirectory() as tmp_path_str:
+                tmp_path = Path(tmp_path_str)
+                if needs_setup_project_config:
+                    _fixture_setup_project_config(tmp_path)
+                fn()
         except Exception:
             # Print Rich traceback with locals and suppressed internals
             console = Console(stderr=True)
