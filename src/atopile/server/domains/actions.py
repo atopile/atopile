@@ -1745,6 +1745,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "kicadPcb": outputs.kicad_pcb,
                     "kicadSch": outputs.kicad_sch,
                     "pcbSummary": outputs.pcb_summary,
+                    "svg": outputs.svg,
+                    "dxf": outputs.dxf,
+                    "png": outputs.png,
+                    "testpoints": outputs.testpoints,
+                    "variablesReport": outputs.variables_report,
+                    "powerTree": outputs.power_tree,
+                    "datasheets": outputs.datasheets,
                 },
             }
 
@@ -1864,6 +1871,41 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if summary:
                 return {"success": True, "boardSummary": summary}
             return {"success": False, "error": "Board summary not available"}
+
+        elif action == "getReviewComments":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "")
+            if not project_root or not target:
+                return {"success": False, "error": "Missing projectRoot or target"}
+
+            comments = await asyncio.to_thread(
+                manufacturing_domain.get_review_comments, project_root, target
+            )
+            return {"success": True, "comments": comments}
+
+        elif action == "addReviewComment":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "")
+            page_id = payload.get("pageId", "")
+            text = payload.get("text", "")
+            if not project_root or not target or not page_id or not text:
+                return {
+                    "success": False,
+                    "error": "Missing projectRoot, target, pageId, or text",
+                }
+
+            comment = await asyncio.to_thread(
+                manufacturing_domain.add_review_comment,
+                project_root,
+                target,
+                page_id,
+                text,
+            )
+            return {"success": True, "comment": comment}
 
         return {"success": False, "error": f"Unknown action: {action}"}
 

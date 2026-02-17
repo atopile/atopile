@@ -353,6 +353,7 @@ export default defineConfig(({ mode }) => {
               logViewer: resolve(__dirname, 'log-viewer.html'),
               testExplorer: resolve(__dirname, 'test-explorer.html'),
               migrate: resolve(__dirname, 'migrate.html'),
+              manufacturingDashboard: resolve(__dirname, 'manufacturing-dashboard.html'),
             },
         output: {
           entryFileNames: '[name].js',
