@@ -33,3 +33,38 @@
 		(min 0.15mm)
 	)
 )
+(rule "No Vias Under Components"
+	(condition "A.Type == 'Via' && B.Type == 'Pad' && B.insideArea('*')")
+	(constraint disallow via through_via micro_via)
+)
+(rule "Thermal Relief Connection"
+	(constraint zone_connection thermal_reliefs)
+)
+(rule "Assert Pad Type"
+	(condition "A.NetClass == 'Power'")
+	(constraint assertion "A.Type == 'Pad'")
+)
+(rule "Min Spokes"
+	(constraint min_resolved_spokes 4)
+)
+(rule "No Dangling Vias"
+	(constraint via_dangling)
+)
+(rule "Creepage Safety"
+	(condition "A.NetClass == 'HV'")
+	(constraint creepage
+		(min 2.5mm)
+	)
+)
+(rule "Skew Matching"
+	(condition "A.NetClass == 'DDR'")
+	(constraint skew
+		(max 0.1mm)
+		(within_diff_pairs)
+	)
+)
+(rule "Track Angle"
+	(constraint track_angle
+		(max 45)
+	)
+)
