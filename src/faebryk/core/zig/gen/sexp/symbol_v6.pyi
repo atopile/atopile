@@ -49,11 +49,11 @@ class SymbolUnit:
         self,
         *,
         name: str,
-        polylines: list[Polyline],
-        circles: list[Circle],
-        rectangles: list[Rect],
-        arcs: list[Arc],
-        pins: list[SymbolPin],
+        polylines: list[Polyline] = None,
+        circles: list[Circle] = None,
+        rectangles: list[Rect] = None,
+        arcs: list[Arc] = None,
+        pins: list[SymbolPin] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -75,14 +75,14 @@ class Symbol:
         self,
         *,
         name: str,
-        power: bool,
-        propertys: list[Property],
-        pin_numbers: str | None,
-        pin_names: PinNames | None,
-        in_bom: bool | None,
-        on_board: bool | None,
-        symbols: list[SymbolUnit],
-        convert: int | None,
+        power: bool = None,
+        propertys: list[Property] = None,
+        pin_numbers: str | None = None,
+        pin_names: PinNames | None = None,
+        in_bom: bool | None = None,
+        on_board: bool | None = None,
+        symbols: list[SymbolUnit] = None,
+        convert: int | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -95,7 +95,7 @@ class SymbolLib:
     symbols: list[Symbol]
 
     def __init__(
-        self, *, version: int, generator: str, symbols: list[Symbol]
+        self, *, version: int, generator: str, symbols: list[Symbol] = None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

@@ -294,6 +294,9 @@ pub const PyiGenerator = struct {
         inline for (struct_info.fields) |field| {
             try self.output.writer().print(", {s}: ", .{field.name});
             try self.writeZigTypeToPython(self.output.writer(), field.type);
+            if (field.default_value_ptr != null) {
+                try self.output.writer().print(" = None", .{});
+            }
         }
         try self.output.writer().print(") -> None: ...\n", .{});
 
