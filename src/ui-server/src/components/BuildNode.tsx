@@ -16,6 +16,7 @@ import { validateName } from '../utils/nameValidation';
 import { useStore } from '../store';
 import { sendAction } from '../api/websocket';
 import { postMessage } from '../api/vscodeApi';
+import { IS_WEB_IDE } from '../api/config';
 import { StatusIcon } from './StatusIcon';
 import './BuildNode.css';
 
@@ -686,17 +687,19 @@ export const BuildNode = memo(function BuildNode({
                 <FileCode size={12} />
                 <span>ato</span>
               </button>
-              <button
-                className="build-action-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenKiCad?.(projectId, build.id);
-                }}
-                title="Open in KiCad"
-              >
-                <Grid3X3 size={12} />
-                <span>KiCad</span>
-              </button>
+              {!IS_WEB_IDE && (
+                <button
+                  className="build-action-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenKiCad?.(projectId, build.id);
+                  }}
+                  title="Open in KiCad"
+                >
+                  <Grid3X3 size={12} />
+                  <span>KiCad</span>
+                </button>
+              )}
               <button
                 className="build-action-btn"
                 onClick={(e) => {

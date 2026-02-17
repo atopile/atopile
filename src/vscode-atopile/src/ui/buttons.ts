@@ -100,9 +100,10 @@ registerButton('folder', cmdChooseProject, 'Select project folder', 'Select proj
  */
 export function getButtons(): ButtonInfo[] {
     const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+    const isWebIde = isWeb || process.env.WEB_IDE_MODE === '1' || Boolean(process.env.OPENVSCODE_SERVER_ROOT);
     return buttonInfos.filter(b => {
         // KiCad can't run in the web IDE (no display); KiCanvas handles preview instead
-        if (isWeb && b.id === 'atopile.launch_kicad') return false;
+        if (isWebIde && b.id === 'atopile.launch_kicad') return false;
         return true;
     });
 }
