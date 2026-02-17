@@ -656,7 +656,7 @@ def test_dru_round_trip():
 
     # Verify parsed content
     assert dru.kicad_dru.version == 1
-    assert len(dru.kicad_dru.rules) == 4
+    assert len(dru.kicad_dru.rules) == 12
 
     r0 = dru.kicad_dru.rules[0]
     assert r0.name == "Min Clearance"
@@ -687,6 +687,68 @@ def test_dru_round_trip():
     r3 = dru.kicad_dru.rules[3]
     assert r3.layer == "F.SilkS"
     assert r3.severity == "ignore"
+
+    # r4: disallow with multiple item types
+    r4 = dru.kicad_dru.rules[4]
+    assert r4.name == "No Vias Under Components"
+    c4 = r4.constraints[0]
+    assert c4.constraint_type == "disallow"
+    # disallow_types is a []const enum slice, not accessible from Python;
+    # round-trip test below verifies correct decode/encode
+
+    # r5: zone_connection
+    r5 = dru.kicad_dru.rules[5]
+    assert r5.name == "Thermal Relief Connection"
+    c5 = r5.constraints[0]
+    assert c5.constraint_type == "zone_connection"
+    assert c5.zone_connection_type == "thermal_reliefs"
+
+    # r6: assertion
+    r6 = dru.kicad_dru.rules[6]
+    assert r6.name == "Assert Pad Type"
+    c6 = r6.constraints[0]
+    assert c6.constraint_type == "assertion"
+    assert c6.assertion_expr == "A.Type == 'Pad'"
+
+    # r7: min_resolved_spokes with bare integer
+    r7 = dru.kicad_dru.rules[7]
+    assert r7.name == "Min Spokes"
+    c7 = r7.constraints[0]
+    assert c7.constraint_type == "min_resolved_spokes"
+    assert c7.spokes_count == 4
+
+    # r8: parameterless via_dangling
+    r8 = dru.kicad_dru.rules[8]
+    assert r8.name == "No Dangling Vias"
+    c8 = r8.constraints[0]
+    assert c8.constraint_type == "via_dangling"
+
+    # r9: creepage with min/opt/max
+    r9 = dru.kicad_dru.rules[9]
+    assert r9.name == "Creepage Safety"
+    c9 = r9.constraints[0]
+    assert c9.constraint_type == "creepage"
+    assert c9.min is not None
+    assert c9.min.value == 2.5
+    assert c9.min.unit == "mm"
+
+    # r10: skew with within_diff_pairs
+    r10 = dru.kicad_dru.rules[10]
+    assert r10.name == "Skew Matching"
+    c10 = r10.constraints[0]
+    assert c10.constraint_type == "skew"
+    assert c10.max is not None
+    assert c10.max.value == 0.1
+    assert c10.within_diff_pairs is True
+
+    # r11: unitless track_angle
+    r11 = dru.kicad_dru.rules[11]
+    assert r11.name == "Track Angle"
+    c11 = r11.constraints[0]
+    assert c11.constraint_type == "track_angle"
+    assert c11.max is not None
+    assert c11.max.value == 45.0
+    assert c11.max.unit is None
 
     # Round-trip: dump and reload
     dumped = kicad.dumps(dru)
@@ -731,8 +793,10 @@ def test_dru_programmatic_construction():
     # Reload and verify
     dru2 = kicad.loads(kicad.dru.DruFile, dumped)
     assert dru2.kicad_dru.rules[0].name == "Test Rule"
-    assert dru2.kicad_dru.rules[0].constraints[0].min.value == 0.2
-    assert dru2.kicad_dru.rules[0].constraints[0].min.unit == "mm"
+    r0_min = dru2.kicad_dru.rules[0].constraints[0].min
+    assert r0_min is not None
+    assert r0_min.value == 0.2
+    assert r0_min.unit == "mm"
 
 
 def test_text_layer_with_knockout():

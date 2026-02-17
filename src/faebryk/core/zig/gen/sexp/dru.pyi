@@ -20,9 +20,11 @@ class E_severity(str, Enum):
 class E_constraint_type(str, Enum):
     ANNULAR_WIDTH = "annular_width"
     ASSERTION = "assertion"
+    BRIDGED_MASK = "bridged_mask"
     CLEARANCE = "clearance"
     CONNECTION_WIDTH = "connection_width"
     COURTYARD_CLEARANCE = "courtyard_clearance"
+    CREEPAGE = "creepage"
     DIFF_PAIR_GAP = "diff_pair_gap"
     DIFF_PAIR_UNCOUPLED = "diff_pair_uncoupled"
     DISALLOW = "disallow"
@@ -36,12 +38,18 @@ class E_constraint_type(str, Enum):
     PHYSICAL_HOLE_CLEARANCE = "physical_hole_clearance"
     SILK_CLEARANCE = "silk_clearance"
     SKEW = "skew"
+    SOLDER_MASK_EXPANSION = "solder_mask_expansion"
+    SOLDER_PASTE_ABS_MARGIN = "solder_paste_abs_margin"
+    SOLDER_PASTE_REL_MARGIN = "solder_paste_rel_margin"
     TEXT_HEIGHT = "text_height"
     TEXT_THICKNESS = "text_thickness"
     THERMAL_RELIEF_GAP = "thermal_relief_gap"
     THERMAL_SPOKE_WIDTH = "thermal_spoke_width"
+    TRACK_ANGLE = "track_angle"
+    TRACK_SEGMENT_LENGTH = "track_segment_length"
     TRACK_WIDTH = "track_width"
     VIA_COUNT = "via_count"
+    VIA_DANGLING = "via_dangling"
     VIA_DIAMETER = "via_diameter"
     ZONE_CONNECTION = "zone_connection"
 
@@ -53,6 +61,8 @@ class E_zone_connection_type(str, Enum):
 class E_disallow_type(str, Enum):
     TRACK = "track"
     VIA = "via"
+    THROUGH_VIA = "through_via"
+    BLIND_VIA = "blind_via"
     MICRO_VIA = "micro_via"
     BURIED_VIA = "buried_via"
     PAD = "pad"
@@ -73,9 +83,9 @@ class Expression:
 
 class ValueWithUnit:
     value: float
-    unit: str
+    unit: str | None
 
-    def __init__(self, *, value: float, unit: str) -> None: ...
+    def __init__(self, *, value: float, unit: str | None = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -86,14 +96,24 @@ class Constraint:
     min: ValueWithUnit | None
     opt: ValueWithUnit | None
     max: ValueWithUnit | None
+    disallow_types: list[str]
+    zone_connection_type: str | None
+    assertion_expr: str | None
+    spokes_count: int | None
+    within_diff_pairs: bool
 
     def __init__(
         self,
         *,
         constraint_type: str,
-        min: ValueWithUnit | None,
-        opt: ValueWithUnit | None,
-        max: ValueWithUnit | None,
+        min: ValueWithUnit | None = None,
+        opt: ValueWithUnit | None = None,
+        max: ValueWithUnit | None = None,
+        disallow_types: list[str] = None,
+        zone_connection_type: str | None = None,
+        assertion_expr: str | None = None,
+        spokes_count: int | None = None,
+        within_diff_pairs: bool = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -111,10 +131,10 @@ class Rule:
         self,
         *,
         name: str,
-        severity: str | None,
-        layer: str | None,
-        condition: Expression | None,
-        constraints: list[Constraint],
+        severity: str | None = None,
+        layer: str | None = None,
+        condition: Expression | None = None,
+        constraints: list[Constraint] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -125,7 +145,7 @@ class KicadDru:
     version: int
     rules: list[Rule]
 
-    def __init__(self, *, version: int, rules: list[Rule]) -> None: ...
+    def __init__(self, *, version: int = None, rules: list[Rule] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
