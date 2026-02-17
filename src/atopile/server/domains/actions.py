@@ -332,10 +332,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             name = payload.get("name")
 
             if not parent_directory:
-                if ctx.workspace_paths:
-                    parent_directory = str(ctx.workspace_paths[0])
-                else:
-                    return {"success": False, "error": "Missing parentDirectory"}
+                return {"success": False, "error": "Missing parentDirectory"}
 
             try:
                 # Run blocking project creation in thread pool
