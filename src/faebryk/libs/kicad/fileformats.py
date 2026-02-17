@@ -428,7 +428,9 @@ class kicad:
                             layer=line.layer,
                             layers=[line.layer],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=line.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=line.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
@@ -441,7 +443,9 @@ class kicad:
                             layer=arc.layer,
                             layers=[],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=arc.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=arc.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
@@ -455,7 +459,9 @@ class kicad:
                             layer=circle.layer,
                             layers=[],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=circle.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=circle.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
@@ -469,7 +475,9 @@ class kicad:
                             layer=rect.layer,
                             layers=[],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=rect.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=rect.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),

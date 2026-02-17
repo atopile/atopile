@@ -11,6 +11,7 @@ from typing import Any  # noqa: F401
 from faebryk.core.zig.gen.sexp.pcb import Xy
 from faebryk.core.zig.gen.sexp.schematic import (
     Arc,
+    E_hide,
     Fill,
     PinNames,
     Polyline,
@@ -49,11 +50,11 @@ class SymbolUnit:
         self,
         *,
         name: str,
-        polylines: list[Polyline] = None,
-        circles: list[Circle] = None,
-        rectangles: list[Rect] = None,
-        arcs: list[Arc] = None,
-        pins: list[SymbolPin] = None,
+        polylines: list[Polyline] = ...,
+        circles: list[Circle] = ...,
+        rectangles: list[Rect] = ...,
+        arcs: list[Arc] = ...,
+        pins: list[SymbolPin] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -64,7 +65,7 @@ class Symbol:
     name: str
     power: bool
     propertys: list[Property]
-    pin_numbers: str | None
+    pin_numbers: E_hide | None
     pin_names: PinNames | None
     in_bom: bool | None
     on_board: bool | None
@@ -75,14 +76,14 @@ class Symbol:
         self,
         *,
         name: str,
-        power: bool = None,
-        propertys: list[Property] = None,
-        pin_numbers: str | None = None,
-        pin_names: PinNames | None = None,
-        in_bom: bool | None = None,
-        on_board: bool | None = None,
-        symbols: list[SymbolUnit] = None,
-        convert: int | None = None,
+        power: bool = ...,
+        propertys: list[Property] = ...,
+        pin_numbers: E_hide | None = ...,
+        pin_names: PinNames | None = ...,
+        in_bom: bool | None = ...,
+        on_board: bool | None = ...,
+        symbols: list[SymbolUnit] = ...,
+        convert: int | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -95,7 +96,7 @@ class SymbolLib:
     symbols: list[Symbol]
 
     def __init__(
-        self, *, version: int, generator: str, symbols: list[Symbol] = None
+        self, *, version: int, generator: str, symbols: list[Symbol] = ...
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
