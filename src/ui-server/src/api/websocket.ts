@@ -17,7 +17,8 @@ import { postMessage } from './vscodeApi';
 const RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 10000; // Reduced from 30s for faster reconnection
 const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
-const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
+// Allow backend restart/recovery to finish before forcing a reconnect loop.
+const CONNECTION_TIMEOUT_MS = 15000;
 
 // Message types from backend
 interface StateMessage {

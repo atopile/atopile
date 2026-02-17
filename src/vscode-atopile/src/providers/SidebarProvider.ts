@@ -262,6 +262,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastWsUrl: string | null = null;
   private _lastAtopileSettingsKey: string | null = null;
   private _wsProxies: Map<number, NodeWebSocket> = new Map();
+  private _wsProxyRetryTimers: Map<number, NodeJS.Timeout> = new Map();
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
@@ -318,6 +319,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ws.close();
     }
     this._wsProxies.clear();
+    for (const timer of this._wsProxyRetryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this._wsProxyRetryTimers.clear();
   }
 
   private _disposeFileWatcher(): void {
@@ -810,6 +815,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   // --- WebSocket proxy: bridge webview WS connections through the extension host ---
 
   private _handleWsProxyConnect(msg: WsProxyConnect): void {
+    this._clearWsProxyRetry(msg.id);
+
     // Close any existing proxy with the same id
     const existing = this._wsProxies.get(msg.id);
     if (existing) {
@@ -835,36 +842,104 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       // Use the URL as-is if parsing fails
     }
 
-    traceInfo(`[WsProxy] Connecting id=${msg.id} to ${targetUrl}`);
+    this._connectWsProxy(msg.id, targetUrl, 0);
+  }
+
+  private _clearWsProxyRetry(id: number): void {
+    const timer = this._wsProxyRetryTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this._wsProxyRetryTimers.delete(id);
+    }
+  }
+
+  private _scheduleWsProxyRetry(id: number, targetUrl: string, attempt: number): void {
+    this._clearWsProxyRetry(id);
+
+    const delayMs = 500;
+    traceInfo(`[WsProxy] Retrying id=${id} in ${delayMs}ms (attempt ${attempt})`);
+
+    const timer = setTimeout(() => {
+      this._wsProxyRetryTimers.delete(id);
+      // Do not reconnect if this socket id has been replaced or explicitly closed.
+      if (this._wsProxies.has(id)) {
+        return;
+      }
+      this._connectWsProxy(id, targetUrl, attempt);
+    }, delayMs);
+
+    this._wsProxyRetryTimers.set(id, timer);
+  }
+
+  private _isTransientWsProxyError(err: Error): boolean {
+    const message = (err.message || '').toUpperCase();
+    return (
+      message.includes('ECONNREFUSED') ||
+      message.includes('ECONNRESET') ||
+      message.includes('EHOSTUNREACH') ||
+      message.includes('ETIMEDOUT')
+    );
+  }
+
+  private _connectWsProxy(id: number, targetUrl: string, attempt: number): void {
+    traceInfo(`[WsProxy] Connecting id=${id} to ${targetUrl}${attempt > 0 ? ` (attempt ${attempt})` : ''}`);
     const ws = new NodeWebSocket(targetUrl);
+    this._wsProxies.set(id, ws);
+
+    let suppressClose = false;
 
     ws.on('open', () => {
-      traceInfo(`[WsProxy] Connected id=${msg.id}`);
-      this._view?.webview.postMessage({ type: 'wsProxyOpen', id: msg.id });
+      this._clearWsProxyRetry(id);
+      traceInfo(`[WsProxy] Connected id=${id}`);
+      this._view?.webview.postMessage({ type: 'wsProxyOpen', id });
     });
 
     ws.on('message', (data: Buffer | string) => {
       const payload = typeof data === 'string' ? data : data.toString('utf-8');
-      this._view?.webview.postMessage({ type: 'wsProxyMessage', id: msg.id, data: payload });
+      this._view?.webview.postMessage({ type: 'wsProxyMessage', id, data: payload });
     });
 
     ws.on('close', (code: number, reason: Buffer) => {
-      traceInfo(`[WsProxy] Closed id=${msg.id} code=${code}`);
-      this._wsProxies.delete(msg.id);
+      this._wsProxies.delete(id);
+      if (suppressClose) {
+        return;
+      }
+
+      traceInfo(`[WsProxy] Closed id=${id} code=${code}`);
       this._view?.webview.postMessage({
         type: 'wsProxyClose',
-        id: msg.id,
+        id,
         code,
         reason: reason.toString('utf-8'),
       });
     });
 
     ws.on('error', (err: Error) => {
-      traceError(`[WsProxy] Error id=${msg.id}: ${err.message}`);
-      this._view?.webview.postMessage({ type: 'wsProxyError', id: msg.id, error: err.message });
-    });
+      // During crash/restart there is a short window where serverState can still be
+      // "running" while the WS is already down. Treat that as transient too.
+      const backendNotReady = backendServer.serverState !== 'running' || !backendServer.isConnected;
+      const shouldRetry =
+        this._isTransientWsProxyError(err) &&
+        backendNotReady &&
+        attempt < 8;
 
-    this._wsProxies.set(msg.id, ws);
+      if (shouldRetry) {
+        suppressClose = true;
+        this._wsProxies.delete(id);
+        traceInfo(`[WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
+        this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
+        try {
+          ws.removeAllListeners();
+          ws.close();
+        } catch {
+          // Ignore close failures during transient reconnect handling.
+        }
+        return;
+      }
+
+      traceError(`[WsProxy] Error id=${id}: ${err.message}`);
+      this._view?.webview.postMessage({ type: 'wsProxyError', id, error: err.message });
+    });
   }
 
   private _handleWsProxySend(msg: WsProxySend): void {
@@ -875,6 +950,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private _handleWsProxyClose(msg: WsProxyClose): void {
+    this._clearWsProxyRetry(msg.id);
     const ws = this._wsProxies.get(msg.id);
     if (ws) {
       ws.close(msg.code ?? 1000, msg.reason ?? '');

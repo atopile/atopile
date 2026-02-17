@@ -84,6 +84,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     build-essential \
     cmake \
+    nodejs \
+    npm \
+    && npm install -g @gltf-transform/cli@4.1.0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install restricted shell (disables terminal access for the user)
