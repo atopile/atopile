@@ -8,12 +8,101 @@ const collections = @import("collections.zig");
 const parameters = @import("parameters.zig");
 const literals = @import("literals.zig");
 
+fn append_child_identifier(comptime path: fabll.RefPath, comptime identifier: []const u8) fabll.RefPath {
+    return comptime blk: {
+        var segments: [path.segments.len + 1]fabll.RefPath.Segment = undefined;
+        for (path.segments, 0..) |segment, i| {
+            segments[i] = segment;
+        }
+        segments[path.segments.len] = .{ .child_identifier = identifier };
+        const finalized = segments;
+        break :blk .{ .segments = &finalized };
+    };
+}
+
+fn operand_path(comptime path: fabll.RefPath) fabll.RefPath {
+    return append_child_identifier(path, "can_be_operand");
+}
+
+fn owner_child_field_path(comptime identifier: []const u8) fabll.RefPath {
+    return .{
+        .segments = &.{
+            .{ .owner_child = {} },
+            .{ .child_identifier = identifier },
+        },
+    };
+}
+
 pub const is_expression = struct {
     node: fabll.Node,
     _is_trait: is_trait.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
+    }
+};
+
+pub const is_predicate = struct {
+    node: fabll.Node,
+    _is_trait: is_trait.MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+};
+
+pub const IsSubset = struct {
+    node: fabll.Node,
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    is_parameter_operatable: is_trait.MakeEdge(parameters.is_parameter_operatable.MakeChild(), null),
+    subset: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    superset: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild(
+        comptime subset_ref: fabll.RefPath,
+        comptime superset_ref: fabll.RefPath,
+        comptime assert_: bool,
+    ) type {
+        var out = fabll.Node.MakeChild(@This())
+            .add_dependant(
+                collections.PointerOf(parameters.can_be_operand).MakeEdge(
+                    owner_child_field_path("subset"),
+                    operand_path(subset_ref),
+                ),
+            )
+            .add_dependant(
+                collections.PointerOf(parameters.can_be_operand).MakeEdge(
+                    owner_child_field_path("superset"),
+                    operand_path(superset_ref),
+                ),
+            );
+        if (assert_) {
+            out = out.add_dependant(
+                is_trait
+                    .MakeEdge(
+                        is_predicate.MakeChild().with_owner_relative_identifier("predicate"),
+                        fabll.RefPath.owner_child(),
+                    ),
+            );
+        }
+        return out;
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(
+        self: @This(),
+        subset: parameters.can_be_operand,
+        superset: parameters.can_be_operand,
+        assert_: bool,
+    ) @This() {
+        _ = assert_;
+        self.subset.get().point(subset);
+        self.superset.get().point(superset);
+        return self;
     }
 };
 

@@ -15,7 +15,13 @@ fn child_identifier_of(comptime ChildFieldType: type) str {
 }
 
 fn child_refpath_of(comptime ChildFieldType: type) fabll.RefPath {
-    return fabll.RefPath.child_identifier(child_identifier_of(ChildFieldType));
+    const identifier = child_identifier_of(ChildFieldType);
+    if (@hasDecl(ChildFieldType, "IdentifierScope") and
+        std.mem.eql(u8, @tagName(ChildFieldType.IdentifierScope), "owner_relative"))
+    {
+        return fabll.RefPath.owner_child_suffix(identifier);
+    }
+    return fabll.RefPath.child_identifier(identifier);
 }
 
 fn edge_factory(comptime identifier: ?str, comptime index: ?u15) type {
@@ -282,6 +288,27 @@ pub fn PointerSetOf(comptime T: type) type {
             return out
                 .add_dependant(MakeEdgeToField(set_ref, field))
                 .add_dependant_before(field);
+        }
+
+        fn add_edge_dependants_for_fields(
+            comptime out: type,
+            comptime set_ref: fabll.RefPath,
+            comptime fields: []const type,
+            comptime index: usize,
+        ) type {
+            if (index >= fields.len) {
+                return out;
+            }
+            return add_edge_dependants_for_fields(
+                MakeEdgeForField(out, set_ref, fields[index]),
+                set_ref,
+                fields,
+                index + 1,
+            );
+        }
+
+        pub fn MakeEdgesForFields(comptime out: type, comptime set_ref: fabll.RefPath, comptime fields: []const type) type {
+            return add_edge_dependants_for_fields(out, set_ref, fields, 0);
         }
 
         pub fn MakeEdges(comptime set_ref: fabll.RefPath, comptime elem_refs: []const fabll.RefPath) []const type {

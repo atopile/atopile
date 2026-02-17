@@ -133,6 +133,18 @@ fn eql_intervals(a: []const Interval, b: []const Interval) bool {
     return true;
 }
 
+fn string_value_fields(comptime values: []const str) []const type {
+    return comptime blk: {
+        var out: [values.len]type = undefined;
+        for (values, 0..) |value, i| {
+            const value_identifier = std.fmt.comptimePrint("value_{d}", .{i});
+            out[i] = String.MakeChild(value).with_owner_relative_identifier(value_identifier);
+        }
+        const finalized = out;
+        break :blk &finalized;
+    };
+}
+
 pub const String = struct {
     node: fabll.Node,
 
@@ -190,6 +202,30 @@ pub const Strings = struct {
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn MakeChildWithValues(comptime values: []const str) type {
+        return collections.PointerSetOf(String).MakeEdgesForFields(
+            MakeChild(),
+            .{
+                .segments = &.{
+                    .{ .owner_child = {} },
+                    .{ .child_identifier = "values" },
+                },
+            },
+            string_value_fields(values),
+        );
+    }
+
+    pub fn MakeChild_SetSuperset(comptime ref: fabll.RefPath, comptime values: []const str) type {
+        const expressions = @import("expressions.zig");
+        const lit = MakeChildWithValues(values).with_owner_relative_identifier("lit");
+        const out = expressions.IsSubset.MakeChild(
+            ref,
+            fabll.RefPath.owner_child_suffix("lit"),
+            true,
+        );
+        return out.add_dependant_before(lit);
     }
 
     pub fn setup_from_values(self: @This(), values: []const str) @This() {
@@ -2197,6 +2233,38 @@ test "literals strings set operations" {
     const sym_vals = try sym.get_values(std.testing.allocator);
     defer std.testing.allocator.free(sym_vals);
     try std.testing.expectEqual(@as(usize, 2), sym_vals.len);
+}
+
+test "literals strings MakeChild_SetSuperset composes IsSubset with literal" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const Holder = struct {
+        node: fabll.Node,
+        param: parameters.StringParameter.MakeChild(),
+        constraint: Strings.MakeChild_SetSuperset(
+            fabll.RefPath.child_identifier("param"),
+            &.{ "TG constrained" },
+        ),
+    };
+
+    const holder = fabll.Node.bind_typegraph(Holder, &tg).create_instance(&g);
+    const param_operand = holder.param.get().can_be_operand.get();
+    const constraint = holder.constraint.get();
+    const subset_operand = constraint.subset.get().deref();
+    const superset_operand = constraint.superset.get().deref();
+
+    try std.testing.expect(subset_operand.node.instance.node.is_same(param_operand.node.instance.node));
+
+    const superset_owner = superset_operand.get_owner_node() orelse
+        @panic("superset operand has no owner node");
+    const superset_lit = fabll.Node.bind_instance(Strings, superset_owner);
+    const values = try superset_lit.get_values(std.testing.allocator);
+    defer std.testing.allocator.free(values);
+
+    try std.testing.expectEqual(@as(usize, 1), values.len);
+    try std.testing.expect(std.mem.eql(u8, values[0], "TG constrained"));
 }
 
 test "literals numeric interval and set" {

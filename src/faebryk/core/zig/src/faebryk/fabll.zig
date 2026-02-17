@@ -124,8 +124,33 @@ fn requires_attrs(comptime T: type) bool {
     return @hasDecl(T, "Attributes");
 }
 
-fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
+const ChildIdentifierScope = enum {
+    absolute,
+    owner_relative,
+};
+
+fn child_identifier_scope(comptime child_field_type: type) ChildIdentifierScope {
+    if (@hasDecl(child_field_type, "IdentifierScope")) {
+        return child_field_type.IdentifierScope;
+    }
+    return .absolute;
+}
+
+fn field_identifier(decl_name: []const u8, comptime field_type: type) []const u8 {
+    if (comptime child_identifier_scope(field_type) == .owner_relative) {
+        @compileError("owner-relative child fields cannot be used as top-level fields");
+    }
     return field_type.Identifier orelse decl_name;
+}
+
+fn dependant_child_identifier(comptime owner_child_identifier: []const u8, comptime child_field_type: type) []const u8 {
+    const base_identifier = child_field_type.Identifier orelse
+        @compileError("dependant child field must set explicit identifier");
+
+    return switch (comptime child_identifier_scope(child_field_type)) {
+        .absolute => base_identifier,
+        .owner_relative => std.fmt.comptimePrint("{s}_{s}", .{ owner_child_identifier, base_identifier }),
+    };
 }
 
 fn type_identifier(comptime T: type) []const u8 {
@@ -315,7 +340,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 self: Self,
                 type_node: graph.BoundNodeReference,
 
-                fn add_child_field(ctx: *@This(), comptime child_field_type: type, child_identifier: []const u8) void {
+                fn add_child_field(ctx: *@This(), comptime child_field_type: type, comptime child_identifier: []const u8) void {
                     inline for (child_field_type.PrependDependants) |dependant| {
                         ctx.apply_dependant_children_only(child_identifier, dependant);
                     }
@@ -346,7 +371,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 }
 
                 fn build_path(
-                    owner_identifier: []const u8,
+                    comptime owner_identifier: []const u8,
                     comptime path: RefPath,
                 ) [path.segments.len]faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal {
                     // Convert high-level refpath segments into TypeGraph traversal edges.
@@ -356,6 +381,9 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                         out[i] = switch (segment) {
                             .self_node => faebryk.composition.EdgeComposition.traverse(""),
                             .owner_child => faebryk.composition.EdgeComposition.traverse(owner_identifier),
+                            .owner_child_suffix => |suffix| faebryk.composition.EdgeComposition.traverse(
+                                std.fmt.comptimePrint("{s}_{s}", .{ owner_identifier, suffix }),
+                            ),
                             .child_identifier => |path_identifier| faebryk.composition.EdgeComposition.traverse(path_identifier),
                         };
                     }
@@ -364,7 +392,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
 
                 fn apply_dependant_children_only(
                     ctx: *@This(),
-                    owner_child_identifier: []const u8,
+                    comptime owner_child_identifier: []const u8,
                     comptime dependant_type: type,
                 ) void {
                     // Dependants are compile-time declarations attached to a child field.
@@ -372,14 +400,12 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     // 1) additional child fields created before/after the owner child
                     // 2) edges created via make_link with refpaths relative to the owner child
                     if (comptime is_child_field_type(dependant_type)) {
-                        const dependant_identifier = dependant_type.Identifier orelse
-                            @panic("dependant child field must set explicit identifier");
+                        const dependant_identifier = comptime dependant_child_identifier(owner_child_identifier, dependant_type);
                         ctx.add_child_field(dependant_type, dependant_identifier);
                         return;
                     }
 
                     if (comptime is_dependant_edge_type(dependant_type)) {
-                        _ = owner_child_identifier;
                         return;
                     }
 
@@ -388,12 +414,11 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
 
                 fn apply_dependant_edges_only(
                     ctx: *@This(),
-                    owner_child_identifier: []const u8,
+                    comptime owner_child_identifier: []const u8,
                     comptime dependant_type: type,
                 ) void {
                     if (comptime is_child_field_type(dependant_type)) {
-                        const dependant_identifier = dependant_type.Identifier orelse
-                            @panic("dependant child field must set explicit identifier");
+                        const dependant_identifier = comptime dependant_child_identifier(owner_child_identifier, dependant_type);
                         inline for (dependant_type.PrependDependants) |nested_dependant| {
                             ctx.apply_dependant_edges_only(dependant_identifier, nested_dependant);
                         }
@@ -428,7 +453,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     @panic("unsupported dependant type");
                 }
 
-                fn add_child_dependant_edges(ctx: *@This(), comptime child_field_type: type, child_identifier: []const u8) void {
+                fn add_child_dependant_edges(ctx: *@This(), comptime child_field_type: type, comptime child_identifier: []const u8) void {
                     inline for (child_field_type.PrependDependants) |dependant| {
                         ctx.apply_dependant_edges_only(child_identifier, dependant);
                     }
@@ -458,9 +483,9 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     ) catch @panic("failed to add declared make link");
                 }
 
-                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
+                fn visit(ctx_ptr: *anyopaque, comptime decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                    const child_identifier = field_identifier(decl_name, field_type);
+                    const child_identifier = comptime field_identifier(decl_name, field_type);
                     ctx.add_child_field(field_type, child_identifier);
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
@@ -483,8 +508,8 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     _ = decl_name;
                     const dependant_decl_type = if (@TypeOf(dependant_decl) == type) dependant_decl else @TypeOf(dependant_decl);
                     ctx.build_ctx.apply_dependant_children_only(
-                        dependant_decl_type.OwnerChildIdentifier,
-                        dependant_decl_type.Dependant,
+                        comptime dependant_decl_type.OwnerChildIdentifier,
+                        comptime dependant_decl_type.Dependant,
                     );
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
@@ -498,9 +523,9 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
             const DependantEdgeContext = struct {
                 build_ctx: *BuildContext,
 
-                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
+                fn visit(ctx_ptr: *anyopaque, comptime decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                    const child_identifier = field_identifier(decl_name, field_type);
+                    const child_identifier = comptime field_identifier(decl_name, field_type);
                     ctx.build_ctx.add_child_dependant_edges(field_type, child_identifier);
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
@@ -519,8 +544,8 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     _ = decl_name;
                     const dependant_decl_type = if (@TypeOf(dependant_decl) == type) dependant_decl else @TypeOf(dependant_decl);
                     ctx.build_ctx.apply_dependant_edges_only(
-                        dependant_decl_type.OwnerChildIdentifier,
-                        dependant_decl_type.Dependant,
+                        comptime dependant_decl_type.OwnerChildIdentifier,
+                        comptime dependant_decl_type.Dependant,
                     );
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
@@ -687,17 +712,19 @@ pub fn MakeChildWithTypedAttrs(comptime T: type, comptime attrs: anytype) type {
 // Child field model & dependant model
 // =============================================================================
 
-pub fn ChildField(
+fn ChildFieldWithScope(
     comptime T: type,
     comptime identifier: ?str,
     comptime attributes: []const ChildAttribute,
     comptime prepend_dependants: []const type,
     comptime dependants: []const type,
+    comptime identifier_scope: ChildIdentifierScope,
 ) type {
     return struct {
         // Compile-time metadata of the declared child field (stage-0/type side).
         pub const ChildType = T;
         pub const Identifier = identifier;
+        pub const IdentifierScope = identifier_scope;
         pub const Attributes = attributes;
         pub const PrependDependants = prepend_dependants;
         pub const Dependants = dependants;
@@ -715,23 +742,61 @@ pub fn ChildField(
             return wrap_instance(T, child);
         }
 
+        pub fn with_identifier(comptime new_identifier: str) type {
+            return ChildFieldWithScope(
+                T,
+                new_identifier,
+                attributes,
+                prepend_dependants,
+                dependants,
+                identifier_scope,
+            );
+        }
+
+        pub fn relative_to_owner() type {
+            if (identifier == null) {
+                @compileError("relative_to_owner requires an explicit identifier/suffix");
+            }
+            return ChildFieldWithScope(
+                T,
+                identifier,
+                attributes,
+                prepend_dependants,
+                dependants,
+                .owner_relative,
+            );
+        }
+
+        pub fn with_owner_relative_identifier(comptime suffix: str) type {
+            return ChildFieldWithScope(
+                T,
+                suffix,
+                attributes,
+                prepend_dependants,
+                dependants,
+                .owner_relative,
+            );
+        }
+
         pub fn add_dependant(comptime dependant: type) type {
-            return ChildField(
+            return ChildFieldWithScope(
                 T,
                 identifier,
                 attributes,
                 prepend_dependants,
                 append_type(dependants, dependant),
+                identifier_scope,
             );
         }
 
         pub fn add_dependant_before(comptime dependant: type) type {
-            return ChildField(
+            return ChildFieldWithScope(
                 T,
                 identifier,
                 attributes,
                 append_type(prepend_dependants, dependant),
                 dependants,
+                identifier_scope,
             );
         }
 
@@ -739,6 +804,23 @@ pub fn ChildField(
             return to.add_dependant(@This());
         }
     };
+}
+
+pub fn ChildField(
+    comptime T: type,
+    comptime identifier: ?str,
+    comptime attributes: []const ChildAttribute,
+    comptime prepend_dependants: []const type,
+    comptime dependants: []const type,
+) type {
+    return ChildFieldWithScope(
+        T,
+        identifier,
+        attributes,
+        prepend_dependants,
+        dependants,
+        .absolute,
+    );
 }
 
 pub fn MakeDependantEdge(
@@ -806,6 +888,7 @@ pub const RefPath = struct {
     pub const Segment = union(enum) {
         self_node: void,
         owner_child: void,
+        owner_child_suffix: str,
         child_identifier: str,
     };
 
@@ -820,6 +903,12 @@ pub const RefPath = struct {
     pub fn owner_child() @This() {
         return .{
             .segments = &.{.{ .owner_child = {} }},
+        };
+    }
+
+    pub fn owner_child_suffix(comptime suffix: str) @This() {
+        return .{
+            .segments = &.{.{ .owner_child_suffix = suffix }},
         };
     }
 
@@ -1511,4 +1600,92 @@ test "basic+12 declared dependant child then declared edge" {
         else => {},
     }
     try std.testing.expect(ctx.found);
+}
+
+test "basic+13 alternate MakeChild pattern with owner-relative dependants" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const Marker = struct {
+        node: Node,
+
+        pub fn MakeChild() type {
+            return Node.MakeChild(@This());
+        }
+    };
+
+    const Constraint = struct {
+        node: Node,
+
+        pub fn MakeChild_SetLinkedMarker() type {
+            return Node.MakeChild(@This())
+                .add_dependant_before(
+                    Node.MakeChild(Marker).with_owner_relative_identifier("lit"),
+                )
+                .add_dependant(
+                    MakeDependantEdge(
+                        RefPath.owner_child(),
+                        RefPath.owner_child_suffix("lit"),
+                        faebryk.trait.EdgeTrait,
+                    ),
+                );
+        }
+    };
+
+    const Parent = struct {
+        node: Node,
+        c1: Constraint.MakeChild_SetLinkedMarker(),
+        c2: Constraint.MakeChild_SetLinkedMarker(),
+    };
+
+    const bound = Node.bind_typegraph(Parent, &tg);
+    const parent = bound.create_instance(&g);
+
+    const c1 = parent.c1.get().node.instance;
+    const c2 = parent.c2.get().node.instance;
+    const c1_lit = faebryk.composition.EdgeComposition.get_child_by_identifier(parent.node.instance, "c1_lit") orelse
+        @panic("missing c1_lit child");
+    const c2_lit = faebryk.composition.EdgeComposition.get_child_by_identifier(parent.node.instance, "c2_lit") orelse
+        @panic("missing c2_lit child");
+
+    try std.testing.expect(!c1_lit.node.is_same(c2_lit.node));
+
+    const HasTraitTarget = struct {
+        target: graph.BoundNodeReference,
+        found: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.trait.EdgeTrait.is_instance(be.edge)) {
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+            const target = be.g.bind(faebryk.trait.EdgeTrait.get_trait_instance_node(be.edge));
+            if (target.node.is_same(ctx.target.node)) {
+                ctx.found = true;
+            }
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var c1_ctx: HasTraitTarget = .{ .target = c1_lit };
+    switch (faebryk.trait.EdgeTrait.visit_trait_instance_edges(c1, void, &c1_ctx, HasTraitTarget.visit)) {
+        .ERROR => @panic("visit_trait_instance_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(c1_ctx.found);
+
+    var c2_ctx: HasTraitTarget = .{ .target = c2_lit };
+    switch (faebryk.trait.EdgeTrait.visit_trait_instance_edges(c2, void, &c2_ctx, HasTraitTarget.visit)) {
+        .ERROR => @panic("visit_trait_instance_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(c2_ctx.found);
+
+    var cross_ctx: HasTraitTarget = .{ .target = c2_lit };
+    switch (faebryk.trait.EdgeTrait.visit_trait_instance_edges(c1, void, &cross_ctx, HasTraitTarget.visit)) {
+        .ERROR => @panic("visit_trait_instance_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(!cross_ctx.found);
 }
