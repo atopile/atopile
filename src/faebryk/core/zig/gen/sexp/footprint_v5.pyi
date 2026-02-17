@@ -9,6 +9,8 @@ from enum import Enum, IntEnum  # noqa: F401
 from typing import Any  # noqa: F401
 
 from faebryk.core.zig.gen.sexp.pcb import (
+    E_Attr,
+    E_fill,
     FpText,
     ModelXyz,
     Pad,
@@ -36,11 +38,11 @@ class Circle:
     center: Xy
     end: Xy
     width: float
-    fill: str
+    fill: E_fill
     layer: str
 
     def __init__(
-        self, *, center: Xy, end: Xy, width: float, fill: str = None, layer: str
+        self, *, center: Xy, end: Xy, width: float, fill: E_fill = ..., layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -66,11 +68,11 @@ class Rect:
     start: Xy
     end: Xy
     width: float
-    fill: str
+    fill: E_fill
     layer: str
 
     def __init__(
-        self, *, start: Xy, end: Xy, width: float, fill: str, layer: str
+        self, *, start: Xy, end: Xy, width: float, fill: E_fill, layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -90,8 +92,8 @@ class Model:
         path: str,
         scale: ModelXyz,
         rotate: ModelXyz,
-        offset: ModelXyz | None = None,
-        at: ModelXyz | None = None,
+        offset: ModelXyz | None = ...,
+        at: ModelXyz | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -105,7 +107,7 @@ class Footprint:
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
-    attr: list[str]
+    attr: list[E_Attr]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -121,22 +123,22 @@ class Footprint:
         self,
         *,
         name: str,
-        layer: str = None,
-        uuid: str | None = None,
-        path: str | None = None,
-        propertys: list[Property] = None,
-        fp_texts: list[FpText] = None,
-        attr: list[str] = None,
-        fp_lines: list[Line] = None,
-        fp_arcs: list[Arc] = None,
-        fp_circles: list[Circle] = None,
-        fp_rects: list[Rect] = None,
-        fp_poly: list[Polygon] = None,
-        pads: list[Pad] = None,
-        model: Model | None = None,
-        description: str | None = None,
-        tags: list[str] = None,
-        tedit: str | None = None,
+        layer: str = ...,
+        uuid: str | None = ...,
+        path: str | None = ...,
+        propertys: list[Property] = ...,
+        fp_texts: list[FpText] = ...,
+        attr: list[E_Attr] = ...,
+        fp_lines: list[Line] = ...,
+        fp_arcs: list[Arc] = ...,
+        fp_circles: list[Circle] = ...,
+        fp_rects: list[Rect] = ...,
+        fp_poly: list[Polygon] = ...,
+        pads: list[Pad] = ...,
+        model: Model | None = ...,
+        description: str | None = ...,
+        tags: list[str] = ...,
+        tedit: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

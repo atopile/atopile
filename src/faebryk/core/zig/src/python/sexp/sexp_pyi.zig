@@ -31,14 +31,14 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
         try file.writeAll(".pcb import Xy, Xyr, Wh, Effects\n");
     } else if (std.mem.eql(u8, name, "footprint_v5")) {
         try file.writeAll(import_root);
-        try file.writeAll(".pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr, E_Attr\n");
+        try file.writeAll(".pcb import E_Attr, E_fill, FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr\n");
         try file.writeAll(import_root);
         try file.writeAll(".footprint import Tags\n");
     } else if (std.mem.eql(u8, name, "symbol_v6")) {
         try file.writeAll(import_root);
         try file.writeAll(".pcb import Xy\n");
         try file.writeAll(import_root);
-        try file.writeAll(".schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Property, PinNames, Arc\n");
+        try file.writeAll(".schematic import Arc, E_hide, Fill, PinNames, Polyline, Property, Rect, Stroke, SymbolPin\n");
     }
     try file.writeAll(content);
 

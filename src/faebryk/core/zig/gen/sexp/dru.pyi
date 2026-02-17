@@ -85,19 +85,19 @@ class ValueWithUnit:
     value: float
     unit: str | None
 
-    def __init__(self, *, value: float, unit: str | None = None) -> None: ...
+    def __init__(self, *, value: float, unit: str | None = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class Constraint:
-    constraint_type: str
+    constraint_type: E_constraint_type
     min: ValueWithUnit | None
     opt: ValueWithUnit | None
     max: ValueWithUnit | None
-    disallow_types: list[str]
-    zone_connection_type: str | None
+    disallow_types: list[E_disallow_type]
+    zone_connection_type: E_zone_connection_type | None
     assertion_expr: str | None
     spokes_count: int | None
     within_diff_pairs: bool
@@ -105,15 +105,15 @@ class Constraint:
     def __init__(
         self,
         *,
-        constraint_type: str,
-        min: ValueWithUnit | None = None,
-        opt: ValueWithUnit | None = None,
-        max: ValueWithUnit | None = None,
-        disallow_types: list[str] = None,
-        zone_connection_type: str | None = None,
-        assertion_expr: str | None = None,
-        spokes_count: int | None = None,
-        within_diff_pairs: bool = None,
+        constraint_type: E_constraint_type,
+        min: ValueWithUnit | None = ...,
+        opt: ValueWithUnit | None = ...,
+        max: ValueWithUnit | None = ...,
+        disallow_types: list[E_disallow_type] = ...,
+        zone_connection_type: E_zone_connection_type | None = ...,
+        assertion_expr: str | None = ...,
+        spokes_count: int | None = ...,
+        within_diff_pairs: bool = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -122,7 +122,7 @@ class Constraint:
 
 class Rule:
     name: str
-    severity: str | None
+    severity: E_severity | None
     layer: str | None
     condition: Expression | None
     constraints: list[Constraint]
@@ -131,10 +131,10 @@ class Rule:
         self,
         *,
         name: str,
-        severity: str | None = None,
-        layer: str | None = None,
-        condition: Expression | None = None,
-        constraints: list[Constraint] = None,
+        severity: E_severity | None = ...,
+        layer: str | None = ...,
+        condition: Expression | None = ...,
+        constraints: list[Constraint] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -145,7 +145,7 @@ class KicadDru:
     version: int
     rules: list[Rule]
 
-    def __init__(self, *, version: int = None, rules: list[Rule] = None) -> None: ...
+    def __init__(self, *, version: int = ..., rules: list[Rule] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...

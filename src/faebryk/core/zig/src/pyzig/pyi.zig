@@ -175,21 +175,12 @@ pub const PyiGenerator = struct {
             },
             .@"union" => try writer.writeAll("Any"),
             .@"enum" => {
-                // TODO: make proper use of enum types
-                const enum_info = @typeInfo(T).@"enum";
-                const tag_type_info = @typeInfo(enum_info.tag_type);
-                const is_i32_backed = switch (tag_type_info) {
-                    .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
-                    else => false,
-                };
-
-                if (is_i32_backed) {
-                    // For i32 enums, use int since they're IntEnum at runtime
-                    try writer.writeAll("int");
-                } else {
-                    // For other enums, use strings
-                    try writer.writeAll("str");
-                }
+                const class_name = @typeName(T);
+                const clean_name = if (std.mem.lastIndexOf(u8, class_name, ".")) |idx|
+                    class_name[idx + 1 ..]
+                else
+                    class_name;
+                try writer.writeAll(clean_name);
             },
             .error_union => |err_union| {
                 try self.writeZigTypeToPython(writer, err_union.payload);
@@ -295,7 +286,7 @@ pub const PyiGenerator = struct {
             try self.output.writer().print(", {s}: ", .{field.name});
             try self.writeZigTypeToPython(self.output.writer(), field.type);
             if (field.default_value_ptr != null) {
-                try self.output.writer().print(" = None", .{});
+                try self.output.writer().print(" = ...", .{});
             }
         }
         try self.output.writer().print(") -> None: ...\n", .{});
