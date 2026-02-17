@@ -455,7 +455,10 @@ def _pick_tree(
                 continue
 
             g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
-            item.solver.simplify(g, tg, terminal=False, relevant=relevant)
+            item.solver.simplify(
+                g, tg, terminal=False, relevant=relevant,
+                skip_anticorrelated=item.depth > 0,
+            )
 
             groups = find_independent_groups(item.modules)
             group_solvers = [next(item.solver.fork()) for _ in range(len(groups))]
@@ -479,12 +482,13 @@ def _pick_tree(
             f"{sum(len(item.modules) for item in expanded)} total modules"
         )
 
-        all_modules = _list_to_hack_tree(m for item in expanded for m in item.modules)
-        all_candidates = picker_lib.get_candidates(all_modules, solver)
         next_queue: deque[PickWorkItem] = deque()
 
         for item in expanded:
-            group_candidates = {m: all_candidates[m] for m in item.modules}
+            group_modules = _list_to_hack_tree(item.modules)
+            group_candidates = picker_lib.get_candidates(
+                group_modules, item.solver
+            )
             if no_candidates := [m for m, cs in group_candidates.items() if not cs]:
                 raise PickError(
                     f"No candidates found for {no_candidates}", *no_candidates

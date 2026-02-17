@@ -1076,8 +1076,12 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand],
         iteration: int = 0,
+        skip_anticorrelated: bool = False,
     ) -> "MutationMap":
-        relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
+        relevant_root_predicates = MutatorUtils.get_relevant_predicates(
+            *relevant, skip_anticorrelated=skip_anticorrelated
+        )
+
         if S_LOG:
             logger.debug(
                 "Relevant root predicates: "
@@ -1190,6 +1194,7 @@ class MutationMap:
         iteration: int = 0,
         relevant: list[F.Parameters.can_be_operand] | None = None,
         initial_state: "MutationMap | None" = None,
+        skip_anticorrelated: bool = False,
     ) -> "MutationMap":
         from faebryk.core.solver.symbolic.canonical import (
             convert_to_canonical_operations,
@@ -1217,7 +1222,10 @@ class MutationMap:
                     g, tg, relevant, initial_state, iteration
                 )
             else:
-                mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+                mut_map = MutationMap._with_relevance_set(
+                    g, tg, relevant, iteration,
+                    skip_anticorrelated=skip_anticorrelated,
+                )
         else:
             mut_map = MutationMap._identity(tg, g, iteration)
 
@@ -1670,6 +1678,43 @@ class Mutator:
             new_param,
         ).as_parameter.force_get()
 
+    # Mapping of non-canonical expression types to their canonical equivalents.
+    # Each entry: (NonCanonical, Canonical, operand_transform)
+    # operand_transform: a function that converts operands from the non-canonical
+    # form to the canonical form.
+    _CANONICAL_CONVERSIONS: "list[tuple[type[F.Expressions.ExpressionNodes], type[F.Expressions.ExpressionNodes], Callable[[list[F.Parameters.can_be_operand]], list[F.Parameters.can_be_operand]]]]" = [
+        # LessOrEqual(A, B) -> GreaterOrEqual(B, A)
+        (F.Expressions.LessOrEqual, F.Expressions.GreaterOrEqual, lambda ops: list(reversed(ops))),
+        # LessThan(A, B) -> GreaterOrEqual(B, A)
+        (F.Expressions.LessThan, F.Expressions.GreaterOrEqual, lambda ops: list(reversed(ops))),
+        # GreaterThan(A, B) -> GreaterOrEqual(A, B)
+        (F.Expressions.GreaterThan, F.Expressions.GreaterOrEqual, lambda ops: list(ops)),
+        # IsSuperset(A, B) -> IsSubset(B, A)
+        (F.Expressions.IsSuperset, F.Expressions.IsSubset, lambda ops: list(reversed(ops))),
+    ]
+
+    def _canonicalize_builder(
+        self,
+        builder: "ExpressionBuilder",
+    ) -> "ExpressionBuilder":
+        """Convert a non-canonical expression builder to its canonical equivalent."""
+        expr_factory = builder.factory
+        for non_canonical, canonical, transform in self._CANONICAL_CONVERSIONS:
+            if expr_factory is non_canonical:
+                new_operands = transform(builder.operands)
+                return builder.with_(
+                    factory=canonical,
+                    operands=new_operands,
+                )
+        # For types not in simple conversion table (Subtract, Divide, etc.),
+        # these should have been handled by canonicalization in iteration 0.
+        # If they reach here, it's an unexpected state.
+        raise AssertionError(
+            f"Non-canonical expression type {expr_factory} encountered in "
+            f"iteration {self.iteration} but no simple conversion available. "
+            f"Builder: {builder.compact_repr()}"
+        )
+
     def _create_and_insert_expression[T: F.Expressions.ExpressionNodes](
         self,
         builder: ExpressionBuilder[T],
@@ -1687,9 +1732,15 @@ class Mutator:
         # only after canonicalize has run
         if self.iteration > 0:
             expr_bound = expr_factory.bind_typegraph(self.tg_out)
-            assert expr_bound.check_if_instance_of_type_has_trait(
+            if not expr_bound.check_if_instance_of_type_has_trait(
                 F.Expressions.is_canonical
-            )
+            ):
+                # Auto-canonicalize non-canonical expression types that survived
+                # into post-canonicalization iterations
+                builder = self._canonicalize_builder(builder)
+                expr_factory, operands, assert_, terminate, traits, irrelevant = (
+                    builder
+                )
 
         # map operands to mutated
         assert all(op.is_in_graph(self.G_out) for op in operands)

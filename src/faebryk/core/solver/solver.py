@@ -152,6 +152,7 @@ class Solver:
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand] | None = None,
+        skip_anticorrelated: bool = False,
     ):
         initial_state = (
             self.state.data.mutation_map.compressed() if self.state else None
@@ -159,7 +160,8 @@ class Solver:
         return Solver.SolverState(
             data=Solver.IterationData(
                 mutation_map=MutationMap.bootstrap(
-                    tg=tg, g=g, relevant=relevant, initial_state=initial_state
+                    tg=tg, g=g, relevant=relevant, initial_state=initial_state,
+                    skip_anticorrelated=skip_anticorrelated,
                 ),
             )
         )
@@ -171,11 +173,14 @@ class Solver:
         tg: fbrk.TypeGraph | graph.GraphView,
         terminal: bool = True,
         relevant: list[F.Parameters.can_be_operand] | None = None,
+        skip_anticorrelated: bool = False,
     ) -> SolverState:
         """
         Args:
         - terminal: if True, result of simplication can't be reused, but simplification
             is more powerful
+        - skip_anticorrelated: if True, bypass anticorrelated pairs filtering in
+            relevance discovery (used after picking correlated parts)
         """
         import faebryk.library._F as F
 
@@ -188,13 +193,19 @@ class Solver:
         logger.info("Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
         timings = Times(name="Symbolic Solving")
 
-        self.state = self._create_or_resume_state(g, tg, relevant)
+        self.state = self._create_or_resume_state(
+            g, tg, relevant, skip_anticorrelated=skip_anticorrelated
+        )
         assert not self._terminal, "Terminal algorithms already run"
         self._terminal = terminal
 
         algos = [a for a in self.algorithms.iterative if terminal or not a.terminal]
 
         with timings.measure("symbolic solving"):
+            prev_node_count: int | None = None
+            stable_iterations = 0
+            GRAPH_STABILITY_THRESHOLD = 1
+
             for iterno in count():
                 if iterno > MAX_ITERATIONS_HEURISTIC:
                     raise TimeoutError(
@@ -216,8 +227,27 @@ class Solver:
                 if not iteration_state.dirty:
                     break
 
-                if not self.state.data.mutation_map.G_out.get_node_count():
+                node_count = self.state.data.mutation_map.G_out.get_node_count()
+                if not node_count:
                     break
+
+                # Graph stability convergence detection:
+                # If the graph size hasn't changed for several consecutive
+                # iterations, the solver is likely oscillating between
+                # equivalent representations rather than making progress.
+                if node_count == prev_node_count:
+                    stable_iterations += 1
+                    if stable_iterations >= GRAPH_STABILITY_THRESHOLD and iterno >= 3:
+                        logger.warning(
+                            f"Solver converged by graph stability after "
+                            f"{iterno + 1} iterations "
+                            f"(|V|={node_count} stable for "
+                            f"{stable_iterations + 1} iterations)"
+                        )
+                        break
+                else:
+                    stable_iterations = 0
+                prev_node_count = node_count
 
         if S_LOG:
             self.state.data.mutation_map.last_stage.print_graph_contents()

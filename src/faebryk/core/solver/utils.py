@@ -441,6 +441,7 @@ class MutatorUtils:
     @staticmethod
     def get_relevant_predicates(
         *op: F.Parameters.can_be_operand,
+        skip_anticorrelated: bool = False,
     ) -> OrderedSet[F.Expressions.is_predicate]:
         from faebryk.core.solver.mutator import is_irrelevant
 
@@ -451,7 +452,10 @@ class MutatorUtils:
         tg = first_op.tg
         g = first_op.g
 
-        anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(tg, g)
+        anticorrelated_pairs = (
+            set() if skip_anticorrelated
+            else MutatorUtils.get_anticorrelated_pairs(tg, g)
+        )
         original_params = {
             p
             for o in op
@@ -463,12 +467,16 @@ class MutatorUtils:
         roots: OrderedSet[F.Expressions.is_predicate] = OrderedSet()
 
         while True:
+            raw_roots = list(
+                F.Parameters.can_be_operand.get_root_operands(
+                    *leaves, predicates_only=True
+                )
+            )
+
             new_roots = (
                 OrderedSet(
                     e.get_sibling_trait(F.Expressions.is_predicate)
-                    for e in F.Parameters.can_be_operand.get_root_operands(
-                        *leaves, predicates_only=True
-                    )
+                    for e in raw_roots
                     if not e.get_sibling_trait(
                         F.Expressions.is_expression
                     ).is_non_constraining()

@@ -271,17 +271,16 @@ class Component:
                 # Get the parameter traits
                 param_operand = param.as_operand.get()
 
-                # Create Is expression to alias parameter to the literal value
-                from faebryk.library.Expressions import IsSuperset
+                # Constrain parameter to the picked part's value
+                from faebryk.library.Expressions import IsSubset
 
-                IsSuperset.bind_typegraph(tg=module.tg).create_instance(
+                _issubset_expr = IsSubset.bind_typegraph(tg=module.tg).create_instance(
                     g=module.g
                 ).setup(
                     param_operand,
                     literal.as_operand.get(),
                     assert_=True,
                 )
-
         if missing_attrs:
             with downgrade(UserException):
                 # TODO: suggest specific library module
