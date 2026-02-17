@@ -1,0 +1,5 @@
+# Build artifacts (from optional local builds)
+artifacts/
+
+# Local runtime env (host/IP specific)
+.env

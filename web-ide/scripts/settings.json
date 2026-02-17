@@ -1,0 +1,34 @@
+{
+    "editor.fontSize": 14,
+    "editor.fontFamily": "'Fira Code', 'Droid Sans Mono', 'monospace'",
+    "editor.tabSize": 4,
+    "editor.formatOnSave": true,
+    "editor.minimap.enabled": false,
+
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+
+    "terminal.integrated.defaultProfile.linux": null,
+    "terminal.integrated.profiles.linux": {},
+    "terminal.integrated.allowChords": false,
+    "terminal.integrated.sendKeybindingsToShell": false,
+
+    "debug.showInStatusBar": "never",
+    "debug.toolBarLocation": "hidden",
+    "debug.console.closeOnEnd": true,
+    "debug.showInlineBreakpointCandidates": false,
+    "launch": { "configurations": [], "compounds": [] },
+
+    "atopile.autoInstall": false,
+    "atopile.ato": "/home/openvscode-server/.local/bin/ato",
+    "atopile.telemetry": true,
+
+    "workbench.colorTheme": "Default Dark Modern",
+    "workbench.startupEditor": "none",
+
+    "telemetry.telemetryLevel": "off",
+
+    "task.quickOpen.skip": true,
+
+    "security.workspace.trust.enabled": false
+}

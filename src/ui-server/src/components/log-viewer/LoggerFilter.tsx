@@ -7,6 +7,11 @@
 
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { LogEntry } from './logTypes';
+import {
+  safeLocalStorageGetItem,
+  safeLocalStorageRemoveItem,
+  safeLocalStorageSetItem,
+} from '../../utils/storage';
 
 // Local storage key for persisted logger filter
 const STORAGE_KEY = 'lv-loggerFilter';
@@ -63,7 +68,7 @@ export function getUniqueTopLevelLoggers(logs: LogEntry[]): string[] {
  */
 export function loadEnabledLoggers(): Set<string> | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = safeLocalStorageGetItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) {
@@ -80,9 +85,9 @@ export function loadEnabledLoggers(): Set<string> | null {
  */
 export function saveEnabledLoggers(enabled: Set<string> | null): void {
   if (enabled === null) {
-    localStorage.removeItem(STORAGE_KEY);
+    safeLocalStorageRemoveItem(STORAGE_KEY);
   } else {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(enabled)));
+    safeLocalStorageSetItem(STORAGE_KEY, JSON.stringify(Array.from(enabled)));
   }
 }
 

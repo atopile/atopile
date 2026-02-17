@@ -37,6 +37,7 @@ export async function openAtoShell(): Promise<void> {
 
     const terminal = vscode.window.createTerminal({
         name: 'ato shell',
+        shellPath: '/bin/bash',
         cwd: cwd,
     });
 
@@ -62,7 +63,7 @@ async function clearBuildLogs(): Promise<void> {
         return;
     }
 
-    const terminal = vscode.window.createTerminal('atopile');
+    const terminal = vscode.window.createTerminal({ name: 'atopile', shellPath: '/bin/bash' });
     terminal.show();
     terminal.sendText(atoCommand);
 }

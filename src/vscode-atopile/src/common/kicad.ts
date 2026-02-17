@@ -1,4 +1,5 @@
 import * as cp from 'child_process';
+import * as fs from 'fs';
 import { glob } from 'glob';
 import * as path from 'path';
 import * as util from 'util';
@@ -133,25 +134,44 @@ export async function optimizeGLB(inputPath: string, outputPath: string, signal?
     const binPath = path.join(extensionPath, 'node_modules', '.bin', 'gltf-transform');
     const binPathWindows = binPath + '.cmd';
     const actualBinPath = process.platform === 'win32' ? binPathWindows : binPath;
+    const optimizeArgs = ['optimize', inputPath, outputPath, '--compress', 'draco'];
+    const commandCandidates: Array<{ command: string; args: string[] }> = [];
 
-    // Check if binary exists
-    const fs = require('fs');
-    const binExists = fs.existsSync(actualBinPath);
-
-    const command = binExists ? actualBinPath : (process.platform === 'win32' ? 'npx.cmd' : 'npx');
-    // When using npx, we need the full package name @gltf-transform/cli
-    // The binary is named 'gltf-transform' but npx needs the package name
-    const commandArgs = binExists
-        ? ['optimize', inputPath, outputPath, '--compress', 'draco']
-        : ['--package', '@gltf-transform/cli', 'gltf-transform', 'optimize', inputPath, outputPath, '--compress', 'draco'];
+    // 1) Prefer the extension-local binary when present.
+    if (fs.existsSync(actualBinPath)) {
+        commandCandidates.push({ command: actualBinPath, args: optimizeArgs });
+    }
+    // 2) Prefer a container/host-installed binary.
+    commandCandidates.push({ command: 'gltf-transform', args: optimizeArgs });
+    // 3) Last resort for environments where only npx is available.
+    commandCandidates.push({
+        command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+        args: ['--package', '@gltf-transform/cli', 'gltf-transform', ...optimizeArgs],
+    });
 
     try {
-        await execFile(command, commandArgs, {
-            timeout: timeoutMs,
-            signal,
-            cwd: extensionPath, // Run from extension directory
-        });
-        traceInfo(`GLB optimized: ${outputPath}`);
+        let lastError: unknown;
+        for (const candidate of commandCandidates) {
+            try {
+                await execFile(candidate.command, candidate.args, {
+                    timeout: timeoutMs,
+                    signal,
+                    cwd: extensionPath,
+                });
+                traceInfo(`GLB optimized: ${outputPath}`);
+                return;
+            } catch (error) {
+                const err = error as NodeJS.ErrnoException;
+                if (err?.code === 'ENOENT') {
+                    traceWarn(`GLB optimizer command not found: ${candidate.command}`);
+                    lastError = error;
+                    continue;
+                }
+                throw error;
+            }
+        }
+
+        throw lastError || new Error('No GLB optimizer command available');
     } catch (error) {
         if (signal?.aborted) {
             throw new Error('GLB optimization cancelled');

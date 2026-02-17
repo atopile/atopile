@@ -7,6 +7,7 @@ interface AtopileWindow extends Window {
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
   __ATOPILE_WORKSPACE_FOLDERS__?: string[];
+  __ATOPILE_IS_WEB_IDE__?: boolean;
 }
 
 const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
@@ -59,6 +60,11 @@ export const WS_STATE_URL = `${WS_BASE_URL}/ws/state`;
  * Used by the LogViewer component.
  */
 export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
+
+/**
+ * True when running inside the browser-based web-ide container.
+ */
+export const IS_WEB_IDE = win.__ATOPILE_IS_WEB_IDE__ === true;
 
 /**
  * Get workspace folders from injected globals or URL query params.

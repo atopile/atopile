@@ -29,8 +29,7 @@
         "Snippets"
     ],
     "extensionDependencies": [
-        "ms-python.python",
-        "vscode.git"
+        "ms-python.python"
     ],
     "capabilities": {
         "virtualWorkspaces": {
@@ -290,6 +289,7 @@
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",
         "@vscode/vsce": "^3.2.1",
+        "esbuild": "^0.24.0",
         "eslint": "^9.17.0",
         "glob": "^10.4.5",
         "prettier": "^3.4.2",

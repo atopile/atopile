@@ -21,6 +21,7 @@ import {
   loadEnabledLoggers,
 } from './log-viewer';
 import { LOG_COL_WIDTHS } from './LogViewer';
+import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '../utils/storage';
 import './LogViewer.css';
 
 export interface TestLogViewerProps {
@@ -32,7 +33,7 @@ export interface TestLogViewerProps {
 export function TestLogViewer({ testRunId, testName, autoStream = false }: TestLogViewerProps) {
   // Display settings (persisted in localStorage)
   const [logLevels, setLogLevels] = useState<LogLevel[]>(() => {
-    const stored = localStorage.getItem('lv-logLevels');
+    const stored = safeLocalStorageGetItem('lv-logLevels');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -92,16 +93,16 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
 
   // Persist display states
   useEffect(() => {
-    localStorage.setItem('lv-levelFull', String(levelFull));
+    safeLocalStorageSetItem('lv-levelFull', String(levelFull));
   }, [levelFull]);
   useEffect(() => {
-    localStorage.setItem('lv-timeMode', timeMode);
+    safeLocalStorageSetItem('lv-timeMode', timeMode);
   }, [timeMode]);
   useEffect(() => {
-    localStorage.setItem('lv-sourceMode', sourceMode);
+    safeLocalStorageSetItem('lv-sourceMode', sourceMode);
   }, [sourceMode]);
   useEffect(() => {
-    localStorage.setItem('lv-logLevels', JSON.stringify(logLevels));
+    safeLocalStorageSetItem('lv-logLevels', JSON.stringify(logLevels));
   }, [logLevels]);
 
   // Close dropdown on outside click

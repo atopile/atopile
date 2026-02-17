@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '../utils/storage';
 
 export type ThemePreference = 'dark' | 'light' | 'system';
 
@@ -14,7 +15,7 @@ const STORAGE_KEY = 'atopile-theme-preference';
 
 function getStoredTheme(): ThemePreference {
   if (typeof window === 'undefined') return 'system';
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = safeLocalStorageGetItem(STORAGE_KEY);
   if (stored === 'dark' || stored === 'light' || stored === 'system') {
     return stored;
   }
@@ -46,7 +47,7 @@ export function useTheme() {
   // Set theme preference
   const setTheme = useCallback((newTheme: ThemePreference) => {
     setThemeState(newTheme);
-    localStorage.setItem(STORAGE_KEY, newTheme);
+    safeLocalStorageSetItem(STORAGE_KEY, newTheme);
     applyTheme(newTheme);
   }, [applyTheme]);
 

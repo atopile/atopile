@@ -96,9 +96,16 @@ registerButton('folder', cmdChooseProject, 'Select project folder', 'Select proj
 
 /**
  * Get button metadata for the sidebar.
+ * Filters out buttons that don't apply to the current environment.
  */
 export function getButtons(): ButtonInfo[] {
-    return buttonInfos;
+    const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+    const isWebIde = isWeb || process.env.WEB_IDE_MODE === '1' || Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+    return buttonInfos.filter(b => {
+        // KiCad can't run in the web IDE (no display); KiCanvas handles preview instead
+        if (isWebIde && b.id === 'atopile.launch_kicad') return false;
+        return true;
+    });
 }
 
 function _getSelectedBuilds(): Build[] {

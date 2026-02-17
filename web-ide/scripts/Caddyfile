@@ -1,0 +1,27 @@
+{
+	# Some clients (notably curl against raw IP) omit SNI. Use the configured
+	# public host as TLS fallback so handshakes still succeed.
+	default_sni {$WEB_IDE_PUBLIC_HOST:code-vm}
+}
+
+# Caddy reverse proxy routes:
+# - HTTPS on :3443 (required for reliable webviews on non-loopback hosts)
+(atopile_proxy) {
+	log {
+		output stderr
+	}
+
+	@backend_ws path /ws/*
+	handle @backend_ws {
+		reverse_proxy 127.0.0.1:8501
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3001
+	}
+}
+
+# Accept HTTPS for local names, code-vm, and WEB_IDE_PUBLIC_HOST (e.g. remote machine IP).
+https://localhost:3443, https://127.0.0.1:3443, https://code-vm:3443, https://{$WEB_IDE_PUBLIC_HOST:code-vm}:3443 {
+	tls internal
+	import atopile_proxy
+}

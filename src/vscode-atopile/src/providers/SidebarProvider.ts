@@ -13,16 +13,15 @@ import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/l
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
-import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
-import { loadBuilds, getBuilds } from '../common/manifest';
+import { type Build, loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
-import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
+import { WebSocket as NodeWebSocket } from 'ws';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -46,6 +45,35 @@ interface AtopileSettingsMessage {
     source?: string;
     localPath?: string | null;
   };
+}
+
+interface FetchProxyRequest {
+  type: 'fetchProxy';
+  id: number;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string | null;
+}
+
+// WebSocket proxy: bridges webview WebSocket connections through the extension host.
+// In OpenVSCode Server, webviews are served from HTTPS CDN which blocks
+// ws:// connections to the local backend (Mixed Content).
+interface WsProxyConnect {
+  type: 'wsProxyConnect';
+  id: number;
+  url: string;
+}
+interface WsProxySend {
+  type: 'wsProxySend';
+  id: number;
+  data: string;
+}
+interface WsProxyClose {
+  type: 'wsProxyClose';
+  id: number;
+  code?: number;
+  reason?: string;
 }
 
 interface SelectionChangedMessage {
@@ -169,6 +197,12 @@ interface WebviewReadyMessage {
   type: 'webviewReady';
 }
 
+interface WebviewDiagnosticMessage {
+  type: 'webviewDiagnostic';
+  phase: string;
+  detail?: string;
+}
+
 interface OpenMigrateTabMessage {
   type: 'openMigrateTab';
   projectRoot: string;
@@ -201,9 +235,14 @@ type WebviewMessage =
   | ListFilesMessage
   | LoadDirectoryMessage
   | GetAtopileSettingsMessage
+  | FetchProxyRequest
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | WebviewDiagnosticMessage
+  | OpenMigrateTabMessage
+  | WsProxyConnect
+  | WsProxySend
+  | WsProxyClose;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -222,6 +261,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
   private _lastAtopileSettingsKey: string | null = null;
+  private _wsProxies: Map<number, NodeWebSocket> = new Map();
+  private _wsProxyRetryTimers: Map<number, NodeJS.Timeout> = new Map();
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
@@ -272,6 +313,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._disposables = [];
     this._disposeFileWatcher();
+    // Clean up all WebSocket proxy connections
+    for (const ws of this._wsProxies.values()) {
+      ws.removeAllListeners();
+      ws.close();
+    }
+    this._wsProxies.clear();
+    for (const timer of this._wsProxyRetryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this._wsProxyRetryTimers.clear();
   }
 
   private _disposeFileWatcher(): void {
@@ -364,17 +415,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-    this._refreshWebview();
-    this._postWorkspaceRoot();
-    this._postActiveFile(vscode.window.activeTextEditor);
-    this._sendAtopileSettings();
 
+    // Register message handler before setting HTML to avoid missing early
+    // bootstrap messages from the webview (e.g. wsProxyConnect).
     this._disposables.push(
       webviewView.webview.onDidReceiveMessage(
         (message: WebviewMessage) => this._handleWebviewMessage(message),
         undefined
       )
     );
+
+    this._refreshWebview();
+    this._postWorkspaceRoot();
+    this._postActiveFile(vscode.window.activeTextEditor);
+    this._sendAtopileSettings();
   }
 
   /**
@@ -507,6 +561,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'webviewReady': {
         traceMilestone('sidebar webview ready');
+        break;
+      }
+      case 'webviewDiagnostic': {
+        const detail = message.detail ? `: ${message.detail}` : '';
+        traceInfo(`[SidebarProvider][webview] ${message.phase}${detail}`);
         break;
       }
       case 'showError':
@@ -687,6 +746,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // Load contents of a lazy-loaded directory
         this._handleLoadDirectory(message.projectRoot, message.directoryPath);
         break;
+      case 'fetchProxy':
+        // Proxy HTTP requests from the webview through the extension host.
+        // In OpenVSCode Server, webviews are served from HTTPS CDN which blocks
+        // HTTP fetch() to the local backend (Mixed Content).
+        this._handleFetchProxy(message);
+        break;
+      case 'wsProxyConnect':
+        this._handleWsProxyConnect(message as WsProxyConnect);
+        break;
+      case 'wsProxySend':
+        this._handleWsProxySend(message as WsProxySend);
+        break;
+      case 'wsProxyClose':
+        this._handleWsProxyClose(message as WsProxyClose);
+        break;
       case 'threeDModelBuildResult':
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
@@ -698,6 +772,189 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
+    }
+  }
+
+  private _handleFetchProxy(req: FetchProxyRequest): void {
+    const url = req.url;
+    const init: Record<string, unknown> = {
+      method: req.method,
+      headers: req.headers,
+    };
+    if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {
+      init.body = req.body;
+    }
+
+    // Use Node.js native fetch (available since Node 18)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch(url, init)
+      .then(async (response: { text: () => Promise<string>; status: number; statusText: string; headers: { forEach: (cb: (v: string, k: string) => void) => void } }) => {
+        const body = await response.text();
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value: string, key: string) => {
+          headers[key] = value;
+        });
+        this._view?.webview.postMessage({
+          type: 'fetchProxyResult',
+          id: req.id,
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          body,
+        });
+      })
+      .catch((err: Error) => {
+        this._view?.webview.postMessage({
+          type: 'fetchProxyResult',
+          id: req.id,
+          error: String(err),
+        });
+      });
+  }
+
+  // --- WebSocket proxy: bridge webview WS connections through the extension host ---
+
+  private _handleWsProxyConnect(msg: WsProxyConnect): void {
+    this._clearWsProxyRetry(msg.id);
+
+    // Close any existing proxy with the same id
+    const existing = this._wsProxies.get(msg.id);
+    if (existing) {
+      existing.removeAllListeners();
+      existing.close();
+      this._wsProxies.delete(msg.id);
+    }
+
+    // Rewrite the URL to use the internal backend address.
+    // The webview sends the browser-visible URL (e.g. wss://host/ws/state),
+    // but the extension host should always connect directly to the local backend.
+    let targetUrl = msg.url;
+    try {
+      const parsed = new URL(msg.url);
+      const internalBase = backendServer.internalApiUrl || backendServer.apiUrl;
+      if (internalBase) {
+        const internal = new URL(internalBase);
+        const wsProtocol = internal.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = internal.port ? `:${internal.port}` : '';
+        targetUrl = `${wsProtocol}//${internal.hostname}${port}${parsed.pathname}${parsed.search}`;
+      }
+    } catch {
+      // Use the URL as-is if parsing fails
+    }
+
+    this._connectWsProxy(msg.id, targetUrl, 0);
+  }
+
+  private _clearWsProxyRetry(id: number): void {
+    const timer = this._wsProxyRetryTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this._wsProxyRetryTimers.delete(id);
+    }
+  }
+
+  private _scheduleWsProxyRetry(id: number, targetUrl: string, attempt: number): void {
+    this._clearWsProxyRetry(id);
+
+    const delayMs = 500;
+    traceInfo(`[WsProxy] Retrying id=${id} in ${delayMs}ms (attempt ${attempt})`);
+
+    const timer = setTimeout(() => {
+      this._wsProxyRetryTimers.delete(id);
+      // Do not reconnect if this socket id has been replaced or explicitly closed.
+      if (this._wsProxies.has(id)) {
+        return;
+      }
+      this._connectWsProxy(id, targetUrl, attempt);
+    }, delayMs);
+
+    this._wsProxyRetryTimers.set(id, timer);
+  }
+
+  private _isTransientWsProxyError(err: Error): boolean {
+    const message = (err.message || '').toUpperCase();
+    return (
+      message.includes('ECONNREFUSED') ||
+      message.includes('ECONNRESET') ||
+      message.includes('EHOSTUNREACH') ||
+      message.includes('ETIMEDOUT')
+    );
+  }
+
+  private _connectWsProxy(id: number, targetUrl: string, attempt: number): void {
+    traceInfo(`[WsProxy] Connecting id=${id} to ${targetUrl}${attempt > 0 ? ` (attempt ${attempt})` : ''}`);
+    const ws = new NodeWebSocket(targetUrl);
+    this._wsProxies.set(id, ws);
+
+    let suppressClose = false;
+
+    ws.on('open', () => {
+      this._clearWsProxyRetry(id);
+      traceInfo(`[WsProxy] Connected id=${id}`);
+      this._view?.webview.postMessage({ type: 'wsProxyOpen', id });
+    });
+
+    ws.on('message', (data: Buffer | string) => {
+      const payload = typeof data === 'string' ? data : data.toString('utf-8');
+      this._view?.webview.postMessage({ type: 'wsProxyMessage', id, data: payload });
+    });
+
+    ws.on('close', (code: number, reason: Buffer) => {
+      this._wsProxies.delete(id);
+      if (suppressClose) {
+        return;
+      }
+
+      traceInfo(`[WsProxy] Closed id=${id} code=${code}`);
+      this._view?.webview.postMessage({
+        type: 'wsProxyClose',
+        id,
+        code,
+        reason: reason.toString('utf-8'),
+      });
+    });
+
+    ws.on('error', (err: Error) => {
+      // During crash/restart there is a short window where serverState can still be
+      // "running" while the WS is already down. Treat that as transient too.
+      const backendNotReady = backendServer.serverState !== 'running' || !backendServer.isConnected;
+      const shouldRetry =
+        this._isTransientWsProxyError(err) &&
+        backendNotReady &&
+        attempt < 8;
+
+      if (shouldRetry) {
+        suppressClose = true;
+        this._wsProxies.delete(id);
+        traceInfo(`[WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
+        this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
+        try {
+          ws.removeAllListeners();
+          ws.close();
+        } catch {
+          // Ignore close failures during transient reconnect handling.
+        }
+        return;
+      }
+
+      traceError(`[WsProxy] Error id=${id}: ${err.message}`);
+      this._view?.webview.postMessage({ type: 'wsProxyError', id, error: err.message });
+    });
+  }
+
+  private _handleWsProxySend(msg: WsProxySend): void {
+    const ws = this._wsProxies.get(msg.id);
+    if (ws?.readyState === NodeWebSocket.OPEN) {
+      ws.send(msg.data);
+    }
+  }
+
+  private _handleWsProxyClose(msg: WsProxyClose): void {
+    this._clearWsProxyRetry(msg.id);
+    const ws = this._wsProxies.get(msg.id);
+    if (ws) {
+      ws.close(msg.code ?? 1000, msg.reason ?? '');
+      this._wsProxies.delete(msg.id);
     }
   }
 
@@ -826,22 +1083,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.window.showErrorMessage('KiCad layout file not found. Run a build to generate it.');
       return;
     }
-    void openPcb(pcbPath).catch((error) => {
-      traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
-      vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
-    });
+
+    const isWebIde =
+      vscode.env.uiKind === vscode.UIKind.Web ||
+      process.env.WEB_IDE_MODE === '1' ||
+      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+
+    if (isWebIde) {
+      // Browser web-ide cannot launch native KiCad.
+      vscode.window.showInformationMessage('KiCad is unavailable in web-ide. Use the Layout action instead.');
+    } else {
+      // Desktop VS Code: spawn pcbnew directly
+      void openPcb(pcbPath).catch((error) => {
+        traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
+        vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
+      });
+    }
   }
 
   private async _open3dPreview(filePath: string): Promise<void> {
+    await loadBuilds();
+
     const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
-    const build = getBuildTarget();
+    const build = this._resolveBuildFor3dModel(modelPath);
     if (!build?.root || !build.name) {
       traceError('[SidebarProvider] No build target selected for 3D export.');
       await openModelViewerPreview();
       return;
     }
 
-    prepareThreeDViewer(modelPath, () => {
+    // Keep extension target selection aligned with actions triggered from the web UI.
+    setSelectedTargets([build]);
+
+    const glbPath = modelPath.toLowerCase().endsWith('.glb') ? modelPath : build.model_path;
+
+    prepareThreeDViewer(glbPath, () => {
       backendServer.sendToWebview({
         type: 'triggerBuild',
         projectRoot: build.root,
@@ -852,6 +1128,66 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
 
     await openModelViewerPreview();
+  }
+
+  private _resolveBuildFor3dModel(modelPath: string): Build | undefined {
+    const selected = getBuildTarget();
+    if (selected?.root && selected.name) {
+      return selected;
+    }
+
+    const resolvedModelPath = path.resolve(modelPath);
+    const builds = getBuilds();
+
+    const byExactModelPath = builds.find(
+      (build) => path.resolve(build.model_path) === resolvedModelPath
+    );
+    if (byExactModelPath) {
+      return byExactModelPath;
+    }
+
+    for (const build of builds) {
+      const buildDir = path.resolve(build.root, 'build', 'builds', build.name) + path.sep;
+      if (resolvedModelPath.startsWith(buildDir)) {
+        return build;
+      }
+    }
+
+    const marker = `${path.sep}build${path.sep}builds${path.sep}`;
+    const markerIndex = resolvedModelPath.lastIndexOf(marker);
+    if (markerIndex !== -1) {
+      const inferredRoot = resolvedModelPath.slice(0, markerIndex);
+      const remaining = resolvedModelPath.slice(markerIndex + marker.length);
+      const [targetName] = remaining.split(path.sep);
+
+      if (targetName) {
+        const fromManifest = builds.find(
+          (build) =>
+            build.name === targetName &&
+            path.resolve(build.root) === path.resolve(inferredRoot)
+        );
+        if (fromManifest) {
+          return fromManifest;
+        }
+
+        traceInfo(`[SidebarProvider] Inferred 3D target from path: ${targetName}`);
+        return {
+          name: targetName,
+          entry: '',
+          pcb_path: '',
+          model_path: path.join(
+            inferredRoot,
+            'build',
+            'builds',
+            targetName,
+            `${targetName}.pcba.glb`
+          ),
+          root: inferredRoot,
+        };
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -1241,14 +1577,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return this._getNotBuiltHtml();
     }
 
-    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    const cacheVersion = (() => {
+      try {
+        return Math.floor(fs.statSync(jsPath).mtimeMs).toString();
+      } catch {
+        return Date.now().toString();
+      }
+    })();
+
+    const withCacheBust = (uri: vscode.Uri): string =>
+      `${uri.toString()}?v=${cacheVersion}`;
+
+    const jsUri = withCacheBust(webview.asWebviewUri(vscode.Uri.file(jsPath)));
     // Base URI for relative imports in bundled JS (e.g., ./index-xxx.js)
     const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
     const cssUri = fs.existsSync(cssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(cssPath))
+      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(cssPath)))
       : null;
     const baseCssUri = fs.existsSync(baseCssPath)
-      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
+      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(baseCssPath)))
       : null;
     const iconUri = fs.existsSync(iconPath)
       ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
@@ -1271,6 +1618,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
+    const isWebIde =
+      vscode.env.uiKind === vscode.UIKind.Web ||
+      process.env.WEB_IDE_MODE === '1' ||
+      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -1287,7 +1638,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data: https: http:;
-    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} blob:;
+    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ws: wss: blob:;
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -1305,13 +1656,394 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
     window.__ATOPILE_WASM_URL__ = '${wasmUri}';
     window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
+    window.__ATOPILE_IS_WEB_IDE__ = ${isWebIde ? 'true' : 'false'};
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
+
+    // Fetch/WS proxy: route backend traffic through the extension host.
+    // The webview often runs in a CDN iframe where direct localhost access
+    // is blocked (Mixed Content / cross-origin). This bridge keeps comms local.
+    (function() {
+      var originalAcquire = window.acquireVsCodeApi;
+      var vsCodeApi = null;
+      if (typeof originalAcquire === 'function') {
+        window.acquireVsCodeApi = function() {
+          if (!vsCodeApi) vsCodeApi = originalAcquire();
+          return vsCodeApi;
+        };
+      }
+
+      function getVsCodeApi() {
+        try {
+          return vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+        } catch (err) {
+          console.error('[atopile webview] Failed to acquire VS Code API:', err);
+          return null;
+        }
+      }
+
+      function postWebviewDiagnostic(phase, detail) {
+        var payload = {
+          type: 'webviewDiagnostic',
+          phase: String(phase || ''),
+          detail: detail == null ? undefined : String(detail),
+        };
+        if (!window.__ATOPILE_DIAG_QUEUE__) {
+          window.__ATOPILE_DIAG_QUEUE__ = [];
+        }
+        window.__ATOPILE_DIAG_QUEUE__.push(payload);
+        var attempts = 0;
+        var flush = function() {
+          var api = getVsCodeApi();
+          if (!api) {
+            attempts += 1;
+            if (attempts < 40) {
+              setTimeout(flush, 250);
+            }
+            return;
+          }
+          while (window.__ATOPILE_DIAG_QUEUE__.length > 0) {
+            var msg = window.__ATOPILE_DIAG_QUEUE__.shift();
+            try {
+              api.postMessage(msg);
+            } catch (err) {
+              console.error('[atopile webview] Failed to post diagnostic:', err);
+              break;
+            }
+          }
+        };
+        try {
+          flush();
+        } catch (err) {
+          console.error('[atopile webview] Diagnostic flush failed:', err);
+        }
+      }
+
+      window.__ATOPILE_POST_DIAG__ = postWebviewDiagnostic;
+      postWebviewDiagnostic('inline-bootstrap-start');
+      window.addEventListener('error', function(event) {
+        var msg = (event && event.message) ? event.message : 'unknown error';
+        postWebviewDiagnostic('window-error', msg);
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event && event.reason;
+        var msg = reason && reason.message ? reason.message : String(reason);
+        postWebviewDiagnostic('unhandled-rejection', msg);
+      });
+
+      function normalizeHeaders(headers) {
+        if (!headers) return {};
+        if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+          var out = {};
+          headers.forEach(function(v, k) { out[k] = v; });
+          return out;
+        }
+        if (Array.isArray(headers)) {
+          var outArray = {};
+          for (var i = 0; i < headers.length; i++) {
+            var entry = headers[i];
+            if (Array.isArray(entry) && entry.length >= 2) {
+              outArray[String(entry[0])] = String(entry[1]);
+            }
+          }
+          return outArray;
+        }
+        return headers;
+      }
+
+      function createCompatEvent(type, init) {
+        var evt;
+        try {
+          if (type === 'message' && typeof MessageEvent === 'function') {
+            evt = new MessageEvent('message', { data: init && init.data });
+          } else if (type === 'close' && typeof CloseEvent === 'function') {
+            evt = new CloseEvent('close', {
+              code: (init && init.code) || 1000,
+              reason: (init && init.reason) || '',
+              wasClean: true,
+            });
+          } else {
+            evt = new Event(type);
+          }
+        } catch {
+          evt = document.createEvent('Event');
+          evt.initEvent(type, false, false);
+        }
+        if (init && init.data !== undefined && evt.data === undefined) evt.data = init.data;
+        if (init && init.code !== undefined && evt.code === undefined) evt.code = init.code;
+        if (init && init.reason !== undefined && evt.reason === undefined) evt.reason = init.reason;
+        return evt;
+      }
+
+      function createProxySocket(url, id) {
+        var listeners = { open: [], message: [], close: [], error: [] };
+        var target = {
+          _readyState: 0,
+          url: url,
+          onopen: null,
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+          CONNECTING: 0,
+          OPEN: 1,
+          CLOSING: 2,
+          CLOSED: 3,
+          addEventListener: function(type, cb) {
+            if (!listeners[type] || typeof cb !== 'function') return;
+            listeners[type].push(cb);
+          },
+          removeEventListener: function(type, cb) {
+            if (!listeners[type]) return;
+            listeners[type] = listeners[type].filter(function(fn) { return fn !== cb; });
+          },
+          dispatchEvent: function(evt) {
+            var type = evt && evt.type ? evt.type : '';
+            var fns = listeners[type] || [];
+            for (var i = 0; i < fns.length; i++) {
+              try { fns[i](evt); } catch (err) { console.error(err); }
+            }
+            return true;
+          },
+          send: function(data) {
+            var api = getVsCodeApi();
+            if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
+          },
+          close: function(code, reason) {
+            target._readyState = 2;
+            var api = getVsCodeApi();
+            if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
+          },
+        };
+        Object.defineProperty(target, 'readyState', {
+          get: function() { return target._readyState; },
+        });
+        return target;
+      }
+
+      var backendBase = '${apiUrl}';
+      var originalFetch = window.fetch;
+      var proxyId = 0;
+      var pending = new Map();
+
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (msg && msg.type === 'fetchProxyResult' && pending.has(msg.id)) {
+          var handler = pending.get(msg.id);
+          pending.delete(msg.id);
+          handler(msg);
+        }
+      });
+
+      window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
+        if (!url.startsWith(backendBase)) {
+          return originalFetch.apply(this, arguments);
+        }
+
+        var id = ++proxyId;
+        return new Promise(function(resolve, reject) {
+          var timeout = setTimeout(function() {
+            pending.delete(id);
+            reject(new TypeError('Fetch proxy timeout'));
+          }, 30000);
+
+          pending.set(id, function(msg) {
+            clearTimeout(timeout);
+            if (msg.error) {
+              reject(new TypeError(msg.error));
+            } else {
+              resolve(new Response(msg.body, {
+                status: msg.status || 200,
+                statusText: msg.statusText || 'OK',
+                headers: msg.headers || {},
+              }));
+            }
+          });
+
+          var api = getVsCodeApi();
+          if (api) {
+            api.postMessage({
+              type: 'fetchProxy',
+              id: id,
+              url: url,
+              method: (init && init.method) || 'GET',
+              headers: normalizeHeaders(init && init.headers),
+              body: (init && init.body) || null,
+            });
+          } else {
+            clearTimeout(timeout);
+            pending.delete(id);
+            originalFetch.apply(window, [input, init]).then(resolve, reject);
+          }
+        });
+      };
+
+      var wsProxyId = 0;
+      var wsProxyInstances = new Map();
+      var NativeWebSocket = window.WebSocket;
+
+      function resolveFallbackWsUrl(url) {
+        try {
+          var parsed = new URL(url, window.location.href);
+          if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+            return url;
+          }
+
+          var parentOrigin = '';
+          try {
+            var params = new URLSearchParams(window.location.search);
+            parentOrigin = params.get('parentOrigin') || '';
+            if (parentOrigin) parentOrigin = decodeURIComponent(parentOrigin);
+          } catch {}
+
+          if (!parentOrigin && document.referrer) {
+            try {
+              parentOrigin = new URL(document.referrer).origin;
+            } catch {}
+          }
+
+          if (!parentOrigin) {
+            return url;
+          }
+
+          var parent = new URL(parentOrigin);
+          var wsProtocol = parent.protocol === 'https:' ? 'wss:' : 'ws:';
+          return wsProtocol + '//' + parent.host + parsed.pathname + parsed.search;
+        } catch {
+          return url;
+        }
+      }
+
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (!msg || !msg.type) return;
+        var instance = msg.id != null ? wsProxyInstances.get(msg.id) : null;
+        if (!instance) return;
+        switch (msg.type) {
+          case 'wsProxyOpen': {
+            instance._readyState = 1;
+            var openEvt = createCompatEvent('open');
+            if (instance.onopen) instance.onopen(openEvt);
+            instance.dispatchEvent(openEvt);
+            break;
+          }
+          case 'wsProxyMessage': {
+            var msgEvt = createCompatEvent('message', { data: msg.data });
+            if (instance.onmessage) instance.onmessage(msgEvt);
+            instance.dispatchEvent(msgEvt);
+            break;
+          }
+          case 'wsProxyClose': {
+            instance._readyState = 3;
+            var closeEvt = createCompatEvent('close', { code: msg.code || 1000, reason: msg.reason || '' });
+            if (instance.onclose) instance.onclose(closeEvt);
+            instance.dispatchEvent(closeEvt);
+            wsProxyInstances.delete(msg.id);
+            break;
+          }
+          case 'wsProxyError': {
+            var errEvt = createCompatEvent('error');
+            if (instance.onerror) instance.onerror(errEvt);
+            instance.dispatchEvent(errEvt);
+            break;
+          }
+        }
+      });
+
+      function ProxyWebSocket(url, protocols) {
+        var api = getVsCodeApi();
+        if (!api && typeof NativeWebSocket === 'function') {
+          var fallbackUrl = resolveFallbackWsUrl(url);
+          return protocols !== undefined
+            ? new NativeWebSocket(fallbackUrl, protocols)
+            : new NativeWebSocket(fallbackUrl);
+        }
+
+        var id = ++wsProxyId;
+        var target = createProxySocket(url, id);
+        wsProxyInstances.set(id, target);
+        if (api) {
+          try {
+            api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
+          } catch {
+            wsProxyInstances.delete(id);
+            if (typeof NativeWebSocket === 'function') {
+              var fallbackUrl = resolveFallbackWsUrl(url);
+              return protocols !== undefined
+                ? new NativeWebSocket(fallbackUrl, protocols)
+                : new NativeWebSocket(fallbackUrl);
+            }
+          }
+        }
+        return target;
+      }
+      ProxyWebSocket.CONNECTING = 0;
+      ProxyWebSocket.OPEN = 1;
+      ProxyWebSocket.CLOSING = 2;
+      ProxyWebSocket.CLOSED = 3;
+      window.WebSocket = ProxyWebSocket;
+    })();
+
+    (function() {
+      var loading = document.getElementById('atopile-loading');
+      var root = document.getElementById('root');
+      function showFailure(message) {
+        if (!loading) return;
+        loading.textContent = message;
+        if (window.__ATOPILE_POST_DIAG__) {
+          window.__ATOPILE_POST_DIAG__('loading-failure', message);
+        }
+      }
+      function maybeHideLoading() {
+        if (!loading || !root) return;
+        if (root.childNodes.length > 0) {
+          loading.style.display = 'none';
+        }
+      }
+      window.addEventListener('error', function(event) {
+        if (event && event.message) {
+          showFailure('atopile UI failed to load: ' + event.message);
+        } else {
+          showFailure('atopile UI failed to load.');
+        }
+      });
+      if (root && typeof MutationObserver !== 'undefined') {
+        var observer = new MutationObserver(maybeHideLoading);
+        observer.observe(root, { childList: true, subtree: true });
+      }
+      setTimeout(function() {
+        if (root && root.childNodes.length === 0) {
+          showFailure('atopile UI failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
+        }
+      }, 7000);
+    })();
   </script>
 </head>
 <body>
+  <div id="atopile-loading" style="padding: 8px; font-size: 12px; opacity: 0.8;">Loading atopile...</div>
   <div id="root"></div>
-  <script nonce="${nonce}" type="module" src="${jsUri}"></script>
+  <script nonce="${nonce}">
+    (function() {
+      var postDiag = window.__ATOPILE_POST_DIAG__;
+      if (typeof postDiag === 'function') postDiag('module-script-insert');
+      var script = document.createElement('script');
+      script.type = 'module';
+      script.src = '${jsUri}';
+      script.onload = function() {
+        if (typeof postDiag === 'function') postDiag('module-script-loaded');
+      };
+      script.onerror = function() {
+        if (typeof postDiag === 'function') postDiag('module-script-error');
+      };
+      document.body.appendChild(script);
+      setTimeout(function() {
+        var root = document.getElementById('root');
+        if (root && root.childNodes.length === 0 && typeof postDiag === 'function') {
+          postDiag('module-timeout-no-root-content');
+        }
+      }, 8000);
+    })();
+  </script>
 </body>
 </html>`;
   }
