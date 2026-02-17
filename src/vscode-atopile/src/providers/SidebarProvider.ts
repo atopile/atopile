@@ -13,13 +13,11 @@ import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/l
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
-import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
-import { loadBuilds, getBuilds } from '../common/manifest';
+import { type Build, loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
-import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
@@ -1010,10 +1008,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    if (vscode.env.uiKind === vscode.UIKind.Web) {
-      // Web IDE: open KiCanvas layout preview (PCBnew can't run without a display)
-      setCurrentPCB({ path: pcbPath, exists: true });
-      void openKiCanvasPreview();
+    const isWebIde =
+      vscode.env.uiKind === vscode.UIKind.Web ||
+      process.env.WEB_IDE_MODE === '1' ||
+      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+
+    if (isWebIde) {
+      // Browser web-ide cannot launch native KiCad.
+      vscode.window.showInformationMessage('KiCad is unavailable in web-ide. Use the Layout action instead.');
     } else {
       // Desktop VS Code: spawn pcbnew directly
       void openPcb(pcbPath).catch((error) => {
@@ -1024,15 +1026,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async _open3dPreview(filePath: string): Promise<void> {
+    await loadBuilds();
+
     const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
-    const build = getBuildTarget();
+    const build = this._resolveBuildFor3dModel(modelPath);
     if (!build?.root || !build.name) {
       traceError('[SidebarProvider] No build target selected for 3D export.');
       await openModelViewerPreview();
       return;
     }
 
-    prepareThreeDViewer(modelPath, () => {
+    // Keep extension target selection aligned with actions triggered from the web UI.
+    setSelectedTargets([build]);
+
+    const glbPath = modelPath.toLowerCase().endsWith('.glb') ? modelPath : build.model_path;
+
+    prepareThreeDViewer(glbPath, () => {
       backendServer.sendToWebview({
         type: 'triggerBuild',
         projectRoot: build.root,
@@ -1043,6 +1052,66 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
 
     await openModelViewerPreview();
+  }
+
+  private _resolveBuildFor3dModel(modelPath: string): Build | undefined {
+    const selected = getBuildTarget();
+    if (selected?.root && selected.name) {
+      return selected;
+    }
+
+    const resolvedModelPath = path.resolve(modelPath);
+    const builds = getBuilds();
+
+    const byExactModelPath = builds.find(
+      (build) => path.resolve(build.model_path) === resolvedModelPath
+    );
+    if (byExactModelPath) {
+      return byExactModelPath;
+    }
+
+    for (const build of builds) {
+      const buildDir = path.resolve(build.root, 'build', 'builds', build.name) + path.sep;
+      if (resolvedModelPath.startsWith(buildDir)) {
+        return build;
+      }
+    }
+
+    const marker = `${path.sep}build${path.sep}builds${path.sep}`;
+    const markerIndex = resolvedModelPath.lastIndexOf(marker);
+    if (markerIndex !== -1) {
+      const inferredRoot = resolvedModelPath.slice(0, markerIndex);
+      const remaining = resolvedModelPath.slice(markerIndex + marker.length);
+      const [targetName] = remaining.split(path.sep);
+
+      if (targetName) {
+        const fromManifest = builds.find(
+          (build) =>
+            build.name === targetName &&
+            path.resolve(build.root) === path.resolve(inferredRoot)
+        );
+        if (fromManifest) {
+          return fromManifest;
+        }
+
+        traceInfo(`[SidebarProvider] Inferred 3D target from path: ${targetName}`);
+        return {
+          name: targetName,
+          entry: '',
+          pcb_path: '',
+          model_path: path.join(
+            inferredRoot,
+            'build',
+            'builds',
+            targetName,
+            `${targetName}.pcba.glb`
+          ),
+          root: inferredRoot,
+        };
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -1473,6 +1542,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
+    const isWebIde =
+      vscode.env.uiKind === vscode.UIKind.Web ||
+      process.env.WEB_IDE_MODE === '1' ||
+      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -1507,6 +1580,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
     window.__ATOPILE_WASM_URL__ = '${wasmUri}';
     window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
+    window.__ATOPILE_IS_WEB_IDE__ = ${isWebIde ? 'true' : 'false'};
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
 

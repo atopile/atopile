@@ -105,6 +105,8 @@ class BackendServerManager implements vscode.Disposable {
     private _apiUrl: string = buildApiUrl(0);
     private _wsUrl: string = buildWsUrl(0);
     private _internalApiUrl: string = buildApiUrl(0);
+    private _recoverTimer: NodeJS.Timeout | undefined;
+    private _recoverAttempts = 0;
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
@@ -393,8 +395,53 @@ class BackendServerManager implements vscode.Disposable {
             traceInfo(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}, firing onStatusChange`);
             this._onStatusChange.fire(connected);
             this._updateStatusBar();
+        }
 
-            // No-op: connection state shouldn't trigger backend configuration.
+        if (connected) {
+            this._clearRecoveryTimer();
+            this._recoverAttempts = 0;
+        } else {
+            this._scheduleRecoveryCheck();
+        }
+    }
+
+    private _clearRecoveryTimer(): void {
+        if (this._recoverTimer) {
+            clearTimeout(this._recoverTimer);
+            this._recoverTimer = undefined;
+        }
+    }
+
+    private _scheduleRecoveryCheck(): void {
+        if (this._recoverTimer || this._serverState === 'starting') {
+            return;
+        }
+
+        const delayMs = Math.min(10000, 1000 * Math.max(1, this._recoverAttempts + 1));
+        this._recoverTimer = setTimeout(() => {
+            this._recoverTimer = undefined;
+            void this._attemptRecovery();
+        }, delayMs);
+    }
+
+    private async _attemptRecovery(): Promise<void> {
+        if (this._isConnected || this._serverState === 'starting') {
+            return;
+        }
+
+        const healthy = await checkServerHealthHttp(this._internalApiUrl);
+        if (healthy) {
+            traceVerbose('BackendServer: Recovery check found healthy backend');
+            this._recoverAttempts = 0;
+            return;
+        }
+
+        this._recoverAttempts += 1;
+        traceInfo(`BackendServer: Recovery attempt ${this._recoverAttempts}, backend not reachable on ${this._internalApiUrl}`);
+
+        const started = await this.startServer(this._port || undefined);
+        if (!started && !this._isConnected) {
+            this._scheduleRecoveryCheck();
         }
     }
 
@@ -752,6 +799,9 @@ class BackendServerManager implements vscode.Disposable {
      * Stop the backend server.
      */
     async stopServer(): Promise<void> {
+        this._clearRecoveryTimer();
+        this._recoverAttempts = 0;
+
         if (this._process) {
             traceInfo('BackendServer: Stopping server...');
             this._log('info', 'server: Stopping...');
@@ -841,6 +891,8 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     dispose(): void {
+        this._clearRecoveryTimer();
+
         // Stop the server gracefully
         if (this._process) {
             this._process.kill('SIGTERM');
