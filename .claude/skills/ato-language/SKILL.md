@@ -5,7 +5,31 @@ description: "Reference for the `.ato` declarative DSL: type system, connection 
 
 # The ato language
 
-Ato is a **declarative, constraint-based DSL** for describing electronic circuits. There is no control flow, no mutation, and no execution order — you declare *what* a circuit is, and the compiler + solver resolve it into a valid design.
+ato is a **declarative, constraint-based DSL** for describing electronic circuits. There is no control flow, no mutation, and no execution order — you declare *what* a circuit is, and the compiler + solver resolve it into a valid design.
+
+## Quick Start
+
+A minimal complete `.ato` file:
+
+```ato
+import Resistor, ElectricPower, Capacitor
+
+module PowerFilter:
+    """A simple decoupled power input with a pull-down resistor."""
+    power = new ElectricPower
+    cap = new Capacitor
+    pulldown = new Resistor
+
+    power ~ cap.power
+    pulldown.unnamed[0] ~ power.hv
+    pulldown.unnamed[1] ~ power.lv
+
+    cap.capacitance = 100nF +/- 20%
+    pulldown.resistance = 100kohm +/- 5%
+    assert power.voltage within 3.0V to 3.6V
+```
+
+Validate with `ato build` from the package directory.
 
 ## Core Concepts
 
@@ -15,7 +39,7 @@ Every entity (a resistor, a power rail, an I2C bus, a voltage parameter) is a **
 
 ### 2. Three Block Types
 
-Ato has exactly three ways to define a new type:
+ato has exactly three ways to define a new type:
 
 | Keyword | Semantics | Typical Use |
 |-----------|-----------|-------------|
@@ -23,13 +47,13 @@ Ato has exactly three ways to define a new type:
 | `interface` | A connectable boundary; can be wired with `~` | Buses, power rails, signals |
 | `component` | A physical part with footprint/symbol | Vendor ICs, connectors |
 
-All three compile to graph nodes. The distinction controls which **traits** the compiler attaches (`is_module`, `is_interface`) and what operations are legal (only interfaces can appear on both sides of `~`).
+All three compile to graph nodes. The distinction controls which **traits** the compiler attaches (`is_module`, `is_interface`) and what operations are legal (by convention, interfaces appear on both sides of `~`).
 
 Inheritance uses `from`:
 
 ```ato
 module MyRegulator from Regulator:
-    ...
+    pass
 ```
 
 ### 3. Composition — Children and Instantiation
@@ -93,8 +117,11 @@ Traits attach capabilities or metadata to nodes. They are not children — they 
 
 ```ato
 #pragma experiment("TRAITS")
-trait has_part_removed          # mark as non-physical placeholder
-trait is_atomic_part            # user-defined part with footprint
+import has_part_removed, is_atomic_part
+
+module Placeholder:
+    trait has_part_removed          # mark as non-physical placeholder
+    trait is_atomic_part            # user-defined part with footprint
 ```
 
 Key built-in traits:
@@ -130,6 +157,7 @@ Experimental syntax is gated behind pragmas (file top, before imports):
 #pragma experiment("FOR_LOOP")           # for loops
 #pragma experiment("TRAITS")             # trait keyword
 #pragma experiment("MODULE_TEMPLATING")  # new Foo<p=v>
+#pragma experiment("INSTANCE_TRAITS")    # traits on instances
 ```
 
 Using gated syntax without the pragma is a compile error.
@@ -212,13 +240,9 @@ Statements within a block are **order-independent** — the compiler resolves th
 
 ## Invariants
 
-1. **Type-safe connections**: `~` and `~>` require matching interface types. `ElectricPower ~ I2C` is a compile error.
+1. **Type-safe connections**: `~` and `~>` should connect matching interface types. `ElectricPower ~ I2C` is a type mismatch (enforcement is being strengthened).
 2. **Pragma gates syntax**: using `~>`, `for`, `trait`, or `<>` without the matching pragma is a compile error.
 3. **Tolerances on passives**: `resistance = 10kohm` (zero tolerance) matches no real parts. Always use `+/- N%`.
 4. **ElectricLogic needs a reference**: logic signals require a power reference for voltage context. Set `signal.reference ~ power_rail`.
 5. **Order independence**: statements within a block are not sequentially executed. The solver resolves the full graph.
 6. **No procedural logic**: no `if`, `while`, `return`, functions, classes, or exceptions.
-
-## Quick Start
-
-Validate any `.ato` file by running `ato build` from the package directory.
