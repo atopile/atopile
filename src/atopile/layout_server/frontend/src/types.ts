@@ -48,6 +48,18 @@ export interface FootprintModel {
     layer: string;
     pads: PadModel[];
     drawings: DrawingModel[];
+    texts: FootprintTextModel[];
+}
+
+export interface FootprintTextModel {
+    kind: string;
+    name: string | null;
+    text: string;
+    at: Point3;
+    layer: string | null;
+    hide: boolean;
+    size: Size2 | null;
+    thickness: number | null;
 }
 
 export interface PadModel {

@@ -15,6 +15,7 @@ from atopile.layout_server.models import (
     FilledPolygonModel,
     FootprintModel,
     FootprintSummary,
+    FootprintTextModel,
     NetModel,
     PadModel,
     Point2,
@@ -169,6 +170,14 @@ class FlipAction(Action):
             prop.at.y = -prop.at.y
             if hasattr(prop, "layer") and prop.layer:
                 prop.layer = _flip_layer(prop.layer)
+        for txt in fp.fp_texts:
+            txt.at.y = -txt.at.y
+            if not hasattr(txt, "layer") or not txt.layer:
+                continue
+            if hasattr(txt.layer, "layer") and txt.layer.layer:
+                txt.layer.layer = _flip_layer(txt.layer.layer)
+            elif isinstance(txt.layer, str):
+                txt.layer = _flip_layer(txt.layer)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         self._flip(pcb)
@@ -446,6 +455,8 @@ class PcbManager:
                 )
             )
 
+        texts = self._extract_text_entries(fp, ref, value)
+
         return FootprintModel(
             uuid=fp.uuid,
             name=fp.name,
@@ -455,6 +466,81 @@ class PcbManager:
             layer=fp.layer,
             pads=pads,
             drawings=drawings,
+            texts=texts,
+        )
+
+    def _extract_text_entries(
+        self, fp, reference: str | None, footprint_value: str | None
+    ) -> list[FootprintTextModel]:
+        texts: list[FootprintTextModel] = []
+
+        for prop in fp.propertys:
+            if _is_hidden(prop):
+                continue
+            prop_value = getattr(prop, "value", None)
+            if prop_value is None:
+                continue
+            resolved = _resolve_text_tokens(prop_value, reference, footprint_value)
+            if not resolved.strip():
+                continue
+            texts.append(
+                self._extract_text_entry(
+                    kind="property",
+                    name=getattr(prop, "name", None),
+                    text=resolved,
+                    obj=prop,
+                )
+            )
+
+        for txt in fp.fp_texts:
+            if _is_hidden(txt):
+                continue
+            txt_value = getattr(txt, "text", None)
+            if txt_value is None:
+                continue
+            resolved = _resolve_text_tokens(txt_value, reference, footprint_value)
+            if not resolved.strip():
+                continue
+            texts.append(
+                self._extract_text_entry(
+                    kind="fp_text",
+                    name=_text_type_name(getattr(txt, "type", None)),
+                    text=resolved,
+                    obj=txt,
+                )
+            )
+
+        return texts
+
+    def _extract_text_entry(
+        self, kind: str, name: str | None, text: str, obj
+    ) -> FootprintTextModel:
+        at = getattr(obj, "at", None)
+        effects = getattr(obj, "effects", None)
+        font = getattr(effects, "font", None)
+        font_size = getattr(font, "size", None)
+
+        size: Size2 | None = None
+        if (
+            font_size is not None
+            and getattr(font_size, "w", None) is not None
+            and getattr(font_size, "h", None) is not None
+        ):
+            size = Size2(w=font_size.w, h=font_size.h)
+
+        return FootprintTextModel(
+            kind=kind,
+            name=name,
+            text=text,
+            at=Point3(
+                x=getattr(at, "x", 0.0),
+                y=getattr(at, "y", 0.0),
+                r=(getattr(at, "r", 0.0) or 0.0),
+            ),
+            layer=_text_layer_name(getattr(obj, "layer", None)),
+            hide=bool(getattr(obj, "hide", False)),
+            size=size,
+            thickness=getattr(font, "thickness", None),
         )
 
     def _extract_drill(self, drill) -> DrillModel:
@@ -542,3 +628,67 @@ def _get_layer(obj) -> str | None:
     if hasattr(obj, "layers") and obj.layers:
         return obj.layers[0]
     return None
+
+
+def _text_layer_name(layer_obj) -> str | None:
+    if layer_obj is None:
+        return None
+    if isinstance(layer_obj, str):
+        return layer_obj
+    if hasattr(layer_obj, "layer") and layer_obj.layer:
+        return layer_obj.layer
+    return None
+
+
+def _text_type_name(text_type) -> str | None:
+    if text_type is None:
+        return None
+    if isinstance(text_type, str):
+        return text_type
+    if hasattr(text_type, "name"):
+        return str(text_type.name).lower()
+    return str(text_type).split(".")[-1].lower()
+
+
+def _is_hidden(text_obj) -> bool:
+    if bool(getattr(text_obj, "hide", False)):
+        return True
+    effects = getattr(text_obj, "effects", None)
+    if effects is not None and bool(getattr(effects, "hide", False)):
+        return True
+    return False
+
+
+def _resolve_text_tokens(text: str, reference: str | None, value: str | None) -> str:
+    if not text:
+        return text
+
+    ref_text = reference or ""
+    value_text = value or ""
+    out = text.replace("%R", ref_text).replace("%V", value_text)
+
+    replacements = {
+        "REFERENCE": ref_text,
+        "REF": ref_text,
+        "REFDES": ref_text,
+        "VALUE": value_text,
+        "VAL": value_text,
+    }
+
+    result_parts: list[str] = []
+    i = 0
+    while i < len(out):
+        if i + 2 < len(out) and out[i] == "$" and out[i + 1] == "{":
+            end = out.find("}", i + 2)
+            if end != -1:
+                key = out[i + 2 : end].strip().upper()
+                if key in replacements:
+                    result_parts.append(replacements[key])
+                else:
+                    result_parts.append(out[i : end + 1])
+                i = end + 1
+                continue
+        result_parts.append(out[i])
+        i += 1
+
+    return "".join(result_parts)

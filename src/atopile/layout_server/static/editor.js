@@ -1446,6 +1446,9 @@ function collectConcreteLayers(model) {
     for (const d of fp.drawings)
       if (d.layer)
         layers.add(d.layer);
+    for (const t of fp.texts)
+      if (t.layer)
+        layers.add(t.layer);
   }
   for (const t of model.tracks)
     if (t.layer)
@@ -1704,6 +1707,11 @@ function paintSelection(renderer, fp) {
     if (drawing.center)
       allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
   }
+  for (const text of fp.texts) {
+    if (text.hide)
+      continue;
+    allPoints.push(fpTransform(fp.at, text.at.x, text.at.y));
+  }
   if (allPoints.length > 0) {
     const bbox = BBox.from_points(allPoints).grow(0.5);
     layer.geometry.add_polygon([
@@ -1732,6 +1740,11 @@ function computeBBox(model) {
     points.push(new Vec2(fp.at.x, fp.at.y));
     for (const pad of fp.pads) {
       points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
+    }
+    for (const text of fp.texts) {
+      if (text.hide)
+        continue;
+      points.push(fpTransform(fp.at, text.at.x, text.at.y));
     }
   }
   for (const track of model.tracks) {
@@ -1803,8 +1816,11 @@ function hitTestFootprints(worldPos, footprints) {
 }
 
 // src/editor.ts
+var DEG_TO_RAD3 = Math.PI / 180;
 var Editor = class {
   canvas;
+  textOverlay;
+  textCtx;
   renderer;
   camera;
   panAndZoom;
@@ -1821,6 +1837,7 @@ var Editor = class {
   needsRedraw = true;
   // Layer visibility
   hiddenLayers = /* @__PURE__ */ new Set();
+  defaultLayerVisibilityInitialized = false;
   onLayersChanged = null;
   // Track current mouse position
   lastMouseScreen = new Vec2(0, 0);
@@ -1828,6 +1845,8 @@ var Editor = class {
   onMouseMoveCallback = null;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
+    this.textOverlay = this.createTextOverlay();
+    this.textCtx = this.textOverlay.getContext("2d");
     this.baseUrl = baseUrl2;
     this.apiPrefix = apiPrefix2;
     this.wsPath = wsPath2;
@@ -1840,6 +1859,23 @@ var Editor = class {
     this.renderer.setup();
     this.startRenderLoop();
   }
+  createTextOverlay() {
+    const existing = document.getElementById("editor-text-overlay");
+    if (existing instanceof HTMLCanvasElement) {
+      return existing;
+    }
+    const overlay = document.createElement("canvas");
+    overlay.id = "editor-text-overlay";
+    overlay.style.position = "fixed";
+    overlay.style.top = "0";
+    overlay.style.left = "0";
+    overlay.style.width = "100vw";
+    overlay.style.height = "100vh";
+    overlay.style.pointerEvents = "none";
+    overlay.style.zIndex = "9";
+    document.body.appendChild(overlay);
+    return overlay;
+  }
   async init() {
     await this.fetchAndPaint();
     this.connectWebSocket();
@@ -1850,6 +1886,7 @@ var Editor = class {
   }
   applyModel(model, fitToView = false) {
     this.model = model;
+    this.applyDefaultLayerVisibility();
     this.paint();
     this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
     if (fitToView) {
@@ -1858,6 +1895,16 @@ var Editor = class {
     this.requestRedraw();
     if (this.onLayersChanged)
       this.onLayersChanged();
+  }
+  applyDefaultLayerVisibility() {
+    if (!this.model || this.defaultLayerVisibilityInitialized)
+      return;
+    this.defaultLayerVisibilityInitialized = true;
+    for (const layerName of this.getLayers()) {
+      if (layerName.endsWith(".Fab")) {
+        this.hiddenLayers.add(layerName);
+      }
+    }
   }
   paint() {
     if (!this.model)
@@ -2042,6 +2089,10 @@ var Editor = class {
         if (d.layer)
           layers.add(d.layer);
       }
+      for (const t of fp.texts) {
+        if (t.layer)
+          layers.add(t.layer);
+      }
     }
     for (const t of this.model.tracks) {
       if (t.layer)
@@ -2076,6 +2127,62 @@ var Editor = class {
   requestRedraw() {
     this.needsRedraw = true;
   }
+  drawTextOverlay() {
+    if (!this.textCtx)
+      return;
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const pixelWidth = Math.max(1, Math.round(width * dpr));
+    const pixelHeight = Math.max(1, Math.round(height * dpr));
+    if (this.textOverlay.width !== pixelWidth || this.textOverlay.height !== pixelHeight) {
+      this.textOverlay.width = pixelWidth;
+      this.textOverlay.height = pixelHeight;
+    }
+    this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.textCtx.clearRect(0, 0, width, height);
+    if (!this.model || this.camera.zoom < 0.2)
+      return;
+    this.textCtx.textAlign = "center";
+    this.textCtx.textBaseline = "middle";
+    for (const fp of this.model.footprints) {
+      for (const text of fp.texts) {
+        if (text.hide || !text.text.trim())
+          continue;
+        const layerName = text.layer ?? fp.layer;
+        if (this.hiddenLayers.has(layerName))
+          continue;
+        const worldPos = this.transformFootprintPoint(fp.at, text.at.x, text.at.y);
+        const screenPos = this.camera.world_to_screen(worldPos);
+        if (screenPos.x < -200 || screenPos.x > width + 200 || screenPos.y < -50 || screenPos.y > height + 50) {
+          continue;
+        }
+        const textHeight = text.size?.h ?? 1;
+        const screenFontSize = textHeight * this.camera.zoom;
+        if (screenFontSize < 2)
+          continue;
+        const fontPx = Math.max(8, Math.min(screenFontSize, 64));
+        const [r, g, b, a] = getLayerColor(layerName);
+        const rotation = -((fp.at.r || 0) + (text.at.r || 0)) * DEG_TO_RAD3;
+        this.textCtx.save();
+        this.textCtx.translate(screenPos.x, screenPos.y);
+        this.textCtx.rotate(rotation);
+        this.textCtx.font = `${fontPx}px monospace`;
+        this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
+        this.textCtx.fillText(text.text, 0, 0);
+        this.textCtx.restore();
+      }
+    }
+  }
+  transformFootprintPoint(fpAt, localX, localY) {
+    const rad = -(fpAt.r || 0) * DEG_TO_RAD3;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return new Vec2(
+      fpAt.x + localX * cos - localY * sin,
+      fpAt.y + localX * sin + localY * cos
+    );
+  }
   startRenderLoop() {
     const loop = () => {
       if (this.needsRedraw) {
@@ -2083,6 +2190,7 @@ var Editor = class {
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
         this.renderer.updateGrid(this.camera.bbox, 1);
         this.renderer.draw(this.camera.matrix);
+        this.drawTextOverlay();
       }
       requestAnimationFrame(loop);
     };

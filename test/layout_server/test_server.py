@@ -42,6 +42,13 @@ async def test_render_model(client: AsyncClient):
     fp = model["footprints"][0]
     assert "x" in fp["at"]
     assert "y" in fp["at"]
+    assert "texts" in fp
+    assert isinstance(fp["texts"], list)
+
+    texts = [t for footprint in model["footprints"] for t in footprint.get("texts", [])]
+    assert any(t.get("name") == "Reference" for t in texts)
+    assert all(not t.get("hide", False) for t in texts)
+    assert all(t.get("text") not in ("%R", "%V", "${REFERENCE}") for t in texts)
 
 
 @pytest.mark.anyio

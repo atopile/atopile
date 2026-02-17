@@ -63,6 +63,15 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     assert fp.at is not None
     assert len(fp.pads) >= 0
 
+    assert any(
+        f.reference
+        and any(t.kind == "fp_text" and t.text == f.reference for t in f.texts)
+        for f in model.footprints
+    )
+    all_texts = [t for f in model.footprints for t in f.texts]
+    assert all(not t.hide for t in all_texts)
+    assert all(t.text not in ("%R", "%V", "${REFERENCE}") for t in all_texts)
+
 
 def test_move_footprint(manager_v8: PcbManager):
     fps = manager_v8.get_footprints()

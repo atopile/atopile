@@ -103,6 +103,7 @@ function collectConcreteLayers(model: RenderModel): Set<string> {
             for (const l of pad.layers) layers.add(l);
         }
         for (const d of fp.drawings) if (d.layer) layers.add(d.layer);
+        for (const t of fp.texts) if (t.layer) layers.add(t.layer);
     }
     for (const t of model.tracks) if (t.layer) layers.add(t.layer);
     for (const a of model.arcs) if (a.layer) layers.add(a.layer);
@@ -345,6 +346,10 @@ export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLa
         if (drawing.end) allPoints.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
         if (drawing.center) allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
     }
+    for (const text of fp.texts) {
+        if (text.hide) continue;
+        allPoints.push(fpTransform(fp.at, text.at.x, text.at.y));
+    }
 
     if (allPoints.length > 0) {
         const bbox = BBox.from_points(allPoints).grow(0.5);
@@ -371,6 +376,10 @@ export function computeBBox(model: RenderModel): BBox {
         points.push(new Vec2(fp.at.x, fp.at.y));
         for (const pad of fp.pads) {
             points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
+        }
+        for (const text of fp.texts) {
+            if (text.hide) continue;
+            points.push(fpTransform(fp.at, text.at.x, text.at.y));
         }
     }
     for (const track of model.tracks) {

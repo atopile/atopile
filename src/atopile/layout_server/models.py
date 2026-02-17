@@ -75,6 +75,17 @@ class DrawingModel(BaseModel):
     points: list[Point2] | None = None
 
 
+class FootprintTextModel(BaseModel):
+    kind: str  # "property" | "fp_text"
+    name: str | None = None
+    text: str
+    at: Point3
+    layer: str | None = None
+    hide: bool = False
+    size: Size2 | None = None
+    thickness: float | None = None
+
+
 class FootprintModel(BaseModel):
     uuid: str | None
     name: str
@@ -84,6 +95,7 @@ class FootprintModel(BaseModel):
     layer: str
     pads: list[PadModel]
     drawings: list[DrawingModel]
+    texts: list[FootprintTextModel]
 
 
 # --- Tracks / Vias ---
