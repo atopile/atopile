@@ -435,6 +435,22 @@ def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -
     exc = context.get("exception")
     msg = context.get("message", "Unknown asyncio error")
 
+    # Expected lifecycle exceptions from websocket disconnects/cancellation
+    # should not crash the entire backend process.
+    if isinstance(exc, asyncio.CancelledError):
+        log.debug("Ignoring asyncio cancellation in task: %s", msg)
+        return
+
+    try:
+        from websockets.exceptions import ConnectionClosed
+
+        if isinstance(exc, ConnectionClosed):
+            log.warning("Ignoring websocket close in asyncio task: %s", msg)
+            return
+    except Exception:
+        # If websockets import fails, continue with fatal handling below.
+        pass
+
     # Log the full context for debugging
     log.critical("Uncaught exception in asyncio task: %s", msg)
     if exc:
