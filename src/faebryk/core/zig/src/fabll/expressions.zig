@@ -1,5 +1,6 @@
 const graph_mod = @import("graph");
 const graph = graph_mod.graph;
+const visitor = graph_mod.visitor;
 const std = @import("std");
 const faebryk = @import("faebryk");
 const fabll = faebryk.fabll;
@@ -36,6 +37,7 @@ fn owner_child_field_path(comptime identifier: []const u8) fabll.RefPath {
 pub const is_expression = struct {
     node: fabll.Node,
     _is_trait: is_trait.MakeChild(),
+    pub const TypeIdentifier = "is_expression";
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -45,9 +47,78 @@ pub const is_expression = struct {
 pub const is_predicate = struct {
     node: fabll.Node,
     _is_trait: is_trait.MakeChild(),
+    pub const TypeIdentifier = "is_predicate";
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
+    }
+};
+
+pub const OperandPointer = struct {
+    node: fabll.Node,
+    pub const TypeIdentifier = "OperandPointer";
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn MakeEdge(comptime pointer_ref: fabll.RefPath, comptime elem_ref: fabll.RefPath) type {
+        const edge_factory = struct {
+            pub fn build() faebryk.edgebuilder.EdgeCreationAttributes {
+                return faebryk.operand.EdgeOperand.build(null);
+            }
+        };
+        return fabll.MakeDependantEdge(pointer_ref, elem_ref, edge_factory);
+    }
+
+    pub fn point(self: @This(), target: parameters.can_be_operand) void {
+        const edge_ref = faebryk.operand.EdgeOperand.init(
+            self.node.instance.node,
+            target.node.instance.node,
+            null,
+        );
+        _ = self.node.instance.g.insert_edge(edge_ref) catch
+            @panic("failed to create operand pointer edge");
+    }
+
+    pub fn as_list(self: @This(), allocator: std.mem.Allocator) ![]parameters.can_be_operand {
+        const Ctx = struct {
+            out: std.array_list.Managed(parameters.can_be_operand),
+
+            fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const operand = fabll.Node.bind_instance(
+                    parameters.can_be_operand,
+                    be.g.bind(faebryk.operand.EdgeOperand.get_operand_node(be.edge)),
+                );
+                ctx.out.append(operand) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var ctx = Ctx{
+            .out = std.array_list.Managed(parameters.can_be_operand).init(allocator),
+        };
+        errdefer ctx.out.deinit();
+
+        switch (faebryk.operand.EdgeOperand.visit_operand_edges(self.node.instance, void, &ctx, Ctx.visit)) {
+            .ERROR => |err| return err,
+            else => {},
+        }
+        return ctx.out.toOwnedSlice();
+    }
+
+    pub fn try_deref(self: @This()) ?parameters.can_be_operand {
+        const nodes = self.as_list(std.heap.page_allocator) catch return null;
+        defer std.heap.page_allocator.free(nodes);
+        if (nodes.len == 0) {
+            return null;
+        }
+        return nodes[0];
+    }
+
+    pub fn deref(self: @This()) parameters.can_be_operand {
+        return self.try_deref() orelse @panic("OperandPointer is not pointing to an operand");
     }
 };
 
@@ -56,8 +127,9 @@ pub const IsSubset = struct {
     is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
     can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     is_parameter_operatable: is_trait.MakeEdge(parameters.is_parameter_operatable.MakeChild(), null),
-    subset: collections.PointerOf(parameters.can_be_operand).MakeChild(),
-    superset: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    subset: OperandPointer.MakeChild(),
+    superset: OperandPointer.MakeChild(),
+    pub const TypeIdentifier = "IsSubset";
 
     pub fn MakeChild(
         comptime subset_ref: fabll.RefPath,
@@ -66,13 +138,13 @@ pub const IsSubset = struct {
     ) type {
         var out = fabll.Node.MakeChild(@This())
             .add_dependant(
-                collections.PointerOf(parameters.can_be_operand).MakeEdge(
+                OperandPointer.MakeEdge(
                     owner_child_field_path("subset"),
                     operand_path(subset_ref),
                 ),
             )
             .add_dependant(
-                collections.PointerOf(parameters.can_be_operand).MakeEdge(
+                OperandPointer.MakeEdge(
                     owner_child_field_path("superset"),
                     operand_path(superset_ref),
                 ),

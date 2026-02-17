@@ -34,6 +34,23 @@ def test_fabll_zig_string_literal_runtime():
     assert sorted(strings.get_values()) == ["hello-zig", "world"]
 
 
+def test_fabll_zig_strings_makechild_setsuperset():
+    import faebryk.core.node as fabll
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class ExampleStringParameter(fabll.Node):
+        string_p_tg = F.Parameters.StringParameter.MakeChild()
+        constraint = F.Literals.Strings.MakeChild_SetSuperset(
+            [string_p_tg], "TG constrained"
+        )
+
+    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert esp.string_p_tg.get().extract_singleton() == "TG constrained"
+
+
 def test_minimal_graph():
     g = graph.GraphView.create()
 

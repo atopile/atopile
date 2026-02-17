@@ -1,30 +1,22 @@
 const pyzig = @import("pyzig");
 const graph_mod = @import("graph");
+const fabll = @import("fabll");
 const faebryk = @import("faebryk");
 const child_field = @import("child_field.zig");
-const common = @import("common.zig");
 
 const py = pyzig.pybindings;
 const graph = graph_mod.graph;
 
 pub fn add_setsuperset_assertion(
-    t_obj: *py.PyObject,
+    _: *py.PyObject,
     ctx: child_field.TypegraphContext,
     ref_path: *py.PyObject,
     subset_identifier: []const u8,
     literal_identifier: []const u8,
     predicate_identifier: []const u8,
 ) ?graph.BoundNodeReference {
-    const subset_type_node = common.ensure_python_type_node(
-        t_obj,
-        "faebryk.library.Expressions",
-        "IsSubset",
-    ) orelse return null;
-    const predicate_type_node = common.ensure_python_type_node(
-        t_obj,
-        "faebryk.library.Expressions",
-        "is_predicate",
-    ) orelse return null;
+    const subset_type_node = faebryk.fabll.Node.bind_typegraph(fabll.expressions.IsSubset, ctx.tg).get_or_create_type();
+    const predicate_type_node = faebryk.fabll.Node.bind_typegraph(fabll.expressions.is_predicate, ctx.tg).get_or_create_type();
 
     const subset_make_child = ctx.tg.add_make_child(
         ctx.type_node,

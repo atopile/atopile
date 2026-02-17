@@ -1,11 +1,8 @@
 const std = @import("std");
 const pyzig = @import("pyzig");
-const graph_mod = @import("graph");
-const graph_py = @import("../graph/graph_py.zig");
 
 const py = pyzig.pybindings;
 const bind = pyzig.pyzig;
-const graph = graph_mod.graph;
 
 pub fn wrap_owned_obj(
     comptime py_name: [:0]const u8,
@@ -78,52 +75,4 @@ pub fn owned_dealloc(comptime Wrapper: type) *const fn (*py.PyObject) callconv(.
             py._Py_Dealloc(self);
         }
     }.impl;
-}
-
-pub fn ensure_python_type_node(
-    t_obj: *py.PyObject,
-    module_name: [:0]const u8,
-    class_name: [:0]const u8,
-) ?graph.BoundNodeReference {
-    const tg_obj = py.PyObject_GetAttrString(t_obj, "tg") orelse return null;
-    defer py.Py_DECREF(tg_obj);
-
-    const module = py.PyImport_ImportModule(module_name) orelse return null;
-    defer py.Py_DECREF(module);
-    const cls = py.PyObject_GetAttrString(module, class_name) orelse return null;
-    defer py.Py_DECREF(cls);
-
-    const bind_typegraph = py.PyObject_GetAttrString(cls, "bind_typegraph") orelse return null;
-    defer py.Py_DECREF(bind_typegraph);
-
-    const empty_args = py.PyTuple_New(0) orelse {
-        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-        return null;
-    };
-    defer py.Py_DECREF(empty_args);
-
-    const kwargs = py.PyDict_New() orelse {
-        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-        return null;
-    };
-    defer py.Py_DECREF(kwargs);
-    if (py.PyDict_SetItemString(kwargs, "tg", tg_obj) < 0) {
-        return null;
-    }
-
-    const bound_type = py.PyObject_Call(bind_typegraph, empty_args, kwargs) orelse return null;
-    defer py.Py_DECREF(bound_type);
-
-    const get_or_create_type = py.PyObject_GetAttrString(bound_type, "get_or_create_type") orelse return null;
-    defer py.Py_DECREF(get_or_create_type);
-    const type_node_obj = py.PyObject_Call(get_or_create_type, empty_args, null) orelse return null;
-    defer py.Py_DECREF(type_node_obj);
-
-    const type_node_wrapper = bind.castWrapper(
-        "BoundNode",
-        &graph_py.bound_node_type,
-        graph_py.BoundNodeWrapper,
-        type_node_obj,
-    ) orelse return null;
-    return type_node_wrapper.data.*;
 }
