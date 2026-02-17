@@ -19,7 +19,7 @@ class SymbolLib:
     symbols: list[Symbol]
 
     def __init__(
-        self, *, version: int, generator: str, symbols: list[Symbol]
+        self, *, version: int, generator: str = None, symbols: list[Symbol] = None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

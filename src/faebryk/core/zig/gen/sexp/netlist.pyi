@@ -46,7 +46,7 @@ class Field:
     name: str
     value: str | None
 
-    def __init__(self, *, name: str, value: str | None) -> None: ...
+    def __init__(self, *, name: str, value: str | None = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -55,7 +55,7 @@ class Field:
 class Fields:
     fields: list[Field]
 
-    def __init__(self, *, fields: list[Field]) -> None: ...
+    def __init__(self, *, fields: list[Field] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -78,12 +78,12 @@ class Component:
         ref: str,
         value: str,
         footprint: str,
-        propertys: list[Property],
-        tstamps: list[str],
-        fields: Fields | None,
-        sheetpath: Sheetpath | None,
-        libsource: Libsource | None,
-        datasheet: str | None,
+        propertys: list[Property] = None,
+        tstamps: list[str] = None,
+        fields: Fields | None = None,
+        sheetpath: Sheetpath | None = None,
+        libsource: Libsource | None = None,
+        datasheet: str | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -93,7 +93,7 @@ class Component:
 class Components:
     comps: list[Component]
 
-    def __init__(self, *, comps: list[Component]) -> None: ...
+    def __init__(self, *, comps: list[Component] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -106,7 +106,12 @@ class Node:
     pinfunction: str | None
 
     def __init__(
-        self, *, ref: str, pin: str, pintype: str | None, pinfunction: str | None
+        self,
+        *,
+        ref: str,
+        pin: str,
+        pintype: str | None = None,
+        pinfunction: str | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -118,7 +123,7 @@ class Net:
     name: str
     nodes: list[Node]
 
-    def __init__(self, *, code: str, name: str, nodes: list[Node]) -> None: ...
+    def __init__(self, *, code: str, name: str, nodes: list[Node] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -127,7 +132,7 @@ class Net:
 class Nets:
     nets: list[Net]
 
-    def __init__(self, *, nets: list[Net]) -> None: ...
+    def __init__(self, *, nets: list[Net] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -154,12 +159,12 @@ class TitleBlock:
     def __init__(
         self,
         *,
-        title: str,
-        company: str,
-        rev: str,
-        date: str,
+        title: str = None,
+        company: str = None,
+        rev: str = None,
+        date: str = None,
         source: str,
-        comment: list[Comment],
+        comment: list[Comment] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -204,7 +209,7 @@ class Fp:
 class Footprints:
     fps: list[Fp]
 
-    def __init__(self, *, fps: list[Fp]) -> None: ...
+    def __init__(self, *, fps: list[Fp] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -224,7 +229,7 @@ class Pin:
 class Pins:
     pin: list[Pin]
 
-    def __init__(self, *, pin: list[Pin]) -> None: ...
+    def __init__(self, *, pin: list[Pin] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -242,9 +247,9 @@ class Libpart:
         *,
         lib: str,
         part: str,
-        fields: Fields | None,
-        pins: Pins | None,
-        footprints: Footprints | None,
+        fields: Fields | None = None,
+        pins: Pins | None = None,
+        footprints: Footprints | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -254,7 +259,7 @@ class Libpart:
 class Libparts:
     libparts: list[Libpart]
 
-    def __init__(self, *, libparts: list[Libpart]) -> None: ...
+    def __init__(self, *, libparts: list[Libpart] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -279,11 +284,11 @@ class Netlist:
         self,
         *,
         version: str,
-        components: Components,
-        nets: Nets,
-        design: Design | None,
-        libparts: Libparts,
-        libraries: Libraries,
+        components: Components = None,
+        nets: Nets = None,
+        design: Design | None = None,
+        libparts: Libparts = None,
+        libraries: Libraries = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

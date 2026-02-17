@@ -71,7 +71,7 @@ class E_hide(str, Enum):
 class Pts:
     xys: list[Xy]
 
-    def __init__(self, *, xys: list[Xy]) -> None: ...
+    def __init__(self, *, xys: list[Xy] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -80,7 +80,7 @@ class Pts:
 class Fill:
     type: str
 
-    def __init__(self, *, type: str) -> None: ...
+    def __init__(self, *, type: str = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -91,7 +91,9 @@ class Stroke:
     type: str
     color: Color
 
-    def __init__(self, *, width: float, type: str, color: Color) -> None: ...
+    def __init__(
+        self, *, width: float = None, type: str = None, color: Color = None
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -141,7 +143,7 @@ class Polyline:
     fill: Fill
     pts: Pts
 
-    def __init__(self, *, stroke: Stroke, fill: Fill, pts: Pts) -> None: ...
+    def __init__(self, *, stroke: Stroke, fill: Fill, pts: Pts = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -155,7 +157,13 @@ class Property:
     effects: Effects | None
 
     def __init__(
-        self, *, name: str, value: str, id: int | None, at: Xyr, effects: Effects | None
+        self,
+        *,
+        name: str,
+        value: str,
+        id: int | None = None,
+        at: Xyr,
+        effects: Effects | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -206,8 +214,8 @@ class SymbolPin:
         length: float,
         type: str,
         style: str,
-        name: PinName,
-        number: PinNumber,
+        name: PinName = None,
+        number: PinNumber = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -226,11 +234,11 @@ class SymbolUnit:
         self,
         *,
         name: str,
-        polylines: list[Polyline],
-        circles: list[Circle],
-        rectangles: list[Rect],
-        arcs: list[Arc],
-        pins: list[SymbolPin],
+        polylines: list[Polyline] = None,
+        circles: list[Circle] = None,
+        rectangles: list[Rect] = None,
+        arcs: list[Arc] = None,
+        pins: list[SymbolPin] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -252,14 +260,14 @@ class Symbol:
         self,
         *,
         name: str,
-        power: bool,
-        propertys: list[Property],
-        pin_numbers: str | None,
-        pin_names: PinNames | None,
-        in_bom: bool | None,
-        on_board: bool | None,
-        symbols: list[SymbolUnit],
-        convert: int | None,
+        power: bool = None,
+        propertys: list[Property] = None,
+        pin_numbers: str | None = None,
+        pin_names: PinNames | None = None,
+        in_bom: bool | None = None,
+        on_board: bool | None = None,
+        symbols: list[SymbolUnit] = None,
+        convert: int | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -294,13 +302,13 @@ class SymbolInstance:
         lib_id: str,
         at: Xyr,
         unit: int,
-        in_bom: bool,
-        on_board: bool,
+        in_bom: bool = None,
+        on_board: bool = None,
         uuid: str,
-        fields_autoplaced: bool,
-        propertys: list[Property],
-        pins: list[InstancePin],
-        convert: int | None,
+        fields_autoplaced: bool = None,
+        propertys: list[Property] = None,
+        pins: list[InstancePin] = None,
+        convert: int | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -313,7 +321,9 @@ class Junction:
     color: Color
     uuid: str
 
-    def __init__(self, *, at: Xy, diameter: float, color: Color, uuid: str) -> None: ...
+    def __init__(
+        self, *, at: Xy, diameter: float, color: Color = None, uuid: str
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -375,9 +385,9 @@ class Sheet:
         stroke: Stroke,
         fill: Fill,
         uuid: str,
-        fields_autoplaced: bool,
-        propertys: list[Property],
-        pins: list[SheetPin],
+        fields_autoplaced: bool = None,
+        propertys: list[Property] = None,
+        pins: list[SheetPin] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -401,8 +411,8 @@ class GlobalLabel:
         at: Xyr,
         effects: Effects,
         uuid: str,
-        fields_autoplaced: bool,
-        propertys: list[Property],
+        fields_autoplaced: bool = None,
+        propertys: list[Property] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -453,10 +463,10 @@ class TitleBlock:
     def __init__(
         self,
         *,
-        title: str | None,
-        date: str | None,
-        rev: str | None,
-        company: str | None,
+        title: str | None = None,
+        date: str | None = None,
+        rev: str | None = None,
+        company: str | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -466,7 +476,7 @@ class TitleBlock:
 class LibSymbols:
     symbols: list[Symbol]
 
-    def __init__(self, *, symbols: list[Symbol]) -> None: ...
+    def __init__(self, *, symbols: list[Symbol] = None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -505,22 +515,22 @@ class KicadSch:
     def __init__(
         self,
         *,
-        version: int,
+        version: int = None,
         generator: str,
         paper: str,
         uuid: str,
-        lib_symbols: LibSymbols,
-        title_block: TitleBlock,
-        junctions: list[Junction],
-        wires: list[Wire],
-        texts: list[Text],
-        symbols: list[SymbolInstance],
-        sheets: list[Sheet],
-        global_labels: list[GlobalLabel],
-        no_connects: list[Xy],
-        buss: list[Bus],
-        labels: list[Label],
-        bus_entrys: list[BusEntry],
+        lib_symbols: LibSymbols = None,
+        title_block: TitleBlock = None,
+        junctions: list[Junction] = None,
+        wires: list[Wire] = None,
+        texts: list[Text] = None,
+        symbols: list[SymbolInstance] = None,
+        sheets: list[Sheet] = None,
+        global_labels: list[GlobalLabel] = None,
+        no_connects: list[Xy] = None,
+        buss: list[Bus] = None,
+        labels: list[Label] = None,
+        bus_entrys: list[BusEntry] = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

@@ -40,7 +40,7 @@ class Circle:
     layer: str
 
     def __init__(
-        self, *, center: Xy, end: Xy, width: float, fill: str, layer: str
+        self, *, center: Xy, end: Xy, width: float, fill: str = None, layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -90,8 +90,8 @@ class Model:
         path: str,
         scale: ModelXyz,
         rotate: ModelXyz,
-        offset: ModelXyz | None,
-        at: ModelXyz | None,
+        offset: ModelXyz | None = None,
+        at: ModelXyz | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -121,22 +121,22 @@ class Footprint:
         self,
         *,
         name: str,
-        layer: str,
-        uuid: str | None,
-        path: str | None,
-        propertys: list[Property],
-        fp_texts: list[FpText],
-        attr: list[str],
-        fp_lines: list[Line],
-        fp_arcs: list[Arc],
-        fp_circles: list[Circle],
-        fp_rects: list[Rect],
-        fp_poly: list[Polygon],
-        pads: list[Pad],
-        model: Model | None,
-        description: str | None,
-        tags: list[str],
-        tedit: str | None,
+        layer: str = None,
+        uuid: str | None = None,
+        path: str | None = None,
+        propertys: list[Property] = None,
+        fp_texts: list[FpText] = None,
+        attr: list[str] = None,
+        fp_lines: list[Line] = None,
+        fp_arcs: list[Arc] = None,
+        fp_circles: list[Circle] = None,
+        fp_rects: list[Rect] = None,
+        fp_poly: list[Polygon] = None,
+        pads: list[Pad] = None,
+        model: Model | None = None,
+        description: str | None = None,
+        tags: list[str] = None,
+        tedit: str | None = None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
