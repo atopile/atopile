@@ -35,13 +35,18 @@ def _normalize_history_build(build: Any, active_ids: set[str]) -> dict[str, Any]
         status_value = str(status or BuildStatus.FAILED.value)
 
     error = _get_build_attr(build, "error")
+    normalized_error: str | None = None
+    if error is not None:
+        normalized_error = _trim_message(str(error))
     if (
         isinstance(build_id, str)
         and status_value in {BuildStatus.QUEUED.value, BuildStatus.BUILDING.value}
         and build_id not in active_ids
     ):
         status_value = BuildStatus.FAILED.value
-        error = error or "Build appears interrupted (not active in build queue)."
+        normalized_error = normalized_error or (
+            "Build appears interrupted (not active in build queue)."
+        )
 
     return {
         "build_id": build_id,
@@ -53,7 +58,7 @@ def _normalize_history_build(build: Any, active_ids: set[str]) -> dict[str, Any]
         "warnings": _get_build_attr(build, "warnings", 0) or 0,
         "errors": _get_build_attr(build, "errors", 0) or 0,
         "return_code": _get_build_attr(build, "return_code"),
-        "error": error,
+        "error": normalized_error,
         "timestamp": _get_build_attr(build, "timestamp"),
     }
 

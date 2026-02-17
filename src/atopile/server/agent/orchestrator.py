@@ -34,6 +34,8 @@ from atopile.server.agent.orchestrator_helpers import (
     _extract_function_calls,
     _extract_sdk_error_text,
     _extract_text,
+    _emit_progress,
+    _emit_trace,
     _is_context_length_exceeded,
     _limit_tool_output_for_model,
     _loop_has_concrete_progress,
@@ -44,8 +46,10 @@ from atopile.server.agent.orchestrator_helpers import (
     _sanitize_tool_output_for_model,
     _shrink_function_call_outputs_payload,
     _summarize_response_for_trace,
+    _summarize_function_call_for_trace,
     _summarize_tool_result_for_trace,
     _tool_call_signature,
+    _to_trace_preview,
     _trim_user_message,
     _truncate_middle,
 )
@@ -59,6 +63,90 @@ TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
 
 
+def _remap_hashline_anchor(
+    raw_anchor: Any,
+    remaps: dict[str, str],
+) -> tuple[Any, bool]:
+    if not isinstance(raw_anchor, str):
+        return raw_anchor, False
+    prefix, sep, suffix = raw_anchor.partition("|")
+    mapped = remaps.get(prefix.strip().lower())
+    if not isinstance(mapped, str) or not mapped:
+        return raw_anchor, False
+    if sep:
+        return f"{mapped}|{suffix}", True
+    return mapped, True
+
+
+def _apply_project_edit_remaps(
+    arguments: dict[str, Any],
+    remaps: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    normalized_remaps = {
+        str(key).strip().lower(): str(value).strip()
+        for key, value in remaps.items()
+        if str(key).strip() and str(value).strip()
+    }
+    if not normalized_remaps:
+        return arguments, False
+
+    raw_edits = arguments.get("edits")
+    if not isinstance(raw_edits, list):
+        return arguments, False
+
+    changed = False
+    updated_arguments = dict(arguments)
+    updated_edits: list[dict[str, Any]] = []
+
+    for raw_edit in raw_edits:
+        if not isinstance(raw_edit, dict):
+            continue
+        edit = dict(raw_edit)
+
+        set_line = edit.get("set_line")
+        if isinstance(set_line, dict):
+            updated = dict(set_line)
+            remapped_anchor, remapped = _remap_hashline_anchor(
+                updated.get("anchor"),
+                normalized_remaps,
+            )
+            if remapped:
+                updated["anchor"] = remapped_anchor
+                changed = True
+            edit["set_line"] = updated
+
+        replace_lines = edit.get("replace_lines")
+        if isinstance(replace_lines, dict):
+            updated = dict(replace_lines)
+            for key in ("start_anchor", "end_anchor"):
+                remapped_anchor, remapped = _remap_hashline_anchor(
+                    updated.get(key),
+                    normalized_remaps,
+                )
+                if remapped:
+                    updated[key] = remapped_anchor
+                    changed = True
+            edit["replace_lines"] = updated
+
+        insert_after = edit.get("insert_after")
+        if isinstance(insert_after, dict):
+            updated = dict(insert_after)
+            remapped_anchor, remapped = _remap_hashline_anchor(
+                updated.get("anchor"),
+                normalized_remaps,
+            )
+            if remapped:
+                updated["anchor"] = remapped_anchor
+                changed = True
+            edit["insert_after"] = updated
+
+        updated_edits.append(edit)
+
+    if not changed:
+        return arguments, False
+
+    updated_arguments["edits"] = updated_edits
+    return updated_arguments, True
 
 
 def _build_session_primer(
@@ -455,12 +543,6 @@ class AgentOrchestrator:
             "instructions": instructions,
             "tools": tool_defs,
             "tool_choice": "auto",
-            "context_management": [
-                {
-                    "type": "compaction",
-                    "compact_threshold": self.context_compact_threshold,
-                }
-            ],
             "truncation": "disabled",
             "prompt_cache_key": _build_prompt_cache_key(
                 project_path=project_path,
@@ -610,12 +692,6 @@ class AgentOrchestrator:
                             "instructions": instructions,
                             "tools": tool_defs,
                             "tool_choice": "auto",
-                            "context_management": [
-                                {
-                                    "type": "compaction",
-                                    "compact_threshold": self.context_compact_threshold,
-                                }
-                            ],
                             "truncation": "disabled",
                             "prompt_cache_key": _build_prompt_cache_key(
                                 project_path=project_path,
@@ -748,25 +824,53 @@ class AgentOrchestrator:
                         ctx=ctx,
                     )
                 except Exception as exc:
-                    args = parsed_args if parsed_args is not None else {}
                     ok = False
-                    result_payload = {
-                        "error": str(exc),
-                        "error_type": type(exc).__name__,
-                    }
+                    args = parsed_args if parsed_args is not None else {}
                     remaps = getattr(exc, "remaps", None)
-                    if isinstance(remaps, dict):
-                        result_payload["remaps"] = remaps
-                    mismatches = getattr(exc, "mismatches", None)
-                    if isinstance(mismatches, list):
-                        result_payload["mismatches"] = [
-                            {
-                                "line": getattr(mismatch, "line", None),
-                                "expected": getattr(mismatch, "expected", None),
-                                "actual": getattr(mismatch, "actual", None),
-                            }
-                            for mismatch in mismatches
-                        ]
+                    auto_remap_attempted = False
+                    if tool_name == "project_edit_file" and isinstance(remaps, dict):
+                        remapped_args, did_remap = _apply_project_edit_remaps(
+                            args,
+                            remaps,
+                        )
+                        if did_remap:
+                            auto_remap_attempted = True
+                            try:
+                                result_payload = await tools.execute_tool(
+                                    name=tool_name,
+                                    arguments=remapped_args,
+                                    project_root=project_path,
+                                    ctx=ctx,
+                                )
+                                args = remapped_args
+                                ok = True
+                                if isinstance(result_payload, dict):
+                                    result_payload = dict(result_payload)
+                                    result_payload["auto_remap_retry"] = True
+                            except Exception as remap_exc:
+                                args = remapped_args
+                                exc = remap_exc
+                                remaps = getattr(remap_exc, "remaps", None)
+
+                    if not ok:
+                        result_payload = {
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        }
+                        if auto_remap_attempted:
+                            result_payload["auto_remap_retry"] = True
+                        if isinstance(remaps, dict):
+                            result_payload["remaps"] = remaps
+                        mismatches = getattr(exc, "mismatches", None)
+                        if isinstance(mismatches, list):
+                            result_payload["mismatches"] = [
+                                {
+                                    "line": getattr(mismatch, "line", None),
+                                    "expected": getattr(mismatch, "expected", None),
+                                    "actual": getattr(mismatch, "actual", None),
+                                }
+                                for mismatch in mismatches
+                            ]
 
                 traces.append(
                     ToolTrace(
@@ -1021,12 +1125,6 @@ class AgentOrchestrator:
                     "instructions": instructions,
                     "tools": tool_defs,
                     "tool_choice": "auto",
-                    "context_management": [
-                        {
-                            "type": "compaction",
-                            "compact_threshold": self.context_compact_threshold,
-                        }
-                    ],
                     "truncation": "disabled",
                     "prompt_cache_key": _build_prompt_cache_key(
                         project_path=project_path,
@@ -1198,9 +1296,12 @@ class AgentOrchestrator:
         trace_callback: TraceCallback | None = None,
         enable_preflight: bool = True,
     ) -> dict[str, Any]:
+        counted_preflight_tokens: int | None = None
         if enable_preflight:
             preflight_tokens = await self._count_input_tokens(payload)
             telemetry["preflight_input_tokens"] = preflight_tokens
+            if isinstance(preflight_tokens, int):
+                counted_preflight_tokens = preflight_tokens
             await _emit_trace(
                 trace_callback if self.trace_enabled else None,
                 "model_preflight_tokens",
@@ -1221,6 +1322,8 @@ class AgentOrchestrator:
                             "phase": "compacting",
                             "status_text": "Compacting context",
                             "detail_text": "Input token budget exceeded",
+                            "input_tokens": preflight_tokens,
+                            "context_limit_tokens": self.context_hard_max_tokens,
                         },
                     )
                     compacted_id = await self._compact_previous_response(
@@ -1240,6 +1343,8 @@ class AgentOrchestrator:
                         payload["previous_response_id"] = compacted_id
                         preflight_tokens_after = await self._count_input_tokens(payload)
                         telemetry["preflight_input_tokens"] = preflight_tokens_after
+                        if isinstance(preflight_tokens_after, int):
+                            counted_preflight_tokens = preflight_tokens_after
                         await _emit_trace(
                             trace_callback if self.trace_enabled else None,
                             "model_preflight_tokens",
@@ -1267,6 +1372,8 @@ class AgentOrchestrator:
             telemetry=telemetry,
             progress_callback=progress_callback,
             trace_callback=trace_callback if self.trace_enabled else None,
+            preflight_input_tokens=counted_preflight_tokens,
+            context_limit_tokens=self.context_hard_max_tokens,
         )
 
     async def _responses_create(
@@ -1276,6 +1383,8 @@ class AgentOrchestrator:
         telemetry: dict[str, Any] | None = None,
         progress_callback: ProgressCallback | None = None,
         trace_callback: TraceCallback | None = None,
+        preflight_input_tokens: int | None = None,
+        context_limit_tokens: int | None = None,
     ) -> dict[str, Any]:
         client = self._get_client()
         working_payload = dict(payload)
@@ -1292,14 +1401,15 @@ class AgentOrchestrator:
                     "payload": _payload_debug_summary(working_payload),
                 },
             )
-            await _emit_progress(
-                progress_callback,
-                {
-                    "phase": "thinking",
-                    "status_text": "Calling model",
-                    "detail_text": f"Attempt {attempt + 1}/{self.api_retries + 1}",
-                },
-            )
+            thinking_payload: dict[str, Any] = {
+                "phase": "thinking",
+                "status_text": "Calling model",
+            }
+            if isinstance(preflight_input_tokens, int):
+                thinking_payload["input_tokens"] = preflight_input_tokens
+            if isinstance(context_limit_tokens, int):
+                thinking_payload["context_limit_tokens"] = context_limit_tokens
+            await _emit_progress(progress_callback, thinking_payload)
             try:
                 response = await client.responses.create(**working_payload)
                 await _emit_trace(
@@ -1370,6 +1480,7 @@ class AgentOrchestrator:
                                     "detail_text": (
                                         "Reducing tool output size to continue"
                                     ),
+                                    "context_limit_tokens": context_limit_tokens,
                                 },
                             )
                             await _emit_trace(
@@ -1395,6 +1506,15 @@ class AgentOrchestrator:
                     and working_payload.get("previous_response_id")
                 ):
                     compacted_once = True
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "compacting",
+                            "status_text": "Compacting context",
+                            "detail_text": "Model context window exceeded",
+                            "context_limit_tokens": context_limit_tokens,
+                        },
+                    )
                     compacted_id = await self._compact_previous_response(
                         previous_response_id=str(
                             working_payload["previous_response_id"]

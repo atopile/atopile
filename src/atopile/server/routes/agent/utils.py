@@ -440,12 +440,16 @@ def build_send_message_response(
     *,
     session: AgentSession,
     user_message: str,
+    steering_messages: list[str] | None,
     result: Any,
     mode: str,
     run_id: str | None = None,
 ) -> SendMessageResponse:
     """Update session state and build the HTTP response payload."""
     session.history.append({"role": USER_ROLE, "content": user_message})
+    for steering_message in steering_messages or []:
+        if steering_message.strip():
+            session.history.append({"role": USER_ROLE, "content": steering_message})
     session.history.append({"role": ASSISTANT_ROLE, "content": result.text})
     session.tool_memory = mediator.update_tool_memory(
         session.tool_memory, result.tool_traces
@@ -672,6 +676,7 @@ def consume_run_steer_messages(run_id: str) -> list[str]:
             return []
         queued = list(run.steer_messages)
         run.steer_messages.clear()
+        run.consumed_steer_messages.extend(queued)
         run.updated_at = time.time()
     return queued
 
@@ -873,10 +878,17 @@ async def run_turn_in_background(
             latest = runs_by_id.get(run_id)
             if latest is not None and latest.status != RUN_STATUS_RUNNING:
                 return
+            steering_messages_for_history: list[str] = []
+            if latest is not None:
+                steering_messages_for_history.extend(latest.consumed_steer_messages)
+                steering_messages_for_history.extend(latest.steer_messages)
+                latest.consumed_steer_messages.clear()
+                latest.steer_messages.clear()
 
         response = build_send_message_response(
             session=active_session,
             user_message=run.message,
+            steering_messages=steering_messages_for_history,
             result=result,
             mode=TURN_MODE_BACKGROUND,
             run_id=run_id,

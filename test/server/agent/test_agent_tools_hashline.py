@@ -42,6 +42,8 @@ def _test_tool_definitions_advertise_hashline_editor() -> None:
     assert "datasheet_read" in names
     assert "design_diagnostics" in names
     assert "project_create_path" in names
+    assert "project_create_file" in names
+    assert "project_create_folder" in names
     assert "project_move_path" in names
     assert "project_rename_path" in names
     assert "project_delete_path" in names

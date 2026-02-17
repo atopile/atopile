@@ -97,7 +97,21 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                         "type": ["array", "null"],
                         "items": {"type": "string"},
                     },
-                    "include_text": {"type": "boolean", "default": True},
+                    "content_mode": {
+                        "type": "string",
+                        "enum": ["none", "highlights", "text"],
+                        "default": "highlights",
+                    },
+                    "max_characters": {
+                        "type": "integer",
+                        "minimum": 200,
+                        "maximum": 100000,
+                    },
+                    "max_age_hours": {"type": "integer", "minimum": -1},
+                    "include_text": {
+                        "type": "boolean",
+                        "description": "Deprecated alias. Prefer content_mode.",
+                    },
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -417,6 +431,43 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                     },
                     "content": {"type": "string", "default": ""},
                     "overwrite": {"type": "boolean", "default": False},
+                    "parents": {"type": "boolean", "default": True},
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "project_create_file",
+            "description": (
+                "Create an in-scope file (same policy as project_create_path). "
+                "Allowed file extensions: .ato, .md, and .py (restricted to "
+                "src/faebryk/library for fabll modules)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string", "default": ""},
+                    "overwrite": {"type": "boolean", "default": False},
+                    "parents": {"type": "boolean", "default": True},
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "project_create_folder",
+            "description": (
+                "Create an in-scope directory/folder (same policy as "
+                "project_create_path with kind='directory')."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
                     "parents": {"type": "boolean", "default": True},
                 },
                 "required": ["path"],

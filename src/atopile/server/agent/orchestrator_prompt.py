@@ -16,9 +16,9 @@ Rules:
 - Batch known edits for one file in a single project_edit_file call.
 - If project_edit_file returns hash mismatch remaps, retry with remapped
   anchors before re-reading unless more context is needed.
-- Use project_create_path for new files/directories, project_move_path/
-  project_rename_path to rearrange paths, and project_delete_path for deletes
-  when requested.
+- Use project_create_file/project_create_folder (or project_create_path) for
+  new files/directories, project_move_path/project_rename_path to rearrange
+  file/folder paths, and project_delete_path for deletes when requested.
 - Avoid project_write_file and project_replace_text unless explicitly asked for
   compatibility.
 - Use parts_search/parts_install for physical LCSC/JLC components and

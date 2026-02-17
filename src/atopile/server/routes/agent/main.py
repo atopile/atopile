@@ -234,6 +234,7 @@ async def send_message(
     response = build_send_message_response(
         session=session,
         user_message=request.message,
+        steering_messages=[],
         result=result,
         mode=TURN_MODE_SYNC,
         run_id=run_id,

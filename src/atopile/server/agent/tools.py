@@ -53,6 +53,7 @@ from atopile.server.agent.tool_autolayout_web_helpers import (
 from atopile.server.agent.tool_build_helpers import (
     _active_or_pending_build_ids,
     _build_empty_log_stub,
+    _get_build_attr,
     _normalize_history_build,
     _parse_build_log_audience,
     _parse_build_log_levels,
@@ -60,6 +61,7 @@ from atopile.server.agent.tool_build_helpers import (
     _trim_message,
 )
 from atopile.server.agent.tool_layout import (
+    _LayoutComponentRecord,
     _footprint_reference,
     _layout_component_payload,
     _layout_get_component_position,
@@ -491,6 +493,11 @@ def _register_tool(name: str):
 
     return _decorator
 
+
+def get_tool_names() -> list[str]:
+    """Return registered runtime tool handler names."""
+    return sorted(_TOOL_HANDLERS.keys())
+
 @_register_tool("project_list_files")
 async def _tool_project_list_files(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     limit = int(arguments.get("limit", 300))
@@ -539,20 +546,59 @@ async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: A
         arguments.get("exclude_domains"),
         field_name="exclude_domains",
     )
-    include_text = bool(arguments.get("include_text", True))
+    if include_domains and exclude_domains:
+        raise ValueError("include_domains and exclude_domains cannot both be set")
+
+    raw_mode = arguments.get("content_mode")
+    content_mode = str(raw_mode).strip().lower() if raw_mode is not None else ""
+    if content_mode and content_mode not in {"none", "highlights", "text"}:
+        raise ValueError("content_mode must be one of: none, highlights, text")
+
+    if not content_mode:
+        include_text = arguments.get("include_text")
+        if isinstance(include_text, bool):
+            content_mode = "text" if include_text else "highlights"
+        else:
+            content_mode = "highlights"
+
+    raw_max_characters = arguments.get("max_characters")
+    if raw_max_characters is None:
+        max_characters = (
+            2_000 if content_mode == "highlights" else 10_000 if content_mode == "text" else None
+        )
+    else:
+        max_characters = int(raw_max_characters)
+        max_characters = max(200, min(max_characters, 100_000))
+
+    raw_max_age_hours = arguments.get("max_age_hours")
+    max_age_hours = int(raw_max_age_hours) if raw_max_age_hours is not None else None
+    if max_age_hours is not None:
+        max_age_hours = max(-1, min(max_age_hours, 24 * 365))
     timeout_s = float(os.getenv("ATOPILE_AGENT_EXA_TIMEOUT_S", "30"))
     timeout_s = max(3.0, min(timeout_s, 120.0))
+    hard_timeout_s = timeout_s + 5.0
 
-    return await asyncio.to_thread(
-        _exa_web_search,
-        query=query,
-        num_results=num_results,
-        search_type=search_type,
-        include_domains=include_domains,
-        exclude_domains=exclude_domains,
-        include_text=include_text,
-        timeout_s=timeout_s,
-    )
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _exa_web_search,
+                query=query,
+                num_results=num_results,
+                search_type=search_type,
+                include_domains=include_domains,
+                exclude_domains=exclude_domains,
+                content_mode=content_mode,
+                max_characters=max_characters,
+                max_age_hours=max_age_hours,
+                timeout_s=timeout_s,
+            ),
+            timeout=hard_timeout_s,
+        )
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            f"web_search timed out after {hard_timeout_s:.0f}s "
+            f"(HTTP timeout={timeout_s:.0f}s)"
+        ) from exc
 
 @_register_tool("examples_list")
 async def _tool_examples_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
@@ -822,6 +868,35 @@ async def _tool_project_create_path(arguments: dict[str, Any], project_root: Pat
         parents=bool(arguments.get("parents", True)),
     )
 
+@_register_tool("project_create_file")
+async def _tool_project_create_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    content = arguments.get("content", "")
+    if content is None:
+        content = ""
+    if not isinstance(content, str):
+        raise ValueError("content must be a string")
+    return await asyncio.to_thread(
+        policy.create_path,
+        project_root,
+        str(arguments.get("path", "")),
+        kind="file",
+        content=content,
+        overwrite=bool(arguments.get("overwrite", False)),
+        parents=bool(arguments.get("parents", True)),
+    )
+
+@_register_tool("project_create_folder")
+async def _tool_project_create_folder(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        policy.create_path,
+        project_root,
+        str(arguments.get("path", "")),
+        kind="directory",
+        content="",
+        overwrite=False,
+        parents=bool(arguments.get("parents", True)),
+    )
+
 @_register_tool("project_rename_path")
 async def _tool_project_rename_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     return await asyncio.to_thread(
@@ -852,7 +927,7 @@ async def _tool_project_delete_path(arguments: dict[str, Any], project_root: Pat
         recursive=bool(arguments.get("recursive", True)),
     )
 
-@_register_tool("project_write_file")
+# Legacy write/replace helpers intentionally remain unregistered.
 async def _tool_project_write_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     return await asyncio.to_thread(
         policy.write_file,
@@ -861,7 +936,6 @@ async def _tool_project_write_file(arguments: dict[str, Any], project_root: Path
         str(arguments.get("content", "")),
     )
 
-@_register_tool("project_replace_text")
 async def _tool_project_replace_text(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     return await asyncio.to_thread(
         policy.apply_text_replace,
@@ -1346,7 +1420,9 @@ async def _tool_build_logs_search(arguments: dict[str, Any], project_root: Path,
             status = raw_status.value
         elif raw_status is not None:
             status = str(raw_status)
-        error = _get_build_attr(history_build, "error")
+        raw_error = _get_build_attr(history_build, "error")
+        if raw_error is not None:
+            error = _trim_message(str(raw_error))
         return_code = _get_build_attr(history_build, "return_code")
 
     return {

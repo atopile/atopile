@@ -56,6 +56,8 @@ interface AgentProgressPayload {
   input_tokens?: unknown;
   output_tokens?: unknown;
   total_tokens?: unknown;
+  context_limit_tokens?: unknown;
+  contextLimitTokens?: unknown;
   usage?: unknown;
 }
 
@@ -500,7 +502,9 @@ function readProgressPayload(detail: unknown): {
   loop: number | null;
   toolIndex: number | null;
   toolCount: number | null;
+  inputTokens: number | null;
   totalTokens: number | null;
+  contextLimitTokens: number | null;
 } {
   if (!detail || typeof detail !== 'object') {
     return {
@@ -516,7 +520,9 @@ function readProgressPayload(detail: unknown): {
       loop: null,
       toolIndex: null,
       toolCount: null,
+      inputTokens: null,
       totalTokens: null,
+      contextLimitTokens: null,
     };
   }
 
@@ -538,19 +544,22 @@ function readProgressPayload(detail: unknown): {
   const usage = payload.usage && typeof payload.usage === 'object'
     ? payload.usage as Record<string, unknown>
     : null;
+  const inputTokens = toFiniteNumber(payload.input_tokens)
+    ?? (usage ? toFiniteNumber(usage.input_tokens) : null)
+    ?? (usage ? toFiniteNumber(usage.inputTokens) : null);
   const totalTokens = toFiniteNumber(payload.total_tokens)
     ?? (usage ? toFiniteNumber(usage.total_tokens) : null)
     ?? (usage ? toFiniteNumber(usage.totalTokens) : null)
     ?? ((() => {
-      const input = toFiniteNumber(payload.input_tokens)
-        ?? (usage ? toFiniteNumber(usage.input_tokens) : null)
-        ?? (usage ? toFiniteNumber(usage.inputTokens) : null);
+      const input = inputTokens;
       const output = toFiniteNumber(payload.output_tokens)
         ?? (usage ? toFiniteNumber(usage.output_tokens) : null)
         ?? (usage ? toFiniteNumber(usage.outputTokens) : null);
       if (input === null && output === null) return null;
       return (input ?? 0) + (output ?? 0);
     })());
+  const contextLimitTokens = toFiniteNumber(payload.context_limit_tokens)
+    ?? toFiniteNumber(payload.contextLimitTokens);
 
   const trace = payload.trace && typeof payload.trace === 'object'
     ? payload.trace as AgentToolTrace
@@ -569,7 +578,9 @@ function readProgressPayload(detail: unknown): {
     loop,
     toolIndex,
     toolCount,
+    inputTokens,
     totalTokens,
+    contextLimitTokens,
   };
 }
 
@@ -781,6 +792,12 @@ function inferToolActivityDetail(toolName: string | null, args: Record<string, u
   if (toolName === 'project_edit_file') {
     return path ? `Editing ${compactPath(path)}` : 'Editing file';
   }
+  if (toolName === 'project_create_path' || toolName === 'project_create_file') {
+    return path ? `Creating ${compactPath(path)}` : 'Creating file';
+  }
+  if (toolName === 'project_create_folder') {
+    return path ? `Creating folder ${compactPath(path)}` : 'Creating folder';
+  }
   if (toolName === 'project_search') {
     const query = asNonEmptyString(args.query);
     return query ? `Searching "${trimSingleLine(query, 30)}"` : 'Searching project';
@@ -803,6 +820,14 @@ function inferToolActivityDetail(toolName: string | null, args: Record<string, u
       return `Renaming ${compactPath(oldPath)} -> ${compactPath(newPath)}`;
     }
     return 'Renaming path';
+  }
+  if (toolName === 'project_move_path') {
+    const oldPath = asNonEmptyString(args.old_path);
+    const newPath = asNonEmptyString(args.new_path);
+    if (oldPath && newPath) {
+      return `Moving ${compactPath(oldPath)} -> ${compactPath(newPath)}`;
+    }
+    return 'Moving path';
   }
   if (toolName === 'project_delete_path') {
     return path ? `Deleting ${compactPath(path)}` : 'Deleting path';
@@ -862,7 +887,15 @@ function inferToolActivityDetail(toolName: string | null, args: Record<string, u
 function inferActivityFromTool(toolName: string | null): string {
   if (!toolName) return 'Working';
   if (toolName.startsWith('project_') || toolName.startsWith('stdlib_')) {
-    if (toolName === 'project_edit_file' || toolName === 'project_rename_path' || toolName === 'project_delete_path') {
+    if (
+      toolName === 'project_edit_file' ||
+      toolName === 'project_create_path' ||
+      toolName === 'project_create_file' ||
+      toolName === 'project_create_folder' ||
+      toolName === 'project_move_path' ||
+      toolName === 'project_rename_path' ||
+      toolName === 'project_delete_path'
+    ) {
       return 'Editing';
     }
     return 'Exploring';
@@ -1047,12 +1080,20 @@ function applyProgressToMessages(
 }
 
 function suggestNextAction(traces: AgentTraceView[]): string | null {
-  const hasEdits = traces.some((trace) => trace.ok && trace.name === 'project_edit_file');
+  const hasProjectChanges = traces.some((trace) => trace.ok && (
+    trace.name === 'project_edit_file' ||
+    trace.name === 'project_create_path' ||
+    trace.name === 'project_create_file' ||
+    trace.name === 'project_create_folder' ||
+    trace.name === 'project_move_path' ||
+    trace.name === 'project_rename_path' ||
+    trace.name === 'project_delete_path'
+  ));
   const hasBuildRun = traces.some((trace) => trace.ok && trace.name === 'build_run');
   const hasInstall = traces.some((trace) => trace.ok && (trace.name === 'parts_install' || trace.name === 'packages_install'));
   const hasBuildLogs = traces.some((trace) => trace.ok && trace.name === 'build_logs_search');
 
-  if (hasEdits && !hasBuildRun) return 'run a build to validate those changes';
+  if (hasProjectChanges && !hasBuildRun) return 'run a build to validate those changes';
   if (hasBuildRun && !hasBuildLogs) return 'review the latest build logs and summarize any issues';
   if (hasInstall) return 'wire that dependency into the target module and run a verification build';
   return null;
@@ -1327,15 +1368,19 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const [expandedTraceGroups, setExpandedTraceGroups] = useState<Set<string>>(new Set());
   const [expandedTraceKeys, setExpandedTraceKeys] = useState<Set<string>>(new Set());
   const [resizingDock, setResizingDock] = useState(false);
+  const [contextWindow, setContextWindow] = useState<{ usedTokens: number; limitTokens: number } | null>(null);
+  const [compactionNotice, setCompactionNotice] = useState<{ nonce: number; status: string; detail: string | null } | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatsPanelRef = useRef<HTMLDivElement | null>(null);
   const chatsPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const chatSnapshotsRef = useRef<AgentChatSnapshot[]>([]);
+  const pendingSteeringByChatRef = useRef<Record<string, string[]>>({});
   const activeChatIdRef = useRef<string | null>(null);
   const activeChatByProjectRef = useRef<Record<string, string>>({});
   const activityStartedAtRef = useRef<number | null>(null);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
+  const compactionNoticeTimerRef = useRef<number | null>(null);
   const [mentionToken, setMentionToken] = useState<MentionToken | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
 
@@ -1364,6 +1409,17 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const activeChatTitle = activeChatSnapshot?.title ?? DEFAULT_CHAT_TITLE;
   const projectFiles = useMemo(() => flattenFileNodes(projectFileNodes), [projectFileNodes]);
   const changedFilesSummary = useMemo(() => collectChangedFilesSummary(messages), [messages]);
+  const contextUsage = useMemo(() => {
+    if (!contextWindow || contextWindow.limitTokens <= 0) return null;
+    const used = Math.max(0, Math.min(contextWindow.usedTokens, contextWindow.limitTokens));
+    const usedPercent = Math.max(0, Math.min(100, Math.round((used / contextWindow.limitTokens) * 100)));
+    return {
+      usedTokens: used,
+      limitTokens: contextWindow.limitTokens,
+      usedPercent,
+      leftPercent: Math.max(0, 100 - usedPercent),
+    };
+  }, [contextWindow]);
   const projectQueuedBuilds = useMemo(() => {
     if (!projectRoot) return [];
     return queuedBuilds.filter((build) => build.projectRoot === projectRoot);
@@ -1496,6 +1552,12 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setChangesExpanded(false);
     setExpandedTraceGroups(new Set());
     setExpandedTraceKeys(new Set());
+    setContextWindow(null);
+    setCompactionNotice(null);
+    if (compactionNoticeTimerRef.current !== null) {
+      window.clearTimeout(compactionNoticeTimerRef.current);
+      compactionNoticeTimerRef.current = null;
+    }
     activityStartedAtRef.current = null;
   }, []);
 
@@ -2049,6 +2111,15 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   }, [resizingDock]);
 
   useEffect(() => {
+    return () => {
+      if (compactionNoticeTimerRef.current !== null) {
+        window.clearTimeout(compactionNoticeTimerRef.current);
+        compactionNoticeTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const onProgress = (event: Event) => {
       const customEvent = event as CustomEvent;
       const parsed = readProgressPayload(customEvent.detail);
@@ -2083,6 +2154,30 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       });
 
       if (activeChatIdRef.current === targetChat.id) {
+        const usedTokens = parsed.inputTokens ?? parsed.totalTokens;
+        const limitTokens = parsed.contextLimitTokens;
+        if (typeof usedTokens === 'number' && Number.isFinite(usedTokens) && typeof limitTokens === 'number' && Number.isFinite(limitTokens) && limitTokens > 0) {
+          setContextWindow({
+            usedTokens: Math.max(0, Math.min(usedTokens, limitTokens)),
+            limitTokens,
+          });
+        }
+        if (parsed.phase === 'compacting') {
+          const status = parsed.statusText || 'Compacting context';
+          const nonce = Date.now();
+          setCompactionNotice({
+            nonce,
+            status,
+            detail: parsed.detailText,
+          });
+          if (compactionNoticeTimerRef.current !== null) {
+            window.clearTimeout(compactionNoticeTimerRef.current);
+          }
+          compactionNoticeTimerRef.current = window.setTimeout(() => {
+            setCompactionNotice((current) => (current && current.nonce === nonce ? null : current));
+            compactionNoticeTimerRef.current = null;
+          }, 8000);
+        }
         if (nextActivity) {
           setActivityLabel(nextActivity);
         }
@@ -2398,21 +2493,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
 
     const runId = activeRunId ?? activeChatSnapshot?.pendingRunId ?? null;
     if (!runId) {
-      const message = 'No active run found to steer. Please send your request again.';
-      const steerErrorMessage: AgentMessage = {
-        id: `${chatPrefix}-steer-error-${Date.now()}`,
-        role: 'system',
-        content: message,
-      };
-      updateChatSnapshot(chatId, (chat) => ({
-        ...chat,
-        messages: [...chat.messages, steerErrorMessage],
-        error: message,
-      }));
-      if (activeChatIdRef.current === chatId) {
-        setMessages((previous) => [...previous, steerErrorMessage]);
-        setError(message);
-      }
+      const queued = pendingSteeringByChatRef.current[chatId] ?? [];
+      pendingSteeringByChatRef.current[chatId] = [...queued, trimmed];
       return;
     }
 
@@ -2538,6 +2620,24 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         activeRunId: run.runId,
       }));
       setActiveRunId(run.runId);
+
+      const queuedSteeringMessages = pendingSteeringByChatRef.current[chatId] ?? [];
+      if (queuedSteeringMessages.length > 0) {
+        delete pendingSteeringByChatRef.current[chatId];
+        for (const steeringMessage of queuedSteeringMessages) {
+          try {
+            const steerResult = await agentApi.steerRun(currentSessionId, run.runId, {
+              message: steeringMessage,
+            });
+            if (steerResult.status !== 'running') {
+              break;
+            }
+          } catch {
+            break;
+          }
+        }
+      }
+
       const cancelledEarly = chatSnapshotsRef.current.find((chat) => chat.id === chatId)?.cancelRequested;
       if (cancelledEarly) {
         if (activeChatIdRef.current === chatId) {
@@ -2640,6 +2740,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         setActivityLabel(cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored');
       }
     } finally {
+      delete pendingSteeringByChatRef.current[chatId];
       if (activeChatIdRef.current === chatId) {
         setActiveRunId(null);
         setIsStopping(false);
@@ -3143,6 +3244,31 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                   >
                     {isStopping ? <Loader2 size={14} className="agent-tool-spin" /> : <Square size={13} />}
                   </button>
+                )}
+              </div>
+              <div className="agent-chat-composer-meta" aria-live="polite">
+                {compactionNotice && (
+                  <div className="agent-context-notice" role="status">
+                    <AlertCircle size={11} />
+                    <span>{compactionNotice.status}</span>
+                    {compactionNotice.detail && (
+                      <span className="agent-context-notice-detail">{compactionNotice.detail}</span>
+                    )}
+                  </div>
+                )}
+                {contextUsage && (
+                  <div
+                    className="agent-context-meter"
+                    title={`Context: ${contextUsage.usedTokens.toLocaleString()} / ${contextUsage.limitTokens.toLocaleString()} tokens`}
+                  >
+                    <div className="agent-context-meter-row">
+                      <span className="agent-context-meter-label">Context</span>
+                      <span className="agent-context-meter-value">{contextUsage.leftPercent}% left</span>
+                    </div>
+                    <div className="agent-context-meter-bar" aria-hidden="true">
+                      <span className="agent-context-meter-fill" style={{ width: `${contextUsage.usedPercent}%` }} />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

@@ -20,6 +20,8 @@ def _test_get_tool_directory_includes_core_tools() -> None:
     assert "project_read_file" in names
     assert "datasheet_read" in names
     assert "project_create_path" in names
+    assert "project_create_file" in names
+    assert "project_create_folder" in names
     assert "project_move_path" in names
     assert "project_rename_path" in names
     assert "project_delete_path" in names

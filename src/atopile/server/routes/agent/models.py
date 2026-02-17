@@ -107,6 +107,7 @@ class AgentRun(BaseModel):
     updated_at: float = Field(default_factory=time.time)
     task: asyncio.Task[Any] | None = Field(default=None, repr=False)
     steer_messages: list[str] = Field(default_factory=list)
+    consumed_steer_messages: list[str] = Field(default_factory=list)
     message_log: list[dict[str, Any]] = Field(default_factory=list)
     inbox_cursor: dict[str, int] = Field(
         default_factory=lambda: {DEFAULT_AGENT_ID: 0, WORKER_AGENT_ID: 0}

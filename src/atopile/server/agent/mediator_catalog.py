@@ -67,9 +67,11 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "query",
             "num_results",
             "search_type",
+            "content_mode",
+            "max_characters",
+            "max_age_hours",
             "include_domains",
             "exclude_domains",
-            "include_text",
         ],
         typical_output="query, returned_results, results",
         keywords=[
@@ -225,6 +227,38 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "bootstrap",
         ],
     ),
+    "project_create_file": ToolDirectoryItem(
+        name="project_create_file",
+        category="edit",
+        purpose="Create an allowed file in project scope.",
+        tooltip=(
+            "Create a file with extension/path policy enforcement "
+            "(same policy as project_create_path)."
+        ),
+        inputs=["path", "content", "overwrite", "parents"],
+        typical_output="path, kind=file, created, bytes, extension",
+        keywords=[
+            "create file",
+            "new file",
+            "add file",
+            "scaffold file",
+        ],
+    ),
+    "project_create_folder": ToolDirectoryItem(
+        name="project_create_folder",
+        category="edit",
+        purpose="Create a folder/directory in project scope.",
+        tooltip="Create a folder (same policy as project_create_path kind=directory).",
+        inputs=["path", "parents"],
+        typical_output="path, kind=directory, created",
+        keywords=[
+            "create folder",
+            "new folder",
+            "create directory",
+            "new directory",
+            "mkdir",
+        ],
+    ),
     "project_move_path": ToolDirectoryItem(
         name="project_move_path",
         category="edit",
@@ -241,7 +275,15 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         tooltip="Rename or move a file/folder within project scope.",
         inputs=["old_path", "new_path", "overwrite"],
         typical_output="old_path, new_path, kind, overwrote",
-        keywords=["rename file", "move file", "rename module", "move path"],
+        keywords=[
+            "rename file",
+            "rename folder",
+            "rename directory",
+            "move file",
+            "move folder",
+            "rename module",
+            "move path",
+        ],
     ),
     "project_delete_path": ToolDirectoryItem(
         name="project_delete_path",

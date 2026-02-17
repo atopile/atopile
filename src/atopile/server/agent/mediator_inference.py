@@ -7,6 +7,17 @@ from typing import Any
 
 from atopile.server.agent.mediator_catalog import _TOOL_DIRECTORY
 
+_BUILD_ID_RE = re.compile(r"\b[a-f0-9]{8,}\b", re.IGNORECASE)
+_AUTOLAYOUT_JOB_ID_RE = re.compile(r"\bal-[a-f0-9]{12}\b", re.IGNORECASE)
+_FILE_RE = re.compile(r"([A-Za-z0-9_./-]+\.(?:ato|py|md|json|yaml|yml|toml|ts|tsx))")
+_PDF_FILE_RE = re.compile(r"([A-Za-z0-9_./-]+\.pdf)\b", re.IGNORECASE)
+_LCSC_RE = re.compile(r"\bC\d{3,}\b", re.IGNORECASE)
+_ENTRY_POINT_RE = re.compile(r"([A-Za-z0-9_./-]+\.ato:[A-Za-z_][A-Za-z0-9_]*)")
+_PACKAGE_RE = re.compile(
+    r"\b([a-z0-9_.-]+/[a-z0-9_.-]+)(?:@([^\s]+))?\b",
+    re.IGNORECASE,
+)
+
 def _stale_after_seconds(tool_name: str) -> float:
     if tool_name.startswith("build") or tool_name.startswith("design_"):
         return 90.0
@@ -69,6 +80,25 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
     ops = result.get("operations_applied")
     if isinstance(ops, int):
         return f"{ops} edits applied"
+    if name in {"project_create_path", "project_create_file", "project_create_folder"}:
+        created_path = result.get("path")
+        if isinstance(created_path, str) and created_path:
+            kind = result.get("kind")
+            if isinstance(kind, str) and kind:
+                return f"created {kind}: {created_path}"
+            return f"created: {created_path}"
+        return "path created"
+    if name in {"project_rename_path", "project_move_path"}:
+        old_path = result.get("old_path")
+        new_path = result.get("new_path")
+        if isinstance(old_path, str) and isinstance(new_path, str) and old_path and new_path:
+            return f"renamed {old_path} -> {new_path}"
+        return "path renamed"
+    if name == "project_delete_path":
+        deleted_path = result.get("path")
+        if isinstance(deleted_path, str) and deleted_path:
+            return f"deleted: {deleted_path}"
+        return "path deleted"
     if name == "build_run":
         targets = result.get("build_targets")
         if isinstance(targets, list):

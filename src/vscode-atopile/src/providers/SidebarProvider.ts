@@ -298,10 +298,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._fileWatcher.dispose();
       this._fileWatcher = undefined;
     }
+    this._watchedProjectRoot = null;
     if (this._fileChangeDebounce) {
       clearTimeout(this._fileChangeDebounce);
       this._fileChangeDebounce = null;
     }
+  }
+
+  private _shouldIgnoreWatchUri(projectRoot: string, uri: vscode.Uri): boolean {
+    const relativePath = path.relative(projectRoot, uri.fsPath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return true;
+    }
+    if (!relativePath || relativePath === '.') {
+      return false;
+    }
+    return relativePath.split(path.sep).includes('.git');
+  }
+
+  private _scheduleFilesChanged(projectRoot: string, source: string): void {
+    if (this._fileChangeDebounce) {
+      clearTimeout(this._fileChangeDebounce);
+    }
+    this._fileChangeDebounce = setTimeout(() => {
+      this._fileChangeDebounce = null;
+      traceInfo(`[SidebarProvider] Project files changed via ${source}: ${projectRoot}`);
+      this._view?.webview.postMessage({
+        type: 'filesChanged',
+        projectRoot,
+      });
+    }, 250);
   }
 
   /**
@@ -318,32 +344,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposeFileWatcher();
     this._watchedProjectRoot = projectRoot;
 
-    // Watch all files in the project
-    const pattern = new vscode.RelativePattern(projectRoot, '**/*');
+    // Watch the full project tree (files + directories)
+    const pattern = new vscode.RelativePattern(vscode.Uri.file(projectRoot), '**');
     this._fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
 
-    // Debounced notification to avoid flooding on bulk operations
-    const notifyChange = (uri: vscode.Uri) => {
-      // Ignore changes in .git directory
-      const relativePath = uri.fsPath.substring(projectRoot.length);
-      if (relativePath.includes('/.git/') || relativePath.includes('\\.git\\')) {
+    const notifyCreateOrDelete = (source: 'create' | 'delete') => (uri: vscode.Uri) => {
+      if (this._watchedProjectRoot !== projectRoot) {
         return;
       }
-
-      if (this._fileChangeDebounce) {
-        clearTimeout(this._fileChangeDebounce);
+      if (this._shouldIgnoreWatchUri(projectRoot, uri)) {
+        return;
       }
-      this._fileChangeDebounce = setTimeout(() => {
-        traceInfo(`[SidebarProvider] Files changed in ${projectRoot}`);
-        this._view?.webview.postMessage({
-          type: 'filesChanged',
-          projectRoot,
-        });
-      }, 300); // 300ms debounce
+      this._scheduleFilesChanged(projectRoot, source);
     };
 
-    this._fileWatcher.onDidCreate(notifyChange);
-    this._fileWatcher.onDidDelete(notifyChange);
+    this._fileWatcher.onDidCreate(notifyCreateOrDelete('create'));
+    this._fileWatcher.onDidDelete(notifyCreateOrDelete('delete'));
     this._fileWatcher.onDidChange(() => {
       // Don't notify on content changes, only create/delete/rename
       // Renames appear as delete + create, so they're covered
@@ -772,7 +788,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._setupFileWatcher(projectRoot);
     } else {
       this._disposeFileWatcher();
-      this._watchedProjectRoot = null;
     }
 
     await loadBuilds();
@@ -955,6 +970,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private _handleProjectFilesChanged(projectRoot: string): void {
+    if (this._watchedProjectRoot === projectRoot) {
+      this._scheduleFilesChanged(projectRoot, 'backend');
+    }
+
     const active = this._activeLayoutBuild;
     if (!active || active.root !== projectRoot) {
       return;
@@ -1051,6 +1070,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   private async _handleListFiles(projectRoot: string, includeAll: boolean): Promise<void> {
     traceInfo(`[SidebarProvider] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
+    this._setupFileWatcher(projectRoot);
 
     // Directories to completely exclude (not even show)
     const excludedDirs = new Set([

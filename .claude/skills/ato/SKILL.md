@@ -3851,3 +3851,171 @@ Minimal reproducer location:
 Fix steps:
 Validation steps:
 ```
+
+## 11.6 Architecture planning template (required for non-trivial designs)
+
+```text
+Design intent:
+Top-level modules (main elements):
+  - module_name: responsibility, public interfaces, owning file
+Integration module:
+  - name, owning file, imported children
+Power domains:
+  - each rail owner, producers, consumers, startup/enable source
+Constraint ownership:
+  - where voltage/current/bus constraints are declared
+Complexity estimate:
+  - expected instances, connects, direct package-pin connects per module
+Split plan:
+  - which modules are separate files/folders before detailed wiring
+```
+
+# 12. Architecture Planning + Decomposition Rules
+
+## 12.1 Architecture-first rule
+
+Before detailed pin-level wiring, produce an architecture plan with:
+
+- named top-level modules for each major system element,
+- one integration module that composes them,
+- explicit interface contracts between modules,
+- clear file ownership for each top-level module.
+
+Do not start with a single giant integration body and split later.
+
+## 12.2 Complexity triggers that force splitting
+
+If any trigger is hit, split module immediately:
+
+- more than 40 connect statements in one module,
+- more than 12 direct package-pin connections in one module,
+- more than 10 child instances in one module,
+- mixed concerns in one module (power conversion + control MCU + comms + connectors),
+- duplicated wiring clusters that can be a reusable child module.
+
+Review rule:
+
+- treat trigger hits as medium-severity architecture violations even when syntax is valid.
+
+## 12.3 File and folder decomposition workflow
+
+For multi-block designs, create folders/files early and keep one primary module per file.
+
+Example pattern:
+
+```text
+design/
+  main.ato                  # integration module only
+  power/
+    buck_5v.ato             # 30V -> 5V stage module
+    buck_3v3.ato            # 30V/5V -> 3V3 stage module
+  control/
+    mcu_control.ato         # MCU + local support passives
+  motor/
+    gate_driver_stage.ato   # driver + FET stage + bootstrap network
+  comms/
+    can_phy.ato             # CAN transceiver stage
+  io/
+    connectors.ato          # external connector-facing adapter module
+```
+
+Authoring rule:
+
+- create folders/files for planned modules before writing detailed internals,
+- keep integration file focused on composition and cross-module constraints,
+- keep package-pin wiring inside owning module files.
+
+## 12.4 Module boundary rules
+
+Each top-level module should expose a minimal interface contract:
+
+- power interfaces (`ElectricPower`) for each consumed/provided rail,
+- bus/signal interfaces (`I2C`, `SPI`, `UART`, `ElectricLogic`, `ElectricSignal`) as needed,
+- named control/status lines only when interface abstraction is unavailable.
+
+Avoid exposing incidental package pins at integration boundary unless required.
+
+## 12.5 Design checklist (architecture + implementation)
+
+Use this checklist for non-trivial designs before final output:
+
+- [ ] Architecture plan exists before detailed wiring.
+- [ ] Each major element has its own module (and usually its own file).
+- [ ] Integration module is composition-focused, not pin-map-heavy.
+- [ ] No module crosses complexity triggers from 12.2.
+- [ ] Rail ownership/startup enable source is explicit and reviewable.
+- [ ] High-risk domains include constraints (`assert ... within ...`) not just connectivity.
+- [ ] No duplicate connect statements for same net pair unless intentional and documented.
+- [ ] Experimental pragmas are only present when corresponding constructs are used.
+- [ ] Unused imports are removed.
+
+## 12.6 Hierarchy examples
+
+### 12.6.1 LED badge-style hierarchy (conceptual)
+
+```text
+LED_BADGE (integration)
+  PowerPath
+    USBCConnector
+    Charger
+    BuckBoost3V3
+    Battery
+  Processor
+    ESP32C3Module
+  Audio
+    I2SMicrophone
+  Display
+    LEDGrid10x10
+      LEDRow
+        LEDDevice
+```
+
+### 12.6.2 BLDC controller target hierarchy (for this design style)
+
+```text
+BLDC_Controller (integration)
+  Power.ato
+    Buck5V: Module
+    Buck3V3: Module
+  PowerStage.ato
+    GateDriver: Module
+    MOSFETBridge: Module
+    BootstrapAndPump
+  Processor.ato
+    Micro: Module
+    StatusLED: Module
+  Comms.ato
+    CAN_PHY: Module
+  IO.ato
+    MotorPhaseConnector: Module
+    SupplyConnector: Module
+    CANConnector: Module
+```
+
+## 12.7 Operational workflow: create files/folders before deep wiring
+
+When architecture planning identifies top-level modules, execute decomposition immediately.
+
+Recommended workflow:
+
+1. Create folder structure for module ownership.
+2. Create one `.ato` file per planned top-level module.
+3. Add minimal module skeletons (docstring + public interfaces).
+4. Create integration module that imports and composes children.
+5. Only then add detailed package-pin internals inside owning module files.
+
+Illustrative shell scaffold:
+
+main.ato
+power/buck_5v.ato design/power/buck_3v3.ato
+modules/mcu_control.ato
+modules/gate_driver_stage.ato
+modules/comms/can_phy.ato
+modules/connectors.ato
+
+```
+
+Review rule:
+
+- if a response proposes module split but still outputs one monolithic file, treat as incomplete execution.
+```

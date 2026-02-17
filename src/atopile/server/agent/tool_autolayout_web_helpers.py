@@ -602,7 +602,9 @@ def _exa_web_search(
     search_type: str,
     include_domains: list[str],
     exclude_domains: list[str],
-    include_text: bool,
+    content_mode: str,
+    max_characters: int | None,
+    max_age_hours: int | None,
     timeout_s: float,
 ) -> dict[str, Any]:
     api_key = _get_exa_api_key()
@@ -617,8 +619,18 @@ def _exa_web_search(
         payload["includeDomains"] = include_domains
     if exclude_domains:
         payload["excludeDomains"] = exclude_domains
-    if include_text:
-        payload["contents"] = {"text": True}
+    if content_mode == "text":
+        if max_characters is None:
+            payload["contents"] = {"text": True}
+        else:
+            payload["contents"] = {"text": {"max_characters": max_characters}}
+    elif content_mode == "highlights":
+        highlights_chars = 2_000 if max_characters is None else max_characters
+        payload["contents"] = {
+            "highlights": {"max_characters": highlights_chars}
+        }
+    if max_age_hours is not None:
+        payload["maxAgeHours"] = max_age_hours
 
     headers = {
         "x-api-key": api_key,
@@ -653,6 +665,16 @@ def _exa_web_search(
         if not isinstance(raw, dict):
             continue
         text = raw.get("text")
+        highlights = raw.get("highlights")
+        normalized_highlights: list[str] | None = None
+        if isinstance(highlights, list):
+            normalized_highlights = [
+                _trim_message(str(item), 900)
+                for item in highlights
+                if isinstance(item, str) and item.strip()
+            ][:6]
+            if not normalized_highlights:
+                normalized_highlights = None
         normalized_results.append(
             {
                 "rank": index,
@@ -661,6 +683,7 @@ def _exa_web_search(
                 "published_date": raw.get("publishedDate"),
                 "author": raw.get("author"),
                 "score": raw.get("score"),
+                "highlights": normalized_highlights,
                 "text": _trim_message(str(text), 2200)
                 if isinstance(text, str) and text
                 else None,
@@ -670,6 +693,9 @@ def _exa_web_search(
     return {
         "query": query,
         "search_type": search_type,
+        "content_mode": content_mode,
+        "max_characters": max_characters,
+        "max_age_hours": max_age_hours,
         "requested_results": num_results,
         "returned_results": len(normalized_results),
         "include_domains": include_domains,
@@ -679,6 +705,5 @@ def _exa_web_search(
         "cost_dollars": body.get("costDollars"),
         "source": "exa",
     }
-
 
 

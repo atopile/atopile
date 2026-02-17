@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -473,6 +474,8 @@ def _worker_execution_tool_names() -> set[str]:
     return {
         "project_edit_file",
         "project_create_path",
+        "project_create_file",
+        "project_create_folder",
         "project_move_path",
         "project_write_file",
         "project_replace_text",
