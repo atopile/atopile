@@ -723,6 +723,19 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
           <h2 className="detail-package-name">Export for Manufacturing</h2>
           <p className="detail-package-blurb">{selectedBuild.targetName}</p>
         </div>
+        <button
+          className="mfg-open-dashboard-btn"
+          title="Open full dashboard"
+          onClick={() => {
+            postMessage({
+              type: 'openManufacturingDashboard',
+              projectRoot: project.root,
+              target: selectedBuild.targetName,
+            });
+          }}
+        >
+          <ExternalLink size={16} />
+        </button>
       </div>
 
       <div className="detail-panel-content">

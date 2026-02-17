@@ -8,6 +8,24 @@
   /* Inherits panel layout from .package-detail-panel */
 }
 
+.mfg-open-dashboard-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.mfg-open-dashboard-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 /* Stage Progress Indicator - Sticky container */
 .mfg-stages-container {
   position: sticky;

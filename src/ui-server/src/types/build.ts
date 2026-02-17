@@ -3,7 +3,7 @@
  * This is the SINGLE source of truth for all types.
  */
 
-import type { ManufacturingWizardState } from '../components/manufacturing/types';
+import type { ManufacturingWizardState, ManufacturingDashboardState } from '../components/manufacturing/types';
 
 export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'failed' | 'cancelled';
 export type StageStatus = 'pending' | 'running' | 'success' | 'warning' | 'failed' | 'error' | 'skipped';
@@ -568,6 +568,9 @@ export interface AppState {
 
   // Manufacturing Wizard
   manufacturingWizard: ManufacturingWizardState | null;
+
+  // Manufacturing Dashboard
+  manufacturingDashboard: ManufacturingDashboardState | null;
 }
 
 // Re-export manufacturing types for convenience
