@@ -3,7 +3,7 @@
 
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import { LogLevel, Uri, WorkspaceFolder } from 'vscode';
+import { LogLevel, Uri, WorkspaceFolder, window } from 'vscode';
 import { Trace } from 'vscode-jsonrpc/node';
 import { getWorkspaceFolders, getAtopileWorkspaceFolders } from './vscodeapi';
 
@@ -50,6 +50,16 @@ export async function getProjectRoot(): Promise<WorkspaceFolder> {
     } else if (workspaces.length === 1) {
         return workspaces[0];
     } else {
+        // Prefer the workspace folder of the active editor in multi-root setups.
+        const activePath = window.activeTextEditor?.document?.uri?.fsPath;
+        if (activePath) {
+            for (const w of workspaces) {
+                if (activePath.startsWith(w.uri.fsPath + path.sep) || activePath === w.uri.fsPath) {
+                    return w;
+                }
+            }
+        }
+
         // Prefer workspace folders that contain atopile projects (ato.yaml)
         const atopileWorkspaces = await getAtopileWorkspaceFolders();
         if (atopileWorkspaces.length > 0) {
