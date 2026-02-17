@@ -983,6 +983,40 @@ class MutationMap:
     def is_mapped(self, p: F.Parameters.is_parameter_operatable) -> bool:
         return self.map_forward(p) is not False
 
+    def _restore_units(
+        self,
+        po: F.Parameters.is_parameter_operatable,
+        lit: F.Literals.is_literal,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> F.Literals.is_literal:
+        """Convert a dimensionless solver literal back to the parameter's unit system."""
+        param_unit_t = po.try_get_sibling_trait(F.Units.has_unit)
+        lit_n = fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
+        if not (param_unit_t and lit_n):
+            return lit
+        param_unit = param_unit_t.get_is_unit()
+        if lit_n.are_units_compatible(param_unit):
+            return lit
+
+        N = F.Literals.Numbers.bind_typegraph(tg or lit_n.tg)
+        NumberLit = lambda value, unit: N.create_instance(  # noqa: E731
+            g=g or lit_n.g
+        ).setup_from_singleton(value=value, unit=unit)
+        return (
+            # return ((lit - offset) / multiplier) * param_unit
+            lit_n.op_subtract_intervals(
+                NumberLit(param_unit._extract_offset(), lit_n.get_is_unit()),
+            )
+            .op_div_intervals(
+                NumberLit(param_unit._extract_multiplier(), lit_n.get_is_unit()),
+            )
+            .op_mul_intervals(
+                NumberLit(1, param_unit),
+            )
+            .is_literal.get()
+        )
+
     def try_extract_superset(
         self,
         po: F.Parameters.is_parameter_operatable,
@@ -1004,31 +1038,21 @@ class MutationMap:
         if lit is None:
             return _default()
 
-        # solver lit has no unit (dimensionless), need to convert back to parameter unit
-        if (
-            (param_unit_t := po.try_get_sibling_trait(F.Units.has_unit))
-            and (lit_n := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers))
-            and not lit_n.are_units_compatible(param_unit := param_unit_t.get_is_unit())
-        ):
-            N = F.Literals.Numbers.bind_typegraph(tg or lit_n.tg)
-            NumberLit = lambda value, unit: N.create_instance(  # noqa: E731
-                g=g or lit_n.g
-            ).setup_from_singleton(value=value, unit=unit)
-            return (
-                # return ((lit - offset) / multiplier) * param_unit
-                lit_n.op_subtract_intervals(
-                    NumberLit(param_unit._extract_offset(), lit_n.get_is_unit()),
-                )
-                .op_div_intervals(
-                    NumberLit(param_unit._extract_multiplier(), lit_n.get_is_unit()),
-                )
-                .op_mul_intervals(
-                    NumberLit(1, param_unit),
-                )
-                .is_literal.get()
-            )
+        return self._restore_units(po, lit, g=g, tg=tg)
 
-        return lit
+    def try_extract_subset_mapped(
+        self,
+        po: F.Parameters.is_parameter_operatable,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> F.Literals.is_literal | None:
+        maps_to = self.map_forward(po).maps_to
+        if not maps_to:
+            return None
+        lit = maps_to.try_extract_subset()
+        if lit is None:
+            return None
+        return self._restore_units(po, lit, g=g, tg=tg)
 
     def __repr__(self) -> str:
         return f"ReprMap({str(self)})"

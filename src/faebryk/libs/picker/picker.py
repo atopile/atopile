@@ -586,6 +586,7 @@ def pick_topologically(
             except Contradiction as e:
                 error_msg = _format_pcb_contradiction_error(e, tg)
                 raise PickVerificationError(error_msg, *tree_backup) from e
+        solver.commit()
         logger.info(f"Verified design in {timings.get_formatted('verify design')}")
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import defaultdict
 from collections.abc import Generator
 from dataclasses import dataclass
 from itertools import count
@@ -261,6 +262,62 @@ class Solver:
             if ss_lit is None:
                 return value.domain_set(g=g, tg=tg)
             return ss_lit
+
+    def commit(self) -> None:
+        """Write computed bounds and aliases back to the original input graph."""
+        import faebryk.library._F as F
+
+        if self.state is None:
+            raise ValueError("Cannot commit: solver has not been run")
+
+        mm = self.state.data.mutation_map
+        g_in = mm.G_in
+        tg_in = mm.tg_in
+
+        # Track output->input groupings for alias detection
+        output_to_inputs: dict[int, list[F.Parameters.is_parameter_operatable]] = (
+            defaultdict(list)
+        )
+
+        for po in mm.input_operables:
+            if po.as_parameter.try_get() is None:
+                continue  # skip expression operatables
+
+            mapped = mm.map_forward(po)
+            if mapped.maps_to is None:
+                continue
+
+            output_to_inputs[id(mapped.maps_to)].append(po)
+
+            # Commit superset
+            ss_lit = mm.try_extract_superset(po, domain_default=False)
+            if ss_lit is not None:
+                copied = fabll.Traits(ss_lit).get_obj_raw().copy_into(g_in)
+                po.set_superset(
+                    g=g_in,
+                    value=copied.get_trait(F.Literals.is_literal).switch_cast(),
+                )
+
+            # Commit subset
+            sb_lit = mm.try_extract_subset_mapped(po)
+            if sb_lit is not None:
+                copied = fabll.Traits(sb_lit).get_obj_raw().copy_into(g_in)
+                po.set_subset(
+                    g=g_in,
+                    value=copied.get_trait(F.Literals.is_literal).switch_cast(),
+                )
+
+        # Commit aliases (parameters merged by solver)
+        for group in output_to_inputs.values():
+            if len(group) > 1:
+                for po in group[1:]:
+                    F.Expressions.Is.bind_typegraph(tg=tg_in).create_instance(
+                        g=g_in
+                    ).setup(
+                        group[0].as_operand.get(),
+                        po.as_operand.get(),
+                        assert_=True,
+                    )
 
     def simplify_for(
         self,
