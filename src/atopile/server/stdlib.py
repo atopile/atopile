@@ -263,6 +263,7 @@ def _is_user_facing_child(attr_name: str, type_name: str) -> bool:
         "is_sum_bus_parameter",
         "has_usage_example",
         "implements_design_check",
+        "implements_board_shape",
         "has_designator_prefix",
         "is_lead",
         "can_attach_to_any_pad",
@@ -447,6 +448,11 @@ def _get_docstring(cls: type, item_type: StdLibItemType | None = None) -> str:
             return "Test point for debugging and measurement."
         elif name == "MountingHole":
             return "PCB mounting hole for mechanical attachment."
+        elif name == "RectangularBoardShape":
+            return (
+                "Parameterized rectangular PCB outline with optional corner "
+                "mounting holes."
+            )
         elif name == "NetTie":
             return "Net tie for connecting separate nets."
         elif "Filter" in name:

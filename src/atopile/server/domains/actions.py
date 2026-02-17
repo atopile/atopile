@@ -21,14 +21,13 @@ from atopile.model.build_queue import (
     _build_queue,
 )
 from atopile.model.model_state import model_state
-from atopile.server import path_utils
-from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
+from atopile.server.ws.actions import dispatch_registered_action
 from faebryk.libs.package.meta import PackageModifiedError
 
 log = logging.getLogger(__name__)
@@ -290,42 +289,14 @@ def _handle_build_sync(payload: dict) -> dict:
         }
 
 
-def _resolve_build_target(
-    project_root: str, build_id: str, payload: dict
-) -> tuple[str | None, str | None]:
-    target_name = payload.get("targetName") or payload.get("target")
-    resolved_project_root = project_root
-
-    if build_id:
-        build_info = builds_domain.handle_get_build_info(build_id)
-        if isinstance(build_info, dict):
-            target_name = (
-                target_name
-                or build_info.get("target")
-                or build_info.get("name")
-                or build_info.get("build_name")
-            )
-            resolved_project_root = (
-                resolved_project_root
-                or build_info.get("project_root")
-                or build_info.get("projectRoot")
-            )
-
-    return target_name, resolved_project_root
-
-
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:
     """Handle data-fetching actions invoked from WebSocket clients."""
     log.info(f"handle_data_action called: action={action}, payload={payload}")
 
     try:
-        if action == "refreshProjects":
-            if ctx.workspace_paths:
-                await asyncio.to_thread(
-                    projects_domain.discover_projects_in_paths, ctx.workspace_paths
-                )
-                await server_state.emit_event("projects_changed")
-            return {"success": True}
+        registered_result = await dispatch_registered_action(action, payload, ctx)
+        if registered_result is not None:
+            return registered_result
 
         if action == "createProject":
             parent_directory = payload.get("parentDirectory")
@@ -349,11 +320,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "project_name": project_name,
             }
 
-        if action == "refreshPackages":
-            scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
-            await packages_domain.refresh_packages_state(scan_path=scan_path)
-            return {"success": True}
-
         if action == "searchPackages":
             query = payload.get("query", "")
             path = payload.get("path")
@@ -362,10 +328,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 packages_domain.handle_search_registry, query, scan_path
             )
             return {"success": True, **result.model_dump(by_alias=True)}
-
-        if action == "refreshStdlib":
-            await server_state.emit_event("stdlib_changed")
-            return {"success": True}
 
         if action == "buildPackage":
             package_id = payload.get("packageId", "")
@@ -549,10 +511,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, "bom": bom_json}
             except Exception as exc:
                 return {"success": False, "error": str(exc)}
-
-        if action == "refreshProblems":
-            await server_state.emit_event("problems_changed")
-            return {"success": True}
 
         if action == "fetchVariables":
             project_root = payload.get("projectRoot", "")
@@ -1704,9 +1662,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await handle_data_action("refreshProjects", {}, ctx)
             await handle_data_action("refreshPackages", {}, ctx)
             return {"success": True}
-
         # Manufacturing wizard actions
-        elif action == "getManufacturingGitStatus":
+        if action == "getManufacturingGitStatus":
             from atopile.server.domains import manufacturing as manufacturing_domain
 
             project_root = payload.get("projectRoot", "")
@@ -1864,6 +1821,132 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if summary:
                 return {"success": True, "boardSummary": summary}
             return {"success": False, "error": "Board summary not available"}
+
+        # Autolayout actions
+        elif action == "startAutolayout":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "default")
+            constraints = payload.get("constraints") or {}
+            options = payload.get("options") or {}
+
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.start_job,
+                project_root,
+                target,
+                constraints,
+                options,
+            )
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "getAutolayoutStatus":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            refresh = bool(payload.get("refresh", True))
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.refresh_job if refresh else service.get_job, job_id
+            )
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "listAutolayoutJobs":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            project_root = payload.get("projectRoot")
+            service = get_autolayout_service()
+            jobs = await asyncio.to_thread(service.list_jobs, project_root)
+            return {"success": True, "jobs": [job.to_dict() for job in jobs]}
+
+        elif action == "listAutolayoutCandidates":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            refresh = bool(payload.get("refresh", True))
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            candidates = await asyncio.to_thread(
+                service.list_candidates,
+                job_id,
+                refresh,
+            )
+            return {
+                "success": True,
+                "candidates": [candidate.to_dict() for candidate in candidates],
+            }
+
+        elif action == "selectAutolayoutCandidate":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            candidate_id = payload.get("candidateId", "")
+            if not job_id or not candidate_id:
+                return {"success": False, "error": "Missing jobId or candidateId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.select_candidate,
+                job_id,
+                candidate_id,
+            )
+            return {"success": True, "job": job.to_dict()}
+
+        elif action == "applyAutolayoutCandidate":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            candidate_id = payload.get("candidateId")
+            run_mfg_data_build = bool(payload.get("runMfgDataBuild", False))
+
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(
+                service.apply_candidate,
+                job_id,
+                candidate_id,
+            )
+
+            build_result = None
+            if run_mfg_data_build:
+                build_payload = {
+                    "projectRoot": job.project_root,
+                    "targets": [job.build_target],
+                    "includeTargets": ["mfg-data"],
+                    "frozen": True,
+                }
+                build_result = await asyncio.to_thread(
+                    _handle_build_sync,
+                    build_payload,
+                )
+
+            return {
+                "success": True,
+                "job": job.to_dict(),
+                "build": build_result,
+            }
+
+        elif action == "cancelAutolayout":
+            from atopile.server.domains.autolayout.service import get_autolayout_service
+
+            job_id = payload.get("jobId", "")
+            if not job_id:
+                return {"success": False, "error": "Missing jobId"}
+
+            service = get_autolayout_service()
+            job = await asyncio.to_thread(service.cancel_job, job_id)
+            return {"success": True, "job": job.to_dict()}
 
         return {"success": False, "error": f"Unknown action: {action}"}
 

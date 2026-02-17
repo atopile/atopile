@@ -35,6 +35,13 @@ class LayoutService:
         self._manager = mgr
         self._current_path = resolved
 
+    def set_target(self, path: Path) -> None:
+        """Track the target PCB path even when the file does not exist yet."""
+        resolved = path.resolve()
+        self._current_path = resolved
+        if not resolved.exists():
+            self._manager = None
+
     @property
     def manager(self) -> PcbManager:
         """Return the active PcbManager, or raise if nothing is loaded."""
@@ -95,11 +102,17 @@ class LayoutService:
 
     async def _on_file_change(self, _result) -> None:
         """Called by FileWatcher when the PCB file actually changed on disk."""
-        if not self._current_path or not self._manager:
+        if not self._current_path:
+            return
+        if not self._current_path.exists():
+            self._manager = None
             return
         try:
             log.info("PCB file changed on disk, reloading and broadcasting")
-            await asyncio.to_thread(self.manager.load, self._current_path)
+            if self._manager is None:
+                await asyncio.to_thread(self.load, self._current_path)
+            else:
+                await asyncio.to_thread(self.manager.load, self._current_path)
             model = await asyncio.to_thread(self.manager.get_render_model)
             await self.broadcast(WsMessage(type="layout_updated", model=model))
             log.info(

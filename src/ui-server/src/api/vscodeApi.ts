@@ -57,6 +57,8 @@ export interface OpenSignalsMessage {
   openFileLine?: number | null;
   openFileColumn?: number | null;
   openLayout?: string | null;
+  openLayoutProjectRoot?: string | null;
+  openLayoutTargetName?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
 }
@@ -114,6 +116,14 @@ export interface OpenInSimpleBrowserMessage {
   url: string;
 }
 
+export interface OpenDiffMessage {
+  type: 'openDiff';
+  path: string;
+  beforeContent: string;
+  afterContent: string;
+  title?: string;
+}
+
 export interface ListFilesMessage {
   type: 'listFiles';
   projectRoot: string;
@@ -167,6 +177,11 @@ export interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+export interface ProjectFilesChangedMessage {
+  type: 'projectFilesChanged';
+  projectRoot: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -180,6 +195,7 @@ export type ExtensionMessage =
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
+  | OpenDiffMessage
   | ListFilesMessage
   | LoadDirectoryMessage
   | BrowseExportDirectoryMessage
@@ -190,7 +206,8 @@ export type ExtensionMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | ProjectFilesChangedMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

@@ -69,6 +69,9 @@ class EventType(StrEnum):
     VARIABLES_CHANGED = "variables_changed"
     BUILDS_CHANGED = "builds_changed"
     PROBLEMS_CHANGED = "problems_changed"
+    AUTOLAYOUT_CHANGED = "autolayout_changed"
+    AUTOLAYOUT_CANDIDATE_READY = "autolayout_candidate_ready"
+    AUTOLAYOUT_FAILED = "autolayout_failed"
 
     # File watcher notifications
     PROJECT_FILES_CHANGED = "project_files_changed"

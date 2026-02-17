@@ -2901,11 +2901,8 @@ def _create_datasheet_action(uri: str, position: lsp.Position) -> lsp.CodeAction
         # Try to find local datasheet file first
         project_dir = find_project_dir(current_file)
         if project_dir:
-            # Check both possible locations
-            search_paths = [
-                project_dir / "build" / "documentation" / "datasheets",
-                project_dir / "build",
-            ]
+            # Datasheets are cached at part install time.
+            search_paths = [project_dir / "build" / "cache" / "parts" / "datasheets"]
             for search_path in search_paths:
                 if search_path.exists():
                     # Search for PDF with LCSC ID in filename

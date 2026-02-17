@@ -3,9 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-
-from kipy import KiCad
-from kipy.errors import ApiError, ConnectionError
+from typing import TYPE_CHECKING, Any
 
 from atopile.logging import ALERT
 from faebryk.libs.kicad.other_fileformats import C_kicad_config_common
@@ -22,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 # https://gitlab.com/kicad/code/kicad-python
 # https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/index.html
+
+if TYPE_CHECKING:
+    from kipy import KiCad
+
+
+def _import_kipy() -> tuple[type[Any], type[Exception], type[Exception]]:
+    from kipy import KiCad
+    from kipy.errors import ApiError, ConnectionError
+
+    return KiCad, ApiError, ConnectionError
 
 
 def running_in_kicad():
@@ -51,6 +59,7 @@ def _kicad_socket_files():
 
 
 def _get_all_clients():
+    KiCad, _, ConnectionError = _import_kipy()
     socket_files = _kicad_socket_files()
     clients = [
         KiCad(socket_path=f"ipc://{socket_file}", timeout_ms=5000)
@@ -76,7 +85,7 @@ def _get_pcbnew_client_for_path(pcb_path: Path):
 
 
 class PCBnew:
-    def __init__(self, client: KiCad):
+    def __init__(self, client: "KiCad"):
         self.client = client
 
     @property
@@ -146,7 +155,8 @@ class PCBnew:
         self.board.revert()
 
     @classmethod
-    def from_client(cls, client: KiCad):
+    def from_client(cls, client: "KiCad"):
+        _, ApiError, _ = _import_kipy()
         try:
             client.get_board()
             return cls(client)
@@ -158,6 +168,7 @@ class PCBnew:
 
     @classmethod
     def get_host(cls):
+        KiCad, _, _ = _import_kipy()
         if not running_in_kicad():
             raise Exception("Not running in KiCad")
         out = cls.from_client(KiCad())

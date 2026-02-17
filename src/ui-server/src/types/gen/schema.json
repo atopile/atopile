@@ -3093,6 +3093,9 @@
           "variables_changed",
           "builds_changed",
           "problems_changed",
+          "autolayout_changed",
+          "autolayout_candidate_ready",
+          "autolayout_failed",
           "project_files_changed",
           "project_modules_changed",
           "project_dependencies_changed",
@@ -3136,6 +3139,1598 @@
       "event"
     ],
     "title": "EventMessage",
+    "type": "object"
+  },
+  "CreateSessionRequest": {
+    "properties": {
+      "projectRoot": {
+        "title": "Projectroot",
+        "type": "string"
+      }
+    },
+    "required": [
+      "projectRoot"
+    ],
+    "title": "CreateSessionRequest",
+    "type": "object"
+  },
+  "CreateSessionResponse": {
+    "properties": {
+      "sessionId": {
+        "title": "Sessionid",
+        "type": "string"
+      },
+      "projectRoot": {
+        "title": "Projectroot",
+        "type": "string"
+      }
+    },
+    "required": [
+      "sessionId",
+      "projectRoot"
+    ],
+    "title": "CreateSessionResponse",
+    "type": "object"
+  },
+  "SendMessageRequest": {
+    "properties": {
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "projectRoot": {
+        "title": "Projectroot",
+        "type": "string"
+      },
+      "selectedTargets": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Selectedtargets",
+        "type": "array"
+      }
+    },
+    "required": [
+      "message",
+      "projectRoot"
+    ],
+    "title": "SendMessageRequest",
+    "type": "object"
+  },
+  "ToolTraceResponse": {
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "args": {
+        "additionalProperties": true,
+        "title": "Args",
+        "type": "object"
+      },
+      "ok": {
+        "title": "Ok",
+        "type": "boolean"
+      },
+      "result": {
+        "additionalProperties": true,
+        "title": "Result",
+        "type": "object"
+      }
+    },
+    "required": [
+      "name",
+      "args",
+      "ok",
+      "result"
+    ],
+    "title": "ToolTraceResponse",
+    "type": "object"
+  },
+  "ToolDirectoryItem": {
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "category": {
+        "title": "Category",
+        "type": "string"
+      },
+      "purpose": {
+        "title": "Purpose",
+        "type": "string"
+      },
+      "tooltip": {
+        "title": "Tooltip",
+        "type": "string"
+      },
+      "inputs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Inputs",
+        "type": "array"
+      },
+      "typicalOutput": {
+        "title": "Typicaloutput",
+        "type": "string"
+      },
+      "keywords": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Keywords",
+        "type": "array"
+      }
+    },
+    "required": [
+      "name",
+      "category",
+      "purpose",
+      "tooltip",
+      "inputs",
+      "typicalOutput",
+      "keywords"
+    ],
+    "title": "ToolDirectoryItem",
+    "type": "object"
+  },
+  "ToolSuggestion": {
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "category": {
+        "title": "Category",
+        "type": "string"
+      },
+      "score": {
+        "title": "Score",
+        "type": "number"
+      },
+      "reason": {
+        "title": "Reason",
+        "type": "string"
+      },
+      "tooltip": {
+        "title": "Tooltip",
+        "type": "string"
+      },
+      "prefilledArgs": {
+        "additionalProperties": true,
+        "title": "Prefilledargs",
+        "type": "object"
+      },
+      "prefilledPrompt": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prefilledprompt"
+      },
+      "kind": {
+        "enum": [
+          "tool",
+          "composite"
+        ],
+        "title": "Kind",
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "category",
+      "score",
+      "reason",
+      "tooltip",
+      "prefilledArgs",
+      "prefilledPrompt",
+      "kind"
+    ],
+    "title": "ToolSuggestion",
+    "type": "object"
+  },
+  "ToolMemoryEntry": {
+    "properties": {
+      "toolName": {
+        "title": "Toolname",
+        "type": "string"
+      },
+      "summary": {
+        "title": "Summary",
+        "type": "string"
+      },
+      "ok": {
+        "title": "Ok",
+        "type": "boolean"
+      },
+      "updatedAt": {
+        "title": "Updatedat",
+        "type": "number"
+      },
+      "ageSeconds": {
+        "title": "Ageseconds",
+        "type": "number"
+      },
+      "stale": {
+        "title": "Stale",
+        "type": "boolean"
+      },
+      "staleHint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Stalehint"
+      },
+      "contextId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Contextid"
+      }
+    },
+    "required": [
+      "toolName",
+      "summary",
+      "ok",
+      "updatedAt",
+      "ageSeconds",
+      "stale",
+      "staleHint",
+      "contextId"
+    ],
+    "title": "ToolMemoryEntry",
+    "type": "object"
+  },
+  "SendMessageResponse": {
+    "definitions": {
+      "ToolMemoryEntry": {
+        "properties": {
+          "toolName": {
+            "title": "Toolname",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "number"
+          },
+          "ageSeconds": {
+            "title": "Ageseconds",
+            "type": "number"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "staleHint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalehint"
+          },
+          "contextId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contextid"
+          }
+        },
+        "required": [
+          "toolName",
+          "summary",
+          "ok",
+          "updatedAt",
+          "ageSeconds",
+          "stale",
+          "staleHint",
+          "contextId"
+        ],
+        "title": "ToolMemoryEntry",
+        "type": "object"
+      },
+      "ToolSuggestion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tooltip": {
+            "title": "Tooltip",
+            "type": "string"
+          },
+          "prefilledArgs": {
+            "additionalProperties": true,
+            "title": "Prefilledargs",
+            "type": "object"
+          },
+          "prefilledPrompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefilledprompt"
+          },
+          "kind": {
+            "enum": [
+              "tool",
+              "composite"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "score",
+          "reason",
+          "tooltip",
+          "prefilledArgs",
+          "prefilledPrompt",
+          "kind"
+        ],
+        "title": "ToolSuggestion",
+        "type": "object"
+      },
+      "ToolTraceResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "args",
+          "ok",
+          "result"
+        ],
+        "title": "ToolTraceResponse",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "sessionId": {
+        "title": "Sessionid",
+        "type": "string"
+      },
+      "assistantMessage": {
+        "title": "Assistantmessage",
+        "type": "string"
+      },
+      "model": {
+        "title": "Model",
+        "type": "string"
+      },
+      "toolTraces": {
+        "items": {
+          "$ref": "#/definitions/ToolTraceResponse"
+        },
+        "title": "Tooltraces",
+        "type": "array"
+      },
+      "toolSuggestions": {
+        "items": {
+          "$ref": "#/definitions/ToolSuggestion"
+        },
+        "title": "Toolsuggestions",
+        "type": "array"
+      },
+      "toolMemory": {
+        "items": {
+          "$ref": "#/definitions/ToolMemoryEntry"
+        },
+        "title": "Toolmemory",
+        "type": "array"
+      }
+    },
+    "required": [
+      "sessionId",
+      "assistantMessage",
+      "model",
+      "toolTraces",
+      "toolSuggestions",
+      "toolMemory"
+    ],
+    "title": "SendMessageResponse",
+    "type": "object"
+  },
+  "ToolDirectoryResponse": {
+    "definitions": {
+      "ToolDirectoryItem": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "tooltip": {
+            "title": "Tooltip",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "typicalOutput": {
+            "title": "Typicaloutput",
+            "type": "string"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "purpose",
+          "tooltip",
+          "inputs",
+          "typicalOutput",
+          "keywords"
+        ],
+        "title": "ToolDirectoryItem",
+        "type": "object"
+      },
+      "ToolMemoryEntry": {
+        "properties": {
+          "toolName": {
+            "title": "Toolname",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "number"
+          },
+          "ageSeconds": {
+            "title": "Ageseconds",
+            "type": "number"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "staleHint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalehint"
+          },
+          "contextId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contextid"
+          }
+        },
+        "required": [
+          "toolName",
+          "summary",
+          "ok",
+          "updatedAt",
+          "ageSeconds",
+          "stale",
+          "staleHint",
+          "contextId"
+        ],
+        "title": "ToolMemoryEntry",
+        "type": "object"
+      },
+      "ToolSuggestion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tooltip": {
+            "title": "Tooltip",
+            "type": "string"
+          },
+          "prefilledArgs": {
+            "additionalProperties": true,
+            "title": "Prefilledargs",
+            "type": "object"
+          },
+          "prefilledPrompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefilledprompt"
+          },
+          "kind": {
+            "enum": [
+              "tool",
+              "composite"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "score",
+          "reason",
+          "tooltip",
+          "prefilledArgs",
+          "prefilledPrompt",
+          "kind"
+        ],
+        "title": "ToolSuggestion",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "tools": {
+        "items": {
+          "$ref": "#/definitions/ToolDirectoryItem"
+        },
+        "title": "Tools",
+        "type": "array"
+      },
+      "categories": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Categories",
+        "type": "array"
+      },
+      "suggestions": {
+        "items": {
+          "$ref": "#/definitions/ToolSuggestion"
+        },
+        "title": "Suggestions",
+        "type": "array"
+      },
+      "toolMemory": {
+        "items": {
+          "$ref": "#/definitions/ToolMemoryEntry"
+        },
+        "title": "Toolmemory",
+        "type": "array"
+      }
+    },
+    "required": [
+      "tools",
+      "categories",
+      "suggestions",
+      "toolMemory"
+    ],
+    "title": "ToolDirectoryResponse",
+    "type": "object"
+  },
+  "ToolSuggestionsRequest": {
+    "properties": {
+      "message": {
+        "default": "",
+        "title": "Message",
+        "type": "string"
+      },
+      "projectRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Projectroot"
+      },
+      "selectedTargets": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Selectedtargets",
+        "type": "array"
+      }
+    },
+    "title": "ToolSuggestionsRequest",
+    "type": "object"
+  },
+  "ToolSuggestionsResponse": {
+    "definitions": {
+      "ToolMemoryEntry": {
+        "properties": {
+          "toolName": {
+            "title": "Toolname",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "number"
+          },
+          "ageSeconds": {
+            "title": "Ageseconds",
+            "type": "number"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "staleHint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalehint"
+          },
+          "contextId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contextid"
+          }
+        },
+        "required": [
+          "toolName",
+          "summary",
+          "ok",
+          "updatedAt",
+          "ageSeconds",
+          "stale",
+          "staleHint",
+          "contextId"
+        ],
+        "title": "ToolMemoryEntry",
+        "type": "object"
+      },
+      "ToolSuggestion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tooltip": {
+            "title": "Tooltip",
+            "type": "string"
+          },
+          "prefilledArgs": {
+            "additionalProperties": true,
+            "title": "Prefilledargs",
+            "type": "object"
+          },
+          "prefilledPrompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefilledprompt"
+          },
+          "kind": {
+            "enum": [
+              "tool",
+              "composite"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "score",
+          "reason",
+          "tooltip",
+          "prefilledArgs",
+          "prefilledPrompt",
+          "kind"
+        ],
+        "title": "ToolSuggestion",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "suggestions": {
+        "items": {
+          "$ref": "#/definitions/ToolSuggestion"
+        },
+        "title": "Suggestions",
+        "type": "array"
+      },
+      "toolMemory": {
+        "items": {
+          "$ref": "#/definitions/ToolMemoryEntry"
+        },
+        "title": "Toolmemory",
+        "type": "array"
+      }
+    },
+    "required": [
+      "suggestions",
+      "toolMemory"
+    ],
+    "title": "ToolSuggestionsResponse",
+    "type": "object"
+  },
+  "SessionSkillsResponse": {
+    "properties": {
+      "sessionId": {
+        "title": "Sessionid",
+        "type": "string"
+      },
+      "projectRoot": {
+        "title": "Projectroot",
+        "type": "string"
+      },
+      "skillsDir": {
+        "title": "Skillsdir",
+        "type": "string"
+      },
+      "selectedSkillIds": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Selectedskillids",
+        "type": "array"
+      },
+      "selectedSkills": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Selectedskills",
+        "type": "array"
+      },
+      "reasoning": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Reasoning",
+        "type": "array"
+      },
+      "totalChars": {
+        "default": 0,
+        "title": "Totalchars",
+        "type": "integer"
+      },
+      "generatedAt": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Generatedat"
+      },
+      "loadedSkillsCount": {
+        "default": 0,
+        "title": "Loadedskillscount",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "sessionId",
+      "projectRoot",
+      "skillsDir"
+    ],
+    "title": "SessionSkillsResponse",
+    "type": "object"
+  },
+  "CreateRunRequest": {
+    "properties": {
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "projectRoot": {
+        "title": "Projectroot",
+        "type": "string"
+      },
+      "selectedTargets": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Selectedtargets",
+        "type": "array"
+      }
+    },
+    "required": [
+      "message",
+      "projectRoot"
+    ],
+    "title": "CreateRunRequest",
+    "type": "object"
+  },
+  "CreateRunResponse": {
+    "properties": {
+      "runId": {
+        "title": "Runid",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "runId",
+      "status"
+    ],
+    "title": "CreateRunResponse",
+    "type": "object"
+  },
+  "GetRunResponse": {
+    "definitions": {
+      "SendMessageResponse": {
+        "properties": {
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "assistantMessage": {
+            "title": "Assistantmessage",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "toolTraces": {
+            "items": {
+              "$ref": "#/definitions/ToolTraceResponse"
+            },
+            "title": "Tooltraces",
+            "type": "array"
+          },
+          "toolSuggestions": {
+            "items": {
+              "$ref": "#/definitions/ToolSuggestion"
+            },
+            "title": "Toolsuggestions",
+            "type": "array"
+          },
+          "toolMemory": {
+            "items": {
+              "$ref": "#/definitions/ToolMemoryEntry"
+            },
+            "title": "Toolmemory",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessionId",
+          "assistantMessage",
+          "model",
+          "toolTraces",
+          "toolSuggestions",
+          "toolMemory"
+        ],
+        "title": "SendMessageResponse",
+        "type": "object"
+      },
+      "ToolMemoryEntry": {
+        "properties": {
+          "toolName": {
+            "title": "Toolname",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "number"
+          },
+          "ageSeconds": {
+            "title": "Ageseconds",
+            "type": "number"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "staleHint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalehint"
+          },
+          "contextId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contextid"
+          }
+        },
+        "required": [
+          "toolName",
+          "summary",
+          "ok",
+          "updatedAt",
+          "ageSeconds",
+          "stale",
+          "staleHint",
+          "contextId"
+        ],
+        "title": "ToolMemoryEntry",
+        "type": "object"
+      },
+      "ToolSuggestion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tooltip": {
+            "title": "Tooltip",
+            "type": "string"
+          },
+          "prefilledArgs": {
+            "additionalProperties": true,
+            "title": "Prefilledargs",
+            "type": "object"
+          },
+          "prefilledPrompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefilledprompt"
+          },
+          "kind": {
+            "enum": [
+              "tool",
+              "composite"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "score",
+          "reason",
+          "tooltip",
+          "prefilledArgs",
+          "prefilledPrompt",
+          "kind"
+        ],
+        "title": "ToolSuggestion",
+        "type": "object"
+      },
+      "ToolTraceResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "args",
+          "ok",
+          "result"
+        ],
+        "title": "ToolTraceResponse",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "runId": {
+        "title": "Runid",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      },
+      "response": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/SendMessageResponse"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error"
+      }
+    },
+    "required": [
+      "runId",
+      "status"
+    ],
+    "title": "GetRunResponse",
+    "type": "object"
+  },
+  "CancelRunResponse": {
+    "properties": {
+      "runId": {
+        "title": "Runid",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error"
+      }
+    },
+    "required": [
+      "runId",
+      "status"
+    ],
+    "title": "CancelRunResponse",
+    "type": "object"
+  },
+  "SteerRunRequest": {
+    "properties": {
+      "message": {
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "SteerRunRequest",
+    "type": "object"
+  },
+  "SteerRunResponse": {
+    "properties": {
+      "runId": {
+        "title": "Runid",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      },
+      "queuedMessages": {
+        "title": "Queuedmessages",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "runId",
+      "status",
+      "queuedMessages"
+    ],
+    "title": "SteerRunResponse",
+    "type": "object"
+  },
+  "AgentProgressUsage": {
+    "properties": {
+      "inputTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Inputtokens"
+      },
+      "outputTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Outputtokens"
+      },
+      "totalTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Totaltokens"
+      }
+    },
+    "title": "AgentProgressUsage",
+    "type": "object"
+  },
+  "AgentProgressEventPayload": {
+    "definitions": {
+      "AgentProgressUsage": {
+        "properties": {
+          "inputTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Inputtokens"
+          },
+          "outputTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outputtokens"
+          },
+          "totalTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Totaltokens"
+          }
+        },
+        "title": "AgentProgressUsage",
+        "type": "object"
+      },
+      "ToolTraceResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "args",
+          "ok",
+          "result"
+        ],
+        "title": "ToolTraceResponse",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "sessionId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sessionid"
+      },
+      "projectRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Projectroot"
+      },
+      "runId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Runid"
+      },
+      "phase": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Phase"
+      },
+      "callId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Callid"
+      },
+      "name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Name"
+      },
+      "args": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Args"
+      },
+      "trace": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ToolTraceResponse"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "statusText": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Statustext"
+      },
+      "detailText": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Detailtext"
+      },
+      "loop": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Loop"
+      },
+      "toolIndex": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Toolindex"
+      },
+      "toolCount": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Toolcount"
+      },
+      "inputTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Inputtokens"
+      },
+      "outputTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Outputtokens"
+      },
+      "totalTokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Totaltokens"
+      },
+      "usage": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/AgentProgressUsage"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "title": "AgentProgressEventPayload",
     "type": "object"
   }
 }

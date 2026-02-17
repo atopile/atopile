@@ -243,6 +243,8 @@ function buildLayerPanel() {
 }
 
 const statusEl = document.getElementById("status");
+const buildStatusEl = document.getElementById("build-status");
+const buildStatusTextEl = document.getElementById("build-status-text");
 const helpText = "scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip, Ctrl+Z undo, Ctrl+Shift+Z redo";
 if (statusEl) statusEl.textContent = helpText;
 
@@ -260,6 +262,18 @@ editor.setOnMouseMove((x, y) => {
     if (statusEl && statusEl.dataset.hover) {
         statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
     }
+});
+
+editor.setOnStatusChanged((status, message) => {
+    if (!buildStatusEl) return;
+    if (status === "loading") {
+        buildStatusEl.classList.add("visible");
+        if (buildStatusTextEl) {
+            buildStatusTextEl.textContent = message || "building view";
+        }
+        return;
+    }
+    buildStatusEl.classList.remove("visible");
 });
 
 editor.init().then(() => {

@@ -49,6 +49,38 @@ class LayoutEditorWebview extends BaseWebview {
                         font: 12px monospace;
                         pointer-events: none; z-index: 10;
                     }
+                    #build-status {
+                        position: fixed;
+                        top: 12px;
+                        left: 12px;
+                        display: none;
+                        align-items: center;
+                        gap: 8px;
+                        padding: 6px 10px;
+                        border-radius: 999px;
+                        background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 76%, transparent);
+                        border: 1px solid var(--vscode-panel-border, #444);
+                        color: var(--vscode-foreground, #ccc);
+                        font: 11px monospace;
+                        letter-spacing: 0.02em;
+                        z-index: 30;
+                        pointer-events: none;
+                    }
+                    #build-status.visible {
+                        display: inline-flex;
+                    }
+                    #build-status .pulse-dot {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 50%;
+                        background: var(--vscode-progressBar-background, #4fb2ff);
+                        animation: layout-build-pulse 1.2s ease-in-out infinite;
+                    }
+                    @keyframes layout-build-pulse {
+                        0% { transform: scale(0.9); opacity: 0.45; }
+                        50% { transform: scale(1.2); opacity: 1; }
+                        100% { transform: scale(0.9); opacity: 0.45; }
+                    }
                     #layer-panel {
                         position: fixed; top: 0; right: 0; bottom: 0;
                         width: 140px;
@@ -149,6 +181,10 @@ class LayoutEditorWebview extends BaseWebview {
                 </script>
                 <canvas id="editor-canvas"></canvas>
                 <div id="layer-panel"></div>
+                <div id="build-status">
+                    <span class="pulse-dot"></span>
+                    <span id="build-status-text">building view</span>
+                </div>
                 <div id="status">scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip</div>
                 <script nonce="${nonce}" type="module" src="${editorUri}"></script>
             </body>

@@ -1,0 +1,485 @@
+import importlib
+from pathlib import Path
+
+import pytest
+
+
+def _reload_deeppcb_module():
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
+
+    return importlib.reload(deeppcb_module)
+
+
+def test_deeppcb_api_key_prefers_ato_prefix(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "ato-key")
+    monkeypatch.setenv("DEEPPCB_API_KEY", "plain-key")
+    monkeypatch.setenv("FBRK_DEEPPCB_API_KEY", "fbrk-key")
+
+    deeppcb_module = _reload_deeppcb_module()
+    cfg = deeppcb_module.DeepPCBConfig.from_env()
+
+    assert cfg.api_key == "ato-key"
+
+
+def test_deeppcb_api_key_ignores_legacy_env_vars(monkeypatch):
+    monkeypatch.delenv("ATO_DEEPPCB_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPPCB_API_KEY", "plain-key")
+    monkeypatch.setenv("FBRK_DEEPPCB_API_KEY", "fbrk-key")
+
+    deeppcb_module = _reload_deeppcb_module()
+    cfg = deeppcb_module.DeepPCBConfig.from_env()
+
+    assert cfg.api_key == ""
+
+
+def test_deeppcb_defaults_match_public_api_paths(monkeypatch):
+    monkeypatch.delenv("ATO_DEEPPCB_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPPCB_API_KEY", raising=False)
+    monkeypatch.delenv("FBRK_DEEPPCB_API_KEY", raising=False)
+
+    deeppcb_module = _reload_deeppcb_module()
+    cfg = deeppcb_module.DeepPCBConfig.from_env()
+
+    assert cfg.upload_path == "/api/v1/files/uploads/board-file"
+    assert cfg.layout_path == "/api/v1/boards"
+    assert cfg.confirm_path_template == "/api/v1/boards/{task_id}/confirm"
+    assert cfg.alt_confirm_path_template == "/api/v1/user/boards/{task_id}/confirm"
+    assert cfg.resume_path_template == "/api/v1/boards/{task_id}/resume"
+    assert cfg.alt_resume_path_template == "/api/v1/user/boards/{task_id}/resume"
+    assert cfg.request_lookup_path_template == "/api/v1/boards/requests/{request_id}"
+    assert cfg.status_path_template == "/api/v1/boards/{task_id}"
+    assert cfg.alt_status_path_template == "/api/v1/user/boards/{task_id}"
+    assert cfg.download_path_template == "/api/v1/boards/{task_id}/revision-artifact"
+    assert (
+        cfg.alt_download_path_template == "/api/v1/boards/{task_id}/download-artifact"
+    )
+    assert cfg.cancel_path_template == "/api/v1/boards/{task_id}/stop"
+    assert cfg.alt_cancel_path_template == "/api/v1/boards/{task_id}/workflow/stop"
+    assert cfg.confirm_retries == 8
+    assert cfg.confirm_retry_delay_s == 1.5
+    assert cfg.board_ready_timeout_s == 90.0
+    assert cfg.board_ready_poll_s == 2.0
+    assert cfg.api_key == ""
+    assert cfg.bearer_token is None
+    assert cfg.webhook_url is None
+    assert cfg.webhook_token is None
+
+
+def test_deeppcb_optional_bearer_token(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_BEARER_TOKEN", "bearer-token")
+
+    deeppcb_module = _reload_deeppcb_module()
+    cfg = deeppcb_module.DeepPCBConfig.from_env()
+
+    assert cfg.bearer_token == "bearer-token"
+
+
+def test_deeppcb_optional_webhook_overrides(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_TOKEN", "token-value")
+
+    deeppcb_module = _reload_deeppcb_module()
+    cfg = deeppcb_module.DeepPCBConfig.from_env()
+
+    assert cfg.webhook_url == "https://example.com/deeppcb"
+    assert cfg.webhook_token == "token-value"
+
+
+def test_extract_board_candidates_prefers_explicit_board_keys():
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
+
+    payload = {
+        "id": "generic-id",
+        "result": {
+            "boardId": "board-uuid",
+            "requestId": "req-1",
+        },
+    }
+    assert deeppcb_module._extract_board_candidates(payload)[0] == "board-uuid"
+
+
+def test_extract_board_candidates_falls_back_to_top_level_id():
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
+
+    payload = {"id": "generic-id"}
+    assert deeppcb_module._extract_board_candidates(payload)[0] == "generic-id"
+
+
+def test_auth_headers_do_not_use_api_key_as_bearer(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.delenv("ATO_DEEPPCB_BEARER_TOKEN", raising=False)
+
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    headers = provider._auth_headers()
+    assert headers["x-deeppcb-api-key"] == "api-key"
+    assert "Authorization" not in headers
+
+
+def test_auth_headers_include_explicit_bearer(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_BEARER_TOKEN", "bearer-token")
+
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    headers = provider._auth_headers()
+    assert headers["x-deeppcb-api-key"] == "api-key"
+    assert headers["Authorization"] == "Bearer bearer-token"
+
+
+def test_redact_sensitive_values():
+    deeppcb_module = _reload_deeppcb_module()
+
+    text = "error token=abc123 and key=shhh-secret"
+    redacted = deeppcb_module._redact_sensitive_values(
+        text,
+        ("abc123", "shhh-secret", None, ""),
+    )
+    assert "abc123" not in redacted
+    assert "shhh-secret" not in redacted
+    assert "***REDACTED***" in redacted
+
+
+def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
+    deeppcb_module = _reload_deeppcb_module()
+
+    board = tmp_path / "demo.kicad_pcb"
+    board.write_text("pcb", encoding="utf-8")
+    project = tmp_path / "demo.kicad_pro"
+    project.write_text("{}", encoding="utf-8")
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=tmp_path,
+        build_target="default",
+        layout_path=board,
+        input_zip_path=tmp_path / "input_bundle.zip",
+        work_dir=tmp_path,
+        constraints={},
+        options={},
+        kicad_project_path=project,
+        schematic_path=None,
+    )
+
+    provider = deeppcb_module.DeepPCBProvider()
+    captured: dict[str, object] = {}
+
+    def fake_request_payload(method, path, **kwargs):
+        captured["method"] = method
+        captured["path"] = path
+        captured["kwargs"] = kwargs
+        return "board-uuid"
+
+    monkeypatch.setattr(provider, "_request_payload", fake_request_payload)
+    board_id = provider._create_board(request)
+
+    assert board_id == "board-uuid"
+    assert captured["method"] == "POST"
+    assert captured["path"] == provider.config.layout_path
+    files = captured["kwargs"]["files"]
+    assert "boardInputType" in files
+    assert files["boardInputType"] == (None, "Kicad")
+    assert "kicadBoardFile" in files
+    assert "kicadProjectFile" in files
+
+
+def test_create_board_kicad_requires_project_file(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
+    deeppcb_module = _reload_deeppcb_module()
+
+    board = tmp_path / "demo.kicad_pcb"
+    board.write_text("pcb", encoding="utf-8")
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=tmp_path,
+        build_target="default",
+        layout_path=board,
+        input_zip_path=tmp_path / "input_bundle.zip",
+        work_dir=tmp_path,
+        constraints={},
+        options={},
+        kicad_project_path=None,
+        schematic_path=None,
+    )
+
+    provider = deeppcb_module.DeepPCBProvider()
+    with pytest.raises(RuntimeError, match="requires a .kicad_pro file"):
+        provider._create_board(request)
+
+
+def test_resume_option_parsing(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=Path("."),
+        build_target="default",
+        layout_path=Path("layout.kicad_pcb"),
+        input_zip_path=Path("input_bundle.zip"),
+        work_dir=Path("."),
+        options={"resumeBoardId": "board-123", "resumeStopFirst": "false"},
+    )
+
+    assert provider._resume_board_id(request) == "board-123"
+    assert provider._resume_stop_first(request) is False
+
+
+def test_webhook_url_is_required_without_config(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.delenv("ATO_DEEPPCB_WEBHOOK_URL", raising=False)
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=Path("."),
+        build_target="default",
+        layout_path=Path("layout.kicad_pcb"),
+        input_zip_path=Path("input_bundle.zip"),
+        work_dir=Path("."),
+        options={},
+    )
+
+    with pytest.raises(RuntimeError, match="requires a webhook URL"):
+        provider._webhook_url(request)
+
+
+def test_webhook_token_fallback_is_not_predictable_job_id(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
+    monkeypatch.delenv("ATO_DEEPPCB_WEBHOOK_TOKEN", raising=False)
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=Path("."),
+        build_target="default",
+        layout_path=Path("layout.kicad_pcb"),
+        input_zip_path=Path("input_bundle.zip"),
+        work_dir=Path("."),
+        options={},
+    )
+    token = provider._webhook_token(request)
+    assert isinstance(token, str)
+    assert token
+    assert token != request.job_id
+
+
+def test_extract_workflow_statuses_and_running_detection():
+    import faebryk.exporters.pcb.autolayout.deeppcb as deeppcb_module
+
+    payload = {
+        "workflows": [
+            {"status": "Stopped"},
+            {"status": "Started"},
+        ]
+    }
+    statuses = deeppcb_module._extract_workflow_statuses(payload)
+    assert "Stopped" in statuses
+    assert "Started" in statuses
+    assert deeppcb_module._is_running_workflow_status("Started") is True
+    assert deeppcb_module._is_running_workflow_status("Stopped") is False
+
+
+def test_status_prefers_workflow_revisions_for_candidates(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    payload = {
+        "workflows": [
+            {
+                "id": "workflow-1",
+                "status": "Completed",
+                "revisions": [
+                    {
+                        "id": "rev-uuid-0",
+                        "revisionNumber": 0,
+                        "jsonFilePath": "Boards/board/Revisions/0",
+                    },
+                    {
+                        "id": "rev-uuid-2",
+                        "revisionNumber": 2,
+                        "jsonFilePath": "Boards/board/Revisions/2",
+                    },
+                    {
+                        "id": "rev-uuid-1",
+                        "revisionNumber": 1,
+                        "jsonFilePath": "Boards/board/Revisions/1",
+                    },
+                ],
+            }
+        ]
+    }
+
+    monkeypatch.setattr(provider, "_request_payload", lambda *args, **kwargs: payload)
+    status = provider.status("board-1")
+
+    assert status.state == deeppcb_module.AutolayoutState.AWAITING_SELECTION
+    assert [candidate.candidate_id for candidate in status.candidates] == [
+        "2",
+        "1",
+        "0",
+    ]
+    assert status.candidates[0].metadata.get("revisionId") == "rev-uuid-2"
+    assert status.candidates[0].metadata.get("workflowId") == "workflow-1"
+
+
+def test_download_candidate_prefers_kicadfile_and_revision(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    candidate = deeppcb_module.AutolayoutCandidate(
+        candidate_id="55",
+        metadata={"revisionNumber": 55, "jsonFilePath": "Boards/board/Revisions/55"},
+    )
+    monkeypatch.setattr(provider, "_candidate_by_id", lambda *args, **kwargs: candidate)
+
+    calls: list[dict[str, str]] = []
+
+    class _FakeResponse:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+            self.headers = {"content-type": "application/octet-stream"}
+            self.status_code = 200
+            self.text = content.decode("utf-8", errors="ignore")
+
+    def fake_request_raw(method, path, **kwargs):
+        _ = (method, path)
+        params = kwargs.get("params")
+        if isinstance(params, dict):
+            calls.append(dict(params))
+        return _FakeResponse(b"kicad-bytes")
+
+    monkeypatch.setattr(provider, "_request_raw", fake_request_raw)
+
+    download = provider.download_candidate(
+        external_job_id="board-1",
+        candidate_id="55",
+        out_dir=tmp_path / "downloads",
+        target_layout_path=tmp_path / "target.kicad_pcb",
+    )
+
+    assert calls
+    assert calls[0]["type"] == "KicadFile"
+    assert calls[0]["revision"] == "55"
+    assert download.layout_path.suffix == ".kicad_pcb"
+    assert download.layout_path.exists()
+    assert download.files == {"kicad_pcb": str(download.layout_path)}
+
+
+def test_inject_constraints_file_url_for_placement(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=tmp_path,
+        build_target="default",
+        layout_path=tmp_path / "layout.kicad_pcb",
+        input_zip_path=tmp_path / "input_bundle.zip",
+        work_dir=tmp_path,
+        constraints={
+            "decoupling_constraints": {
+                "U1-1": [{"type": "decoupled_by", "targets": ["C1-1"]}]
+            }
+        },
+        options={"jobType": "Placement"},
+    )
+
+    monkeypatch.setattr(
+        provider, "_upload_board_file", lambda _: "https://tmp/url.json"
+    )
+    monkeypatch.setattr(
+        provider,
+        "_request_payload",
+        lambda *args, **kwargs: {"is_valid": True, "error": ""},
+    )
+
+    provider._inject_constraints_file_url(request)
+
+    assert request.options["constraintsFileUrl"] == "https://tmp/url.json"
+    constraints_file = tmp_path / "deeppcb_constraints.json"
+    assert constraints_file.exists()
+    payload = constraints_file.read_text(encoding="utf-8")
+    assert "decoupling_constraints" in payload
+    assert "U1-1" in payload
+
+
+def test_inject_constraints_skips_non_placement(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=tmp_path,
+        build_target="default",
+        layout_path=tmp_path / "layout.kicad_pcb",
+        input_zip_path=tmp_path / "input_bundle.zip",
+        work_dir=tmp_path,
+        constraints={"decoupling_constraints": {"U1-1": []}},
+        options={"jobType": "Routing"},
+    )
+
+    provider._inject_constraints_file_url(request)
+    assert "constraintsFileUrl" not in request.options
+
+
+def test_inject_constraints_validation_failure_raises(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    request = deeppcb_module.SubmitRequest(
+        job_id="al-test",
+        project_root=tmp_path,
+        build_target="default",
+        layout_path=tmp_path / "layout.kicad_pcb",
+        input_zip_path=tmp_path / "input_bundle.zip",
+        work_dir=tmp_path,
+        constraints={
+            "decoupling_constraints": {
+                "U1-1": [{"type": "decoupled_by", "targets": ["BADPIN"]}]
+            }
+        },
+        options={"jobType": "Placement"},
+    )
+
+    monkeypatch.setattr(
+        provider,
+        "_request_payload",
+        lambda *args, **kwargs: {
+            "is_valid": False,
+            "error": "Target 'BADPIN' does not follow format",
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="constraints validation failed"):
+        provider._inject_constraints_file_url(request)
+
+
+def test_json_artifact_download_is_rejected(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    with pytest.raises(RuntimeError, match="Only KiCad artifacts are supported"):
+        provider._persist_downloaded_layout(
+            content=b'{"components":[]}',
+            content_type="application/json",
+            out_dir=tmp_path / "downloads",
+            candidate_id="rev-1",
+            target_layout_path=tmp_path / "target.kicad_pcb",
+        )

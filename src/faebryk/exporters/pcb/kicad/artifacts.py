@@ -129,14 +129,16 @@ def export_svg(
     svg_file: Path,
     flip_board: bool = False,
     project_dir: Optional[Path] = None,
+    layers: Optional[str] = None,
 ) -> None:
     """
     2D PCBA SVG file export using the kicad-cli
     """
 
-    layers = "F.Cu,F.Paste,F.SilkS,F.Mask,Edge.Cuts"
-    if flip_board:
-        layers = layers.replace("F.", "B.")
+    if layers is None:
+        layers = "F.Cu,F.Paste,F.SilkS,F.Mask,Edge.Cuts"
+        if flip_board:
+            layers = layers.replace("F.", "B.")
 
     cmd_vars = f"KIPRJMOD={project_dir.absolute()}" if project_dir else None
 

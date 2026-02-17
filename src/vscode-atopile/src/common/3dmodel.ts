@@ -187,6 +187,53 @@ export function prepareThreeDViewer(rawGlbPath: string, triggerBuild: () => void
     }
 }
 
+/**
+ * Show an existing GLB in the viewer without triggering a build.
+ * Used as a fallback when we cannot resolve a build target from UI state.
+ */
+export function showThreeDModel(rawGlbPath: string): void {
+    cancelOptimization();
+    clearBuildTimeout();
+
+    let isFile = false;
+    try {
+        isFile = fs.existsSync(rawGlbPath) && fs.statSync(rawGlbPath).isFile();
+    } catch {
+        isFile = false;
+    }
+
+    modelWatcher.setCurrent({ path: rawGlbPath, exists: isFile });
+
+    if (!isFile) {
+        setViewerState({
+            state: 'failed',
+            message: '3D model file not found. Run a build to generate it.',
+        });
+        return;
+    }
+
+    const bestGlb = findBestGlbPath(rawGlbPath);
+    if (!bestGlb) {
+        setViewerState({
+            state: 'failed',
+            message: '3D model file not found. Run a build to generate it.',
+        });
+        return;
+    }
+
+    setViewerState({
+        state: 'showing',
+        modelPath: bestGlb.path,
+        isOptimized: bestGlb.isOptimized,
+        isBuilding: false,
+        isOptimizing: false,
+    });
+
+    if (!bestGlb.isOptimized) {
+        setTimeout(() => runOptimization(rawGlbPath), 1000);
+    }
+}
+
 function setupBuildTimeout(rawGlbPath: string) {
     clearBuildTimeout();
 

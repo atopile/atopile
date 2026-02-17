@@ -16,6 +16,7 @@ export class Editor {
     private apiPrefix: string;
     private wsPath: string;
     private ws: WebSocket | null = null;
+    private modelRetryTimer: number | null = null;
 
     // Selection & drag state
     private selectedFpIndex = -1;
@@ -33,6 +34,7 @@ export class Editor {
 
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
+    private onStatusChanged: ((status: "loading" | "ready" | "error", message?: string) => void) | null = null;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -53,15 +55,32 @@ export class Editor {
     async init() {
         await this.fetchAndPaint();
         this.connectWebSocket();
+        this.startModelRetryLoop();
     }
 
     private async fetchAndPaint() {
-        const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-        this.applyModel(await resp.json(), true);
+        try {
+            if (!this.model) {
+                this.onStatusChanged?.("loading", "building view");
+            }
+            const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
+            if (resp.status === 404) {
+                this.onStatusChanged?.("loading", "building view");
+                return;
+            }
+            if (!resp.ok) {
+                this.onStatusChanged?.("error", "failed to load view");
+                return;
+            }
+            this.applyModel(await resp.json(), true);
+        } catch {
+            this.onStatusChanged?.("error", "failed to load view");
+        }
     }
 
     private applyModel(model: RenderModel, fitToView = false) {
         this.model = model;
+        this.onStatusChanged?.("ready");
         this.paint();
 
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
@@ -95,6 +114,17 @@ export class Editor {
         this.ws.onclose = () => {
             setTimeout(() => this.connectWebSocket(), 2000);
         };
+    }
+
+    private startModelRetryLoop() {
+        if (this.modelRetryTimer !== null) {
+            return;
+        }
+        this.modelRetryTimer = window.setInterval(() => {
+            if (!this.model) {
+                void this.fetchAndPaint();
+            }
+        }, 1500);
     }
 
     private setupMouseHandlers() {
@@ -303,6 +333,10 @@ export class Editor {
 
     setOnMouseMove(cb: (x: number, y: number) => void) {
         this.onMouseMoveCallback = cb;
+    }
+
+    setOnStatusChanged(cb: (status: "loading" | "ready" | "error", message?: string) => void) {
+        this.onStatusChanged = cb;
     }
 
     private repaintWithSelection() {

@@ -603,19 +603,21 @@ async function fetchLogViewCurrentId(): Promise<void> {
 
 function handleEventMessage(message: EventMessage): void {
   const data = message.data ?? {};
+  // Backend can emit additional string events that lag behind generated EventType.
+  const event = message.event as string;
   const projectRoot =
     (typeof data.projectRoot === 'string' && data.projectRoot) ||
     (typeof data.project_root === 'string' && data.project_root) ||
     null;
 
   // Handle migration_step_result event (per-step progress for migrate dialog)
-  if ((message.event as string) === 'migration_step_result') {
+  if (event === 'migration_step_result') {
     window.dispatchEvent(new CustomEvent('migration-step-result', { detail: data }));
     return;
   }
 
   // Handle migration_result event (not in EventType enum)
-  if ((message.event as string) === 'migration_result') {
+  if (event === 'migration_result') {
     const success = data.success === true;
     const error = typeof data.error === 'string' ? data.error : null;
 
@@ -629,12 +631,74 @@ function handleEventMessage(message: EventMessage): void {
     return;
   }
 
-  switch (message.event) {
-    case EventType.OpenLayout: {
+  // Handle agent progress streaming event (not in EventType enum)
+  if (event === 'agent_progress') {
+    window.dispatchEvent(
+      new CustomEvent('atopile:agent_progress', {
+        detail: data,
+      })
+    );
+    return;
+  }
+
+  // Handle agent-to-agent message event (not in EventType enum)
+  if (event === 'agent_message') {
+    window.dispatchEvent(
+      new CustomEvent('atopile:agent_message', {
+        detail: data,
+      })
+    );
+    return;
+  }
+
+  switch (event) {
+    case 'open_file': {
       const path = typeof data.path === 'string' ? data.path : null;
+      const line =
+        typeof data.line === 'number'
+          ? data.line
+          : typeof data.openFileLine === 'number'
+            ? data.openFileLine
+            : null;
+      const column =
+        typeof data.column === 'number'
+          ? data.column
+          : typeof data.openFileColumn === 'number'
+            ? data.openFileColumn
+            : null;
       postMessage({
         type: 'openSignals',
+        openFile: path,
+        openFileLine: line,
+        openFileColumn: column,
+        openLayout: null,
+        openKicad: null,
+        open3d: null,
+      });
+      break;
+    }
+    case EventType.OpenLayout: {
+      const path = typeof data.path === 'string' ? data.path : null;
+      const openLayoutProjectRoot =
+        typeof data.project_root === 'string'
+          ? data.project_root
+          : typeof data.projectRoot === 'string'
+            ? data.projectRoot
+            : null;
+      const openLayoutTargetName =
+        typeof data.target_name === 'string'
+          ? data.target_name
+          : typeof data.targetName === 'string'
+            ? data.targetName
+            : null;
+      postMessage({
+        type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: path,
+        openLayoutProjectRoot,
+        openLayoutTargetName,
         openKicad: null,
         open3d: null,
       });
@@ -644,6 +708,9 @@ function handleEventMessage(message: EventMessage): void {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: null,
         openKicad: path,
         open3d: null,
@@ -654,6 +721,9 @@ function handleEventMessage(message: EventMessage): void {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: null,
         openKicad: null,
         open3d: path,
@@ -674,6 +744,12 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.BOMChanged:
       void refreshBom();
       break;
+    case EventType.ProjectFilesChanged: {
+      if (projectRoot) {
+        postMessage({ type: 'projectFilesChanged', projectRoot });
+      }
+      break;
+    }
     case EventType.VariablesChanged:
       void refreshVariables();
       break;
