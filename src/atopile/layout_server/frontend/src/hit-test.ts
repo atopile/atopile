@@ -49,13 +49,34 @@ export function footprintBBox(fp: FootprintModel): BBox {
     return BBox.from_points(points).grow(0.2);
 }
 
+function distanceSquared(a: Vec2, b: Vec2): number {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
+
 /** Find the footprint under a world-space point, returns index or -1 */
 export function hitTestFootprints(worldPos: Vec2, footprints: FootprintModel[]): number {
+    // Direct hit first, then a wider fallback radius so parts are selectable at low zoom.
+    const PICK_TOLERANCE_WORLD = 1.5;
+    let fallbackIndex = -1;
+    let fallbackDistance = Number.POSITIVE_INFINITY;
+
     for (let i = footprints.length - 1; i >= 0; i--) {
         const bbox = footprintBBox(footprints[i]!);
         if (bbox.contains_point(worldPos)) {
             return i;
         }
+
+        const expanded = bbox.grow(PICK_TOLERANCE_WORLD);
+        if (expanded.contains_point(worldPos)) {
+            const center = bbox.center;
+            const dist = distanceSquared(worldPos, center);
+            if (dist < fallbackDistance) {
+                fallbackDistance = dist;
+                fallbackIndex = i;
+            }
+        }
     }
-    return -1;
+    return fallbackIndex;
 }
