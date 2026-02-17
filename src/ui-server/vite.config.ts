@@ -328,6 +328,7 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
     },
   } : undefined;
+  const repoRoot = resolve(__dirname, '..', '..');
 
   return {
     plugins: [react(), screenshotPlugin()],
@@ -337,6 +338,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       open: true,
+      fs: {
+        // Allow schematic dev pages to load .ato_sch fixtures from the repo
+        // via /@fs/abs/path URLs without copying into ui-server.
+        allow: [repoRoot],
+      },
       // Proxy websocket and API requests to the backend server
       proxy,
     },
@@ -352,6 +358,8 @@ export default defineConfig(({ mode }) => {
               sidebar: resolve(__dirname, 'sidebar.html'),
               logViewer: resolve(__dirname, 'log-viewer.html'),
               testExplorer: resolve(__dirname, 'test-explorer.html'),
+              schematic: resolve(__dirname, 'schematic.html'),
+              treeViewer: resolve(__dirname, 'tree-viewer.html'),
               migrate: resolve(__dirname, 'migrate.html'),
             },
         output: {

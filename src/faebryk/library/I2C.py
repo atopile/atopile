@@ -166,6 +166,18 @@ class I2C(fabll.Node):
 
     # address_check = requires_unique_addresses.MakeChild()
 
+    def make_controller(self):
+        """Mark this I2C interface as operating in controller (master) mode."""
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.is_i2c_controller
+        ).setup()
+
+    def make_target(self):
+        """Mark this I2C interface as operating in target (slave) mode."""
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.is_i2c_target
+        ).setup()
+
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""

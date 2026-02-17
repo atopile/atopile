@@ -1,0 +1,122 @@
+/* ============================================
+   ViewsPanel - Viewer launcher + inline structure
+   ============================================ */
+
+.views-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.views-launchers {
+  flex-shrink: 0;
+  padding: var(--spacing-xs) 0;
+}
+
+.views-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: default;
+  user-select: none;
+}
+
+.views-section-header.clickable {
+  cursor: pointer;
+}
+
+.views-section-header.clickable:hover {
+  color: var(--text-primary);
+}
+
+.views-launcher-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-md);
+  padding-left: calc(var(--spacing-md) + 2px);
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+}
+
+.views-launcher-row:hover {
+  background: var(--bg-hover);
+}
+
+.views-launcher-row:active {
+  background: var(--bg-active);
+}
+
+.views-launcher-row.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.views-launcher-row.disabled:hover {
+  background: none;
+}
+
+.views-launcher-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.views-launcher-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.views-launcher-external {
+  opacity: 0;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.views-launcher-row:hover .views-launcher-external {
+  opacity: 0.6;
+}
+
+/* Structure section */
+.views-structure-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.views-structure-content {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.views-structure-content .structure-panel {
+  height: 100%;
+}

@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.0.0",
+    "version": "0.14.0",
     "preview": false,
     "publisher": "atopile",
     "license": "MIT",
@@ -223,6 +223,27 @@
                 "category": "atopile"
             },
             {
+                "command": "atopile.power_tree_preview",
+                "title": "Open Power Tree",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.i2c_tree_preview",
+                "title": "Open I2C Tree",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.schematic_preview",
+                "title": "Open Schematic",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.show_in_schematic",
+                "title": "Show in Schematic",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
@@ -238,6 +259,20 @@
                 "category": "atopile"
             }
         ],
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "atopile.show_in_schematic",
+                    "when": "editorTextFocus && (editorLangId == ato || editorLangId == atopile || resourceExtname == .ato)",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "atopile.schematic_preview",
+                    "when": "editorTextFocus && (editorLangId == ato || editorLangId == atopile || resourceExtname == .ato)",
+                    "group": "navigation@6"
+                }
+            ]
+        },
         "languages": [
             {
                 "id": "ato",
