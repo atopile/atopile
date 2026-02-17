@@ -5,27 +5,30 @@ description: "Reference for the `.ato` declarative DSL: type system, connection 
 
 # The ato language
 
-ato is a **declarative, constraint-based DSL** for describing electronic circuits. There is no control flow, no mutation, and no execution order — you declare *what* a circuit is, and the compiler + solver resolve it into a valid design.
+ato is a **declarative, constraint-based DSL** for describing electronic circuits. There is no control flow, no mutation, and no execution order — you declare _what_ a circuit is, and the compiler + solver resolve it into a valid design.
 
 ## Quick Start
 
 A minimal complete `.ato` file:
 
 ```ato
-import Resistor, ElectricPower, Capacitor
+#pragma experiment("BRIDGE_CONNECT")
+
+import Resistor
+import ElectricPower
+import Capacitor
 
 module PowerFilter:
     """A simple decoupled power input with a pull-down resistor."""
     power = new ElectricPower
-    cap = new Capacitor
-    pulldown = new Resistor
+    decoupling_capacitor = new Capacitor
+    pulldown_resistor = new Resistor
 
-    power ~ cap.power
-    pulldown.unnamed[0] ~ power.hv
-    pulldown.unnamed[1] ~ power.lv
+    power.hv ~> decoupling_capacitor ~> power.lv
+    power.hv ~> pulldown_resistor ~> power.lv
 
-    cap.capacitance = 100nF +/- 20%
-    pulldown.resistance = 100kohm +/- 5%
+    decoupling_capacitor.capacitance = 100nF +/- 20%
+    pulldown_resistor.resistance = 100kohm +/- 5%
     assert power.voltage within 3.0V to 3.6V
 ```
 
@@ -41,11 +44,11 @@ Every entity (a resistor, a power rail, an I2C bus, a voltage parameter) is a **
 
 ato has exactly three ways to define a new type:
 
-| Keyword | Semantics | Typical Use |
-|-----------|-----------|-------------|
-| `module` | A design unit that contains children and connections | Circuit blocks, subsystems |
-| `interface` | A connectable boundary; can be wired with `~` | Buses, power rails, signals |
-| `component` | A physical part with footprint/symbol | Vendor ICs, connectors |
+| Keyword     | Semantics                                            | Typical Use                 |
+| ----------- | ---------------------------------------------------- | --------------------------- |
+| `module`    | A design unit that contains children and connections | Circuit blocks, subsystems  |
+| `interface` | A connectable boundary; can be wired with `~`        | Buses, power rails, signals |
+| `component` | A physical part with footprint/symbol                | Vendor ICs, connectors      |
 
 All three compile to graph nodes. The distinction controls which **traits** the compiler attaches (`is_module`, `is_interface`) and what operations are legal (by convention, interfaces appear on both sides of `~`).
 
@@ -71,7 +74,7 @@ Children are accessed via **dot-notation**: `sensor.power.voltage`, `caps[0].cap
 
 ### 4. Connection — Declaring Electrical Identity
 
-The **wire operator `~`** declares that two interfaces *are the same net/bus*. It is bidirectional and requires matching types:
+The **wire operator `~`** declares that two interfaces _are the same net/bus_. It is bidirectional and requires matching types:
 
 ```ato
 power_3v3 ~ sensor.power          # ElectricPower ~ ElectricPower
@@ -107,6 +110,7 @@ assert sensor.i2c.address is 0x50
 ```
 
 Three value forms exist:
+
 - **Exact**: `3.3V`
 - **Bilateral tolerance**: `10kohm +/- 5%`
 - **Bounded range**: `3.0V to 3.6V`
@@ -117,7 +121,9 @@ Traits attach capabilities or metadata to nodes. They are not children — they 
 
 ```ato
 #pragma experiment("TRAITS")
-import has_part_removed, is_atomic_part
+
+import has_part_removed
+import is_atomic_part
 
 module Placeholder:
     trait has_part_removed          # mark as non-physical placeholder
@@ -126,23 +132,25 @@ module Placeholder:
 
 Key built-in traits:
 
-| Trait | Effect |
-|-------|--------|
-| `can_bridge` | Enables use with `~>` operator (defines in/out pin mapping) |
-| `has_part_removed` | No physical part placed (symbolic node) |
-| `is_atomic_part` | User-defined part with `manufacturer`, `partnumber`, `footprint` |
-| `has_datasheet` | Attaches a datasheet reference |
-| `has_designator_prefix` | Sets PCB designator (R, C, U, etc.) |
+| Trait                   | Effect                                                           |
+| ----------------------- | ---------------------------------------------------------------- |
+| `can_bridge`            | Enables use with `~>` operator (defines in/out pin mapping)      |
+| `has_part_removed`      | No physical part placed (symbolic node)                          |
+| `is_atomic_part`        | User-defined part with `manufacturer`, `partnumber`, `footprint` |
+| `has_datasheet`         | Attaches a datasheet reference                                   |
+| `has_designator_prefix` | Sets PCB designator (R, C, U, etc.)                              |
 
 ### 7. Import System
 
-**Bare imports** resolve to standard library types:
+**Bare imports** resolve to standard library types (1 line per import):
 
 ```ato
-import ElectricPower, I2C, Resistor
+import ElectricPower
+import I2C
+import Resistor
 ```
 
-**Path imports** resolve to types defined in other `.ato` files:
+**Path imports** resolve to types defined in other `.ato` files (1 line per import):
 
 ```ato
 from "atopile/vendor-part/vendor-part.ato" import Vendor_Part
@@ -166,20 +174,20 @@ Using gated syntax without the pragma is a compile error.
 
 Every statement inside a block body is one of:
 
-| Statement | Syntax | Purpose |
-|-----------|--------|---------|
-| `assign` | `name = value` or `name = new Type` | Bind a value or instantiate a child |
-| `connect` | `a ~ b` | Wire two interfaces together |
-| `bridge` | `a ~> b ~> c` | Insert bridgeable components in series |
-| `assert` | `assert expr <op> expr` | Declare a constraint |
-| `retype` | `name -> NewType` | Replace an inherited child's type |
-| `pin` | `pin VCC` | Declare a physical pin |
-| `signal` | `signal reset` | Declare an electrical signal |
-| `trait` | `trait TraitName` | Attach a trait |
-| `import` | `import Type` | Import a type |
-| `for` | `for x in arr:` | Iterate over an array (pragma-gated) |
-| `string` | `"""..."""` | Documentation string |
-| `pass` | `pass` | Empty placeholder |
+| Statement | Syntax                              | Purpose                                |
+| --------- | ----------------------------------- | -------------------------------------- |
+| `assign`  | `name = value` or `name = new Type` | Bind a value or instantiate a child    |
+| `connect` | `a ~ b`                             | Wire two interfaces together           |
+| `bridge`  | `a ~> b ~> c`                       | Insert bridgeable components in series |
+| `assert`  | `assert expr <op> expr`             | Declare a constraint                   |
+| `retype`  | `name -> NewType`                   | Replace an inherited child's type      |
+| `pin`     | `pin VCC`                           | Declare a physical pin                 |
+| `signal`  | `signal reset`                      | Declare an electrical signal           |
+| `trait`   | `trait TraitName`                   | Attach a trait                         |
+| `import`  | `import Type`                       | Import a type                          |
+| `for`     | `for x in arr:`                     | Iterate over an array (pragma-gated)   |
+| `string`  | `"""..."""`                         | Documentation string                   |
+| `pass`    | `pass`                              | Empty placeholder                      |
 
 Statements within a block are **order-independent** — the compiler resolves the full graph, not a sequence of operations.
 
@@ -187,44 +195,44 @@ Statements within a block are **order-independent** — the compiler resolves th
 
 ### Interfaces (connectable with `~` or `~>`)
 
-| Type | Children / Parameters | Purpose |
-|------|----------------------|---------|
-| `Electrical` | *(single node)* | Raw electrical connection point |
-| `ElectricPower` | `.hv`, `.lv` (Electrical); `.voltage`, `.max_current` | Power rails |
-| `ElectricLogic` | `.line` (Electrical), `.reference` (ElectricPower) | Digital signals with voltage context |
-| `ElectricSignal` | `.line` (Electrical), `.reference` (ElectricPower) | Analog signals |
-| `I2C` | `.scl`, `.sda` (ElectricLogic); `.frequency`, `.address` | I2C bus |
-| `SPI` | `.sclk`, `.mosi`, `.miso` (ElectricLogic); `.frequency` | SPI bus |
-| `UART` / `UART_Base` | `.tx`, `.rx` (ElectricLogic); flow control lines | Serial |
-| `I2S` | audio data bus lines | Digital audio |
-| `DifferentialPair` | `.p`, `.n` | Differential signals |
-| `USB2_0` / `USB3` / `USB2_0_IF` | USB data + power | USB interfaces |
-| `CAN_TTL` | CAN bus lines | CAN bus |
-| `SWD` / `JTAG` | debug lines | Debug interfaces |
-| `Ethernet` / `HDMI` / `RS232` / `PDM` / `XtalIF` / `MultiSPI` | protocol-specific | Other protocols |
+| Type                                                          | Children / Parameters                                    | Purpose                              |
+| ------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------ |
+| `Electrical`                                                  | _(single node)_                                          | Raw electrical connection point      |
+| `ElectricPower`                                               | `.hv`, `.lv` (Electrical); `.voltage`, `.max_current`    | Power rails                          |
+| `ElectricLogic`                                               | `.line` (Electrical), `.reference` (ElectricPower)       | Digital signals with voltage context |
+| `ElectricSignal`                                              | `.line` (Electrical), `.reference` (ElectricPower)       | Analog signals                       |
+| `I2C`                                                         | `.scl`, `.sda` (ElectricLogic); `.frequency`, `.address` | I2C bus                              |
+| `SPI`                                                         | `.sclk`, `.mosi`, `.miso` (ElectricLogic); `.frequency`  | SPI bus                              |
+| `UART` / `UART_Base`                                          | `.tx`, `.rx` (ElectricLogic); flow control lines         | Serial                               |
+| `I2S`                                                         | audio data bus lines                                     | Digital audio                        |
+| `DifferentialPair`                                            | `.p`, `.n`                                               | Differential signals                 |
+| `USB2_0` / `USB3` / `USB2_0_IF`                               | USB data + power                                         | USB interfaces                       |
+| `CAN_TTL`                                                     | CAN bus lines                                            | CAN bus                              |
+| `SWD` / `JTAG`                                                | debug lines                                              | Debug interfaces                     |
+| `Ethernet` / `HDMI` / `RS232` / `PDM` / `XtalIF` / `MultiSPI` | protocol-specific                                        | Other protocols                      |
 
 ### Modules (instantiable with `new`)
 
-| Type | Children / Parameters | Designator |
-|------|----------------------|------------|
-| `Resistor` | `.unnamed[0..1]`; `.resistance`, `.max_power` | R |
-| `Capacitor` | `.unnamed[0..1]`, `.power`; `.capacitance`, `.max_voltage`, `.temperature_coefficient` | C |
-| `CapacitorPolarized` | polarized variant of Capacitor | C |
-| `Inductor` | `.unnamed[0..1]`; `.inductance` | L |
-| `Fuse` | `.unnamed[0..1]`; `.trip_current`, `.fuse_type` | F |
-| `Diode` | `.anode`, `.cathode`; `.forward_voltage`, `.current` | D |
-| `LED` | `.diode`; `.brightness`, `.color` | D |
-| `MOSFET` | `.source`, `.gate`, `.drain`; `.channel_type`, `.gate_source_threshold_voltage` | Q |
-| `BJT` | `.emitter`, `.base`, `.collector`; `.doping_type` | Q |
-| `Regulator` / `AdjustableRegulator` | `.power_in`, `.power_out` | — |
-| `Crystal` | `.unnamed[0..1]`, `.gnd`; `.frequency`, `.load_capacitance` | XTAL |
-| `Crystal_Oscillator` | oscillator module | — |
-| `ResistorVoltageDivider` | voltage divider circuit | — |
-| `FilterElectricalRC` | RC filter | — |
-| `Net` | `.part_of` (Electrical) | — |
-| `TestPoint` | `.contact`; `.pad_size`, `.pad_type` | TP |
-| `MountingHole` / `NetTie` | mechanical | — |
-| `SPIFlash` | SPI flash memory | — |
+| Type                                | Children / Parameters                                                                  | Designator |
+| ----------------------------------- | -------------------------------------------------------------------------------------- | ---------- |
+| `Resistor`                          | `.unnamed[0..1]`; `.resistance`, `.max_power`                                          | R          |
+| `Capacitor`                         | `.unnamed[0..1]`, `.power`; `.capacitance`, `.max_voltage`, `.temperature_coefficient` | C          |
+| `CapacitorPolarized`                | polarized variant of Capacitor                                                         | C          |
+| `Inductor`                          | `.unnamed[0..1]`; `.inductance`                                                        | L          |
+| `Fuse`                              | `.unnamed[0..1]`; `.trip_current`, `.fuse_type`                                        | F          |
+| `Diode`                             | `.anode`, `.cathode`; `.forward_voltage`, `.current`                                   | D          |
+| `LED`                               | `.diode`; `.brightness`, `.color`                                                      | D          |
+| `MOSFET`                            | `.source`, `.gate`, `.drain`; `.channel_type`, `.gate_source_threshold_voltage`        | Q          |
+| `BJT`                               | `.emitter`, `.base`, `.collector`; `.doping_type`                                      | Q          |
+| `Regulator` / `AdjustableRegulator` | `.power_in`, `.power_out`                                                              | —          |
+| `Crystal`                           | `.unnamed[0..1]`, `.gnd`; `.frequency`, `.load_capacitance`                            | XTAL       |
+| `Crystal_Oscillator`                | oscillator module                                                                      | —          |
+| `ResistorVoltageDivider`            | voltage divider circuit                                                                | —          |
+| `FilterElectricalRC`                | RC filter                                                                              | —          |
+| `Net`                               | `.part_of` (Electrical)                                                                | —          |
+| `TestPoint`                         | `.contact`; `.pad_size`, `.pad_type`                                                   | TP         |
+| `MountingHole` / `NetTie`           | mechanical                                                                             | —          |
+| `SPIFlash`                          | SPI flash memory                                                                       | —          |
 
 ### Traits (attachable with `trait`)
 
