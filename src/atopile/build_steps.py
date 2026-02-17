@@ -27,6 +27,7 @@ from atopile.errors import (
     accumulate,
     iter_leaf_exceptions,
 )
+from atopile.ibom_viewer.generate import generate_ibom_html
 from atopile.logging import AtoLogger, get_logger
 from atopile.logging_utils import get_status_style, print_bar
 from faebryk.core.solver.solver import Solver
@@ -361,8 +362,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -890,6 +895,33 @@ def generate_bom(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "ibom",
+    aliases=["interactive-bom"],
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_ibom(ctx: BuildStepContext) -> None:
+    """Generate a self-contained interactive BOM viewer HTML file."""
+    app = ctx.require_app()
+    pickable_parts = [
+        part
+        for m in app.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Pickable.has_part_picked,
+        )
+        for part in [m.get_trait(F.Pickable.has_part_picked)]
+        if not part.is_removed()
+    ]
+    generate_ibom_html(
+        pcb_path=config.build.paths.layout,
+        pickable_parts=pickable_parts,
+        output_path=config.build.paths.output_base.with_suffix(".ibom.html"),
+        project_name=config.build.paths.output_base.stem,
+    )
+
+
+@muster.register(
     name="glb",
     aliases=["3d-model"],
     tags={Tags.REQUIRES_KICAD},
@@ -1175,6 +1207,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
+        generate_ibom,
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,

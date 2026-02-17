@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive BOM</title>
+<style>
+/* %%STYLES%% */
+</style>
+</head>
+<body>
+<div id="app">
+
+<div id="toolbar">
+    <span class="project-name" id="project-name"></span>
+    <span class="tb-meta" id="tb-meta"></span>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" id="btn-flip" title="Flip board (F)">Flip</button>
+    <button class="tb-btn" id="btn-rotate" title="Rotate board">Rotate</button>
+    <button class="tb-btn" id="btn-fit" title="Fit view">Fit</button>
+    <div class="tb-sep"></div>
+    <div class="layer-toggles" id="layer-toggles"></div>
+</div>
+
+<div id="main">
+    <div id="pcb-panel">
+        <canvas id="pcb-canvas"></canvas>
+        <canvas id="hl-canvas"></canvas>
+        <div class="kb-hint">Scroll to zoom &middot; Drag to pan &middot; Click to select &middot; F flip &middot; / search</div>
+    </div>
+    <div id="divider"></div>
+    <div id="bom-panel"></div>
+</div>
+
+</div>
+
+<script>
+/* %%IBOM_DATA%% */
+</script>
+<script>
+/* %%RENDERER_JS%% */
+</script>
+<script>
+/* %%BOM_UI_JS%% */
+</script>
+<script>
+// --- Initialization ---
+(function() {
+    "use strict";
+
+    // Project name & metadata
+    document.getElementById("project-name").textContent = ibomData.projectName || "Interactive BOM";
+    document.title = (ibomData.projectName || "Interactive BOM") + " — iBOM Viewer";
+    var metaEl = document.getElementById("tb-meta");
+    if (ibomData.generatedAt) metaEl.appendChild(metaLine(ibomData.generatedAt));
+    if (ibomData.gitDescribe) metaEl.appendChild(metaLine(ibomData.gitDescribe));
+    if (ibomData.atoVersion) metaEl.appendChild(metaLine("ato " + ibomData.atoVersion));
+    function metaLine(text) { var s = document.createElement("div"); s.textContent = text; return s; }
+
+    // Initialize renderer
+    var renderer = new PCBRenderer("pcb-canvas", "hl-canvas");
+    renderer.setModel(ibomData.pcb);
+    renderer.resize();
+
+    // Initialize BOM
+    var bomUI = new BomUI("bom-panel", ibomData.bom, ibomData.refToBomId, renderer);
+
+    // Bridge: PCB click -> BOM
+    renderer.onFootprintClick = function(ref) {
+        bomUI.selectByRef(ref);
+    };
+
+    // --- Layer toggles ---
+    var defaultLayers = ["F.Cu","B.Cu","F.SilkS","B.SilkS","F.Fab","B.Fab","Edge.Cuts","F.Mask","B.Mask","Vias"];
+    var toggleContainer = document.getElementById("layer-toggles");
+    defaultLayers.forEach(function(layerName) {
+        var c = getLayerColor(layerName);
+        if (layerName === "Vias") c = VIA_COLOR;
+        var el = document.createElement("label");
+        el.className = "layer-toggle";
+        el.innerHTML = "<span class='swatch' style='background:" + rgba(c) + "'></span>" + layerName;
+        el.addEventListener("click", function() {
+            var isHidden = renderer.hiddenLayers.has(layerName);
+            renderer.setLayerVisibility(layerName, isHidden);
+            el.classList.toggle("hidden", !isHidden);
+        });
+        toggleContainer.appendChild(el);
+    });
+
+    // --- Toolbar buttons ---
+    var rotIdx = 0;
+    var rotations = [0, 90, 180, 270];
+    document.getElementById("btn-flip").addEventListener("click", function() {
+        renderer.toggleFlip();
+        this.classList.toggle("active", renderer.flipBoard);
+    });
+    document.getElementById("btn-rotate").addEventListener("click", function() {
+        rotIdx = (rotIdx + 1) % 4;
+        renderer.setRotation(rotations[rotIdx]);
+    });
+    document.getElementById("btn-fit").addEventListener("click", function() {
+        renderer.fitView();
+    });
+
+    // --- Resizable divider ---
+    var divider = document.getElementById("divider");
+    var bomPanel = document.getElementById("bom-panel");
+    var isDragging = false;
+    divider.addEventListener("mousedown", function(e) {
+        isDragging = true;
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", function(e) {
+        if (!isDragging) return;
+        var appRect = document.getElementById("app").getBoundingClientRect();
+        var newWidth = appRect.right - e.clientX - 2;
+        newWidth = Math.max(250, Math.min(newWidth, appRect.width - 200));
+        bomPanel.style.width = newWidth + "px";
+        renderer.resize();
+    });
+    document.addEventListener("mouseup", function() {
+        isDragging = false;
+    });
+
+    // --- Keyboard shortcuts ---
+    document.addEventListener("keydown", function(e) {
+        if (e.target.tagName === "INPUT") {
+            if (e.key === "Escape") e.target.blur();
+            return;
+        }
+        if (e.key === "f" || e.key === "F") {
+            renderer.toggleFlip();
+            document.getElementById("btn-flip").classList.toggle("active", renderer.flipBoard);
+        } else if (e.key === "/") {
+            e.preventDefault();
+            document.getElementById("bom-search-input").focus();
+        }
+    });
+
+    // --- Window resize ---
+    window.addEventListener("resize", function() { renderer.resize(); });
+
+    // Initial fit
+    setTimeout(function() { renderer.resize(); renderer.fitView(); }, 50);
+})();
+</script>
+</body>
+</html>
