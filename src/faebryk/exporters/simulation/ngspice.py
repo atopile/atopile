@@ -109,6 +109,7 @@ class SpiceNetlist:
     title: str = "Untitled"
     _lines: list[str] = field(default_factory=list)
     _control: list[str] = field(default_factory=list)
+    _subcircuit_defs: list[str] = field(default_factory=list)
 
     def add_resistor(self, name: str, node_p: str, node_n: str, value: float | str) -> None:
         """Add a resistor element.
@@ -158,9 +159,16 @@ class SpiceNetlist:
         """Add arbitrary control commands."""
         self._control.extend(commands)
 
+    def add_subcircuit_definitions(self, defs: str) -> None:
+        """Add subcircuit/model definitions (emitted between title and elements)."""
+        self._subcircuit_defs.append(defs)
+
     def to_string(self) -> str:
         """Render the complete SPICE netlist as a string."""
         lines = [f"* {self.title}"]
+        # Subcircuit definitions go first (before element lines)
+        for block in self._subcircuit_defs:
+            lines.append(block)
         lines.extend(self._lines)
         if self._control:
             lines.append(".control")
@@ -365,6 +373,7 @@ class Circuit:
         """Run DC operating point analysis."""
         net = SpiceNetlist(title=self._netlist.title)
         net._lines = list(self._netlist._lines)
+        net._subcircuit_defs = list(self._netlist._subcircuit_defs)
         net.add_op_analysis()
 
         output = _run_ngspice_batch(net)
@@ -377,6 +386,7 @@ class Circuit:
         stop: float,
         signals: list[str] | None = None,
         start: float = 0,
+        uic: bool = False,
     ) -> TransientResult:
         """Run transient analysis.
 
@@ -385,6 +395,8 @@ class Circuit:
             stop: Stop time in seconds.
             signals: Signal names to record. If None, records all node voltages.
             start: Start time for recording (default 0).
+            uic: Use Initial Conditions — skip DC operating point, start from
+                 zero (or .ic values). Helps convergence for behavioral models.
         """
         if signals is None:
             signals = self._detect_node_voltages()
@@ -395,9 +407,23 @@ class Circuit:
 
             net = SpiceNetlist(title=self._netlist.title)
             net._lines = list(self._netlist._lines)
-            net.add_control(
+            net._subcircuit_defs = list(self._netlist._subcircuit_defs)
+
+            tran_cmd = (
                 f"tran {format_spice_value(step)} {format_spice_value(stop)}"
-                + (f" {format_spice_value(start)}" if start > 0 else ""),
+                + (f" {format_spice_value(start)}" if start > 0 else "")
+                + (" uic" if uic else "")
+            )
+            # Convergence-friendly options for behavioral/switching models
+            options_line = (
+                ".options reltol=0.005 abstol=1e-9 vntol=1e-4"
+                " gmin=1e-9 itl1=500 itl4=500 method=gear"
+                " rshunt=1e9 trtol=5"
+            )
+            net._lines.append(options_line)
+
+            net.add_control(
+                tran_cmd,
                 f"wrdata {data_file} {' '.join(signals)}",
             )
             spice_file.write_text(net.to_string())
@@ -408,16 +434,38 @@ class Circuit:
     def _detect_node_voltages(self) -> list[str]:
         """Auto-detect node names from the netlist and return as v(name) signals."""
         nodes: set[str] = set()
-        for line in self._netlist._lines:
+        all_lines = self._netlist._subcircuit_defs + self._netlist._lines
+        for line in all_lines:
             parts = line.split()
             if len(parts) < 3:
                 continue
             first_char = parts[0][0].upper()
-            if first_char in "RVCLDI":
+            if first_char in "RVCLDIB":
                 # Element line: NAME NODE1 NODE2 ...
                 for node in parts[1:3]:
                     if node != "0":
                         nodes.add(node)
+            elif first_char == "X":
+                # X line: XNAME PIN1 PIN2 ... SUBCKT_NAME [params...]
+                # Pins are between name and subcircuit name (last non-param token)
+                for token in parts[1:]:
+                    if "=" in token:
+                        break  # Hit parameters
+                    if token.startswith("."):
+                        break  # Hit directive
+                    # Skip the subcircuit name (last token before params)
+                    # We'll add all tokens except the last non-param one
+                if len(parts) >= 3:
+                    # Find where params start
+                    pin_end = len(parts)
+                    for i in range(1, len(parts)):
+                        if "=" in parts[i]:
+                            pin_end = i
+                            break
+                    # pins are parts[1:pin_end-1], parts[pin_end-1] is subckt name
+                    for node in parts[1 : pin_end - 1]:
+                        if node != "0":
+                            nodes.add(node)
         return sorted(f"v({n})" for n in nodes)
 
 
@@ -457,7 +505,10 @@ def _parse_ngspice_output(output: str) -> _SimulationResult:
 def _parse_wrdata(path: Path, signal_names: list[str]) -> TransientResult:
     """Parse an ngspice wrdata output file."""
     time: list[float] = []
-    signals: dict[str, list[float]] = {name: [] for name in signal_names}
+    # Normalize signal names to lowercase for consistent lookup
+    # (TransientResult._resolve always lowercases keys)
+    normalized = [name.lower() for name in signal_names]
+    signals: dict[str, list[float]] = {name: [] for name in normalized}
     n = len(signal_names)
 
     text = path.read_text()
@@ -470,13 +521,13 @@ def _parse_wrdata(path: Path, signal_names: list[str]) -> TransientResult:
         except ValueError:
             continue
         time.append(t)
-        for i, name in enumerate(signal_names):
+        for i, name in enumerate(normalized):
             signals[name].append(float(parts[2 * i + 1]))
 
     return TransientResult(time=time, signals=signals)
 
 
-def _run_ngspice_subprocess(spice_path: str, timeout: int = 30) -> subprocess.CompletedProcess:
+def _run_ngspice_subprocess(spice_path: str, timeout: int = 60) -> subprocess.CompletedProcess:
     """Run ngspice in batch mode on a .spice file."""
     try:
         proc = subprocess.run(
@@ -511,16 +562,25 @@ def _run_ngspice_batch(netlist: SpiceNetlist) -> str:
 
 
 def _load_spice_circuit(path: Path | str) -> SpiceNetlist:
-    """Load a .spice file into a SpiceNetlist (circuit lines only, no .control)."""
+    """Load a .spice file into a SpiceNetlist.
+
+    Separates .SUBCKT/.ENDS blocks and .model lines into _subcircuit_defs,
+    keeping element lines in _lines.
+    """
     path = Path(path)
     text = path.read_text()
     netlist = SpiceNetlist()
     in_control = False
+    in_subckt = False
+    subckt_block: list[str] = []
+
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("*"):
             if netlist.title == "Untitled":
                 netlist.title = stripped.lstrip("* ").strip() or "Untitled"
+            if in_subckt:
+                subckt_block.append(stripped)
             continue
         if stripped.lower() == ".control":
             in_control = True
@@ -532,6 +592,27 @@ def _load_spice_circuit(path: Path | str) -> SpiceNetlist:
             continue
         if stripped.lower() == ".end" or not stripped:
             continue
+
+        # Handle .SUBCKT/.ENDS blocks
+        if re.match(r"\.SUBCKT\b", stripped, re.IGNORECASE):
+            in_subckt = True
+            subckt_block = [stripped]
+            continue
+        if re.match(r"\.ENDS\b", stripped, re.IGNORECASE):
+            subckt_block.append(stripped)
+            netlist._subcircuit_defs.append("\n".join(subckt_block))
+            in_subckt = False
+            subckt_block = []
+            continue
+        if in_subckt:
+            subckt_block.append(stripped)
+            continue
+
+        # Handle standalone .model lines
+        if re.match(r"\.model\b", stripped, re.IGNORECASE):
+            netlist._subcircuit_defs.append(stripped)
+            continue
+
         netlist._lines.append(stripped)
     return netlist
 
@@ -575,7 +656,7 @@ def _get_nominal_value(param_node) -> float | None:
         return None
 
 
-def generate_spice_netlist(app, solver) -> SpiceNetlist:
+def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
     """Auto-generate a SPICE netlist from the atopile instance graph.
 
     Walks the graph to find:
@@ -586,6 +667,9 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
     Args:
         app: The application root node (fabll.Node).
         solver: The solver used for parameter resolution.
+        scope: Optional subtree root to limit netlist generation to.
+               When provided, only components within this scope are included.
+               Defaults to app (full circuit).
 
     Returns:
         A SpiceNetlist containing circuit elements only (no .control section).
@@ -593,12 +677,13 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
     import faebryk.core.node as fabll
     import faebryk.library._F as F
 
-    title = app.get_full_name(include_uuid=False) or "Circuit"
+    root = scope or app
+    title = root.get_full_name(include_uuid=False) or "Circuit"
     netlist = SpiceNetlist(title=title)
 
     # 0. Run solver for all parameters under this app so extract_superset works
     all_params: list[F.Parameters.can_be_operand] = []
-    for param in app.get_children(
+    for param in root.get_children(
         direct_only=False,
         types=fabll.Node,
         include_root=True,
@@ -612,7 +697,7 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
         logger.info(f"Simplified {len(all_params)} parameters for SPICE extraction")
 
     # 1. Collect all Electrical interfaces in the design
-    electricals = app.get_children(
+    electricals = root.get_children(
         direct_only=False,
         types=F.Electrical,
     )
@@ -650,16 +735,25 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
         return electrical_to_net.get(electrical, "?")
 
     # 4. Find ElectricPower interfaces with voltage constraints -> voltage sources
+    #    If any ElectricPower has the is_source trait, only those get V sources.
+    #    Otherwise fall back to all constrained ElectricPower (backward compat).
     ground_net_name: str | None = None
     power_interfaces: list[tuple[str, float, str, str]] = []
 
     v_counter = 1
-    power_rails = app.get_children(
+    power_rails = root.get_children(
         direct_only=False,
         types=F.ElectricPower,
     )
 
-    for power in power_rails:
+    # Check if any power rail has is_source
+    source_rails = [
+        p for p in power_rails if p.has_trait(F.is_source)
+    ]
+    use_source_filter = len(source_rails) > 0
+    candidate_rails = source_rails if use_source_filter else power_rails
+
+    for power in candidate_rails:
         voltage_param = power.voltage.get()
         voltage = _get_nominal_value(voltage_param)
         if voltage is None or voltage == 0:
@@ -679,6 +773,19 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
         power_interfaces.append((f"V{v_counter}", voltage, hv_net, lv_net))
         v_counter += 1
 
+    # If no source rails found ground from any constrained power rail
+    if ground_net_name is None and use_source_filter:
+        for power in power_rails:
+            voltage_param = power.voltage.get()
+            voltage = _get_nominal_value(voltage_param)
+            if voltage is None or voltage == 0:
+                continue
+            lv = power.lv.get()
+            lv_net = _net(lv)
+            if lv_net != "?":
+                ground_net_name = lv_net
+                break
+
     if ground_net_name is None:
         logger.warning("No ElectricPower with voltage constraint found; "
                        "SPICE netlist will have no sources")
@@ -697,7 +804,7 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
 
     # 6. Find and add Resistors
     r_counter = 1
-    for resistor in app.get_children(direct_only=False, types=F.Resistor):
+    for resistor in root.get_children(direct_only=False, types=F.Resistor):
         resistance = _get_nominal_value(resistor.resistance.get())
         if resistance is None:
             logger.warning(f"Skipping resistor {resistor.get_full_name(include_uuid=False)}: "
@@ -715,7 +822,7 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
 
     # 7. Find and add Capacitors
     c_counter = 1
-    for capacitor in app.get_children(direct_only=False, types=F.Capacitor):
+    for capacitor in root.get_children(direct_only=False, types=F.Capacitor):
         capacitance = _get_nominal_value(capacitor.capacitance.get())
         if capacitance is None:
             logger.warning(f"Skipping capacitor {capacitor.get_full_name(include_uuid=False)}: "
@@ -733,7 +840,7 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
 
     # 8. Find and add Inductors
     l_counter = 1
-    for inductor in app.get_children(direct_only=False, types=F.Inductor):
+    for inductor in root.get_children(direct_only=False, types=F.Inductor):
         inductance = _get_nominal_value(inductor.inductance.get())
         if inductance is None:
             logger.warning(f"Skipping inductor {inductor.get_full_name(include_uuid=False)}: "
@@ -748,5 +855,121 @@ def generate_spice_netlist(app, solver) -> SpiceNetlist:
         pin1 = pins[1].get()
         netlist.add_inductor(f"L{l_counter}", _net(pin0), _net(pin1), inductance)
         l_counter += 1
+
+    # 9. Find and add subcircuit instances for nodes with has_spice_model trait
+    from faebryk.exporters.simulation.spice_converter import (
+        convert_pspice_to_ngspice,
+        extract_all_subcircuits_and_models,
+        parse_subcircuit_pins,
+    )
+
+    x_counter = 1
+    included_model_files: set[str] = set()
+
+    for node in root.get_children(
+        direct_only=False,
+        types=fabll.Node,
+        include_root=False,
+        required_trait=F.has_spice_model,
+    ):
+        trait = node.get_trait(F.has_spice_model)
+
+        try:
+            model_file_path = trait.get_model_file_path()
+            subckt_name = trait.get_subcircuit_name()
+            pin_map = trait.get_pin_map()
+            param_overrides = trait.get_params()
+        except Exception as e:
+            logger.warning(
+                f"Skipping has_spice_model node "
+                f"{node.get_full_name(include_uuid=False)}: {e}"
+            )
+            continue
+
+        # Load & convert model file (include defs once per unique file)
+        model_key = str(model_file_path)
+        if model_key not in included_model_files:
+            try:
+                raw_model = model_file_path.read_text()
+                converted = convert_pspice_to_ngspice(raw_model)
+                subckt_defs = extract_all_subcircuits_and_models(converted)
+                if subckt_defs.strip():
+                    netlist.add_subcircuit_definitions(subckt_defs)
+                included_model_files.add(model_key)
+                logger.info(f"Included SPICE model definitions from {model_file_path}")
+            except FileNotFoundError:
+                logger.warning(f"SPICE model file not found: {model_file_path}")
+                continue
+            except Exception as e:
+                logger.warning(f"Failed to load SPICE model {model_file_path}: {e}")
+                continue
+
+        # Get subcircuit pin order from the original model file
+        raw_model = model_file_path.read_text()
+        subckt_pins = parse_subcircuit_pins(raw_model, subckt_name)
+        if not subckt_pins:
+            logger.warning(
+                f"No pins found for subcircuit {subckt_name} in {model_file_path}"
+            )
+            continue
+
+        # Build X instance line: X<n> <pin_nets...> <subckt_name> [params...]
+        pin_nets: list[str] = []
+        for subckt_pin in subckt_pins:
+            ato_iface_name = pin_map.get(subckt_pin)
+            if ato_iface_name is None:
+                # Try case-insensitive match
+                for k, v in pin_map.items():
+                    if k.upper() == subckt_pin.upper():
+                        ato_iface_name = v
+                        break
+
+            if ato_iface_name is None:
+                logger.warning(
+                    f"No pin mapping for subcircuit pin '{subckt_pin}' "
+                    f"in {node.get_full_name(include_uuid=False)}"
+                )
+                pin_nets.append("?")
+                continue
+
+            # Resolve the interface on the node to its net name
+            try:
+                import faebryk.core.faebrykpy as fbrk
+
+                child_bn = fbrk.EdgeComposition.get_child_by_identifier(
+                    bound_node=node.instance,
+                    child_identifier=ato_iface_name,
+                )
+                if child_bn is not None:
+                    electrical = fabll.Node(child_bn)
+                    net_name = _net(electrical)
+                    pin_nets.append(net_name)
+                else:
+                    logger.warning(
+                        f"Child '{ato_iface_name}' not found "
+                        f"on {node.get_full_name(include_uuid=False)}"
+                    )
+                    pin_nets.append("?")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to resolve interface '{ato_iface_name}' "
+                    f"on {node.get_full_name(include_uuid=False)}: {e}"
+                )
+                pin_nets.append("?")
+
+        # Build param string
+        param_str = ""
+        if param_overrides:
+            param_str = " " + " ".join(
+                f"{k}={v}" for k, v in param_overrides.items()
+            )
+
+        x_line = f"X{x_counter} {' '.join(pin_nets)} {subckt_name}{param_str}"
+        netlist.add_raw(x_line)
+        logger.info(
+            f"Added subcircuit instance X{x_counter} "
+            f"({subckt_name}) for {node.get_full_name(include_uuid=False)}"
+        )
+        x_counter += 1
 
     return netlist

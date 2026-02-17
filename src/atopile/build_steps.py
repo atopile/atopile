@@ -632,14 +632,146 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
 )
 def generate_spice_netlist_step(ctx: BuildStepContext) -> None:
     """Generate a SPICE netlist from the atopile graph."""
-    from faebryk.exporters.simulation.ngspice import generate_spice_netlist
+    try:
+        from faebryk.exporters.simulation.ngspice import generate_spice_netlist
 
-    app = ctx.require_app()
-    solver = ctx.require_solver()
-    netlist = generate_spice_netlist(app, solver)
-    output_path = config.build.paths.output_base.with_suffix(".spice")
-    netlist.write(output_path)
-    logger.info(f"SPICE netlist written to {output_path}")
+        app = ctx.require_app()
+        solver = ctx.require_solver()
+        netlist = generate_spice_netlist(app, solver)
+        output_path = config.build.paths.output_base.with_suffix(".spice")
+        netlist.write(output_path)
+        logger.info(f"SPICE netlist written to {output_path}")
+    except Exception:
+        logger.warning(
+            "SPICE netlist generation failed — skipping simulation", exc_info=True
+        )
+
+
+def _signal_unit(key: str) -> str:
+    """Infer unit from signal key."""
+    return "A" if key.startswith("i(") else "V"
+
+
+def _write_requirements_json(results, tran_data, group_key_fn) -> None:
+    """Serialize requirement results + time-series to a JSON artifact."""
+    from datetime import datetime, timezone
+
+    reqs_json = []
+    for r in results:
+        req = r.requirement
+        net = req.get_net()
+        net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
+        capture = req.get_capture()
+        measurement = req.get_measurement()
+
+        # Determine unit
+        if measurement == "overshoot":
+            unit = "%"
+        elif measurement == "settling_time":
+            unit = "s"
+        else:
+            unit = _signal_unit(net_key)
+
+        entry: dict = {
+            "id": req.get_name().replace(" ", "_").replace(":", ""),
+            "name": req.get_name(),
+            "net": net,
+            "capture": capture,
+            "measurement": measurement,
+            "minVal": req.get_min_val(),
+            "typical": req.get_typical(),
+            "maxVal": req.get_max_val(),
+            "actual": r.actual,
+            "passed": r.passed,
+            "unit": unit,
+            "contextNets": req.get_context_nets(),
+        }
+
+        justification = req.get_justification()
+        if justification:
+            entry["justification"] = justification
+
+        settling_tol = req.get_settling_tolerance()
+        if settling_tol is not None:
+            entry["settlingTolerance"] = settling_tol
+
+        # Attach time-series for transient requirements
+        if capture == "transient":
+            key = group_key_fn(req)
+            td = tran_data.get(key)
+            if td is not None:
+                # Collect relevant signals: primary + context
+                sig_keys = [net_key]
+                for ctx_net in req.get_context_nets():
+                    ctx_key = (
+                        f"v({ctx_net})"
+                        if not ctx_net.startswith(("v(", "i("))
+                        else ctx_net
+                    )
+                    if ctx_key in td.signals:
+                        sig_keys.append(ctx_key)
+
+                signals = {}
+                for sk in sig_keys:
+                    if sk in td.signals:
+                        signals[sk] = list(td.signals[sk])
+
+                entry["timeSeries"] = {
+                    "time": list(td.time),
+                    "signals": signals,
+                }
+
+        reqs_json.append(entry)
+
+    artifact = {
+        "requirements": reqs_json,
+        "buildTime": datetime.now(timezone.utc).isoformat(),
+    }
+
+    output_path = config.build.paths.output_base.with_suffix(".requirements.json")
+    output_path.write_text(json.dumps(artifact))
+    logger.info(f"Requirements artifact written to {output_path}")
+
+
+@muster.register(
+    "verify-requirements",
+    description="Verifying simulation requirements",
+    dependencies=[post_instantiation_design_check],
+    produces_artifact=True,
+)
+def verify_requirements_step(ctx: BuildStepContext) -> None:
+    """Find all Requirement nodes, group by parent scope, run scoped simulations."""
+    try:
+        from faebryk.exporters.simulation.requirement import (
+            _tran_group_key,
+            verify_requirements_scoped,
+        )
+
+        app = ctx.require_app()
+        solver = ctx.require_solver()
+        output_dir = config.build.paths.output_base.parent
+
+        results, tran_data = verify_requirements_scoped(app, solver, output_dir)
+        if not results:
+            return
+
+        passed = sum(1 for r in results if r.passed)
+        total = len(results)
+        logger.info(f"Requirements: {passed}/{total} passed")
+        if passed < total:
+            for r in results:
+                if not r.passed:
+                    logger.warning(
+                        f"FAIL: {r.requirement.get_name()} = {r.actual:.4g} "
+                        f"[{r.requirement.get_min_val()}, "
+                        f"{r.requirement.get_max_val()}]"
+                    )
+
+        _write_requirements_json(results, tran_data, _tran_group_key)
+    except Exception:
+        logger.warning(
+            "Simulation requirement verification failed — skipping", exc_info=True
+        )
 
 
 @muster.register(
@@ -1197,6 +1329,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
         generate_variable_report,
         # generate_power_tree,
         generate_datasheets,
+        verify_requirements_step,
     ],
     virtual=True,
 )

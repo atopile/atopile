@@ -67,6 +67,7 @@ class EventType(StrEnum):
     STDLIB_CHANGED = "stdlib_changed"
     BOM_CHANGED = "bom_changed"
     VARIABLES_CHANGED = "variables_changed"
+    REQUIREMENTS_CHANGED = "requirements_changed"
     BUILDS_CHANGED = "builds_changed"
     PROBLEMS_CHANGED = "problems_changed"
 

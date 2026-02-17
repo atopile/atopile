@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Files, Package, Cpu, Library, GitBranch, SlidersHorizontal, ClipboardList } from 'lucide-react';
+import { Files, Package, Cpu, Library, GitBranch, SlidersHorizontal, ClipboardList, CheckSquare } from 'lucide-react';
 import { ActiveProjectPanel, BuildQueueItem } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
@@ -29,6 +29,7 @@ import {
   type SelectedPart,
 } from './sidebar-modules';
 import { ManufacturingPanel } from './manufacturing';
+import { RequirementsPanel } from './RequirementsPanel';
 import './Sidebar.css';
 import '../styles.css';
 
@@ -86,7 +87,7 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'requirements' | 'stdlib' | 'parameters' | 'bom'>('files');
 
   // Build queue panel state
   const [buildQueueCollapsed, setBuildQueueCollapsed] = useState(false);
@@ -443,6 +444,14 @@ export function Sidebar() {
             {showTabLabels && <span className="tab-label">Parts</span>}
           </button>
           <button
+            className={`tab-button ${activeTab === 'requirements' ? 'active' : ''}`}
+            onClick={() => setActiveTab('requirements')}
+            data-tooltip="Requirements"
+          >
+            <CheckSquare size={14} />
+            {showTabLabels && <span className="tab-label">Reqs</span>}
+          </button>
+          <button
             className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
             onClick={() => setActiveTab('stdlib')}
             data-tooltip="Standard Library"
@@ -499,6 +508,11 @@ export function Sidebar() {
                 selectedProjectRoot={selectedProjectRoot}
                 onOpenPartDetail={handlers.handleOpenPartDetail}
                 isExpanded={activeTab === 'parts'}
+              />
+            )}
+            {activeTab === 'requirements' && (
+              <RequirementsPanel
+                isExpanded={activeTab === 'requirements'}
               />
             )}
             {activeTab === 'stdlib' && (

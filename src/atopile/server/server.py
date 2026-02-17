@@ -112,6 +112,10 @@ async def _refresh_variables_state() -> None:
     await server_state.emit_event("variables_changed")
 
 
+async def _refresh_requirements_state() -> None:
+    await server_state.emit_event("requirements_changed")
+
+
 async def _watch_stdlib_background() -> None:
     from atopile.server import stdlib as stdlib_domain
 
@@ -140,6 +144,16 @@ async def _watch_variables_background() -> None:
         paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda _result: _refresh_variables_state(),
         glob="**/build/builds/*.variables.json",
+    )
+    await watcher.run()
+
+
+async def _watch_requirements_background() -> None:
+    watcher = FileWatcher(
+        "requirements",
+        paths_provider=_get_workspace_roots_for_watcher,
+        on_change=lambda _result: _refresh_requirements_state(),
+        glob="**/build/builds/*.requirements.json",
     )
     await watcher.run()
 
@@ -525,6 +539,10 @@ def create_app(
             event_bus.emit_sync(
                 EventType.BOM_CHANGED, {"project_root": build.project_root}
             )
+            event_bus.emit_sync(
+                EventType.REQUIREMENTS_CHANGED,
+                {"project_root": build.project_root},
+            )
 
         _build_queue.on_change = _handle_build_change
         _build_queue.on_completed = _handle_build_completed
@@ -533,6 +551,7 @@ def create_app(
         asyncio.create_task(_watch_stdlib_background())
         asyncio.create_task(_watch_bom_background())
         asyncio.create_task(_watch_variables_background())
+        asyncio.create_task(_watch_requirements_background())
         asyncio.create_task(_watch_projects_background())
         asyncio.create_task(_watch_project_sources_background())
         asyncio.create_task(_watch_project_python_background())

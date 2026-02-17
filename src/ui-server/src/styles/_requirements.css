@@ -1,0 +1,446 @@
+/* ============================================
+   _requirements.css
+   Requirements Viewer panel styles
+   ============================================ */
+
+/* Panel root - single column layout in sidebar */
+.req-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Header ---- */
+.req-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-md);
+  height: 35px;
+  min-height: 35px;
+  border-bottom: 1px solid var(--accent);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  position: relative;
+}
+.req-sidebar-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.req-sidebar-title {
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+.req-sidebar-badge {
+  font-size: var(--font-size-xxs);
+  padding: 1px 5px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Summary pie toggle ---- */
+.req-summary {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+.req-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  transition: background var(--transition-fast);
+}
+.req-summary-toggle:hover { background: var(--bg-hover); }
+.req-summary-toggle .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.req-summary-toggle .dot.pass { background: var(--success); }
+.req-summary-toggle .dot.fail { background: var(--error); }
+.req-summary-toggle .chevron {
+  margin-left: auto;
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+.req-summary-toggle .chevron.open { transform: rotate(180deg); }
+.req-summary-chart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+}
+
+/* ---- Filter bar ---- */
+.req-filter-bar {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.req-filter-btn {
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.req-filter-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.req-filter-btn.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- Requirement list ---- */
+.req-list {
+  overflow-y: auto;
+  padding: var(--spacing-xs) 0;
+}
+
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-left: 2px solid transparent;
+}
+.req-item:hover { background: var(--bg-hover); }
+.req-item.selected {
+  background: var(--accent-subtle);
+  border-left-color: var(--accent);
+}
+
+.req-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.req-status-dot.pass { background: var(--success); }
+.req-status-dot.fail { background: var(--error); }
+
+.req-item-info {
+  flex: 1;
+  min-width: 0;
+}
+.req-item-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.req-item-meta {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: 1px;
+}
+.req-item-bounds {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  font-size: var(--font-size-xxs);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+.req-item-bounds .lsl {
+  color: var(--text-muted);
+  text-align: left;
+}
+.req-item-bounds .usl {
+  color: var(--text-muted);
+  text-align: right;
+}
+.req-item-bounds .actual {
+  font-weight: 600;
+  text-align: center;
+}
+.req-item-bounds .actual.pass { color: var(--success); }
+.req-item-bounds .actual.fail { color: var(--error); }
+.req-item-tag {
+  font-size: var(--font-size-xxs);
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ---- Tooltip ---- */
+.req-tooltip {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  min-width: 220px;
+  max-width: 300px;
+  box-shadow: 0 8px 24px var(--shadow-color);
+  pointer-events: none;
+}
+.req-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: 2px 0;
+  font-size: var(--font-size-xxs);
+}
+.req-tooltip-row .tt-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.req-tooltip-row .tt-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+.req-tooltip-divider {
+  border-top: 1px solid var(--border-subtle);
+  margin: 4px 0;
+}
+.req-tooltip-justification {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 4px;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+/* ---- Empty state ---- */
+.req-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  color: var(--text-muted);
+  padding: var(--spacing-xl);
+}
+.req-empty-state svg {
+  opacity: 0.3;
+}
+.req-empty-state-title {
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.req-empty-state-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* ============================================
+   Requirements Detail Page (editor panel)
+   ============================================ */
+
+.rdp-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.rdp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: var(--spacing-md);
+  color: var(--text-muted);
+}
+.rdp-empty-title {
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.rdp-empty-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Info card area */
+.rdp-info {
+  flex-shrink: 0;
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Chart fills remaining space */
+.rdp-chart {
+  flex: 1;
+  min-height: 0;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+.rdp-chart .js-plotly-plot,
+.rdp-chart .plot-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Info card (shared between sidebar inline & detail page) --- */
+.req-info-card-outer {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.ric-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ric-name {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ric-badge {
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  margin-left: var(--spacing-sm);
+  letter-spacing: 0.4px;
+}
+.ric-badge.pass { background: var(--success); color: var(--text-on-status); }
+.ric-badge.fail { background: var(--error); color: var(--text-on-status); }
+
+.ric-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.ric-section {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+.ric-section:not(:last-child) {
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ric-section.ric-right {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.ric-section-title {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 4px;
+}
+
+.ric-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  line-height: 1.6;
+}
+.ric-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ric-value {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ric-value.pass { color: var(--success); }
+.ric-value.fail { color: var(--error); }
+.ric-value.warn { color: var(--warning); }
+.ric-value.muted { color: var(--text-muted); font-family: var(--font-sans); font-style: italic; }
+.ric-value.mono-muted { color: var(--text-muted); }
+
+.ric-actual-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.ric-actual-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.ric-actual-value.pass { color: var(--success); }
+.ric-actual-value.fail { color: var(--error); }
+
+.ric-margin-bar {
+  margin-top: 4px;
+}
+.ric-margin-track {
+  height: 3px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.ric-margin-fill {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.ric-margin-fill.high { background: var(--success); }
+.ric-margin-fill.medium { background: var(--warning); }
+.ric-margin-fill.low { background: var(--error); }
+
+.ric-section.ric-full {
+  grid-column: 1 / -1;
+  border-left: none;
+}
+
+.ric-justification-text {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.5;
+}

@@ -1,0 +1,39 @@
+* TPS54560 Behavioral Switching Model for ngspice
+* Two modes: open-loop (fixed duty) and closed-loop
+*
+* Open-loop model: fixed duty cycle = Vout/Vin
+.SUBCKT TPS54560_OL SW GND VIN DUTY=0.417
+* --- Sawtooth ramp (480kHz, period=2.083us) ---
+V_ramp ramp GND PULSE(0 1 0 2.08u 10n 1n 2.083u)
+* --- PWM at fixed duty cycle ---
+B_pwm pwm GND V = (V(ramp,GND) < DUTY) ? 1 : 0
+* --- High-side FET (92mOhm Ron) ---
+S_hs VIN SW pwm GND SW_HS
+.model SW_HS SW VT=0.5 VH=0.1 Ron=92m Roff=100k
+* --- Low-side catch diode ---
+D_ls GND SW D_CATCH
+.model D_CATCH D IS=1e-6 N=1.5 RS=20m TT=10n
+.ENDS TPS54560_OL
+
+* Closed-loop model: voltage-mode feedback with type-2 compensation
+.SUBCKT TPS54560_CL SW FB GND VIN
+* --- Error amplifier OTA: Gm*(Vref - Vfb) ---
+B_gm GND comp I = (0.8 - V(FB,GND)) * 350u
+* --- Type-2 compensation network (on COMP pin) ---
+R_comp_z comp comp_z 15k
+C_comp_z comp_z GND 4.7n
+C_comp_p comp GND 47p
+R_comp_dc comp GND 8.57Meg
+* --- Clamp COMP to [0.6V, 1.4V] ---
+B_comp_cl comp_cl GND V = max(min(V(comp,GND), 1.4), 0.6)
+* --- Sawtooth ramp (480kHz) ---
+V_ramp ramp GND PULSE(0 1.5 0 2.08u 10n 1n 2.083u)
+* --- PWM comparator ---
+B_pwm pwm GND V = (V(ramp,GND) < V(comp_cl,GND)) ? 1 : 0
+* --- High-side FET (92mOhm Ron) ---
+S_hs VIN SW pwm GND SW_HS
+.model SW_HS SW VT=0.5 VH=0.1 Ron=92m Roff=100k
+* --- Low-side catch diode ---
+D_ls GND SW D_CATCH
+.model D_CATCH D IS=1e-6 N=1.5 RS=20m TT=10n
+.ENDS TPS54560_CL

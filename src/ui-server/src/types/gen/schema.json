@@ -3091,6 +3091,7 @@
           "stdlib_changed",
           "bom_changed",
           "variables_changed",
+          "requirements_changed",
           "builds_changed",
           "problems_changed",
           "project_files_changed",

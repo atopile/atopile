@@ -371,6 +371,22 @@ async function refreshVariables(): Promise<void> {
   }
 }
 
+async function refreshRequirements(): Promise<void> {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return;
+  const targetName = getSelectedTargetName();
+  if (!targetName) return;
+  try {
+    state.setLoadingRequirements(true);
+    const response = await api.requirements.get(state.selectedProjectRoot, targetName);
+    state.setRequirementsData(response || null);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to fetch requirements';
+    state.setRequirementsError(message);
+  }
+}
+
 async function refreshPackages(): Promise<void> {
   const state = useStore.getState();
   try {
@@ -667,6 +683,9 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.VariablesChanged:
       void refreshVariables();
       break;
+    case EventType.RequirementsChanged:
+      void refreshRequirements();
+      break;
     case EventType.PackagesChanged:
       // Check if this is an install error event
       if (data.error && data.package_id) {
@@ -885,6 +904,30 @@ function scheduleReconnect(): void {
     connect();
   }, delay);
 }
+
+// Refresh project-scoped data when the selected project or target changes
+useStore.subscribe(
+  (state) => ({
+    projectRoot: state.selectedProjectRoot,
+    targetNames: state.selectedTargetNames,
+  }),
+  (current, previous) => {
+    const changed =
+      current.projectRoot !== previous.projectRoot ||
+      JSON.stringify(current.targetNames) !== JSON.stringify(previous.targetNames);
+    if (changed) {
+      // Clear stale data immediately so the UI doesn't show old project's data
+      const state = useStore.getState();
+      state.setBomData(null);
+      state.setVariablesData(null);
+      state.setRequirementsData(null);
+      // Fetch fresh data for the new project/target
+      void refreshBom();
+      void refreshVariables();
+      void refreshRequirements();
+    }
+  }
+);
 
 // Export for use in components
 export default {

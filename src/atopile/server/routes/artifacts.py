@@ -97,6 +97,30 @@ async def get_variables_targets(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/api/requirements")
+async def get_requirements(
+    project_root: str = Query(
+        ..., description="Path to the project root (containing ato.yaml)"
+    ),
+    target: str = Query("default", description="Build target name"),
+):
+    """Get simulation requirements results for a build target."""
+    try:
+        result = await asyncio.to_thread(
+            artifacts_domain.handle_get_requirements, project_root, target
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Requirements file not found. Run build with simulation first.",
+            )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/api/resolve-location")
 async def resolve_location(
     address: str = Query(

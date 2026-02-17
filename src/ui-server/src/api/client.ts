@@ -121,6 +121,10 @@ interface DependenciesResponse {
   dependencies: ProjectDependency[];
 }
 
+// Re-export from requirements types for API usage
+import type { RequirementsData as RequirementsApiData } from '../components/requirements/types';
+export type { RequirementsApiData };
+
 /**
  * API client with typed methods for all backend endpoints.
  */
@@ -277,6 +281,14 @@ export const api = {
     targets: (projectRoot: string) =>
       fetchJSON<{ targets: string[] }>(
         `/api/variables/targets?project_root=${encodeURIComponent(projectRoot)}`
+      ),
+  },
+
+  // Requirements
+  requirements: {
+    get: (projectRoot: string, targetName: string) =>
+      fetchJSON<RequirementsApiData>(
+        `/api/requirements?project_root=${encodeURIComponent(projectRoot)}&target=${encodeURIComponent(targetName)}`
       ),
   },
 

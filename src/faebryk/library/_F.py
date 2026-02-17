@@ -18,9 +18,11 @@ This way we can add new modules without changing this file
 import faebryk.library.Collections as Collections
 from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.has_part_removed import has_part_removed
+import faebryk.library.Captures as Captures
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
+import faebryk.library.Measurements as Measurements
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
@@ -34,6 +36,7 @@ from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
 import faebryk.library.Footprints as Footprints
 import faebryk.library.Pickable as Pickable
+from faebryk.library.Requirement import Requirement
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
@@ -41,6 +44,7 @@ from faebryk.library.has_doc_string import has_doc_string
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_solver import has_solver
+from faebryk.library.has_spice_model import has_spice_model
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_auto_generated import is_auto_generated
 import faebryk.library.Units as Units
@@ -121,9 +125,11 @@ __all__ = [
     "Collections",
     "NumberDomain",
     "has_part_removed",
+    "Captures",
     "is_sink",
     "is_source",
     "Logic",
+    "Measurements",
     "Mechanical",
     "Signal",
     "is_app_root",
@@ -137,6 +143,7 @@ __all__ = [
     "Expressions",
     "Footprints",
     "Pickable",
+    "Requirement",
     "SerializableMetadata",
     "has_datasheet",
     "has_designator_prefix",
@@ -144,6 +151,7 @@ __all__ = [
     "has_net_name",
     "has_package_requirements",
     "has_solver",
+    "has_spice_model",
     "has_usage_example",
     "is_auto_generated",
     "Units",

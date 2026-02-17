@@ -1,0 +1,54 @@
+import Requirement
+
+module Requirements:
+    "Simulation requirements for the resistor divider bias network."
+
+    req_dc_bias = new Requirement
+    req_dc_bias.req_name = "REQ-001: Output DC bias"
+    req_dc_bias.net = "output"
+    req_dc_bias.min_val = "7.3"
+    req_dc_bias.typical = "7.5"
+    req_dc_bias.max_val = "7.7"
+    req_dc_bias.capture = "dcop"
+    req_dc_bias.measurement = "final_value"
+    req_dc_bias.justification = "Resistor divider primary function is to divide voltage."
+
+    req_supply_current = new Requirement
+    req_supply_current.req_name = "REQ-002: Supply current"
+    req_supply_current.net = "i(v1)"
+    req_supply_current.min_val = "-0.0005"
+    req_supply_current.typical = "-0.00025"
+    req_supply_current.max_val = "0"
+    req_supply_current.capture = "dcop"
+    req_supply_current.measurement = "final_value"
+    req_supply_current.justification = "Power budget for shared 10V rail (SPICE sign: negative = into circuit)"
+
+    req_transient = new Requirement
+    req_transient.req_name = "REQ-003: Transient final value"
+    req_transient.net = "output"
+    req_transient.min_val = "7.45"
+    req_transient.typical = "7.5"
+    req_transient.max_val = "7.55"
+    req_transient.capture = "transient"
+    req_transient.measurement = "final_value"
+    req_transient.context_nets = "power_hv"
+    req_transient.tran_step = "1e-4"
+    req_transient.tran_stop = "1.0"
+    req_transient.source_name = "V1"
+    req_transient.source_spec = "PULSE(0 10 0 1n 1n 10 10)"
+    req_transient.justification = "Output converges to DC steady-state"
+
+    req_settling = new Requirement
+    req_settling.req_name = "REQ-004: Settling time"
+    req_settling.net = "output"
+    req_settling.min_val = "0.2"
+    req_settling.typical = "0.3"
+    req_settling.max_val = "0.4"
+    req_settling.capture = "transient"
+    req_settling.measurement = "settling_time"
+    req_settling.context_nets = "power_hv"
+    req_settling.tran_step = "1e-4"
+    req_settling.tran_stop = "0.5"
+    req_settling.source_name = "V1"
+    req_settling.source_spec = "PULSE(0 10 0 1n 1n 10 10)"
+    req_settling.justification = "Output converges to DC steady-state"

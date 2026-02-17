@@ -27,6 +27,7 @@
 /* Data Panels */
 @import './_variables-panel.css';
 @import './_bom.css';
+@import './_requirements.css';
 
 /* Utilities (should be last for proper cascade) */
 @import './_utilities.css';

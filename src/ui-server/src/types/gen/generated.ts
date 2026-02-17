@@ -720,6 +720,7 @@ export enum EventType {
     ProjectFilesChanged = "project_files_changed",
     ProjectModulesChanged = "project_modules_changed",
     ProjectsChanged = "projects_changed",
+    RequirementsChanged = "requirements_changed",
     StdlibChanged = "stdlib_changed",
     VariablesChanged = "variables_changed",
 }

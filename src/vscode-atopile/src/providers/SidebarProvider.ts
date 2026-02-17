@@ -16,12 +16,13 @@ import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
-import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
+import { getBuildTarget, getProjectRoot as getProjectRootSync, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
+import { openRequirementDetail } from '../ui/requirements-detail';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -174,6 +175,11 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+interface OpenRequirementDetailMessage {
+  type: 'openRequirementDetail';
+  requirementId: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -203,7 +209,8 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenRequirementDetailMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -695,6 +702,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openMigrateTab':
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
+        break;
+      case 'openRequirementDetail':
+        traceInfo(`[SidebarProvider] Opening requirement detail: ${message.requirementId}`);
+        {
+          const projRoot = getProjectRootSync();
+          const buildTarget = getBuildTarget();
+          openRequirementDetail(this._extensionUri, {
+            requirementId: message.requirementId,
+            projectRoot: projRoot,
+            target: buildTarget?.name,
+          });
+        }
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

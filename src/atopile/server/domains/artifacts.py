@@ -190,6 +190,35 @@ def handle_get_variables_by_build_id(build_id: str) -> dict | None:
         return None
 
 
+def handle_get_requirements(
+    project_root: str, target: str = "default"
+) -> dict | None:
+    """
+    Get simulation requirements results for a build target.
+
+    Returns requirements data or None if not found.
+    Raises ValueError for invalid project path.
+    """
+    project_path = Path(project_root)
+    if not project_path.exists():
+        raise ValueError(f"Project path does not exist: {project_root}")
+
+    if not (project_path / "ato.yaml").exists():
+        raise ValueError(f"No ato.yaml found in: {project_root}")
+
+    req_path = (
+        project_path / "build" / "builds" / target / f"{target}.requirements.json"
+    )
+
+    if not req_path.exists():
+        return None
+
+    try:
+        return json.loads(req_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in requirements: {exc}")
+
+
 __all__ = [
     "handle_get_bom",
     "handle_get_bom_targets",
@@ -197,4 +226,5 @@ __all__ = [
     "handle_get_variables_targets",
     "handle_get_bom_by_build_id",
     "handle_get_variables_by_build_id",
+    "handle_get_requirements",
 ]

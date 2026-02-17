@@ -32,6 +32,7 @@ import type {
   CostEstimate,
 } from '../components/manufacturing/types';
 import { DEFAULT_FILE_TYPES } from '../components/manufacturing/types';
+import type { RequirementsData as RequirementsApiData } from '../components/requirements/types';
 
 const ERROR_TIMEOUT_MS = 8000;
 
@@ -170,6 +171,11 @@ const initialState: AppState = {
   isLoadingVariables: false,
   variablesError: null,
 
+  // Requirements
+  requirementsData: null,
+  isLoadingRequirements: false,
+  requirementsError: null,
+
   // Test Explorer
   collectedTests: [] as TestItem[],
   isLoadingTests: false,
@@ -257,6 +263,11 @@ interface StoreActions {
   setVariablesData: (data: VariablesData | null) => void;
   setLoadingVariables: (loading: boolean) => void;
   setVariablesError: (error: string | null) => void;
+
+  // Requirements
+  setRequirementsData: (data: RequirementsApiData | null) => void;
+  setLoadingRequirements: (loading: boolean) => void;
+  setRequirementsError: (error: string | null) => void;
 
   // Atopile config
   setAtopileConfig: (update: Partial<AppState['atopile']>) => void;
@@ -715,6 +726,15 @@ export const useStore = create<Store>()(
             variablesErrorTimeout = null;
           }, ERROR_TIMEOUT_MS);
         }
+      },
+
+      // Requirements
+      setRequirementsData: (data) =>
+        set({ requirementsData: data, isLoadingRequirements: false, requirementsError: null }),
+
+      setLoadingRequirements: (loading) => set({ isLoadingRequirements: loading }),
+      setRequirementsError: (error) => {
+        set({ requirementsError: error, isLoadingRequirements: false });
       },
 
       // Atopile config

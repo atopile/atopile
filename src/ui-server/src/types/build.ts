@@ -546,6 +546,11 @@ export interface AppState {
   isLoadingVariables: boolean;
   variablesError: string | null;
 
+  // Requirements (from /api/requirements endpoint)
+  requirementsData: import('../components/requirements/types').RequirementsData | null;
+  isLoadingRequirements: boolean;
+  requirementsError: string | null;
+
   // One-shot open signals (cleared after broadcast)
   // These are set by the backend to trigger file/app opening in VS Code
   openFile?: string | null;

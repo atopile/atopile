@@ -4,6 +4,7 @@ import Resistor
 import Capacitor
 import Electrical
 import ElectricPower
+from "requirements.ato" import Requirements
 
 module App:
     power = new ElectricPower
@@ -21,3 +22,5 @@ module App:
 
     power.hv ~> r_top ~> output ~> r_bottom ~> power.lv
     output ~> cap ~> power.lv
+
+    reqs = new Requirements

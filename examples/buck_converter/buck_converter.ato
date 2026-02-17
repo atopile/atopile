@@ -1,0 +1,127 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("TRAITS")
+
+import Resistor
+import Capacitor
+import Inductor
+import Electrical
+import ElectricPower
+import Requirement
+import has_spice_model
+
+module TPS54560_AVG:
+    vin = new Electrical
+    sw = new Electrical
+    fb = new Electrical
+    comp = new Electrical
+    gnd = new Electrical
+    trait has_spice_model<model_path="models/TPS54560_AVG.LIB", subcircuit_name="TPS54560_AVG", pin_map="COMP:comp,GND:gnd,SW:sw,VIN:vin,FB:fb", params="L=27u,FS=415k">
+
+module App:
+    # --- Power rails ---
+    power_in = new ElectricPower
+    assert power_in.voltage within 12V +/- 5%
+
+    power_out = new ElectricPower
+    # No voltage assertion: output is determined by the circuit
+
+    # --- Standalone signals for clean SPICE net names ---
+    fb = new Electrical
+    sw = new Electrical
+    comp = new Electrical
+
+    # --- Buck converter (TI TPS54560 average model) ---
+    buck = new TPS54560_AVG
+    buck.vin ~ power_in.hv
+    buck.sw ~ sw
+    buck.fb ~ fb
+    buck.comp ~ comp
+    buck.gnd ~ power_in.lv
+
+    # --- Input decoupling capacitor ---
+    c_in = new Capacitor
+    assert c_in.capacitance within 10uF +/- 20%
+    power_in.hv ~> c_in ~> power_in.lv
+
+    # --- Output inductor (from switch node to output) ---
+    inductor = new Inductor
+    assert inductor.inductance within 22uH +/- 10%
+    sw ~> inductor ~> power_out.hv
+
+    # --- Output capacitor ---
+    c_out = new Capacitor
+    assert c_out.capacitance within 100uF +/- 20%
+    power_out.hv ~> c_out ~> power_out.lv
+
+    # --- Ground connection ---
+    power_in.lv ~ power_out.lv
+
+    # --- Output load (5A at 5V = 1 ohm) ---
+    r_load = new Resistor
+    assert r_load.resistance within 1ohm +/- 1%
+    power_out.hv ~> r_load ~> power_out.lv
+
+    # --- Feedback voltage divider ---
+    # Vout = Vref * (R_top + R_bottom) / R_bottom
+    #      = 0.8 * (52.3k + 10k) / 10k = 4.984V
+    r_top = new Resistor
+    assert r_top.resistance within 52.3kohm +/- 1%
+
+    r_bottom = new Resistor
+    assert r_bottom.resistance within 10kohm +/- 1%
+
+    power_out.hv ~> r_top ~> fb ~> r_bottom ~> power_in.lv
+
+    # --- Simulation requirements ---
+
+    req_dc_output = new Requirement
+    req_dc_output.req_name = "REQ-001: Output DC voltage"
+    req_dc_output.net = "power_out_hv"
+    req_dc_output.min_val = "4.85"
+    req_dc_output.typical = "5.0"
+    req_dc_output.max_val = "5.10"
+    req_dc_output.capture = "dcop"
+    req_dc_output.measurement = "final_value"
+    req_dc_output.justification = "Buck converter output within 3% of 5V target"
+
+    req_dc_fb = new Requirement
+    req_dc_fb.req_name = "REQ-002: Feedback DC voltage"
+    req_dc_fb.net = "fb"
+    req_dc_fb.min_val = "0.78"
+    req_dc_fb.typical = "0.80"
+    req_dc_fb.max_val = "0.82"
+    req_dc_fb.capture = "dcop"
+    req_dc_fb.measurement = "final_value"
+    req_dc_fb.justification = "FB pin regulates to Vref=0.8V within 2.5%"
+
+    # Power-on: 0->12V input, verify output settles to ~5V
+    req_line_step = new Requirement
+    req_line_step.req_name = "REQ-003: Power-on output voltage"
+    req_line_step.net = "power_out_hv"
+    req_line_step.min_val = "4.80"
+    req_line_step.typical = "5.0"
+    req_line_step.max_val = "5.20"
+    req_line_step.capture = "transient"
+    req_line_step.measurement = "final_value"
+    req_line_step.context_nets = "buck_vin,i(L1)"
+    req_line_step.tran_step = "10e-6"
+    req_line_step.tran_stop = "20e-3"
+    req_line_step.source_name = "V1"
+    req_line_step.source_spec = "PULSE(0 12 0 1n 1n 10 10)"
+    req_line_step.justification = "Output converges to regulated voltage after power-on"
+
+    # Inductor current: verify ~5A steady state (Vout/R_load)
+    req_inductor_current = new Requirement
+    req_inductor_current.req_name = "REQ-004: Inductor current average"
+    req_inductor_current.net = "i(L1)"
+    req_inductor_current.min_val = "4.0"
+    req_inductor_current.typical = "5.0"
+    req_inductor_current.max_val = "6.0"
+    req_inductor_current.capture = "transient"
+    req_inductor_current.measurement = "final_value"
+    req_inductor_current.context_nets = "power_out_hv"
+    req_inductor_current.tran_step = "10e-6"
+    req_inductor_current.tran_stop = "20e-3"
+    req_inductor_current.source_name = "V1"
+    req_inductor_current.source_spec = "PULSE(0 12 0 1n 1n 10 10)"
+    req_inductor_current.justification = "Inductor delivers ~5A load current at steady state"

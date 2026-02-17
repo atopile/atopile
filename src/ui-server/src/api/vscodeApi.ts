@@ -162,6 +162,11 @@ export interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+export interface OpenRequirementDetailMessage {
+  type: 'openRequirementDetail';
+  requirementId: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -184,7 +189,8 @@ export type ExtensionMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenRequirementDetailMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

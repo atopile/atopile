@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Requirements Viewer — atopile</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* ---- Atopile Design Tokens (matching _variables.css) ---- */
+    :root {
+      --ato-orange: #f95015;
+      --ato-orange-light: #ff6b35;
+      --ato-orange-dark: #d94410;
+      --ato-orange-glow: rgba(249, 80, 21, 0.15);
+      --ato-orange-subtle: rgba(249, 80, 21, 0.08);
+
+      --spacing-xs: 3px;
+      --spacing-sm: 6px;
+      --spacing-md: 10px;
+      --spacing-lg: 14px;
+      --spacing-xl: 20px;
+
+      --radius-sm: 3px;
+      --radius-md: 5px;
+      --radius-lg: 6px;
+
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+      --transition-fast: 0.1s ease;
+      --transition-normal: 0.15s ease;
+
+      --font-size-xxs: 10px;
+      --font-size-xs: 11px;
+      --font-size-sm: 12px;
+      --font-size-md: 14px;
+
+      /* Catppuccin Mocha (dark) */
+      --ctp-green: #a6e3a1;
+      --ctp-red: #f38ba8;
+      --ctp-yellow: #f9e2af;
+      --ctp-blue: #89b4fa;
+      --ctp-text: #cdd6f4;
+      --ctp-subtext1: #bac2de;
+      --ctp-overlay1: #7f849c;
+      --ctp-surface1: #45475a;
+      --ctp-surface0: #313244;
+      --ctp-base: #1e1e2e;
+      --ctp-mantle: #181825;
+      --ctp-crust: #11111b;
+
+      --bg-primary: var(--ctp-base);
+      --bg-secondary: var(--ctp-mantle);
+      --bg-tertiary: var(--ctp-surface0);
+      --bg-hover: var(--ctp-surface1);
+      --text-primary: var(--ctp-text);
+      --text-secondary: var(--ctp-subtext1);
+      --text-muted: var(--ctp-overlay1);
+      --border-color: var(--ctp-surface1);
+      --border-subtle: var(--ctp-surface0);
+      --accent: var(--ato-orange);
+      --success: var(--ctp-green);
+      --error: var(--ctp-red);
+      --warning: var(--ctp-yellow);
+      --info: var(--ctp-blue);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      font-family: var(--font-sans);
+      font-size: var(--font-size-md);
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { width: 100%; height: 100%; overflow: hidden; }
+
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      border: 2px solid var(--bg-primary);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-color); }
+
+    /* ---- Layout ---- */
+    .req-viewer {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ---- Sidebar (requirement list) ---- */
+    .req-sidebar {
+      width: 300px;
+      min-width: 240px;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      flex-shrink: 0;
+    }
+
+    .req-sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--spacing-md);
+      height: 35px;
+      min-height: 35px;
+      border-bottom: 1px solid var(--accent);
+      background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+      position: relative;
+    }
+    .req-sidebar-header::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+    }
+    .req-sidebar-title {
+      font-weight: 500;
+      font-size: var(--font-size-sm);
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+    .req-sidebar-badge {
+      font-size: var(--font-size-xxs);
+      padding: 1px 5px;
+      background: var(--ato-orange-subtle);
+      color: var(--accent);
+      border-radius: var(--radius-sm);
+    }
+
+    /* Summary pie chart */
+    .req-summary {
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+    }
+    .req-summary-toggle {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-md);
+      cursor: pointer;
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: var(--font-size-xs);
+      transition: background var(--transition-fast);
+    }
+    .req-summary-toggle:hover { background: var(--bg-hover); }
+    .req-summary-toggle .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .req-summary-toggle .dot.pass { background: var(--success); }
+    .req-summary-toggle .dot.fail { background: var(--error); }
+    .req-summary-toggle .chevron {
+      margin-left: auto;
+      transition: transform var(--transition-fast);
+      color: var(--text-muted);
+    }
+    .req-summary-toggle .chevron.open { transform: rotate(180deg); }
+    .req-summary-chart {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+    }
+
+    /* Filter bar */
+    .req-filter-bar {
+      display: flex;
+      gap: var(--spacing-xs);
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .req-filter-btn {
+      font-size: var(--font-size-xs);
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+    .req-filter-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .req-filter-btn.active {
+      background: var(--ato-orange-subtle);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Requirement list */
+    .req-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--spacing-xs) 0;
+    }
+
+    .req-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-md);
+      cursor: pointer;
+      transition: background var(--transition-fast);
+      border-left: 2px solid transparent;
+    }
+    .req-item:hover { background: var(--bg-hover); }
+    .req-item.selected {
+      background: var(--ato-orange-subtle);
+      border-left-color: var(--accent);
+    }
+
+    .req-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .req-status-dot.pass { background: var(--success); }
+    .req-status-dot.fail { background: var(--error); }
+
+    .req-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .req-item-name {
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .req-item-meta {
+      font-size: var(--font-size-xxs);
+      color: var(--text-muted);
+      display: flex;
+      gap: var(--spacing-sm);
+      margin-top: 1px;
+    }
+    .req-item-bounds {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: center;
+      font-size: var(--font-size-xxs);
+      margin-top: 2px;
+      font-family: var(--mono);
+    }
+    .req-item-bounds .lsl {
+      color: var(--text-muted);
+      text-align: left;
+    }
+    .req-item-bounds .usl {
+      color: var(--text-muted);
+      text-align: right;
+    }
+    .req-item-bounds .actual {
+      font-weight: 600;
+      text-align: center;
+    }
+    .req-item-bounds .actual.pass { color: var(--success); }
+    .req-item-bounds .actual.fail { color: var(--error); }
+    .req-item-tag {
+      font-size: var(--font-size-xxs);
+      padding: 0 4px;
+      border-radius: 2px;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    /* Tooltip */
+    .req-tooltip {
+      position: fixed;
+      z-index: 1000;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-sm) var(--spacing-md);
+      min-width: 220px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      pointer-events: none;
+    }
+    .req-tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--spacing-md);
+      padding: 2px 0;
+      font-size: var(--font-size-xxs);
+    }
+    .req-tooltip-row .tt-label {
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .req-tooltip-row .tt-value {
+      color: var(--text-primary);
+      font-family: var(--mono);
+      text-align: right;
+      white-space: nowrap;
+    }
+    .req-tooltip-divider {
+      border-top: 1px solid var(--border-subtle);
+      margin: 4px 0;
+    }
+    .req-tooltip-justification {
+      font-size: var(--font-size-xxs);
+      color: var(--text-muted);
+      font-style: italic;
+      margin-top: 4px;
+      white-space: normal;
+      line-height: 1.4;
+    }
+
+    /* ---- Main content (detail view) ---- */
+    .req-detail {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* ---- Info card (dense requirement overview) ---- */
+    .req-info-card-wrapper {
+      flex-shrink: 0;
+      padding: var(--spacing-md) var(--spacing-lg);
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .req-info-card-outer {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    /* Top stripe: name + badge */
+    .ric-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .ric-name {
+      font-size: var(--font-size-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ric-badge {
+      font-size: var(--font-size-xxs);
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+      margin-left: var(--spacing-sm);
+      letter-spacing: 0.4px;
+    }
+    .ric-badge.pass { background: var(--success); color: var(--ctp-crust); }
+    .ric-badge.fail { background: var(--error); color: var(--ctp-crust); }
+
+    /* Body: two-column grid */
+    .ric-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+
+    /* Each section */
+    .ric-section {
+      padding: var(--spacing-sm) var(--spacing-md);
+    }
+    .ric-section:not(:last-child) {
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    /* Right column sections get left border */
+    .ric-section.ric-right {
+      border-left: 1px solid var(--border-subtle);
+    }
+
+    .ric-section-title {
+      font-size: var(--font-size-xxs);
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 4px;
+    }
+
+    /* Key-value rows */
+    .ric-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--spacing-sm);
+      line-height: 1.6;
+    }
+    .ric-label {
+      font-size: var(--font-size-xs);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .ric-value {
+      font-size: var(--font-size-xs);
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      text-align: right;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ric-value.pass { color: var(--success); }
+    .ric-value.fail { color: var(--error); }
+    .ric-value.warn { color: var(--warning); }
+    .ric-value.muted { color: var(--text-muted); font-family: var(--font-sans); font-style: italic; }
+    .ric-value.mono-muted { color: var(--text-muted); }
+
+    /* Actual value: bigger */
+    .ric-actual-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .ric-actual-value {
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .ric-actual-value.pass { color: var(--success); }
+    .ric-actual-value.fail { color: var(--error); }
+
+    /* Margin gauge */
+    .ric-margin-bar {
+      margin-top: 4px;
+    }
+    .ric-margin-track {
+      height: 3px;
+      background: var(--bg-hover);
+      border-radius: 2px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ric-margin-fill {
+      position: absolute;
+      top: 0; bottom: 0; left: 0;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .ric-margin-fill.high { background: var(--success); }
+    .ric-margin-fill.medium { background: var(--warning); }
+    .ric-margin-fill.low { background: var(--error); }
+
+    /* Bounds visual: inline min—typ—max */
+    .ric-bounds {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .ric-bounds-sep {
+      color: var(--text-muted);
+      font-size: 9px;
+    }
+    .ric-bounds-label {
+      font-size: 9px;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+    }
+
+    /* Full-width section spanning both columns */
+    .ric-section.ric-full {
+      grid-column: 1 / -1;
+      border-left: none;
+    }
+
+    .ric-justification-text {
+      font-size: var(--font-size-xs);
+      color: var(--text-secondary);
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    /* Tags row */
+    .ric-tags {
+      display: flex;
+      gap: var(--spacing-xs);
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+    .ric-tag {
+      font-size: var(--font-size-xxs);
+      padding: 1px 6px;
+      border-radius: 2px;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .ric-tag.capture { background: rgba(137,180,250,0.12); color: var(--info); }
+    .ric-tag.meas { background: rgba(203,166,247,0.12); color: #cba6f7; }
+
+    /* Chart area */
+    .req-chart-container {
+      flex: 1;
+      padding: var(--spacing-md) var(--spacing-lg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .req-chart-container .js-plotly-plot,
+    .req-chart-container .plot-container {
+      flex: 1;
+    }
+
+    /* ---- Empty state ---- */
+    .req-empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-md);
+      color: var(--text-muted);
+    }
+    .req-empty-state svg {
+      opacity: 0.3;
+    }
+    .req-empty-state-title {
+      font-size: var(--font-size-md);
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .req-empty-state-desc {
+      font-size: var(--font-size-sm);
+      color: var(--text-muted);
+    }
+
+    /* ---- Margin bar ---- */
+    .margin-bar-container {
+      margin-top: 4px;
+    }
+    .margin-bar-track {
+      height: 4px;
+      background: var(--bg-hover);
+      border-radius: 2px;
+      position: relative;
+      overflow: hidden;
+    }
+    .margin-bar-fill {
+      position: absolute;
+      top: 0; bottom: 0; left: 0;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .margin-bar-fill.high { background: var(--success); }
+    .margin-bar-fill.medium { background: var(--warning); }
+    .margin-bar-fill.low { background: var(--error); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+    // ----------------------------------------------------------------
+    // Mock data - matches RequirementResult shape from Python backend
+    // ----------------------------------------------------------------
+    // Mock build timestamp (would come from backend in real usage)
+    const BUILD_TIME = new Date(Date.now() - 42000).toISOString(); // ~42s ago
+
+    const MOCK_REQUIREMENTS = [
+      {
+        id: 'req-001',
+        name: 'REQ-001: Output DC bias',
+        net: 'output',
+        capture: 'dcop',
+        measurement: 'final_value',
+        minVal: 7.3,
+        typical: 7.5,
+        maxVal: 7.7,
+        actual: 7.498,
+        passed: true,
+        justification: 'Resistor divider primary function is to divide voltage.',
+        contextNets: [],
+        unit: 'V',
+        // DCOP: no time-series, just a value
+        timeSeries: null,
+      },
+      {
+        id: 'req-002',
+        name: 'REQ-002: Supply current',
+        net: 'i(v1)',
+        capture: 'dcop',
+        measurement: 'final_value',
+        minVal: -500e-6,
+        typical: -250e-6,
+        maxVal: 0,
+        actual: -250e-6,
+        passed: true,
+        justification: 'Power budget for shared 10V rail (SPICE sign: negative = into circuit)',
+        contextNets: [],
+        unit: 'A',
+        timeSeries: null,
+      },
+      {
+        id: 'req-003',
+        name: 'REQ-003: Transient final value',
+        net: 'output',
+        capture: 'transient',
+        measurement: 'final_value',
+        minVal: 7.45,
+        typical: 7.5,
+        maxVal: 7.55,
+        actual: 7.5,
+        passed: true,
+        justification: 'Output converges to DC steady-state before ADC sampling window.',
+        contextNets: ['power_hv'],
+        unit: 'V',
+        timeSeries: (() => {
+          // Generate a realistic step-response curve
+          const N = 500;
+          const time = Array.from({length: N}, (_, i) => i * 1.0 / (N - 1));
+          const output = time.map(t => {
+            const tau = 0.08;
+            return 7.5 * (1 - Math.exp(-t / tau)) + (Math.random() - 0.5) * 0.01;
+          });
+          const power_hv = time.map(t => t < 0.001 ? 0 : 10.0 + (Math.random() - 0.5) * 0.02);
+          return { time, signals: { 'v(output)': output, 'v(power_hv)': power_hv } };
+        })(),
+      },
+      {
+        id: 'req-004',
+        name: 'REQ-004: Settling time',
+        net: 'output',
+        capture: 'transient',
+        measurement: 'settling_time',
+        minVal: 0.2,
+        typical: 0.3,
+        maxVal: 0.4,
+        actual: 0.336,
+        passed: true,
+        justification: 'Must settle within 400ms before first ADC sample.',
+        contextNets: ['power_hv'],
+        unit: 's',
+        settlingTolerance: 0.01,
+        timeSeries: (() => {
+          const N = 500;
+          const time = Array.from({length: N}, (_, i) => i * 0.5 / (N - 1));
+          const output = time.map(t => {
+            const tau = 0.08;
+            return 7.5 * (1 - Math.exp(-t / tau)) + (Math.random() - 0.5) * 0.008;
+          });
+          const power_hv = time.map(t => t < 0.001 ? 0 : 10.0 + (Math.random() - 0.5) * 0.02);
+          return { time, signals: { 'v(output)': output, 'v(power_hv)': power_hv } };
+        })(),
+      },
+      {
+        id: 'req-005',
+        name: 'REQ-005: Output ripple',
+        net: 'output',
+        capture: 'transient',
+        measurement: 'peak_to_peak',
+        minVal: 0,
+        typical: 0.05,
+        maxVal: 0.2,
+        actual: 0.42,
+        passed: false,
+        justification: 'Ripple must stay below ADC LSB (0.2V for 10-bit, 0-10V range).',
+        contextNets: [],
+        unit: 'V',
+        timeSeries: (() => {
+          const N = 500;
+          const time = Array.from({length: N}, (_, i) => i * 0.01 / (N - 1));
+          const output = time.map(t => {
+            return 7.5 + 0.21 * Math.sin(2 * Math.PI * 1000 * t) + (Math.random() - 0.5) * 0.005;
+          });
+          return { time, signals: { 'v(output)': output } };
+        })(),
+      },
+      {
+        id: 'req-006',
+        name: 'REQ-006: Overshoot',
+        net: 'output',
+        capture: 'transient',
+        measurement: 'overshoot',
+        minVal: 0,
+        typical: 2,
+        maxVal: 5,
+        actual: 8.2,
+        passed: false,
+        justification: 'Overshoot must be bounded to protect downstream ADC input.',
+        contextNets: ['power_hv'],
+        unit: '%',
+        timeSeries: (() => {
+          const N = 500;
+          const time = Array.from({length: N}, (_, i) => i * 0.5 / (N - 1));
+          const output = time.map(t => {
+            const wn = 40;
+            const zeta = 0.3;
+            const wd = wn * Math.sqrt(1 - zeta * zeta);
+            if (t < 0.001) return 0;
+            return 7.5 * (1 - Math.exp(-zeta * wn * t) * (Math.cos(wd * t) + (zeta / Math.sqrt(1 - zeta * zeta)) * Math.sin(wd * t)));
+          });
+          const power_hv = time.map(t => t < 0.001 ? 0 : 10.0);
+          return { time, signals: { 'v(output)': output, 'v(power_hv)': power_hv } };
+        })(),
+      },
+    ];
+
+    // ----------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------
+    function formatEng(value, unit) {
+      if (unit === '%') return `${value.toFixed(2)}%`;
+      const prefixes = [
+        [1e-15, 'f'], [1e-12, 'p'], [1e-9, 'n'], [1e-6, 'u'],
+        [1e-3, 'm'], [1, ''], [1e3, 'k'], [1e6, 'M'], [1e9, 'G'],
+      ];
+      const abs = Math.abs(value);
+      if (abs === 0) return `0 ${unit}`;
+      for (const [threshold, prefix] of prefixes) {
+        if (abs < threshold * 1000) {
+          return `${(value / threshold).toPrecision(4)} ${prefix}${unit}`;
+        }
+      }
+      return `${value.toPrecision(4)} ${unit}`;
+    }
+
+    function computeMargin(actual, minVal, maxVal) {
+      const marginLo = Math.abs(actual - minVal);
+      const marginHi = Math.abs(maxVal - actual);
+      const nearest = Math.min(marginLo, marginHi);
+      const span = maxVal - minVal;
+      return span > 0 ? (nearest / span * 100) : 0;
+    }
+
+    function autoScaleTime(tMax) {
+      if (tMax < 1e-6) return [1e9, 'ns'];
+      if (tMax < 1e-3) return [1e6, 'us'];
+      if (tMax < 1) return [1e3, 'ms'];
+      return [1, 's'];
+    }
+
+    function formatBuildTime(iso) {
+      const d = new Date(iso);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    // ----------------------------------------------------------------
+    // Components
+    // ----------------------------------------------------------------
+
+    function MarginBar({ margin }) {
+      const level = margin > 40 ? 'high' : margin > 15 ? 'medium' : 'low';
+      return (
+        <div className="margin-bar-container">
+          <div className="margin-bar-track">
+            <div
+              className={`margin-bar-fill ${level}`}
+              style={{ width: `${Math.min(100, margin)}%` }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    function RequirementItem({ req, selected, onClick, onHover, onLeave }) {
+      return (
+        <div
+          className={`req-item ${selected ? 'selected' : ''}`}
+          onClick={onClick}
+          onMouseEnter={(e) => onHover(req, e.currentTarget.getBoundingClientRect())}
+          onMouseLeave={onLeave}
+        >
+          <div className={`req-status-dot ${req.passed ? 'pass' : 'fail'}`} />
+          <div className="req-item-info">
+            <div className="req-item-name">{req.name}</div>
+            <div className="req-item-bounds">
+              <span className="lsl">{formatEng(req.minVal, req.unit)}</span>
+              <span className={`actual ${req.passed ? 'pass' : 'fail'}`}>{formatEng(req.actual, req.unit)}</span>
+              <span className="usl">{formatEng(req.maxVal, req.unit)}</span>
+            </div>
+          </div>
+          <div className="req-item-tag">{req.capture === 'dcop' ? 'DC' : 'AC'}</div>
+        </div>
+      );
+    }
+
+    function ReqTooltip({ req, rect }) {
+      if (!req || !rect) return null;
+      const margin = computeMargin(req.actual, req.minVal, req.maxVal);
+      const marginLevel = margin > 40 ? 'high' : margin > 15 ? 'medium' : 'low';
+      const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : 'Transient';
+      const measLabel = req.measurement.replace('_', ' ');
+      const top = rect.top + rect.height / 2;
+      const left = rect.right + 8;
+      return (
+        <div className="req-tooltip" style={{ top, left, transform: 'translateY(-50%)' }}>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Status</span>
+            <span className="tt-value" style={{ color: req.passed ? 'var(--success)' : 'var(--error)' }}>{req.passed ? 'PASS' : 'FAIL'}</span>
+          </div>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Actual</span>
+            <span className="tt-value">{formatEng(req.actual, req.unit)}</span>
+          </div>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Margin</span>
+            <span className="tt-value" style={{ color: marginLevel === 'high' ? 'var(--success)' : marginLevel === 'low' ? 'var(--error)' : 'var(--warning)' }}>{margin.toFixed(1)}%</span>
+          </div>
+          <div className="req-tooltip-divider" />
+          <div className="req-tooltip-row">
+            <span className="tt-label">Net</span>
+            <span className="tt-value">{req.net}</span>
+          </div>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Capture</span>
+            <span className="tt-value">{captureLabel}</span>
+          </div>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Measurement</span>
+            <span className="tt-value">{measLabel}</span>
+          </div>
+          <div className="req-tooltip-divider" />
+          <div className="req-tooltip-row">
+            <span className="tt-label">Min</span>
+            <span className="tt-value">{formatEng(req.minVal, req.unit)}</span>
+          </div>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Typical</span>
+            <span className="tt-value">{formatEng(req.typical, req.unit)}</span>
+          </div>
+          <div className="req-tooltip-row">
+            <span className="tt-label">Max</span>
+            <span className="tt-value">{formatEng(req.maxVal, req.unit)}</span>
+          </div>
+          {req.justification && (
+            <>
+              <div className="req-tooltip-divider" />
+              <div className="req-tooltip-justification">{req.justification}</div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    function RequirementDetail({ req }) {
+      const chartRef = useRef(null);
+      const margin = computeMargin(req.actual, req.minVal, req.maxVal);
+      const marginLevel = margin > 40 ? 'high' : margin > 15 ? 'medium' : 'low';
+
+      useEffect(() => {
+        if (!chartRef.current) return;
+
+        if (req.timeSeries) {
+          renderTransientPlot(chartRef.current, req);
+        } else {
+          renderDCPlot(chartRef.current, req);
+        }
+
+        const handleResize = () => {
+          if (chartRef.current) {
+            Plotly.Plots.resize(chartRef.current);
+          }
+        };
+        window.addEventListener('resize', handleResize);
+        return () => {
+          window.removeEventListener('resize', handleResize);
+          if (chartRef.current) {
+            Plotly.purge(chartRef.current);
+          }
+        };
+      }, [req.id]);
+
+      const measLabel = req.measurement.replace(/_/g, ' ');
+      const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : 'Transient';
+      const hasTransientConfig = req.capture === 'transient';
+
+      return (
+        <div className="req-detail">
+          {/* ---- Information-dense requirement card ---- */}
+          <div className="req-info-card-wrapper">
+            <div className="req-info-card-outer">
+              {/* Header stripe */}
+              <div className="ric-header">
+                <div className="ric-name">{req.name}</div>
+                <div className={`ric-badge ${req.passed ? 'pass' : 'fail'}`}>
+                  {req.passed ? 'PASS' : 'FAIL'}
+                </div>
+              </div>
+
+              {/* Two-column body */}
+              <div className="ric-body">
+                {/* Left: Result */}
+                <div className="ric-section">
+                  <div className="ric-section-title">Result</div>
+                  <div className="ric-actual-row">
+                    <span className="ric-label">Actual</span>
+                    <span className={`ric-actual-value ${req.passed ? 'pass' : 'fail'}`}>
+                      {formatEng(req.actual, req.unit)}
+                    </span>
+                  </div>
+                  <div className="ric-row">
+                    <span className="ric-label">Margin</span>
+                    <span className={`ric-value ${marginLevel === 'high' ? 'pass' : marginLevel === 'low' ? 'fail' : 'warn'}`}>
+                      {margin.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="ric-margin-bar">
+                    <div className="ric-margin-track">
+                      <div className={`ric-margin-fill ${marginLevel}`} style={{ width: `${Math.min(100, margin)}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Configuration */}
+                <div className="ric-section ric-right">
+                  <div className="ric-section-title">Configuration</div>
+                  <div className="ric-row">
+                    <span className="ric-label">Net</span>
+                    <span className="ric-value">{req.net}</span>
+                  </div>
+                  <div className="ric-row">
+                    <span className="ric-label">Capture</span>
+                    <span className="ric-value">{captureLabel}</span>
+                  </div>
+                  <div className="ric-row">
+                    <span className="ric-label">Measurement</span>
+                    <span className="ric-value">{measLabel}</span>
+                  </div>
+                </div>
+
+                {/* Left: Bounds */}
+                <div className="ric-section">
+                  <div className="ric-section-title">Bounds</div>
+                  <div className="ric-row">
+                    <span className="ric-label">Min</span>
+                    <span className="ric-value">{formatEng(req.minVal, req.unit)}</span>
+                  </div>
+                  <div className="ric-row">
+                    <span className="ric-label">Typical</span>
+                    <span className="ric-value">{formatEng(req.typical, req.unit)}</span>
+                  </div>
+                  <div className="ric-row">
+                    <span className="ric-label">Max</span>
+                    <span className="ric-value">{formatEng(req.maxVal, req.unit)}</span>
+                  </div>
+                </div>
+
+                {/* Right: Simulation params */}
+                <div className="ric-section ric-right">
+                  <div className="ric-section-title">{hasTransientConfig ? 'Transient Config' : 'Info'}</div>
+                  {hasTransientConfig ? (
+                    <>
+                      {req.timeSeries && (
+                        <>
+                          <div className="ric-row">
+                            <span className="ric-label">Stop</span>
+                            <span className="ric-value">{formatEng(req.timeSeries.time[req.timeSeries.time.length - 1], 's')}</span>
+                          </div>
+                          <div className="ric-row">
+                            <span className="ric-label">Points</span>
+                            <span className="ric-value mono-muted">{req.timeSeries.time.length}</span>
+                          </div>
+                        </>
+                      )}
+                      {req.settlingTolerance != null && (
+                        <div className="ric-row">
+                          <span className="ric-label">Settling tol.</span>
+                          <span className="ric-value">{(req.settlingTolerance * 100).toFixed(1)}%</span>
+                        </div>
+                      )}
+                      {req.contextNets && req.contextNets.length > 0 && (
+                        <div className="ric-row">
+                          <span className="ric-label">Context</span>
+                          <span className="ric-value">{req.contextNets.join(', ')}</span>
+                        </div>
+                      )}
+                      {!req.timeSeries && !req.settlingTolerance && !(req.contextNets && req.contextNets.length > 0) && (
+                        <div className="ric-row">
+                          <span className="ric-label">Unit</span>
+                          <span className="ric-value">{req.unit}</span>
+                        </div>
+                      )}
+                      <div className="ric-row">
+                        <span className="ric-label">Built</span>
+                        <span className="ric-value mono-muted">{formatBuildTime(BUILD_TIME)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="ric-row">
+                        <span className="ric-label">Unit</span>
+                        <span className="ric-value">{req.unit}</span>
+                      </div>
+                      <div className="ric-row">
+                        <span className="ric-label">Type</span>
+                        <span className="ric-value">Static</span>
+                      </div>
+                      <div className="ric-row">
+                        <span className="ric-label">Built</span>
+                        <span className="ric-value mono-muted">{formatBuildTime(BUILD_TIME)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Full-width: Justification */}
+                {req.justification && (
+                  <div className="ric-section ric-full">
+                    <div className="ric-section-title">Justification</div>
+                    <div className="ric-justification-text">{req.justification}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ---- Chart ---- */}
+          <div className="req-chart-container">
+            <div ref={chartRef} style={{ width: '100%', height: '100%' }} />
+          </div>
+        </div>
+      );
+    }
+
+    // ----------------------------------------------------------------
+    // Plotly chart renderers
+    // ----------------------------------------------------------------
+    const PLOTLY_LAYOUT_BASE = {
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(30,30,46,0.5)',
+      font: { family: '-apple-system, sans-serif', color: '#cdd6f4', size: 14 },
+      margin: { t: 65, r: 50, b: 60, l: 70 },
+      xaxis: {
+        gridcolor: 'rgba(69,71,90,0.4)',
+        zerolinecolor: 'rgba(69,71,90,0.6)',
+        title: { font: { size: 15 } },
+        tickfont: { size: 13 },
+      },
+      yaxis: {
+        gridcolor: 'rgba(69,71,90,0.4)',
+        zerolinecolor: 'rgba(69,71,90,0.6)',
+        title: { font: { size: 15 } },
+        tickfont: { size: 13 },
+      },
+      legend: { x: 0, y: 1.02, orientation: 'h', font: { size: 11, color: '#7f849c' } },
+      modebar: { bgcolor: 'rgba(0,0,0,0)', color: '#7f849c', activecolor: '#f95015' },
+    };
+
+    function renderTransientPlot(el, req) {
+      const ts = req.timeSeries;
+      const tMax = ts.time[ts.time.length - 1];
+      const [scale, tUnit] = autoScaleTime(tMax);
+      const timeScaled = ts.time.map(t => t * scale);
+
+      const netKey = req.net.startsWith('v(') || req.net.startsWith('i(')
+        ? req.net : `v(${req.net})`;
+      const nutSignal = ts.signals[netKey] || [];
+
+      const traces = [];
+
+      // Main signal
+      traces.push({
+        x: timeScaled,
+        y: nutSignal,
+        type: 'scatter',
+        mode: 'lines',
+        name: netKey,
+        line: { color: '#89b4fa', width: 3.5 },
+      });
+
+      // Context signals
+      const ctxColors = ['#fab387', '#a6e3a1', '#cba6f7', '#eba0ac'];
+      (req.contextNets || []).forEach((cn, i) => {
+        const ck = cn.startsWith('v(') || cn.startsWith('i(') ? cn : `v(${cn})`;
+        if (ts.signals[ck]) {
+          traces.push({
+            x: timeScaled,
+            y: ts.signals[ck],
+            type: 'scatter',
+            mode: 'lines',
+            name: ck,
+            line: { color: ctxColors[i % ctxColors.length], width: 2.0 },
+            yaxis: 'y2',
+          });
+        }
+      });
+
+      const layout = {
+        ...PLOTLY_LAYOUT_BASE,
+        title: { text: `<b>${req.measurement.replace('_', ' ')}</b>`, font: { size: 18, color: '#cdd6f4' } },
+        xaxis: { ...PLOTLY_LAYOUT_BASE.xaxis, title: `Time (${tUnit})` },
+        yaxis: { ...PLOTLY_LAYOUT_BASE.yaxis, title: req.measurement === 'overshoot' ? 'Voltage (V)' : `${req.unit === '%' ? '%' : `Voltage (${req.unit})`}` },
+        shapes: [],
+        annotations: [],
+      };
+
+      // Add context y-axis if needed
+      if (req.contextNets && req.contextNets.length > 0) {
+        layout.yaxis2 = {
+          ...PLOTLY_LAYOUT_BASE.yaxis,
+          title: 'Context (V)',
+          overlaying: 'y',
+          side: 'right',
+        };
+      }
+
+      // Measurement-specific overlays
+      if (req.measurement === 'final_value' || req.measurement === 'average' || req.measurement === 'rms') {
+        // Pass band shading
+        layout.shapes.push({
+          type: 'rect', xref: 'paper', yref: 'y',
+          x0: 0, x1: 1, y0: req.minVal, y1: req.maxVal,
+          fillcolor: 'rgba(166,227,161,0.08)', line: { width: 0 },
+        });
+        // Limit lines
+        layout.shapes.push(
+          { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: '#f38ba8', width: 2.5, dash: 'dot' } },
+          { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: '#f38ba8', width: 2.5, dash: 'dot' } },
+        );
+        // Actual value line
+        layout.shapes.push({
+          type: 'line', xref: 'paper', yref: 'y',
+          x0: 0, x1: 1, y0: req.actual, y1: req.actual,
+          line: { color: req.passed ? '#a6e3a1' : '#f38ba8', width: 2.5, dash: 'dash' },
+        });
+        // Labels
+        layout.annotations.push(
+          { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 12, color: '#f38ba8' }, xanchor: 'left', yanchor: 'bottom' },
+          { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 12, color: '#f38ba8' }, xanchor: 'left', yanchor: 'top' },
+          { x: 0.98, y: req.actual, xref: 'paper', yref: 'y', text: `Actual ${formatEng(req.actual, req.unit)}`, showarrow: false, font: { size: 13, color: req.passed ? '#a6e3a1' : '#f38ba8', weight: 'bold' }, xanchor: 'right', yanchor: 'bottom' },
+        );
+      }
+
+      if (req.measurement === 'settling_time') {
+        // Settling band
+        const final = nutSignal[nutSignal.length - 1] || 0;
+        const tol = req.settlingTolerance || 0.01;
+        const band = Math.abs(final * tol);
+        layout.shapes.push({
+          type: 'rect', xref: 'paper', yref: 'y',
+          x0: 0, x1: 1, y0: final - band, y1: final + band,
+          fillcolor: 'rgba(166,227,161,0.08)', line: { width: 0 },
+        });
+        // Time limit lines (vertical)
+        layout.shapes.push(
+          { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal * scale, x1: req.minVal * scale, y0: 0, y1: 1, line: { color: '#f38ba8', width: 2.5, dash: 'dot' } },
+          { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal * scale, x1: req.maxVal * scale, y0: 0, y1: 1, line: { color: '#f38ba8', width: 2.5, dash: 'dot' } },
+        );
+        // Actual settling line
+        layout.shapes.push({
+          type: 'line', xref: 'x', yref: 'paper',
+          x0: req.actual * scale, x1: req.actual * scale, y0: 0, y1: 1,
+          line: { color: req.passed ? '#a6e3a1' : '#f38ba8', width: 3, dash: 'dash' },
+        });
+        layout.annotations.push(
+          { x: req.actual * scale, y: 0.9, xref: 'x', yref: 'paper', text: `Settled @ ${formatEng(req.actual, 's')}`, showarrow: false, font: { size: 13, color: req.passed ? '#a6e3a1' : '#f38ba8' }, textangle: -90, xanchor: 'left', xshift: 8 },
+        );
+      }
+
+      if (req.measurement === 'peak_to_peak') {
+        const peak = Math.max(...nutSignal);
+        const trough = Math.min(...nutSignal);
+        // Peak/trough lines
+        layout.shapes.push(
+          { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: peak, y1: peak, line: { color: '#f38ba8', width: 2, dash: 'dot' } },
+          { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: trough, y1: trough, line: { color: '#89b4fa', width: 2, dash: 'dot' } },
+        );
+        layout.annotations.push(
+          { x: 0.95, y: (peak + trough) / 2, xref: 'paper', yref: 'y', text: `P-P: ${formatEng(req.actual, req.unit)}`, showarrow: false, font: { size: 14, color: '#cdd6f4' }, bgcolor: 'rgba(30,30,46,0.8)', borderpad: 4 },
+        );
+      }
+
+      if (req.measurement === 'overshoot') {
+        const final = nutSignal[nutSignal.length - 1] || 0;
+        const peak = Math.max(...nutSignal);
+        const peakIdx = nutSignal.indexOf(peak);
+        const peakTime = timeScaled[peakIdx];
+        // Final value line
+        layout.shapes.push({
+          type: 'line', xref: 'paper', yref: 'y',
+          x0: 0, x1: 1, y0: final, y1: final,
+          line: { color: '#7f849c', width: 2.5, dash: 'dash' },
+        });
+        // Max overshoot line
+        const maxOsV = final * (1 + req.maxVal / 100);
+        layout.shapes.push({
+          type: 'line', xref: 'paper', yref: 'y',
+          x0: 0, x1: 1, y0: maxOsV, y1: maxOsV,
+          line: { color: '#f38ba8', width: 2, dash: 'dash' },
+        });
+        layout.annotations.push(
+          { x: 0.02, y: final, xref: 'paper', yref: 'y', text: `Final ${formatEng(final, 'V')}`, showarrow: false, font: { size: 12, color: '#7f849c' }, xanchor: 'left', yanchor: 'top' },
+          { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 12, color: '#f38ba8' }, xanchor: 'left', yanchor: 'bottom' },
+          { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${req.actual.toFixed(2)}%`, showarrow: true, ay: -35, arrowcolor: '#f38ba8', arrowwidth: 2, font: { size: 14, color: '#f38ba8' } },
+        );
+      }
+
+      // --- Initial y-axis zoom: focus on the bounds region ---
+      if (req.measurement === 'final_value' || req.measurement === 'average' || req.measurement === 'rms') {
+        const span = req.maxVal - req.minVal;
+        const pad = span * 0.5;
+        layout.yaxis.range = [req.minVal - pad, req.maxVal + pad];
+      } else if (req.measurement === 'settling_time') {
+        const final = nutSignal[nutSignal.length - 1] || 0;
+        const tol = req.settlingTolerance || 0.01;
+        const band = Math.abs(final * tol);
+        const pad = band * 2;
+        layout.yaxis.range = [final - band - pad, final + band + pad];
+      } else if (req.measurement === 'peak_to_peak') {
+        const peak = Math.max(...nutSignal);
+        const trough = Math.min(...nutSignal);
+        const span = peak - trough;
+        const pad = span * 0.2;
+        layout.yaxis.range = [trough - pad, peak + pad];
+      } else if (req.measurement === 'overshoot') {
+        const final = nutSignal[nutSignal.length - 1] || 0;
+        const peak = Math.max(...nutSignal);
+        const span = peak - final;
+        const pad = span * 0.3;
+        layout.yaxis.range = [final - pad, peak + pad];
+      }
+
+      Plotly.newPlot(el, traces, layout, {
+        responsive: true,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+      });
+    }
+
+    function renderDCPlot(el, req) {
+      // For DC requirements, show a gauge-like horizontal bar chart
+      const range = req.maxVal - req.minVal;
+      const padding = range * 0.3;
+
+      const traces = [{
+        type: 'scatter',
+        x: [req.actual],
+        y: [''],
+        mode: 'markers',
+        marker: {
+          size: 20,
+          color: req.passed ? '#a6e3a1' : '#f38ba8',
+          symbol: 'diamond',
+          line: { width: 3, color: req.passed ? '#a6e3a1' : '#f38ba8' },
+        },
+        name: 'Actual',
+      }];
+
+      const layout = {
+        ...PLOTLY_LAYOUT_BASE,
+        title: { text: `<b>DC Operating Point: ${req.measurement.replace('_', ' ')}</b>`, font: { size: 18, color: '#cdd6f4' } },
+        xaxis: {
+          ...PLOTLY_LAYOUT_BASE.xaxis,
+          title: req.unit,
+          range: [req.minVal - padding, req.maxVal + padding],
+        },
+        yaxis: { visible: false, fixedrange: true },
+        height: 200,
+        shapes: [
+          // Pass band
+          { type: 'rect', xref: 'x', yref: 'paper', x0: req.minVal, x1: req.maxVal, y0: 0, y1: 1, fillcolor: 'rgba(166,227,161,0.1)', line: { width: 0 } },
+          // Min limit
+          { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal, x1: req.minVal, y0: 0, y1: 1, line: { color: '#f38ba8', width: 2.5, dash: 'dot' } },
+          // Max limit
+          { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal, x1: req.maxVal, y0: 0, y1: 1, line: { color: '#f38ba8', width: 2.5, dash: 'dot' } },
+          // Typical
+          { type: 'line', xref: 'x', yref: 'paper', x0: req.typical, x1: req.typical, y0: 0, y1: 1, line: { color: '#7f849c', width: 1.5, dash: 'dash' } },
+        ],
+        annotations: [
+          { x: req.minVal, y: 1.05, xref: 'x', yref: 'paper', text: `LSL`, showarrow: false, font: { size: 12, color: '#f38ba8' } },
+          { x: req.maxVal, y: 1.05, xref: 'x', yref: 'paper', text: `USL`, showarrow: false, font: { size: 12, color: '#f38ba8' } },
+          { x: req.actual, y: -0.15, xref: 'x', yref: 'paper', text: formatEng(req.actual, req.unit), showarrow: false, font: { size: 14, color: req.passed ? '#a6e3a1' : '#f38ba8', weight: 'bold' } },
+        ],
+      };
+
+      Plotly.newPlot(el, traces, layout, {
+        responsive: true,
+        displaylogo: false,
+        staticPlot: true,
+      });
+    }
+
+    // ----------------------------------------------------------------
+    // Status pie chart (canvas-drawn donut)
+    // ----------------------------------------------------------------
+    function StatusPie({ passCount, failCount }) {
+      const canvasRef = useRef(null);
+      const total = passCount + failCount;
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const size = 80;
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        canvas.style.width = size + 'px';
+        canvas.style.height = size + 'px';
+        ctx.scale(dpr, dpr);
+
+        const cx = size / 2, cy = size / 2, r = 32, lw = 10;
+        ctx.clearRect(0, 0, size, size);
+
+        // Fail arc
+        if (failCount > 0) {
+          const failAngle = (failCount / total) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + failAngle);
+          ctx.strokeStyle = '#f38ba8';
+          ctx.lineWidth = lw;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+
+        // Pass arc
+        if (passCount > 0) {
+          const failAngle = (failCount / total) * Math.PI * 2;
+          const passAngle = (passCount / total) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, -Math.PI / 2 + failAngle, -Math.PI / 2 + failAngle + passAngle);
+          ctx.strokeStyle = '#a6e3a1';
+          ctx.lineWidth = lw;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+
+        // Center text
+        ctx.fillStyle = '#cdd6f4';
+        ctx.font = 'bold 16px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${passCount}/${total}`, cx, cy);
+      }, [passCount, failCount, total]);
+
+      return <canvas ref={canvasRef} />;
+    }
+
+    // ----------------------------------------------------------------
+    // App
+    // ----------------------------------------------------------------
+    function App() {
+      const [selectedId, setSelectedId] = useState(MOCK_REQUIREMENTS[0].id);
+      const [filter, setFilter] = useState('all');
+      const [pieOpen, setPieOpen] = useState(true);
+      const [tooltip, setTooltip] = useState({ req: null, rect: null });
+
+      const filteredReqs = useMemo(() => {
+        if (filter === 'all') return MOCK_REQUIREMENTS;
+        if (filter === 'pass') return MOCK_REQUIREMENTS.filter(r => r.passed);
+        if (filter === 'fail') return MOCK_REQUIREMENTS.filter(r => !r.passed);
+        if (filter === 'dc') return MOCK_REQUIREMENTS.filter(r => r.capture === 'dcop');
+        if (filter === 'transient') return MOCK_REQUIREMENTS.filter(r => r.capture === 'transient');
+        return MOCK_REQUIREMENTS;
+      }, [filter]);
+
+      const selectedReq = MOCK_REQUIREMENTS.find(r => r.id === selectedId);
+
+      const passCount = MOCK_REQUIREMENTS.filter(r => r.passed).length;
+      const failCount = MOCK_REQUIREMENTS.filter(r => !r.passed).length;
+
+      return (
+        <div className="req-viewer">
+          {/* Sidebar */}
+          <div className="req-sidebar">
+            <div className="req-sidebar-header">
+              <div className="req-sidebar-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+                Requirements
+                <span className="req-sidebar-badge">{MOCK_REQUIREMENTS.length}</span>
+              </div>
+            </div>
+
+            <div className="req-summary">
+              <button className="req-summary-toggle" onClick={() => setPieOpen(!pieOpen)}>
+                <span className="dot pass" />
+                <span>{passCount} passed</span>
+                <span className="dot fail" />
+                <span>{failCount} failed</span>
+                <svg className={`chevron ${pieOpen ? 'open' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+              </button>
+              {pieOpen && (
+                <div className="req-summary-chart">
+                  <StatusPie passCount={passCount} failCount={failCount} />
+                </div>
+              )}
+            </div>
+
+            <div className="req-filter-bar">
+              {['all', 'pass', 'fail', 'dc', 'transient'].map(f => (
+                <button
+                  key={f}
+                  className={`req-filter-btn ${filter === f ? 'active' : ''}`}
+                  onClick={() => setFilter(f)}
+                >
+                  {f === 'dc' ? 'DC' : f === 'transient' ? 'Tran' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <div className="req-list">
+              {filteredReqs.map(req => (
+                <RequirementItem
+                  key={req.id}
+                  req={req}
+                  selected={selectedId === req.id}
+                  onClick={() => setSelectedId(req.id)}
+                  onHover={(r, rect) => setTooltip({ req: r, rect })}
+                  onLeave={() => setTooltip({ req: null, rect: null })}
+                />
+              ))}
+              {filteredReqs.length === 0 && (
+                <div className="req-empty-state" style={{ padding: '20px' }}>
+                  <div className="req-empty-state-desc">No requirements match this filter</div>
+                </div>
+              )}
+            </div>
+            <ReqTooltip req={tooltip.req} rect={tooltip.rect} />
+          </div>
+
+          {/* Detail */}
+          {selectedReq ? (
+            <RequirementDetail req={selectedReq} />
+          ) : (
+            <div className="req-detail">
+              <div className="req-empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+                <div className="req-empty-state-title">Select a requirement</div>
+                <div className="req-empty-state-desc">Click a requirement in the list to view its simulation results</div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
