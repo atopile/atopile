@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import sys
 import threading
 import time
@@ -15,7 +14,7 @@ from pathlib import Path
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import AppContext, Build, BuildStatus, Log
-from atopile.logging import AtoLogger
+from atopile.logging import AtoLogger, get_logger
 from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
     _build_queue,
@@ -31,7 +30,7 @@ from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
 from faebryk.libs.package.meta import PackageModifiedError
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 def _handle_build_sync(payload: dict) -> dict:
