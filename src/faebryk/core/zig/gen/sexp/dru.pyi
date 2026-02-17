@@ -71,19 +71,29 @@ class Expression:
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
+class ValueWithUnit:
+    value: float
+    unit: str
+
+    def __init__(self, *, value: float, unit: str) -> None: ...
+    def __repr__(self) -> str: ...
+    @staticmethod
+    def __field_names__() -> list[str]: ...
+    def __zig_address__(self) -> int: ...
+
 class Constraint:
     constraint_type: str
-    min: float | None
-    opt: float | None
-    max: float | None
+    min: ValueWithUnit | None
+    opt: ValueWithUnit | None
+    max: ValueWithUnit | None
 
     def __init__(
         self,
         *,
         constraint_type: str,
-        min: float | None,
-        opt: float | None,
-        max: float | None,
+        min: ValueWithUnit | None,
+        opt: ValueWithUnit | None,
+        max: ValueWithUnit | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
