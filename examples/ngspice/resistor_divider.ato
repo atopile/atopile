@@ -1,0 +1,23 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+import Resistor
+import Capacitor
+import Electrical
+import ElectricPower
+
+module App:
+    power = new ElectricPower
+    output = new Electrical
+    assert power.voltage within 10V +/- 1%
+
+    r_top = new Resistor
+    assert r_top.resistance within 10kohm +/- 1%
+
+    r_bottom = new Resistor
+    assert r_bottom.resistance within 30kohm +/- 1%
+
+    cap = new Capacitor
+    assert cap.capacitance within 10uF +/- 20%
+
+    power.hv ~> r_top ~> output ~> r_bottom ~> power.lv
+    output ~> cap ~> power.lv

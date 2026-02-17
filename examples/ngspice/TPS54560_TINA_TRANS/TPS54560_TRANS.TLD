@@ -1,0 +1,3 @@
+Texas Instruments
+SUBCKT TPS54560_TRANS  BOOT COMP EN GND SW RT VIN FB   TEXAS:TPS54560_TRANS  [SMPS]  ; No processable comment
+LOCKED KKU=

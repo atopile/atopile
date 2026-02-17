@@ -625,6 +625,24 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "spice-netlist",
+    description="Generating SPICE netlist",
+    dependencies=[post_instantiation_design_check],
+    produces_artifact=True,
+)
+def generate_spice_netlist_step(ctx: BuildStepContext) -> None:
+    """Generate a SPICE netlist from the atopile graph."""
+    from faebryk.exporters.simulation.ngspice import generate_spice_netlist
+
+    app = ctx.require_app()
+    solver = ctx.require_solver()
+    netlist = generate_spice_netlist(app, solver)
+    output_path = config.build.paths.output_base.with_suffix(".spice")
+    netlist.write(output_path)
+    logger.info(f"SPICE netlist written to {output_path}")
+
+
+@muster.register(
     "load-pcb",
     description="Loading PCB",
     dependencies=[post_instantiation_design_check],
