@@ -3,7 +3,7 @@ name: ato-language
 description: "Reference for the `.ato` declarative DSL: type system, connection semantics, constraint model, and standard library. Use when authoring or reviewing `.ato` code."
 ---
 
-# The Ato Language
+# The ato language
 
 Ato is a **declarative, constraint-based DSL** for describing electronic circuits. There is no control flow, no mutation, and no execution order — you declare *what* a circuit is, and the compiler + solver resolve it into a valid design.
 
@@ -218,15 +218,6 @@ Statements within a block are **order-independent** — the compiler resolves th
 4. **ElectricLogic needs a reference**: logic signals require a power reference for voltage context. Set `signal.reference ~ power_rail`.
 5. **Order independence**: statements within a block are not sequentially executed. The solver resolves the full graph.
 6. **No procedural logic**: no `if`, `while`, `return`, functions, classes, or exceptions.
-
-## Relevant Files
-
-- **Grammar**: `src/atopile/compiler/parser/AtoParser.g4`, `AtoLexer.g4`
-- **AST types**: `src/atopile/compiler/ast_types.py`
-- **Compiler pipeline**: `src/atopile/compiler/` (ANTLR → AST → TypeGraph → Linker → DeferredExecutor)
-- **Standard library**: `src/faebryk/library/` (Python implementations of all stdlib types)
-- **Stdlib allowlist**: `src/atopile/compiler/ast_visitor.py:62-130` (`STDLIB_ALLOWLIST`)
-- **Package usage files**: `packages/*/usage.ato`
 
 ## Quick Start
 
