@@ -950,7 +950,8 @@ pub const TypeGraph = struct {
         }
 
         // Collect target's existing MakeLinks to find soft ones to supersede
-        const target_links = self.collect_make_links(allocator, target_type) catch return;
+        const target_links = self.collect_make_links(allocator, target_type) catch
+            @panic("Invalid reference in target type MakeLinks during copy_type_structure");
         defer {
             for (target_links) |link_info| {
                 allocator.free(link_info.lhs_path);
