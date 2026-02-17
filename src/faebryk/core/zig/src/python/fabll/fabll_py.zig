@@ -431,22 +431,16 @@ fn wrap_strings_child_field_set_locator() type {
         pub const descr = bind.method_descr{
             .name = "_set_locator",
             .doc = "Set field locator for Strings child field",
-            .args_def = struct {},
+            .args_def = struct {
+                locator: *py.PyObject,
+            },
             .static = false,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            _ = kwargs;
             const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
-
-            const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-            if (positional_count != 1) {
-                py.PyErr_SetString(py.PyExc_TypeError, "_set_locator expects exactly one argument");
-                return null;
-            }
-            const locator_obj = py.PyTuple_GetItem(args, 0) orelse return null;
-
-            child_field_helpers.set_locator(&wrapper.data.base, locator_obj) orelse return null;
+            const kwarg_obj = bind.parse_args_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            child_field_helpers.set_locator(&wrapper.data.base, kwarg_obj.locator) orelse return null;
 
             if (wrapper.data.base.identifier == null) {
                 wrapper.data.base.identifier = if (wrapper.data.ref_path != null)
@@ -577,48 +571,21 @@ fn wrap_strings_child_field_exec_to_typegraph() type {
         pub const descr = bind.method_descr{
             .name = "_exec_to_typegraph",
             .doc = "Materialize this Strings child field into the target typegraph",
-            .args_def = struct {},
+            .args_def = struct {
+                t: *py.PyObject,
+                type_field: ?*py.PyObject,
+            },
             .static = false,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("ChildField", &strings_child_field_type, ChildFieldWrapper, self) orelse return null;
-
-            var t_obj: ?*py.PyObject = null;
-            var type_field = false;
-
-            const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-            if (positional_count < 0) {
-                return null;
-            }
-            if (positional_count >= 1) {
-                t_obj = py.PyTuple_GetItem(args, 0);
-            }
-            if (positional_count >= 2) {
-                type_field = bind.unwrap_bool(py.PyTuple_GetItem(args, 1));
-            }
-
-            if (kwargs) |kw| {
-                if (py.PyDict_GetItemString(kw, "t")) |kw_t| {
-                    if (t_obj != null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "_exec_to_typegraph received duplicate 't' argument");
-                        return null;
-                    }
-                    t_obj = kw_t;
-                }
-                if (py.PyDict_GetItemString(kw, "type_field")) |kw_type_field| {
-                    type_field = bind.unwrap_bool(kw_type_field);
-                }
-            }
-
-            const t = t_obj orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "_exec_to_typegraph requires t");
-                return null;
-            };
+            const kwarg_obj = bind.parse_args_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const type_field = if (kwarg_obj.type_field) |obj| bind.unwrap_bool(obj) else false;
 
             return strings_utils.child_field_exec(
                 wrapper,
-                t,
+                kwarg_obj.t,
                 type_field or wrapper.data.base.type_child,
             );
         }
@@ -674,36 +641,22 @@ fn wrap_strings_make_child_set_superset() type {
         };
 
         pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-            if (positional_count < 0) {
-                return null;
-            }
-
-            var ref_obj: ?*py.PyObject = null;
-            if (positional_count >= 1) {
-                ref_obj = py.PyTuple_GetItem(args, 0);
-            }
-            if (kwargs) |kw| {
-                if (py.PyDict_GetItemString(kw, "ref")) |kw_ref| {
-                    if (ref_obj != null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "MakeChild_SetSuperset received duplicate 'ref' argument");
-                        return null;
-                    }
-                    ref_obj = kw_ref;
-                }
-            }
-            if (ref_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "MakeChild_SetSuperset requires ref");
-                return null;
-            }
+            const ref_obj = bind.leading_arg_or_kw(
+                args,
+                kwargs,
+                "ref",
+                0,
+                "MakeChild_SetSuperset received duplicate 'ref' argument",
+                "MakeChild_SetSuperset requires ref",
+            ) orelse return null;
 
             const values = strings_utils.parse_strings_makechild_values(args, kwargs, 1) orelse return null;
-            py.Py_INCREF(ref_obj.?);
+            py.Py_INCREF(ref_obj);
             return wrap_strings_child_field_obj(.{
                 .values = values,
-                .ref_path = ref_obj.?,
+                .ref_path = ref_obj,
             }) orelse {
-                py.Py_DECREF(ref_obj.?);
+                py.Py_DECREF(ref_obj);
                 for (values) |value| std.heap.c_allocator.free(value);
                 std.heap.c_allocator.free(values);
                 return null;
@@ -825,57 +778,31 @@ fn wrap_strings_setup_from_values() type {
         pub const descr = bind.method_descr{
             .name = "setup_from_values",
             .doc = "Populate this Strings literal set from provided values",
-            .args_def = struct {},
+            .args_def = struct {
+                values: *py.PyObject,
+            },
             .static = false,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
-            const values_obj: *py.PyObject = blk: {
-                if (kwargs) |kw| {
-                    if (py.PyDict_GetItemString(kw, "values")) |kw_values| {
-                        if (args != null and py.PyTuple_Size(args) != 0) {
-                            py.PyErr_SetString(py.PyExc_TypeError, "Use either positional values or keyword 'values', not both");
-                            return null;
-                        }
-                        break :blk kw_values;
-                    }
-                }
-
-                const pos_args = args orelse {
-                    py.PyErr_SetString(py.PyExc_TypeError, "Missing values");
-                    return null;
-                };
-                break :blk pos_args;
-            };
-
-            if (py.PySequence_Check(values_obj) == 0) {
-                py.PyErr_SetString(py.PyExc_TypeError, "values must be a sequence of strings");
-                return null;
-            }
-
-            const size = py.PySequence_Size(values_obj);
-            if (size < 0) {
-                return null;
-            }
+            const values_obj = bind.sequence_varargs_or_kw(
+                args,
+                kwargs,
+                "values",
+                "Use either positional values or keyword 'values', not both",
+                "Missing values",
+            ) orelse return null;
 
             const allocator = std.heap.c_allocator;
             var values = std.array_list.Managed([]const u8).init(allocator);
             defer values.deinit();
-
-            var i: isize = 0;
-            while (i < size) : (i += 1) {
-                const item = py.PySequence_GetItem(values_obj, i);
-                if (item == null) {
-                    return null;
-                }
-                defer py.Py_DECREF(item.?);
-
-                const value_copy = bind.unwrap_str_copy(item) orelse return null;
-                values.append(value_copy) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
+            if (!bind.append_strings_from_sequence(
+                values_obj,
+                &values,
+                "values must be a sequence of strings",
+            )) {
+                return null;
             }
 
             _ = wrapper.data.setup_from_values(values.items);
@@ -904,25 +831,7 @@ fn wrap_strings_get_values() type {
             };
             defer allocator.free(values);
 
-            const out_list = py.PyList_New(@intCast(values.len));
-            if (out_list == null) {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            for (values, 0..) |value, idx| {
-                const py_value = bind.wrap_str(value) orelse {
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                };
-                if (py.PyList_SetItem(out_list, @intCast(idx), py_value) < 0) {
-                    py.Py_DECREF(py_value);
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                }
-            }
-
-            return out_list;
+            return bind.list_from_string_values(values);
         }
     };
 }
@@ -1007,40 +916,6 @@ fn wrap_strings_any() type {
     };
 }
 
-fn strings_parse_binary_other(args: ?*py.PyObject, kwargs: ?*py.PyObject) ?*fabll.literals.Strings {
-    var other_obj: ?*py.PyObject = null;
-
-    const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-    if (positional_count < 0) {
-        return null;
-    }
-    if (positional_count > 1) {
-        py.PyErr_SetString(py.PyExc_TypeError, "Expected at most one positional argument for 'other'");
-        return null;
-    }
-    if (positional_count == 1) {
-        other_obj = py.PyTuple_GetItem(args, 0);
-    }
-
-    if (kwargs) |kw| {
-        if (py.PyDict_GetItemString(kw, "other")) |kw_other| {
-            if (other_obj != null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "Received both positional and keyword argument for 'other'");
-                return null;
-            }
-            other_obj = kw_other;
-        }
-    }
-
-    if (other_obj == null) {
-        py.PyErr_SetString(py.PyExc_TypeError, "Missing required argument 'other'");
-        return null;
-    }
-
-    const other_wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, other_obj) orelse return null;
-    return other_wrapper.data;
-}
-
 const StringsBinaryReturnKind = enum {
     bool,
     strings,
@@ -1070,26 +945,26 @@ fn wrap_strings_binary_method(
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
-            const other = strings_parse_binary_other(args, kwargs) orelse return null;
+            const kwarg_obj = bind.parse_args_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const method = @field(fabll.literals.Strings, method_ident);
 
             switch (return_kind) {
                 .bool => {
-                    const out = method(wrapper.data.*, other.*, std.heap.c_allocator) catch {
+                    const out = method(wrapper.data.*, kwarg_obj.other.*, std.heap.c_allocator) catch {
                         py.PyErr_SetString(py.PyExc_ValueError, error_message);
                         return null;
                     };
                     return bind.wrap_bool(out);
                 },
                 .strings => {
-                    const out = method(wrapper.data.*, other.*, std.heap.c_allocator) catch {
+                    const out = method(wrapper.data.*, kwarg_obj.other.*, std.heap.c_allocator) catch {
                         py.PyErr_SetString(py.PyExc_ValueError, error_message);
                         return null;
                     };
                     return wrap_strings_obj(out);
                 },
                 .booleans => {
-                    const out = method(wrapper.data.*, other.*, std.heap.c_allocator) catch {
+                    const out = method(wrapper.data.*, kwarg_obj.other.*, std.heap.c_allocator) catch {
                         py.PyErr_SetString(py.PyExc_ValueError, error_message);
                         return null;
                     };
@@ -1148,32 +1023,18 @@ fn wrap_strings_nary_method(
             const wrapper = bind.castWrapper("Strings", &strings_type, StringsWrapper, self) orelse return null;
             const method = @field(fabll.literals.Strings, method_ident);
 
-            const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-            if (positional_count < 0) {
-                return null;
-            }
-
             var collected = std.array_list.Managed(*fabll.literals.Strings).init(std.heap.c_allocator);
             defer collected.deinit();
-
-            var i: isize = 0;
-            while (i < positional_count) : (i += 1) {
-                const item = py.PyTuple_GetItem(args, i);
-                const other = bind.castWrapper("Strings", &strings_type, StringsWrapper, item) orelse return null;
-                collected.append(other.data) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
-            }
-
-            if (kwargs) |kw| {
-                if (py.PyDict_GetItemString(kw, "other")) |kw_other| {
-                    const other = bind.castWrapper("Strings", &strings_type, StringsWrapper, kw_other) orelse return null;
-                    collected.append(other.data) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                        return null;
-                    };
-                }
+            if (!bind.append_wrapped_from_args_and_optional_kw(
+                "Strings",
+                &strings_type,
+                StringsWrapper,
+                args,
+                kwargs,
+                "other",
+                &collected,
+            )) {
+                return null;
             }
 
             if (collected.items.len == 0) {
@@ -1261,70 +1122,9 @@ fn wrap_strings_serialize() type {
             };
             defer allocator.free(values);
 
-            const out = py.PyDict_New();
-            if (out == null) {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            const type_obj = bind.wrap_str("StringSet") orelse {
-                py.Py_DECREF(out.?);
-                return null;
-            };
-            if (py.PyDict_SetItemString(out, "type", type_obj) < 0) {
-                py.Py_DECREF(type_obj);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(type_obj);
-
-            const data_obj = py.PyDict_New();
-            if (data_obj == null) {
-                py.Py_DECREF(out.?);
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            const values_list = py.PyList_New(@intCast(values.len));
-            if (values_list == null) {
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            for (values, 0..) |value, idx| {
-                const py_value = bind.wrap_str(value) orelse {
-                    py.Py_DECREF(values_list.?);
-                    py.Py_DECREF(data_obj.?);
-                    py.Py_DECREF(out.?);
-                    return null;
-                };
-                if (py.PyList_SetItem(values_list, @intCast(idx), py_value) < 0) {
-                    py.Py_DECREF(py_value);
-                    py.Py_DECREF(values_list.?);
-                    py.Py_DECREF(data_obj.?);
-                    py.Py_DECREF(out.?);
-                    return null;
-                }
-            }
-
-            if (py.PyDict_SetItemString(data_obj, "values", values_list) < 0) {
-                py.Py_DECREF(values_list.?);
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(values_list.?);
-
-            if (py.PyDict_SetItemString(out, "data", data_obj) < 0) {
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(data_obj.?);
-
-            return out;
+            const values_list = bind.list_from_string_values(values) orelse return null;
+            defer py.Py_DECREF(values_list);
+            return bind.make_typed_values_payload("StringSet", values_list);
         }
     };
 }
@@ -1343,102 +1143,26 @@ fn wrap_strings_deserialize() type {
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            _ = self;
-            var data_obj: ?*py.PyObject = null;
-            var g_obj: ?*py.PyObject = null;
-            var tg_obj: ?*py.PyObject = null;
+            const kwarg_obj = bind.parse_args_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
+            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
 
-            const positional_count: isize = if (args) |a| py.PyTuple_Size(a) else 0;
-            if (positional_count < 0) {
-                return null;
-            }
-            if (positional_count > 3) {
-                py.PyErr_SetString(py.PyExc_TypeError, "deserialize accepts at most three positional arguments: data, g, tg");
-                return null;
-            }
-            if (positional_count >= 1) data_obj = py.PyTuple_GetItem(args, 0);
-            if (positional_count >= 2) g_obj = py.PyTuple_GetItem(args, 1);
-            if (positional_count >= 3) tg_obj = py.PyTuple_GetItem(args, 2);
-
-            if (kwargs) |kw| {
-                if (py.PyDict_GetItemString(kw, "data")) |kw_data| {
-                    if (data_obj != null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "deserialize received duplicate 'data' argument");
-                        return null;
-                    }
-                    data_obj = kw_data;
-                }
-                if (py.PyDict_GetItemString(kw, "g")) |kw_g| {
-                    if (g_obj != null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "deserialize received duplicate 'g' argument");
-                        return null;
-                    }
-                    g_obj = kw_g;
-                }
-                if (py.PyDict_GetItemString(kw, "tg")) |kw_tg| {
-                    if (tg_obj != null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "deserialize received duplicate 'tg' argument");
-                        return null;
-                    }
-                    tg_obj = kw_tg;
-                }
-            }
-
-            if (data_obj == null or g_obj == null or tg_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "deserialize requires data, g, and tg");
-                return null;
-            }
-
-            const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, g_obj.?) orelse return null;
-            const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, tg_obj.?) orelse return null;
-
-            const type_obj = py.PyDict_GetItemString(data_obj.?, "type") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing required field 'type'");
-                return null;
-            };
-
-            const type_value = bind.unwrap_str(type_obj) orelse return null;
-            if (!std.mem.eql(u8, type_value, "StringSet")) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Expected type 'StringSet'");
-                return null;
-            }
-
-            const payload_obj = py.PyDict_GetItemString(data_obj.?, "data") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'data' field");
-                return null;
-            };
-
-            const values_obj = py.PyDict_GetItemString(payload_obj, "values") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'values' field");
-                return null;
-            };
-            if (py.PySequence_Check(values_obj) == 0) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'values' field");
-                return null;
-            }
-
-            const size = py.PySequence_Size(values_obj);
-            if (size < 0) {
-                return null;
-            }
+            const values_obj = bind.extract_typed_values_sequence(
+                kwarg_obj.data,
+                "StringSet",
+                "Expected type 'StringSet'",
+            ) orelse return null;
 
             const allocator = std.heap.c_allocator;
             var values = std.array_list.Managed([]const u8).init(allocator);
             defer values.deinit();
 
-            var i: isize = 0;
-            while (i < size) : (i += 1) {
-                const item = py.PySequence_GetItem(values_obj, i);
-                if (item == null) {
-                    return null;
-                }
-                defer py.Py_DECREF(item.?);
-
-                const value_copy = bind.unwrap_str_copy(item) orelse return null;
-                values.append(value_copy) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
+            if (!bind.append_strings_from_sequence(
+                values_obj,
+                &values,
+                "Missing or invalid 'values' field",
+            )) {
+                return null;
             }
 
             const serialized = fabll.literals.StringsSerialized{
@@ -1528,39 +1252,17 @@ fn wrap_counts_setup_from_values() type {
             const wrapper = bind.castWrapper("Counts", &counts_type, CountsWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            if (py.PySequence_Check(kwarg_obj.values) == 0) {
-                py.PyErr_SetString(py.PyExc_TypeError, "values must be a sequence of integers");
-                return null;
-            }
-
-            const size = py.PySequence_Size(kwarg_obj.values);
-            if (size < 0) {
-                return null;
-            }
-
             const allocator = std.heap.c_allocator;
             var values = std.array_list.Managed(i64).init(allocator);
             defer values.deinit();
-
-            var i: isize = 0;
-            while (i < size) : (i += 1) {
-                const item = py.PySequence_GetItem(kwarg_obj.values, i);
-                if (item == null) {
-                    return null;
-                }
-                defer py.Py_DECREF(item.?);
-
-                py.PyErr_Clear();
-                const value_raw = py.PyLong_AsLongLong(item);
-                if (py.PyErr_Occurred() != null) {
-                    py.PyErr_Clear();
-                    py.PyErr_SetString(py.PyExc_ValueError, "Expected integer value");
-                    return null;
-                }
-                values.append(@intCast(value_raw)) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
+            if (!bind.append_ints_from_sequence(
+                i64,
+                kwarg_obj.values,
+                &values,
+                "values must be a sequence of integers",
+                "Expected integer value",
+            )) {
+                return null;
             }
 
             _ = wrapper.data.setup_from_values(values.items);
@@ -1589,26 +1291,7 @@ fn wrap_counts_get_values() type {
             };
             defer allocator.free(values);
 
-            const out_list = py.PyList_New(@intCast(values.len));
-            if (out_list == null) {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            for (values, 0..) |value, idx| {
-                const py_value = py.PyLong_FromLongLong(@intCast(value));
-                if (py_value == null) {
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                }
-                if (py.PyList_SetItem(out_list, @intCast(idx), py_value) < 0) {
-                    py.Py_DECREF(py_value.?);
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                }
-            }
-
-            return out_list;
+            return bind.list_from_int_values(values);
         }
     };
 }
@@ -1830,71 +1513,9 @@ fn wrap_counts_serialize() type {
             };
             defer allocator.free(serialized.data.values);
 
-            const out = py.PyDict_New();
-            if (out == null) {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            const type_obj = bind.wrap_str("CountSet") orelse {
-                py.Py_DECREF(out.?);
-                return null;
-            };
-            if (py.PyDict_SetItemString(out, "type", type_obj) < 0) {
-                py.Py_DECREF(type_obj);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(type_obj);
-
-            const data_obj = py.PyDict_New();
-            if (data_obj == null) {
-                py.Py_DECREF(out.?);
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            const values_list = py.PyList_New(@intCast(serialized.data.values.len));
-            if (values_list == null) {
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            for (serialized.data.values, 0..) |value, idx| {
-                const py_value = py.PyLong_FromLongLong(@intCast(value));
-                if (py_value == null) {
-                    py.Py_DECREF(values_list.?);
-                    py.Py_DECREF(data_obj.?);
-                    py.Py_DECREF(out.?);
-                    return null;
-                }
-                if (py.PyList_SetItem(values_list, @intCast(idx), py_value) < 0) {
-                    py.Py_DECREF(py_value.?);
-                    py.Py_DECREF(values_list.?);
-                    py.Py_DECREF(data_obj.?);
-                    py.Py_DECREF(out.?);
-                    return null;
-                }
-            }
-
-            if (py.PyDict_SetItemString(data_obj, "values", values_list) < 0) {
-                py.Py_DECREF(values_list.?);
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(values_list.?);
-
-            if (py.PyDict_SetItemString(out, "data", data_obj) < 0) {
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(data_obj.?);
-
-            return out;
+            const values_list = bind.list_from_int_values(serialized.data.values) orelse return null;
+            defer py.Py_DECREF(values_list);
+            return bind.make_typed_values_payload("CountSet", values_list);
         }
     };
 }
@@ -1917,59 +1538,24 @@ fn wrap_counts_deserialize() type {
             const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
             const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
 
-            const type_obj = py.PyDict_GetItemString(kwarg_obj.data, "type") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing required field 'type'");
-                return null;
-            };
-
-            const type_value = bind.unwrap_str(type_obj) orelse return null;
-            if (!std.mem.eql(u8, type_value, "CountSet")) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Expected type 'CountSet'");
-                return null;
-            }
-
-            const data_obj = py.PyDict_GetItemString(kwarg_obj.data, "data") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'data' field");
-                return null;
-            };
-
-            const values_obj = py.PyDict_GetItemString(data_obj, "values") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'values' field");
-                return null;
-            };
-            if (py.PySequence_Check(values_obj) == 0) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'values' field");
-                return null;
-            }
-
-            const size = py.PySequence_Size(values_obj);
-            if (size < 0) {
-                return null;
-            }
+            const values_obj = bind.extract_typed_values_sequence(
+                kwarg_obj.data,
+                "CountSet",
+                "Expected type 'CountSet'",
+            ) orelse return null;
 
             const allocator = std.heap.c_allocator;
             var values = std.array_list.Managed(i64).init(allocator);
             defer values.deinit();
 
-            var i: isize = 0;
-            while (i < size) : (i += 1) {
-                const item = py.PySequence_GetItem(values_obj, i);
-                if (item == null) {
-                    return null;
-                }
-                defer py.Py_DECREF(item.?);
-
-                py.PyErr_Clear();
-                const value_raw = py.PyLong_AsLongLong(item);
-                if (py.PyErr_Occurred() != null) {
-                    py.PyErr_Clear();
-                    py.PyErr_SetString(py.PyExc_ValueError, "Expected integer value");
-                    return null;
-                }
-                values.append(@intCast(value_raw)) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
+            if (!bind.append_ints_from_sequence(
+                i64,
+                values_obj,
+                &values,
+                "Missing or invalid 'values' field",
+                "Expected integer value",
+            )) {
+                return null;
             }
 
             const serialized = fabll.literals.CountsSerialized{
@@ -2054,36 +1640,15 @@ fn wrap_booleans_setup_from_values() type {
             const wrapper = bind.castWrapper("Booleans", &booleans_type, BooleansWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            if (py.PySequence_Check(kwarg_obj.values) == 0) {
-                py.PyErr_SetString(py.PyExc_TypeError, "values must be a sequence of booleans");
-                return null;
-            }
-
-            const size = py.PySequence_Size(kwarg_obj.values);
-            if (size < 0) {
-                return null;
-            }
-
             const allocator = std.heap.c_allocator;
             var values = std.array_list.Managed(bool).init(allocator);
             defer values.deinit();
-
-            var i: isize = 0;
-            while (i < size) : (i += 1) {
-                const item = py.PySequence_GetItem(kwarg_obj.values, i);
-                if (item == null) {
-                    return null;
-                }
-                defer py.Py_DECREF(item.?);
-
-                const is_true = py.PyObject_IsTrue(item);
-                if (is_true < 0) {
-                    return null;
-                }
-                values.append(is_true != 0) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
+            if (!bind.append_bools_from_sequence(
+                kwarg_obj.values,
+                &values,
+                "values must be a sequence of booleans",
+            )) {
+                return null;
             }
 
             _ = wrapper.data.setup_from_values(values.items);
@@ -2112,12 +1677,6 @@ fn wrap_booleans_get_values() type {
             };
             defer allocator.free(values);
 
-            const out_list = py.PyList_New(@intCast(values.len));
-            if (out_list == null) {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
             var has_true = false;
             var has_false = false;
             for (values) |value| {
@@ -2125,35 +1684,11 @@ fn wrap_booleans_get_values() type {
             }
 
             if (has_true and has_false) {
-                const py_true = py.Py_True();
-                const py_false = py.Py_False();
-                py.Py_INCREF(py_true);
-                py.Py_INCREF(py_false);
-                if (py.PyList_SetItem(out_list, 0, py_true) < 0) {
-                    py.Py_DECREF(py_true);
-                    py.Py_DECREF(py_false);
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                }
-                if (py.PyList_SetItem(out_list, 1, py_false) < 0) {
-                    py.Py_DECREF(py_false);
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                }
-                return out_list;
+                const canonical = [_]bool{ true, false };
+                return bind.list_from_bool_values(canonical[0..]);
             }
 
-            for (values, 0..) |value, idx| {
-                const py_value = if (value) py.Py_True() else py.Py_False();
-                py.Py_INCREF(py_value);
-                if (py.PyList_SetItem(out_list, @intCast(idx), py_value) < 0) {
-                    py.Py_DECREF(py_value);
-                    py.Py_DECREF(out_list.?);
-                    return null;
-                }
-            }
-
-            return out_list;
+            return bind.list_from_bool_values(values);
         }
     };
 }
@@ -2371,66 +1906,9 @@ fn wrap_booleans_serialize() type {
             };
             defer allocator.free(serialized.data.values);
 
-            const out = py.PyDict_New();
-            if (out == null) {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            const type_obj = bind.wrap_str("BooleanSet") orelse {
-                py.Py_DECREF(out.?);
-                return null;
-            };
-            if (py.PyDict_SetItemString(out, "type", type_obj) < 0) {
-                py.Py_DECREF(type_obj);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(type_obj);
-
-            const data_obj = py.PyDict_New();
-            if (data_obj == null) {
-                py.Py_DECREF(out.?);
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            const values_list = py.PyList_New(@intCast(serialized.data.values.len));
-            if (values_list == null) {
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            }
-
-            for (serialized.data.values, 0..) |value, idx| {
-                const py_value = if (value) py.Py_True() else py.Py_False();
-                py.Py_INCREF(py_value);
-                if (py.PyList_SetItem(values_list, @intCast(idx), py_value) < 0) {
-                    py.Py_DECREF(py_value);
-                    py.Py_DECREF(values_list.?);
-                    py.Py_DECREF(data_obj.?);
-                    py.Py_DECREF(out.?);
-                    return null;
-                }
-            }
-
-            if (py.PyDict_SetItemString(data_obj, "values", values_list) < 0) {
-                py.Py_DECREF(values_list.?);
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(values_list.?);
-
-            if (py.PyDict_SetItemString(out, "data", data_obj) < 0) {
-                py.Py_DECREF(data_obj.?);
-                py.Py_DECREF(out.?);
-                return null;
-            }
-            py.Py_DECREF(data_obj.?);
-
-            return out;
+            const values_list = bind.list_from_bool_values(serialized.data.values) orelse return null;
+            defer py.Py_DECREF(values_list);
+            return bind.make_typed_values_payload("BooleanSet", values_list);
         }
     };
 }
@@ -2453,63 +1931,22 @@ fn wrap_booleans_deserialize() type {
             const g_ptr = common.unwrap_zig_address_ptr(graph.GraphView, kwarg_obj.g) orelse return null;
             const tg_ptr = common.unwrap_zig_address_ptr(faebryk.typegraph.TypeGraph, kwarg_obj.tg) orelse return null;
 
-            const type_obj = py.PyDict_GetItemString(kwarg_obj.data, "type") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing required field 'type'");
-                return null;
-            };
-
-            const type_value = bind.unwrap_str(type_obj) orelse return null;
-            if (!std.mem.eql(u8, type_value, "BooleanSet")) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Expected type 'BooleanSet'");
-                return null;
-            }
-
-            const data_obj = py.PyDict_GetItemString(kwarg_obj.data, "data") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'data' field");
-                return null;
-            };
-
-            const values_obj = py.PyDict_GetItemString(data_obj, "values") orelse {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'values' field");
-                return null;
-            };
-            if (py.PySequence_Check(values_obj) == 0) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Missing or invalid 'values' field");
-                return null;
-            }
-
-            const size = py.PySequence_Size(values_obj);
-            if (size < 0) {
-                return null;
-            }
+            const values_obj = bind.extract_typed_values_sequence(
+                kwarg_obj.data,
+                "BooleanSet",
+                "Expected type 'BooleanSet'",
+            ) orelse return null;
 
             const allocator = std.heap.c_allocator;
             var values = std.array_list.Managed(bool).init(allocator);
             defer values.deinit();
 
-            var i: isize = 0;
-            while (i < size) : (i += 1) {
-                const item = py.PySequence_GetItem(values_obj, i);
-                if (item == null) {
-                    return null;
-                }
-                defer py.Py_DECREF(item.?);
-
-                if (item == py.Py_True()) {
-                    values.append(true) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                        return null;
-                    };
-                    continue;
-                }
-                if (item == py.Py_False()) {
-                    values.append(false) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                        return null;
-                    };
-                    continue;
-                }
-                py.PyErr_SetString(py.PyExc_ValueError, "Expected boolean value");
+            if (!bind.append_strict_bools_from_sequence(
+                values_obj,
+                &values,
+                "Missing or invalid 'values' field",
+                "Expected boolean value",
+            )) {
                 return null;
             }
 
