@@ -776,7 +776,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private _handleFetchProxy(req: FetchProxyRequest): void {
-    const url = req.url;
+    // Rewrite the URL to use the internal backend address.
+    // The webview sends the browser-visible URL (e.g. https://host/proxy/8501/...),
+    // but the extension host should always connect directly to the local backend.
+    let url = req.url;
+    try {
+      const externalBase = backendServer.apiUrl;
+      const internalBase = backendServer.internalApiUrl || externalBase;
+      if (externalBase && internalBase && url.startsWith(externalBase)) {
+        url = internalBase + url.slice(externalBase.length);
+      }
+    } catch {
+      // Use URL as-is if rewriting fails
+    }
+
     const init: Record<string, unknown> = {
       method: req.method,
       headers: req.headers,
@@ -1820,34 +1833,30 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         return target;
       }
 
-      var backendBase = '${apiUrl}';
-      var originalFetch = window.fetch;
-      var proxyId = 0;
-      var pending = new Map();
+      // Fetch proxy: expose as an explicit global so the React app can use it
+      // directly. Overriding window.fetch is unreliable in VS Code webview iframes
+      // (the framework may freeze or re-assign it after our script runs).
+      var _fpId = 0;
+      var _fpPending = new Map();
 
       window.addEventListener('message', function(event) {
         var msg = event.data;
-        if (msg && msg.type === 'fetchProxyResult' && pending.has(msg.id)) {
-          var handler = pending.get(msg.id);
-          pending.delete(msg.id);
+        if (msg && msg.type === 'fetchProxyResult' && _fpPending.has(msg.id)) {
+          var handler = _fpPending.get(msg.id);
+          _fpPending.delete(msg.id);
           handler(msg);
         }
       });
 
-      window.fetch = function(input, init) {
-        var url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
-        if (!url.startsWith(backendBase)) {
-          return originalFetch.apply(this, arguments);
-        }
-
-        var id = ++proxyId;
+      window.__ATOPILE_PROXY_FETCH__ = function(url, init) {
+        var id = ++_fpId;
         return new Promise(function(resolve, reject) {
           var timeout = setTimeout(function() {
-            pending.delete(id);
+            _fpPending.delete(id);
             reject(new TypeError('Fetch proxy timeout'));
           }, 30000);
 
-          pending.set(id, function(msg) {
+          _fpPending.set(id, function(msg) {
             clearTimeout(timeout);
             if (msg.error) {
               reject(new TypeError(msg.error));
@@ -1872,8 +1881,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             });
           } else {
             clearTimeout(timeout);
-            pending.delete(id);
-            originalFetch.apply(window, [input, init]).then(resolve, reject);
+            _fpPending.delete(id);
+            reject(new TypeError('VS Code API not available for fetch proxy'));
           }
         });
       };

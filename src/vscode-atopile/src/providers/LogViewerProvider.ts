@@ -90,12 +90,61 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
         case 'wsProxyClose':
           this._handleWsProxyClose(message);
           break;
+        case 'fetchProxy':
+          this._handleFetchProxy(message);
+          break;
       }
     }, null, this._disposables);
 
     // Set HTML only after message handlers are attached so early
     // bootstrap wsProxy messages are not dropped.
     this._refreshWebview();
+  }
+
+  private _handleFetchProxy(req: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }): void {
+    let url = req.url;
+    try {
+      const externalBase = backendServer.apiUrl;
+      const internalBase = backendServer.internalApiUrl || externalBase;
+      if (externalBase && internalBase && url.startsWith(externalBase)) {
+        url = internalBase + url.slice(externalBase.length);
+      }
+    } catch {
+      // Use URL as-is
+    }
+
+    const init: Record<string, unknown> = {
+      method: req.method,
+      headers: req.headers,
+    };
+    if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {
+      init.body = req.body;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch(url, init)
+      .then(async (response: { text: () => Promise<string>; status: number; statusText: string; headers: { forEach: (cb: (v: string, k: string) => void) => void } }) => {
+        const body = await response.text();
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value: string, key: string) => {
+          headers[key] = value;
+        });
+        this._view?.webview.postMessage({
+          type: 'fetchProxyResult',
+          id: req.id,
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          body,
+        });
+      })
+      .catch((err: Error) => {
+        this._view?.webview.postMessage({
+          type: 'fetchProxyResult',
+          id: req.id,
+          error: String(err),
+        });
+      });
   }
 
   private _handleWsProxyConnect(msg: { id: number; url: string }): void {
@@ -224,18 +273,102 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
   </script>
   <script nonce="${nonce}">
-    // WebSocket-over-postMessage bridge (same as SidebarProvider)
+    // Fetch + WebSocket proxy bridge (same as SidebarProvider)
     // Webviews in OpenVSCode Server run in HTTPS iframes which block ws:// (Mixed Content).
     // This shim routes WebSocket connections through the extension host via postMessage.
     (function() {
+      // Cache acquireVsCodeApi — it can only be invoked once per webview session.
+      // Without this, send()/close() on the ProxyWebSocket silently fail.
+      var originalAcquire = window.acquireVsCodeApi;
+      var vsCodeApi = null;
+      if (typeof originalAcquire === 'function') {
+        window.acquireVsCodeApi = function() {
+          if (!vsCodeApi) vsCodeApi = originalAcquire();
+          return vsCodeApi;
+        };
+      }
+
       function getVsCodeApi() {
         try {
-          return (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
+          return vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
         } catch (err) {
           console.error('[atopile log webview] Failed to acquire VS Code API:', err);
           return null;
         }
       }
+
+      function normalizeHeaders(headers) {
+        if (!headers) return {};
+        if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+          var out = {};
+          headers.forEach(function(v, k) { out[k] = v; });
+          return out;
+        }
+        if (Array.isArray(headers)) {
+          var outArray = {};
+          for (var i = 0; i < headers.length; i++) {
+            var entry = headers[i];
+            if (Array.isArray(entry) && entry.length >= 2) {
+              outArray[String(entry[0])] = String(entry[1]);
+            }
+          }
+          return outArray;
+        }
+        return headers;
+      }
+
+      // Fetch proxy: route HTTP requests through the extension host.
+      // Without this, fetch() from the CDN iframe is CORS-blocked.
+      var _fpId = 0;
+      var _fpPending = new Map();
+
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (msg && msg.type === 'fetchProxyResult' && _fpPending.has(msg.id)) {
+          var handler = _fpPending.get(msg.id);
+          _fpPending.delete(msg.id);
+          handler(msg);
+        }
+      });
+
+      window.__ATOPILE_PROXY_FETCH__ = function(url, init) {
+        var id = ++_fpId;
+        return new Promise(function(resolve, reject) {
+          var timeout = setTimeout(function() {
+            _fpPending.delete(id);
+            reject(new TypeError('Fetch proxy timeout'));
+          }, 30000);
+
+          _fpPending.set(id, function(msg) {
+            clearTimeout(timeout);
+            if (msg.error) {
+              reject(new TypeError(msg.error));
+            } else {
+              resolve(new Response(msg.body, {
+                status: msg.status || 200,
+                statusText: msg.statusText || 'OK',
+                headers: msg.headers || {},
+              }));
+            }
+          });
+
+          var api = getVsCodeApi();
+          if (api) {
+            api.postMessage({
+              type: 'fetchProxy',
+              id: id,
+              url: url,
+              method: (init && init.method) || 'GET',
+              headers: normalizeHeaders(init && init.headers),
+              body: (init && init.body) || null,
+            });
+          } else {
+            clearTimeout(timeout);
+            _fpPending.delete(id);
+            reject(new TypeError('VS Code API not available for fetch proxy'));
+          }
+        });
+      };
 
       function createCompatEvent(type, init) {
         var evt;
