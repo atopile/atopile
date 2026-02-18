@@ -108,6 +108,8 @@ class AtoLogger(logging.Logger):
     _active_build_logger = None
     _active_test_logger = None
     _active_unscoped_logger = None
+    _periodic_flush_thread: threading.Thread | None = None
+    _periodic_flush_stop = threading.Event()
 
     @classmethod
     def _deactivate_logger(cls, logger: "AtoLogger | None") -> None:
@@ -152,7 +154,6 @@ class AtoLogger(logging.Logger):
         self.stage_or_test_name: str = ""
         self._db_buffer: list[Any] = []
         self._db_buffer_lock = threading.Lock()
-        self._db_last_flush = time.monotonic()
         self._db_identifier: str = ""
 
     # -----------------------------------------------------------------
@@ -349,7 +350,7 @@ class AtoLogger(logging.Logger):
         python_traceback: str | None = None,
         objects: dict | None = None,
     ) -> None:
-        """Build a DB entry, buffer it, and flush when thresholds are met."""
+        """Build a DB entry, buffer it, and flush when batch threshold is met."""
         if self._db_writer is None or self._db_row_class is None:
             raise RuntimeError(
                 f"DB logger '{self.name}' is not initialized or has been deactivated"
@@ -373,10 +374,7 @@ class AtoLogger(logging.Logger):
         )
         with self._db_buffer_lock:
             self._db_buffer.append(entry)
-            should_flush = (
-                len(self._db_buffer) >= self.BATCH_SIZE
-                or (time.monotonic() - self._db_last_flush) > self.FLUSH_INTERVAL
-            )
+            should_flush = len(self._db_buffer) >= self.BATCH_SIZE
         if should_flush:
             self.db_flush()
 
@@ -389,7 +387,6 @@ class AtoLogger(logging.Logger):
             if not self._db_buffer:
                 return
             entries, self._db_buffer = self._db_buffer, []
-            self._db_last_flush = time.monotonic()
         self._db_writer(entries)
 
     # -----------------------------------------------------------------
@@ -468,19 +465,48 @@ class AtoLogger(logging.Logger):
 
     @classmethod
     def close_all(cls) -> None:
-        """Close build/test contexts and keep unscoped as baseline."""
-        cls._set_active_loggers(unscoped=cls._get_or_create_unscoped_logger())
+        """Flush all active contexts, then close build/test while keeping unscoped."""
+        cls.flush_all()
+        cls._set_active_loggers(unscoped=cls._active_unscoped_logger)
 
     @classmethod
     def flush_all(cls) -> None:
-        """Flush pending logs without closing."""
+        """Flush pending logs from currently active contexts without closing."""
+        seen: set[int] = set()
         for logger in (
             cls._active_build_logger,
             cls._active_test_logger,
-            cls._get_or_create_unscoped_logger(),
+            cls._active_unscoped_logger,
         ):
-            if logger is not None:
-                logger.db_flush()
+            if logger is None or id(logger) in seen:
+                continue
+            seen.add(id(logger))
+            logger.db_flush()
+
+    @classmethod
+    def start_periodic_flush(cls) -> None:
+        """Start a background thread that periodically flushes active log buffers."""
+        thread = cls._periodic_flush_thread
+        if thread is not None and thread.is_alive():
+            return
+
+        cls._periodic_flush_stop.clear()
+
+        def _periodic_flush_loop() -> None:
+            while not cls._periodic_flush_stop.wait(timeout=cls.FLUSH_INTERVAL):
+                cls.flush_all()
+
+        cls._periodic_flush_thread = threading.Thread(
+            target=_periodic_flush_loop,
+            name="atopile-log-flusher",
+            daemon=True,
+        )
+        cls._periodic_flush_thread.start()
+
+    @classmethod
+    def stop_periodic_flush(cls) -> None:
+        """Stop the periodic flush thread."""
+        cls._periodic_flush_stop.set()
 
     # -----------------------------------------------------------------
     # Internal helpers
@@ -962,7 +988,14 @@ logging.basicConfig(level=logging.DEBUG, handlers=[handler, _db_handler])
 if _is_serving():
     handler.console = console
 
-atexit.register(AtoLogger.close_all)
+
+def _shutdown_logging() -> None:
+    AtoLogger.stop_periodic_flush()
+    AtoLogger.close_all()
+
+
+AtoLogger.start_periodic_flush()
+atexit.register(_shutdown_logging)
 
 if PLOG:
     from faebryk.libs.picker.picker import logger as plog

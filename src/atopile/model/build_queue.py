@@ -107,8 +107,6 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
 
     if build.build_id:
         env["ATO_BUILD_ID"] = build.build_id
-    if build.timestamp:
-        env["ATO_BUILD_TIMESTAMP"] = build.timestamp
 
     env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
 

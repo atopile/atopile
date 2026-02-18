@@ -14,7 +14,7 @@ from pathlib import Path
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import AppContext, Build, BuildStatus, Log
-from atopile.logging import AtoLogger, get_logger
+from atopile.logging import get_logger
 from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
     _build_queue,
@@ -699,8 +699,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             ),
                             loop,
                         )
-                finally:
-                    AtoLogger.flush_all()
 
             threading.Thread(target=run_install, daemon=True).start()
 
@@ -823,8 +821,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             ),
                             loop,
                         )
-                finally:
-                    AtoLogger.flush_all()
 
             threading.Thread(target=run_change, daemon=True).start()
 
