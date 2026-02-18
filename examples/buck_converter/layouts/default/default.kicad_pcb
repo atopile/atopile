@@ -1958,7 +1958,7 @@
 			)
 		)
 	)
-	(footprint "UNI_ROYAL_0402WGF1623TCE:R0402"
+	(footprint "Vishay_Intertech_CRCW040295K3FKED:R0402"
 		(layer "F.Cu")
 		(uuid "34dd08d3-18e2-404b-8470-b71d4642524b")
 		(at 0 -10 0)
@@ -1974,7 +1974,7 @@
 				)
 			)
 		)
-		(property "Value" "162000Ω"
+		(property "Value" "95300Ω"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "780c5228-bfbc-4c75-aefd-4055f7891972")
@@ -1985,13 +1985,13 @@
 				)
 			)
 		)
-		(property "LCSC" "C54068"
+		(property "LCSC" "C4115778"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "41225140-f705-4e6f-8b49-10954642524b")
 		)
-		(property "Manufacturer" "UNI-ROYAL(Uniroyal Elec)"
+		(property "Manufacturer" "Vishay Intertech"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2009,25 +2009,25 @@
 			(hide yes)
 			(uuid "919bcffc-5466-43a2-b65c-deef4642524b")
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 160380.00003620982, \"max\": 163619.99996379018}}]}}, \"unit\": \"ohm\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 94347.00002130121, \"max\": 96252.99997869879}}]}}, \"unit\": \"ohm\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "8becbaa6-3387-4486-a98a-45c14642524b")
 		)
-		(property "Partnumber" "0402WGF1623TCE"
+		(property "Partnumber" "CRCW040295K3FKED"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "f5af7f36-b0ef-4ddd-95ac-01e94642524b")
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2206010000_UNI-ROYAL-Uniroyal-Elec-0402WGF1623TCE_C54068.pdf"
+		(property "Datasheet" "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2312131014_Vishay-Intertech-CRCW040295K3FKED_C4115778.pdf"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "84a44ae0-932a-435d-9612-1dd74642524b")
 		)
-		(property "resistance" "162000±1.0%Ω"
+		(property "resistance" "95300±1.0%Ω"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2039,7 +2039,7 @@
 			(hide yes)
 			(uuid "1287d5f9-e8ab-45fa-9ab3-0db14642524b")
 		)
-		(property "max_voltage" "50V"
+		(property "max_voltage" "ℝ+V"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2051,7 +2051,7 @@
 			(hide yes)
 			(uuid "b65f98e9-32de-48bc-8731-02014642524b")
 		)
-		(property "lcsc_id" "C54068"
+		(property "lcsc_id" "C4115778"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2173,7 +2173,7 @@
 			(uuid "3382ce04-15a9-4b49-80c0-8900da22fe06")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1623TCE/R0402_L1.0-W0.5-H0.4.step"
+		(model "${KIPRJMOD}/../../parts/Vishay_Intertech_CRCW040295K3FKED/R0402_L1.0-W0.5-H0.4.step"
 			(offset
 				(xyz 0 0 -0)
 			)

@@ -153,6 +153,7 @@ All fields are strings (the `Requirement` node uses `StringParameter` internally
 | `"peak_to_peak"` | Max minus min of signal | Voltage/current |
 | `"overshoot"` | Peak above final value as percentage | Percentage |
 | `"rms"` | Root mean square of signal | Voltage/current |
+| `"frequency"` | Signal frequency via rising-edge counting | Frequency in Hz |
 
 ### Frequency-domain measurements (AC)
 

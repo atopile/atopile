@@ -27,6 +27,10 @@ class RequirementResult:
     requirement: F.Requirement
     actual: float
     passed: bool
+    display_net: str = ""  # original ato address (e.g. "package.SW")
+    resolved_net: str = ""  # canonical SPICE net (e.g. "package_8")
+    resolved_diff_ref: str | None = None
+    resolved_ctx_nets: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +102,32 @@ def _measure_tran(
         mean_sq = sum(x * x for x in signal_data) / len(signal_data)
         return math.sqrt(mean_sq)
 
+    if measurement == "sweep":
+        return signal_data[-1]
+
+    if measurement == "frequency":
+        # Count rising-edge threshold crossings to determine frequency.
+        # Threshold = midpoint between min and max of signal.
+        if len(signal_data) < 3 or len(time_data) < 3:
+            return float("nan")
+        sig_min = min(signal_data)
+        sig_max = max(signal_data)
+        threshold = (sig_min + sig_max) / 2.0
+        crossings: list[float] = []
+        for i in range(len(signal_data) - 1):
+            if signal_data[i] <= threshold < signal_data[i + 1]:
+                # Linear interpolation to find crossing time
+                frac = (threshold - signal_data[i]) / (
+                    signal_data[i + 1] - signal_data[i]
+                )
+                t_cross = time_data[i] + frac * (time_data[i + 1] - time_data[i])
+                crossings.append(t_cross)
+        if len(crossings) < 2:
+            return float("nan")
+        total_time = crossings[-1] - crossings[0]
+        num_cycles = len(crossings) - 1
+        return num_cycles / total_time
+
     # Default: final value
     return signal_data[-1]
 
@@ -111,12 +141,16 @@ def _tran_group_key(req: F.Requirement) -> tuple:
     """Group key for transient requirements sharing the same config."""
     override = req.get_source_override()
     start = req.get_tran_start()
+    extra = tuple(req.get_extra_spice()) or None
+    removed = tuple(req.get_remove_elements()) or None
     return (
         req.get_tran_step(),
         req.get_tran_stop(),
         start if start and start > 0 else None,
         override[0] if override else None,
         override[1] if override else None,
+        extra,
+        removed,
     )
 
 
@@ -132,6 +166,8 @@ def _ac_group_key(req: F.Requirement) -> tuple:
         req.get_ac_stop_freq(),
         req.get_ac_points_per_dec(),
         req.get_ac_source_name(),
+        tuple(req.get_extra_spice()) or None,
+        tuple(req.get_remove_elements()) or None,
     )
 
 
@@ -189,13 +225,27 @@ def _measure_ac(
             gain = ac_result.gain_db(net)
         if not gain:
             return float("nan")
-        # DC gain is the first point (lowest frequency)
         dc_gain = gain[0]
+        max_gain = max(gain)
+
+        # High-pass case: DC gain is well below passband
+        if max_gain - dc_gain > 3.0:
+            threshold = max_gain - 3.0
+            for i in range(len(gain) - 1):
+                if gain[i] < threshold <= gain[i + 1]:
+                    log_f0 = math.log10(ac_result.freq[i])
+                    log_f1 = math.log10(ac_result.freq[i + 1])
+                    if gain[i] == gain[i + 1]:
+                        return ac_result.freq[i]
+                    t = (threshold - gain[i]) / (gain[i + 1] - gain[i])
+                    log_fc = log_f0 + t * (log_f1 - log_f0)
+                    return 10 ** log_fc
+            return float("nan")
+
+        # Low-pass case: find where gain drops 3dB below DC
         threshold = dc_gain - 3.0
-        # Find where gain crosses threshold
         for i in range(len(gain) - 1):
             if gain[i] >= threshold and gain[i + 1] < threshold:
-                # Log-interpolate the crossing frequency
                 log_f0 = math.log10(ac_result.freq[i])
                 log_f1 = math.log10(ac_result.freq[i + 1])
                 if gain[i] == gain[i + 1]:
@@ -223,10 +273,51 @@ def _measure_ac(
 # ---------------------------------------------------------------------------
 
 
+def _req_net(req: F.Requirement, overrides: dict[int, _ResolvedNets] | None) -> str:
+    """Get the resolved net name for *req* (SPICE-level)."""
+    if overrides and id(req) in overrides:
+        return overrides[id(req)].net
+    return req.get_net()
+
+
+def _req_diff_ref(
+    req: F.Requirement, overrides: dict[int, _ResolvedNets] | None
+) -> str | None:
+    if overrides and id(req) in overrides:
+        return overrides[id(req)].diff_ref_net
+    return req.get_diff_ref_net()
+
+
+def _req_ctx_nets(
+    req: F.Requirement, overrides: dict[int, _ResolvedNets] | None
+) -> list[str]:
+    if overrides and id(req) in overrides:
+        return overrides[id(req)].context_nets
+    return req.get_context_nets()
+
+
+def _result_net(result: "RequirementResult") -> str:
+    """Get the resolved SPICE net from a RequirementResult."""
+    return result.resolved_net or result.requirement.get_net()
+
+
+def _result_diff_ref(result: "RequirementResult") -> str | None:
+    if result.resolved_diff_ref is not None:
+        return result.resolved_diff_ref
+    return result.requirement.get_diff_ref_net()
+
+
+def _result_ctx_nets(result: "RequirementResult") -> list[str]:
+    if result.resolved_ctx_nets is not None:
+        return result.resolved_ctx_nets
+    return result.requirement.get_context_nets()
+
+
 def verify_requirements(
     circuit: Circuit,
     requirements: list[F.Requirement],
     uic: bool = False,
+    net_overrides: dict[int, _ResolvedNets] | None = None,
 ) -> tuple[list[RequirementResult], dict[tuple, TransientResult], dict[tuple, ACResult]]:
     """Run simulations and check all requirements.
 
@@ -259,7 +350,7 @@ def verify_requirements(
         op = circuit.op()
         for req in dcop_reqs:
             measurement = req.get_measurement()
-            actual = _measure_dcop(measurement, op[req.get_net()])
+            actual = _measure_dcop(measurement, op[_req_net(req, net_overrides)])
             passed = req.get_min_val() <= actual <= req.get_max_val()
             results.append(RequirementResult(requirement=req, actual=actual, passed=passed))
 
@@ -275,52 +366,106 @@ def verify_requirements(
         for key, group in groups.items():
             first = group[0]
 
-            override = first.get_source_override()
-            if override is not None:
-                circuit.set_source(override[0], override[1])
+            # Save circuit state so modifications are isolated per group
+            saved_state = circuit.save_state()
 
-            # Collect all signals needed
-            signals: list[str] = []
-            seen: set[str] = set()
-            for req in group:
-                for net in [req.get_net(), *req.get_context_nets()]:
-                    sig = f"v({net})" if not net.startswith(("v(", "i(")) else net
-                    if sig not in seen:
-                        signals.append(sig)
-                        seen.add(sig)
+            try:
+                override = first.get_source_override()
+                if override is not None:
+                    circuit.set_source(override[0], override[1])
 
-            step = first.get_tran_step()
-            stop = first.get_tran_stop()
-            start = first.get_tran_start() or 0
-            if step is None or stop is None:
-                raise ValueError(
-                    f"Transient requirement '{first.get_name()}' "
-                    "missing tran_step or tran_stop"
-                )
+                # Apply circuit modifications (remove/add elements)
+                for name in first.get_remove_elements():
+                    circuit.remove_element(name)
+                for line in first.get_extra_spice():
+                    circuit.add_element(line)
 
-            tran_result = circuit.tran(
-                step=step, stop=stop, start=start, signals=signals, uic=uic
-            )
-            tran_data[key] = tran_result
+                # Collect all signals needed
+                signals: list[str] = []
+                seen: set[str] = set()
+                for req in group:
+                    for net in [_req_net(req, net_overrides),
+                                *_req_ctx_nets(req, net_overrides)]:
+                        sig = (
+                            f"v({net})"
+                            if not net.startswith(("v(", "i("))
+                            else net
+                        )
+                        if sig not in seen:
+                            signals.append(sig)
+                            seen.add(sig)
+                    diff_ref = _req_diff_ref(req, net_overrides)
+                    if diff_ref:
+                        diff_sig = (
+                            f"v({diff_ref})"
+                            if not diff_ref.startswith(("v(", "i("))
+                            else diff_ref
+                        )
+                        if diff_sig not in seen:
+                            signals.append(diff_sig)
+                            seen.add(diff_sig)
 
-            for req in group:
-                net = req.get_net()
-                sig_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
-                signal_data = tran_result[sig_key]
-                time_data, meas_data = _slice_from(
-                    tran_result.time, signal_data, req.get_tran_start()
+                step = first.get_tran_step()
+                stop = first.get_tran_stop()
+                start = first.get_tran_start() or 0
+                if step is None or stop is None:
+                    raise ValueError(
+                        f"Transient requirement '{first.get_name()}' "
+                        "missing tran_step or tran_stop"
+                    )
+
+                tran_result = circuit.tran(
+                    step=step, stop=stop, start=start, signals=signals, uic=uic
                 )
-                measurement = req.get_measurement()
-                actual = _measure_tran(
-                    measurement,
-                    meas_data,
-                    time_data,
-                    settling_tolerance=req.get_settling_tolerance(),
+                tran_data[key] = tran_result
+
+                for req in group:
+                    net = _req_net(req, net_overrides)
+                    sig_key = (
+                        f"v({net})"
+                        if not net.startswith(("v(", "i("))
+                        else net
+                    )
+                    diff_ref = _req_diff_ref(req, net_overrides)
+                    if diff_ref:
+                        ref_key = (
+                            f"v({diff_ref})"
+                            if not diff_ref.startswith(("v(", "i("))
+                            else diff_ref
+                        )
+                        signal_data = [
+                            a - b
+                            for a, b in zip(
+                                tran_result[sig_key], tran_result[ref_key]
+                            )
+                        ]
+                    else:
+                        signal_data = tran_result[sig_key]
+                    time_data, meas_data = _slice_from(
+                        tran_result.time, signal_data, req.get_tran_start()
+                    )
+                    measurement = req.get_measurement()
+                    actual = _measure_tran(
+                        measurement,
+                        meas_data,
+                        time_data,
+                        settling_tolerance=req.get_settling_tolerance(),
+                    )
+                    passed = req.get_min_val() <= actual <= req.get_max_val()
+                    results.append(
+                        RequirementResult(
+                            requirement=req, actual=actual, passed=passed
+                        )
+                    )
+            except Exception:
+                req_names = [r.get_name() for r in group]
+                logger.warning(
+                    f"Transient group failed for {req_names} — skipping",
+                    exc_info=True,
                 )
-                passed = req.get_min_val() <= actual <= req.get_max_val()
-                results.append(
-                    RequirementResult(requirement=req, actual=actual, passed=passed)
-                )
+            finally:
+                # Restore circuit state for next group
+                circuit.restore_state(saved_state)
 
     # -- AC analysis --
     ac_data: dict[tuple, ACResult] = {}
@@ -333,66 +478,104 @@ def verify_requirements(
         for key, group in ac_groups.items():
             first = group[0]
 
-            # Set up AC source: append "AC 1" to the existing source spec
-            ac_source = first.get_ac_source_name()
-            if ac_source:
-                existing_spec = circuit.get_source_spec(ac_source)
-                if existing_spec:
-                    # Append AC 1 if not already present
-                    if "AC" not in existing_spec.upper():
-                        circuit.set_source(ac_source, f"{existing_spec} AC 1")
-                else:
-                    circuit.set_source(ac_source, "DC 0 AC 1")
+            # Save circuit state so modifications are isolated per group
+            saved_state = circuit.save_state()
 
-            # Collect all signals needed
-            signals: list[str] = []
-            seen: set[str] = set()
-            for req in group:
-                net = req.get_net()
-                sig = f"v({net})" if not net.startswith(("v(", "i(")) else net
-                if sig not in seen:
-                    signals.append(sig)
-                    seen.add(sig)
-                ref_net = req.get_ac_ref_net()
-                if ref_net:
-                    ref_sig = (
-                        f"v({ref_net})"
-                        if not ref_net.startswith(("v(", "i("))
-                        else ref_net
+            try:
+                # Apply circuit modifications (remove/add elements)
+                for name in first.get_remove_elements():
+                    circuit.remove_element(name)
+                for line in first.get_extra_spice():
+                    circuit.add_element(line)
+
+                # Set up AC source: append "AC 1" to the existing source spec
+                ac_source = first.get_ac_source_name()
+                if ac_source:
+                    existing_spec = circuit.get_source_spec(ac_source)
+                    if existing_spec:
+                        # Append AC 1 if not already present
+                        if "AC" not in existing_spec.upper():
+                            circuit.set_source(ac_source, f"{existing_spec} AC 1")
+                    else:
+                        circuit.set_source(ac_source, "DC 0 AC 1")
+
+                # Collect all signals needed
+                signals: list[str] = []
+                seen: set[str] = set()
+                for req in group:
+                    net = _req_net(req, net_overrides)
+                    sig = f"v({net})" if not net.startswith(("v(", "i(")) else net
+                    if sig not in seen:
+                        signals.append(sig)
+                        seen.add(sig)
+                    ref_net = req.get_ac_ref_net()
+                    if ref_net:
+                        ref_sig = (
+                            f"v({ref_net})"
+                            if not ref_net.startswith(("v(", "i("))
+                            else ref_net
+                        )
+                        if ref_sig not in seen:
+                            signals.append(ref_sig)
+                            seen.add(ref_sig)
+                    diff_ref = _req_diff_ref(req, net_overrides)
+                    if diff_ref:
+                        diff_sig = (
+                            f"v({diff_ref})"
+                            if not diff_ref.startswith(("v(", "i("))
+                            else diff_ref
+                        )
+                        if diff_sig not in seen:
+                            signals.append(diff_sig)
+                            seen.add(diff_sig)
+
+                start = first.get_ac_start_freq()
+                stop = first.get_ac_stop_freq()
+                ppd = first.get_ac_points_per_dec() or 100
+                if start is None or stop is None:
+                    raise ValueError(
+                        f"AC requirement '{first.get_name()}' "
+                        "missing ac_start_freq or ac_stop_freq"
                     )
-                    if ref_sig not in seen:
-                        signals.append(ref_sig)
-                        seen.add(ref_sig)
 
-            start = first.get_ac_start_freq()
-            stop = first.get_ac_stop_freq()
-            ppd = first.get_ac_points_per_dec() or 100
-            if start is None or stop is None:
-                raise ValueError(
-                    f"AC requirement '{first.get_name()}' "
-                    "missing ac_start_freq or ac_stop_freq"
+                ac_result = circuit.ac(
+                    start_freq=start,
+                    stop_freq=stop,
+                    points_per_decade=ppd,
+                    signals=signals,
                 )
+                ac_data[key] = ac_result
 
-            ac_result = circuit.ac(
-                start_freq=start,
-                stop_freq=stop,
-                points_per_decade=ppd,
-                signals=signals,
-            )
-            ac_data[key] = ac_result
-
-            for req in group:
-                net = req.get_net()
-                ref_net = req.get_ac_ref_net()
-                measurement = req.get_measurement()
-                measure_freq = req.get_ac_measure_freq()
-                actual = _measure_ac(
-                    measurement, ac_result, net, ref_net, measure_freq
+                for req in group:
+                    net = _req_net(req, net_overrides)
+                    ref_net = req.get_ac_ref_net()
+                    measurement = req.get_measurement()
+                    measure_freq = req.get_ac_measure_freq()
+                    diff_ref = _req_diff_ref(req, net_overrides)
+                    if diff_ref:
+                        diff_key = ac_result.compute_diff(net, diff_ref)
+                        actual = _measure_ac(
+                            measurement, ac_result, diff_key, ref_net, measure_freq
+                        )
+                    else:
+                        actual = _measure_ac(
+                            measurement, ac_result, net, ref_net, measure_freq
+                        )
+                    passed = req.get_min_val() <= actual <= req.get_max_val()
+                    results.append(
+                        RequirementResult(
+                            requirement=req, actual=actual, passed=passed
+                        )
+                    )
+            except Exception:
+                req_names = [r.get_name() for r in group]
+                logger.warning(
+                    f"AC group failed for {req_names} — skipping",
+                    exc_info=True,
                 )
-                passed = req.get_min_val() <= actual <= req.get_max_val()
-                results.append(
-                    RequirementResult(requirement=req, actual=actual, passed=passed)
-                )
+            finally:
+                # Restore circuit state for next group
+                circuit.restore_state(saved_state)
 
     return results, tran_data, ac_data
 
@@ -479,8 +662,8 @@ def _setup_common_plot(
     from plotly.subplots import make_subplots
 
     req = result.requirement
-    net = req.get_net()
-    context_nets = req.get_context_nets()
+    net = _result_net(result)
+    context_nets = _result_ctx_nets(result)
     net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
     nut_unit = _signal_unit(net_key)
 
@@ -488,7 +671,21 @@ def _setup_common_plot(
     t_max = tran_data.time[-1] if tran_data.time else 1.0
     scale, t_unit = _auto_scale_time(t_max)
     time_scaled = [t * scale for t in tran_data.time]
-    nut_signal = tran_data[net_key]
+
+    # Compute differential signal if diff_ref_net is set
+    diff_ref = _result_diff_ref(result)
+    if diff_ref:
+        ref_key = (
+            f"v({diff_ref})"
+            if not diff_ref.startswith(("v(", "i("))
+            else diff_ref
+        )
+        nut_signal = [
+            a - b for a, b in zip(tran_data[net_key], tran_data[ref_key])
+        ]
+        net_key = f"{net_key} - {ref_key}"
+    else:
+        nut_signal = tran_data[net_key]
 
     # Partition context signals by unit
     same_unit: list[str] = []
@@ -509,13 +706,14 @@ def _setup_common_plot(
     else:
         fig = go.Figure()
 
-    # NUT signal (thick blue)
+    # NUT signal (thick blue) — use ato address as label when available
+    nut_label = result.display_net if result.display_net else net_key
     fig.add_trace(
         go.Scatter(
             x=time_scaled,
             y=nut_signal,
             mode="lines",
-            name=net_key,
+            name=nut_label,
             line=dict(color="royalblue", width=3),
         ),
         secondary_y=False if has_secondary else None,
@@ -1159,6 +1357,120 @@ def _plot_rms(
     return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
 
 
+def _plot_frequency(
+    result: RequirementResult,
+    tran_data: TransientResult,
+    path: Path,
+) -> Path:
+    """Plot for Frequency measurement: signal waveform with cycle markers."""
+    import plotly.graph_objects as go
+
+    req = result.requirement
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+
+    fig, time_scaled, nut_signal, nut_unit, scale, t_unit, has_sec = (
+        _setup_common_plot(result, tran_data)
+    )
+
+    actual = result.actual  # Hz
+
+    # Frequency pass band (horizontal lines in Hz don't apply to time-domain Y,
+    # so we annotate with vertical markers and an info box instead)
+
+    # Mark a few rising-edge crossings on the waveform
+    sig_min = min(nut_signal)
+    sig_max = max(nut_signal)
+    threshold = (sig_min + sig_max) / 2.0
+
+    crossing_times: list[float] = []
+    crossing_vals: list[float] = []
+    for i in range(len(nut_signal) - 1):
+        if nut_signal[i] <= threshold < nut_signal[i + 1]:
+            frac = (threshold - nut_signal[i]) / (
+                nut_signal[i + 1] - nut_signal[i]
+            )
+            t_cross = time_scaled[i] + frac * (time_scaled[i + 1] - time_scaled[i])
+            crossing_times.append(t_cross)
+            crossing_vals.append(threshold)
+
+    # Threshold line
+    fig.add_hline(
+        y=threshold,
+        line=dict(color="gray", dash="dot", width=1),
+        opacity=0.4,
+    )
+
+    marker_color = "#2ecc71" if result.passed else "#e74c3c"
+
+    # Highlight one cycle: two consecutive rising edges with a
+    # double-arrow showing the measured period.
+    # Pick a pair near the middle of the data for a representative sample.
+    if len(crossing_times) >= 2:
+        mid = len(crossing_times) // 2
+        t0 = crossing_times[mid - 1]
+        t1 = crossing_times[mid]
+        period = (t1 - t0) / scale  # back to seconds for formatting
+
+        # Markers on the two edges
+        fig.add_trace(go.Scatter(
+            x=[t0, t1],
+            y=[threshold, threshold],
+            mode="markers",
+            marker=dict(color=marker_color, size=10, symbol="circle",
+                        line=dict(color="white", width=2)),
+            name="Measured edges",
+            showlegend=True,
+        ))
+
+        # Double-arrow between the two edges (at the peak for visibility)
+        arrow_y = sig_max * 0.95
+        fig.add_shape(
+            type="line",
+            x0=t0, x1=t1, y0=arrow_y, y1=arrow_y,
+            line=dict(color="black", width=1.5),
+        )
+        # Vertical drop-lines from arrow to crossing points
+        fig.add_shape(
+            type="line",
+            x0=t0, x1=t0, y0=threshold, y1=arrow_y,
+            line=dict(color="black", width=1, dash="dot"),
+        )
+        fig.add_shape(
+            type="line",
+            x0=t1, x1=t1, y0=threshold, y1=arrow_y,
+            line=dict(color="black", width=1, dash="dot"),
+        )
+
+        # Period label at the midpoint of the arrow
+        fig.add_annotation(
+            x=(t0 + t1) / 2, y=arrow_y,
+            text=f"T = {_format_eng(period, 's')}",
+            showarrow=False,
+            font=dict(color="black", size=11),
+            yshift=12,
+        )
+
+    # Info box with frequency result
+    info_text = (
+        f"Frequency: {_format_eng(actual, 'Hz')}<br>"
+        f"Limit: [{_format_eng(min_val, 'Hz')}, "
+        f"{_format_eng(max_val, 'Hz')}]<br>"
+        f"Cycles counted: {len(crossing_times)}"
+    )
+    fig.add_annotation(
+        x=0.02, y=0.02, xref="paper", yref="paper",
+        text=info_text, showarrow=False,
+        font=dict(color=marker_color, size=11, family="monospace"),
+        xanchor="left", yanchor="bottom", align="left",
+        bgcolor="rgba(255,255,255,0.85)", bordercolor=marker_color,
+        borderwidth=1, borderpad=4,
+    )
+
+    subtitle = f"Measurement: frequency | Actual: {_format_eng(actual, 'Hz')}"
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+
+
 # ---------------------------------------------------------------------------
 # AC / Bode plot functions
 # ---------------------------------------------------------------------------
@@ -1199,16 +1511,23 @@ def _plot_ac_gain_db(
     req = result.requirement
     min_val = req.get_min_val()
     max_val = req.get_max_val()
-    net = req.get_net()
+    net = _result_net(result)
     ref_net = req.get_ac_ref_net()
     measure_freq = req.get_ac_measure_freq()
+    diff_ref = _result_diff_ref(result)
+
+    # Compute differential signal if diff_ref_net is set
+    if diff_ref:
+        sig_key = ac_data.compute_diff(net, diff_ref)
+    else:
+        sig_key = net
 
     if ref_net:
-        gain = ac_data.gain_db_relative(net, ref_net)
-        phase = ac_data.phase_deg_relative(net, ref_net)
+        gain = ac_data.gain_db_relative(sig_key, ref_net)
+        phase = ac_data.phase_deg_relative(sig_key, ref_net)
     else:
-        gain = ac_data.gain_db(net)
-        phase = ac_data.phase_deg(net)
+        gain = ac_data.gain_db(sig_key)
+        phase = ac_data.phase_deg(sig_key)
 
     fig = make_subplots(
         rows=2, cols=1, shared_xaxes=True,
@@ -1287,16 +1606,23 @@ def _plot_ac_phase_deg(
     req = result.requirement
     min_val = req.get_min_val()
     max_val = req.get_max_val()
-    net = req.get_net()
+    net = _result_net(result)
     ref_net = req.get_ac_ref_net()
     measure_freq = req.get_ac_measure_freq()
+    diff_ref = _result_diff_ref(result)
+
+    # Compute differential signal if diff_ref_net is set
+    if diff_ref:
+        sig_key = ac_data.compute_diff(net, diff_ref)
+    else:
+        sig_key = net
 
     if ref_net:
-        gain = ac_data.gain_db_relative(net, ref_net)
-        phase = ac_data.phase_deg_relative(net, ref_net)
+        gain = ac_data.gain_db_relative(sig_key, ref_net)
+        phase = ac_data.phase_deg_relative(sig_key, ref_net)
     else:
-        gain = ac_data.gain_db(net)
-        phase = ac_data.phase_deg(net)
+        gain = ac_data.gain_db(sig_key)
+        phase = ac_data.phase_deg(sig_key)
 
     fig = make_subplots(
         rows=2, cols=1, shared_xaxes=True,
@@ -1374,16 +1700,34 @@ def _plot_ac_bandwidth_3db(
     req = result.requirement
     min_val = req.get_min_val()
     max_val = req.get_max_val()
-    net = req.get_net()
+    net = _result_net(result)
     ref_net = req.get_ac_ref_net()
+    diff_ref = _result_diff_ref(result)
+
+    # Compute differential signal if diff_ref_net is set
+    if diff_ref:
+        sig_key = ac_data.compute_diff(net, diff_ref)
+    else:
+        sig_key = net
 
     if ref_net:
-        gain = ac_data.gain_db_relative(net, ref_net)
+        gain = ac_data.gain_db_relative(sig_key, ref_net)
     else:
-        gain = ac_data.gain_db(net)
+        gain = ac_data.gain_db(sig_key)
 
     dc_gain = gain[0] if gain else 0.0
-    threshold = dc_gain - 3.0
+    max_gain = max(gain) if gain else 0.0
+    is_highpass = (max_gain - dc_gain) > 3.0
+
+    if is_highpass:
+        ref_gain = max_gain
+        threshold = max_gain - 3.0
+        ref_label = "Passband Gain"
+    else:
+        ref_gain = dc_gain
+        threshold = dc_gain - 3.0
+        ref_label = "DC Gain"
+
     actual = result.actual
 
     fig = go.Figure()
@@ -1396,13 +1740,13 @@ def _plot_ac_bandwidth_3db(
         )
     )
 
-    # DC gain reference line
+    # Reference gain line
     fig.add_hline(
-        y=dc_gain, line=dict(color="gray", dash="dash", width=1.2), opacity=0.5,
+        y=ref_gain, line=dict(color="gray", dash="dash", width=1.2), opacity=0.5,
     )
     fig.add_annotation(
-        x=0.02, y=dc_gain, xref="paper", yref="y",
-        text=f"DC Gain = {dc_gain:.2f} dB",
+        x=0.02, y=ref_gain, xref="paper", yref="y",
+        text=f"{ref_label} = {ref_gain:.2f} dB",
         showarrow=False, font=dict(color="gray", size=10),
         xanchor="left", yanchor="bottom",
     )
@@ -1489,26 +1833,55 @@ def _plot_ac_bode_plot(
     ac_data: ACResult,
     path: Path,
 ) -> Path:
-    """Full Bode plot: gain + phase subplots, DC gain pass band."""
+    """Classic Bode plot: gain (dB) vs frequency on top, phase (deg) vs frequency
+    on bottom. Both use log-scale frequency axis. Shows the full sweep as a line."""
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
     req = result.requirement
-    min_val = req.get_min_val()
-    max_val = req.get_max_val()
-    net = req.get_net()
+    net = _result_net(result)
     ref_net = req.get_ac_ref_net()
+    diff_ref = _result_diff_ref(result)
+
+    # Compute differential signal if diff_ref_net is set
+    if diff_ref:
+        sig_key = ac_data.compute_diff(net, diff_ref)
+    else:
+        sig_key = net
 
     if ref_net:
-        gain = ac_data.gain_db_relative(net, ref_net)
-        phase = ac_data.phase_deg_relative(net, ref_net)
+        gain = ac_data.gain_db_relative(sig_key, ref_net)
+        phase = ac_data.phase_deg_relative(sig_key, ref_net)
     else:
-        gain = ac_data.gain_db(net)
-        phase = ac_data.phase_deg(net)
+        gain = ac_data.gain_db(sig_key)
+        phase = ac_data.phase_deg(sig_key)
 
     dc_gain = gain[0] if gain else 0.0
 
-    # Find -3dB bandwidth for annotation
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.08,
+    )
+
+    # Gain vs frequency
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=gain, mode="lines",
+            name="Gain (dB)", line=dict(color="royalblue", width=2),
+        ),
+        row=1, col=1,
+    )
+
+    # Phase vs frequency
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=phase, mode="lines",
+            name="Phase (deg)", line=dict(color="orange", width=2),
+        ),
+        row=2, col=1,
+    )
+
+    # -3dB crossing point
     threshold = dc_gain - 3.0
     bw_freq = None
     for i in range(len(gain) - 1):
@@ -1522,104 +1895,122 @@ def _plot_ac_bode_plot(
                 bw_freq = ac_data.freq[i]
             break
 
-    fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
-        subplot_titles=("Gain (dB)", "Phase (deg)"),
-        vertical_spacing=0.08,
-    )
-
-    # Gain trace
-    fig.add_trace(
-        go.Scatter(
-            x=ac_data.freq, y=gain, mode="lines",
-            name="Gain", line=dict(color="royalblue", width=2),
-        ),
-        row=1, col=1,
-    )
-
-    # DC gain pass band shading
-    fig.add_hrect(
-        y0=min_val, y1=max_val, fillcolor="green", opacity=0.08,
-        line_width=0, row=1, col=1,
-    )
-    fig.add_hline(
-        y=min_val, line=dict(color="red", dash="dot", width=1.5), row=1, col=1,
-    )
-    fig.add_hline(
-        y=max_val, line=dict(color="red", dash="dot", width=1.5), row=1, col=1,
-    )
-
-    # DC gain marker
-    marker_color = "#2ecc71" if result.passed else "#e74c3c"
-    fig.add_hline(
-        y=dc_gain, line=dict(color=marker_color, dash="dash", width=1.5),
-        opacity=0.7, row=1, col=1,
-    )
-    fig.add_annotation(
-        x=0.02, y=dc_gain, xref="paper", yref="y",
-        text=f"DC Gain = {dc_gain:.2f} dB",
-        showarrow=False, font=dict(color=marker_color, size=10),
-        xanchor="left", yanchor="bottom",
-    )
-
-    # -3dB threshold line
-    fig.add_hline(
-        y=threshold, line=dict(color="gray", dash="dot", width=1),
-        opacity=0.5, row=1, col=1,
-    )
-    fig.add_annotation(
-        x=0.98, y=threshold, xref="paper", yref="y",
-        text=f"-3 dB = {threshold:.2f} dB",
-        showarrow=False, font=dict(color="gray", size=9),
-        xanchor="right", yanchor="top",
-    )
-
-    # -3dB bandwidth marker
     if bw_freq is not None:
         bw_gain_val = _interpolate_at_freq(ac_data.freq, gain, bw_freq)
         fig.add_trace(
             go.Scatter(
-                x=[bw_freq], y=[bw_gain_val], mode="markers+text",
-                marker=dict(color="purple", size=8, symbol="diamond"),
-                text=[f"BW = {bw_freq:.3g} Hz"],
-                textposition="bottom right",
-                textfont=dict(color="purple", size=9),
-                showlegend=False,
+                x=[bw_freq], y=[bw_gain_val], mode="markers",
+                marker=dict(color="#e74c3c", size=10, symbol="circle",
+                            line=dict(color="white", width=2)),
+                name=f"-3 dB @ {bw_freq:.3g} Hz",
+                showlegend=True,
             ),
             row=1, col=1,
         )
-        fig.add_vline(
-            x=bw_freq, line=dict(color="purple", dash="dashdot", width=1),
-            opacity=0.4, row=1, col=1,
+        fig.add_annotation(
+            x=bw_freq, y=bw_gain_val, xref="x", yref="y",
+            text=f"-3 dB | {bw_freq:.3g} Hz",
+            showarrow=True, arrowhead=2, arrowcolor="#e74c3c",
+            ax=50, ay=-30,
+            font=dict(color="#e74c3c", size=11),
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor="#e74c3c", borderwidth=1, borderpad=3,
         )
-        fig.add_vline(
-            x=bw_freq, line=dict(color="purple", dash="dashdot", width=1),
-            opacity=0.4, row=2, col=1,
-        )
 
-    # Phase trace
-    fig.add_trace(
-        go.Scatter(
-            x=ac_data.freq, y=phase, mode="lines",
-            name="Phase", line=dict(color="orange", width=2),
-        ),
-        row=2, col=1,
-    )
-
-    # -45 deg reference (expected at -3dB freq for first-order)
-    fig.add_hline(
-        y=-45, line=dict(color="gray", dash="dot", width=1),
-        opacity=0.3, row=2, col=1,
-    )
-
-    fig.update_xaxes(type="log", title_text="Frequency (Hz)", row=2, col=1)
     fig.update_xaxes(type="log", row=1, col=1)
+    fig.update_xaxes(type="log", title_text="Frequency (Hz)", row=2, col=1)
     fig.update_yaxes(title_text="Gain (dB)", row=1, col=1)
     fig.update_yaxes(title_text="Phase (deg)", row=2, col=1)
 
-    subtitle = f"Measurement: bode_plot | DC Gain: {dc_gain:.2f} dB"
+    subtitle = f"DC Gain: {dc_gain:.2f} dB"
     if bw_freq is not None:
-        subtitle += f" | -3dB BW: {bw_freq:.3g} Hz"
+        subtitle += f" | -3 dB BW: {bw_freq:.3g} Hz"
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+
+
+def _plot_sweep(
+    result: RequirementResult,
+    tran_data: TransientResult,
+    path: Path,
+) -> Path:
+    """Plot for Sweep measurement: X = swept variable, Y = measured variable."""
+    import plotly.graph_objects as go
+
+    req = result.requirement
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+    net = _result_net(result)
+    context_nets = _result_ctx_nets(result)
+
+    net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
+    nut_unit = _signal_unit(net_key)
+    nut_signal = tran_data[net_key]
+
+    # X-axis: first context net (the swept variable)
+    if not context_nets:
+        return _plot_final_value(result, tran_data, path)
+
+    sweep_net = context_nets[0]
+    sweep_key = (
+        f"v({sweep_net})" if not sweep_net.startswith(("v(", "i(")) else sweep_net
+    )
+    sweep_signal = tran_data[sweep_key]
+    sweep_unit = _signal_unit(sweep_key)
+
+    fig = go.Figure()
+
+    # Main sweep trace
+    fig.add_trace(go.Scatter(
+        x=list(sweep_signal), y=list(nut_signal),
+        mode="lines",
+        name=f"{net_key} vs {sweep_key}",
+        line=dict(color="royalblue", width=2.5),
+    ))
+
+    # Pass band shading
+    fig.add_hrect(
+        y0=min_val, y1=max_val, fillcolor="green", opacity=0.08, line_width=0,
+    )
+
+    # Limit lines
+    _add_limit_labels(fig, min_val, max_val, nut_unit)
+
+    # Start marker
+    fig.add_trace(go.Scatter(
+        x=[sweep_signal[0]], y=[nut_signal[0]],
+        mode="markers+text",
+        marker=dict(color="gray", size=8, symbol="circle"),
+        text=["Start"],
+        textposition="top right",
+        showlegend=False,
+    ))
+
+    # End marker with actual value
+    actual = result.actual
+    marker_color = "#2ecc71" if result.passed else "#e74c3c"
+    fig.add_trace(go.Scatter(
+        x=[sweep_signal[-1]], y=[nut_signal[-1]],
+        mode="markers+text",
+        marker=dict(color=marker_color, size=10, symbol="circle"),
+        text=[f"End = {_format_eng(actual, nut_unit)}"],
+        textposition="top left",
+        textfont=dict(color=marker_color, size=11),
+        showlegend=False,
+    ))
+
+    # Axis labels
+    sweep_label = (
+        f"Voltage ({sweep_unit})" if sweep_unit == "V"
+        else f"Current ({sweep_unit})"
+    )
+    nut_label = (
+        f"Voltage ({nut_unit})" if nut_unit == "V"
+        else f"Current ({nut_unit})"
+    )
+    fig.update_xaxes(title_text=f"{sweep_key} — {sweep_label}")
+    fig.update_yaxes(title_text=f"{net_key} — {nut_label}")
+
+    subtitle = f"Measurement: sweep | Final: {_format_eng(actual, nut_unit)}"
     return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
 
 
@@ -1634,6 +2025,8 @@ _PLOT_DISPATCH: dict[str, callable] = {
     "peak_to_peak": _plot_peak_to_peak,
     "overshoot": _plot_overshoot,
     "rms": _plot_rms,
+    "frequency": _plot_frequency,
+    "sweep": _plot_sweep,
 }
 
 _AC_PLOT_DISPATCH: dict[str, callable] = {
@@ -1673,16 +2066,21 @@ def plot_requirement(
     if ac_plot_fn is not None:
         if ac_data is None:
             return None
-        net = req.get_net()
+        net = _result_net(result)
+        # For differential signals, check the positive net exists
         if net not in ac_data and f"v({net})" not in ac_data:
-            return None
+            # May be a differential pair — check if diff_ref_net is set
+            # and both component nets exist
+            diff_ref = _result_diff_ref(result)
+            if not diff_ref:
+                return None
         return ac_plot_fn(result, ac_data, path)
 
     # Transient plots
     if tran_data is None:
         return None
 
-    net = req.get_net()
+    net = _result_net(result)
     net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
     if net_key not in tran_data:
         return None
@@ -1698,6 +2096,55 @@ def plot_requirement(
 # ---------------------------------------------------------------------------
 # Scoped verification (entry point for build step)
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class _ResolvedNets:
+    """Resolved net names for a single requirement."""
+
+    net: str  # canonical SPICE net name
+    display_net: str  # original ato address for plot labels
+    diff_ref_net: str | None
+    context_nets: list[str]
+
+
+def _build_net_overrides(
+    requirements: list[F.Requirement],
+    net_aliases: dict[str, str],
+) -> dict[int, _ResolvedNets]:
+    """Build a mapping from requirement id → resolved net names.
+
+    Instead of mutating graph parameters (which is fragile), this builds a
+    pure-data lookup that callers thread through to ``verify_requirements``.
+    """
+    overrides: dict[int, _ResolvedNets] = {}
+
+    for req in requirements:
+        raw_addr = req.net.get().try_extract_singleton() or ""
+        raw_net = req.get_net()  # sanitized
+        resolved_net = net_aliases.get(raw_net, raw_net)
+        if resolved_net != raw_net:
+            logger.debug(f"Resolving net alias: {raw_net} -> {resolved_net}")
+
+        # diff_ref_net
+        raw_diff = req.get_diff_ref_net()
+        resolved_diff = None
+        if raw_diff:
+            resolved_diff = net_aliases.get(raw_diff, raw_diff)
+
+        # context nets
+        resolved_ctx: list[str] = []
+        for ctx_net in req.get_context_nets():
+            resolved_ctx.append(net_aliases.get(ctx_net, ctx_net))
+
+        overrides[id(req)] = _ResolvedNets(
+            net=resolved_net,
+            display_net=raw_addr,
+            diff_ref_net=resolved_diff,
+            context_nets=resolved_ctx,
+        )
+
+    return overrides
 
 
 def verify_requirements_scoped(
@@ -1761,14 +2208,27 @@ def verify_requirements_scoped(
         )
 
         try:
-            netlist = generate_spice_netlist(app, solver, scope=scope)
+            netlist, net_aliases = generate_spice_netlist(app, solver, scope=scope)
             spice_path = output_dir / f"{scope_slug}.spice"
             netlist.write(spice_path)
 
+            # Build net overrides (ato addresses → canonical SPICE names)
+            net_overrides = _build_net_overrides(list(group_reqs), net_aliases)
+
             circuit = Circuit.load(spice_path)
             results, tran_data, ac_data = verify_requirements(
-                circuit, list(group_reqs), uic=True
+                circuit, list(group_reqs), uic=True,
+                net_overrides=net_overrides,
             )
+
+            # Stamp resolved net info onto results for plot functions
+            for r in results:
+                ov = net_overrides.get(id(r.requirement))
+                if ov:
+                    r.display_net = ov.display_net
+                    r.resolved_net = ov.net
+                    r.resolved_diff_ref = ov.diff_ref_net
+                    r.resolved_ctx_nets = ov.context_nets
 
             all_results.extend(results)
             all_tran_data.update(tran_data)
@@ -1793,9 +2253,9 @@ def verify_requirements_scoped(
                     plot_requirement(
                         r, None, plot_path, ac_data=ac_data.get(key)
                     )
-        except Exception:
+        except Exception as e:
             logger.warning(
-                f"Simulation for scope '{scope_name}' failed — skipping",
+                f"Simulation for scope '{scope_name}' failed — skipping: {e}",
                 exc_info=True,
             )
 

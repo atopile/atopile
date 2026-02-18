@@ -637,7 +637,7 @@ def generate_spice_netlist_step(ctx: BuildStepContext) -> None:
 
         app = ctx.require_app()
         solver = ctx.require_solver()
-        netlist = generate_spice_netlist(app, solver)
+        netlist, _aliases = generate_spice_netlist(app, solver)
         output_path = config.build.paths.output_base.with_suffix(".spice")
         netlist.write(output_path)
         logger.info(f"SPICE netlist written to {output_path}")
@@ -658,10 +658,12 @@ def _write_requirements_json(
     """Serialize requirement results + time-series to a JSON artifact."""
     from datetime import datetime, timezone
 
+    import math
+
     reqs_json = []
     for r in results:
         req = r.requirement
-        net = req.get_net()
+        net = r.resolved_net or req.get_net()
         net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
         capture = req.get_capture()
         measurement = req.get_measurement()
@@ -679,8 +681,13 @@ def _write_requirements_json(
             unit = "Hz"
         elif measurement == "bode_plot":
             unit = "dB"
+        elif measurement == "frequency":
+            unit = "Hz"
         else:
             unit = _signal_unit(net_key)
+
+        actual = r.actual if not math.isnan(r.actual) else None
+        context_nets = r.resolved_ctx_nets if r.resolved_ctx_nets is not None else req.get_context_nets()
 
         entry: dict = {
             "id": req.get_name().replace(" ", "_").replace(":", ""),
@@ -691,11 +698,14 @@ def _write_requirements_json(
             "minVal": req.get_min_val(),
             "typical": req.get_typical(),
             "maxVal": req.get_max_val(),
-            "actual": r.actual,
+            "actual": actual,
             "passed": r.passed,
             "unit": unit,
-            "contextNets": req.get_context_nets(),
+            "contextNets": context_nets,
         }
+
+        if r.display_net:
+            entry["displayNet"] = r.display_net
 
         justification = req.get_justification()
         if justification:
@@ -720,7 +730,7 @@ def _write_requirements_json(
                 # Collect relevant signals: primary + context
                 # (ngspice already limits data to [start, stop])
                 sig_keys = [net_key]
-                for ctx_net in req.get_context_nets():
+                for ctx_net in context_nets:
                     ctx_key = (
                         f"v({ctx_net})"
                         if not ctx_net.startswith(("v(", "i("))

@@ -14,12 +14,14 @@ from faebryk.library.Measurements import (
     Bandwidth3dB,
     BodePlot,
     FinalValue,
+    Frequency,
     GainDB,
     Overshoot,
     PeakToPeak,
     PhaseDeg,
     RMS,
     SettlingTime,
+    Sweep,
 )
 
 _CAPTURE_KEYS: dict[type, str] = {
@@ -39,6 +41,8 @@ _MEASUREMENT_KEYS: dict[type, str] = {
     PhaseDeg: "phase_deg",
     Bandwidth3dB: "bandwidth_3db",
     BodePlot: "bode_plot",
+    Frequency: "frequency",
+    Sweep: "sweep",
 }
 
 CaptureType = type[DCOPCapture] | type[TransientCapture] | type[ACCapture]
@@ -53,6 +57,8 @@ MeasurementType = (
     | type[PhaseDeg]
     | type[Bandwidth3dB]
     | type[BodePlot]
+    | type[Frequency]
+    | type[Sweep]
 )
 
 
@@ -116,6 +122,11 @@ class Requirement(fabll.Node):
     ac_source_name = F.Parameters.StringParameter.MakeChild()
     ac_measure_freq = F.Parameters.StringParameter.MakeChild()
     ac_ref_net = F.Parameters.StringParameter.MakeChild()
+    diff_ref_net = F.Parameters.StringParameter.MakeChild()
+
+    # Circuit modifications (inject/remove SPICE elements for load step etc.)
+    extra_spice = F.Parameters.StringParameter.MakeChild()
+    remove_elements = F.Parameters.StringParameter.MakeChild()
 
     def setup(
         self,
@@ -139,6 +150,9 @@ class Requirement(fabll.Node):
         ac_source_name: str | None = None,
         ac_measure_freq: float | None = None,
         ac_ref_net: str | None = None,
+        diff_ref_net: str | None = None,
+        extra_spice: str | None = None,
+        remove_elements: str | None = None,
     ) -> Self:
         self.req_name.get().set_singleton(value=name)
         self.net.get().set_singleton(value=net)
@@ -180,6 +194,12 @@ class Requirement(fabll.Node):
             self.ac_measure_freq.get().set_singleton(value=str(ac_measure_freq))
         if ac_ref_net is not None:
             self.ac_ref_net.get().set_singleton(value=ac_ref_net)
+        if diff_ref_net is not None:
+            self.diff_ref_net.get().set_singleton(value=diff_ref_net)
+        if extra_spice is not None:
+            self.extra_spice.get().set_singleton(value=extra_spice)
+        if remove_elements is not None:
+            self.remove_elements.get().set_singleton(value=remove_elements)
 
         return self
 
@@ -316,3 +336,23 @@ class Requirement(fabll.Node):
         if raw is None:
             return None
         return self._sanitize_net_name(raw)
+
+    def get_diff_ref_net(self) -> str | None:
+        raw = self.diff_ref_net.get().try_extract_singleton()
+        if raw is None:
+            return None
+        return self._sanitize_net_name(raw)
+
+    def get_extra_spice(self) -> list[str]:
+        """Get extra SPICE lines to inject (pipe-separated)."""
+        raw = self.extra_spice.get().try_extract_singleton()
+        if raw is None:
+            return []
+        return [line.strip() for line in raw.split("|") if line.strip()]
+
+    def get_remove_elements(self) -> list[str]:
+        """Get element names to remove from the netlist (comma-separated)."""
+        raw = self.remove_elements.get().try_extract_singleton()
+        if raw is None:
+            return []
+        return [name.strip() for name in raw.split(",") if name.strip()]

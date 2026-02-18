@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import type { RequirementData, RequirementsData } from './requirements/types';
 import { formatEng, computeMargin, marginLevel, formatBuildTime } from './requirements/helpers';
-import { renderTransientPlot, renderDCPlot, purgePlot, resizePlot } from './requirements/charts';
+import { renderTransientPlot, renderDCPlot, renderBodePlot, purgePlot, resizePlot } from './requirements/charts';
 
 interface RequirementsDetailPageProps {
   requirementId: string;
@@ -61,7 +61,9 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
     if (!chartRef.current || !req) return;
     const el = chartRef.current;
 
-    if (req.timeSeries) {
+    if (req.frequencySeries) {
+      renderBodePlot(el, req);
+    } else if (req.timeSeries) {
       renderTransientPlot(el, req);
     } else {
       renderDCPlot(el, req);
@@ -104,7 +106,7 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
   const margin = computeMargin(req.actual, req.minVal, req.maxVal);
   const level = marginLevel(margin);
   const measLabel = req.measurement.replace(/_/g, ' ');
-  const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : 'Transient';
+  const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : req.capture === 'ac' ? 'AC Analysis' : 'Transient';
   const hasTransientConfig = req.capture === 'transient';
 
   return (

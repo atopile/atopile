@@ -55,9 +55,9 @@ module SimulationRequirements:
     req_overshoot.max_val = 15
     req_overshoot.capture = "transient"
     req_overshoot.measurement = "overshoot"
-    req_overshoot.context_nets = "power_in.hv"
+    req_overshoot.context_nets = "package_2"
     req_overshoot.tran_step = 2e-7
-    req_overshoot.tran_stop = 3e-3
+    req_overshoot.tran_stop = 6e-3
     req_overshoot.source_name = "V1"
     req_overshoot.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
     req_overshoot.justification = "Startup overshoot <15%"
@@ -90,8 +90,70 @@ module SimulationRequirements:
     req_inductor_current.measurement = "final_value"
     req_inductor_current.context_nets = "package_8"
     req_inductor_current.tran_start = 4e-3
-    req_inductor_current.tran_step = 2e-7
+    req_inductor_current.tran_step = 100e-9
     req_inductor_current.tran_stop = 4.01e-3
     req_inductor_current.source_name = "V1"
     req_inductor_current.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
     req_inductor_current.justification = "5V/1ohm = 5A load current at steady state"
+
+    # REQ-006: Load step transient response (0.5A → 5A)
+    # Replaces R4 with a 10Ω light load (0.5A at 5V), then steps I_LOAD from 0→4.5A.
+    # V_ISENSE is a 0V voltage source used as a current sensor for I_LOAD.
+    # Load is connected from power_out_hv to 0 (power_out.lv = GND in SPICE).
+    req_load_step = new Requirement
+    req_load_step.req_name = "REQ-006: Load step response"
+    req_load_step.net = "power_out.hv"
+    req_load_step.min_val = 0
+    req_load_step.typical = 0.5
+    req_load_step.max_val = 2.0
+    req_load_step.capture = "transient"
+    req_load_step.measurement = "peak_to_peak"
+    req_load_step.context_nets = "i(V_ISENSE)"
+    req_load_step.tran_step = 2e-7
+    req_load_step.tran_start = 10e-3
+    req_load_step.tran_stop = 13e-3
+    req_load_step.source_name = "V1"
+    req_load_step.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_load_step.remove_elements = "R4"
+    req_load_step.extra_spice = "R4_LIGHT power_out_hv 0 10|V_ISENSE load_sense 0 0|I_LOAD power_out_hv load_sense PULSE(0 4.5 10.5e-3 1u 1u 10 10)"
+    req_load_step.justification = "Output voltage stability during 0.5A to 5A load step"
+
+    # REQ-007: Switching frequency at full load
+    # Measure on SW node during steady-state (10ms–10.02ms window)
+    # RT = 95.3kΩ → Fsw = 101800/95.3 ≈ 1068kHz (datasheet formula)
+    req_sw_freq_loaded = new Requirement
+    req_sw_freq_loaded.req_name = "REQ-007: Switching frequency (full load)"
+    req_sw_freq_loaded.net = "package.SW"
+    req_sw_freq_loaded.min_val = 950e3
+    req_sw_freq_loaded.typical = 1068e3
+    req_sw_freq_loaded.max_val = 1200e3
+    req_sw_freq_loaded.capture = "transient"
+    req_sw_freq_loaded.measurement = "frequency"
+    req_sw_freq_loaded.context_nets = "power_out.hv"
+    req_sw_freq_loaded.tran_start = 10e-3
+    req_sw_freq_loaded.tran_step = 20e-9
+    req_sw_freq_loaded.tran_stop = 10.02e-3
+    req_sw_freq_loaded.source_name = "V1"
+    req_sw_freq_loaded.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_sw_freq_loaded.justification = "TPS54560 Fsw = 101800/RT(kΩ), RT=95.3kΩ → ~1068kHz"
+
+    # REQ-008: Switching frequency (light load)
+    # Replace R4 (1Ω/5A) with 2.5Ω (2A) to verify Fsw stability at reduced load
+    # CCM boundary: ~0.6A for 2.2µH/1068kHz, so 2A is safely in CCM
+    req_sw_freq_light = new Requirement
+    req_sw_freq_light.req_name = "REQ-008: Switching frequency (light load)"
+    req_sw_freq_light.net = "package.SW"
+    req_sw_freq_light.min_val = 950e3
+    req_sw_freq_light.typical = 1068e3
+    req_sw_freq_light.max_val = 1200e3
+    req_sw_freq_light.capture = "transient"
+    req_sw_freq_light.measurement = "frequency"
+    req_sw_freq_light.context_nets = "power_out.hv"
+    req_sw_freq_light.tran_start = 10e-3
+    req_sw_freq_light.tran_step = 20e-9
+    req_sw_freq_light.tran_stop = 10.02e-3
+    req_sw_freq_light.source_name = "V1"
+    req_sw_freq_light.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_sw_freq_light.remove_elements = "R4"
+    req_sw_freq_light.extra_spice = "R4_LIGHT power_out_hv 0 2.5"
+    req_sw_freq_light.justification = "Fsw stability at 2A light load (well within CCM at 1068kHz)"

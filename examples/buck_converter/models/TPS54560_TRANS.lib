@@ -1,79 +1,156 @@
 * TPS54560 Peak Current-Mode Behavioral Switching Model for ngspice
-* Accurate model of TI TPS54560 current-mode buck controller
+*
+* Based on TI TPS54560 datasheet (SLVSBE5) and TI PSpice transient model.
+* Models all key behaviors: peak current-mode control, soft-start with
+* Gm modulation, Eco-mode pulse-skipping, OVP, UVLO, and slope compensation.
 *
 * Pins: BOOT COMP EN GND SW RT VIN FB
 *   BOOT — bootstrap supply (simplified, high-Z to SW)
 *   COMP — error amplifier output; connect external compensation network here
-*   EN   — enable pin; converter ON when V(EN) > 1.1V
+*   EN   — enable pin; converter ON when V(EN) > 1.2V (typ)
 *   GND  — power ground
 *   SW   — switch node output
 *   RT   — timing resistor pin (simplified, high-Z to GND)
-*   VIN  — power input
+*   VIN  — power input (4.5V to 60V operating range)
 *   FB   — feedback input (regulation target: 0.8V)
 *
 * Parameters:
 *   FS   — switching frequency in Hz (default 600kHz)
 *
-* Based on TPS54560 datasheet parameters:
-*   - Error amp Gm = 350uA/V, Vref = 0.8V
-*   - High-side FET Ron = 92mOhm
-*   - Internal catch diode (Schottky-like)
-*   - Peak current-mode control with slope compensation
-*   - Current sense gain: ~150mV/A
+* Datasheet key specifications modeled:
+*   - Error amp Gm: 78uA/V during soft-start, 350uA/V steady-state
+*   - Error amp output current: +/- 30uA max (LIMIT)
+*   - COMP voltage range: 0.6V to 2.0V (internal clamp)
+*   - Eco-mode (pulse-skip) threshold: COMP < 0.65V
+*   - Internal voltage reference: 0.800V +/- 1%
+*   - Soft-start: 1024 switching cycles (Figure 21)
+*   - High-side FET RDSon: 92mOhm typical
+*   - OVP threshold: 107.5% of Vref (0.86V on FB)
+*   - UVLO: 4.3V rising threshold
+*   - EN threshold: 1.2V typical (1.1V min, 1.3V max)
 *   - Slope compensation: ~63mV/us
+*   - Current sense via RDSon, gain ~150mV/A
+*   - Minimum on-time: 135ns typical
+*   - External catch diode required (included here for convenience)
 *
 .SUBCKT TPS54560_TRANS BOOT COMP EN GND SW RT VIN FB FS=600k
 *
-* --- Error amplifier OTA ---
-* Gm = 350uA/V, Vref = 0.8V
-* Drives current into COMP node (charges external compensation)
-B_gm GND COMP I = (0.8 - V(FB,GND)) * 350u
-* High impedance bias to keep COMP from floating at DC
-R_comp_bias COMP GND 100Meg
-* Clamp COMP to realistic range
-B_comp_cl comp_cl GND V = min(max(V(COMP,GND), 0.3), 2.0)
+* =====================================================================
+* SOFT-START (1024 switching cycles, datasheet Figure 21)
+* =====================================================================
+* Ramps internal reference from 0 to 0.8V over 1024/FS seconds.
+* At 600kHz: 1024/600k = 1.71ms. At 200kHz: 1024/200k = 5.12ms.
+V_ss ss_ramp GND PULSE(0 0.8 0 {1024/FS} 0 10 10)
 *
-* --- Current sense (active only when high-side FET is ON) ---
-* When FET ON: V(VIN,SW) = IL*Ron (small, < 2V)
-* When FET OFF: V(VIN,SW) >> 5V (diode pulls SW below GND)
-* Sense gain: 150mV/A (4.6A OCP at ~690mV sense voltage)
+* =====================================================================
+* ERROR AMPLIFIER (OTA) — Gm stage with soft-start modulation
+* =====================================================================
+* Datasheet: Gm = 350uA/V steady-state, 78uA/V during soft-start
+* TI model: Gm ramps from 78uA/V to 350uA/V as ss_ramp crosses 0.7V
+* Output current hard-limited to +/- 30uA (datasheet source/sink spec)
+* Reference = min(0.8V, soft-start ramp)
+B_gm GND COMP I = min(30u, max(-30u, (min(0.8, V(ss_ramp,GND)) - V(FB,GND)) * (78u + 272u * min(1, max(0, (V(ss_ramp,GND) - 0.7) * 10)))))
+*
+* Output impedance: Av = Gm * Ro ≈ 10,000 V/V (datasheet)
+* 350uA/V * 28.57Meg = 10,000
+R_comp_bias COMP GND 28.57Meg
+*
+* COMP lower clamp at 0.6V (TI model: diode clamp, datasheet Eco-mode floor)
+* Prevents COMP from going below the Eco-mode threshold region
+B_comp_lo GND COMP I = (V(COMP,GND) < 0.6) ? (0.6 - V(COMP,GND)) / 1k : 0
+*
+* COMP to PWM comparator input, clamped 0.6V to 2.0V
+* Upper rail (2.0V) sets the peak current limit ceiling
+B_comp_cl comp_cl GND V = min(max(V(COMP,GND), 0.6), 2.0)
+*
+* =====================================================================
+* CURRENT SENSE (via high-side FET RDSon)
+* =====================================================================
+* When FET ON: V(VIN,SW) = IL * RDSon (small, typically < 1V)
+* When FET OFF: V(VIN,SW) >> 5V (catch diode pulls SW below GND)
+* Sense gain: 150mV/A → at 6A OCP threshold, sense = 900mV
+* Leading-edge blanking: not explicitly modeled (small effect)
 B_isense isense GND V = (V(VIN,SW) < 2) ? max(V(VIN,SW) / 0.092, 0) * 0.15 : 0
+C_isense isense GND 1p
 *
-* --- Slope compensation ---
-* ~63mV/us internal slope comp
-* At 600kHz (1.667us period), max = 63m * 1.667 = 105mV
-V_slope slope_ramp GND PULSE(0 105m 0 1.65u 5n 1n 1.667u)
+* =====================================================================
+* SLOPE COMPENSATION (~63mV/us, datasheet)
+* =====================================================================
+* Prevents sub-harmonic oscillation at duty cycles > 50%.
+* Ramp resets each switching cycle. Peak voltage at 600kHz:
+* 63mV/us * (0.99 / 600kHz) = ~104mV
+V_slope slope_ramp GND PULSE(0 {63m*0.99/FS} 0 {0.99/FS} 5n 1n {1/FS})
 *
-* --- Sum: sensed current + slope comp ---
+* Sum of sensed current + slope compensation
 B_sum sense_sum GND V = V(isense,GND) + V(slope_ramp,GND)
 *
-* --- Clock pulse (sets SR latch at start of each switching cycle) ---
-V_clk clk GND PULSE(0 1 0 5n 5n 20n 1.667u)
+* =====================================================================
+* CLOCK (sets SR latch at start of each switching cycle)
+* =====================================================================
+V_clk clk GND PULSE(0 1 0 5n 5n 20n {1/FS})
 *
-* --- SR latch for peak current-mode control ---
-* SET on clock pulse, RESET when sense_sum >= comp_cl
-* R-dominant (reset overrides set)
-B_latch latch_drv GND V = (V(sense_sum,GND) >= V(comp_cl,GND)) ? 0 : ((V(clk,GND) > 0.5) ? 1 : V(q_filt,GND))
+* =====================================================================
+* MINIMUM ON-TIME (135ns typical, datasheet)
+* =====================================================================
+* Prevents premature current comparator trip during leading-edge noise.
+* Uses a blanking pulse that holds the latch SET for 135ns after clock.
+V_minon minon_pulse GND PULSE(0 1 0 5n 5n 135n {1/FS})
+*
+* =====================================================================
+* SR LATCH — Peak current-mode PWM with Eco-mode pulse-skipping
+* =====================================================================
+* SET: on clock rising edge (if COMP > 0.65V, else pulse-skip)
+* RESET: when sense_sum >= comp_cl (peak current reached)
+* R-dominant: reset overrides set (cycle-by-cycle current limiting)
+* Eco-mode: COMP < 0.65V inhibits SET → device skips pulses for
+*   high efficiency at light loads (datasheet Eco-mode feature)
+* Min on-time: during minon_pulse, reset is blocked
+B_latch latch_drv GND V = ((V(sense_sum,GND) >= V(comp_cl,GND)) & (V(minon_pulse,GND) < 0.5)) ? 0 : (V(clk,GND) > 0.5) ? ((V(COMP,GND) > 0.65) ? 1 : V(q_filt,GND)) : V(q_filt,GND)
 R_q latch_drv q_raw 10
 C_q q_raw GND 10p
 B_qfilt q_filt GND V = (V(q_raw,GND) > 0.5) ? 1 : 0
 *
-* --- Enable gate ---
-B_en en_gate GND V = (V(EN,GND) > 1.1) ? 1 : 0
-B_gate gate GND V = V(q_filt,GND) * V(en_gate,GND)
+* =====================================================================
+* PROTECTION: EN, UVLO, OVP
+* =====================================================================
+* EN threshold: 1.2V typical (datasheet: 1.1V min, 1.3V max)
+B_en en_gate GND V = (V(EN,GND) > 1.2) ? 1 : 0
 *
-* --- High-side FET (92mOhm Ron) ---
+* UVLO: VIN must exceed 4.3V to enable (datasheet: 4.3V typ, 325mV hyst)
+B_uvlo uvlo GND V = (V(VIN,GND) > 4.3) ? 1 : 0
+*
+* OVP: forces high-side OFF when FB > 0.86V (107.5% of 0.8V reference)
+* Datasheet: OVP threshold 0.86V, hysteresis 24mV
+B_ovp ovp GND V = (V(FB,GND) > 0.86) ? 0 : 1
+*
+* Master gate: all conditions must be met to enable switching
+B_gate gate GND V = V(q_filt,GND) * V(en_gate,GND) * V(uvlo,GND) * V(ovp,GND)
+*
+* =====================================================================
+* POWER STAGE
+* =====================================================================
+* High-side N-FET: RDSon = 92mOhm typical at 25°C (190mOhm max at 150°C)
 S_hs VIN SW gate GND SW_HS
 .model SW_HS SW VT=0.5 VH=0.1 Ron=92m Roff=100k
 *
-* --- Low-side catch diode (Schottky, STPS340U-like) ---
+* External catch diode (Schottky) — required for TPS54560
+* The TPS54560 is asynchronous (no internal low-side FET for rectification).
+* An external Schottky diode must be placed from GND to SW.
+* Included inside the subcircuit for modeling convenience.
+* Model based on typical 60V/5A Schottky (e.g., B560C or similar)
 D_ls GND SW D_CATCH
-.model D_CATCH D IS=1e-5 N=1.05 RS=40m BV=40 TT=5n CJO=150p
+.model D_CATCH D IS=1e-5 N=1.05 RS=40m BV=60 TT=5n CJO=150p
 *
-* --- Bootstrap (simplified) ---
+* =====================================================================
+* SIMPLIFIED PIN CONNECTIONS
+* =====================================================================
+* Bootstrap: real IC has internal diode from VIN to BOOT, charges BOOT cap
+* when SW is low. BOOT-SW UVLO = 2.1V. Simplified as high-Z connection.
 R_boot_int BOOT SW 1Meg
 *
-* --- RT pin (simplified) ---
+* RT pin: sets switching frequency via external resistor to GND.
+* f_sw = 101756 / (R_RT_kohm ^ 1.008) [kHz]
+* Simplified as high-Z to GND (frequency set by FS parameter instead).
 R_rt_int RT GND 1Meg
 *
 .ENDS TPS54560_TRANS

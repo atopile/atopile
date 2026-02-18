@@ -10,6 +10,14 @@ import ElectricLogic
 from "parts/Texas_Instruments_TPS54560DDAR/Texas_Instruments_TPS54560DDAR.ato" import Texas_Instruments_TPS54560DDAR_package
 from "parts/STMicroelectronics_STPS340U/STMicroelectronics_STPS340U.ato" import STMicroelectronics_STPS340U
 from "requirements.ato" import SimulationRequirements
+from "atopile/indicator-leds/indicator-leds.ato" import LEDIndicatorGreen
+
+module Usage:
+    buck_converter = new TI_TPS54560
+
+    led = new LEDIndicatorGreen
+
+    buck_converter.power_out ~ led.power
 
 module TI_TPS54560:
     """
@@ -64,7 +72,7 @@ module TI_TPS54560:
 
     # Switching frequency resistor (162kohm ~ 600kHz)
     r_rt = new Resistor
-    r_rt.resistance = 162kohm +/- 2%
+    r_rt.resistance = 95kohm +/- 2%
     r_rt.package = "0402"
 
     # Feedback voltage divider (per WEBENCH: Rfbt=40.2k, Rfbb=7.68k)

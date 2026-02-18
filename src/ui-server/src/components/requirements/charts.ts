@@ -58,17 +58,17 @@ function baseLayout(colors: ReturnType<typeof themeColors>) {
     paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)',
     font: { family: '-apple-system, sans-serif', color: colors.text, size: 11 },
-    margin: { t: 40, r: 40, b: 100, l: 50 },
+    margin: { t: 40, r: 40, b: 100, l: 65 },
     xaxis: {
       gridcolor: `${colors.surface}66`,
       zerolinecolor: `${colors.surface}99`,
-      title: { font: { size: 11 } },
+      title: { text: '', font: { size: 11, color: colors.muted } },
       tickfont: { size: 10 },
     },
     yaxis: {
       gridcolor: `${colors.surface}66`,
       zerolinecolor: `${colors.surface}99`,
-      title: { font: { size: 11 } },
+      title: { text: '', font: { size: 11, color: colors.muted } },
       tickfont: { size: 10 },
     },
     legend: { x: 0.5, xanchor: 'center' as const, y: -0.35, orientation: 'h' as const, font: { size: 10, color: colors.muted } },
@@ -90,12 +90,13 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
 
   const traces: Plotly.Data[] = [];
 
+  const nutLabel = (req as any).displayNet || netKey;
   traces.push({
     x: timeScaled,
     y: nutSignal,
     type: 'scatter',
     mode: 'lines',
-    name: netKey,
+    name: nutLabel,
     line: { color: colors.info, width: 2 },
   });
 
@@ -122,7 +123,15 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     height: dim.height,
     title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
     xaxis: { ...baseLayout(colors).xaxis, title: { text: `Time (${tUnit})`, font: { size: 11, color: colors.muted } } },
-    yaxis: { ...baseLayout(colors).yaxis, title: { text: req.unit === '%' ? '%' : req.unit, font: { size: 11, color: colors.muted } } },
+    yaxis: { ...baseLayout(colors).yaxis, title: { text: (() => {
+      // For measurements where the result unit differs from the signal unit,
+      // show the signal unit (V/A) on the y-axis, not the measurement unit
+      if (req.unit === '%' ) return '%';
+      if (['frequency', 'settling_time'].includes(req.measurement)) {
+        return req.net.startsWith('i(') ? 'A' : 'V';
+      }
+      return req.unit;
+    })(), font: { size: 11, color: colors.muted } } },
     shapes: [] as Record<string, unknown>[],
     annotations: [] as Record<string, unknown>[],
   };
@@ -130,7 +139,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
   if (req.contextNets && req.contextNets.length > 0) {
     layout.yaxis2 = {
       ...baseLayout(colors).yaxis,
-      title: 'Context (V)',
+      title: { text: 'Context', font: { size: 11, color: colors.muted } },
       overlaying: 'y',
       side: 'right',
     };
@@ -232,9 +241,10 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
       { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${req.actual.toFixed(2)}%`, showarrow: true, ay: -25, arrowcolor: colors.error, arrowwidth: 1.5, font: { size: 11, color: colors.error } },
     );
-    const span = peak - final;
-    const pad = span * 0.3;
-    (layout.yaxis as Record<string, unknown>).range = [final - pad, peak + pad];
+    const visibleTop = Math.max(peak, maxOsV);
+    const span = visibleTop - final;
+    const pad = span * 0.15;
+    (layout.yaxis as Record<string, unknown>).range = [final - pad, visibleTop + pad];
   }
 
   Plotly.newPlot(el, traces, layout as Partial<Plotly.Layout>, {
@@ -293,6 +303,120 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData) {
     responsive: true,
     displaylogo: false,
     staticPlot: true,
+  });
+}
+
+export async function renderBodePlot(el: HTMLDivElement, req: RequirementData) {
+  const Plotly = await getPlotly();
+  const colors = themeColors();
+  const fs = req.frequencySeries!;
+
+  const traces: Plotly.Data[] = [];
+
+  // Gain vs frequency
+  traces.push({
+    x: fs.freq,
+    y: fs.gain_db,
+    type: 'scatter',
+    mode: 'lines',
+    name: 'Gain (dB)',
+    line: { color: colors.info, width: 2 },
+    xaxis: 'x',
+    yaxis: 'y',
+  });
+
+  // Phase vs frequency
+  traces.push({
+    x: fs.freq,
+    y: fs.phase_deg,
+    type: 'scatter',
+    mode: 'lines',
+    name: 'Phase (deg)',
+    line: { color: '#fab387', width: 2 },
+    xaxis: 'x',
+    yaxis: 'y2',
+  });
+
+  // Find -3dB crossing point
+  const dcGain = fs.gain_db[0] ?? 0;
+  const threshold = dcGain - 3;
+  let bwFreq: number | null = null;
+  let bwGain: number | null = null;
+  for (let i = 0; i < fs.gain_db.length - 1; i++) {
+    if (fs.gain_db[i] >= threshold && fs.gain_db[i + 1] < threshold) {
+      const logF0 = Math.log10(fs.freq[i]);
+      const logF1 = Math.log10(fs.freq[i + 1]);
+      const t = (threshold - fs.gain_db[i]) / (fs.gain_db[i + 1] - fs.gain_db[i]);
+      bwFreq = 10 ** (logF0 + t * (logF1 - logF0));
+      bwGain = fs.gain_db[i] + t * (fs.gain_db[i + 1] - fs.gain_db[i]);
+      break;
+    }
+  }
+
+  if (bwFreq !== null && bwGain !== null) {
+    traces.push({
+      x: [bwFreq],
+      y: [bwGain],
+      type: 'scatter',
+      mode: 'markers',
+      name: `-3 dB @ ${bwFreq.toPrecision(3)} Hz`,
+      marker: { size: 8, color: '#000', symbol: 'circle' },
+      xaxis: 'x',
+      yaxis: 'y',
+    });
+  }
+
+  const dim = fitDimensions(el);
+  const layout: Record<string, unknown> = {
+    ...baseLayout(colors),
+    width: dim.width,
+    height: dim.height,
+    title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
+    xaxis: {
+      ...baseLayout(colors).xaxis,
+      type: 'log',
+      title: { text: 'Frequency (Hz)', font: { size: 11, color: colors.muted } },
+    },
+    yaxis: {
+      ...baseLayout(colors).yaxis,
+      title: { text: 'Gain (dB)', font: { size: 11, color: colors.info } },
+    },
+    yaxis2: {
+      ...baseLayout(colors).yaxis,
+      title: { text: 'Phase (deg)', font: { size: 11, color: '#fab387' } },
+      overlaying: 'y',
+      side: 'right',
+    },
+    shapes: [] as Record<string, unknown>[],
+    annotations: [] as Record<string, unknown>[],
+  };
+  (layout.margin as Record<string, number>).r = 60;
+
+  const shapes = layout.shapes as Record<string, unknown>[];
+  const annotations = layout.annotations as Record<string, unknown>[];
+
+  // -3dB threshold line
+  shapes.push({
+    type: 'line', xref: 'paper', yref: 'y',
+    x0: 0, x1: 1, y0: threshold, y1: threshold,
+    line: { color: colors.muted, width: 1, dash: 'dot' },
+  });
+
+  if (bwFreq !== null && bwGain !== null) {
+    annotations.push({
+      x: bwFreq, y: bwGain, xref: 'x', yref: 'y',
+      text: `-3 dB | ${bwFreq.toPrecision(3)} Hz`,
+      showarrow: false,
+      xanchor: 'left' as const, yanchor: 'top' as const,
+      xshift: 8, yshift: -4,
+      font: { size: 10, color: '#000' },
+    });
+  }
+
+  Plotly.newPlot(el, traces, layout as Partial<Plotly.Layout>, {
+    responsive: true,
+    displaylogo: false,
+    displayModeBar: false,
   });
 }
 

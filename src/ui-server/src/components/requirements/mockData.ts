@@ -18,6 +18,7 @@ export const MOCK_REQUIREMENTS: RequirementData[] = [
     contextNets: [],
     unit: 'V',
     timeSeries: null,
+    frequencySeries: null,
   },
   {
     id: 'req-002',
@@ -34,6 +35,7 @@ export const MOCK_REQUIREMENTS: RequirementData[] = [
     contextNets: [],
     unit: 'A',
     timeSeries: null,
+    frequencySeries: null,
   },
   {
     id: 'req-003',
@@ -59,6 +61,7 @@ export const MOCK_REQUIREMENTS: RequirementData[] = [
       const power_hv = time.map(t => t < 0.001 ? 0 : 10.0 + (Math.random() - 0.5) * 0.02);
       return { time, signals: { 'v(output)': output, 'v(power_hv)': power_hv } };
     })(),
+    frequencySeries: null,
   },
   {
     id: 'req-004',
@@ -85,6 +88,7 @@ export const MOCK_REQUIREMENTS: RequirementData[] = [
       const power_hv = time.map(t => t < 0.001 ? 0 : 10.0 + (Math.random() - 0.5) * 0.02);
       return { time, signals: { 'v(output)': output, 'v(power_hv)': power_hv } };
     })(),
+    frequencySeries: null,
   },
   {
     id: 'req-005',
@@ -108,6 +112,7 @@ export const MOCK_REQUIREMENTS: RequirementData[] = [
       });
       return { time, signals: { 'v(output)': output } };
     })(),
+    frequencySeries: null,
   },
   {
     id: 'req-006',
@@ -136,5 +141,6 @@ export const MOCK_REQUIREMENTS: RequirementData[] = [
       const power_hv = time.map(t => t < 0.001 ? 0 : 10.0);
       return { time, signals: { 'v(output)': output, 'v(power_hv)': power_hv } };
     })(),
+    frequencySeries: null,
   },
 ];

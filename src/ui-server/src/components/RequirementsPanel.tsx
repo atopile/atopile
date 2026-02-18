@@ -16,6 +16,7 @@ const FILTER_LABELS: Record<FilterType, string> = {
   fail: 'Fail',
   dc: 'DC',
   transient: 'Tran',
+  ac: 'AC',
 };
 
 export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
@@ -42,6 +43,7 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
     if (filter === 'fail') return requirements.filter(r => !r.passed);
     if (filter === 'dc') return requirements.filter(r => r.capture === 'dcop');
     if (filter === 'transient') return requirements.filter(r => r.capture === 'transient');
+    if (filter === 'ac') return requirements.filter(r => r.capture === 'ac');
     return requirements;
   }, [filter, requirements]);
 

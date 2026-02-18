@@ -40,3 +40,11 @@ class Bandwidth3dB:
 
 class BodePlot:
     """Measurement: DC gain check with full Bode plot (gain + phase vs frequency)."""
+
+
+class Frequency:
+    """Measurement: signal frequency via rising-edge counting."""
+
+
+class Sweep:
+    """Measurement: parametric sweep — plot one signal vs another."""

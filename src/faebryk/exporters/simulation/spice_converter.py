@@ -305,6 +305,36 @@ def _convert_exponentiation(line: str) -> str:
     return "".join(result)
 
 
+def _parse_spice_value(text: str) -> float:
+    """Parse a SPICE value string with optional unit suffix.
+
+    Handles SPICE engineering suffixes:
+        T=1e12, G=1e9, Meg/MEG=1e6, k/K=1e3,
+        m=1e-3, u=1e-6, n=1e-9, p=1e-12, f=1e-15
+    """
+    m = re.match(r"^([+-]?[\d.eE+-]+)\s*([a-zA-Z]*)", text.strip())
+    if not m:
+        return float(text)
+    num = float(m.group(1))
+    suffix = m.group(2)
+    multipliers = {
+        "t": 1e12, "T": 1e12,
+        "g": 1e9, "G": 1e9,
+        "meg": 1e6, "Meg": 1e6, "MEG": 1e6,
+        "k": 1e3, "K": 1e3,
+        "m": 1e-3,
+        "u": 1e-6, "U": 1e-6,
+        "n": 1e-9, "N": 1e-9,
+        "p": 1e-12, "P": 1e-12,
+        "f": 1e-15, "F": 1e-15,
+    }
+    return num * multipliers.get(suffix, 1.0)
+
+
+# Regex pattern that captures a SPICE value with optional unit suffix
+_SPICE_VALUE_RE = r"[\d.eE+-]+[a-zA-Z]*"
+
+
 def _convert_sw_params(line: str) -> str:
     """Convert PSpice SW model VON/VOFF to ngspice VT/VH.
 
@@ -330,15 +360,19 @@ def _convert_sw_params(line: str) -> str:
     line = re.sub(r"\bVOFF\s*=\s*[\d.eE+-]+", "", line, flags=re.IGNORECASE)
 
     # Cap Roff/Ron ratio at 1e6 to reduce matrix conditioning issues
-    roff_m = re.search(r"\bRoff\s*=\s*([\d.eE+-]+)", line, re.IGNORECASE)
-    ron_m = re.search(r"\bRon\s*=\s*([\d.eE+-]+)", line, re.IGNORECASE)
+    roff_m = re.search(
+        rf"\bRoff\s*=\s*({_SPICE_VALUE_RE})", line, re.IGNORECASE
+    )
+    ron_m = re.search(
+        rf"\bRon\s*=\s*({_SPICE_VALUE_RE})", line, re.IGNORECASE
+    )
     if roff_m:
-        roff = float(roff_m.group(1))
-        ron = float(ron_m.group(1)) if ron_m else 1.0
+        roff = _parse_spice_value(roff_m.group(1))
+        ron = _parse_spice_value(ron_m.group(1)) if ron_m else 1.0
         max_roff = max(ron * 1e6, 1.0)  # ratio-based cap, minimum 1 ohm
         if roff > max_roff:
             line = re.sub(
-                r"\bRoff\s*=\s*[\d.eE+-]+",
+                rf"\bRoff\s*=\s*{_SPICE_VALUE_RE}",
                 f"Roff={max_roff:g}",
                 line,
                 flags=re.IGNORECASE,

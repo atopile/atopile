@@ -388,6 +388,20 @@ class ACResult:
         p_in = self.phase_deg(in_key)
         return [po - pi for po, pi in zip(p_out, p_in)]
 
+    def compute_diff(self, pos_key: str, neg_key: str) -> str:
+        """Compute V(pos) - V(neg) and store as a virtual signal. Returns the key."""
+        pk = self._resolve_key(pos_key)
+        nk = self._resolve_key(neg_key)
+        diff_key = f"v_diff({pk},{nk})"
+        if diff_key not in self.signals_real:
+            self.signals_real[diff_key] = [
+                a - b for a, b in zip(self.signals_real[pk], self.signals_real[nk])
+            ]
+            self.signals_imag[diff_key] = [
+                a - b for a, b in zip(self.signals_imag[pk], self.signals_imag[nk])
+            ]
+        return diff_key
+
     def __contains__(self, key: str) -> bool:
         try:
             self._resolve_key(key)
@@ -505,6 +519,26 @@ class Circuit:
 
             proc = _run_ngspice_subprocess(str(spice_file), timeout=300)
             return _parse_wrdata(data_file, signals)
+
+    def add_element(self, line: str) -> None:
+        """Add a new element line to the netlist."""
+        self._netlist._lines.append(line)
+
+    def remove_element(self, name: str) -> None:
+        """Remove an element by name from the netlist."""
+        prefix = name.upper() + " "
+        self._netlist._lines = [
+            l for l in self._netlist._lines
+            if not l.upper().startswith(prefix)
+        ]
+
+    def save_state(self) -> list[str]:
+        """Save the current netlist lines. Returns state for restore_state."""
+        return list(self._netlist._lines)
+
+    def restore_state(self, state: list[str]) -> None:
+        """Restore netlist lines from a previous save_state call."""
+        self._netlist._lines = list(state)
 
     def get_source_spec(self, name: str) -> str | None:
         """Read the existing source specification from the netlist.
@@ -659,8 +693,9 @@ def _parse_wrdata(path: Path, signal_names: list[str]) -> TransientResult:
 def _parse_wrdata_ac(path: Path, signal_names: list[str]) -> ACResult:
     """Parse an ngspice wrdata output file from AC analysis.
 
-    AC wrdata format: each signal produces TWO columns (real, imaginary).
-    Line format: freq  re(sig1) im(sig1)  re(sig2) im(sig2) ...
+    AC wrdata format: each signal produces THREE columns (freq, real, imaginary).
+    ngspice repeats the frequency column for every signal.
+    Line format: freq re(sig1) im(sig1)  freq re(sig2) im(sig2) ...
     """
     freq: list[float] = []
     normalized = [name.lower() for name in signal_names]
@@ -671,8 +706,8 @@ def _parse_wrdata_ac(path: Path, signal_names: list[str]) -> ACResult:
     text = path.read_text()
     for line in text.strip().splitlines():
         parts = line.split()
-        # Need: 1 (freq) + 2*n (real+imag per signal) columns minimum
-        if len(parts) < 1 + 2 * n:
+        # Need: 3 columns per signal (freq, real, imag) — freq is repeated
+        if len(parts) < 3 * n:
             continue
         try:
             f = float(parts[0])
@@ -680,8 +715,8 @@ def _parse_wrdata_ac(path: Path, signal_names: list[str]) -> ACResult:
             continue
         freq.append(f)
         for i, name in enumerate(normalized):
-            signals_real[name].append(float(parts[2 * i + 1]))
-            signals_imag[name].append(float(parts[2 * i + 2]))
+            signals_real[name].append(float(parts[3 * i + 1]))
+            signals_imag[name].append(float(parts[3 * i + 2]))
 
     return ACResult(freq=freq, signals_real=signals_real, signals_imag=signals_imag)
 
@@ -785,10 +820,14 @@ load_spice_circuit = _load_spice_circuit
 # ---------------------------------------------------------------------------
 
 def _sanitize_net_name(name: str) -> str:
-    """Sanitize a node name for SPICE compatibility."""
+    """Sanitize a node name for SPICE compatibility.
+
+    Lowercases the result since SPICE is case-insensitive and ngspice
+    normalises all identifiers to lowercase internally.
+    """
     result = re.sub(r"[\.\[\]\s]+", "_", name)
     result = result.strip("_")
-    return result or "unnamed"
+    return (result or "unnamed").lower()
 
 
 def _get_nominal_value(param_node) -> float | None:
@@ -815,7 +854,9 @@ def _get_nominal_value(param_node) -> float | None:
         return None
 
 
-def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
+def generate_spice_netlist(
+    app, solver, scope=None,
+) -> tuple[SpiceNetlist, dict[str, str]]:
     """Auto-generate a SPICE netlist from the atopile instance graph.
 
     Walks the graph to find:
@@ -831,7 +872,8 @@ def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
                Defaults to app (full circuit).
 
     Returns:
-        A SpiceNetlist containing circuit elements only (no .control section).
+        (netlist, net_aliases) — the SpiceNetlist and a dict mapping
+        alternative sanitized net names to the canonical SPICE net name.
     """
     import faebryk.core.node as fabll
     import faebryk.library._F as F
@@ -875,7 +917,7 @@ def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
     logger.info(f"Found {len(electricals)} Electrical interfaces")
 
     if not electricals:
-        return netlist
+        return netlist, {}
 
     # 2. Group into buses (connected nets)
     buses = fabll.is_interface.group_into_buses(electricals)
@@ -883,14 +925,19 @@ def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
 
     # 3. Build mapping: each Electrical node -> its net name
     electrical_to_net: dict = {}
+    # Also build an alias map: every sanitized member name -> canonical net name
+    # This lets requirements reference nets by any of their ato-level names
+    net_aliases: dict[str, str] = {}
 
     net_counter = 0
     for _, members in buses.items():
         net_name = None
+        all_candidates: list[str] = []
         for member in members:
             full_name = member.get_full_name(include_uuid=False)
             if full_name:
                 candidate = _sanitize_net_name(full_name)
+                all_candidates.append(candidate)
                 if net_name is None or len(candidate) < len(net_name):
                     net_name = candidate
 
@@ -901,6 +948,11 @@ def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
 
         for member in members:
             electrical_to_net[member] = net_name
+
+        # Register all candidate names as aliases to the canonical name
+        for alias in all_candidates:
+            if alias != net_name:
+                net_aliases[alias] = net_name
 
     def _net(electrical) -> str:
         return electrical_to_net.get(electrical, "?")
@@ -1143,4 +1195,4 @@ def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
         )
         x_counter += 1
 
-    return netlist
+    return netlist, net_aliases
