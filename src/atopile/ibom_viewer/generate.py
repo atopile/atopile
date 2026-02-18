@@ -113,6 +113,8 @@ def generate_ibom_html(
     }
 
     data_json = json.dumps(ibom_data, separators=(",", ":"))
+    # Escape </script> sequences to prevent XSS when embedded in <script> tags
+    data_json = data_json.replace("</", r"<\/")
 
     # Read template and assets
     template_html = (_TEMPLATE_DIR / "template.html").read_text()

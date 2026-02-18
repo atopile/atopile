@@ -1207,7 +1207,6 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
-        generate_ibom,
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,
@@ -1224,6 +1223,7 @@ def generate_default(ctx: BuildStepContext) -> None:
     aliases=["*"],
     dependencies=[
         generate_default,
+        generate_ibom,
         generate_manufacturing_data,
         generate_3d_models,
     ],
