@@ -11,6 +11,9 @@ function BomUI(containerId, bomData, refToBomId, renderer) {
     this.sortCol = "quantity";
     this.sortAsc = false;
     this.filterText = "";
+    this.useRegex = false;
+    this.caseSensitive = false;
+    this._matcher = null;
     this.selectedId = null;
 
     // Build id-to-component lookup
@@ -36,20 +39,54 @@ BomUI.prototype._buildUI = function() {
     // Search bar
     var searchRow = document.createElement("div");
     searchRow.className = "bom-search-row";
+
+    this.searchWrap = document.createElement("div");
+    this.searchWrap.className = "bom-search-wrap";
+
     var searchInput = document.createElement("input");
     searchInput.type = "text";
-    searchInput.placeholder = "Search components... (/)";
+    searchInput.placeholder = "Search designators & addresses... (/)";
     searchInput.className = "bom-search";
     searchInput.id = "bom-search-input";
     searchInput.addEventListener("input", function() {
-        self.filterText = this.value.toLowerCase();
+        self.filterText = this.value;
+        self._updateMatcher();
         self.render();
     });
     searchInput.addEventListener("keydown", function(e) {
         if (e.key === "Escape") { this.blur(); }
     });
-    searchRow.appendChild(searchInput);
+    this.searchWrap.appendChild(searchInput);
 
+    // Case-sensitivity toggle
+    var caseBtn = document.createElement("button");
+    caseBtn.className = "search-toggle";
+    caseBtn.textContent = "Aa";
+    caseBtn.title = "Case insensitive";
+    caseBtn.addEventListener("click", function() {
+        self.caseSensitive = !self.caseSensitive;
+        caseBtn.classList.toggle("active", self.caseSensitive);
+        caseBtn.title = self.caseSensitive ? "Case sensitive" : "Case insensitive";
+        self._updateMatcher();
+        self.render();
+    });
+    this.searchWrap.appendChild(caseBtn);
+
+    // Regex toggle
+    var regexBtn = document.createElement("button");
+    regexBtn.className = "search-toggle";
+    regexBtn.textContent = ".*";
+    regexBtn.title = "Enable regex";
+    regexBtn.addEventListener("click", function() {
+        self.useRegex = !self.useRegex;
+        regexBtn.classList.toggle("active", self.useRegex);
+        regexBtn.title = self.useRegex ? "Regex enabled" : "Enable regex";
+        self._updateMatcher();
+        self.render();
+    });
+    this.searchWrap.appendChild(regexBtn);
+
+    searchRow.appendChild(this.searchWrap);
     this.container.appendChild(searchRow);
 
     // Table wrapper
@@ -196,18 +233,38 @@ BomUI.prototype._renderDetailPanel = function() {
 
 // --- Filtering & sorting ---
 
+BomUI.prototype._updateMatcher = function() {
+    var pattern = this.filterText.trim();
+    this._matcher = null;
+    this._matcherError = false;
+    if (!pattern) return;
+    if (this.useRegex) {
+        try {
+            var flags = this.caseSensitive ? "" : "i";
+            var re = new RegExp(pattern, flags);
+            this._matcher = function(s) { return re.test(s); };
+        } catch(e) {
+            this._matcherError = true;
+            this._matcher = function() { return false; };
+        }
+    } else {
+        if (this.caseSensitive) {
+            this._matcher = function(s) { return s.indexOf(pattern) >= 0; };
+        } else {
+            var lower = pattern.toLowerCase();
+            this._matcher = function(s) { return s.toLowerCase().indexOf(lower) >= 0; };
+        }
+    }
+    this.searchWrap.classList.toggle("search-error", this._matcherError);
+};
+
 BomUI.prototype._getFiltered = function() {
-    if (!this.filterText) return this.components.slice();
-    var q = this.filterText;
+    if (!this._matcher) return this.components.slice();
+    var test = this._matcher;
     return this.components.filter(function(c) {
-        if ((c.value || "").toLowerCase().indexOf(q) >= 0) return true;
-        if ((c.mpn || "").toLowerCase().indexOf(q) >= 0) return true;
-        if ((c.lcsc || "").toLowerCase().indexOf(q) >= 0) return true;
-        if ((c.description || "").toLowerCase().indexOf(q) >= 0) return true;
-        if ((c.package || "").toLowerCase().indexOf(q) >= 0) return true;
-        if ((c.manufacturer || "").toLowerCase().indexOf(q) >= 0) return true;
         for (var i = 0; i < c.usages.length; i++) {
-            if (c.usages[i].designator.toLowerCase().indexOf(q) >= 0) return true;
+            if (test(c.usages[i].designator)) return true;
+            if (test(c.usages[i].address)) return true;
         }
         return false;
     });

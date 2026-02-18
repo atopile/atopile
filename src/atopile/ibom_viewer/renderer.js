@@ -60,7 +60,7 @@ var PAD_FRONT_COLOR = [0.85, 0.20, 0.20, 0.7];
 var PAD_BACK_COLOR  = [0.20, 0.40, 0.85, 0.7];
 var VIA_COLOR       = [0.6,  0.6,  0.6,  0.9];
 var VIA_DRILL_COLOR = [0.15, 0.15, 0.15, 1.0];
-var BOARD_BG        = [0.08, 0.08, 0.08, 1.0];
+var BOARD_BG        = [0.067, 0.067, 0.106, 1.0];
 var ZONE_ALPHA      = 0.25;
 
 function getLayerColor(layer) {
