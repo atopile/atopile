@@ -1,9 +1,9 @@
 import { Vec2 } from "./math";
-import { KICAD_STROKE_ASCII_32_126 } from "./kicad_stroke_font_data";
+import { KICAD_STROKE_GLYPHS_32_255, UNICODE_TO_CP437 } from "./kicad_stroke_font_data";
 
-const ASCII_MIN = 32;
-const ASCII_MAX = 126;
-const ASCII_QMARK = 63;
+const CP437_MIN = 32;
+const CP437_MAX = 255;
+const CP437_QMARK = 63;
 const REF_CHAR_CODE = "R".charCodeAt(0);
 const FONT_SCALE = 1 / 21;
 const FONT_OFFSET = -10;
@@ -75,16 +75,37 @@ function decodeGlyph(encoded: string): Glyph {
 }
 
 function getGlyph(charCode: number): Glyph {
-    const normalized = charCode >= ASCII_MIN && charCode <= ASCII_MAX ? charCode : ASCII_QMARK;
+    const normalized = charCode >= CP437_MIN && charCode <= CP437_MAX ? charCode : CP437_QMARK;
     const cached = glyphCache.get(normalized);
     if (cached) {
         return cached;
     }
 
-    const encoded = KICAD_STROKE_ASCII_32_126[normalized - ASCII_MIN] ?? KICAD_STROKE_ASCII_32_126[ASCII_QMARK - ASCII_MIN]!;
+    const index = normalized - CP437_MIN;
+    const qmarkIndex = CP437_QMARK - CP437_MIN;
+    const encoded = KICAD_STROKE_GLYPHS_32_255[index] ?? KICAD_STROKE_GLYPHS_32_255[qmarkIndex]!;
     const glyph = decodeGlyph(encoded);
     glyphCache.set(normalized, glyph);
     return glyph;
+}
+
+function glyphCodeForChar(ch: string): number {
+    const mapped = UNICODE_TO_CP437[ch];
+    if (mapped !== undefined) {
+        return mapped;
+    }
+
+    const normalized = ch.normalize("NFKC");
+    const normalizedMapped = UNICODE_TO_CP437[normalized];
+    if (normalizedMapped !== undefined) {
+        return normalizedMapped;
+    }
+
+    const code = ch.codePointAt(0);
+    if (code !== undefined && code >= 0 && code <= CP437_MAX) {
+        return code;
+    }
+    return CP437_QMARK;
 }
 
 export function layoutKicadStrokeText(text: string, charWidth: number, charHeight: number): StrokeTextLayout {
@@ -124,7 +145,7 @@ export function layoutKicadStrokeText(text: string, charWidth: number, charHeigh
             continue;
         }
 
-        const glyph = getGlyph(ch.codePointAt(0) ?? ASCII_QMARK);
+        const glyph = getGlyph(glyphCodeForChar(ch));
         for (const stroke of glyph.strokes) {
             if (stroke.length === 0) {
                 continue;
