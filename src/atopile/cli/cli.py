@@ -41,7 +41,7 @@ from atopile.errors import (
     iter_leaf_exceptions,
     log_discord_banner,
 )
-from atopile.logging import AtoLogger, handler, logger
+from atopile.logging import handler, logger
 from faebryk.libs.util import ConfigFlag
 
 SAFE_MODE_OPTION = ConfigFlag(
@@ -196,11 +196,6 @@ def cli(
     # TODO use file to rate-limit check_for_update
     # if ctx.invoked_subcommand:
     #    check_for_update()
-
-    # Set up database logging for all CLI commands (not just builds)
-    # This ensures logs from validate, inspect, etc. are also stored in the database
-
-    AtoLogger.activate_build(enable_database=True, stage="cli")
 
     configure.setup()
 

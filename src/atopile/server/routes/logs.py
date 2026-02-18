@@ -291,3 +291,4 @@ async def websocket_logs(websocket: WebSocket):
         log.info("Logs WebSocket client disconnected")
     except Exception as exc:
         log.exception(f"Logs WebSocket error: {exc}")
+        raise

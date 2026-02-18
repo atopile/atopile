@@ -167,6 +167,7 @@ def _run_single_build() -> None:
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
     from atopile.errors import iter_leaf_exceptions
+    from atopile.logging import AtoLogger
     from atopile.model.sqlite import BuildHistory
 
     # Get the single build target from config
@@ -177,6 +178,7 @@ def _run_single_build() -> None:
         )
 
     build_name = build_names[0]
+    AtoLogger.activate_build(stage=build_name)
 
     # Read build_id from environment (passed by parent process)
     build_id = os.environ.get("ATO_BUILD_ID")
@@ -532,10 +534,6 @@ def build(
 
     results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
-    from atopile.logging import AtoLogger
-
-    AtoLogger.close_all()
-
     build_by_id = {build.build_id: build for build in builds if build.build_id}
     failed = [
         build_by_id[build_id].display_name
@@ -570,6 +568,10 @@ def build(
                 )
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
+
+    from atopile.logging import AtoLogger
+
+    AtoLogger.close_all()
 
     if build_exit_code != 0:
         raise typer.Exit(build_exit_code)

@@ -358,7 +358,7 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     try:
         _build_queue.stop()
     except Exception:
-        pass
+        log.exception("Failed to stop build queue during cleanup")
 
     # 2. Flush logs to database
     try:
@@ -366,7 +366,7 @@ def cleanup_server(exc: BaseException | None = None) -> None:
 
         AtoLogger.close_all()
     except Exception:
-        pass
+        log.exception("Failed to close logging contexts during cleanup")
 
     # 3. Capture exception for telemetry (if provided)
     try:
@@ -376,13 +376,13 @@ def cleanup_server(exc: BaseException | None = None) -> None:
             telemetry.capture_exception(exc)
         telemetry._flush_telemetry_on_exit()
     except Exception:
-        pass
+        log.exception("Failed to flush telemetry during cleanup")
 
     # 4. Flush logging handlers
     try:
         logging.shutdown()
     except Exception:
-        pass
+        log.exception("Failed to shutdown logging handlers during cleanup")
 
 
 def _fatal_error(msg: str, exc: BaseException | None = None) -> None:

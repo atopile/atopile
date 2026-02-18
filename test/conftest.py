@@ -130,19 +130,20 @@ def clear_node_type_caches():
 @pytest.fixture(autouse=True)
 def ato_logging_context(request: pytest.FixtureRequest):
     """
-    Isolate global logging state for tests with optional context activation.
+    Isolate global logging state for tests with explicit context activation.
 
     Configure behavior via:
     - marker: `@pytest.mark.ato_logging(...)`
-    - defaults: no active context, no root logger reset
+    - defaults: unscoped context, no root logger reset
+    - override: pass `kind=None` in marker kwargs to disable context activation
     """
     marker = request.node.get_closest_marker("ato_logging")
     if marker is None:
-        yield None
-        return
+        options = {}
+    else:
+        options = marker.kwargs
 
-    options = marker.kwargs
-    kind = options.get("kind")
+    kind = options.get("kind", "unscoped")
     identifier = options.get("identifier", request.node.name)
     context = options.get("context", "")
     reset_root = bool(options.get("reset_root", False))
