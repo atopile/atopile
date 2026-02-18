@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG ATOPILE_VERSION
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${ATOPILE_VERSION}
+# Build pyzig for baseline x86_64 (no AVX-512) so the image runs on any x86_64 host
+ENV ATOPILE_ZIG_CPU=baseline
 
 # Copy only what's needed for the wheel build
 COPY pyproject.toml /src/pyproject.toml

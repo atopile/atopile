@@ -77,6 +77,15 @@ if (APPLE)
   set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
 
+# CPU feature level (portability) ------------------------------------------------
+# Set ATOPILE_ZIG_CPU to override the default "native" CPU target.
+# Use "baseline" for portable x86_64 builds (no AVX-512, etc.)
+set(ZIG_CPU_ARG "")
+if(DEFINED ENV{ATOPILE_ZIG_CPU})
+  set(ZIG_CPU_ARG -Dcpu=$ENV{ATOPILE_ZIG_CPU})
+  message(STATUS "Zig CPU target: $ENV{ATOPILE_ZIG_CPU}")
+endif()
+
 # Stamp file includes target architecture to ensure different arch builds in the same
 # source checkout (e.g., cibuildwheel building x86_64 and arm64) don't skip each other.
 set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
@@ -110,7 +119,7 @@ else()
     COMMAND ${ZIG_ENV_PREFIX} "${Python3_EXECUTABLE}" -m ziglang build python-ext
             -Doptimize=ReleaseFast
             -Dpython-include=${PY_INCLUDE}
-            ${ZIG_TARGET_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
+            ${ZIG_TARGET_ARG} ${ZIG_CPU_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
     COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
     WORKING_DIRECTORY "${ZIG_WORKDIR}"
     BYPRODUCTS "${ZIG_OUT_LIB}" "${ZIG_OUT_LIB_SEXP}"
