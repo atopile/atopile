@@ -1,0 +1,79 @@
+* TPS54560 Peak Current-Mode Behavioral Switching Model for ngspice
+* Accurate model of TI TPS54560 current-mode buck controller
+*
+* Pins: BOOT COMP EN GND SW RT VIN FB
+*   BOOT — bootstrap supply (simplified, high-Z to SW)
+*   COMP — error amplifier output; connect external compensation network here
+*   EN   — enable pin; converter ON when V(EN) > 1.1V
+*   GND  — power ground
+*   SW   — switch node output
+*   RT   — timing resistor pin (simplified, high-Z to GND)
+*   VIN  — power input
+*   FB   — feedback input (regulation target: 0.8V)
+*
+* Parameters:
+*   FS   — switching frequency in Hz (default 600kHz)
+*
+* Based on TPS54560 datasheet parameters:
+*   - Error amp Gm = 350uA/V, Vref = 0.8V
+*   - High-side FET Ron = 92mOhm
+*   - Internal catch diode (Schottky-like)
+*   - Peak current-mode control with slope compensation
+*   - Current sense gain: ~150mV/A
+*   - Slope compensation: ~63mV/us
+*
+.SUBCKT TPS54560_TRANS BOOT COMP EN GND SW RT VIN FB FS=600k
+*
+* --- Error amplifier OTA ---
+* Gm = 350uA/V, Vref = 0.8V
+* Drives current into COMP node (charges external compensation)
+B_gm GND COMP I = (0.8 - V(FB,GND)) * 350u
+* High impedance bias to keep COMP from floating at DC
+R_comp_bias COMP GND 100Meg
+* Clamp COMP to realistic range
+B_comp_cl comp_cl GND V = min(max(V(COMP,GND), 0.3), 2.0)
+*
+* --- Current sense (active only when high-side FET is ON) ---
+* When FET ON: V(VIN,SW) = IL*Ron (small, < 2V)
+* When FET OFF: V(VIN,SW) >> 5V (diode pulls SW below GND)
+* Sense gain: 150mV/A (4.6A OCP at ~690mV sense voltage)
+B_isense isense GND V = (V(VIN,SW) < 2) ? max(V(VIN,SW) / 0.092, 0) * 0.15 : 0
+*
+* --- Slope compensation ---
+* ~63mV/us internal slope comp
+* At 600kHz (1.667us period), max = 63m * 1.667 = 105mV
+V_slope slope_ramp GND PULSE(0 105m 0 1.65u 5n 1n 1.667u)
+*
+* --- Sum: sensed current + slope comp ---
+B_sum sense_sum GND V = V(isense,GND) + V(slope_ramp,GND)
+*
+* --- Clock pulse (sets SR latch at start of each switching cycle) ---
+V_clk clk GND PULSE(0 1 0 5n 5n 20n 1.667u)
+*
+* --- SR latch for peak current-mode control ---
+* SET on clock pulse, RESET when sense_sum >= comp_cl
+* R-dominant (reset overrides set)
+B_latch latch_drv GND V = (V(sense_sum,GND) >= V(comp_cl,GND)) ? 0 : ((V(clk,GND) > 0.5) ? 1 : V(q_filt,GND))
+R_q latch_drv q_raw 10
+C_q q_raw GND 10p
+B_qfilt q_filt GND V = (V(q_raw,GND) > 0.5) ? 1 : 0
+*
+* --- Enable gate ---
+B_en en_gate GND V = (V(EN,GND) > 1.1) ? 1 : 0
+B_gate gate GND V = V(q_filt,GND) * V(en_gate,GND)
+*
+* --- High-side FET (92mOhm Ron) ---
+S_hs VIN SW gate GND SW_HS
+.model SW_HS SW VT=0.5 VH=0.1 Ron=92m Roff=100k
+*
+* --- Low-side catch diode (Schottky, STPS340U-like) ---
+D_ls GND SW D_CATCH
+.model D_CATCH D IS=1e-5 N=1.05 RS=40m BV=40 TT=5n CJO=150p
+*
+* --- Bootstrap (simplified) ---
+R_boot_int BOOT SW 1Meg
+*
+* --- RT pin (simplified) ---
+R_rt_int RT GND 1Meg
+*
+.ENDS TPS54560_TRANS

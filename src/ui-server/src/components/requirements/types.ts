@@ -14,6 +14,8 @@ export interface RequirementData {
   contextNets: string[];
   unit: string;
   settlingTolerance?: number;
+  tranStart?: number;
+  tranStop?: number;
   timeSeries: TimeSeriesData | null;
 }
 

@@ -5,6 +5,8 @@ import { renderTransientPlot, renderDCPlot, purgePlot, resizePlot } from './requ
 
 interface RequirementsDetailPageProps {
   requirementId: string;
+  injectedData?: RequirementData | null;
+  injectedBuildTime?: string;
 }
 
 type WindowGlobals = Window & {
@@ -13,15 +15,17 @@ type WindowGlobals = Window & {
   __ATOPILE_TARGET__?: string;
 };
 
-export function RequirementsDetailPage({ requirementId }: RequirementsDetailPageProps) {
+export function RequirementsDetailPage({ requirementId, injectedData, injectedBuildTime }: RequirementsDetailPageProps) {
   const chartRef = useRef<HTMLDivElement>(null);
-  const [req, setReq] = useState<RequirementData | null>(null);
-  const [buildTime, setBuildTime] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [req, setReq] = useState<RequirementData | null>(injectedData ?? null);
+  const [buildTime, setBuildTime] = useState<string>(injectedBuildTime ?? '');
+  const [loading, setLoading] = useState(!injectedData);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch requirements data from API
+  // Only fetch from API if data wasn't injected
   useEffect(() => {
+    if (injectedData) return;
+
     const w = window as WindowGlobals;
     const apiUrl = w.__ATOPILE_API_URL__ || '';
     const projectRoot = w.__ATOPILE_PROJECT_ROOT__ || '';
@@ -50,7 +54,7 @@ export function RequirementsDetailPage({ requirementId }: RequirementsDetailPage
         setError(err instanceof Error ? err.message : 'Failed to fetch requirements');
         setLoading(false);
       });
-  }, [requirementId]);
+  }, [requirementId, injectedData]);
 
   // Render chart when req is loaded
   useEffect(() => {
@@ -177,17 +181,23 @@ export function RequirementsDetailPage({ requirementId }: RequirementsDetailPage
               <div className="ric-section-title">{hasTransientConfig ? 'Transient Config' : 'Info'}</div>
               {hasTransientConfig ? (
                 <>
+                  {req.tranStart != null && (
+                    <div className="ric-row">
+                      <span className="ric-label">Start</span>
+                      <span className="ric-value">{formatEng(req.tranStart, 's')}</span>
+                    </div>
+                  )}
+                  {req.tranStop != null && (
+                    <div className="ric-row">
+                      <span className="ric-label">Stop</span>
+                      <span className="ric-value">{formatEng(req.tranStop, 's')}</span>
+                    </div>
+                  )}
                   {req.timeSeries && (
-                    <>
-                      <div className="ric-row">
-                        <span className="ric-label">Stop</span>
-                        <span className="ric-value">{formatEng(req.timeSeries.time[req.timeSeries.time.length - 1], 's')}</span>
-                      </div>
-                      <div className="ric-row">
-                        <span className="ric-label">Points</span>
-                        <span className="ric-value mono-muted">{req.timeSeries.time.length}</span>
-                      </div>
-                    </>
+                    <div className="ric-row">
+                      <span className="ric-label">Points</span>
+                      <span className="ric-value mono-muted">{req.timeSeries.time.length}</span>
+                    </div>
                   )}
                   {req.settlingTolerance != null && (
                     <div className="ric-row">
@@ -240,7 +250,7 @@ export function RequirementsDetailPage({ requirementId }: RequirementsDetailPage
 
       {/* Chart — fills remaining space */}
       <div className="rdp-chart">
-        <div ref={chartRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={chartRef} />
       </div>
     </div>
   );

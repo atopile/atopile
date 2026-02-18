@@ -1,15 +1,25 @@
 import type { RequirementData } from './types';
 import { formatEng, autoScaleTime } from './helpers';
 
-type Plotly = typeof import('plotly.js-dist-min');
+type Plotly = typeof import('plotly.js-basic-dist-min');
 
 let _plotly: Plotly | null = null;
+let _plotlyPromise: Promise<Plotly> | null = null;
 
-async function getPlotly(): Promise<Plotly> {
-  if (!_plotly) {
-    _plotly = await import('plotly.js-dist-min');
+function getPlotly(): Promise<Plotly> {
+  if (_plotly) return Promise.resolve(_plotly);
+  if (!_plotlyPromise) {
+    _plotlyPromise = import('plotly.js-basic-dist-min').then(m => {
+      _plotly = m;
+      return m;
+    });
   }
-  return _plotly;
+  return _plotlyPromise;
+}
+
+/** Start loading Plotly immediately — call at page init for parallel load */
+export function preloadPlotly(): void {
+  getPlotly();
 }
 
 /** Read current theme colors from CSS variables */
@@ -27,12 +37,28 @@ function themeColors() {
   };
 }
 
+const MAX_CHART_HEIGHT = 500;
+const MIN_CHART_HEIGHT = 300;
+
+/** Compute width/height for a 16:9 plot that fits inside the container.
+ *  Reads dimensions from the parent wrapper (`.rdp-chart`), not the chart div itself.
+ *  Never shrinks below MIN_CHART_HEIGHT — the container clips the overflow instead. */
+function fitDimensions(chartEl: HTMLElement): { width: number; height: number } {
+  const container = chartEl.parentElement ?? chartEl;
+  const style = getComputedStyle(container);
+  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  const w = container.clientWidth - padX;
+  const targetH = Math.max(Math.min(w * 9 / 16, MAX_CHART_HEIGHT), MIN_CHART_HEIGHT);
+  const targetW = targetH * 16 / 9;
+  return { width: Math.min(w, targetW), height: targetH };
+}
+
 function baseLayout(colors: ReturnType<typeof themeColors>) {
   return {
     paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)',
     font: { family: '-apple-system, sans-serif', color: colors.text, size: 11 },
-    margin: { t: 30, r: 10, b: 40, l: 50 },
+    margin: { t: 40, r: 40, b: 100, l: 50 },
     xaxis: {
       gridcolor: `${colors.surface}66`,
       zerolinecolor: `${colors.surface}99`,
@@ -45,7 +71,7 @@ function baseLayout(colors: ReturnType<typeof themeColors>) {
       title: { font: { size: 11 } },
       tickfont: { size: 10 },
     },
-    legend: { x: 0, y: 1.02, orientation: 'h' as const, font: { size: 9, color: colors.muted } },
+    legend: { x: 0.5, xanchor: 'center' as const, y: -0.35, orientation: 'h' as const, font: { size: 10, color: colors.muted } },
     modebar: { bgcolor: 'rgba(0,0,0,0)', color: colors.muted, activecolor: colors.accent },
   };
 }
@@ -89,11 +115,14 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     }
   });
 
+  const dim = fitDimensions(el);
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
-    title: { text: `<b>${req.measurement.replace(/_/g, ' ')}</b>`, font: { size: 13, color: colors.text } },
-    xaxis: { ...baseLayout(colors).xaxis, title: `Time (${tUnit})` },
-    yaxis: { ...baseLayout(colors).yaxis, title: req.unit === '%' ? '%' : `${req.unit}` },
+    width: dim.width,
+    height: dim.height,
+    title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
+    xaxis: { ...baseLayout(colors).xaxis, title: { text: `Time (${tUnit})`, font: { size: 11, color: colors.muted } } },
+    yaxis: { ...baseLayout(colors).yaxis, title: { text: req.unit === '%' ? '%' : req.unit, font: { size: 11, color: colors.muted } } },
     shapes: [] as Record<string, unknown>[],
     annotations: [] as Record<string, unknown>[],
   };
@@ -105,6 +134,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       overlaying: 'y',
       side: 'right',
     };
+    (layout.margin as Record<string, number>).r = 60;
   }
 
   const shapes = layout.shapes as Record<string, unknown>[];
@@ -117,8 +147,8 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       fillcolor: `${colors.success}14`, line: { width: 0 },
     });
     shapes.push(
-      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.error, width: 1.5, dash: 'dot' } },
-      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.error, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
     );
     shapes.push({
       type: 'line', xref: 'paper', yref: 'y',
@@ -126,8 +156,8 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       line: { color: req.passed ? colors.success : colors.error, width: 1.5, dash: 'dash' },
     });
     annotations.push(
-      { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.error }, xanchor: 'left', yanchor: 'bottom' },
-      { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.error }, xanchor: 'left', yanchor: 'top' },
+      { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+      { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
       { x: 0.98, y: req.actual, xref: 'paper', yref: 'y', text: `${formatEng(req.actual, req.unit)}`, showarrow: false, font: { size: 10, color: req.passed ? colors.success : colors.error }, xanchor: 'right', yanchor: 'bottom' },
     );
     const span = req.maxVal - req.minVal;
@@ -145,8 +175,8 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       fillcolor: `${colors.success}14`, line: { width: 0 },
     });
     shapes.push(
-      { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal * scale, x1: req.minVal * scale, y0: 0, y1: 1, line: { color: colors.error, width: 1.5, dash: 'dot' } },
-      { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal * scale, x1: req.maxVal * scale, y0: 0, y1: 1, line: { color: colors.error, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal * scale, x1: req.minVal * scale, y0: 0, y1: 1, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal * scale, x1: req.maxVal * scale, y0: 0, y1: 1, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
     );
     shapes.push({
       type: 'line', xref: 'x', yref: 'paper',
@@ -167,8 +197,8 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     const peak = Math.max(...nutSignal);
     const trough = Math.min(...nutSignal);
     shapes.push(
-      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: peak, y1: peak, line: { color: colors.error, width: 1.5, dash: 'dot' } },
-      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: trough, y1: trough, line: { color: colors.info, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: peak, y1: peak, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: trough, y1: trough, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
     );
     annotations.push({
       x: 0.95, y: (peak + trough) / 2, xref: 'paper', yref: 'y',
@@ -195,11 +225,11 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     shapes.push({
       type: 'line', xref: 'paper', yref: 'y',
       x0: 0, x1: 1, y0: maxOsV, y1: maxOsV,
-      line: { color: colors.error, width: 1.5, dash: 'dash' },
+      line: { color: colors.muted, width: 1.5, dash: 'dash' },
     });
     annotations.push(
       { x: 0.02, y: final, xref: 'paper', yref: 'y', text: `Final ${formatEng(final, 'V')}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
-      { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 9, color: colors.error }, xanchor: 'left', yanchor: 'bottom' },
+      { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
       { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${req.actual.toFixed(2)}%`, showarrow: true, ay: -25, arrowcolor: colors.error, arrowwidth: 1.5, font: { size: 11, color: colors.error } },
     );
     const span = peak - final;
@@ -234,25 +264,27 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData) {
     name: 'Actual',
   }];
 
+  const dim = fitDimensions(el);
   const layout = {
     ...baseLayout(colors),
-    title: { text: `<b>DC: ${req.measurement.replace(/_/g, ' ')}</b>`, font: { size: 13, color: colors.text } },
+    width: dim.width,
+    height: dim.height,
+    title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
     xaxis: {
       ...baseLayout(colors).xaxis,
-      title: req.unit,
+      title: { text: req.unit, font: { size: 11, color: colors.muted } },
       range: [req.minVal - padding, req.maxVal + padding],
     },
     yaxis: { visible: false, fixedrange: true },
-    height: 150,
     shapes: [
       { type: 'rect', xref: 'x', yref: 'paper', x0: req.minVal, x1: req.maxVal, y0: 0, y1: 1, fillcolor: `${colors.success}1A`, line: { width: 0 } },
-      { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal, x1: req.minVal, y0: 0, y1: 1, line: { color: colors.error, width: 1.5, dash: 'dot' } },
-      { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal, x1: req.maxVal, y0: 0, y1: 1, line: { color: colors.error, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal, x1: req.minVal, y0: 0, y1: 1, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal, x1: req.maxVal, y0: 0, y1: 1, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
       { type: 'line', xref: 'x', yref: 'paper', x0: req.typical, x1: req.typical, y0: 0, y1: 1, line: { color: colors.muted, width: 1, dash: 'dash' } },
     ],
     annotations: [
-      { x: req.minVal, y: 1.05, xref: 'x', yref: 'paper', text: 'LSL', showarrow: false, font: { size: 9, color: colors.error } },
-      { x: req.maxVal, y: 1.05, xref: 'x', yref: 'paper', text: 'USL', showarrow: false, font: { size: 9, color: colors.error } },
+      { x: req.minVal, y: 1.05, xref: 'x', yref: 'paper', text: 'LSL', showarrow: false, font: { size: 9, color: colors.muted } },
+      { x: req.maxVal, y: 1.05, xref: 'x', yref: 'paper', text: 'USL', showarrow: false, font: { size: 9, color: colors.muted } },
       { x: req.actual, y: -0.15, xref: 'x', yref: 'paper', text: formatEng(req.actual, req.unit), showarrow: false, font: { size: 11, color: req.passed ? colors.success : colors.error } },
     ],
   };
@@ -271,5 +303,6 @@ export async function purgePlot(el: HTMLDivElement) {
 
 export async function resizePlot(el: HTMLDivElement) {
   const Plotly = await getPlotly();
-  Plotly.Plots.resize(el);
+  const dim = fitDimensions(el);
+  Plotly.relayout(el, { width: dim.width, height: dim.height });
 }

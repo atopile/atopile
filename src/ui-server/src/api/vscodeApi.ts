@@ -165,6 +165,10 @@ export interface OpenMigrateTabMessage {
 export interface OpenRequirementDetailMessage {
   type: 'openRequirementDetail';
   requirementId: string;
+  projectRoot: string;
+  target: string;
+  requirementData?: unknown;
+  buildTime?: string;
 }
 
 export type ExtensionMessage =

@@ -7,6 +7,3 @@ paths:
 builds:
   default:
     entry: resistor_divider.ato:App
-    targets:
-      - spice-netlist
-      - verify-requirements

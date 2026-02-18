@@ -1,127 +1,122 @@
 #pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("TRAITS")
 
 import Resistor
 import Capacitor
+import Diode
 import Inductor
-import Electrical
 import ElectricPower
-import Requirement
-import has_spice_model
+import ElectricLogic
 
-module TPS54560_AVG:
-    vin = new Electrical
-    sw = new Electrical
-    fb = new Electrical
-    comp = new Electrical
-    gnd = new Electrical
-    trait has_spice_model<model_path="models/TPS54560_AVG.LIB", subcircuit_name="TPS54560_AVG", pin_map="COMP:comp,GND:gnd,SW:sw,VIN:vin,FB:fb", params="L=27u,FS=415k">
+from "parts/Texas_Instruments_TPS54560DDAR/Texas_Instruments_TPS54560DDAR.ato" import Texas_Instruments_TPS54560DDAR_package
+from "parts/STMicroelectronics_STPS340U/STMicroelectronics_STPS340U.ato" import STMicroelectronics_STPS340U
+from "requirements.ato" import SimulationRequirements
 
-module App:
-    # --- Power rails ---
+module TI_TPS54560:
+    """
+    Texas Instruments TPS54560x Buck Converter
+    WEBENCH Design: 12V input, 5V/5A output
+    """
     power_in = new ElectricPower
-    assert power_in.voltage within 12V +/- 5%
-
     power_out = new ElectricPower
-    # No voltage assertion: output is determined by the circuit
+    enable = new ElectricLogic
 
-    # --- Standalone signals for clean SPICE net names ---
-    fb = new Electrical
-    sw = new Electrical
-    comp = new Electrical
+    # IC
+    package = new Texas_Instruments_TPS54560DDAR_package
+    diode = new STMicroelectronics_STPS340U
 
-    # --- Buck converter (TI TPS54560 average model) ---
-    buck = new TPS54560_AVG
-    buck.vin ~ power_in.hv
-    buck.sw ~ sw
-    buck.fb ~ fb
-    buck.comp ~ comp
-    buck.gnd ~ power_in.lv
-
-    # --- Input decoupling capacitor ---
-    c_in = new Capacitor
-    assert c_in.capacitance within 10uF +/- 20%
-    power_in.hv ~> c_in ~> power_in.lv
-
-    # --- Output inductor (from switch node to output) ---
+    # Inductor (2.2uH per WEBENCH)
     inductor = new Inductor
-    assert inductor.inductance within 22uH +/- 10%
-    sw ~> inductor ~> power_out.hv
+    inductor.inductance = 2.2uH +/- 20%
+    inductor.package = "SMD8x8mm"
 
-    # --- Output capacitor ---
+    # Input cap (10uF per WEBENCH)
+    c_in = new Capacitor
+    c_in.capacitance = 10uF +/- 20%
+    c_in.max_voltage = 25V to 100V
+    c_in.package = "0805"
+
+    # Output cap (2x 47uF = 94uF total per WEBENCH)
     c_out = new Capacitor
-    assert c_out.capacitance within 100uF +/- 20%
-    power_out.hv ~> c_out ~> power_out.lv
+    c_out.capacitance = 100uF +/- 20%
+    c_out.max_voltage = 16V to 100V
+    c_out.package = "1210"
 
-    # --- Ground connection ---
-    power_in.lv ~ power_out.lv
+    # Bootstrap cap (100nF per WEBENCH)
+    c_boot = new Capacitor
+    c_boot.capacitance = 100nF +/- 20%
+    c_boot.max_voltage = 25V to 100V
+    c_boot.package = "0603"
 
-    # --- Output load (5A at 5V = 1 ohm) ---
-    r_load = new Resistor
-    assert r_load.resistance within 1ohm +/- 1%
-    power_out.hv ~> r_load ~> power_out.lv
+    # Compensation network (per WEBENCH)
+    r_comp = new Resistor
+    r_comp.resistance = 23.7kohm +/- 2%
+    r_comp.package = "0402"
 
-    # --- Feedback voltage divider ---
-    # Vout = Vref * (R_top + R_bottom) / R_bottom
-    #      = 0.8 * (52.3k + 10k) / 10k = 4.984V
+    c_comp = new Capacitor
+    c_comp.capacitance = 33nF +/- 20%
+    c_comp.max_voltage = 25V to 100V
+    c_comp.package = "0805"
+
+    c_comp1 = new Capacitor
+    c_comp1.capacitance = 6.8pF +/- 30%
+    c_comp1.max_voltage = 25V to 100V
+    c_comp1.package = "0603"
+
+    # Switching frequency resistor (162kohm ~ 600kHz)
+    r_rt = new Resistor
+    r_rt.resistance = 162kohm +/- 2%
+    r_rt.package = "0402"
+
+    # Feedback voltage divider (per WEBENCH: Rfbt=40.2k, Rfbb=7.68k)
+    # Vout = Vref * (Rfbt + Rfbb) / Rfbb = 0.8 * (40.2k + 7.68k) / 7.68k = 4.99V
     r_top = new Resistor
-    assert r_top.resistance within 52.3kohm +/- 1%
+    r_top.resistance = 40.2kohm +/- 1%
+    r_top.package = "R0402"
 
     r_bottom = new Resistor
-    assert r_bottom.resistance within 10kohm +/- 1%
+    r_bottom.resistance = 7.68kohm +/- 1%
+    r_bottom.package = "R0402"
 
-    power_out.hv ~> r_top ~> fb ~> r_bottom ~> power_in.lv
+    # Power connections
+    power_in.hv ~ package.VIN
+    power_in.lv ~ package.GND
+    power_out.lv ~ package.GND
+    power_out.lv ~ package.EP
 
-    # --- Simulation requirements ---
+    # Input filtering
+    power_in ~ c_in.power
 
-    req_dc_output = new Requirement
-    req_dc_output.req_name = "REQ-001: Output DC voltage"
-    req_dc_output.net = "power_out_hv"
-    req_dc_output.min_val = "4.85"
-    req_dc_output.typical = "5.0"
-    req_dc_output.max_val = "5.10"
-    req_dc_output.capture = "dcop"
-    req_dc_output.measurement = "final_value"
-    req_dc_output.justification = "Buck converter output within 3% of 5V target"
+    # Output stage
+    package.SW ~> inductor ~> power_out.hv
+    package.SW <~ diode <~ power_out.lv
+    power_out ~ c_out.power
 
-    req_dc_fb = new Requirement
-    req_dc_fb.req_name = "REQ-002: Feedback DC voltage"
-    req_dc_fb.net = "fb"
-    req_dc_fb.min_val = "0.78"
-    req_dc_fb.typical = "0.80"
-    req_dc_fb.max_val = "0.82"
-    req_dc_fb.capture = "dcop"
-    req_dc_fb.measurement = "final_value"
-    req_dc_fb.justification = "FB pin regulates to Vref=0.8V within 2.5%"
+    # Compensation
+    package.COMP ~> r_comp ~> c_comp ~> power_in.lv
+    package.COMP ~> c_comp1 ~> power_in.lv
+    package.BOOT ~> c_boot ~> package.SW
+    package.RT_CLK ~> r_rt ~> power_in.lv
 
-    # Power-on: 0->12V input, verify output settles to ~5V
-    req_line_step = new Requirement
-    req_line_step.req_name = "REQ-003: Power-on output voltage"
-    req_line_step.net = "power_out_hv"
-    req_line_step.min_val = "4.80"
-    req_line_step.typical = "5.0"
-    req_line_step.max_val = "5.20"
-    req_line_step.capture = "transient"
-    req_line_step.measurement = "final_value"
-    req_line_step.context_nets = "buck_vin,i(L1)"
-    req_line_step.tran_step = "10e-6"
-    req_line_step.tran_stop = "20e-3"
-    req_line_step.source_name = "V1"
-    req_line_step.source_spec = "PULSE(0 12 0 1n 1n 10 10)"
-    req_line_step.justification = "Output converges to regulated voltage after power-on"
+    # Feedback
+    power_out.hv ~> r_top ~> package.FB
+    package.FB ~> r_bottom ~> power_in.lv
 
-    # Inductor current: verify ~5A steady state (Vout/R_load)
-    req_inductor_current = new Requirement
-    req_inductor_current.req_name = "REQ-004: Inductor current average"
-    req_inductor_current.net = "i(L1)"
-    req_inductor_current.min_val = "4.0"
-    req_inductor_current.typical = "5.0"
-    req_inductor_current.max_val = "6.0"
-    req_inductor_current.capture = "transient"
-    req_inductor_current.measurement = "final_value"
-    req_inductor_current.context_nets = "power_out_hv"
-    req_inductor_current.tran_step = "10e-6"
-    req_inductor_current.tran_stop = "20e-3"
-    req_inductor_current.source_name = "V1"
-    req_inductor_current.source_spec = "PULSE(0 12 0 1n 1n 10 10)"
-    req_inductor_current.justification = "Inductor delivers ~5A load current at steady state"
+    # Enable — pullup keeps EN high in simulation
+    r_en = new Resistor
+    r_en.resistance = 100kohm +/- 5%
+    r_en.package = "0402"
+    power_in.hv ~> r_en ~> package.EN
+    enable.line ~ package.EN
+    enable.reference.lv ~ power_in.lv
+
+    # Input voltage constraint (generates V source in SPICE)
+    assert power_in.voltage within 12V +/- 5%
+
+    # Load resistor (5V/5A = 1 ohm, provides simulation load)
+    r_load = new Resistor
+    r_load.resistance = 1ohm +/- 5%
+    r_load.package = "R1210"
+    power_out.hv ~> r_load ~> power_out.lv
+
+    # Simulation requirements
+    reqs = new SimulationRequirements

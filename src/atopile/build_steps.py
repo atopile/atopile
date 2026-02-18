@@ -652,7 +652,9 @@ def _signal_unit(key: str) -> str:
     return "A" if key.startswith("i(") else "V"
 
 
-def _write_requirements_json(results, tran_data, group_key_fn) -> None:
+def _write_requirements_json(
+    results, tran_data, group_key_fn, ac_data=None, ac_group_key_fn=None
+) -> None:
     """Serialize requirement results + time-series to a JSON artifact."""
     from datetime import datetime, timezone
 
@@ -669,6 +671,14 @@ def _write_requirements_json(results, tran_data, group_key_fn) -> None:
             unit = "%"
         elif measurement == "settling_time":
             unit = "s"
+        elif measurement == "gain_db":
+            unit = "dB"
+        elif measurement == "phase_deg":
+            unit = "deg"
+        elif measurement == "bandwidth_3db":
+            unit = "Hz"
+        elif measurement == "bode_plot":
+            unit = "dB"
         else:
             unit = _signal_unit(net_key)
 
@@ -695,12 +705,20 @@ def _write_requirements_json(results, tran_data, group_key_fn) -> None:
         if settling_tol is not None:
             entry["settlingTolerance"] = settling_tol
 
-        # Attach time-series for transient requirements
+        # Attach transient config and time-series
         if capture == "transient":
+            tran_start = req.get_tran_start()
+            tran_stop = req.get_tran_stop()
+            if tran_start and tran_start > 0:
+                entry["tranStart"] = tran_start
+            if tran_stop is not None:
+                entry["tranStop"] = tran_stop
+
             key = group_key_fn(req)
             td = tran_data.get(key)
             if td is not None:
                 # Collect relevant signals: primary + context
+                # (ngspice already limits data to [start, stop])
                 sig_keys = [net_key]
                 for ctx_net in req.get_context_nets():
                     ctx_key = (
@@ -719,6 +737,25 @@ def _write_requirements_json(results, tran_data, group_key_fn) -> None:
                 entry["timeSeries"] = {
                     "time": list(td.time),
                     "signals": signals,
+                }
+
+        # Attach frequency-series for AC requirements
+        if capture == "ac" and ac_data and ac_group_key_fn:
+            key = ac_group_key_fn(req)
+            ad = ac_data.get(key)
+            if ad is not None:
+                sig_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
+                ref_net = req.get_ac_ref_net()
+                if ref_net:
+                    gain = ad.gain_db_relative(sig_key, ref_net)
+                    phase = ad.phase_deg_relative(sig_key, ref_net)
+                else:
+                    gain = ad.gain_db(sig_key)
+                    phase = ad.phase_deg(sig_key)
+                entry["frequencySeries"] = {
+                    "freq": list(ad.freq),
+                    "gain_db": gain,
+                    "phase_deg": phase,
                 }
 
         reqs_json.append(entry)
@@ -743,6 +780,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
     """Find all Requirement nodes, group by parent scope, run scoped simulations."""
     try:
         from faebryk.exporters.simulation.requirement import (
+            _ac_group_key,
             _tran_group_key,
             verify_requirements_scoped,
         )
@@ -751,7 +789,9 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
         solver = ctx.require_solver()
         output_dir = config.build.paths.output_base.parent
 
-        results, tran_data = verify_requirements_scoped(app, solver, output_dir)
+        results, tran_data, ac_data = verify_requirements_scoped(
+            app, solver, output_dir
+        )
         if not results:
             return
 
@@ -767,7 +807,10 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         f"{r.requirement.get_max_val()}]"
                     )
 
-        _write_requirements_json(results, tran_data, _tran_group_key)
+        _write_requirements_json(
+            results, tran_data, _tran_group_key,
+            ac_data=ac_data, ac_group_key_fn=_ac_group_key,
+        )
     except Exception:
         logger.warning(
             "Simulation requirement verification failed — skipping", exc_info=True

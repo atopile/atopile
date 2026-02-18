@@ -3,16 +3,21 @@
 
 from __future__ import annotations
 
+import re
 from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.library.Captures import DCOPCapture, TransientCapture
+from faebryk.library.Captures import ACCapture, DCOPCapture, TransientCapture
 from faebryk.library.Measurements import (
     AverageValue,
+    Bandwidth3dB,
+    BodePlot,
     FinalValue,
+    GainDB,
     Overshoot,
     PeakToPeak,
+    PhaseDeg,
     RMS,
     SettlingTime,
 )
@@ -20,6 +25,7 @@ from faebryk.library.Measurements import (
 _CAPTURE_KEYS: dict[type, str] = {
     DCOPCapture: "dcop",
     TransientCapture: "transient",
+    ACCapture: "ac",
 }
 
 _MEASUREMENT_KEYS: dict[type, str] = {
@@ -29,9 +35,13 @@ _MEASUREMENT_KEYS: dict[type, str] = {
     PeakToPeak: "peak_to_peak",
     Overshoot: "overshoot",
     RMS: "rms",
+    GainDB: "gain_db",
+    PhaseDeg: "phase_deg",
+    Bandwidth3dB: "bandwidth_3db",
+    BodePlot: "bode_plot",
 }
 
-CaptureType = type[DCOPCapture] | type[TransientCapture]
+CaptureType = type[DCOPCapture] | type[TransientCapture] | type[ACCapture]
 MeasurementType = (
     type[FinalValue]
     | type[AverageValue]
@@ -39,6 +49,10 @@ MeasurementType = (
     | type[PeakToPeak]
     | type[Overshoot]
     | type[RMS]
+    | type[GainDB]
+    | type[PhaseDeg]
+    | type[Bandwidth3dB]
+    | type[BodePlot]
 )
 
 
@@ -68,6 +82,8 @@ class Requirement(fabll.Node):
         req.measurement = "final_value"
     """
 
+    has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
+
     # Core fields
     req_name = F.Parameters.StringParameter.MakeChild()
     net = F.Parameters.StringParameter.MakeChild()
@@ -86,11 +102,20 @@ class Requirement(fabll.Node):
     # Transient config (only used when capture=TransientCapture)
     tran_step = F.Parameters.StringParameter.MakeChild()
     tran_stop = F.Parameters.StringParameter.MakeChild()
+    tran_start = F.Parameters.StringParameter.MakeChild()
     source_name = F.Parameters.StringParameter.MakeChild()
     source_spec = F.Parameters.StringParameter.MakeChild()
 
     # Settling time config
     settling_tolerance = F.Parameters.StringParameter.MakeChild()
+
+    # AC analysis config (only used when capture=ACCapture)
+    ac_start_freq = F.Parameters.StringParameter.MakeChild()
+    ac_stop_freq = F.Parameters.StringParameter.MakeChild()
+    ac_points_per_dec = F.Parameters.StringParameter.MakeChild()
+    ac_source_name = F.Parameters.StringParameter.MakeChild()
+    ac_measure_freq = F.Parameters.StringParameter.MakeChild()
+    ac_ref_net = F.Parameters.StringParameter.MakeChild()
 
     def setup(
         self,
@@ -105,8 +130,15 @@ class Requirement(fabll.Node):
         context_nets: list[str] | None = None,
         tran_step: float | None = None,
         tran_stop: float | None = None,
+        tran_start: float | None = None,
         source_override: tuple[str, str] | None = None,
         settling_tolerance: float | None = None,
+        ac_start_freq: float | None = None,
+        ac_stop_freq: float | None = None,
+        ac_points_per_dec: int | None = None,
+        ac_source_name: str | None = None,
+        ac_measure_freq: float | None = None,
+        ac_ref_net: str | None = None,
     ) -> Self:
         self.req_name.get().set_singleton(value=name)
         self.net.get().set_singleton(value=net)
@@ -129,11 +161,25 @@ class Requirement(fabll.Node):
             self.tran_step.get().set_singleton(value=str(tran_step))
         if tran_stop is not None:
             self.tran_stop.get().set_singleton(value=str(tran_stop))
+        if tran_start is not None:
+            self.tran_start.get().set_singleton(value=str(tran_start))
         if source_override is not None:
             self.source_name.get().set_singleton(value=source_override[0])
             self.source_spec.get().set_singleton(value=source_override[1])
         if settling_tolerance is not None:
             self.settling_tolerance.get().set_singleton(value=str(settling_tolerance))
+        if ac_start_freq is not None:
+            self.ac_start_freq.get().set_singleton(value=str(ac_start_freq))
+        if ac_stop_freq is not None:
+            self.ac_stop_freq.get().set_singleton(value=str(ac_stop_freq))
+        if ac_points_per_dec is not None:
+            self.ac_points_per_dec.get().set_singleton(value=str(ac_points_per_dec))
+        if ac_source_name is not None:
+            self.ac_source_name.get().set_singleton(value=ac_source_name)
+        if ac_measure_freq is not None:
+            self.ac_measure_freq.get().set_singleton(value=str(ac_measure_freq))
+        if ac_ref_net is not None:
+            self.ac_ref_net.get().set_singleton(value=ac_ref_net)
 
         return self
 
@@ -142,17 +188,48 @@ class Requirement(fabll.Node):
     def get_name(self) -> str:
         return self.req_name.get().extract_singleton()
 
+    @staticmethod
+    def _sanitize_net_name(name: str) -> str:
+        """Sanitize a net name for SPICE compatibility.
+
+        Applies the same transform as ``ngspice._sanitize_net_name``:
+        dots, brackets, and whitespace become underscores.  SPICE
+        expressions such as ``i(v1)`` are returned unchanged (lowercased).
+
+        Examples::
+
+            "power.hv"   → "power_hv"
+            "output"     → "output"
+            "a[0]"       → "a_0"
+            "i(v1)"      → "i(v1)"
+        """
+        if "(" in name:
+            return name.lower()
+        result = re.sub(r"[\.\[\]\s]+", "_", name)
+        result = result.strip("_")
+        return (result or "unnamed").lower()
+
     def get_net(self) -> str:
-        return self.net.get().extract_singleton()
+        raw = self.net.get().extract_singleton()
+        return self._sanitize_net_name(raw)
 
     def get_min_val(self) -> float:
-        return float(self.min_val.get().extract_singleton())
+        v = self._extract_float(self.min_val)
+        if v is None:
+            raise ValueError("min_val is not set")
+        return v
 
     def get_typical(self) -> float:
-        return float(self.typical.get().extract_singleton())
+        v = self._extract_float(self.typical)
+        if v is None:
+            raise ValueError("typical is not set")
+        return v
 
     def get_max_val(self) -> float:
-        return float(self.max_val.get().extract_singleton())
+        v = self._extract_float(self.max_val)
+        if v is None:
+            raise ValueError("max_val is not set")
+        return v
 
     def get_justification(self) -> str | None:
         return self.justification.get().try_extract_singleton()
@@ -161,7 +238,11 @@ class Requirement(fabll.Node):
         raw = self.context_nets.get().try_extract_singleton()
         if raw is None:
             return []
-        return [n.strip() for n in raw.split(",") if n.strip()]
+        return [
+            self._sanitize_net_name(n.strip())
+            for n in raw.split(",")
+            if n.strip()
+        ]
 
     def get_capture(self) -> str:
         return self.capture.get().extract_singleton()
@@ -169,13 +250,37 @@ class Requirement(fabll.Node):
     def get_measurement(self) -> str:
         return self.measurement.get().extract_singleton()
 
+    def _extract_float(self, param) -> float | None:
+        """Extract a float from a StringParameter, handling solver type coercion.
+
+        The solver may resolve string values like "2e-7" to Numbers.
+        This method handles both Strings and Numbers transparently.
+        """
+        try:
+            v = param.get().try_extract_singleton()
+            return float(v) if v is not None else None
+        except Exception:
+            # Solver resolved StringParameter to Numbers — extract numerically
+            try:
+                from faebryk.library.Literals import Numbers
+
+                nums = param.get().is_parameter_operatable.get().try_extract_superset(
+                    lit_type=Numbers
+                )
+                if nums is not None:
+                    return float(nums.get_single())
+            except Exception:
+                pass
+            return None
+
     def get_tran_step(self) -> float | None:
-        v = self.tran_step.get().try_extract_singleton()
-        return float(v) if v is not None else None
+        return self._extract_float(self.tran_step)
 
     def get_tran_stop(self) -> float | None:
-        v = self.tran_stop.get().try_extract_singleton()
-        return float(v) if v is not None else None
+        return self._extract_float(self.tran_stop)
+
+    def get_tran_start(self) -> float | None:
+        return self._extract_float(self.tran_start)
 
     def get_source_override(self) -> tuple[str, str] | None:
         name = self.source_name.get().try_extract_singleton()
@@ -185,5 +290,29 @@ class Requirement(fabll.Node):
         return None
 
     def get_settling_tolerance(self) -> float | None:
-        v = self.settling_tolerance.get().try_extract_singleton()
+        return self._extract_float(self.settling_tolerance)
+
+    def get_ac_start_freq(self) -> float | None:
+        v = self.ac_start_freq.get().try_extract_singleton()
         return float(v) if v is not None else None
+
+    def get_ac_stop_freq(self) -> float | None:
+        v = self.ac_stop_freq.get().try_extract_singleton()
+        return float(v) if v is not None else None
+
+    def get_ac_points_per_dec(self) -> int | None:
+        v = self.ac_points_per_dec.get().try_extract_singleton()
+        return int(v) if v is not None else None
+
+    def get_ac_source_name(self) -> str | None:
+        return self.ac_source_name.get().try_extract_singleton()
+
+    def get_ac_measure_freq(self) -> float | None:
+        v = self.ac_measure_freq.get().try_extract_singleton()
+        return float(v) if v is not None else None
+
+    def get_ac_ref_net(self) -> str | None:
+        raw = self.ac_ref_net.get().try_extract_singleton()
+        if raw is None:
+            return None
+        return self._sanitize_net_name(raw)

@@ -1,9 +1,10 @@
 """Ngspice simulation API.
 
 User-facing API:
-    Circuit     — load a .spice file, run .op() and .tran() analyses
+    Circuit     — load a .spice file, run .op(), .tran(), and .ac() analyses
     OpResult    — dict-like DC operating point results
     TransientResult — signal access + .plot()
+    ACResult    — frequency-domain results with gain/phase helpers
     dc(), pulse() — source specification helpers
 
 Build-step API:
@@ -84,15 +85,18 @@ def pulse(
     v1: float,
     v2: float,
     delay: float = 0,
-    rise: float = 1e-9,
-    fall: float = 1e-9,
+    rise: float = 100e-6,
+    fall: float = 100e-6,
     width: float = 10,
     period: float = 10,
 ) -> str:
     """Return a SPICE PULSE source specification.
 
+    Default rise/fall of 100us is realistic for power supply ramps and
+    avoids numerical instability in average-model simulations.
+
     >>> pulse(0, 10, delay=0.5)
-    'PULSE(0 10 500m 1n 1n 10 10)'
+    'PULSE(0 10 500m 100u 100u 10 10)'
     """
     vals = [v1, v2, delay, rise, fall, width, period]
     return "PULSE(" + " ".join(format_spice_value(v) for v in vals) + ")"
@@ -325,6 +329,78 @@ class TransientResult:
         return path
 
 
+class ACResult:
+    """AC small-signal analysis results with frequency-domain access.
+
+    Stores complex-valued signals (real + imaginary) indexed by frequency.
+    Provides magnitude, phase, gain (dB), and relative transfer-function helpers.
+
+    Access signals by name — bare names auto-wrap in ``v()``:
+        >>> result.gain_db("output")     # dB magnitude at each frequency
+        >>> result.freq                  # list[float]
+    """
+
+    def __init__(
+        self,
+        freq: list[float],
+        signals_real: dict[str, list[float]],
+        signals_imag: dict[str, list[float]],
+    ):
+        self.freq = freq
+        self.signals_real = signals_real
+        self.signals_imag = signals_imag
+
+    def _resolve_key(self, key: str) -> str:
+        key_lc = key.lower()
+        if key_lc in self.signals_real:
+            return key_lc
+        wrapped = f"v({key_lc})"
+        if wrapped in self.signals_real:
+            return wrapped
+        raise KeyError(key)
+
+    def magnitude(self, key: str) -> list[float]:
+        k = self._resolve_key(key)
+        r = self.signals_real[k]
+        im = self.signals_imag[k]
+        return [math.sqrt(rv * rv + iv * iv) for rv, iv in zip(r, im)]
+
+    def phase_deg(self, key: str) -> list[float]:
+        k = self._resolve_key(key)
+        r = self.signals_real[k]
+        im = self.signals_imag[k]
+        return [math.degrees(math.atan2(iv, rv)) for rv, iv in zip(r, im)]
+
+    def gain_db(self, key: str) -> list[float]:
+        mag = self.magnitude(key)
+        return [20 * math.log10(m) if m > 0 else -200.0 for m in mag]
+
+    def gain_db_relative(self, out_key: str, in_key: str) -> list[float]:
+        mag_out = self.magnitude(out_key)
+        mag_in = self.magnitude(in_key)
+        return [
+            20 * math.log10(mo / mi) if mi > 0 and mo > 0 else -200.0
+            for mo, mi in zip(mag_out, mag_in)
+        ]
+
+    def phase_deg_relative(self, out_key: str, in_key: str) -> list[float]:
+        p_out = self.phase_deg(out_key)
+        p_in = self.phase_deg(in_key)
+        return [po - pi for po, pi in zip(p_out, p_in)]
+
+    def __contains__(self, key: str) -> bool:
+        try:
+            self._resolve_key(key)
+            return True
+        except KeyError:
+            return False
+
+    def __repr__(self) -> str:
+        n = len(self.freq)
+        sigs = list(self.signals_real.keys())
+        return f"ACResult({n} points, signals={sigs})"
+
+
 # ---------------------------------------------------------------------------
 # Circuit — main user-facing class
 # ---------------------------------------------------------------------------
@@ -414,11 +490,10 @@ class Circuit:
                 + (f" {format_spice_value(start)}" if start > 0 else "")
                 + (" uic" if uic else "")
             )
-            # Convergence-friendly options for behavioral/switching models
+            # Convergence-friendly options for behavioral/average models
             options_line = (
                 ".options reltol=0.005 abstol=1e-9 vntol=1e-4"
-                " gmin=1e-9 itl1=500 itl4=500 method=gear"
-                " rshunt=1e9 trtol=5"
+                " gmin=1e-10 itl1=500 itl4=500 method=gear"
             )
             net._lines.append(options_line)
 
@@ -428,8 +503,62 @@ class Circuit:
             )
             spice_file.write_text(net.to_string())
 
-            proc = _run_ngspice_subprocess(str(spice_file), timeout=60)
+            proc = _run_ngspice_subprocess(str(spice_file), timeout=300)
             return _parse_wrdata(data_file, signals)
+
+    def get_source_spec(self, name: str) -> str | None:
+        """Read the existing source specification from the netlist.
+
+        Returns the spec portion (everything after the two node names),
+        or None if the source is not found.
+        """
+        prefix = name.upper() + " "
+        for line in self._netlist._lines:
+            if line.upper().startswith(prefix):
+                parts = line.split(None, 3)
+                if len(parts) >= 4:
+                    return parts[3]
+        return None
+
+    def ac(
+        self,
+        start_freq: float,
+        stop_freq: float,
+        points_per_decade: int = 100,
+        signals: list[str] | None = None,
+    ) -> ACResult:
+        """Run AC small-signal analysis.
+
+        Args:
+            start_freq: Start frequency in Hz.
+            stop_freq: Stop frequency in Hz.
+            points_per_decade: Number of frequency points per decade.
+            signals: Signal names to record. If None, records all node voltages.
+        """
+        if signals is None:
+            signals = self._detect_node_voltages()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_file = Path(tmpdir) / "ac_data.txt"
+            spice_file = Path(tmpdir) / "circuit.spice"
+
+            net = SpiceNetlist(title=self._netlist.title)
+            net._lines = list(self._netlist._lines)
+            net._subcircuit_defs = list(self._netlist._subcircuit_defs)
+
+            ac_cmd = (
+                f"ac dec {points_per_decade} "
+                f"{format_spice_value(start_freq)} "
+                f"{format_spice_value(stop_freq)}"
+            )
+            net.add_control(
+                ac_cmd,
+                f"wrdata {data_file} {' '.join(signals)}",
+            )
+            spice_file.write_text(net.to_string())
+
+            _run_ngspice_subprocess(str(spice_file), timeout=300)
+            return _parse_wrdata_ac(data_file, signals)
 
     def _detect_node_voltages(self) -> list[str]:
         """Auto-detect node names from the netlist and return as v(name) signals."""
@@ -525,6 +654,36 @@ def _parse_wrdata(path: Path, signal_names: list[str]) -> TransientResult:
             signals[name].append(float(parts[2 * i + 1]))
 
     return TransientResult(time=time, signals=signals)
+
+
+def _parse_wrdata_ac(path: Path, signal_names: list[str]) -> ACResult:
+    """Parse an ngspice wrdata output file from AC analysis.
+
+    AC wrdata format: each signal produces TWO columns (real, imaginary).
+    Line format: freq  re(sig1) im(sig1)  re(sig2) im(sig2) ...
+    """
+    freq: list[float] = []
+    normalized = [name.lower() for name in signal_names]
+    signals_real: dict[str, list[float]] = {name: [] for name in normalized}
+    signals_imag: dict[str, list[float]] = {name: [] for name in normalized}
+    n = len(signal_names)
+
+    text = path.read_text()
+    for line in text.strip().splitlines():
+        parts = line.split()
+        # Need: 1 (freq) + 2*n (real+imag per signal) columns minimum
+        if len(parts) < 1 + 2 * n:
+            continue
+        try:
+            f = float(parts[0])
+        except ValueError:
+            continue
+        freq.append(f)
+        for i, name in enumerate(normalized):
+            signals_real[name].append(float(parts[2 * i + 1]))
+            signals_imag[name].append(float(parts[2 * i + 2]))
+
+    return ACResult(freq=freq, signals_real=signals_real, signals_imag=signals_imag)
 
 
 def _run_ngspice_subprocess(spice_path: str, timeout: int = 60) -> subprocess.CompletedProcess:
@@ -681,20 +840,32 @@ def generate_spice_netlist(app, solver, scope=None) -> SpiceNetlist:
     title = root.get_full_name(include_uuid=False) or "Circuit"
     netlist = SpiceNetlist(title=title)
 
-    # 0. Run solver for all parameters under this app so extract_superset works
+    # 0. Run solver for numeric parameters so extract_superset works.
+    #    This is best-effort: the main build step should have already
+    #    simplified parameters.  If the solver encounters unsupported
+    #    expression types (e.g. StringParameters from traits), log a
+    #    warning and continue with whatever values are already resolved.
     all_params: list[F.Parameters.can_be_operand] = []
     for param in root.get_children(
         direct_only=False,
-        types=fabll.Node,
+        types=F.Parameters.NumericParameter,
         include_root=True,
-        required_trait=F.Parameters.is_parameter,
     ):
         param_trait = param.get_trait(F.Parameters.is_parameter)
         all_params.append(param_trait.as_operand.get())
 
     if all_params:
-        solver.simplify_for(*all_params)
-        logger.info(f"Simplified {len(all_params)} parameters for SPICE extraction")
+        try:
+            solver.simplify_for(*all_params)
+            logger.info(
+                f"Simplified {len(all_params)} parameters for SPICE extraction"
+            )
+        except Exception:
+            logger.warning(
+                "Solver simplification failed for SPICE extraction — "
+                "using pre-existing parameter values",
+                exc_info=True,
+            )
 
     # 1. Collect all Electrical interfaces in the design
     electricals = root.get_children(

@@ -29,7 +29,12 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
 
   const requirementsData = useStore((s) => s.requirementsData);
   const isLoading = useStore((s) => s.isLoadingRequirements);
-  const requirements = requirementsData?.requirements ?? [];
+  const selectedProjectRoot = useStore((s) => s.selectedProjectRoot);
+  const selectedTargetNames = useStore((s) => s.selectedTargetNames);
+  const requirements = useMemo(() =>
+    [...(requirementsData?.requirements ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    [requirementsData],
+  );
 
   const filteredReqs = useMemo(() => {
     if (filter === 'all') return requirements;
@@ -45,8 +50,16 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
-    postMessage({ type: 'openRequirementDetail', requirementId: id });
-  }, []);
+    const reqData = requirementsData?.requirements.find(r => r.id === id);
+    postMessage({
+      type: 'openRequirementDetail',
+      requirementId: id,
+      projectRoot: selectedProjectRoot ?? '',
+      target: selectedTargetNames?.[0] ?? 'default',
+      requirementData: reqData ?? undefined,
+      buildTime: requirementsData?.buildTime ?? '',
+    });
+  }, [selectedProjectRoot, selectedTargetNames, requirementsData]);
 
   const handleHover = useCallback((req: RequirementData, rect: DOMRect) => {
     setTooltip({ req, rect });

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import faebryk.library._F as F
-from faebryk.exporters.simulation.ngspice import Circuit, TransientResult
+from faebryk.exporters.simulation.ngspice import ACResult, Circuit, TransientResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,23 @@ def _measure_dcop(measurement: str, op_value: float) -> float:
     """Compute measurement from a DCOP value."""
     # For DCOP, most measurements just return the OP value
     return op_value
+
+
+def _slice_from(
+    time_data: list[float],
+    signal_data: list[float],
+    start: float | None,
+) -> tuple[list[float], list[float]]:
+    """Return (time, signal) sliced to only include t >= start.
+
+    If start is None or 0, returns the original data unchanged.
+    """
+    if not start or start <= 0:
+        return time_data, signal_data
+    for i, t in enumerate(time_data):
+        if t >= start:
+            return time_data[i:], signal_data[i:]
+    return [], []
 
 
 def _measure_tran(
@@ -93,12 +110,112 @@ def _measure_tran(
 def _tran_group_key(req: F.Requirement) -> tuple:
     """Group key for transient requirements sharing the same config."""
     override = req.get_source_override()
+    start = req.get_tran_start()
     return (
         req.get_tran_step(),
         req.get_tran_stop(),
+        start if start and start > 0 else None,
         override[0] if override else None,
         override[1] if override else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# AC grouping + measurement
+# ---------------------------------------------------------------------------
+
+
+def _ac_group_key(req: F.Requirement) -> tuple:
+    """Group key for AC requirements sharing the same sweep config."""
+    return (
+        req.get_ac_start_freq(),
+        req.get_ac_stop_freq(),
+        req.get_ac_points_per_dec(),
+        req.get_ac_source_name(),
+    )
+
+
+def _interpolate_at_freq(
+    freq: list[float], values: list[float], target: float
+) -> float:
+    """Log-frequency interpolation of values at target frequency."""
+    if not freq or target <= 0:
+        return float("nan")
+    if target <= freq[0]:
+        return values[0]
+    if target >= freq[-1]:
+        return values[-1]
+    for i in range(len(freq) - 1):
+        if freq[i] <= target <= freq[i + 1]:
+            # Log-scale interpolation on frequency axis
+            log_f0 = math.log10(freq[i])
+            log_f1 = math.log10(freq[i + 1])
+            log_ft = math.log10(target)
+            t = (log_ft - log_f0) / (log_f1 - log_f0) if log_f1 != log_f0 else 0.0
+            return values[i] + t * (values[i + 1] - values[i])
+    return values[-1]
+
+
+def _measure_ac(
+    measurement: str,
+    ac_result: ACResult,
+    net: str,
+    ref_net: str | None,
+    measure_freq: float | None,
+) -> float:
+    """Compute an AC measurement from frequency-domain data."""
+    if measurement == "gain_db":
+        if measure_freq is None:
+            return float("nan")
+        if ref_net:
+            gain = ac_result.gain_db_relative(net, ref_net)
+        else:
+            gain = ac_result.gain_db(net)
+        return _interpolate_at_freq(ac_result.freq, gain, measure_freq)
+
+    if measurement == "phase_deg":
+        if measure_freq is None:
+            return float("nan")
+        if ref_net:
+            phase = ac_result.phase_deg_relative(net, ref_net)
+        else:
+            phase = ac_result.phase_deg(net)
+        return _interpolate_at_freq(ac_result.freq, phase, measure_freq)
+
+    if measurement == "bandwidth_3db":
+        if ref_net:
+            gain = ac_result.gain_db_relative(net, ref_net)
+        else:
+            gain = ac_result.gain_db(net)
+        if not gain:
+            return float("nan")
+        # DC gain is the first point (lowest frequency)
+        dc_gain = gain[0]
+        threshold = dc_gain - 3.0
+        # Find where gain crosses threshold
+        for i in range(len(gain) - 1):
+            if gain[i] >= threshold and gain[i + 1] < threshold:
+                # Log-interpolate the crossing frequency
+                log_f0 = math.log10(ac_result.freq[i])
+                log_f1 = math.log10(ac_result.freq[i + 1])
+                if gain[i] == gain[i + 1]:
+                    return ac_result.freq[i]
+                t = (threshold - gain[i]) / (gain[i + 1] - gain[i])
+                log_fc = log_f0 + t * (log_f1 - log_f0)
+                return 10 ** log_fc
+        return float("nan")
+
+    if measurement == "bode_plot":
+        # Actual value = DC gain (gain at lowest frequency)
+        if ref_net:
+            gain = ac_result.gain_db_relative(net, ref_net)
+        else:
+            gain = ac_result.gain_db(net)
+        if not gain:
+            return float("nan")
+        return gain[0]
+
+    return float("nan")
 
 
 # ---------------------------------------------------------------------------
@@ -109,25 +226,29 @@ def _tran_group_key(req: F.Requirement) -> tuple:
 def verify_requirements(
     circuit: Circuit,
     requirements: list[F.Requirement],
-    uic: bool = True,
-) -> tuple[list[RequirementResult], dict[tuple, TransientResult]]:
+    uic: bool = False,
+) -> tuple[list[RequirementResult], dict[tuple, TransientResult], dict[tuple, ACResult]]:
     """Run simulations and check all requirements.
 
-    1. Partition requirements by capture type ("dcop" vs "transient").
+    1. Partition requirements by capture type ("dcop", "transient", "ac").
     2. Run .op() once for all DCOP requirements.
     3. Group transient requirements by shared config (step/stop), run .tran() per group.
-    4. For each requirement, apply its measurement to compute actual value.
-    5. Check actual against [min_val, max_val].
+    4. Group AC requirements by shared config, run .ac() per group.
+    5. For each requirement, apply its measurement to compute actual value.
+    6. Check actual against [min_val, max_val].
 
-    Returns (results, {group_key: TransientResult}).
+    Returns (results, {tran_group_key: TransientResult}, {ac_group_key: ACResult}).
     """
     dcop_reqs: list[F.Requirement] = []
     tran_reqs: list[F.Requirement] = []
+    ac_reqs: list[F.Requirement] = []
 
     for req in requirements:
         capture = req.get_capture()
         if capture == "transient":
             tran_reqs.append(req)
+        elif capture == "ac":
+            ac_reqs.append(req)
         else:
             dcop_reqs.append(req)
 
@@ -170,24 +291,30 @@ def verify_requirements(
 
             step = first.get_tran_step()
             stop = first.get_tran_stop()
+            start = first.get_tran_start() or 0
             if step is None or stop is None:
                 raise ValueError(
                     f"Transient requirement '{first.get_name()}' "
                     "missing tran_step or tran_stop"
                 )
 
-            tran_result = circuit.tran(step=step, stop=stop, signals=signals, uic=uic)
+            tran_result = circuit.tran(
+                step=step, stop=stop, start=start, signals=signals, uic=uic
+            )
             tran_data[key] = tran_result
 
             for req in group:
                 net = req.get_net()
                 sig_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
                 signal_data = tran_result[sig_key]
+                time_data, meas_data = _slice_from(
+                    tran_result.time, signal_data, req.get_tran_start()
+                )
                 measurement = req.get_measurement()
                 actual = _measure_tran(
                     measurement,
-                    signal_data,
-                    tran_result.time,
+                    meas_data,
+                    time_data,
                     settling_tolerance=req.get_settling_tolerance(),
                 )
                 passed = req.get_min_val() <= actual <= req.get_max_val()
@@ -195,7 +322,79 @@ def verify_requirements(
                     RequirementResult(requirement=req, actual=actual, passed=passed)
                 )
 
-    return results, tran_data
+    # -- AC analysis --
+    ac_data: dict[tuple, ACResult] = {}
+    if ac_reqs:
+        ac_groups: dict[tuple, list[F.Requirement]] = {}
+        for req in ac_reqs:
+            key = _ac_group_key(req)
+            ac_groups.setdefault(key, []).append(req)
+
+        for key, group in ac_groups.items():
+            first = group[0]
+
+            # Set up AC source: append "AC 1" to the existing source spec
+            ac_source = first.get_ac_source_name()
+            if ac_source:
+                existing_spec = circuit.get_source_spec(ac_source)
+                if existing_spec:
+                    # Append AC 1 if not already present
+                    if "AC" not in existing_spec.upper():
+                        circuit.set_source(ac_source, f"{existing_spec} AC 1")
+                else:
+                    circuit.set_source(ac_source, "DC 0 AC 1")
+
+            # Collect all signals needed
+            signals: list[str] = []
+            seen: set[str] = set()
+            for req in group:
+                net = req.get_net()
+                sig = f"v({net})" if not net.startswith(("v(", "i(")) else net
+                if sig not in seen:
+                    signals.append(sig)
+                    seen.add(sig)
+                ref_net = req.get_ac_ref_net()
+                if ref_net:
+                    ref_sig = (
+                        f"v({ref_net})"
+                        if not ref_net.startswith(("v(", "i("))
+                        else ref_net
+                    )
+                    if ref_sig not in seen:
+                        signals.append(ref_sig)
+                        seen.add(ref_sig)
+
+            start = first.get_ac_start_freq()
+            stop = first.get_ac_stop_freq()
+            ppd = first.get_ac_points_per_dec() or 100
+            if start is None or stop is None:
+                raise ValueError(
+                    f"AC requirement '{first.get_name()}' "
+                    "missing ac_start_freq or ac_stop_freq"
+                )
+
+            ac_result = circuit.ac(
+                start_freq=start,
+                stop_freq=stop,
+                points_per_decade=ppd,
+                signals=signals,
+            )
+            ac_data[key] = ac_result
+
+            for req in group:
+                net = req.get_net()
+                ref_net = req.get_ac_ref_net()
+                measurement = req.get_measurement()
+                measure_freq = req.get_ac_measure_freq()
+                actual = _measure_ac(
+                    measurement, ac_result, net, ref_net, measure_freq
+                )
+                passed = req.get_min_val() <= actual <= req.get_max_val()
+                results.append(
+                    RequirementResult(requirement=req, actual=actual, passed=passed)
+                )
+
+    return results, tran_data, ac_data
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +484,7 @@ def _setup_common_plot(
     net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
     nut_unit = _signal_unit(net_key)
 
-    # Auto-scale time axis
+    # Auto-scale time axis (ngspice already limits data to [start, stop])
     t_max = tran_data.time[-1] if tran_data.time else 1.0
     scale, t_unit = _auto_scale_time(t_max)
     time_scaled = [t * scale for t in tran_data.time]
@@ -961,6 +1160,470 @@ def _plot_rms(
 
 
 # ---------------------------------------------------------------------------
+# AC / Bode plot functions
+# ---------------------------------------------------------------------------
+
+
+def _finalize_ac_plot(
+    fig: "go.Figure",
+    title: str,
+    subtitle: str,
+    path: Path,
+) -> Path:
+    """Apply layout and save an AC plot as HTML."""
+    fig.update_layout(
+        title=dict(
+            text=f"<b>{title}</b><br><span style='font-size:12px;color:gray'>"
+                 f"{subtitle}</span>",
+            x=0.5,
+        ),
+        width=900,
+        height=600,
+        template="plotly_white",
+        showlegend=True,
+        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top"),
+    )
+    fig.write_html(str(path))
+    return path
+
+
+def _plot_ac_gain_db(
+    result: RequirementResult,
+    ac_data: ACResult,
+    path: Path,
+) -> Path:
+    """Bode plot for GainDB measurement: gain + phase subplots."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    req = result.requirement
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+    net = req.get_net()
+    ref_net = req.get_ac_ref_net()
+    measure_freq = req.get_ac_measure_freq()
+
+    if ref_net:
+        gain = ac_data.gain_db_relative(net, ref_net)
+        phase = ac_data.phase_deg_relative(net, ref_net)
+    else:
+        gain = ac_data.gain_db(net)
+        phase = ac_data.phase_deg(net)
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        subplot_titles=("Gain (dB)", "Phase (deg)"),
+        vertical_spacing=0.08,
+    )
+
+    # Gain trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=gain, mode="lines",
+            name="Gain", line=dict(color="royalblue", width=2),
+        ),
+        row=1, col=1,
+    )
+
+    # Pass band shading on gain
+    fig.add_hrect(
+        y0=min_val, y1=max_val, fillcolor="green", opacity=0.08,
+        line_width=0, row=1, col=1,
+    )
+    fig.add_hline(y=min_val, line=dict(color="red", dash="dot", width=1.5), row=1, col=1)
+    fig.add_hline(y=max_val, line=dict(color="red", dash="dot", width=1.5), row=1, col=1)
+
+    # Marker at measure_freq
+    if measure_freq:
+        actual = result.actual
+        marker_color = "#2ecc71" if result.passed else "#e74c3c"
+        fig.add_trace(
+            go.Scatter(
+                x=[measure_freq], y=[actual], mode="markers+text",
+                marker=dict(color=marker_color, size=10),
+                text=[f"{actual:.2f} dB @ {measure_freq:.3g} Hz"],
+                textposition="top right",
+                textfont=dict(color=marker_color, size=11),
+                showlegend=False,
+            ),
+            row=1, col=1,
+        )
+        fig.add_vline(
+            x=measure_freq, line=dict(color="gray", dash="dashdot", width=1),
+            opacity=0.5, row=1, col=1,
+        )
+        fig.add_vline(
+            x=measure_freq, line=dict(color="gray", dash="dashdot", width=1),
+            opacity=0.5, row=2, col=1,
+        )
+
+    # Phase trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=phase, mode="lines",
+            name="Phase", line=dict(color="orange", width=2),
+        ),
+        row=2, col=1,
+    )
+
+    fig.update_xaxes(type="log", title_text="Frequency (Hz)", row=2, col=1)
+    fig.update_xaxes(type="log", row=1, col=1)
+    fig.update_yaxes(title_text="Gain (dB)", row=1, col=1)
+    fig.update_yaxes(title_text="Phase (deg)", row=2, col=1)
+
+    subtitle = f"Measurement: gain_db | Actual: {result.actual:.2f} dB"
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+
+
+def _plot_ac_phase_deg(
+    result: RequirementResult,
+    ac_data: ACResult,
+    path: Path,
+) -> Path:
+    """Bode plot for PhaseDeg measurement: gain + phase subplots."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    req = result.requirement
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+    net = req.get_net()
+    ref_net = req.get_ac_ref_net()
+    measure_freq = req.get_ac_measure_freq()
+
+    if ref_net:
+        gain = ac_data.gain_db_relative(net, ref_net)
+        phase = ac_data.phase_deg_relative(net, ref_net)
+    else:
+        gain = ac_data.gain_db(net)
+        phase = ac_data.phase_deg(net)
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        subplot_titles=("Gain (dB)", "Phase (deg)"),
+        vertical_spacing=0.08,
+    )
+
+    # Gain trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=gain, mode="lines",
+            name="Gain", line=dict(color="royalblue", width=2),
+        ),
+        row=1, col=1,
+    )
+
+    # Phase trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=phase, mode="lines",
+            name="Phase", line=dict(color="orange", width=2),
+        ),
+        row=2, col=1,
+    )
+
+    # Pass band shading on phase
+    fig.add_hrect(
+        y0=min_val, y1=max_val, fillcolor="green", opacity=0.08,
+        line_width=0, row=2, col=1,
+    )
+    fig.add_hline(y=min_val, line=dict(color="red", dash="dot", width=1.5), row=2, col=1)
+    fig.add_hline(y=max_val, line=dict(color="red", dash="dot", width=1.5), row=2, col=1)
+
+    # Marker at measure_freq
+    if measure_freq:
+        actual = result.actual
+        marker_color = "#2ecc71" if result.passed else "#e74c3c"
+        fig.add_trace(
+            go.Scatter(
+                x=[measure_freq], y=[actual], mode="markers+text",
+                marker=dict(color=marker_color, size=10),
+                text=[f"{actual:.1f} deg @ {measure_freq:.3g} Hz"],
+                textposition="top right",
+                textfont=dict(color=marker_color, size=11),
+                showlegend=False,
+            ),
+            row=2, col=1,
+        )
+        fig.add_vline(
+            x=measure_freq, line=dict(color="gray", dash="dashdot", width=1),
+            opacity=0.5, row=1, col=1,
+        )
+        fig.add_vline(
+            x=measure_freq, line=dict(color="gray", dash="dashdot", width=1),
+            opacity=0.5, row=2, col=1,
+        )
+
+    fig.update_xaxes(type="log", title_text="Frequency (Hz)", row=2, col=1)
+    fig.update_xaxes(type="log", row=1, col=1)
+    fig.update_yaxes(title_text="Gain (dB)", row=1, col=1)
+    fig.update_yaxes(title_text="Phase (deg)", row=2, col=1)
+
+    subtitle = f"Measurement: phase_deg | Actual: {result.actual:.1f} deg"
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+
+
+def _plot_ac_bandwidth_3db(
+    result: RequirementResult,
+    ac_data: ACResult,
+    path: Path,
+) -> Path:
+    """Gain vs frequency with labeled -3dB crossing point."""
+    import plotly.graph_objects as go
+
+    req = result.requirement
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+    net = req.get_net()
+    ref_net = req.get_ac_ref_net()
+
+    if ref_net:
+        gain = ac_data.gain_db_relative(net, ref_net)
+    else:
+        gain = ac_data.gain_db(net)
+
+    dc_gain = gain[0] if gain else 0.0
+    threshold = dc_gain - 3.0
+    actual = result.actual
+
+    fig = go.Figure()
+
+    # Gain trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=gain, mode="lines",
+            name="Gain", line=dict(color="royalblue", width=2.5),
+        )
+    )
+
+    # DC gain reference line
+    fig.add_hline(
+        y=dc_gain, line=dict(color="gray", dash="dash", width=1.2), opacity=0.5,
+    )
+    fig.add_annotation(
+        x=0.02, y=dc_gain, xref="paper", yref="y",
+        text=f"DC Gain = {dc_gain:.2f} dB",
+        showarrow=False, font=dict(color="gray", size=10),
+        xanchor="left", yanchor="bottom",
+    )
+
+    # -3dB threshold line
+    fig.add_hline(
+        y=threshold, line=dict(color="#e74c3c", dash="dot", width=1.5), opacity=0.6,
+    )
+
+    # -3dB crossing point — the main feature
+    if not math.isnan(actual) and actual > 0:
+        bw_gain = _interpolate_at_freq(ac_data.freq, gain, actual)
+        marker_color = "#2ecc71" if result.passed else "#e74c3c"
+
+        # Large labeled data point at the crossing
+        fig.add_trace(
+            go.Scatter(
+                x=[actual], y=[bw_gain], mode="markers",
+                marker=dict(
+                    color=marker_color, size=14, symbol="circle",
+                    line=dict(color="white", width=2),
+                ),
+                name=f"-3 dB @ {actual:.3g} Hz",
+                showlegend=True,
+            )
+        )
+
+        # Annotation with both -3dB and frequency
+        fig.add_annotation(
+            x=actual, y=bw_gain,
+            text=(
+                f"<b>-3 dB point</b><br>"
+                f"f = {actual:.3g} Hz<br>"
+                f"Gain = {bw_gain:.2f} dB"
+            ),
+            showarrow=True, arrowhead=2, arrowsize=1.2,
+            arrowcolor=marker_color, arrowwidth=2,
+            ax=60, ay=-50,
+            font=dict(color=marker_color, size=11),
+            align="left",
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor=marker_color, borderwidth=1, borderpad=4,
+        )
+
+        # Vertical drop-line from crossing point to x-axis
+        fig.add_shape(
+            type="line",
+            x0=actual, x1=actual, y0=bw_gain, y1=threshold,
+            line=dict(color=marker_color, dash="dashdot", width=1.5),
+            opacity=0.5,
+        )
+
+    # BW limits (vertical lines for pass/fail bounds)
+    if min_val > 0:
+        fig.add_vline(
+            x=min_val, line=dict(color="red", dash="dot", width=1.5),
+        )
+        fig.add_annotation(
+            x=min_val, y=0.02, xref="x", yref="paper",
+            text=f"LSL = {min_val:.3g} Hz",
+            showarrow=False, font=dict(color="red", size=9),
+            xanchor="left", yanchor="bottom", textangle=-90,
+        )
+    if max_val > 0:
+        fig.add_vline(
+            x=max_val, line=dict(color="red", dash="dot", width=1.5),
+        )
+        fig.add_annotation(
+            x=max_val, y=0.02, xref="x", yref="paper",
+            text=f"USL = {max_val:.3g} Hz",
+            showarrow=False, font=dict(color="red", size=9),
+            xanchor="left", yanchor="bottom", textangle=-90,
+        )
+
+    fig.update_xaxes(type="log", title_text="Frequency (Hz)")
+    fig.update_yaxes(title_text="Gain (dB)")
+
+    subtitle = f"Measurement: bandwidth_3db | -3dB BW = {actual:.3g} Hz"
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+
+
+def _plot_ac_bode_plot(
+    result: RequirementResult,
+    ac_data: ACResult,
+    path: Path,
+) -> Path:
+    """Full Bode plot: gain + phase subplots, DC gain pass band."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    req = result.requirement
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+    net = req.get_net()
+    ref_net = req.get_ac_ref_net()
+
+    if ref_net:
+        gain = ac_data.gain_db_relative(net, ref_net)
+        phase = ac_data.phase_deg_relative(net, ref_net)
+    else:
+        gain = ac_data.gain_db(net)
+        phase = ac_data.phase_deg(net)
+
+    dc_gain = gain[0] if gain else 0.0
+
+    # Find -3dB bandwidth for annotation
+    threshold = dc_gain - 3.0
+    bw_freq = None
+    for i in range(len(gain) - 1):
+        if gain[i] >= threshold and gain[i + 1] < threshold:
+            log_f0 = math.log10(ac_data.freq[i])
+            log_f1 = math.log10(ac_data.freq[i + 1])
+            if gain[i] != gain[i + 1]:
+                t = (threshold - gain[i]) / (gain[i + 1] - gain[i])
+                bw_freq = 10 ** (log_f0 + t * (log_f1 - log_f0))
+            else:
+                bw_freq = ac_data.freq[i]
+            break
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        subplot_titles=("Gain (dB)", "Phase (deg)"),
+        vertical_spacing=0.08,
+    )
+
+    # Gain trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=gain, mode="lines",
+            name="Gain", line=dict(color="royalblue", width=2),
+        ),
+        row=1, col=1,
+    )
+
+    # DC gain pass band shading
+    fig.add_hrect(
+        y0=min_val, y1=max_val, fillcolor="green", opacity=0.08,
+        line_width=0, row=1, col=1,
+    )
+    fig.add_hline(
+        y=min_val, line=dict(color="red", dash="dot", width=1.5), row=1, col=1,
+    )
+    fig.add_hline(
+        y=max_val, line=dict(color="red", dash="dot", width=1.5), row=1, col=1,
+    )
+
+    # DC gain marker
+    marker_color = "#2ecc71" if result.passed else "#e74c3c"
+    fig.add_hline(
+        y=dc_gain, line=dict(color=marker_color, dash="dash", width=1.5),
+        opacity=0.7, row=1, col=1,
+    )
+    fig.add_annotation(
+        x=0.02, y=dc_gain, xref="paper", yref="y",
+        text=f"DC Gain = {dc_gain:.2f} dB",
+        showarrow=False, font=dict(color=marker_color, size=10),
+        xanchor="left", yanchor="bottom",
+    )
+
+    # -3dB threshold line
+    fig.add_hline(
+        y=threshold, line=dict(color="gray", dash="dot", width=1),
+        opacity=0.5, row=1, col=1,
+    )
+    fig.add_annotation(
+        x=0.98, y=threshold, xref="paper", yref="y",
+        text=f"-3 dB = {threshold:.2f} dB",
+        showarrow=False, font=dict(color="gray", size=9),
+        xanchor="right", yanchor="top",
+    )
+
+    # -3dB bandwidth marker
+    if bw_freq is not None:
+        bw_gain_val = _interpolate_at_freq(ac_data.freq, gain, bw_freq)
+        fig.add_trace(
+            go.Scatter(
+                x=[bw_freq], y=[bw_gain_val], mode="markers+text",
+                marker=dict(color="purple", size=8, symbol="diamond"),
+                text=[f"BW = {bw_freq:.3g} Hz"],
+                textposition="bottom right",
+                textfont=dict(color="purple", size=9),
+                showlegend=False,
+            ),
+            row=1, col=1,
+        )
+        fig.add_vline(
+            x=bw_freq, line=dict(color="purple", dash="dashdot", width=1),
+            opacity=0.4, row=1, col=1,
+        )
+        fig.add_vline(
+            x=bw_freq, line=dict(color="purple", dash="dashdot", width=1),
+            opacity=0.4, row=2, col=1,
+        )
+
+    # Phase trace
+    fig.add_trace(
+        go.Scatter(
+            x=ac_data.freq, y=phase, mode="lines",
+            name="Phase", line=dict(color="orange", width=2),
+        ),
+        row=2, col=1,
+    )
+
+    # -45 deg reference (expected at -3dB freq for first-order)
+    fig.add_hline(
+        y=-45, line=dict(color="gray", dash="dot", width=1),
+        opacity=0.3, row=2, col=1,
+    )
+
+    fig.update_xaxes(type="log", title_text="Frequency (Hz)", row=2, col=1)
+    fig.update_xaxes(type="log", row=1, col=1)
+    fig.update_yaxes(title_text="Gain (dB)", row=1, col=1)
+    fig.update_yaxes(title_text="Phase (deg)", row=2, col=1)
+
+    subtitle = f"Measurement: bode_plot | DC Gain: {dc_gain:.2f} dB"
+    if bw_freq is not None:
+        subtitle += f" | -3dB BW: {bw_freq:.3g} Hz"
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+
+
+# ---------------------------------------------------------------------------
 # Dispatch table and public API
 # ---------------------------------------------------------------------------
 
@@ -973,11 +1636,19 @@ _PLOT_DISPATCH: dict[str, callable] = {
     "rms": _plot_rms,
 }
 
+_AC_PLOT_DISPATCH: dict[str, callable] = {
+    "gain_db": _plot_ac_gain_db,
+    "phase_deg": _plot_ac_phase_deg,
+    "bandwidth_3db": _plot_ac_bandwidth_3db,
+    "bode_plot": _plot_ac_bode_plot,
+}
+
 
 def plot_requirement(
     result: RequirementResult,
     tran_data: TransientResult | None,
     path: str | Path,
+    ac_data: ACResult | None = None,
 ) -> Path | None:
     """Generate a per-requirement plot.
 
@@ -985,11 +1656,8 @@ def plot_requirement(
     requirement's measurement type. Each measurement gets a tailored
     visualization.
 
-    Public API is unchanged: (result, tran_data, path) → Path | None
+    For AC requirements, pass ac_data instead of tran_data.
     """
-    if tran_data is None:
-        return None
-
     try:
         import plotly  # noqa: F401
     except ImportError:
@@ -998,12 +1666,27 @@ def plot_requirement(
 
     path = Path(path)
     req = result.requirement
+    measurement = req.get_measurement()
+
+    # AC plots
+    ac_plot_fn = _AC_PLOT_DISPATCH.get(measurement)
+    if ac_plot_fn is not None:
+        if ac_data is None:
+            return None
+        net = req.get_net()
+        if net not in ac_data and f"v({net})" not in ac_data:
+            return None
+        return ac_plot_fn(result, ac_data, path)
+
+    # Transient plots
+    if tran_data is None:
+        return None
+
     net = req.get_net()
     net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
     if net_key not in tran_data:
         return None
 
-    measurement = req.get_measurement()
     plot_fn = _PLOT_DISPATCH.get(measurement)
     if plot_fn is None:
         logger.warning(f"No plot function for measurement '{measurement}'")
@@ -1021,12 +1704,12 @@ def verify_requirements_scoped(
     app,
     solver,
     output_dir: Path,
-) -> tuple[list[RequirementResult], dict[tuple, TransientResult]]:
+) -> tuple[list[RequirementResult], dict[tuple, TransientResult], dict[tuple, ACResult]]:
     """Find all requirements, group by parent scope, run scoped simulations.
 
     For each scope:
       1. Generate a scoped SPICE netlist (only components in that subtree)
-      2. Run simulations (DCOP + transient)
+      2. Run simulations (DCOP + transient + AC)
       3. Generate per-requirement plots
 
     Args:
@@ -1035,7 +1718,7 @@ def verify_requirements_scoped(
         output_dir: Directory for .spice files and plot outputs.
 
     Returns:
-        (all_results, all_tran_data) aggregated across all scopes.
+        (all_results, all_tran_data, all_ac_data) aggregated across all scopes.
     """
     from collections import defaultdict
 
@@ -1044,7 +1727,7 @@ def verify_requirements_scoped(
 
     reqs = app.get_children(direct_only=False, types=F.Requirement)
     if not reqs:
-        return [], {}
+        return [], {}, {}
 
     def _find_simulation_scope(node: fabll.Node) -> fabll.Node:
         """Walk up from a node to find the nearest ancestor with Electrical children."""
@@ -1067,6 +1750,7 @@ def verify_requirements_scoped(
 
     all_results: list[RequirementResult] = []
     all_tran_data: dict[tuple, TransientResult] = {}
+    all_ac_data: dict[tuple, ACResult] = {}
 
     for scope, group_reqs in scope_groups.items():
         scope_name = scope.get_full_name(include_uuid=False) or "circuit"
@@ -1082,14 +1766,18 @@ def verify_requirements_scoped(
             netlist.write(spice_path)
 
             circuit = Circuit.load(spice_path)
-            results, tran_data = verify_requirements(circuit, list(group_reqs))
+            results, tran_data, ac_data = verify_requirements(
+                circuit, list(group_reqs), uic=True
+            )
 
             all_results.extend(results)
             all_tran_data.update(tran_data)
+            all_ac_data.update(ac_data)
 
-            # Generate per-requirement plots for transient requirements
+            # Generate per-requirement plots
             for r in results:
-                if r.requirement.get_capture() != "transient":
+                capture = r.requirement.get_capture()
+                if capture not in ("transient", "ac"):
                     continue
                 name_slug = (
                     r.requirement.get_name()
@@ -1097,12 +1785,18 @@ def verify_requirements_scoped(
                     .replace(":", "")
                 )
                 plot_path = output_dir / f"req_{name_slug}.html"
-                key = _tran_group_key(r.requirement)
-                plot_requirement(r, tran_data.get(key), plot_path)
+                if capture == "transient":
+                    key = _tran_group_key(r.requirement)
+                    plot_requirement(r, tran_data.get(key), plot_path)
+                elif capture == "ac":
+                    key = _ac_group_key(r.requirement)
+                    plot_requirement(
+                        r, None, plot_path, ac_data=ac_data.get(key)
+                    )
         except Exception:
             logger.warning(
                 f"Simulation for scope '{scope_name}' failed — skipping",
                 exc_info=True,
             )
 
-    return all_results, all_tran_data
+    return all_results, all_tran_data, all_ac_data

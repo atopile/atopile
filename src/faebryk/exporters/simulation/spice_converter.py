@@ -76,6 +76,11 @@ def _process_line(line: str) -> str:
     # Component values like C1 a b {DELAY*1.3} need braces for ngspice.
     line = _remove_curly_braces_from_behavioral(line)
 
+    # 4b. Convert XOR (^) between comparison sub-expressions in B sources.
+    # Must run BEFORE IF→ternary (XOR appears inside IF conditions) and
+    # BEFORE exponentiation (so ^ used as XOR isn't converted to **).
+    line = _convert_xor_in_behavioral(line)
+
     # 5. Convert IF(cond, true, false) → ternary (in B source expressions)
     line = _convert_if_functions(line)
 
@@ -85,10 +90,6 @@ def _process_line(line: str) -> str:
     # Uses (a) + (b) for OR, (a) * (b) for AND — works because comparison
     # operators return 0/1 and ternary ? : treats non-zero as true.
     line = _convert_boolean_ops(line)
-
-    # 5c. Convert XOR (^) between boolean sub-expressions in B sources
-    # Must run BEFORE exponentiation so ^ used as XOR isn't converted to **
-    line = _convert_xor_in_behavioral(line)
 
     # 6. Convert ^ → ** (exponentiation) only in arithmetic contexts
     line = _convert_exponentiation(line)
@@ -390,14 +391,17 @@ def _relax_diode_ideality(line: str) -> str:
 
 
 def _convert_xor_in_behavioral(line: str) -> str:
-    """Convert XOR (^) between boolean sub-expressions in B source lines.
+    """Convert XOR (^) between comparison sub-expressions in B source lines.
 
     PSpice uses ^ for both exponentiation and XOR. In B source expressions,
-    when ^ appears between comparison sub-expressions (both sides contain
-    >, <, >=, <=), it's XOR. Convert to arithmetic equivalent:
-        a ^ b  →  ((a) + (b) - 2*(a)*(b))
+    when ^ appears between two comparison expressions like:
+        V(A) > VTHRESH ^ V(B) > VTHRESH
+    it's XOR. Convert to arithmetic equivalent:
+        ((a) + (b) - 2*(a)*(b))
 
-    Must run BEFORE the exponentiation pass.
+    Uses targeted regex to match comparison_expr ^ comparison_expr
+    without splitting across IF() arguments or other structures.
+    Must run BEFORE IF→ternary and BEFORE the exponentiation pass.
     """
     m = re.match(r"^(B\S*\s+\S+\s+\S+\s+[VI]\s*=\s*)(.*)", line, re.IGNORECASE)
     if not m:
@@ -406,30 +410,32 @@ def _convert_xor_in_behavioral(line: str) -> str:
     prefix = m.group(1)
     expr = m.group(2)
 
-    if " ^ " not in expr:
+    if "^" not in expr:
         return line
 
-    # Split on ' ^ ' and check if both sides contain comparison operators
-    comparison_ops = re.compile(r"[><=!]")
-    parts = expr.split(" ^ ")
-    if len(parts) <= 1:
-        return line
+    # Match: comparison_a ^ comparison_b
+    # A comparison is: <operand> <comp_op> <operand>
+    # <operand> is: V(X), I(X), number, or parameter name
+    # (NOT a general pattern like [\w.()] which would eat IF() function names)
+    # Number pattern (\d...) must come before \w+ so "0.5" isn't split as "0"+".5"
+    operand = (
+        r"(?:[VI]\([^)]*\)|\d[\d.eE+-]*|\w+)"
+        r"(?:\s*[*/]\s*(?:[VI]\([^)]*\)|\d[\d.eE+-]*|\w+))*"
+    )
+    comp_op = r"[><=!]+"
+    comparison = rf"({operand}\s*{comp_op}\s*{operand})"
 
-    # Check if this looks like boolean XOR (comparisons on both sides)
-    result_parts = [parts[0]]
-    for i in range(1, len(parts)):
-        left = result_parts[-1]
-        right = parts[i]
-        if comparison_ops.search(left) and comparison_ops.search(right):
-            # Boolean XOR: ((a) + (b) - 2*(a)*(b))
-            result_parts[-1] = (
-                f"(({left}) + ({right}) - 2*({left})*({right}))"
-            )
-        else:
-            # Not boolean — leave ^ for exponentiation pass
-            result_parts[-1] = left + " ^ " + right
+    def xor_replace(match: re.Match) -> str:
+        a = match.group(1).strip()
+        b = match.group(2).strip()
+        return f"(({a}) + ({b}) - 2*({a})*({b}))"
 
-    return prefix + result_parts[0]
+    expr = re.sub(
+        rf"{comparison}\s*\^\s*{comparison}",
+        xor_replace,
+        expr,
+    )
+    return prefix + expr
 
 
 def _break_algebraic_loops(lines: list[str]) -> list[str]:

@@ -17,16 +17,8 @@
   padding: 0 var(--spacing-md);
   height: 35px;
   min-height: 35px;
-  border-bottom: 1px solid var(--accent);
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-  position: relative;
-}
-.req-sidebar-header::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: var(--accent);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
 }
 .req-sidebar-title {
   font-weight: 500;
@@ -298,16 +290,15 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-/* Chart fills remaining space */
+/* Chart area — horizontally centered, top-aligned */
 .rdp-chart {
   flex: 1;
   min-height: 0;
-  padding: var(--spacing-md) var(--spacing-lg);
-}
-.rdp-chart .js-plotly-plot,
-.rdp-chart .plot-container {
-  width: 100%;
-  height: 100%;
+  padding: var(--spacing-xl);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 /* --- Info card (shared between sidebar inline & detail page) --- */

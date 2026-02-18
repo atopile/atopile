@@ -16,7 +16,7 @@ import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
-import { getBuildTarget, getProjectRoot as getProjectRootSync, setProjectRoot, setSelectedTargets } from '../common/target';
+import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
@@ -178,6 +178,10 @@ interface OpenMigrateTabMessage {
 interface OpenRequirementDetailMessage {
   type: 'openRequirementDetail';
   requirementId: string;
+  projectRoot: string;
+  target: string;
+  requirementData?: unknown;
+  buildTime?: string;
 }
 
 type WebviewMessage =
@@ -705,15 +709,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'openRequirementDetail':
         traceInfo(`[SidebarProvider] Opening requirement detail: ${message.requirementId}`);
-        {
-          const projRoot = getProjectRootSync();
-          const buildTarget = getBuildTarget();
-          openRequirementDetail(this._extensionUri, {
-            requirementId: message.requirementId,
-            projectRoot: projRoot,
-            target: buildTarget?.name,
-          });
-        }
+        openRequirementDetail(this._extensionUri, {
+          requirementId: message.requirementId,
+          projectRoot: message.projectRoot,
+          target: message.target,
+          requirementData: message.requirementData,
+          buildTime: message.buildTime,
+        });
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

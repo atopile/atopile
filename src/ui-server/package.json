@@ -23,7 +23,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "occt-import-js": "^0.0.23",
-    "plotly.js-dist-min": "^3.3.1",
+    "plotly.js-basic-dist-min": "^3.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",

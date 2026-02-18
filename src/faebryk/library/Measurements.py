@@ -24,3 +24,19 @@ class Overshoot:
 
 class RMS:
     """Measurement: root mean square of signal."""
+
+
+class GainDB:
+    """Measurement: gain in dB at a specific frequency."""
+
+
+class PhaseDeg:
+    """Measurement: phase in degrees at a specific frequency."""
+
+
+class Bandwidth3dB:
+    """Measurement: frequency where gain drops 3dB below DC gain."""
+
+
+class BodePlot:
+    """Measurement: DC gain check with full Bode plot (gain + phase vs frequency)."""

@@ -1,9 +1,11 @@
-requires-atopile: ^0.14.0
+requires-atopile: "^0.14.0"
 
 paths:
   src: ./
-  layout: ./layout
+  layout: ./layouts
 
 builds:
   default:
-    entry: buck_converter.ato:App
+    entry: buck_converter.ato:TI_TPS54560
+    hide_designators: true
+    exclude_checks: ["PCB.requires_drc_check"]

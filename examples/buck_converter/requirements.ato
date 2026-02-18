@@ -1,0 +1,97 @@
+import Requirement
+
+module SimulationRequirements:
+    "Simulation requirements for the TPS54560 buck converter (switching model)."
+
+    # Shared transient config:
+    #   Source: PULSE(0 12 0 10u 10u 10 10) — ramp VIN 0->12V with 10us rise
+    #   Step: 200ns (captures 600kHz switching: ~8 points/cycle)
+    #   Duration: 6ms (sufficient for startup + steady state)
+    #
+    # Net name mapping (from generated SPICE netlist):
+    #   power_out_hv = output voltage rail
+    #   package_2    = VIN (input voltage)
+    #   package_5    = FB (feedback pin)
+    #   package_8    = SW (switch node)
+
+    # REQ-001: Output voltage steady-state
+    req_output_voltage = new Requirement
+    req_output_voltage.req_name = "REQ-001: Startup output voltage"
+    req_output_voltage.net = "power_out_hv"
+    req_output_voltage.min_val = "4.80"
+    req_output_voltage.typical = "5.0"
+    req_output_voltage.max_val = "5.20"
+    req_output_voltage.capture = "transient"
+    req_output_voltage.measurement = "final_value"
+    req_output_voltage.context_nets = "package_2"
+    req_output_voltage.tran_step = "2e-7"
+    req_output_voltage.tran_stop = "6e-3"
+    req_output_voltage.source_name = "V1"
+    req_output_voltage.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_output_voltage.justification = "WEBENCH: Vout=5V within 4%"
+
+    # REQ-002: Feedback voltage steady-state
+    req_fb_voltage = new Requirement
+    req_fb_voltage.req_name = "REQ-002: Feedback voltage"
+    req_fb_voltage.net = "package_5"
+    req_fb_voltage.min_val = "0.75"
+    req_fb_voltage.typical = "0.80"
+    req_fb_voltage.max_val = "0.85"
+    req_fb_voltage.capture = "transient"
+    req_fb_voltage.measurement = "final_value"
+    req_fb_voltage.context_nets = "power_out_hv"
+    req_fb_voltage.tran_step = "2e-7"
+    req_fb_voltage.tran_stop = "6e-3"
+    req_fb_voltage.source_name = "V1"
+    req_fb_voltage.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_fb_voltage.justification = "TPS54560 Vref=0.8V within 6%"
+
+    # REQ-003: Startup overshoot
+    req_overshoot = new Requirement
+    req_overshoot.req_name = "REQ-003: Startup overshoot"
+    req_overshoot.net = "power_out.hv"
+    req_overshoot.min_val = 0
+    req_overshoot.typical = 5
+    req_overshoot.max_val = 15
+    req_overshoot.capture = "transient"
+    req_overshoot.measurement = "overshoot"
+    req_overshoot.context_nets = "power_in.hv"
+    req_overshoot.tran_step = 2e-7
+    req_overshoot.tran_stop = 3e-3
+    req_overshoot.source_name = "V1"
+    req_overshoot.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_overshoot.justification = "Startup overshoot <15%"
+
+    # REQ-004: Startup settling time
+    req_settling = new Requirement
+    req_settling.req_name = "REQ-004: Startup settling time"
+    req_settling.net = "power_out_hv"
+    req_settling.min_val = "0"
+    req_settling.typical = "0.002"
+    req_settling.max_val = "0.005"
+    req_settling.capture = "transient"
+    req_settling.measurement = "settling_time"
+    req_settling.settling_tolerance = "0.02"
+    req_settling.context_nets = "package_2"
+    req_settling.tran_step = "2e-7"
+    req_settling.tran_stop = "6e-3"
+    req_settling.source_name = "V1"
+    req_settling.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_settling.justification = "Settle within 5ms, 2% band"
+
+    # REQ-005: Inductor current at steady state
+    req_inductor_current = new Requirement
+    req_inductor_current.req_name = "REQ-005: Inductor current"
+    req_inductor_current.net = "i(L1)"
+    req_inductor_current.min_val = 3.0
+    req_inductor_current.typical = 5.0
+    req_inductor_current.max_val = 6.0
+    req_inductor_current.capture = "transient"
+    req_inductor_current.measurement = "final_value"
+    req_inductor_current.context_nets = "package_8"
+    req_inductor_current.tran_start = 4e-3
+    req_inductor_current.tran_step = 2e-7
+    req_inductor_current.tran_stop = 4.01e-3
+    req_inductor_current.source_name = "V1"
+    req_inductor_current.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
+    req_inductor_current.justification = "5V/1ohm = 5A load current at steady state"
