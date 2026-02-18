@@ -28,6 +28,33 @@ def _ensure_db_dir(db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _discard_connection(db_path: Path) -> None:
+    """Close and remove a cached thread-local connection."""
+    if hasattr(_thread_local, "connections"):
+        conn = _thread_local.connections.pop(db_path, None)
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _with_auto_reinit(db_path: Path, init_fn, fn, *args, **kwargs):
+    """
+    Call fn(*args, **kwargs). If it fails with 'no such table',
+    discard the stale connection, reinitialize the schema, and retry once.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except sqlite3.OperationalError as e:
+        if "no such table" not in str(e):
+            raise
+        logger.warning("Database tables missing in %s, reinitializing...", db_path.name)
+        _discard_connection(db_path)
+        init_fn()
+        return fn(*args, **kwargs)
+
+
 @contextmanager
 def _get_connection(db_path: Path, timeout: float = 30.0):
     """
@@ -119,7 +146,8 @@ class BuildHistory:
         Merges with existing record - None values preserve existing data.
         This allows partial updates without losing previously set fields.
         """
-        try:
+
+        def _upsert():
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 # Get existing record to merge with
@@ -196,6 +224,9 @@ class BuildHistory:
                         else (int(bool(existing.frozen)) if existing else 0),
                     ),
                 )
+
+        try:
+            _with_auto_reinit(BUILD_HISTORY_DB, BuildHistory.init_db, _upsert)
         except Exception:
             logger.exception(
                 f"Failed to save build {build.build_id} to history. "
@@ -206,7 +237,8 @@ class BuildHistory:
     @staticmethod
     def get(build_id: str) -> Build | None:
         """Get a build by ID. Returns None if missing, exits on error."""
-        try:
+
+        def _query():
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
@@ -216,6 +248,9 @@ class BuildHistory:
                 if row is None:
                     return None
                 return BuildHistory._from_row(row)
+
+        try:
+            return _with_auto_reinit(BUILD_HISTORY_DB, BuildHistory.init_db, _query)
         except Exception:
             logger.exception(
                 f"Failed to get build {build_id} from history. "
@@ -226,7 +261,8 @@ class BuildHistory:
     @staticmethod
     def get_all(limit: int = 50) -> list[Build]:
         """Get recent builds. Raises on error so callers can handle gracefully."""
-        try:
+
+        def _query():
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
@@ -234,6 +270,9 @@ class BuildHistory:
                     (limit,),
                 ).fetchall()
                 return [BuildHistory._from_row(r) for r in rows]
+
+        try:
+            return _with_auto_reinit(BUILD_HISTORY_DB, BuildHistory.init_db, _query)
         except Exception as e:
             logger.exception(
                 "Failed to load build history. Try running 'ato dev clear_logs'."
@@ -243,7 +282,8 @@ class BuildHistory:
     @staticmethod
     def get_latest_for_target(project_root: str, target: str) -> Build | None:
         """Get the most recent build for a specific project/target."""
-        try:
+
+        def _query():
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
@@ -255,6 +295,9 @@ class BuildHistory:
                 if row is None:
                     return None
                 return BuildHistory._from_row(row)
+
+        try:
+            return _with_auto_reinit(BUILD_HISTORY_DB, BuildHistory.init_db, _query)
         except Exception as e:
             logger.exception(
                 "Failed to get latest build for target. "
