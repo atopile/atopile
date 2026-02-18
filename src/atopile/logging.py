@@ -417,7 +417,9 @@ class AtoLogger(logging.Logger):
 
     @classmethod
     def set_active_stage(cls, stage: str) -> None:
-        """Set the current build stage on the active logger context."""
+        """Set the current build stage on the active build logger context."""
+        if cls._active_build_logger is None:
+            raise RuntimeError("No active build logging context")
         cls._active_build_logger.stage_or_test_name = stage
 
     @classmethod

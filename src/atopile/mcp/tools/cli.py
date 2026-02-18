@@ -48,11 +48,13 @@ def build_project(
         )
         os.environ["ATO_BUILD_ID"] = build_id
         try:
+            from atopile.buildutil import BuildStepContext
+
             AtoLogger.activate_build(stage=config.build.name)
             logger.info("Building target '%s'", config.build.name)
 
             try:
-                buildutil.build()
+                buildutil.build(ctx=BuildStepContext(build=None, build_id=build_id))
             except Exception:
                 success = False
                 logs = traceback.format_exc()

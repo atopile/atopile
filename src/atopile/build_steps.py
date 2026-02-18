@@ -191,7 +191,8 @@ class MusterTarget:
         from atopile.model.sqlite import BuildHistory
 
         ctx.stage = self.name
-        AtoLogger.set_active_stage(self.name)
+        if ctx.build_id:
+            AtoLogger.set_active_stage(self.name)
         logger.debug(f"Starting build stage: {self.name}")
 
         start = time.time()
