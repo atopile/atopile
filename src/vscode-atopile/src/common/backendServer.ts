@@ -509,17 +509,28 @@ class BackendServerManager implements vscode.Disposable {
             // When a new extension host connects (e.g. browser reconnect), another host may
             // already be running the backend on this fixed port. Reuse it instead of spawning
             // a second `ato serve` process that exits immediately with "already running".
-            if (await checkServerHealthHttp(this._internalApiUrl)) {
-                this._log('info', `server: Reusing existing backend on port ${this.port}`);
-                this._serverReady = true;
-                this._serverState = 'running';
-                this._updateStatusBar();
-                this._onWebviewMessage.fire({
-                    type: 'atopileInstalling',
-                    message: 'Connecting to server...',
-                });
-                return true;
-            }
+            // In web-ide mode (ATOPILE_BACKEND_PORT set), the entrypoint pre-starts the
+            // backend, so poll for up to 15s to give it time to become ready.
+            const preStartWaitMs = process.env.ATOPILE_BACKEND_PORT ? 15_000 : 0;
+            const pollStart = Date.now();
+            do {
+                if (await checkServerHealthHttp(this._internalApiUrl)) {
+                    this._log('info', `server: Reusing existing backend on port ${this.port}`);
+                    this._serverReady = true;
+                    this._serverState = 'running';
+                    this._updateStatusBar();
+                    this._onWebviewMessage.fire({
+                        type: 'atopileInstalling',
+                        message: 'Connecting to server...',
+                    });
+                    return true;
+                }
+                if (preStartWaitMs > 0 && Date.now() - pollStart < preStartWaitMs) {
+                    await new Promise(r => setTimeout(r, 500));
+                } else {
+                    break;
+                }
+            } while (true);
 
             const workspaceRoots = getWorkspaceRoots();
             traceInfo(`[BackendServer] Workspace roots: ${workspaceRoots.join(', ') || '(none)'}`);

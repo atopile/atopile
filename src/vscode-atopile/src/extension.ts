@@ -160,8 +160,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
     initServer(context);
-    await ensureAtoBin(context);
-    traceMilestone('ensureAtoBin done');
+    // If backend port is pre-configured (web-ide mode), skip ensureAtoBin —
+    // the pre-started backend proves the binary works.
+    if (!process.env.ATOPILE_BACKEND_PORT) {
+        await ensureAtoBin(context);
+        traceMilestone('ensureAtoBin done');
+    }
 
     // 3. Start servers and UI in parallel
     let isInitialStart = true;

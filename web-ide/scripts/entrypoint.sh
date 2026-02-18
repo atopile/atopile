@@ -29,31 +29,35 @@ if [ -f "${KEYBINDINGS_SRC}" ]; then
     cp "${KEYBINDINGS_SRC}" "${KEYBINDINGS_DST}"
 fi
 
-echo "[web-ide] atopile $(ato --version 2>/dev/null || echo 'not found')"
+# Pre-start backend server (extension will detect and reuse it)
+echo "[web-ide] Pre-starting backend server on port ${ATOPILE_BACKEND_PORT}..."
+ato serve backend \
+    --port "${ATOPILE_BACKEND_PORT}" \
+    --host "${ATOPILE_BACKEND_HOST}" \
+    --no-gen \
+    --workspace "${WORKSPACE}" &
+BACKEND_PID=$!
 
-# Install the atopile KiCad plugin for PCBnew.
-# 1) Pre-create the plugin dir so get_plugin_paths() can discover it.
-# 2) Run configure.setup() to write atopile.py loader + enable IPC API.
-# 3) Symlink into ~/.config/kicad/ where KiCad's SETTINGS_MANAGER actually looks.
-KICAD_DATA_PLUGINS="${HOME}/.local/share/kicad/9.0/scripting/plugins"
-KICAD_CONFIG_PLUGINS="${HOME}/.config/kicad/9.0/scripting/plugins"
-mkdir -p "${KICAD_DATA_PLUGINS}"
-"${HOME}/.local/share/uv/tools/atopile/bin/python" -c "from atopile.cli.configure import setup; setup()" 2>/dev/null || true
-if [ -f "${KICAD_DATA_PLUGINS}/atopile.py" ] && [ ! -e "${KICAD_CONFIG_PLUGINS}" ]; then
-    mkdir -p "$(dirname "${KICAD_CONFIG_PLUGINS}")"
-    ln -sf "${KICAD_DATA_PLUGINS}" "${KICAD_CONFIG_PLUGINS}"
-    echo "[web-ide] KiCad plugin installed"
-fi
+# KiCad setup in background (not needed until user opens PCB viewer)
+(
+    # Install the atopile KiCad plugin for PCBnew.
+    KICAD_DATA_PLUGINS="${HOME}/.local/share/kicad/9.0/scripting/plugins"
+    KICAD_CONFIG_PLUGINS="${HOME}/.config/kicad/9.0/scripting/plugins"
+    mkdir -p "${KICAD_DATA_PLUGINS}"
+    "${HOME}/.local/share/uv/tools/atopile/bin/python" -c "from atopile.cli.configure import setup; setup()" 2>/dev/null || true
+    if [ -f "${KICAD_DATA_PLUGINS}/atopile.py" ] && [ ! -e "${KICAD_CONFIG_PLUGINS}" ]; then
+        mkdir -p "$(dirname "${KICAD_CONFIG_PLUGINS}")"
+        ln -sf "${KICAD_DATA_PLUGINS}" "${KICAD_CONFIG_PLUGINS}"
+        echo "[web-ide] KiCad plugin installed"
+    fi
 
-# Pre-configure KiCad to skip first-run dialogs (data collection, update check, etc.)
-KICAD_CFG_DIR="${HOME}/.config/kicad/9.0"
-"${HOME}/.local/share/uv/tools/atopile/bin/python" - <<'PYEOF'
+    # Pre-configure KiCad to skip first-run dialogs
+    "${HOME}/.local/share/uv/tools/atopile/bin/python" - <<'PYEOF'
 import json, pathlib, os
 
 cfg_dir = pathlib.Path(os.environ["HOME"]) / ".config/kicad/9.0"
 cfg_dir.mkdir(parents=True, exist_ok=True)
 
-# Patch kicad_common.json — suppress all first-run dialogs
 common_path = cfg_dir / "kicad_common.json"
 if common_path.exists():
     common = json.loads(common_path.read_text())
@@ -67,7 +71,6 @@ common["do_not_show_again"]["env_var_overwrite_warning"] = True
 common["do_not_show_again"]["scaled_3d_models_warning"] = True
 common["do_not_show_again"]["zone_fill_warning"] = True
 
-# Enable KiCad IPC API server so `reload_pcb()` can tell PCBnew to reload via socket
 common.setdefault("api", {})
 common["api"]["enable_server"] = True
 
@@ -79,11 +82,10 @@ common["graphics"]["opengl_antialiasing_mode"] = 0
 
 common.setdefault("appearance", {})
 common["appearance"]["toolbar_icon_size"] = 16
-common["appearance"]["icon_theme"] = 2  # AUTO — adapts to GTK dark/light
+common["appearance"]["icon_theme"] = 2
 
 common_path.write_text(json.dumps(common, indent=2))
 
-# Create pcbnew.json if missing — marks PCBnew as already-configured
 pcbnew_path = cfg_dir / "pcbnew.json"
 if not pcbnew_path.exists():
     pcbnew_path.write_text(json.dumps({
@@ -91,7 +93,6 @@ if not pcbnew_path.exists():
         "printing": {"enabled": False}
     }, indent=2))
 
-# Copy default library tables if missing — prevents KiCad first-run lib wizard
 import shutil
 for lib_table in ("fp-lib-table", "sym-lib-table"):
     dest = cfg_dir / lib_table
@@ -100,7 +101,10 @@ for lib_table in ("fp-lib-table", "sym-lib-table"):
         shutil.copy2(src, dest)
 
 PYEOF
+    echo "[web-ide] KiCad setup complete"
+) &
 
+echo "[web-ide] atopile $(ato --version 2>/dev/null || echo 'not found')"
 echo "[web-ide] Starting Caddy reverse proxy and OpenVSCode Server..."
 
 # --- Dual-process management: Caddy + OpenVSCode Server ---
@@ -108,8 +112,8 @@ echo "[web-ide] Starting Caddy reverse proxy and OpenVSCode Server..."
 
 cleanup() {
     echo "[web-ide] Shutting down..."
-    kill "$CADDY_PID" "$OPENVSCODE_PID" 2>/dev/null
-    wait "$CADDY_PID" "$OPENVSCODE_PID" 2>/dev/null
+    kill "$CADDY_PID" "$OPENVSCODE_PID" "$BACKEND_PID" 2>/dev/null
+    wait "$CADDY_PID" "$OPENVSCODE_PID" "$BACKEND_PID" 2>/dev/null
 }
 trap cleanup SIGTERM SIGINT
 
