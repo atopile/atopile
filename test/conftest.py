@@ -8,7 +8,7 @@ import posthog
 import pytest
 
 from atopile import telemetry
-from atopile.logging import AtoTestLogger
+from atopile.logging import AtoLogger
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir
 
@@ -148,7 +148,7 @@ def ato_logging_context(request: pytest.FixtureRequest):
     context = options.get("context", "")
     reset_root = bool(options.get("reset_root", False))
 
-    with AtoTestLogger.test_context(
+    with AtoLogger.test_context(
         kind=kind,
         identifier=identifier,
         context=context,
