@@ -5,6 +5,7 @@
 import { Cuboid } from 'lucide-react';
 import ModelViewer from '../../ModelViewer';
 import type { ReviewPageProps, ReviewPageDefinition } from '../types';
+import { API_URL } from '../../../api/config';
 
 export const Review3DViewDefinition: ReviewPageDefinition = {
   id: '3d-view',
@@ -28,7 +29,7 @@ export function Review3DView({ outputs }: ReviewPageProps) {
   return (
     <div className="mfg-3d-view">
       <ModelViewer
-        src={outputs.glb}
+        src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.glb)}`}
         style={{ width: '100%', height: '100%' }}
       />
     </div>
