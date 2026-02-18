@@ -75,6 +75,7 @@ logging.addLevelName(ALERT, "ALERT")
 _LEVEL_MAP = {
     logging.DEBUG: Log.Level.DEBUG,
     logging.INFO: Log.Level.INFO,
+    ALERT: Log.Level.ALERT,
     logging.WARNING: Log.Level.WARNING,
     logging.ERROR: Log.Level.ERROR,
     logging.CRITICAL: Log.Level.ERROR,
@@ -97,14 +98,13 @@ class AtoLogger(logging.Logger):
 
     Every logger in the codebase is an AtoLogger (via ``setLoggerClass``).
     Plain instances (from ``get_logger(__name__)``) only participate in the
-    standard handler pipeline. Factory class methods attach a DB writer for
-    build, test, or unscoped logging contexts.
+    standard handler pipeline. Build and test contexts are explicit overrides;
+    all other logs persist to an implicit unscoped context.
     """
 
     BATCH_SIZE = 300
     FLUSH_INTERVAL = 0.5
 
-    # Only one DB logging context is active at a time.
     _active_build_logger = None
     _active_test_logger = None
     _active_unscoped_logger = None
@@ -185,7 +185,7 @@ class AtoLogger(logging.Logger):
         **kwargs,
     ) -> None:
         """Emit a log message at `level` with explicit audience/object metadata."""
-        kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
+        kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 2
         with self._with_record_meta(audience, objects):
             self._log(level, msg, args, **kwargs)
 
@@ -397,54 +397,31 @@ class AtoLogger(logging.Logger):
     # -----------------------------------------------------------------
 
     @classmethod
-    def activate_build(
-        cls, *, enable_database: bool = True, stage: str | None = None
-    ) -> "AtoLogger | None":
-        if not enable_database:
-            return None
-
-        env_build_id = os.environ.get("ATO_BUILD_ID")
-        env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
-        if not env_build_id or not env_timestamp:
-            return None
+    def activate_build(cls, *, stage: str = "") -> "AtoLogger":
+        env_build_id = os.environ["ATO_BUILD_ID"]
 
         from atopile.model.sqlite import Logs
 
         Logs.init_db()
         build_logger = cls._make_db_logger(
             env_build_id,
-            stage or "",
+            stage,
             Logs.append_chunk,
             LogRow,
             "build_id",
             "stage",
             f"atopile.db.build.{env_build_id}",
         )
-        cls._set_active_loggers(build=build_logger)
+        cls._set_active_loggers(
+            build=build_logger,
+            unscoped=cls._get_or_create_unscoped_logger(),
+        )
         return build_logger
 
     @classmethod
     def set_active_stage(cls, stage: str) -> None:
         """Set the current build stage on the active logger context."""
         cls._active_build_logger.stage_or_test_name = stage
-
-    @classmethod
-    def activate_unscoped(cls, channel: str, stage: str = "") -> "AtoLogger":
-        """Activate an unscoped DB logger (empty build_id) for general logs."""
-        from atopile.model.sqlite import Logs
-
-        Logs.init_db()
-        unscoped_logger = cls._make_db_logger(
-            "",
-            stage,
-            Logs.append_chunk,
-            LogRow,
-            "build_id",
-            "stage",
-            f"atopile.db.unscoped.{channel}",
-        )
-        cls._set_active_loggers(unscoped=unscoped_logger)
-        return unscoped_logger
 
     @classmethod
     def activate_test(cls, test_run_id: str, test: str = "") -> "AtoLogger":
@@ -462,7 +439,10 @@ class AtoLogger(logging.Logger):
             "test_name",
             f"atopile.db.test.{test_run_id}",
         )
-        cls._set_active_loggers(test=test_logger)
+        cls._set_active_loggers(
+            test=test_logger,
+            unscoped=cls._get_or_create_unscoped_logger(),
+        )
         return test_logger
 
     @classmethod
@@ -488,16 +468,16 @@ class AtoLogger(logging.Logger):
 
     @classmethod
     def close_all(cls) -> None:
-        """Flush and close all DB-writing instances (build + test)."""
-        cls._set_active_loggers()
+        """Close build/test contexts and keep unscoped as baseline."""
+        cls._set_active_loggers(unscoped=cls._get_or_create_unscoped_logger())
 
     @classmethod
     def flush_all(cls) -> None:
         """Flush pending logs without closing."""
         for logger in (
             cls._active_build_logger,
-            cls._active_unscoped_logger,
             cls._active_test_logger,
+            cls._get_or_create_unscoped_logger(),
         ):
             if logger is not None:
                 logger.db_flush()
@@ -527,6 +507,25 @@ class AtoLogger(logging.Logger):
         inst._db_buffer = []
         inst.set_writer(writer, row_class, id_field, context_field)
         return inst
+
+    @classmethod
+    def _get_or_create_unscoped_logger(cls) -> "AtoLogger":
+        if cls._active_unscoped_logger is not None:
+            return cls._active_unscoped_logger
+
+        from atopile.model.sqlite import Logs
+
+        Logs.init_db()
+        cls._active_unscoped_logger = cls._make_db_logger(
+            "",
+            "",
+            Logs.append_chunk,
+            LogRow,
+            "build_id",
+            "stage",
+            "atopile.db.unscoped.default",
+        )
+        return cls._active_unscoped_logger
 
 
 class AtoTestLogger(AtoLogger):
@@ -876,26 +875,29 @@ class _DBLogFilter(logging.Filter):
 
 
 class DBLogHandler(logging.Handler):
-    """Persist records into build/test context, else default unscoped context."""
+    """Persist records into build/test override contexts or default unscoped."""
 
     @classmethod
     def _resolve_db_target(cls) -> AtoLogger:
-        active = [
-            c
-            for c in (
-                AtoLogger._active_test_logger,
-                AtoLogger._active_build_logger,
-                AtoLogger._active_unscoped_logger,
+        if AtoLogger._active_test_logger and AtoLogger._active_build_logger:
+            raise RuntimeError(
+                "Build and test DB logging contexts active simultaneously"
             )
-            if c
-        ]
 
-        if len(active) > 1:
-            raise RuntimeError("Multiple DB logging contexts active simultaneously")
+        if AtoLogger._active_test_logger:
+            return AtoLogger._active_test_logger
 
-        if active:
-            return active[0]
-        return AtoLogger.activate_unscoped(channel="default", stage="")
+        if AtoLogger._active_build_logger:
+            return AtoLogger._active_build_logger
+
+        return AtoLogger._get_or_create_unscoped_logger()
+
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
+        """Never swallow DB logging failures."""
+        _exc_type, exc_value, exc_tb = sys.exc_info()
+        if exc_value is None:
+            raise RuntimeError("DBLogHandler failed without an active exception")
+        raise exc_value.with_traceback(exc_tb)
 
     def emit(self, record: logging.LogRecord) -> None:
         db_logger = self._resolve_db_target()
@@ -906,7 +908,7 @@ class DBLogHandler(logging.Handler):
             render_ato_traceback,
         )
 
-        level = _LEVEL_MAP.get(record.levelno, Log.Level.DEBUG)
+        level = _LEVEL_MAP[record.levelno]
         audience = getattr(record, "audience", Log.Audience.DEVELOPER)
         objects = getattr(record, "objects", None)
         ato_tb: str | None = None

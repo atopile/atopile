@@ -785,29 +785,27 @@ def _format_value(val: object) -> str:
 
 def _get_pretty_repr(value: object, max_len: int = 200) -> str:
     """Get pretty repr using __rich_repr__ or fallback to repr."""
-    try:
-        if hasattr(value, "__rich_repr__"):
-            type_name = type(value).__name__
-            rich_repr_parts = []
-            for item in getattr(value, "__rich_repr__")():
-                if isinstance(item, tuple):
-                    if len(item) == 2:
-                        key, val = item
-                        if key is None:
-                            rich_repr_parts.append(_format_value(val))
-                        else:
-                            rich_repr_parts.append(f"{key}={_format_value(val)}")
-                    elif len(item) == 1:
-                        rich_repr_parts.append(_format_value(item[0]))
-                else:
-                    rich_repr_parts.append(_format_value(item))
-            result = f"{type_name}({', '.join(rich_repr_parts)})"
-            return result[:max_len] + "..." if len(result) > max_len else result
-
-        result = repr(value)
+    rich_repr = getattr(value, "__rich_repr__", None)
+    if callable(rich_repr) and getattr(rich_repr, "__self__", None) is not None:
+        type_name = type(value).__name__
+        rich_repr_parts = []
+        for item in rich_repr():
+            if isinstance(item, tuple):
+                if len(item) == 2:
+                    key, val = item
+                    if key is None:
+                        rich_repr_parts.append(_format_value(val))
+                    else:
+                        rich_repr_parts.append(f"{key}={_format_value(val)}")
+                elif len(item) == 1:
+                    rich_repr_parts.append(_format_value(item[0]))
+            else:
+                rich_repr_parts.append(_format_value(item))
+        result = f"{type_name}({', '.join(rich_repr_parts)})"
         return result[:max_len] + "..." if len(result) > max_len else result
-    except Exception:
-        return "<unable to represent>"
+
+    result = repr(value)
+    return result[:max_len] + "..." if len(result) > max_len else result
 
 
 def _serialize_local_var(
@@ -832,7 +830,8 @@ def _serialize_local_var(
             }
         return {"type": type_name, "value": value}
 
-    if hasattr(value, "__rich_repr__"):
+    rich_repr = getattr(value, "__rich_repr__", None)
+    if callable(rich_repr):
         repr_str = _get_pretty_repr(value, max_repr_len)
         return {"type": type_name, "repr": repr_str}
 
@@ -934,21 +933,14 @@ def extract_traceback_frames(
             continue
 
         locals_dict = {}
-        try:
-            for name, value in list(frame.f_locals.items())[:max_locals]:
-                if name.startswith("__"):
-                    continue
-                locals_dict[name] = _serialize_local_var(value, max_repr_len)
-        except Exception:
-            pass
+        for name, value in list(frame.f_locals.items())[:max_locals]:
+            if name.startswith("__"):
+                continue
+            locals_dict[name] = _serialize_local_var(value, max_repr_len)
 
-        code_line = None
-        try:
-            import linecache
+        import linecache
 
-            code_line = linecache.getline(filename, tb.tb_lineno).strip()
-        except Exception:
-            pass
+        code_line = linecache.getline(filename, tb.tb_lineno).strip()
 
         frames.append(
             {
@@ -985,17 +977,14 @@ def render_ato_traceback(exc: BaseException) -> str | None:
     """
     if not hasattr(exc, "__rich_console__"):
         return None
-    try:
-        ansi_buffer = io.StringIO()
-        capture_console = Console(
-            file=ansi_buffer,
-            width=120,
-            force_terminal=True,
-        )
-        renderables = exc.__rich_console__(capture_console, capture_console.options)
-        for renderable in list(renderables)[1:]:
-            capture_console.print(renderable)
-        result = ansi_buffer.getvalue().strip()
-        return result or None
-    except Exception:
-        return None
+    ansi_buffer = io.StringIO()
+    capture_console = Console(
+        file=ansi_buffer,
+        width=120,
+        force_terminal=True,
+    )
+    renderables = exc.__rich_console__(capture_console, capture_console.options)
+    for renderable in list(renderables)[1:]:
+        capture_console.print(renderable)
+    result = ansi_buffer.getvalue().strip()
+    return result or None

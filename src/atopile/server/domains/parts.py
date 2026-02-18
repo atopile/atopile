@@ -8,12 +8,12 @@ from collections.abc import Callable
 from typing import Iterable, Optional
 
 from atopile.dataclasses import Log
-from atopile.logging import AtoLogger
+from atopile.logging import get_logger
 from atopile.model import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
 
-log = AtoLogger.activate_unscoped(channel="server.domains.parts", stage="")
+log = get_logger(__name__)
 
 _LCSC_RE = re.compile(r"^C\d+$", re.IGNORECASE)
 _OUT_OF_STOCK_TTL_S = 24 * 60 * 60
