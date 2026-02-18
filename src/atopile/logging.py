@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType, TracebackType
@@ -51,6 +52,20 @@ logging.getLogger("http11").setLevel(logging.INFO)
 
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _log_scope_level: ContextVar[int] = ContextVar("log_scope_level", default=0)
+
+
+@dataclass(frozen=True)
+class _RecordMeta:
+    """Per-log-call metadata that should be attached to each LogRecord."""
+
+    audience: Log.Audience = Log.Audience.DEVELOPER
+    objects: dict | None = None
+
+
+_record_meta: ContextVar[_RecordMeta] = ContextVar(
+    "record_meta",
+    default=_RecordMeta(),
+)
 
 # Custom log level
 ALERT = logging.INFO + 5
@@ -89,12 +104,40 @@ class AtoLogger(logging.Logger):
     BATCH_SIZE = 300
     FLUSH_INTERVAL = 0.5
 
-    # Class-level registries for DB-writing instances
-    _build_loggers: dict[str, "AtoLogger"] = {}
-    _unscoped_loggers: dict[str, "AtoLogger"] = {}
+    # Only one DB logging context is active at a time.
     _active_build_logger = None
     _active_test_logger = None
     _active_unscoped_logger = None
+
+    @classmethod
+    def _deactivate_logger(cls, logger: "AtoLogger | None") -> None:
+        if logger is None:
+            return
+        logger.db_flush()
+        logger._db_writer = None
+
+    @classmethod
+    def _set_active_loggers(
+        cls,
+        *,
+        build: "AtoLogger | None" = None,
+        test: "AtoLogger | None" = None,
+        unscoped: "AtoLogger | None" = None,
+    ) -> None:
+        next_active = {
+            id(logger) for logger in (build, test, unscoped) if logger is not None
+        }
+        for current in (
+            cls._active_build_logger,
+            cls._active_test_logger,
+            cls._active_unscoped_logger,
+        ):
+            if current is not None and id(current) not in next_active:
+                cls._deactivate_logger(current)
+
+        cls._active_build_logger = build
+        cls._active_test_logger = test
+        cls._active_unscoped_logger = unscoped
 
     def __init__(self, name: str, level: int = logging.NOTSET) -> None:
         super().__init__(name, level)
@@ -106,28 +149,82 @@ class AtoLogger(logging.Logger):
         self._db_row_class: type | None = None
         self._db_id_field: str = ""
         self._db_context_field: str = ""
+        self.stage_or_test_name: str = ""
         self._db_buffer: list[Any] = []
         self._db_buffer_lock = threading.Lock()
         self._db_last_flush = time.monotonic()
-        self._db_closed = False
         self._db_identifier: str = ""
-        self._db_context: str = ""
 
     # -----------------------------------------------------------------
     # Audience-aware logging overrides
     # -----------------------------------------------------------------
 
     @staticmethod
-    def _pack_extra(
-        kwargs: dict[str, Any],
+    @contextmanager
+    def _with_record_meta(audience: Log.Audience, objects: dict | None):
+        """
+        Scope audience/objects for a single log call.
+
+        The standard logging flow later calls makeRecord(), which reads this context
+        and writes first-class LogRecord fields.
+        """
+        token = _record_meta.set(_RecordMeta(audience=audience, objects=objects))
+        try:
+            yield
+        finally:
+            _record_meta.reset(token)
+
+    def _emit_with_meta(
+        self,
+        level: int,
+        msg: object,
+        args,
+        *,
         audience: Log.Audience,
         objects: dict | None,
+        **kwargs,
     ) -> None:
-        """Pack audience and objects into extra dict for the log record."""
-        extra = kwargs.setdefault("extra", {})
-        extra["audience"] = audience
-        if objects is not None:
-            extra["objects"] = objects
+        """Emit a log message at `level` with explicit audience/object metadata."""
+        kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
+        with self._with_record_meta(audience, objects):
+            self._log(level, msg, args, **kwargs)
+
+    def makeRecord(  # type: ignore[override]
+        self,
+        name: str,
+        level: int,
+        fn: str,
+        lno: int,
+        msg: object,
+        args,
+        exc_info,
+        func: str | None = None,
+        extra: dict[str, Any] | None = None,
+        sinfo=None,
+    ) -> logging.LogRecord:
+        """Create a LogRecord with first-class audience/objects fields."""
+        record = logging._logRecordFactory(
+            name,
+            level,
+            fn,
+            lno,
+            msg,
+            args,
+            exc_info,
+            func,
+            sinfo,
+        )
+
+        meta = _record_meta.get()
+        record.__dict__["audience"] = meta.audience
+        record.__dict__["objects"] = meta.objects
+
+        if extra is not None:
+            for key in extra:
+                if (key in ["message", "asctime"]) or (key in record.__dict__):
+                    raise KeyError(f"Attempt to overwrite {key!r} in LogRecord")
+                record.__dict__[key] = extra[key]
+        return record
 
     def debug(  # type: ignore[override]
         self,
@@ -138,9 +235,14 @@ class AtoLogger(logging.Logger):
         **kwargs,
     ) -> None:
         if self.isEnabledFor(logging.DEBUG):
-            self._pack_extra(kwargs, audience, objects)
-            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
-            self._log(logging.DEBUG, msg, args, **kwargs)
+            self._emit_with_meta(
+                logging.DEBUG,
+                msg,
+                args,
+                audience=audience,
+                objects=objects,
+                **kwargs,
+            )
 
     def info(  # type: ignore[override]
         self,
@@ -151,9 +253,14 @@ class AtoLogger(logging.Logger):
         **kwargs,
     ) -> None:
         if self.isEnabledFor(logging.INFO):
-            self._pack_extra(kwargs, audience, objects)
-            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
-            self._log(logging.INFO, msg, args, **kwargs)
+            self._emit_with_meta(
+                logging.INFO,
+                msg,
+                args,
+                audience=audience,
+                objects=objects,
+                **kwargs,
+            )
 
     def warning(  # type: ignore[override]
         self,
@@ -164,9 +271,14 @@ class AtoLogger(logging.Logger):
         **kwargs,
     ) -> None:
         if self.isEnabledFor(logging.WARNING):
-            self._pack_extra(kwargs, audience, objects)
-            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
-            self._log(logging.WARNING, msg, args, **kwargs)
+            self._emit_with_meta(
+                logging.WARNING,
+                msg,
+                args,
+                audience=audience,
+                objects=objects,
+                **kwargs,
+            )
 
     def error(  # type: ignore[override]
         self,
@@ -177,9 +289,14 @@ class AtoLogger(logging.Logger):
         **kwargs,
     ) -> None:
         if self.isEnabledFor(logging.ERROR):
-            self._pack_extra(kwargs, audience, objects)
-            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
-            self._log(logging.ERROR, msg, args, **kwargs)
+            self._emit_with_meta(
+                logging.ERROR,
+                msg,
+                args,
+                audience=audience,
+                objects=objects,
+                **kwargs,
+            )
 
     def alert(
         self,
@@ -190,9 +307,14 @@ class AtoLogger(logging.Logger):
     ) -> None:
         """Log at ALERT level (between WARNING and ERROR)."""
         if self.isEnabledFor(ALERT):
-            self._pack_extra(kwargs, Log.Audience.USER, objects)
-            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
-            self._log(ALERT, msg, args, **kwargs)
+            self._emit_with_meta(
+                ALERT,
+                msg,
+                args,
+                audience=Log.Audience.USER,
+                objects=objects,
+                **kwargs,
+            )
 
     # -----------------------------------------------------------------
     # DB writer plumbing
@@ -209,9 +331,6 @@ class AtoLogger(logging.Logger):
         self._db_row_class = row_class
         self._db_id_field = id_field
         self._db_context_field = context_field
-
-    def set_context(self, ctx: str) -> None:
-        self._db_context = ctx
 
     @property
     def build_id(self) -> str:
@@ -231,13 +350,15 @@ class AtoLogger(logging.Logger):
         objects: dict | None = None,
     ) -> None:
         """Build a DB entry, buffer it, and flush when thresholds are met."""
-        if self._db_writer is None or self._db_closed or self._db_row_class is None:
-            return
+        if self._db_writer is None or self._db_row_class is None:
+            raise RuntimeError(
+                f"DB logger '{self.name}' is not initialized or has been deactivated"
+            )
 
         entry = self._db_row_class(
             **{
                 self._db_id_field: self._db_identifier,
-                self._db_context_field: self._db_context,
+                self._db_context_field: self.stage_or_test_name,
                 "timestamp": datetime.now().isoformat(),
                 "level": level.value,
                 "message": message,
@@ -261,7 +382,9 @@ class AtoLogger(logging.Logger):
 
     def db_flush(self) -> None:
         if self._db_writer is None:
-            return
+            raise RuntimeError(
+                f"DB logger '{self.name}' is not initialized or has been deactivated"
+            )
         with self._db_buffer_lock:
             if not self._db_buffer:
                 return
@@ -269,127 +392,68 @@ class AtoLogger(logging.Logger):
             self._db_last_flush = time.monotonic()
         self._db_writer(entries)
 
-    def flush(self) -> None:
-        """Flush both the DB buffer and standard handlers."""
-        self.db_flush()
-
-    def db_close(self) -> None:
-        self._db_closed = True
-        self.db_flush()
-
     # -----------------------------------------------------------------
-    # Build logging factory
+    # Logging context activation
     # -----------------------------------------------------------------
 
     @classmethod
-    def get_build(
-        cls,
-        project_path: str,
-        target: str,
-        stage: str = "",
-        build_id: str = "",
-    ) -> "AtoLogger":
-        """Get or create a DB-writing AtoLogger for build logs."""
-        if not build_id:
-            raise RuntimeError("build_id is required")
-        from atopile.model.sqlite import Logs
-
-        Logs.init_db()
-        if build_id not in cls._build_loggers:
-            bl = cls._make_db_logger(
-                build_id,
-                stage,
-                Logs.append_chunk,
-                LogRow,
-                "build_id",
-                "stage",
-                f"atopile.db.build.{build_id}",
-            )
-            cls._build_loggers[build_id] = bl
-        else:
-            cls._build_loggers[build_id].set_context(stage)
-        return cls._build_loggers[build_id]
-
-    @classmethod
-    def setup_build_logging(
-        cls, enable_database: bool = True, stage: str | None = None
+    def activate_build(
+        cls, *, enable_database: bool = True, stage: str | None = None
     ) -> "AtoLogger | None":
         if not enable_database:
             return None
-        from atopile.config import config
-
-        try:
-            project_path = str(config.project.paths.root.resolve())
-            target = config.build.name if hasattr(config, "build") else "cli"
-        except (RuntimeError, AttributeError):
-            project_path, target = "cli", "default"
 
         env_build_id = os.environ.get("ATO_BUILD_ID")
         env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
         if not env_build_id or not env_timestamp:
             return None
 
-        bl = cls.get_build(
-            project_path,
-            target,
-            stage=stage or "",
-            build_id=env_build_id,
-        )
-        cls._active_build_logger = bl
-        cls._active_test_logger = None
-        cls._active_unscoped_logger = None
-        return bl
-
-    @classmethod
-    def _get_unscoped(cls, channel: str, stage: str = "") -> "AtoLogger":
-        """Get or create a DB-writing logger that persists with empty build_id."""
         from atopile.model.sqlite import Logs
 
         Logs.init_db()
-
-        if channel not in cls._unscoped_loggers:
-            ul = cls._make_db_logger(
-                "",
-                stage,
-                Logs.append_chunk,
-                LogRow,
-                "build_id",
-                "stage",
-                f"atopile.db.unscoped.{channel}",
-            )
-            cls._unscoped_loggers[channel] = ul
-        else:
-            cls._unscoped_loggers[channel].set_context(stage)
-        cls._active_unscoped_logger = cls._unscoped_loggers[channel]
-        cls._active_build_logger = None
-        cls._active_test_logger = None
-        return cls._active_unscoped_logger
+        build_logger = cls._make_db_logger(
+            env_build_id,
+            stage or "",
+            Logs.append_chunk,
+            LogRow,
+            "build_id",
+            "stage",
+            f"atopile.db.build.{env_build_id}",
+        )
+        cls._set_active_loggers(build=build_logger)
+        return build_logger
 
     @classmethod
-    def update_build_stage(cls, stage: str | None) -> None:
-        if cls._active_build_logger:
-            cls._active_build_logger.set_context(stage or "")
-            if stage:
-                logging.getLogger(__name__).debug(f"Starting build stage: {stage}")
-
-    @staticmethod
-    def get_build_log_db() -> Path:
-        from faebryk.libs.paths import get_log_dir
-
-        return get_log_dir() / "build_logs.db"
-
-    # -----------------------------------------------------------------
-    # Test logging factory
-    # -----------------------------------------------------------------
+    def set_active_stage(cls, stage: str) -> None:
+        """Set the current build stage on the active logger context."""
+        cls._active_build_logger.stage_or_test_name = stage
 
     @classmethod
-    def setup_test_logging(cls, test_run_id: str, test: str = "") -> "AtoLogger | None":
+    def activate_unscoped(cls, channel: str, stage: str = "") -> "AtoLogger":
+        """Activate an unscoped DB logger (empty build_id) for general logs."""
+        from atopile.model.sqlite import Logs
+
+        Logs.init_db()
+        unscoped_logger = cls._make_db_logger(
+            "",
+            stage,
+            Logs.append_chunk,
+            LogRow,
+            "build_id",
+            "stage",
+            f"atopile.db.unscoped.{channel}",
+        )
+        cls._set_active_loggers(unscoped=unscoped_logger)
+        return unscoped_logger
+
+    @classmethod
+    def activate_test(cls, test_run_id: str, test: str = "") -> "AtoLogger":
         from atopile.model.sqlite import TestLogs
 
         TestLogs.init_db()
         TestLogs.register_run(test_run_id)
 
-        tl = cls._make_db_logger(
+        test_logger = cls._make_db_logger(
             test_run_id,
             test,
             TestLogs.append_chunk,
@@ -398,15 +462,19 @@ class AtoLogger(logging.Logger):
             "test_name",
             f"atopile.db.test.{test_run_id}",
         )
-        cls._active_test_logger = tl
-        cls._active_build_logger = None
-        cls._active_unscoped_logger = None
-        return tl
+        cls._set_active_loggers(test=test_logger)
+        return test_logger
 
     @classmethod
-    def update_test_name(cls, test: str | None) -> None:
-        if cls._active_test_logger:
-            cls._active_test_logger.set_context(test or "")
+    def set_active_test_name(cls, test: str) -> None:
+        """Set the current test name on the active test logger context."""
+        cls._active_test_logger.stage_or_test_name = test
+
+    @staticmethod
+    def get_build_log_db() -> Path:
+        from faebryk.libs.paths import get_log_dir
+
+        return get_log_dir() / "build_logs.db"
 
     @staticmethod
     def get_test_log_db() -> Path:
@@ -421,25 +489,18 @@ class AtoLogger(logging.Logger):
     @classmethod
     def close_all(cls) -> None:
         """Flush and close all DB-writing instances (build + test)."""
-        for bid in list(cls._build_loggers):
-            cls._build_loggers.pop(bid).db_close()
-        for channel in list(cls._unscoped_loggers):
-            cls._unscoped_loggers.pop(channel).db_close()
-        cls._active_build_logger = None
-        cls._active_unscoped_logger = None
-        if cls._active_test_logger:
-            cls._active_test_logger.db_close()
-            cls._active_test_logger = None
+        cls._set_active_loggers()
 
     @classmethod
     def flush_all(cls) -> None:
         """Flush pending logs without closing."""
-        for bl in cls._build_loggers.values():
-            bl.db_flush()
-        for ul in cls._unscoped_loggers.values():
-            ul.db_flush()
-        if cls._active_test_logger:
-            cls._active_test_logger.db_flush()
+        for logger in (
+            cls._active_build_logger,
+            cls._active_unscoped_logger,
+            cls._active_test_logger,
+        ):
+            if logger is not None:
+                logger.db_flush()
 
     # -----------------------------------------------------------------
     # Internal helpers
@@ -462,9 +523,8 @@ class AtoLogger(logging.Logger):
             inst = cls(logger_name)
             inst.parent = logging.getLogger()
         inst._db_identifier = identifier
-        inst._db_context = context
+        inst.stage_or_test_name = context
         inst._db_buffer = []
-        inst._db_closed = False
         inst.set_writer(writer, row_class, id_field, context_field)
         return inst
 
@@ -751,7 +811,7 @@ class DBLogHandler(logging.Handler):
                 AtoLogger._active_build_logger,
                 AtoLogger._active_unscoped_logger,
             )
-            if c and c._db_writer and not c._db_closed
+            if c
         ]
 
         if len(active) > 1:
@@ -759,7 +819,7 @@ class DBLogHandler(logging.Handler):
 
         if active:
             return active[0]
-        return AtoLogger._get_unscoped(channel="default", stage="")
+        return AtoLogger.activate_unscoped(channel="default", stage="")
 
     def emit(self, record: logging.LogRecord) -> None:
         db_logger = self._resolve_db_target()

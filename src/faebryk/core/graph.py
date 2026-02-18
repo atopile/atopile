@@ -127,5 +127,5 @@ if __name__ == "__main__":
 
     from atopile.logging import AtoLogger
 
-    AtoLogger.setup_build_logging(enable_database=False)
+    AtoLogger.activate_build(enable_database=False)
     typer.run(test_graph_garbage_collection)

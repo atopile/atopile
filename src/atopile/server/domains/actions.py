@@ -30,7 +30,7 @@ from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
 from faebryk.libs.package.meta import PackageModifiedError
 
-log = AtoLogger._get_unscoped(channel="server.domains.actions", stage="")
+log = AtoLogger.activate_unscoped(channel="server.domains.actions", stage="")
 
 
 def _handle_build_sync(payload: dict) -> dict:

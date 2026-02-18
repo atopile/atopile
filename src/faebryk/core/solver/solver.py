@@ -376,7 +376,7 @@ if __name__ == "__main__":
 
     from atopile.logging import AtoLogger
 
-    AtoLogger.setup_build_logging(enable_database=False)
+    AtoLogger.activate_build(enable_database=False)
     logger.setLevel(logging.DEBUG)
     from faebryk.core.solver.mutator import logger as mutator_logger
 
