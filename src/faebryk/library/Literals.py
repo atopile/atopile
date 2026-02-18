@@ -4,8 +4,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from operator import ge
-from typing import TYPE_CHECKING, Iterable, Self, cast, overload
-from warnings import deprecated
+from typing import TYPE_CHECKING, Any, Iterable, Self, cast, overload
 
 import pytest
 
@@ -13,6 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.zig.gen.fabll import literals as zig_literals
 from faebryk.libs.util import not_none, once
 
 if TYPE_CHECKING:
@@ -263,6 +263,7 @@ class is_literal(fabll.Node):
                 return i, other_c.is_literal.get()
         return None
 
+    @fabll.Node.zig_stub
     def op_setic_equals(
         self: "is_literal | LiteralNodes",
         other: "is_literal | LiteralNodes | LiteralValues",
@@ -434,215 +435,7 @@ class String(fabll.Node[StringAttributes]):
         return out
 
 
-class Strings(fabll.Node):
-    from faebryk.library.Parameters import can_be_operand as can_be_operandT
-
-    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
-    values = F.Collections.PointerSet.MakeChild()
-
-    def setup_from_values(self, *values: str) -> Self:
-        StirngLitT = String.bind_typegraph(tg=self.tg)
-        for value in values:
-            self.values.get().append(
-                StirngLitT.create_instance(
-                    g=self.instance.g(),
-                    attributes=StringAttributes(value=value),
-                )
-            )
-        return self
-
-    def get_values(self) -> list[str]:
-        return [lit.cast(String).get_value() for lit in self.values.get().as_list()]
-
-    @classmethod
-    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
-        out = fabll._ChildField(cls)
-        lits = [String.MakeChild(value=value) for value in values]
-        out.add_dependant(
-            *F.Collections.PointerSet.MakeEdges(
-                [out, cls.values], [[lit] for lit in lits]
-            )
-        )
-        out.add_dependant(*lits, before=True)
-
-        return out
-
-    @classmethod
-    def MakeChild_SetSuperset(
-        cls, ref: fabll.RefPath, *values: str
-    ) -> fabll._ChildField[Self]:
-        from faebryk.library.Expressions import IsSubset
-
-        lit = cls.MakeChild(*values)
-        out = IsSubset.MakeChild(ref, [lit], assert_=True)
-        out.add_dependant(lit, before=True)
-        return out
-
-    # TODO fix calling sites and remove this
-    @deprecated("Use get_values() instead")
-    def get_value(self) -> str:
-        values = self.get_values()
-        if len(values) != 1:
-            raise ValueError(f"Expected 1 value, got {len(values)}")
-        return values[0]
-
-    def is_singleton(self) -> bool:
-        return len(self.get_values()) == 1
-
-    def get_single(self) -> str:
-        elements = self.get_values()
-        if not len(elements) == 1:
-            raise NotSingletonError(f"Expected 1 value, got {len(elements)}")
-        return next(iter(elements))
-
-    def is_empty(self) -> bool:
-        return not self.get_values()
-
-    def op_setic_equals(
-        self,
-        other: "Strings",
-        *,
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> bool:
-        return self.get_values() == other.get_values()
-
-    def any(self) -> str:
-        return next(iter(self.get_values()))
-
-    def op_setic_is_subset_of(
-        self,
-        other: "Strings",
-        *,
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> bool:
-        return set(self.get_values()) <= set(other.get_values())
-
-    def uncertainty_equals(
-        self,
-        other: "Strings",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "Booleans":
-        return _countable_uncertainty_equals(
-            set(self.get_values()),
-            set(other.get_values()),
-            g=g or self.g,
-            tg=tg or self.tg,
-        )
-
-    def op_intersect_intervals(
-        self,
-        *others: "Strings",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "Strings":
-        g = g or self.g
-        tg = tg or self.tg
-        intersected = set(self.get_values())
-        for other in others:
-            intersected &= set(other.get_values())
-        return (
-            Strings.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(*intersected)
-        )
-
-    def op_union_intervals(
-        self,
-        *others: "Strings",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "Strings":
-        g = g or self.g
-        tg = tg or self.tg
-        unioned = set(self.get_values())
-        for other in others:
-            unioned |= set(other.get_values())
-        return (
-            Strings.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(*unioned)
-        )
-
-    def op_symmetric_difference_intervals(
-        self,
-        other: "Strings",
-        *,
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "Strings":
-        g = g or self.g
-        tg = tg or self.tg
-        return (
-            Strings.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(*(set(self.get_values()) ^ set(other.get_values())))
-        )
-
-    def pretty_str(self) -> str:
-        MAX_LENGTH = 20
-        values = self.get_values()
-        if len(values) == 1:
-            val = values[0]
-            if not isinstance(val, str):
-                return str(val)
-            return (
-                f"'{val[:MAX_LENGTH].replace('\n', '\\n')}"
-                f"{'...' if len(val) > MAX_LENGTH else ''}'"
-            )
-        return str(values)
-
-    def serialize(self) -> dict:
-        """
-        Serialize this string set to the API format.
-
-        Returns a dict:
-        {
-            "type": "StringSet",
-            "data": {
-                "values": ["value1", "value2", ...]
-            }
-        }
-        """
-        return {
-            "type": "StringSet",
-            "data": {
-                "values": self.get_values(),
-            },
-        }
-
-    @classmethod
-    def deserialize(
-        cls,
-        data: dict,
-        *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
-    ) -> "Strings":
-        """
-        Deserialize a Strings literal from the API format.
-
-        Expects a dict:
-        {
-            "type": "StringSet",
-            "data": {
-                "values": ["value1", "value2", ...]
-            }
-        }
-        """
-        if data.get("type") != "StringSet":
-            raise ValueError(f"Expected type 'StringSet', got {data.get('type')}")
-
-        inner_data = data.get("data", {})
-        values = inner_data.get("values", [])
-
-        if not isinstance(values, list):
-            raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
-
-        return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
+Strings = zig_literals.Strings
 
 
 @dataclass
@@ -6533,52 +6326,49 @@ class Counts(fabll.Node):
 
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
+    __zig_type_or_path__ = "gen.fabll.literals.Counts"
+    __zig_makechild_leaf_type__ = _Count
+    __zig_makechild_values_field__ = "values"
+
     is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
-    counts = F.Collections.PointerSet.MakeChild()
+    values = F.Collections.PointerSet.MakeChild()
 
     @classmethod
     def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
-        """
-        Create a Counts literal as a child field at type definition time.
-        """
         out = fabll._ChildField(cls)
-
-        _counts = [_Count.MakeChild(value=value) for value in values]
+        lits = [_Count.MakeChild(value=v) for v in values]
         out.add_dependant(
             *F.Collections.PointerSet.MakeEdges(
-                [out, cls.counts], [[count] for count in _counts]
+                [out, cls.values], [[lit] for lit in lits]
             )
         )
-        out.add_dependant(*_counts, before=True)
-
+        out.add_dependant(*lits, before=True)
         return out
 
     @classmethod
     def create_instance(cls, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Counts":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def setup_from_values(self, values: list[int]) -> "Counts":
-        g = self.g
-        tg = self.tg
-        for value in values:
-            self.counts.get().append(_Count.create_instance(g=g, tg=tg, value=value))
-        return self
+    @fabll.Node.zig_stub
+    def setup_from_values(self, values: list[int]) -> "Counts": ...
 
     def get_counts(self) -> list[_Count]:
-        return [count.cast(_Count) for count in self.counts.get().as_list()]
+        return [
+            _Count.bind_instance(instance=count.instance)
+            for count in self.values.get().as_list()
+        ]
 
-    def get_values(self) -> list[int]:
-        return [count.get_value() for count in self.get_counts()]
+    @fabll.Node.zig_stub
+    def get_values(self) -> list[int]: ...
 
-    def is_empty(self) -> bool:
-        return len(self.get_counts()) == 0
+    @fabll.Node.zig_stub
+    def is_empty(self) -> bool: ...
 
-    def is_singleton(self) -> bool:
-        values = self.get_values()
-        return len(values) == 1
+    @fabll.Node.zig_stub
+    def is_singleton(self) -> bool: ...
 
-    def get_single(self) -> int:
+    def _py_get_single(self) -> int:
         """
         Returns the single value if this is a singleton set, raises otherwise.
         """
@@ -6588,6 +6378,9 @@ class Counts(fabll.Node):
                 f"Expected single value, got {len(values)} values: {values}"
             )
         return values[0]
+
+    @fabll.Node.zig_stub
+    def get_single(self) -> int: ...
 
     def get_min(self) -> int:
         values = self.get_values()
@@ -6607,88 +6400,57 @@ class Counts(fabll.Node):
     def __repr__(self) -> str:
         return f"Counts({self.get_values()})"
 
+    @fabll.Node.zig_stub
     def op_setic_is_subset_of(
         self,
         other: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> bool:
-        return set(self.get_values()) <= set(other.get_values())
+    ) -> bool: ...
 
+    @fabll.Node.zig_stub
     def uncertainty_equals(
         self,
         other: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Booleans":
-        return _countable_uncertainty_equals(
-            set(self.get_values()),
-            set(other.get_values()),
-            g=g or self.g,
-            tg=tg or self.tg,
-        )
+    ) -> "Booleans": ...
 
-    def any(self) -> int:
-        return next(iter(self.get_values()))
+    @fabll.Node.zig_stub
+    def any(self) -> int: ...
 
+    @fabll.Node.zig_stub
     def op_setic_equals(
         self,
         other: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> bool:
-        return set(self.get_values()) == set(other.get_values())
+    ) -> bool: ...
 
+    @fabll.Node.zig_stub
     def op_intersect_intervals(
         self,
         *others: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Counts":
-        g = g or self.g
-        tg = tg or self.tg
-        intersected = set(self.get_values())
-        for other in others:
-            intersected &= set(other.get_values())
-        return (
-            Counts.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(values=list(intersected))
-        )
+    ) -> "Counts": ...
 
+    @fabll.Node.zig_stub
     def op_union_intervals(
         self,
         *others: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Counts":
-        g = g or self.g
-        tg = tg or self.tg
-        unioned = set(self.get_values())
-        for other in others:
-            unioned |= set(other.get_values())
-        return (
-            Counts.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(values=list(unioned))
-        )
+    ) -> "Counts": ...
 
+    @fabll.Node.zig_stub
     def op_symmetric_difference_intervals(
         self,
         other: "Counts",
         *,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Counts":
-        g = g or self.g
-        tg = tg or self.tg
-        return (
-            Counts.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(
-                values=list(set(self.get_values()) ^ set(other.get_values()))
-            )
-        )
+    ) -> "Counts": ...
 
     def pretty_str(self) -> str:
         values = self.get_values()
@@ -6696,59 +6458,18 @@ class Counts(fabll.Node):
             return str(values[0])
         return str(values)
 
-    def serialize(self) -> dict:
-        """
-        Serialize this count set to the API format.
-
-        Returns a dict:
-        {
-            "type": "CountSet",
-            "data": {
-                "values": [1, 2, 3, ...]
-            }
-        }
-        """
-        return {
-            "type": "CountSet",
-            "data": {
-                "values": sorted(self.get_values()),
-            },
-        }
+    @fabll.Node.zig_stub
+    def serialize(self) -> dict: ...
 
     @classmethod
+    @fabll.Node.zig_stub
     def deserialize(
         cls,
         data: dict,
         *,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
-    ) -> "Counts":
-        """
-        Deserialize a Counts literal from the API format.
-
-        Expects a dict:
-        {
-            "type": "CountSet",
-            "data": {
-                "values": [1, 2, 3, ...]
-            }
-        }
-        """
-        if data.get("type") != "CountSet":
-            raise ValueError(f"Expected type 'CountSet', got {data.get('type')}")
-
-        inner_data = data.get("data", {})
-        values = inner_data.get("values", [])
-
-        if not isinstance(values, list):
-            raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
-
-        # Validate all values are integers
-        for v in values:
-            if not isinstance(v, int):
-                raise ValueError(f"Expected integer value, got {type(v)}: {v}")
-
-        return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(values)
+    ) -> "Counts": ...
 
 
 class TestCounts:
@@ -7065,24 +6786,21 @@ class Boolean(fabll.Node[BooleanAttributes]):
 class Booleans(fabll.Node):
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
+    __zig_type_or_path__ = "gen.fabll.literals.Booleans"
+    __zig_makechild_leaf_type__ = Boolean
+    __zig_makechild_values_field__ = "values"
+    __zig_makechild_unique_values__ = True
+    __zig_makechild_supports_setsuperset__ = True
+
     is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
 
     values = F.Collections.PointerSet.MakeChild()
 
-    def setup_from_values(self, *values: bool) -> Self:
-        for value in (True, False):
-            if value in values:
-                lit = Boolean.bind_typegraph(tg=self.tg).create_instance(
-                    g=self.g, attributes=BooleanAttributes(value=value)
-                )
-                self.values.get().append(lit)
-                fbrk.EdgeComposition.add_anon_child(
-                    bound_node=self.instance, child=lit.instance.node()
-                )
-        return self
+    @fabll.Node.zig_stub
+    def setup_from_values(self, *values: bool) -> Self: ...
 
-    def get_single(self) -> bool:
+    def _py_get_single(self) -> bool:
         """Get the single boolean value. Raises if not exactly one value."""
         values = self.get_values()
         if len(values) != 1:
@@ -7090,6 +6808,9 @@ class Booleans(fabll.Node):
                 f"Expected single boolean, got {len(values)}: {values}"
             )
         return values[0]
+
+    @fabll.Node.zig_stub
+    def get_single(self) -> bool: ...
 
     def op_setic_equals_singleton(self, singleton: bool) -> bool:
         """Check if this Booleans set equals a singleton boolean value."""
@@ -7100,8 +6821,7 @@ class Booleans(fabll.Node):
     @classmethod
     def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
-        unique_values = set(values)
-        lits = [Boolean.MakeChild(value=v) for v in unique_values]
+        lits = [Boolean.MakeChild(value=v) for v in sorted(set(values))]
         out.add_dependant(
             *F.Collections.PointerSet.MakeEdges(
                 [out, cls.values], [[lit] for lit in lits]
@@ -7119,19 +6839,17 @@ class Booleans(fabll.Node):
         lit = cls.MakeChild(*values)
         out = IsSubset.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
-        return out
+        return cast(fabll._ChildField, out)
 
-    def get_values(self) -> list[bool]:
-        """Get the list of boolean values in this set."""
-        return [lit.cast(Boolean).get_value() for lit in self.values.get().as_list()]
+    @fabll.Node.zig_stub
+    def get_values(self) -> list[bool]: ...
 
     def get_boolean_values(self) -> list[bool]:
         """Alias for get_values() for API compatibility."""
         return self.get_values()
 
-    def is_empty(self) -> bool:
-        """Check if this set contains no values."""
-        return len(self.values.get().as_list()) == 0
+    @fabll.Node.zig_stub
+    def is_empty(self) -> bool: ...
 
     def op_not(
         self,
@@ -7246,18 +6964,17 @@ class Booleans(fabll.Node):
         """Check if this set contains only False."""
         return self.get_values() == [False]
 
+    @fabll.Node.zig_stub
     def op_setic_equals(
         self,
         other: "Booleans",
         *,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> bool:
-        """Check if two boolean sets have the same values."""
-        return set(self.get_values()) == set(other.get_values())
+    ) -> bool: ...
 
-    def is_singleton(self) -> bool:
-        return len(self.get_values()) == 1
+    @fabll.Node.zig_stub
+    def is_singleton(self) -> bool: ...
 
     def try_get_single(self) -> bool | None:
         vals = self.get_values()
@@ -7265,78 +6982,49 @@ class Booleans(fabll.Node):
             return None
         return vals[0]
 
-    def any(self) -> bool:
-        return next(iter(self.get_values()))
+    @fabll.Node.zig_stub
+    def any(self) -> bool: ...
 
+    @fabll.Node.zig_stub
     def op_setic_is_subset_of(
         self,
         other: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> bool:
-        return set(self.get_values()) <= set(other.get_values())
+    ) -> bool: ...
 
+    @fabll.Node.zig_stub
     def uncertainty_equals(
         self,
         other: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Booleans":
-        return _countable_uncertainty_equals(
-            set(self.get_values()),
-            set(other.get_values()),
-            g=g or self.g,
-            tg=tg or self.tg,
-        )
+    ) -> "Booleans": ...
 
+    @fabll.Node.zig_stub
     def op_intersect_intervals(
         self,
         *others: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Booleans":
-        g = g or self.g
-        tg = tg or self.tg
-        intersected = set(self.get_values())
-        for other in others:
-            intersected &= set(other.get_values())
-        return (
-            Booleans.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(*intersected)
-        )
+    ) -> "Booleans": ...
 
+    @fabll.Node.zig_stub
     def op_union_intervals(
         self,
         *others: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Booleans":
-        g = g or self.g
-        tg = tg or self.tg
-        unioned = set(self.get_values())
-        for other in others:
-            unioned |= set(other.get_values())
-        return (
-            Booleans.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(*unioned)
-        )
+    ) -> "Booleans": ...
 
+    @fabll.Node.zig_stub
     def op_symmetric_difference_intervals(
         self,
         other: "Booleans",
         *,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> "Booleans":
-        g = g or self.g
-        tg = tg or self.tg
-        return (
-            Booleans.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup_from_values(*(set(self.get_values()) ^ set(other.get_values())))
-        )
+    ) -> "Booleans": ...
 
     def pretty_str(self) -> str:
         values = self.get_values()
@@ -7344,59 +7032,18 @@ class Booleans(fabll.Node):
             return str(values[0]).lower()
         return str(values)
 
-    def serialize(self) -> dict:
-        """
-        Serialize this boolean set to the API format.
-
-        Returns a dict:
-        {
-            "type": "BooleanSet",
-            "data": {
-                "values": [true, false, ...]
-            }
-        }
-        """
-        return {
-            "type": "BooleanSet",
-            "data": {
-                "values": sorted(self.get_values()),
-            },
-        }
+    @fabll.Node.zig_stub
+    def serialize(self) -> dict: ...
 
     @classmethod
+    @fabll.Node.zig_stub
     def deserialize(
         cls,
         data: dict,
         *,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
-    ) -> "Booleans":
-        """
-        Deserialize a Booleans literal from the API format.
-
-        Expects a dict:
-        {
-            "type": "BooleanSet",
-            "data": {
-                "values": [true, false, ...]
-            }
-        }
-        """
-        if data.get("type") != "BooleanSet":
-            raise ValueError(f"Expected type 'BooleanSet', got {data.get('type')}")
-
-        inner_data = data.get("data", {})
-        values = inner_data.get("values", [])
-
-        if not isinstance(values, list):
-            raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
-
-        # Validate all values are booleans
-        for v in values:
-            if not isinstance(v, bool):
-                raise ValueError(f"Expected boolean value, got {type(v)}: {v}")
-
-        return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
+    ) -> "Booleans": ...
 
 
 class EnumValue(fabll.Node):
@@ -8161,6 +7808,67 @@ class TestStringLiterals:
         assert isinstance(deserialized_strings, Strings)
         assert deserialized_strings.get_values() == values
 
+    def test_strings_ops_are_python_bound_nodes(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        lhs = (
+            Strings.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values("a", "b", "c")
+        )
+        rhs = (
+            Strings.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values("b", "c", "d")
+        )
+
+        assert lhs.op_setic_equals(rhs, g=g, tg=tg) is False
+        assert lhs.op_setic_is_subset_of(rhs, g=g, tg=tg) is False
+
+        inter = lhs.op_intersect_intervals(rhs, g=g, tg=tg)
+        assert isinstance(inter, Strings)
+        assert set(inter.get_values()) == {"b", "c"}
+
+        union = lhs.op_union_intervals(rhs, g=g, tg=tg)
+        assert isinstance(union, Strings)
+        assert set(union.get_values()) == {"a", "b", "c", "d"}
+
+        sym = lhs.op_symmetric_difference_intervals(rhs, g=g, tg=tg)
+        assert isinstance(sym, Strings)
+        assert set(sym.get_values()) == {"a", "d"}
+
+        uncertainty = lhs.uncertainty_equals(rhs, g=g, tg=tg)
+        assert uncertainty is not None
+
+    def test_strings_nary_ops_with_kwargs(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        first = (
+            Strings.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values("a", "b", "c")
+        )
+        second = (
+            Strings.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values("b", "c", "d")
+        )
+        third = (
+            Strings.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values("c", "d", "e")
+        )
+
+        union = first.op_union_intervals(second, third, g=g, tg=tg)
+        assert isinstance(union, Strings)
+        assert set(union.get_values()) == {"a", "b", "c", "d", "e"}
+
+        inter = first.op_intersect_intervals(second, third, g=g, tg=tg)
+        assert isinstance(inter, Strings)
+        assert inter.get_values() == ["c"]
+
 
 class TestBooleans:
     def test_create_instance(self):
@@ -8476,6 +8184,126 @@ class TestBooleans:
 
         with pytest.raises(ValueError, match="Expected boolean value"):
             Booleans.deserialize(data, g=g, tg=tg)
+
+
+class TestZigConstructionParity:
+    @staticmethod
+    def _manual_set_literal_child(
+        literal_type: type[fabll.Node],
+        leaf_type: type[fabll.Node],
+        values_field: fabll._ChildField[Any],
+        values: list[Any],
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(literal_type)
+        lits = [leaf_type.MakeChild(value=value) for value in values]
+        out.add_dependant(
+            *F.Collections.PointerSet.MakeEdges(
+                [out, values_field], [[lit] for lit in lits]
+            )
+        )
+        out.add_dependant(*lits, before=True)
+        return out
+
+    def test_makechild_strings_matches_manual_construction(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        values = ["a", "b", "a"]
+
+        class _Auto(fabll.Node):
+            lit = Strings.MakeChild(*values)
+
+        class _Manual(fabll.Node):
+            lit = TestZigConstructionParity._manual_set_literal_child(
+                Strings, String, Strings.values, values
+            )
+
+        auto = _Auto.bind_typegraph(tg=tg).create_instance(g=g)
+        manual = _Manual.bind_typegraph(tg=tg).create_instance(g=g)
+        assert auto.lit.get().get_values() == manual.lit.get().get_values()
+
+    def test_makechild_counts_matches_manual_construction(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        values = [3, 1, 3, 2]
+
+        class _Auto(fabll.Node):
+            lit = Counts.MakeChild(*values)
+
+        class _Manual(fabll.Node):
+            lit = TestZigConstructionParity._manual_set_literal_child(
+                Counts, _Count, Counts.values, values
+            )
+
+        auto = _Auto.bind_typegraph(tg=tg).create_instance(g=g)
+        manual = _Manual.bind_typegraph(tg=tg).create_instance(g=g)
+        assert auto.lit.get().get_values() == manual.lit.get().get_values()
+
+    def test_makechild_booleans_matches_manual_construction(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        values = [True, False, True]
+
+        class _Auto(fabll.Node):
+            lit = Booleans.MakeChild(*values)
+
+        class _Manual(fabll.Node):
+            lit = TestZigConstructionParity._manual_set_literal_child(
+                Booleans, Boolean, Booleans.values, [True, False]
+            )
+
+        auto = _Auto.bind_typegraph(tg=tg).create_instance(g=g)
+        manual = _Manual.bind_typegraph(tg=tg).create_instance(g=g)
+        assert auto.lit.get().get_values() == manual.lit.get().get_values()
+
+    def test_makechild_setsuperset_strings_matches_manual(self):
+        from faebryk.library.Parameters import StringParameter
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        values = ["x", "y"]
+
+        class _Auto(fabll.Node):
+            p = StringParameter.MakeChild()
+            c = Strings.MakeChild_SetSuperset([p], *values)
+
+        class _Manual(fabll.Node):
+            p = StringParameter.MakeChild()
+            lit = TestZigConstructionParity._manual_set_literal_child(
+                Strings, String, Strings.values, values
+            )
+            c = F.Expressions.IsSubset.MakeChild([p], [lit], assert_=True)
+            c.add_dependant(lit, before=True)
+
+        auto = _Auto.bind_typegraph(tg=tg).create_instance(g=g)
+        manual = _Manual.bind_typegraph(tg=tg).create_instance(g=g)
+        assert auto.p.get().force_extract_superset().get_values() == (
+            manual.p.get().force_extract_superset().get_values()
+        )
+
+    def test_makechild_setsuperset_booleans_matches_manual(self):
+        from faebryk.library.Parameters import BooleanParameter
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        values = [True]
+
+        class _Auto(fabll.Node):
+            p = BooleanParameter.MakeChild()
+            c = Booleans.MakeChild_SetSuperset([p], *values)
+
+        class _Manual(fabll.Node):
+            p = BooleanParameter.MakeChild()
+            lit = TestZigConstructionParity._manual_set_literal_child(
+                Booleans, Boolean, Booleans.values, values
+            )
+            c = F.Expressions.IsSubset.MakeChild([p], [lit], assert_=True)
+            c.add_dependant(lit, before=True)
+
+        auto = _Auto.bind_typegraph(tg=tg).create_instance(g=g)
+        manual = _Manual.bind_typegraph(tg=tg).create_instance(g=g)
+        assert auto.p.get().force_extract_superset().get_values() == (
+            manual.p.get().force_extract_superset().get_values()
+        )
 
 
 class TestEnums:

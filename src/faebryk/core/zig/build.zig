@@ -4,6 +4,41 @@ const py_lib_name = "pyzig";
 
 const ModuleMap = std.StringArrayHashMap(*std.Build.Module);
 
+fn sanitizeCEnumValue(comptime E: type) E {
+    if (std.meta.stringToEnum(E, "full")) |value| return value;
+    if (std.meta.stringToEnum(E, "trap")) |value| return value;
+    if (std.meta.stringToEnum(E, "on")) |value| return value;
+    if (std.meta.stringToEnum(E, "true")) |value| return value;
+
+    const info = @typeInfo(E).@"enum";
+    inline for (info.fields) |field| {
+        comptime if (std.mem.eql(u8, field.name, "off")) continue;
+        comptime if (std.mem.eql(u8, field.name, "none")) continue;
+        comptime if (std.mem.eql(u8, field.name, "false")) continue;
+        return @field(E, field.name);
+    }
+    if (info.fields.len > 0) return @field(E, info.fields[0].name);
+
+    @compileError("Unsupported empty sanitize_c enum");
+}
+
+fn sanitizeCCompatValue(comptime T: type) T {
+    return switch (@typeInfo(T)) {
+        .optional => |opt| switch (@typeInfo(opt.child)) {
+            .bool => true,
+            .@"enum" => sanitizeCEnumValue(opt.child),
+            else => null,
+        },
+        .bool => true,
+        .@"enum" => sanitizeCEnumValue(T),
+        else => @compileError("Unsupported sanitize_c field type"),
+    };
+}
+
+fn setSanitizeCCompat(module: *std.Build.Module) void {
+    module.sanitize_c = sanitizeCCompatValue(@TypeOf(module.sanitize_c));
+}
+
 fn build_pyi(
     b: *std.Build,
     modules: ModuleMap,
@@ -217,10 +252,17 @@ pub fn build(b: *std.Build) void {
     const graph_mod = b.createModule(.{
         .root_source_file = b.path("src/graph/lib.zig"),
     });
+
     const faebryk_mod = b.createModule(.{
         .root_source_file = b.path("src/faebryk/lib.zig"),
     });
     faebryk_mod.addImport("graph", graph_mod);
+
+    const fabll_mod = b.createModule(.{
+        .root_source_file = b.path("src/fabll/lib.zig"),
+    });
+    fabll_mod.addImport("graph", graph_mod);
+    fabll_mod.addImport("faebryk", faebryk_mod);
 
     // Build sexp once as a standalone static library (PIC for shared linking).
     const sexp_lib = b.addLibrary(.{
@@ -246,6 +288,7 @@ pub fn build(b: *std.Build) void {
     defer modules_all.deinit();
     modules_all.put("graph", graph_mod) catch @panic("OOM registering graph module");
     modules_all.put("faebryk", faebryk_mod) catch @panic("OOM registering faebryk module");
+    modules_all.put("fabll", fabll_mod) catch @panic("OOM registering fabll module");
     modules_all.put("sexp", sexp_lib.root_module) catch @panic("OOM registering sexp module");
 
     // Main python extension excludes sexp so graph-only edits don't rebuild it.
@@ -253,6 +296,7 @@ pub fn build(b: *std.Build) void {
     defer modules_main.deinit();
     modules_main.put("graph", graph_mod) catch @panic("OOM registering graph module");
     modules_main.put("faebryk", faebryk_mod) catch @panic("OOM registering faebryk module");
+    modules_main.put("fabll", fabll_mod) catch @panic("OOM registering fabll module");
 
     // Get Python options (needed for building extensions)
     const python_include = b.option([]const u8, "python-include", "Python include directory path");
@@ -283,12 +327,13 @@ pub fn build(b: *std.Build) void {
             .test_runner = .{ .path = b.path("src/test_runner.zig"), .mode = .simple },
         });
 
-        // Add all known modules — zig's lazy compilation skips unused ones
+        // Add all known modules — zig's lazy compilation skips unused ones.
         test_comp.root_module.addImport("graph", graph_mod);
         test_comp.root_module.addImport("faebryk", faebryk_mod);
+        test_comp.root_module.addImport("fabll", fabll_mod);
 
         // Match existing compile flags
-        test_comp.root_module.sanitize_c = .full;
+        setSanitizeCCompat(test_comp.root_module);
         test_comp.root_module.omit_frame_pointer = false;
         test_comp.root_module.strip = false;
         test_comp.linkLibC();

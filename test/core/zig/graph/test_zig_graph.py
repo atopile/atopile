@@ -2,6 +2,55 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 
 
+def test_fabll_import_surface():
+    import faebryk.core.zig as zig
+
+    assert hasattr(zig.gen, "fabll")
+    assert hasattr(zig.gen.fabll, "literals")
+    assert hasattr(zig.gen.fabll, "parameters")
+    assert hasattr(zig.gen.fabll, "expressions")
+    assert hasattr(zig.gen.fabll, "units")
+
+    assert hasattr(zig.gen.fabll.literals, "Interval")
+    assert hasattr(zig.gen.fabll.parameters, "NumericParameter")
+    assert hasattr(zig.gen.fabll.expressions, "Add")
+    assert hasattr(zig.gen.fabll.units, "Volt")
+
+
+def test_fabll_zig_string_literal_runtime():
+    import faebryk.core.zig as zig
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    zig_string = zig.gen.fabll.literals.String.create_instance(
+        g=g, tg=tg, value="hello-zig"
+    )
+    assert zig_string.get_value() == "hello-zig"
+
+    strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(g=g)
+    strings.setup_from_values("hello-zig", "world")
+    assert sorted(strings.get_values()) == ["hello-zig", "world"]
+
+
+def test_fabll_zig_strings_makechild_setsuperset():
+    import faebryk.core.node as fabll
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class ExampleStringParameter(fabll.Node):
+        string_p_tg = F.Parameters.StringParameter.MakeChild()
+        constraint = F.Literals.Strings.MakeChild_SetSuperset(
+            [string_p_tg], "TG constrained"
+        )
+
+    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert esp.string_p_tg.get().extract_singleton() == "TG constrained"
+
+
 def test_minimal_graph():
     g = graph.GraphView.create()
 
