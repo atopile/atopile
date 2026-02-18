@@ -529,6 +529,82 @@ class AtoLogger(logging.Logger):
         return inst
 
 
+class AtoTestLogger(AtoLogger):
+    """
+    Test-only helpers for managing global logger state.
+
+    These APIs intentionally centralize test setup/teardown for logging contexts.
+    Production code should continue to use `AtoLogger.activate_build()`,
+    `AtoLogger.activate_test()`, and related runtime methods.
+    """
+
+    @classmethod
+    @contextmanager
+    def test_context(
+        cls,
+        *,
+        kind: str | None = None,
+        identifier: str = "test",
+        context: str = "",
+        reset_root: bool = False,
+    ):
+        """Isolate logger globals for tests and optionally activate one context."""
+        root = logging.getLogger()
+        prev_handlers = list(root.handlers)
+        prev_level = root.level
+        prev_active_build = cls._active_build_logger
+        prev_active_test = cls._active_test_logger
+        prev_active_unscoped = cls._active_unscoped_logger
+
+        if reset_root:
+            root.handlers = []
+            root.setLevel(logging.WARNING)
+
+        cls._active_build_logger = None
+        cls._active_test_logger = None
+        cls._active_unscoped_logger = None
+
+        if kind is not None:
+            if kind not in {"build", "test", "unscoped"}:
+                raise ValueError(f"Unsupported test logger kind: {kind}")
+
+            if kind == "test":
+                logger = cls._make_db_logger(
+                    identifier,
+                    context,
+                    lambda _rows: None,
+                    TestLogRow,
+                    "test_run_id",
+                    "test_name",
+                    f"atopile.db.test.{kind}.{identifier}.{time.time_ns()}",
+                )
+                cls._set_active_loggers(test=logger)
+            else:
+                logger = cls._make_db_logger(
+                    "" if kind == "unscoped" else identifier,
+                    context,
+                    lambda _rows: None,
+                    LogRow,
+                    "build_id",
+                    "stage",
+                    f"atopile.db.test.{kind}.{identifier}.{time.time_ns()}",
+                )
+                if kind == "build":
+                    cls._set_active_loggers(build=logger)
+                else:
+                    cls._set_active_loggers(unscoped=logger)
+
+        try:
+            yield root
+        finally:
+            if reset_root:
+                root.handlers = prev_handlers
+                root.setLevel(prev_level)
+            cls._active_build_logger = prev_active_build
+            cls._active_test_logger = prev_active_test
+            cls._active_unscoped_logger = prev_active_unscoped
+
+
 logging.setLoggerClass(AtoLogger)
 
 
