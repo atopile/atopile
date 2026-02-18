@@ -164,16 +164,26 @@ function buildLayerPanel() {
         // Chevron click: toggle collapse (stop propagation to not toggle visibility)
         chevron.addEventListener("click", (e) => {
             e.stopPropagation();
+            const childContainer = groupRow.nextElementSibling as HTMLElement;
+            if (!childContainer) return;
             if (collapsedGroups.has(group.prefix)) {
                 collapsedGroups.delete(group.prefix);
                 chevron.textContent = "\u25BE";
+                // Expand: set to scrollHeight then clear after transition
+                childContainer.style.maxHeight = childContainer.scrollHeight + "px";
+                const onEnd = () => {
+                    childContainer.style.maxHeight = "";
+                    childContainer.removeEventListener("transitionend", onEnd);
+                };
+                childContainer.addEventListener("transitionend", onEnd);
             } else {
                 collapsedGroups.add(group.prefix);
                 chevron.textContent = "\u25B8";
-            }
-            const childContainer = groupRow.nextElementSibling as HTMLElement;
-            if (childContainer) {
-                childContainer.style.display = collapsedGroups.has(group.prefix) ? "none" : "block";
+                // Collapse: set explicit height first, then animate to 0
+                childContainer.style.maxHeight = childContainer.scrollHeight + "px";
+                requestAnimationFrame(() => {
+                    childContainer.style.maxHeight = "0";
+                });
             }
         });
 
@@ -182,7 +192,9 @@ function buildLayerPanel() {
         // Child rows container
         const childContainer = document.createElement("div");
         childContainer.className = "layer-group-children";
-        childContainer.style.display = isCollapsed ? "none" : "block";
+        if (isCollapsed) {
+            childContainer.style.maxHeight = "0";
+        }
 
         for (const child of group.layers) {
             const row = document.createElement("div");
@@ -242,23 +254,24 @@ function buildLayerPanel() {
     }
 }
 
-const statusEl = document.getElementById("status");
-const helpText = "scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip, Ctrl+Z undo, Ctrl+Shift+Z redo";
-if (statusEl) statusEl.textContent = helpText;
+const coordsEl = document.getElementById("status-coords");
+const helpEl = document.getElementById("status-help");
+const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click select/drag \u00b7 R rotate \u00b7 F flip \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
+if (helpEl) helpEl.textContent = helpText;
 
 canvas.addEventListener("mouseenter", () => {
-    if (statusEl) statusEl.dataset.hover = "1";
+    if (coordsEl) coordsEl.dataset.hover = "1";
 });
 canvas.addEventListener("mouseleave", () => {
-    if (statusEl) {
-        delete statusEl.dataset.hover;
-        statusEl.textContent = helpText;
+    if (coordsEl) {
+        delete coordsEl.dataset.hover;
+        coordsEl.textContent = "";
     }
 });
 
 editor.setOnMouseMove((x, y) => {
-    if (statusEl && statusEl.dataset.hover) {
-        statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
+    if (coordsEl && coordsEl.dataset.hover) {
+        coordsEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
     }
 });
 

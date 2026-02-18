@@ -179,7 +179,7 @@ export class Renderer {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.GREATER);
-        gl.clearColor(0.12, 0.12, 0.12, 1);
+        gl.clearColor(0.03, 0.05, 0.08, 1);
         gl.clearDepth(0);
 
         this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
@@ -274,7 +274,7 @@ export class Renderer {
             this.pointShader.bind();
             this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
             this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
-            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.22);
+            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
             this.gridVao!.bind();
             this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
         }
