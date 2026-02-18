@@ -10,7 +10,7 @@ from atopile.dataclasses import (
     InstallPackageResult,
     PackageVerifyResult,
 )
-from atopile.logging import get_logger
+from atopile.logging import AtoLogger, get_logger
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()
@@ -38,6 +38,7 @@ def build_project(
 
     with config.select_build(target_name_from_yaml):
         logger.info("Building target '%s'", config.build.name)
+        AtoLogger.activate_build(stage=config.build.name)
 
         try:
             buildutil.build()

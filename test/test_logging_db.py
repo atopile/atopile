@@ -114,7 +114,9 @@ def test_db_handler_defaults_to_unscoped_without_active_context(isolated_logging
     root.addHandler(db_handler)
     root.setLevel(logging.DEBUG)
     try:
-        with patch.object(AtoLogger, "_get_unscoped", return_value=default_unscoped):
+        with patch.object(
+            AtoLogger, "activate_unscoped", return_value=default_unscoped
+        ):
             source_logger = logging.getLogger(f"noctx.test.{uuid.uuid4().hex}")
             source_logger.setLevel(logging.INFO)
             source_logger.info("should route to default unscoped")
@@ -177,31 +179,19 @@ def test_db_handler_raises_with_multiple_active_contexts(isolated_logging_state)
         root.removeHandler(db_handler)
 
 
-def test_setup_build_logging_defaults_stage_to_blank(isolated_logging_state):
+def test_activate_build_defaults_stage_to_blank(isolated_logging_state):
     prev_build_id = os.environ.get("ATO_BUILD_ID")
     prev_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
     os.environ["ATO_BUILD_ID"] = f"build-{uuid.uuid4().hex}"
     os.environ["ATO_BUILD_TIMESTAMP"] = "2026-02-14_00-00-00"
 
-    expected = AtoLogger._make_db_logger(
-        identifier="build-test",
-        context="",
-        writer=lambda _rows: None,
-        row_class=LogRow,
-        id_field="build_id",
-        context_field="stage",
-        logger_name=f"atopile.db.test.setup.{uuid.uuid4().hex}",
-    )
     try:
-        with patch.object(AtoLogger, "get_build", return_value=expected) as get_build:
-            logger = AtoLogger.setup_build_logging(enable_database=True, stage=None)
+        logger = AtoLogger.activate_build(enable_database=True, stage=None)
 
-        assert logger is expected
-        assert get_build.call_count == 1
-        _, kwargs = get_build.call_args
-        assert kwargs["stage"] == ""
-        assert kwargs["build_id"] == os.environ["ATO_BUILD_ID"]
-        assert AtoLogger._active_build_logger is expected
+        assert logger is not None
+        assert logger.build_id == os.environ["ATO_BUILD_ID"]
+        assert logger.stage_or_test_name == ""
+        assert AtoLogger._active_build_logger is logger
         assert AtoLogger._active_test_logger is None
         assert AtoLogger._active_unscoped_logger is None
     finally:
