@@ -286,12 +286,14 @@ class PcbManager:
     def get_render_model(self) -> RenderModel:
         pcb = self.pcb
         global_texts = self._extract_global_texts(pcb)
+        vias = [self._extract_via(via) for via in pcb.vias]
+        via_drawings = self._synthesize_via_drawings(vias)
         net_names_by_number = {
             int(net.number): net.name for net in pcb.nets if getattr(net, "name", None)
         }
         return RenderModel(
             board=self._extract_board(pcb),
-            drawings=self._extract_global_drawings(pcb),
+            drawings=[*self._extract_global_drawings(pcb), *via_drawings],
             texts=global_texts,
             footprints=[
                 self._extract_footprint(fp, net_names_by_number)
@@ -299,7 +301,7 @@ class PcbManager:
             ],
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
-            vias=[self._extract_via(via) for via in pcb.vias],
+            vias=vias,
             zones=self._extract_zones(pcb),
             nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
         )
@@ -473,6 +475,7 @@ class PcbManager:
                     filled=_is_filled(poly),
                 )
             )
+        drawings.extend(self._synthesize_pad_drill_drawings(pads))
 
         texts = self._extract_text_entries(fp, ref, value)
         pad_names = self._extract_pad_name_annotations_for_footprint(
@@ -990,6 +993,73 @@ class PcbManager:
             plated=True,
         )
 
+    def _synthesize_via_drawings(self, vias: list[ViaModel]) -> list[DrawingModel]:
+        drawings: list[DrawingModel] = []
+        for via in vias:
+            via_radius = _safe_float(via.size)
+            via_radius = (via_radius / 2.0) if via_radius is not None else None
+            if via_radius is not None and via_radius > 0:
+                for copper_layer in _expand_copper_layers(via.layers):
+                    drawings.append(
+                        DrawingModel(
+                            type="circle",
+                            center=Point2(x=via.at.x, y=via.at.y),
+                            end=Point2(x=via.at.x + via_radius, y=via.at.y),
+                            width=0.0,
+                            layer=copper_layer,
+                            filled=True,
+                        )
+                    )
+
+            hole = via.hole
+            if hole is None and via.drill > 0:
+                hole = HoleModel(
+                    shape="circle",
+                    size_x=via.drill,
+                    size_y=via.drill,
+                    offset=None,
+                    plated=True,
+                )
+            if hole is None:
+                continue
+            for drill_layer in _drill_layers_from_copper_layers(via.layers):
+                drawings.extend(
+                    _drill_hole_drawings(
+                        cx=via.at.x,
+                        cy=via.at.y,
+                        rotation_deg=0.0,
+                        hole=hole,
+                        layer=drill_layer,
+                    )
+                )
+        return drawings
+
+    def _synthesize_pad_drill_drawings(
+        self, pads: list[PadModel]
+    ) -> list[DrawingModel]:
+        drawings: list[DrawingModel] = []
+        for pad in pads:
+            hole = _pad_hole_from_model(pad)
+            if hole is None:
+                continue
+
+            offset = hole.offset or Point2(x=0.0, y=0.0)
+            pad_rotation = pad.at.r or 0.0
+            rox, roy = _rotate_kicad_xy(offset.x, offset.y, pad_rotation)
+            cx = pad.at.x + rox
+            cy = pad.at.y + roy
+            for drill_layer in _drill_layers_from_copper_layers(pad.layers):
+                drawings.extend(
+                    _drill_hole_drawings(
+                        cx=cx,
+                        cy=cy,
+                        rotation_deg=pad_rotation,
+                        hole=hole,
+                        layer=drill_layer,
+                    )
+                )
+        return drawings
+
     def _extract_zones(self, pcb: kicad.pcb.KicadPcb) -> list[ZoneModel]:
         raw_zones = getattr(pcb, "zones", None)
         if raw_zones is None:
@@ -1283,6 +1353,124 @@ def _safe_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _rotate_kicad_xy(x: float, y: float, rotation_deg: float) -> tuple[float, float]:
+    # Match frontend's KiCad rotation convention (clockwise in screen space).
+    rad = math.radians(-(rotation_deg or 0.0))
+    cos_t = math.cos(rad)
+    sin_t = math.sin(rad)
+    return (x * cos_t - y * sin_t, x * sin_t + y * cos_t)
+
+
+def _expand_copper_layers(layers: list[str] | None) -> list[str]:
+    out: set[str] = set()
+    for layer in layers or []:
+        token = (layer or "").strip()
+        if not token:
+            continue
+        if token == "*.Cu":
+            out.update({"F.Cu", "B.Cu"})
+            continue
+        if token.endswith(".Cu") and "&" in token:
+            suffix_idx = token.find(".")
+            prefixes = token[:suffix_idx].split("&")
+            suffix = token[suffix_idx:]
+            out.update(f"{prefix}{suffix}" for prefix in prefixes if prefix)
+            continue
+        if token.endswith(".Cu"):
+            out.add(token)
+    return sorted(out)
+
+
+def _drill_layers_from_copper_layers(layers: list[str] | None) -> list[str]:
+    return sorted({layer[:-3] + ".Drill" for layer in _expand_copper_layers(layers)})
+
+
+def _pad_hole_from_model(pad: PadModel) -> HoleModel | None:
+    if pad.hole is not None:
+        return pad.hole
+    drill = pad.drill
+    if drill is None:
+        return None
+
+    size_x = _safe_float(drill.size_x)
+    size_y = _safe_float(drill.size_y)
+    if size_x is None and size_y is None:
+        return None
+    if size_x is None:
+        size_x = size_y
+    if size_y is None:
+        size_y = size_x
+    if size_x is None or size_y is None or size_x <= 0 or size_y <= 0:
+        return None
+
+    offset_x = _safe_float(drill.offset_x)
+    offset_y = _safe_float(drill.offset_y)
+    offset: Point2 | None = None
+    if offset_x is not None or offset_y is not None:
+        offset = Point2(x=offset_x or 0.0, y=offset_y or 0.0)
+
+    plated = None
+    if pad.type:
+        plated = pad.type != "np_thru_hole"
+
+    return HoleModel(
+        shape=_normalize_hole_shape(drill.shape, size_x, size_y),
+        size_x=size_x,
+        size_y=size_y,
+        offset=offset,
+        plated=plated,
+    )
+
+
+def _drill_hole_drawings(
+    *,
+    cx: float,
+    cy: float,
+    rotation_deg: float,
+    hole: HoleModel,
+    layer: str,
+) -> list[DrawingModel]:
+    sx = max(0.0, _safe_float(hole.size_x) or 0.0)
+    sy = max(0.0, _safe_float(hole.size_y) or 0.0)
+    if sx <= 0 or sy <= 0:
+        return []
+
+    shape = str(hole.shape or "").strip().lower()
+    is_oval = shape in {"oval", "slot", "oblong"} or abs(sx - sy) > 1e-6
+    if not is_oval:
+        return [
+            DrawingModel(
+                type="circle",
+                center=Point2(x=cx, y=cy),
+                end=Point2(x=cx + sx / 2.0, y=cy),
+                width=0.0,
+                layer=layer,
+                filled=True,
+            )
+        ]
+
+    major = max(sx, sy)
+    minor = min(sx, sy)
+    focal = max(0.0, (major - minor) / 2.0)
+    if sx >= sy:
+        p1_local = (-focal, 0.0)
+        p2_local = (focal, 0.0)
+    else:
+        p1_local = (0.0, -focal)
+        p2_local = (0.0, focal)
+    p1r = _rotate_kicad_xy(p1_local[0], p1_local[1], rotation_deg)
+    p2r = _rotate_kicad_xy(p2_local[0], p2_local[1], rotation_deg)
+    return [
+        DrawingModel(
+            type="line",
+            start=Point2(x=cx + p1r[0], y=cy + p1r[1]),
+            end=Point2(x=cx + p2r[0], y=cy + p2r[1]),
+            width=minor,
+            layer=layer,
+        )
+    ]
 
 
 def _normalize_hole_shape(raw_shape, size_x: float, size_y: float) -> str:

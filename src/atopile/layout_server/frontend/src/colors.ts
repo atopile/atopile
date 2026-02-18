@@ -43,6 +43,7 @@ export function getLayerColor(layer: string | null | undefined): Color {
     if (!layer) return [0.5, 0.5, 0.5, 0.5];
     if (layer.endsWith(".PadNumbers")) return [1.0, 1.0, 1.0, 1.0];
     if (layer.endsWith(".Nets")) return [1.0, 1.0, 1.0, 1.0];
+    if (layer.endsWith(".Drill")) return [0.89, 0.82, 0.15, 1.0];
     return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
 }
 

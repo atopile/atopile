@@ -1339,12 +1339,6 @@ var LAYER_COLORS = {
 var PAD_COLOR = [0.57, 0.57, 0.3, 0.9];
 var PAD_FRONT_COLOR = [0.86, 0.23, 0.22, 0.78];
 var PAD_BACK_COLOR = [0.16, 0.28, 0.47, 0.78];
-var HOLE_CORE_COLOR = [0.04, 0.06, 0.1, 1];
-var PAD_PLATED_HOLE_COLOR = HOLE_CORE_COLOR;
-var VIA_BLIND_BURIED_COLOR = [0.67, 0.67, 0.7, 0.98];
-var VIA_MICRO_COLOR = [0.56, 0.7, 0.74, 0.98];
-var VIA_DRILL_COLOR = HOLE_CORE_COLOR;
-var VIA_HOLE_WALL_COLOR = [0.78, 0.78, 0.8, 0.98];
 var SELECTION_COLOR = [1, 1, 1, 0.3];
 var ZONE_COLOR_ALPHA = 0.25;
 function getLayerColor(layer) {
@@ -1354,6 +1348,8 @@ function getLayerColor(layer) {
     return [1, 1, 1, 1];
   if (layer.endsWith(".Nets"))
     return [1, 1, 1, 1];
+  if (layer.endsWith(".Drill"))
+    return [0.89, 0.82, 0.15, 1];
   return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
 }
 function getPadColor(layers) {
@@ -21769,83 +21765,6 @@ function expandAnnotationLayerName(layerName, concreteLayers) {
   }
   return [];
 }
-function holeSize(hole) {
-  if (!hole)
-    return [0, 0];
-  const sx = Number.isFinite(hole.size_x) ? Math.max(0, hole.size_x) : 0;
-  const sy = Number.isFinite(hole.size_y) ? Math.max(0, hole.size_y) : sx;
-  return [sx, sy > 0 ? sy : sx];
-}
-function holeOffset(hole) {
-  const ox = hole?.offset?.x;
-  const oy = hole?.offset?.y;
-  return [Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0];
-}
-function drawHoleShape(layer, centerX, centerY, sx, sy, shape, fill, outline, outlineWidth, rotationDeg = 0) {
-  const [fr, fg, fb, fa] = fill;
-  const [or, og, ob, oa] = outline;
-  const theta = -(rotationDeg || 0) * DEG_TO_RAD;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  const rotateVec = (vx, vy) => new Vec2(
-    centerX + vx * cos - vy * sin,
-    centerY + vx * sin + vy * cos
-  );
-  const capsuleLike = shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6;
-  if (capsuleLike) {
-    const major = Math.max(sx, sy) / 2;
-    const minor = Math.min(sx, sy) / 2;
-    const focal = Math.max(0, major - minor);
-    const p1 = sx >= sy ? rotateVec(-focal, 0) : rotateVec(0, -focal);
-    const p2 = sx >= sy ? rotateVec(focal, 0) : rotateVec(0, focal);
-    layer.geometry.add_polyline([p1, p2], minor * 2, fr, fg, fb, fa);
-    if (outlineWidth > 0) {
-      layer.geometry.add_polyline([p1, p2], minor * 2 + outlineWidth * 2, or, og, ob, oa);
-    }
-    return;
-  }
-  layer.geometry.add_circle(centerX, centerY, sx / 2, fr, fg, fb, fa);
-  if (outlineWidth > 0) {
-    layer.geometry.add_circle(centerX, centerY, sx / 2 + outlineWidth, or, og, ob, oa);
-  }
-}
-function paintViaHole(layer, viaX, viaY, hole) {
-  const fill = VIA_DRILL_COLOR;
-  const outline = VIA_DRILL_COLOR;
-  const [sx, sy] = holeSize(hole);
-  if (sx <= 0 || sy <= 0)
-    return;
-  const [ox, oy] = holeOffset(hole);
-  const cx = viaX + ox;
-  const cy = viaY + oy;
-  const shape = (hole?.shape ?? "").toLowerCase();
-  drawHoleShape(layer, cx, cy, sx, sy, shape, fill, outline, 0);
-}
-function paintPadHoleWithDepth(layer, fpAt, pad, hole, part) {
-  if (part === "wall")
-    return;
-  const [sx, sy] = holeSize(hole);
-  if (sx <= 0 || sy <= 0)
-    return;
-  const [ox, oy] = holeOffset(hole);
-  const shape = (hole?.shape ?? "").toLowerCase();
-  const center = padTransform(fpAt, pad.at, ox, oy);
-  const plated = hole?.plated !== false;
-  const totalRotation = (fpAt.r || 0) + (pad.at.r || 0);
-  const coreColor = plated ? PAD_PLATED_HOLE_COLOR : HOLE_CORE_COLOR;
-  drawHoleShape(
-    layer,
-    center.x,
-    center.y,
-    sx,
-    sy,
-    shape,
-    coreColor,
-    coreColor,
-    0,
-    totalRotation
-  );
-}
 function isPadLayerVisible(padLayer, hidden, concreteLayers) {
   if (padLayer.includes("*")) {
     const suffix = padLayer.substring(padLayer.indexOf("."));
@@ -21919,8 +21838,9 @@ function expandLayerName(layerName, concreteLayers) {
       return expanded;
     if (suffix === ".Cu")
       return ["F.Cu", "B.Cu"];
-    if (suffix === ".Nets" || suffix === ".PadNumbers")
+    if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
       return [`F${suffix}`, `B${suffix}`];
+    }
     return [];
   }
   if (layerName.includes("&")) {
@@ -21948,14 +21868,13 @@ function paintAll(renderer, model, hiddenLayers) {
   renderer.dispose_layers();
   if (!hidden.has("Edge.Cuts"))
     paintBoardEdges(renderer, model);
-  paintGlobalDrawings(renderer, model, hidden);
+  paintGlobalDrawings(renderer, model, hidden, false);
   paintZones(renderer, model, hidden, concreteLayers);
   paintTracks(renderer, model, hidden);
-  if (!hidden.has("Vias"))
-    paintVias(renderer, model);
   for (const fp of model.footprints) {
     paintFootprint(renderer, fp, hidden, concreteLayers);
   }
+  paintGlobalDrawings(renderer, model, hidden, true);
 }
 function paintBoardEdges(renderer, model) {
   const layer = renderer.start_layer("Edge.Cuts");
@@ -22129,32 +22048,15 @@ function paintTracks(renderer, model, hidden) {
     }
   }
 }
-function paintVias(renderer, model) {
-  if (model.vias.length === 0)
-    return;
-  const layer = renderer.start_layer("vias");
-  for (const via of model.vias) {
-    const layers = via.layers ?? [];
-    const spansOuterLayers = layers.includes("F.Cu") && layers.includes("B.Cu");
-    const isMicro = via.size > 0 && via.size <= 0.3;
-    const [vr, vg, vb, va] = isMicro ? VIA_MICRO_COLOR : spansOuterLayers ? VIA_HOLE_WALL_COLOR : VIA_BLIND_BURIED_COLOR;
-    const viaRadius = via.size / 2;
-    if (viaRadius <= 0)
-      continue;
-    paintViaHole(
-      layer,
-      via.at.x,
-      via.at.y,
-      via.hole ?? { shape: "circle", size_x: via.drill, size_y: via.drill, offset: null, plated: true }
-    );
-    layer.geometry.add_circle(via.at.x, via.at.y, viaRadius, vr, vg, vb, va);
-  }
-  renderer.end_layer();
+function isDrillLayer(layerName) {
+  return (layerName ?? "").endsWith(".Drill");
 }
-function paintGlobalDrawings(renderer, model, hidden) {
+function paintGlobalDrawings(renderer, model, hidden, drillOnly) {
   const byLayer = /* @__PURE__ */ new Map();
   for (const drawing of model.drawings) {
     const ln = drawing.layer ?? "Dwgs.User";
+    if (isDrillLayer(ln) !== drillOnly)
+      continue;
     if (hidden.has(ln))
       continue;
     let arr = byLayer.get(ln);
@@ -22176,14 +22078,16 @@ function paintGlobalDrawings(renderer, model, hidden) {
 }
 function paintFootprint(renderer, fp, hidden, concreteLayers) {
   const drawingsByLayer = /* @__PURE__ */ new Map();
+  const drillDrawingsByLayer = /* @__PURE__ */ new Map();
   for (const drawing of fp.drawings) {
     const ln = drawing.layer ?? "F.SilkS";
     if (hidden.has(ln))
       continue;
-    let arr = drawingsByLayer.get(ln);
+    const map = isDrillLayer(ln) ? drillDrawingsByLayer : drawingsByLayer;
+    let arr = map.get(ln);
     if (!arr) {
       arr = [];
-      drawingsByLayer.set(ln, arr);
+      map.set(ln, arr);
     }
     arr.push(drawing);
   }
@@ -22208,24 +22112,15 @@ function paintFootprint(renderer, fp, hidden, concreteLayers) {
         paintPad(layer, fp.at, pad);
       }
       renderer.end_layer();
-      const holePads = visiblePads.filter((pad) => pad.type !== "smd" && (pad.hole != null || pad.drill != null));
-      if (holePads.length > 0) {
-        const coreLayer = renderer.start_layer(`fp:${fp.uuid}:pad_holes`);
-        for (const pad of holePads) {
-          const fallbackHole = pad.hole ?? (pad.drill ? {
-            shape: "circle",
-            size_x: pad.drill.size_x ?? pad.size.w * 0.5,
-            size_y: pad.drill.size_y ?? pad.drill.size_x ?? pad.size.w * 0.5,
-            offset: pad.drill.offset,
-            plated: pad.type !== "np_thru_hole"
-          } : null);
-          if (fallbackHole) {
-            paintPadHoleWithDepth(coreLayer, fp.at, pad, fallbackHole, "core");
-          }
-        }
-        renderer.end_layer();
-      }
     }
+  }
+  for (const [layerName, drawings] of drillDrawingsByLayer) {
+    const [r, g, b, a] = getLayerColor(layerName);
+    const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+    for (const drawing of drawings) {
+      paintDrawing(layer, fp.at, drawing, r, g, b, a);
+    }
+    renderer.end_layer();
   }
   paintPadAnnotations(renderer, fp, hidden, concreteLayers);
 }
@@ -22597,8 +22492,9 @@ function expandLayerName2(layerName, concreteLayers) {
       return expanded;
     if (suffix === ".Cu")
       return ["F.Cu", "B.Cu"];
-    if (suffix === ".Nets" || suffix === ".PadNumbers")
+    if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
       return [`F${suffix}`, `B${suffix}`];
+    }
     return [];
   }
   if (layerName.includes("&")) {
@@ -22932,7 +22828,6 @@ var Editor = class {
       }
     }
     layers.add("Edge.Cuts");
-    layers.add("Vias");
     for (const l of layers) {
       if (l.includes("*") || l.includes("&"))
         layers.delete(l);

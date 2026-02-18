@@ -3,17 +3,10 @@ import { Renderer, RenderLayer } from "./webgl/renderer";
 import {
     getLayerColor,
     getPadColor,
-    HOLE_CORE_COLOR,
-    NON_PLATED_HOLE_COLOR,
-    PAD_PLATED_HOLE_COLOR,
     SELECTION_COLOR,
-    VIA_BLIND_BURIED_COLOR,
-    VIA_DRILL_COLOR,
-    VIA_HOLE_WALL_COLOR,
-    VIA_MICRO_COLOR,
     ZONE_COLOR_ALPHA,
 } from "./colors";
-import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3, HoleModel } from "./types";
+import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -282,122 +275,6 @@ function expandAnnotationLayerName(layerName: string, concreteLayers: Set<string
     return [];
 }
 
-function holeSize(hole: HoleModel | null | undefined): [number, number] {
-    if (!hole) return [0, 0];
-    const sx = Number.isFinite(hole.size_x) ? Math.max(0, hole.size_x) : 0;
-    const sy = Number.isFinite(hole.size_y) ? Math.max(0, hole.size_y) : sx;
-    return [sx, sy > 0 ? sy : sx];
-}
-
-function holeOffset(hole: HoleModel | null | undefined): [number, number] {
-    const ox = hole?.offset?.x;
-    const oy = hole?.offset?.y;
-    return [Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0];
-}
-
-function drawHoleShape(
-    layer: RenderLayer,
-    centerX: number,
-    centerY: number,
-    sx: number,
-    sy: number,
-    shape: string,
-    fill: [number, number, number, number],
-    outline: [number, number, number, number],
-    outlineWidth: number,
-    rotationDeg = 0,
-) {
-    const [fr, fg, fb, fa] = fill;
-    const [or, og, ob, oa] = outline;
-    const theta = -(rotationDeg || 0) * DEG_TO_RAD;
-    const cos = Math.cos(theta);
-    const sin = Math.sin(theta);
-    const rotateVec = (vx: number, vy: number): Vec2 =>
-        new Vec2(
-            centerX + vx * cos - vy * sin,
-            centerY + vx * sin + vy * cos,
-        );
-
-    const capsuleLike = shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6;
-    if (capsuleLike) {
-        const major = Math.max(sx, sy) / 2;
-        const minor = Math.min(sx, sy) / 2;
-        const focal = Math.max(0, major - minor);
-        const p1 = sx >= sy ? rotateVec(-focal, 0) : rotateVec(0, -focal);
-        const p2 = sx >= sy ? rotateVec(focal, 0) : rotateVec(0, focal);
-        layer.geometry.add_polyline([p1, p2], minor * 2, fr, fg, fb, fa);
-        if (outlineWidth > 0) {
-            layer.geometry.add_polyline([p1, p2], minor * 2 + outlineWidth * 2, or, og, ob, oa);
-        }
-        return;
-    }
-
-    layer.geometry.add_circle(centerX, centerY, sx / 2, fr, fg, fb, fa);
-    if (outlineWidth > 0) {
-        layer.geometry.add_circle(centerX, centerY, sx / 2 + outlineWidth, or, og, ob, oa);
-    }
-}
-
-function paintViaHole(layer: RenderLayer, viaX: number, viaY: number, hole: HoleModel | null | undefined) {
-    const fill = VIA_DRILL_COLOR;
-    const outline = VIA_DRILL_COLOR;
-    const [sx, sy] = holeSize(hole);
-    if (sx <= 0 || sy <= 0) return;
-    const [ox, oy] = holeOffset(hole);
-    const cx = viaX + ox;
-    const cy = viaY + oy;
-    const shape = (hole?.shape ?? "").toLowerCase();
-    drawHoleShape(layer, cx, cy, sx, sy, shape, fill, outline, 0);
-}
-
-function paintPadHole(layer: RenderLayer, fpAt: Point3, pad: PadModel, hole: HoleModel | null | undefined) {
-    const plated = hole?.plated !== false;
-    const fill = plated ? PAD_PLATED_HOLE_COLOR : HOLE_CORE_COLOR;
-    const outline = plated ? PAD_HOLE_WALL_COLOR : NON_PLATED_HOLE_COLOR;
-    const [sx, sy] = holeSize(hole);
-    if (sx <= 0 || sy <= 0) return;
-    const [ox, oy] = holeOffset(hole);
-    const shape = (hole?.shape ?? "").toLowerCase();
-    const center = padTransform(fpAt, pad.at, ox, oy);
-    const outlineWidth = plated
-        ? Math.max(Math.min(sx, sy) * 0.11, 0.02)
-        : Math.max(Math.min(sx, sy) * 0.08, 0.015);
-    const totalRotation = (fpAt.r || 0) + (pad.at.r || 0);
-    drawHoleShape(layer, center.x, center.y, sx, sy, shape, fill, outline, outlineWidth, totalRotation);
-}
-
-function paintPadHoleWithDepth(
-    layer: RenderLayer,
-    fpAt: Point3,
-    pad: PadModel,
-    hole: HoleModel | null | undefined,
-    part: "wall" | "core",
-) {
-    if (part === "wall") return;
-
-    const [sx, sy] = holeSize(hole);
-    if (sx <= 0 || sy <= 0) return;
-    const [ox, oy] = holeOffset(hole);
-    const shape = (hole?.shape ?? "").toLowerCase();
-    const center = padTransform(fpAt, pad.at, ox, oy);
-    const plated = hole?.plated !== false;
-    const totalRotation = (fpAt.r || 0) + (pad.at.r || 0);
-    const coreColor = plated ? PAD_PLATED_HOLE_COLOR : HOLE_CORE_COLOR;
-
-    drawHoleShape(
-        layer,
-        center.x,
-        center.y,
-        sx,
-        sy,
-        shape,
-        coreColor,
-        coreColor,
-        0,
-        totalRotation,
-    );
-}
-
 /**
  * Check if a pad layer (possibly a wildcard) has any visible concrete layer.
  * Wildcards: "*.Cu" matches all layers ending in ".Cu",
@@ -458,7 +335,9 @@ function expandLayerName(layerName: string, concreteLayers: Set<string>): string
         const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
         if (expanded.length > 0) return expanded;
         if (suffix === ".Cu") return ["F.Cu", "B.Cu"];
-        if (suffix === ".Nets" || suffix === ".PadNumbers") return [`F${suffix}`, `B${suffix}`];
+        if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
+            return [`F${suffix}`, `B${suffix}`];
+        }
         return [];
     }
     if (layerName.includes("&")) {
@@ -487,13 +366,13 @@ export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: 
     const concreteLayers = collectConcreteLayers(model);
     renderer.dispose_layers();
     if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
-    paintGlobalDrawings(renderer, model, hidden);
+    paintGlobalDrawings(renderer, model, hidden, false);
     paintZones(renderer, model, hidden, concreteLayers);
     paintTracks(renderer, model, hidden);
-    if (!hidden.has("Vias")) paintVias(renderer, model);
     for (const fp of model.footprints) {
         paintFootprint(renderer, fp, hidden, concreteLayers);
     }
+    paintGlobalDrawings(renderer, model, hidden, true);
 }
 
 function paintBoardEdges(renderer: Renderer, model: RenderModel) {
@@ -664,33 +543,20 @@ function paintTracks(renderer: Renderer, model: RenderModel, hidden: Set<string>
     }
 }
 
-function paintVias(renderer: Renderer, model: RenderModel) {
-    if (model.vias.length === 0) return;
-    const layer = renderer.start_layer("vias");
-    for (const via of model.vias) {
-        const layers = via.layers ?? [];
-        const spansOuterLayers = layers.includes("F.Cu") && layers.includes("B.Cu");
-        const isMicro = via.size > 0 && via.size <= 0.3;
-        const [vr, vg, vb, va] = isMicro
-            ? VIA_MICRO_COLOR
-            : (spansOuterLayers ? VIA_HOLE_WALL_COLOR : VIA_BLIND_BURIED_COLOR);
-        const viaRadius = via.size / 2;
-        if (viaRadius <= 0) continue;
-        paintViaHole(
-            layer,
-            via.at.x,
-            via.at.y,
-            via.hole ?? { shape: "circle", size_x: via.drill, size_y: via.drill, offset: null, plated: true },
-        );
-        layer.geometry.add_circle(via.at.x, via.at.y, viaRadius, vr, vg, vb, va);
-    }
-    renderer.end_layer();
+function isDrillLayer(layerName: string | null | undefined): boolean {
+    return (layerName ?? "").endsWith(".Drill");
 }
 
-function paintGlobalDrawings(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
+function paintGlobalDrawings(
+    renderer: Renderer,
+    model: RenderModel,
+    hidden: Set<string>,
+    drillOnly: boolean,
+) {
     const byLayer = new Map<string, DrawingModel[]>();
     for (const drawing of model.drawings) {
         const ln = drawing.layer ?? "Dwgs.User";
+        if (isDrillLayer(ln) !== drillOnly) continue;
         if (hidden.has(ln)) continue;
         let arr = byLayer.get(ln);
         if (!arr) { arr = []; byLayer.set(ln, arr); }
@@ -709,11 +575,16 @@ function paintGlobalDrawings(renderer: Renderer, model: RenderModel, hidden: Set
 
 function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
+    const drillDrawingsByLayer = new Map<string, DrawingModel[]>();
     for (const drawing of fp.drawings) {
         const ln = drawing.layer ?? "F.SilkS";
         if (hidden.has(ln)) continue;
-        let arr = drawingsByLayer.get(ln);
-        if (!arr) { arr = []; drawingsByLayer.set(ln, arr); }
+        const map = isDrillLayer(ln) ? drillDrawingsByLayer : drawingsByLayer;
+        let arr = map.get(ln);
+        if (!arr) {
+            arr = [];
+            map.set(ln, arr);
+        }
         arr.push(drawing);
     }
     for (const [layerName, drawings] of drawingsByLayer) {
@@ -738,29 +609,15 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
                 paintPad(layer, fp.at, pad);
             }
             renderer.end_layer();
-
-            const holePads = visiblePads.filter(pad => pad.type !== "smd" && (pad.hole != null || pad.drill != null));
-            if (holePads.length > 0) {
-                const coreLayer = renderer.start_layer(`fp:${fp.uuid}:pad_holes`);
-                for (const pad of holePads) {
-                    const fallbackHole = pad.hole ?? (
-                        pad.drill
-                            ? {
-                                shape: "circle",
-                                size_x: pad.drill.size_x ?? pad.size.w * 0.5,
-                                size_y: pad.drill.size_y ?? pad.drill.size_x ?? pad.size.w * 0.5,
-                                offset: pad.drill.offset,
-                                plated: pad.type !== "np_thru_hole",
-                            }
-                            : null
-                    );
-                    if (fallbackHole) {
-                        paintPadHoleWithDepth(coreLayer, fp.at, pad, fallbackHole, "core");
-                    }
-                }
-                renderer.end_layer();
-            }
         }
+    }
+    for (const [layerName, drawings] of drillDrawingsByLayer) {
+        const [r, g, b, a] = getLayerColor(layerName);
+        const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+        for (const drawing of drawings) {
+            paintDrawing(layer, fp.at, drawing, r, g, b, a);
+        }
+        renderer.end_layer();
     }
     paintPadAnnotations(renderer, fp, hidden, concreteLayers);
 }

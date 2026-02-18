@@ -147,6 +147,13 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     assert len(drilled_vias) > 0
     assert all(via.hole is not None for via in drilled_vias)
     assert all(via.hole.size_x > 0 and via.hole.size_y > 0 for via in drilled_vias)
+    assert any((d.layer or "").endswith(".Drill") for d in model.drawings)
+    assert any((d.layer or "").endswith(".Cu") and d.filled for d in model.drawings)
+    assert any(
+        (d.layer or "").endswith(".Drill")
+        for footprint in model.footprints
+        for d in footprint.drawings
+    )
 
 
 def test_get_render_model_v9_zones(manager_v9: PcbManager):

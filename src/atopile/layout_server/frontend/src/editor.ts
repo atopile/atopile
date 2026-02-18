@@ -18,7 +18,9 @@ function expandLayerName(layerName: string, concreteLayers: Set<string>): string
         const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
         if (expanded.length > 0) return expanded;
         if (suffix === ".Cu") return ["F.Cu", "B.Cu"];
-        if (suffix === ".Nets" || suffix === ".PadNumbers") return [`F${suffix}`, `B${suffix}`];
+        if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
+            return [`F${suffix}`, `B${suffix}`];
+        }
         return [];
     }
     if (layerName.includes("&")) {
@@ -379,7 +381,6 @@ export class Editor {
             }
         }
         layers.add("Edge.Cuts");
-        layers.add("Vias");
         // Filter out wildcard layers (*.Cu, F&B.Cu, etc.)
         for (const l of layers) {
             if (l.includes("*") || l.includes("&")) layers.delete(l);
