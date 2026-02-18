@@ -9,6 +9,10 @@ import type { RenderModel } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
+const CANVAS_FONT_SCALE = 1.15;
+const CANVAS_LINE_PITCH = 1.2;
+const CANVAS_OPTICAL_OFFSET = 0.35;
+const CANVAS_MIN_ALPHA = 0.95;
 
 function expandLayerName(layerName: string, concreteLayers: Set<string>): string[] {
     if (!layerName) return [];
@@ -554,11 +558,11 @@ export class Editor {
     ) {
         if (!this.textCtx) return;
         const [r, g, b, a] = getLayerColor(layerName);
-        const linePitch = textHeight * 1.2;
+        const linePitch = textHeight * CANVAS_LINE_PITCH;
         const lineSpan = Math.max(0, lines.length - 1) * linePitch;
         // Canvas middle-baseline renders uppercase-heavy strings visually too high.
         // Apply a small downward optical correction to center labels in pads.
-        const opticalOffsetY = textHeight * 0.35;
+        const opticalOffsetY = textHeight * CANVAS_OPTICAL_OFFSET;
         let baseOffsetY = 0;
         if (justifySet.has("center") || (!justifySet.has("top") && !justifySet.has("bottom"))) {
             baseOffsetY = -lineSpan / 2;
@@ -577,10 +581,10 @@ export class Editor {
         this.textCtx.translate(screenX, screenY);
         this.textCtx.rotate(-(rotationDeg || 0) * DEG_TO_RAD);
         this.textCtx.scale(this.camera.zoom, this.camera.zoom);
-        this.textCtx.font = `700 ${Math.max(textHeight * 1.15, 0.18)}px "Atkinson Hyperlegible", "Noto Sans", "Segoe UI", Arial, sans-serif`;
+        this.textCtx.font = `700 ${Math.max(textHeight * CANVAS_FONT_SCALE, 0.18)}px "Atkinson Hyperlegible", "Noto Sans", "Segoe UI", Arial, sans-serif`;
         this.textCtx.textAlign = textAlign;
         this.textCtx.textBaseline = "middle";
-        this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.95)})`;
+        this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, CANVAS_MIN_ALPHA)})`;
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
             const lineOffsetY = baseOffsetY + lineIdx * linePitch + opticalOffsetY;
             this.textCtx.fillText(lines[lineIdx]!, 0, lineOffsetY);

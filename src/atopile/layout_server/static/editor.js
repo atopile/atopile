@@ -1317,7 +1317,6 @@ var Renderer = class {
 
 // src/colors.ts
 var LAYER_COLORS = {
-  "Annotations.PadNetNames": [1, 1, 1, 1],
   "F.Cu": [0.86, 0.23, 0.22, 0.88],
   "B.Cu": [0.16, 0.28, 0.47, 0.88],
   "In1.Cu": [0.7, 0.58, 0.24, 0.78],
@@ -22142,6 +22141,10 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
 
 // src/editor.ts
 var DEG_TO_RAD3 = Math.PI / 180;
+var CANVAS_FONT_SCALE = 1.15;
+var CANVAS_LINE_PITCH = 1.2;
+var CANVAS_OPTICAL_OFFSET = 0.35;
+var CANVAS_MIN_ALPHA = 0.95;
 function expandLayerName2(layerName, concreteLayers) {
   if (!layerName)
     return [];
@@ -22629,9 +22632,9 @@ var Editor = class {
     if (!this.textCtx)
       return;
     const [r, g, b, a] = getLayerColor(layerName);
-    const linePitch = textHeight * 1.2;
+    const linePitch = textHeight * CANVAS_LINE_PITCH;
     const lineSpan = Math.max(0, lines.length - 1) * linePitch;
-    const opticalOffsetY = textHeight * 0.35;
+    const opticalOffsetY = textHeight * CANVAS_OPTICAL_OFFSET;
     let baseOffsetY = 0;
     if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
       baseOffsetY = -lineSpan / 2;
@@ -22648,10 +22651,10 @@ var Editor = class {
     this.textCtx.translate(screenX, screenY);
     this.textCtx.rotate(-(rotationDeg || 0) * DEG_TO_RAD3);
     this.textCtx.scale(this.camera.zoom, this.camera.zoom);
-    this.textCtx.font = `700 ${Math.max(textHeight * 1.15, 0.18)}px "Atkinson Hyperlegible", "Noto Sans", "Segoe UI", Arial, sans-serif`;
+    this.textCtx.font = `700 ${Math.max(textHeight * CANVAS_FONT_SCALE, 0.18)}px "Atkinson Hyperlegible", "Noto Sans", "Segoe UI", Arial, sans-serif`;
     this.textCtx.textAlign = textAlign;
     this.textCtx.textBaseline = "middle";
-    this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.95)})`;
+    this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, CANVAS_MIN_ALPHA)})`;
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       const lineOffsetY = baseOffsetY + lineIdx * linePitch + opticalOffsetY;
       this.textCtx.fillText(lines[lineIdx], 0, lineOffsetY);

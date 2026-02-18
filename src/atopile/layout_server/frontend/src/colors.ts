@@ -3,7 +3,6 @@ export type Color = [number, number, number, number];
 
 /** Layer name → color mapping for PCB rendering */
 export const LAYER_COLORS: Record<string, Color> = {
-    "Annotations.PadNetNames": [1.00, 1.00, 1.00, 1.00],
     "F.Cu":      [0.86, 0.23, 0.22, 0.88],
     "B.Cu":      [0.16, 0.28, 0.47, 0.88],
     "In1.Cu":    [0.70, 0.58, 0.24, 0.78],

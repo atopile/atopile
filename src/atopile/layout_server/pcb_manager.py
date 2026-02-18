@@ -1052,6 +1052,20 @@ def _estimate_stroke_text_advance(text: str) -> float:
     return max(advance, 0.6)
 
 
+PAD_NET_FIT_MARGIN = 0.78
+PAD_NET_MAJOR_FIT = 0.96
+PAD_NET_MINOR_FIT = 0.88
+PAD_NET_CHAR_SCALE = 0.60
+PAD_NET_MIN_CHAR_H = 0.11
+PAD_NET_CHAR_W_RATIO = 0.72
+PAD_NET_STROKE_SCALE = 0.30
+PAD_NET_STROKE_MIN = 0.06
+PAD_NET_STROKE_MAX = 0.20
+PAD_NET_GENERIC_TOKENS = {"input", "output", "line", "net"}
+PAD_NET_PREFIXES = ("power_in-", "power_vbus-", "power-")
+PAD_NET_TRUNCATE_LENGTHS = (16, 12, 10, 8, 6, 5, 4, 3, 2, 1)
+
+
 def _fit_text_inside_pad(
     text: str, pad_w: float, pad_h: float
 ) -> tuple[float, float, float] | None:
@@ -1060,8 +1074,8 @@ def _fit_text_inside_pad(
         return None
 
     # Keep margin so labels do not touch pad boundaries.
-    usable_w = max(0.0, pad_w * 0.78)
-    usable_h = max(0.0, pad_h * 0.78)
+    usable_w = max(0.0, pad_w * PAD_NET_FIT_MARGIN)
+    usable_h = max(0.0, pad_h * PAD_NET_FIT_MARGIN)
     if usable_w <= 0 or usable_h <= 0:
         return None
 
@@ -1070,20 +1084,23 @@ def _fit_text_inside_pad(
     major = usable_h if vertical else usable_w
     minor = usable_w if vertical else usable_h
 
-    char_w_ratio = 0.72
+    char_w_ratio = PAD_NET_CHAR_W_RATIO
     advance_units = _estimate_stroke_text_advance(text)
     max_h_by_width = major / max(advance_units * char_w_ratio, 1e-6)
     # Fit first, then downscale so text sits comfortably inside pads like KiCad.
-    char_h = min(minor * 0.88, max_h_by_width * 0.96)
+    char_h = min(minor * PAD_NET_MINOR_FIT, max_h_by_width * PAD_NET_MAJOR_FIT)
     # Larger baseline for readability while still fitting within pads.
-    char_h *= 0.60
+    char_h *= PAD_NET_CHAR_SCALE
 
     # Tiny text is unreadable and expensive to draw at scale.
-    if char_h < 0.11:
+    if char_h < PAD_NET_MIN_CHAR_H:
         return None
 
     char_w = char_h * char_w_ratio
-    thickness = min(0.20, max(0.06, char_h * 0.30))
+    thickness = min(
+        PAD_NET_STROKE_MAX,
+        max(PAD_NET_STROKE_MIN, char_h * PAD_NET_STROKE_SCALE),
+    )
     return (char_w, char_h, thickness)
 
 
@@ -1102,7 +1119,6 @@ def _pad_net_text_candidates(text: str) -> list[str]:
     if not base:
         return []
 
-    generic_tokens = {"input", "output", "line", "net"}
     candidates: list[str] = []
     seen: set[str] = set()
 
@@ -1116,19 +1132,19 @@ def _pad_net_text_candidates(text: str) -> list[str]:
     add(base)
 
     normalized = base
-    for prefix in ("power_in-", "power_vbus-", "power-"):
+    for prefix in PAD_NET_PREFIXES:
         if normalized.startswith(prefix):
             normalized = normalized[len(prefix) :]
     add(normalized)
 
     tokens = [t for t in normalized.replace("/", "-").split("-") if t.strip()]
     for token in reversed(tokens):
-        if token.lower() in generic_tokens:
+        if token.lower() in PAD_NET_GENERIC_TOKENS:
             continue
         add(token)
         add(token.replace("[", "").replace("]", ""))
 
-    for max_len in (16, 12, 10, 8, 6, 5, 4, 3, 2, 1):
+    for max_len in PAD_NET_TRUNCATE_LENGTHS:
         if len(normalized) > max_len:
             add(normalized[:max_len])
 
