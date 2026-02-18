@@ -1,6 +1,18 @@
 import { Vec2, BBox } from "./math";
 import { Renderer, RenderLayer } from "./webgl/renderer";
-import { getLayerColor, getPadColor, VIA_COLOR, VIA_DRILL_COLOR, SELECTION_COLOR, ZONE_COLOR_ALPHA } from "./colors";
+import {
+    getLayerColor,
+    getPadColor,
+    HOLE_CORE_COLOR,
+    NON_PLATED_HOLE_COLOR,
+    PAD_PLATED_HOLE_COLOR,
+    SELECTION_COLOR,
+    VIA_BLIND_BURIED_COLOR,
+    VIA_DRILL_COLOR,
+    VIA_HOLE_WALL_COLOR,
+    VIA_MICRO_COLOR,
+    ZONE_COLOR_ALPHA,
+} from "./colors";
 import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3, HoleModel } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
@@ -283,47 +295,107 @@ function holeOffset(hole: HoleModel | null | undefined): [number, number] {
     return [Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0];
 }
 
+function drawHoleShape(
+    layer: RenderLayer,
+    centerX: number,
+    centerY: number,
+    sx: number,
+    sy: number,
+    shape: string,
+    fill: [number, number, number, number],
+    outline: [number, number, number, number],
+    outlineWidth: number,
+    rotationDeg = 0,
+) {
+    const [fr, fg, fb, fa] = fill;
+    const [or, og, ob, oa] = outline;
+    const theta = -(rotationDeg || 0) * DEG_TO_RAD;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const rotateVec = (vx: number, vy: number): Vec2 =>
+        new Vec2(
+            centerX + vx * cos - vy * sin,
+            centerY + vx * sin + vy * cos,
+        );
+
+    const capsuleLike = shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6;
+    if (capsuleLike) {
+        const major = Math.max(sx, sy) / 2;
+        const minor = Math.min(sx, sy) / 2;
+        const focal = Math.max(0, major - minor);
+        const p1 = sx >= sy ? rotateVec(-focal, 0) : rotateVec(0, -focal);
+        const p2 = sx >= sy ? rotateVec(focal, 0) : rotateVec(0, focal);
+        layer.geometry.add_polyline([p1, p2], minor * 2, fr, fg, fb, fa);
+        if (outlineWidth > 0) {
+            layer.geometry.add_polyline([p1, p2], minor * 2 + outlineWidth * 2, or, og, ob, oa);
+        }
+        return;
+    }
+
+    layer.geometry.add_circle(centerX, centerY, sx / 2, fr, fg, fb, fa);
+    if (outlineWidth > 0) {
+        layer.geometry.add_circle(centerX, centerY, sx / 2 + outlineWidth, or, og, ob, oa);
+    }
+}
+
 function paintViaHole(layer: RenderLayer, viaX: number, viaY: number, hole: HoleModel | null | undefined) {
-    const [dr, dg, db, da] = VIA_DRILL_COLOR;
+    const fill = VIA_DRILL_COLOR;
+    const outline = VIA_DRILL_COLOR;
     const [sx, sy] = holeSize(hole);
     if (sx <= 0 || sy <= 0) return;
     const [ox, oy] = holeOffset(hole);
     const cx = viaX + ox;
     const cy = viaY + oy;
     const shape = (hole?.shape ?? "").toLowerCase();
-    if (shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6) {
-        const major = Math.max(sx, sy) / 2;
-        const minor = Math.min(sx, sy) / 2;
-        const focal = Math.max(0, major - minor);
-        const p1 = sx >= sy ? new Vec2(cx - focal, cy) : new Vec2(cx, cy - focal);
-        const p2 = sx >= sy ? new Vec2(cx + focal, cy) : new Vec2(cx, cy + focal);
-        layer.geometry.add_polyline([p1, p2], minor * 2, dr, dg, db, da);
-        return;
-    }
-    layer.geometry.add_circle(cx, cy, sx / 2, dr, dg, db, da);
+    drawHoleShape(layer, cx, cy, sx, sy, shape, fill, outline, 0);
 }
 
 function paintPadHole(layer: RenderLayer, fpAt: Point3, pad: PadModel, hole: HoleModel | null | undefined) {
-    const [dr, dg, db, da] = VIA_DRILL_COLOR;
+    const plated = hole?.plated !== false;
+    const fill = plated ? PAD_PLATED_HOLE_COLOR : HOLE_CORE_COLOR;
+    const outline = plated ? PAD_HOLE_WALL_COLOR : NON_PLATED_HOLE_COLOR;
     const [sx, sy] = holeSize(hole);
     if (sx <= 0 || sy <= 0) return;
     const [ox, oy] = holeOffset(hole);
     const shape = (hole?.shape ?? "").toLowerCase();
-    if (shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6) {
-        const major = Math.max(sx, sy) / 2;
-        const minor = Math.min(sx, sy) / 2;
-        const focal = Math.max(0, major - minor);
-        const p1 = sx >= sy
-            ? padTransform(fpAt, pad.at, ox - focal, oy)
-            : padTransform(fpAt, pad.at, ox, oy - focal);
-        const p2 = sx >= sy
-            ? padTransform(fpAt, pad.at, ox + focal, oy)
-            : padTransform(fpAt, pad.at, ox, oy + focal);
-        layer.geometry.add_polyline([p1, p2], minor * 2, dr, dg, db, da);
-        return;
-    }
     const center = padTransform(fpAt, pad.at, ox, oy);
-    layer.geometry.add_circle(center.x, center.y, sx / 2, dr, dg, db, da);
+    const outlineWidth = plated
+        ? Math.max(Math.min(sx, sy) * 0.11, 0.02)
+        : Math.max(Math.min(sx, sy) * 0.08, 0.015);
+    const totalRotation = (fpAt.r || 0) + (pad.at.r || 0);
+    drawHoleShape(layer, center.x, center.y, sx, sy, shape, fill, outline, outlineWidth, totalRotation);
+}
+
+function paintPadHoleWithDepth(
+    layer: RenderLayer,
+    fpAt: Point3,
+    pad: PadModel,
+    hole: HoleModel | null | undefined,
+    part: "wall" | "core",
+) {
+    if (part === "wall") return;
+
+    const [sx, sy] = holeSize(hole);
+    if (sx <= 0 || sy <= 0) return;
+    const [ox, oy] = holeOffset(hole);
+    const shape = (hole?.shape ?? "").toLowerCase();
+    const center = padTransform(fpAt, pad.at, ox, oy);
+    const plated = hole?.plated !== false;
+    const totalRotation = (fpAt.r || 0) + (pad.at.r || 0);
+    const coreColor = plated ? PAD_PLATED_HOLE_COLOR : HOLE_CORE_COLOR;
+
+    drawHoleShape(
+        layer,
+        center.x,
+        center.y,
+        sx,
+        sy,
+        shape,
+        coreColor,
+        coreColor,
+        0,
+        totalRotation,
+    );
 }
 
 /**
@@ -596,28 +668,21 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     if (model.vias.length === 0) return;
     const layer = renderer.start_layer("vias");
     for (const via of model.vias) {
-        const [vr, vg, vb, va] = VIA_COLOR;
+        const layers = via.layers ?? [];
+        const spansOuterLayers = layers.includes("F.Cu") && layers.includes("B.Cu");
+        const isMicro = via.size > 0 && via.size <= 0.3;
+        const [vr, vg, vb, va] = isMicro
+            ? VIA_MICRO_COLOR
+            : (spansOuterLayers ? VIA_HOLE_WALL_COLOR : VIA_BLIND_BURIED_COLOR);
         const viaRadius = via.size / 2;
         if (viaRadius <= 0) continue;
-        layer.geometry.add_circle(via.at.x, via.at.y, viaRadius, vr, vg, vb, va);
-        const ringWidth = Math.max(viaRadius * 0.18, 0.04);
-        const rimPoints = circleToPoints(via.at.x, via.at.y, viaRadius);
-        if (rimPoints.length > 1) {
-            layer.geometry.add_polyline(
-                rimPoints,
-                ringWidth,
-                Math.max(0, vr * 0.82),
-                Math.max(0, vg * 0.82),
-                Math.max(0, vb * 0.82),
-                Math.min(1, va * 0.9),
-            );
-        }
         paintViaHole(
             layer,
             via.at.x,
             via.at.y,
             via.hole ?? { shape: "circle", size_x: via.drill, size_y: via.drill, offset: null, plated: true },
         );
+        layer.geometry.add_circle(via.at.x, via.at.y, viaRadius, vr, vg, vb, va);
     }
     renderer.end_layer();
 }
@@ -666,12 +731,35 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
         );
         if (anyVisible) {
             const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-            for (const pad of fp.pads) {
-                if (pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))) {
-                    paintPad(layer, fp.at, pad);
-                }
+            const visiblePads = fp.pads.filter(pad =>
+                pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
+            );
+            for (const pad of visiblePads) {
+                paintPad(layer, fp.at, pad);
             }
             renderer.end_layer();
+
+            const holePads = visiblePads.filter(pad => pad.type !== "smd" && (pad.hole != null || pad.drill != null));
+            if (holePads.length > 0) {
+                const coreLayer = renderer.start_layer(`fp:${fp.uuid}:pad_holes`);
+                for (const pad of holePads) {
+                    const fallbackHole = pad.hole ?? (
+                        pad.drill
+                            ? {
+                                shape: "circle",
+                                size_x: pad.drill.size_x ?? pad.size.w * 0.5,
+                                size_y: pad.drill.size_y ?? pad.drill.size_x ?? pad.size.w * 0.5,
+                                offset: pad.drill.offset,
+                                plated: pad.type !== "np_thru_hole",
+                            }
+                            : null
+                    );
+                    if (fallbackHole) {
+                        paintPadHoleWithDepth(coreLayer, fp.at, pad, fallbackHole, "core");
+                    }
+                }
+                renderer.end_layer();
+            }
         }
     }
     paintPadAnnotations(renderer, fp, hidden, concreteLayers);
@@ -882,45 +970,40 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
 }
 
 function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
-    const [cr, cg, cb, ca] = getPadColor(pad.layers);
+    const padIsHoleOnly = pad.type === "np_thru_hole";
+    const [cr, cg, cb, ca] = padIsHoleOnly
+        ? [0, 0, 0, 0]
+        : getPadColor(pad.layers);
     const hw = pad.size.w / 2;
     const hh = pad.size.h / 2;
 
-    if (pad.shape === "circle") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
-    } else if (pad.shape === "oval") {
-        const longAxis = Math.max(hw, hh);
-        const shortAxis = Math.min(hw, hh);
-        const focalDist = longAxis - shortAxis;
-        let p1: Vec2, p2: Vec2;
-        if (hw >= hh) {
-            p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-            p2 = padTransform(fpAt, pad.at, focalDist, 0);
+    if (!padIsHoleOnly) {
+        if (pad.shape === "circle") {
+            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+            layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+        } else if (pad.shape === "oval") {
+            const longAxis = Math.max(hw, hh);
+            const shortAxis = Math.min(hw, hh);
+            const focalDist = longAxis - shortAxis;
+            let p1: Vec2, p2: Vec2;
+            if (hw >= hh) {
+                p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+                p2 = padTransform(fpAt, pad.at, focalDist, 0);
+            } else {
+                p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+                p2 = padTransform(fpAt, pad.at, 0, focalDist);
+            }
+            layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
         } else {
-            p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-            p2 = padTransform(fpAt, pad.at, 0, focalDist);
+            const corners = [
+                padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
+                padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
+            ];
+            layer.geometry.add_polygon(corners, cr, cg, cb, ca);
         }
-        layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
-    } else {
-        const corners = [
-            padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
-            padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
-        ];
-        layer.geometry.add_polygon(corners, cr, cg, cb, ca);
     }
 
-    if (pad.type !== "smd") {
-        if (pad.hole) {
-            paintPadHole(layer, fpAt, pad, pad.hole);
-        } else if (pad.drill) {
-            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-            const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
-            if (drillR > 0) {
-                layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1.0);
-            }
-        }
-    }
+    // Pad holes are rendered in dedicated depth layers (see paintFootprint).
 }
 
 /** Paint a selection highlight around a footprint */
