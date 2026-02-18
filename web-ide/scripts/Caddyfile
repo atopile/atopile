@@ -11,8 +11,8 @@
 		output stderr
 	}
 
-	@backend_ws path /ws/*
-	handle @backend_ws {
+	@backend path /ws/* /api/* /health
+	handle @backend {
 		reverse_proxy 127.0.0.1:8501
 	}
 	handle {
