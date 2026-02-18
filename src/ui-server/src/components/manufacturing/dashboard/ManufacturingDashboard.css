@@ -13,36 +13,71 @@
   font-family: var(--vscode-font-family, system-ui, sans-serif);
 }
 
+/* ── Top header bar ─────────────────────────────────────────────── */
 .mfg-dashboard-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 20px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
   background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
   flex-shrink: 0;
+  min-height: 36px;
 }
 
-.mfg-dashboard-header h1 {
-  font-size: 14px;
+.mfg-header-target {
+  font-size: 13px;
   font-weight: 600;
-  margin: 0;
+  color: var(--vscode-foreground, var(--text-primary, #ccc));
   white-space: nowrap;
 }
 
-.mfg-dashboard-header .mfg-header-target {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
-  margin: 0;
+.mfg-header-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--vscode-panel-border, var(--border-color, #444));
+  flex-shrink: 0;
 }
 
+.mfg-header-page-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mfg-header-spacer {
+  flex: 1;
+}
+
+.mfg-header-reviewed-btn {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #fff);
+}
+
+.mfg-header-reviewed-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.mfg-header-reviewed-btn.reviewed {
+  background: var(--vscode-testing-iconPassed, #73c991);
+  color: #000;
+}
+
+.mfg-header-comment-btn {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+/* ── Body: sidebar + content ────────────────────────────────────── */
 .mfg-dashboard-body {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-/* Sidebar */
+/* ── Sidebar ────────────────────────────────────────────────────── */
 .mfg-dashboard-sidebar {
   width: 250px;
   min-width: 250px;
@@ -134,23 +169,101 @@
   margin-top: auto;
 }
 
-/* Content area */
+/* ── Content area ───────────────────────────────────────────────── */
 .mfg-dashboard-content {
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px;
 }
 
-/* Build step */
+/* ── Build step — 3-panel grid ──────────────────────────────────── */
 .mfg-build-step {
-  max-width: 700px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.mfg-build-step h2 {
-  font-size: 16px;
-  margin: 0 0 16px;
+.mfg-build-grid {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  min-height: 0;
 }
 
+.mfg-build-grid-left {
+  width: 40%;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.mfg-build-grid-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.mfg-build-grid-cell {
+  flex: 1;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 8px;
+  padding: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.mfg-build-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin: 0 0 8px;
+}
+
+/* Tips panel (right-top) */
+.mfg-build-tips-text {
+  background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
+}
+
+.mfg-tips-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+}
+
+.mfg-tips-body {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mfg-tips-body p {
+  margin: 0 0 8px;
+}
+
+/* Tips image (right-bottom) */
+.mfg-build-tips-image {
+  background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
+}
+
+.mfg-tips-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+}
+
+/* Git warning */
 .mfg-git-warning {
   display: flex;
   align-items: flex-start;
@@ -161,6 +274,7 @@
   border-radius: 6px;
   margin-bottom: 16px;
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .mfg-git-warning svg {
@@ -169,12 +283,55 @@
   margin-top: 2px;
 }
 
+/* Build actions */
 .mfg-build-actions {
   display: flex;
   gap: 8px;
   margin-top: 16px;
+  flex-shrink: 0;
 }
 
+/* ── Build stages list ──────────────────────────────────────────── */
+.mfg-build-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.mfg-build-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #2a2a2a));
+}
+
+.mfg-build-stage-item:last-child {
+  border-bottom: none;
+}
+
+.mfg-build-stage-item svg {
+  flex-shrink: 0;
+}
+
+.mfg-build-stage-item.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 7px 8px;
+  margin: 0 -8px;
+}
+
+.mfg-build-stage-item.clickable:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.mfg-build-stage-item.status-idle {
+  opacity: 0.4;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
 .mfg-btn {
   display: inline-flex;
   align-items: center;
@@ -185,6 +342,7 @@
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .mfg-btn-primary {
@@ -210,66 +368,11 @@
   background: var(--vscode-button-secondaryHoverBackground, #45494e);
 }
 
-/* Build stages list */
-.mfg-build-stages {
-  list-style: none;
-  margin: 16px 0;
-  padding: 0;
-}
-
-.mfg-build-stages li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  font-size: 13px;
-}
-
-.mfg-build-stages li svg {
-  flex-shrink: 0;
-}
-
-/* Artifact verification */
-.mfg-artifacts {
-  margin: 16px 0;
-}
-
-.mfg-artifact-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: 13px;
-}
-
-.mfg-artifact-item.available svg {
-  color: var(--vscode-testing-iconPassed, #73c991);
-}
-
-.mfg-artifact-item.missing svg {
-  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
-}
-
-/* Review shell */
+/* ── Review shell ───────────────────────────────────────────────── */
 .mfg-review-shell {
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-
-.mfg-review-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 0 16px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
-  margin-bottom: 16px;
-}
-
-.mfg-review-toolbar h2 {
-  font-size: 16px;
-  margin: 0;
-  flex: 1;
 }
 
 .mfg-review-content {
@@ -278,20 +381,7 @@
   min-height: 0;
 }
 
-/* Review toggle */
-.mfg-review-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.mfg-review-toggle input[type="checkbox"] {
-  accent-color: var(--vscode-button-background, #0e639c);
-}
-
-/* Comment dialog */
+/* ── Comment dialog ─────────────────────────────────────────────── */
 .mfg-comment-dialog {
   position: fixed;
   inset: 0;
@@ -355,7 +445,7 @@
   margin-bottom: 4px;
 }
 
-/* Export step */
+/* ── Export step ─────────────────────────────────────────────────── */
 .mfg-export-step {
   max-width: 800px;
 }
@@ -433,7 +523,7 @@
   margin-top: 20px;
 }
 
-/* Review page placeholders */
+/* ── Review page placeholders ───────────────────────────────────── */
 .mfg-review-placeholder {
   display: flex;
   flex-direction: column;
@@ -490,7 +580,7 @@
   overflow: hidden;
 }
 
-/* Documents summary */
+/* ── Documents summary ──────────────────────────────────────────── */
 .mfg-documents-summary {
   margin-top: 16px;
 }
@@ -516,6 +606,24 @@
   letter-spacing: 0.3px;
 }
 
+.mfg-documents-table td.file-size {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mfg-documents-table td.comment-cell {
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-width: 300px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  font-size: 12px;
+}
+
+.mfg-header-comment-btn.has-comment {
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* ── Animations ─────────────────────────────────────────────────── */
 .spinning {
   animation: spin 1s linear infinite;
 }

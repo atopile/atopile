@@ -152,6 +152,7 @@ export interface BuildOutputs {
   variablesReport: string | null;
   powerTree: string | null;
   datasheets: string[];
+  fileSizes?: Record<string, number>;
 }
 
 export interface GitStatus {

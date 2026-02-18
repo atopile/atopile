@@ -46,6 +46,12 @@ export function openManufacturingDashboard(
       case 'closeManufacturingDashboard':
         panel?.dispose();
         break;
+      case 'showBuildLogs':
+        void vscode.commands.executeCommand('atopile.logViewer.focus');
+        break;
+      case 'openSourceControl':
+        void vscode.commands.executeCommand('workbench.view.scm');
+        break;
       default:
         traceVerbose(`[ManufacturingDashboard] Unknown message type: ${message.type}`);
         break;

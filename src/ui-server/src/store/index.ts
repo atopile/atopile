@@ -315,6 +315,7 @@ interface StoreActions {
   setDashboardReviewPage: (pageId: string | null) => void;
   markReviewed: (pageId: string, reviewed: boolean) => void;
   addReviewComment: (comment: ReviewComment) => void;
+  setReviewComment: (comment: ReviewComment) => void;
   setReviewComments: (comments: ReviewComment[]) => void;
   setDashboardOutputs: (outputs: MfgBuildOutputs | null) => void;
   setDashboardBuildStatus: (status: ManufacturingBuildStatus) => void;
@@ -1100,10 +1101,32 @@ export const useStore = create<Store>()(
       addReviewComment: (comment) =>
         set((state): Partial<Store> => {
           if (!state.manufacturingDashboard) return {};
+          // Replace existing comment for the same pageId (1 comment per page)
+          const filtered = state.manufacturingDashboard.reviewComments.filter(
+            (c) => c.pageId !== comment.pageId
+          );
+          // Only add the comment if it has text (empty text = delete)
+          const updated = comment.text.trim() ? [...filtered, comment] : filtered;
           return {
             manufacturingDashboard: {
               ...state.manufacturingDashboard,
-              reviewComments: [...state.manufacturingDashboard.reviewComments, comment],
+              reviewComments: updated,
+            },
+          };
+        }),
+
+      // setReviewComment is the same as addReviewComment (replaces per page)
+      setReviewComment: (comment) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          const filtered = state.manufacturingDashboard.reviewComments.filter(
+            (c) => c.pageId !== comment.pageId
+          );
+          const updated = comment.text.trim() ? [...filtered, comment] : filtered;
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              reviewComments: updated,
             },
           };
         }),

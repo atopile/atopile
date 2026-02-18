@@ -7,6 +7,12 @@ import { useStore } from '../../../store';
 import { REVIEW_PAGES } from './reviewPages';
 import type { ReviewPageProps, ReviewPageDefinition } from '../types';
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export const ReviewDocumentsDefinition: ReviewPageDefinition = {
   id: 'documents',
   label: 'Documents',
@@ -29,8 +35,7 @@ export function ReviewDocuments({ outputs }: ReviewPageProps) {
   const allReviewed = availablePages.every((p) => reviewedPages[p.definition.id]);
   const reviewedCount = availablePages.filter((p) => reviewedPages[p.definition.id]).length;
 
-  // Aggregate all comments
-  const allComments = dashboard.reviewComments;
+  const { reviewComments } = dashboard;
 
   return (
     <div className="mfg-documents-summary">
@@ -55,13 +60,13 @@ export function ReviewDocuments({ outputs }: ReviewPageProps) {
           <tr>
             <th>Item</th>
             <th>Status</th>
-            <th>Comments</th>
+            <th>Comment</th>
           </tr>
         </thead>
         <tbody>
           {availablePages.map((page) => {
             const isReviewed = reviewedPages[page.definition.id];
-            const pageComments = allComments.filter((c) => c.pageId === page.definition.id);
+            const comment = reviewComments.find((c) => c.pageId === page.definition.id);
             return (
               <tr key={page.definition.id}>
                 <td>{page.definition.label}</td>
@@ -76,29 +81,12 @@ export function ReviewDocuments({ outputs }: ReviewPageProps) {
                     </span>
                   )}
                 </td>
-                <td>{pageComments.length > 0 ? `${pageComments.length} comment(s)` : '—'}</td>
+                <td className="comment-cell">{comment?.text || '—'}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
-
-      {/* All comments */}
-      {allComments.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 14, marginBottom: 8 }}>All Comments ({allComments.length})</h3>
-          {allComments.map((comment, i) => (
-            <div key={i} className="mfg-comment-item">
-              <div className="mfg-comment-item-meta">
-                {REVIEW_PAGES.find((p) => p.definition.id === comment.pageId)?.definition.label ?? comment.pageId}
-                {' — '}
-                {new Date(comment.timestamp).toLocaleString()}
-              </div>
-              <div>{comment.text}</div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Artifact inventory */}
       {outputs && (
@@ -109,18 +97,19 @@ export function ReviewDocuments({ outputs }: ReviewPageProps) {
               <tr>
                 <th>Artifact</th>
                 <th>Status</th>
+                <th>File Size</th>
               </tr>
             </thead>
             <tbody>
               {[
-                { label: 'Gerbers', available: !!outputs.gerbers },
-                { label: 'BOM (CSV)', available: !!outputs.bomCsv },
-                { label: 'BOM (JSON)', available: !!outputs.bomJson },
-                { label: 'Pick & Place', available: !!outputs.pickAndPlace },
-                { label: '3D Model (GLB)', available: !!outputs.glb },
-                { label: '3D Model (STEP)', available: !!outputs.step },
-                { label: 'PCB Render (SVG)', available: !!outputs.svg },
-                { label: 'KiCad PCB', available: !!outputs.kicadPcb },
+                { label: 'Gerbers', key: 'gerbers', available: !!outputs.gerbers },
+                { label: 'BOM (CSV)', key: 'bomCsv', available: !!outputs.bomCsv },
+                { label: 'BOM (JSON)', key: 'bomJson', available: !!outputs.bomJson },
+                { label: 'Pick & Place', key: 'pickAndPlace', available: !!outputs.pickAndPlace },
+                { label: '3D Model (GLB)', key: 'glb', available: !!outputs.glb },
+                { label: '3D Model (STEP)', key: 'step', available: !!outputs.step },
+                { label: 'PCB Render (SVG)', key: 'svg', available: !!outputs.svg },
+                { label: 'KiCad PCB', key: 'kicadPcb', available: !!outputs.kicadPcb },
               ].map((item) => (
                 <tr key={item.label}>
                   <td>{item.label}</td>
@@ -130,6 +119,11 @@ export function ReviewDocuments({ outputs }: ReviewPageProps) {
                     ) : (
                       <span style={{ color: 'var(--vscode-descriptionForeground)' }}>Not generated</span>
                     )}
+                  </td>
+                  <td className="file-size">
+                    {item.available && outputs.fileSizes?.[item.key]
+                      ? formatFileSize(outputs.fileSizes[item.key])
+                      : '—'}
                   </td>
                 </tr>
               ))}

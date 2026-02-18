@@ -1733,6 +1733,22 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             outputs = await asyncio.to_thread(
                 manufacturing_domain.get_build_outputs, project_root, target
             )
+            file_sizes = manufacturing_domain.get_file_sizes(outputs)
+            # Convert snake_case keys to camelCase for frontend
+            camel_sizes: dict[str, int] = {}
+            key_map = {
+                "bom_json": "bomJson",
+                "bom_csv": "bomCsv",
+                "pick_and_place": "pickAndPlace",
+                "kicad_pcb": "kicadPcb",
+                "kicad_sch": "kicadSch",
+                "pcb_summary": "pcbSummary",
+                "variables_report": "variablesReport",
+                "power_tree": "powerTree",
+            }
+            for k, v in file_sizes.items():
+                camel_sizes[key_map.get(k, k)] = v
+
             return {
                 "success": True,
                 "outputs": {
@@ -1752,6 +1768,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "variablesReport": outputs.variables_report,
                     "powerTree": outputs.power_tree,
                     "datasheets": outputs.datasheets,
+                    "fileSizes": camel_sizes,
                 },
             }
 
