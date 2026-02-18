@@ -2175,231 +2175,27 @@ var KICAD_STROKE_GLYPHS_32_255 = [
   "H[MFMb RMNOMSMUNVOWQWWVYUZS[O[MZ",
   "JZMMR[ RWMR[P`OaMb RNFOGNHMGNFNH RVFWGVHUGVFVH"
 ];
-var UNICODE_TO_CP437 = {
-  " ": 32,
-  "!": 33,
-  '"': 34,
-  "#": 35,
-  "$": 36,
-  "%": 37,
-  "&": 38,
-  "'": 39,
-  "(": 40,
-  ")": 41,
-  "*": 42,
-  "+": 43,
-  ",": 44,
-  "-": 45,
-  ".": 46,
-  "/": 47,
-  "0": 48,
-  "1": 49,
-  "2": 50,
-  "3": 51,
-  "4": 52,
-  "5": 53,
-  "6": 54,
-  "7": 55,
-  "8": 56,
-  "9": 57,
-  ":": 58,
-  ";": 59,
-  "<": 60,
-  "=": 61,
-  ">": 62,
-  "?": 63,
-  "@": 64,
-  "A": 65,
-  "B": 66,
-  "C": 67,
-  "D": 68,
-  "E": 69,
-  "F": 70,
-  "G": 71,
-  "H": 72,
-  "I": 73,
-  "J": 74,
-  "K": 75,
-  "L": 76,
-  "M": 77,
-  "N": 78,
-  "O": 79,
-  "P": 80,
-  "Q": 81,
-  "R": 82,
-  "S": 83,
-  "T": 84,
-  "U": 85,
-  "V": 86,
-  "W": 87,
-  "X": 88,
-  "Y": 89,
-  "Z": 90,
-  "[": 91,
-  "\\": 92,
-  "]": 93,
-  "^": 94,
-  "_": 95,
-  "`": 96,
-  "a": 97,
-  "b": 98,
-  "c": 99,
-  "d": 100,
-  "e": 101,
-  "f": 102,
-  "g": 103,
-  "h": 104,
-  "i": 105,
-  "j": 106,
-  "k": 107,
-  "l": 108,
-  "m": 109,
-  "n": 110,
-  "o": 111,
-  "p": 112,
-  "q": 113,
-  "r": 114,
-  "s": 115,
-  "t": 116,
-  "u": 117,
-  "v": 118,
-  "w": 119,
-  "x": 120,
-  "y": 121,
-  "z": 122,
-  "{": 123,
-  "|": 124,
-  "}": 125,
-  "~": 126,
-  "\xC7": 128,
-  "\xFC": 129,
-  "\xE9": 130,
-  "\xE2": 131,
-  "\xE4": 132,
-  "\xE0": 133,
-  "\xE5": 134,
-  "\xE7": 135,
-  "\xEA": 136,
-  "\xEB": 137,
-  "\xE8": 138,
-  "\xEF": 139,
-  "\xEE": 140,
-  "\xEC": 141,
-  "\xC4": 142,
-  "\xC5": 143,
-  "\xC9": 144,
-  "\xE6": 145,
-  "\xC6": 146,
-  "\xF4": 147,
-  "\xF6": 148,
-  "\xF2": 149,
-  "\xFB": 150,
-  "\xF9": 151,
-  "\xFF": 152,
-  "\xD6": 153,
-  "\xDC": 154,
-  "\xA2": 155,
-  "\xA3": 156,
-  "\xA5": 157,
-  "\u20A7": 158,
-  "\u0192": 159,
-  "\xE1": 160,
-  "\xED": 161,
-  "\xF3": 162,
-  "\xFA": 163,
-  "\xF1": 164,
-  "\xD1": 165,
-  "\xAA": 166,
-  "\xBA": 167,
-  "\xBF": 168,
-  "\u2310": 169,
-  "\xAC": 170,
-  "\xBD": 171,
-  "\xBC": 172,
-  "\xA1": 173,
-  "\xAB": 174,
-  "\xBB": 175,
-  "\u2591": 176,
-  "\u2592": 177,
-  "\u2593": 178,
-  "\u2502": 179,
-  "\u2524": 180,
-  "\u2561": 181,
-  "\u2562": 182,
-  "\u2556": 183,
-  "\u2555": 184,
-  "\u2563": 185,
-  "\u2551": 186,
-  "\u2557": 187,
-  "\u255D": 188,
-  "\u255C": 189,
-  "\u255B": 190,
-  "\u2510": 191,
-  "\u2514": 192,
-  "\u2534": 193,
-  "\u252C": 194,
-  "\u251C": 195,
-  "\u2500": 196,
-  "\u253C": 197,
-  "\u255E": 198,
-  "\u255F": 199,
-  "\u255A": 200,
-  "\u2554": 201,
-  "\u2569": 202,
-  "\u2566": 203,
-  "\u2560": 204,
-  "\u2550": 205,
-  "\u256C": 206,
-  "\u2567": 207,
-  "\u2568": 208,
-  "\u2564": 209,
-  "\u2565": 210,
-  "\u2559": 211,
-  "\u2558": 212,
-  "\u2552": 213,
-  "\u2553": 214,
-  "\u256B": 215,
-  "\u256A": 216,
-  "\u2518": 217,
-  "\u250C": 218,
-  "\u2588": 219,
-  "\u2584": 220,
-  "\u258C": 221,
-  "\u2590": 222,
-  "\u2580": 223,
-  "\u03B1": 224,
-  "\xDF": 225,
-  "\u0393": 226,
-  "\u03C0": 227,
-  "\u03A3": 228,
-  "\u03C3": 229,
-  "\xB5": 230,
-  "\u03BC": 230,
-  "\u03C4": 231,
-  "\u03A6": 232,
-  "\u0398": 233,
-  "\u03A9": 234,
-  "\u2126": 234,
-  "\u03B4": 235,
-  "\u221E": 236,
-  "\u03C6": 237,
-  "\u03B5": 238,
-  "\u2229": 239,
-  "\u2261": 240,
-  "\xB1": 241,
-  "\u2265": 242,
-  "\u2264": 243,
-  "\u2320": 244,
-  "\u2321": 245,
-  "\xF7": 246,
-  "\u2248": 247,
-  "\xB0": 248,
-  "\u2219": 249,
-  "\xB7": 250,
-  "\u221A": 251,
-  "\u207F": 252,
-  "\xB2": 253,
-  "\u25A0": 254
+var UNICODE_EXTRA_GLYPHS = {
+  937: "F^J[O[OWMVKTJQJLKIMGPFTFWGYIZLZQYTWVUWU[Z[",
+  // Ω
+  956: "H^MMMb RWXXZZ[ RMXNZP[T[VZWXWM",
+  // μ
+  8486: "F^J[O[OWMVKTJQJLKIMGPFTFWGYIZLZQYTWVUWU[Z[",
+  // Ω
+  8730: "IbMTQSS[bB",
+  // √
+  8734: "E_TQVPXQYSXUVVTUPQNPLQKSLUNVPUTQ",
+  // ∞
+  8776: "E_JVKUNTQUSWVXYWZV RJPKONNQOSQVRYQZP",
+  // ≈
+  8804: "E_ZZJZ RZVJPZJ",
+  // ≤
+  8805: "E_JZZZ RJVZPJJ"
+  // ≥
+};
+var UNICODE_CODEPOINT_ALIASES = {
+  8486: 937
+  // Ω -> Ω
 };
 
 // src/kicad_stroke_font.ts
@@ -2452,33 +2248,43 @@ function decodeGlyph(encoded) {
   };
 }
 function getGlyph(charCode) {
-  const normalized = charCode >= CP437_MIN && charCode <= CP437_MAX ? charCode : CP437_QMARK;
-  const cached = glyphCache.get(normalized);
+  const cached = glyphCache.get(charCode);
   if (cached) {
     return cached;
   }
-  const index = normalized - CP437_MIN;
   const qmarkIndex = CP437_QMARK - CP437_MIN;
-  const encoded = KICAD_STROKE_GLYPHS_32_255[index] ?? KICAD_STROKE_GLYPHS_32_255[qmarkIndex];
+  let encoded;
+  if (charCode >= CP437_MIN && charCode <= CP437_MAX) {
+    encoded = KICAD_STROKE_GLYPHS_32_255[charCode - CP437_MIN];
+  } else {
+    encoded = UNICODE_EXTRA_GLYPHS[charCode];
+  }
+  encoded ??= KICAD_STROKE_GLYPHS_32_255[qmarkIndex];
   const glyph = decodeGlyph(encoded);
-  glyphCache.set(normalized, glyph);
+  glyphCache.set(charCode, glyph);
   return glyph;
 }
 function glyphCodeForChar(ch) {
-  const mapped = UNICODE_TO_CP437[ch];
-  if (mapped !== void 0) {
-    return mapped;
-  }
-  const normalized = ch.normalize("NFKC");
-  const normalizedMapped = UNICODE_TO_CP437[normalized];
-  if (normalizedMapped !== void 0) {
-    return normalizedMapped;
-  }
   const code = ch.codePointAt(0);
-  if (code !== void 0 && code >= 0 && code <= CP437_MAX) {
+  if (code === void 0) {
+    return CP437_QMARK;
+  }
+  const aliased = UNICODE_CODEPOINT_ALIASES[code];
+  if (aliased !== void 0) {
+    return aliased;
+  }
+  if (code >= CP437_MIN && code <= CP437_MAX) {
     return code;
   }
-  return CP437_QMARK;
+  const normalized = ch.normalize("NFKC");
+  if (normalized.length === 1) {
+    const normalizedCode = normalized.codePointAt(0);
+    if (normalizedCode !== void 0) {
+      const normalizedAliased = UNICODE_CODEPOINT_ALIASES[normalizedCode];
+      return normalizedAliased ?? normalizedCode;
+    }
+  }
+  return code;
 }
 function layoutKicadStrokeText(text, charWidth, charHeight) {
   const cacheKey = `${text}|${charWidth}|${charHeight}`;

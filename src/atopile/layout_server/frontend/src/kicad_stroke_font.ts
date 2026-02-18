@@ -1,5 +1,9 @@
 import { Vec2 } from "./math";
-import { KICAD_STROKE_GLYPHS_32_255, UNICODE_TO_CP437 } from "./kicad_stroke_font_data";
+import {
+    KICAD_STROKE_GLYPHS_32_255,
+    UNICODE_CODEPOINT_ALIASES,
+    UNICODE_EXTRA_GLYPHS,
+} from "./kicad_stroke_font_data";
 
 const CP437_MIN = 32;
 const CP437_MAX = 255;
@@ -75,37 +79,51 @@ function decodeGlyph(encoded: string): Glyph {
 }
 
 function getGlyph(charCode: number): Glyph {
-    const normalized = charCode >= CP437_MIN && charCode <= CP437_MAX ? charCode : CP437_QMARK;
-    const cached = glyphCache.get(normalized);
+    const cached = glyphCache.get(charCode);
     if (cached) {
         return cached;
     }
 
-    const index = normalized - CP437_MIN;
     const qmarkIndex = CP437_QMARK - CP437_MIN;
-    const encoded = KICAD_STROKE_GLYPHS_32_255[index] ?? KICAD_STROKE_GLYPHS_32_255[qmarkIndex]!;
+    let encoded: string | undefined;
+
+    if (charCode >= CP437_MIN && charCode <= CP437_MAX) {
+        encoded = KICAD_STROKE_GLYPHS_32_255[charCode - CP437_MIN];
+    } else {
+        encoded = UNICODE_EXTRA_GLYPHS[charCode];
+    }
+    encoded ??= KICAD_STROKE_GLYPHS_32_255[qmarkIndex]!;
+
     const glyph = decodeGlyph(encoded);
-    glyphCache.set(normalized, glyph);
+    glyphCache.set(charCode, glyph);
     return glyph;
 }
 
 function glyphCodeForChar(ch: string): number {
-    const mapped = UNICODE_TO_CP437[ch];
-    if (mapped !== undefined) {
-        return mapped;
+    const code = ch.codePointAt(0);
+    if (code === undefined) {
+        return CP437_QMARK;
+    }
+
+    const aliased = UNICODE_CODEPOINT_ALIASES[code];
+    if (aliased !== undefined) {
+        return aliased;
+    }
+
+    if (code >= CP437_MIN && code <= CP437_MAX) {
+        return code;
     }
 
     const normalized = ch.normalize("NFKC");
-    const normalizedMapped = UNICODE_TO_CP437[normalized];
-    if (normalizedMapped !== undefined) {
-        return normalizedMapped;
+    if (normalized.length === 1) {
+        const normalizedCode = normalized.codePointAt(0);
+        if (normalizedCode !== undefined) {
+            const normalizedAliased = UNICODE_CODEPOINT_ALIASES[normalizedCode];
+            return normalizedAliased ?? normalizedCode;
+        }
     }
 
-    const code = ch.codePointAt(0);
-    if (code !== undefined && code >= 0 && code <= CP437_MAX) {
-        return code;
-    }
-    return CP437_QMARK;
+    return code;
 }
 
 export function layoutKicadStrokeText(text: string, charWidth: number, charHeight: number): StrokeTextLayout {
