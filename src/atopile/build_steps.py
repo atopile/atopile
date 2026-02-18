@@ -188,7 +188,6 @@ class MusterTarget:
         import time
 
         from atopile.dataclasses import Build, BuildStage, BuildStatus, StageStatus
-        from atopile.logging import AtoLogger
         from atopile.model.sqlite import BuildHistory
 
         ctx.stage = self.name
