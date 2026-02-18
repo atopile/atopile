@@ -1,13 +1,9 @@
 import { Vec2 } from "./math";
-import {
-    KICAD_STROKE_GLYPHS_32_255,
-    UNICODE_CODEPOINT_ALIASES,
-    UNICODE_EXTRA_GLYPHS,
-} from "./kicad_stroke_font_data";
+import { glyph_data as NEWSTROKE_GLYPH_DATA, shared_glyphs as NEWSTROKE_SHARED_GLYPHS } from "./kicad_newstroke_glyphs";
 
-const CP437_MIN = 32;
-const CP437_MAX = 255;
-const CP437_QMARK = 63;
+const SPACE_CHAR_CODE = " ".charCodeAt(0);
+const QMARK_GLYPH_INDEX = "?".charCodeAt(0) - SPACE_CHAR_CODE;
+const PRELOAD_GLYPH_COUNT = 256;
 const REF_CHAR_CODE = "R".charCodeAt(0);
 const FONT_SCALE = 1 / 21;
 const FONT_OFFSET = -10;
@@ -31,6 +27,7 @@ export type StrokeTextLayout = {
 
 const glyphCache = new Map<number, Glyph>();
 const layoutCache = new Map<string, StrokeTextLayout>();
+let hasPreloadedGlyphs = false;
 
 function decodeCoord(c: string): number {
     return c.charCodeAt(0) - REF_CHAR_CODE;
@@ -78,52 +75,72 @@ function decodeGlyph(encoded: string): Glyph {
     };
 }
 
-function getGlyph(charCode: number): Glyph {
-    const cached = glyphCache.get(charCode);
+function loadGlyph(glyphIndex: number): Glyph | null {
+    const data = NEWSTROKE_GLYPH_DATA[glyphIndex];
+    if (data === undefined) {
+        return null;
+    }
+
+    let encoded: string | undefined;
+    if (typeof data === "string") {
+        encoded = data;
+    } else if (typeof data === "number") {
+        encoded = NEWSTROKE_SHARED_GLYPHS[data];
+    }
+    if (encoded === undefined) {
+        return null;
+    }
+
+    const glyph = decodeGlyph(encoded);
+    glyphCache.set(glyphIndex, glyph);
+    // Match KiCanvas behavior: free source data once decoded.
+    NEWSTROKE_GLYPH_DATA[glyphIndex] = undefined;
+    return glyph;
+}
+
+function preloadGlyphs(): void {
+    if (hasPreloadedGlyphs) {
+        return;
+    }
+
+    const count = Math.min(PRELOAD_GLYPH_COUNT, NEWSTROKE_GLYPH_DATA.length);
+    for (let i = 0; i < count; i += 1) {
+        if (!glyphCache.has(i)) {
+            loadGlyph(i);
+        }
+    }
+
+    hasPreloadedGlyphs = true;
+}
+
+function getGlyphByIndex(glyphIndex: number): Glyph {
+    preloadGlyphs();
+
+    if (glyphIndex < 0 || glyphIndex >= NEWSTROKE_GLYPH_DATA.length) {
+        return getGlyphByIndex(QMARK_GLYPH_INDEX);
+    }
+
+    const cached = glyphCache.get(glyphIndex);
     if (cached) {
         return cached;
     }
 
-    const qmarkIndex = CP437_QMARK - CP437_MIN;
-    let encoded: string | undefined;
-
-    if (charCode >= CP437_MIN && charCode <= CP437_MAX) {
-        encoded = KICAD_STROKE_GLYPHS_32_255[charCode - CP437_MIN];
-    } else {
-        encoded = UNICODE_EXTRA_GLYPHS[charCode];
+    const loaded = loadGlyph(glyphIndex);
+    if (loaded) {
+        return loaded;
     }
-    encoded ??= KICAD_STROKE_GLYPHS_32_255[qmarkIndex]!;
 
-    const glyph = decodeGlyph(encoded);
-    glyphCache.set(charCode, glyph);
-    return glyph;
+    if (glyphIndex !== QMARK_GLYPH_INDEX) {
+        return getGlyphByIndex(QMARK_GLYPH_INDEX);
+    }
+
+    // Ultimate fallback if '?' glyph cannot be loaded for any reason.
+    return decodeGlyph("JZ");
 }
 
-function glyphCodeForChar(ch: string): number {
-    const code = ch.codePointAt(0);
-    if (code === undefined) {
-        return CP437_QMARK;
-    }
-
-    const aliased = UNICODE_CODEPOINT_ALIASES[code];
-    if (aliased !== undefined) {
-        return aliased;
-    }
-
-    if (code >= CP437_MIN && code <= CP437_MAX) {
-        return code;
-    }
-
-    const normalized = ch.normalize("NFKC");
-    if (normalized.length === 1) {
-        const normalizedCode = normalized.codePointAt(0);
-        if (normalizedCode !== undefined) {
-            const normalizedAliased = UNICODE_CODEPOINT_ALIASES[normalizedCode];
-            return normalizedAliased ?? normalizedCode;
-        }
-    }
-
-    return code;
+function getGlyphForChar(ch: string): Glyph {
+    const glyphIndex = ch.charCodeAt(0) - SPACE_CHAR_CODE;
+    return getGlyphByIndex(glyphIndex);
 }
 
 export function layoutKicadStrokeText(text: string, charWidth: number, charHeight: number): StrokeTextLayout {
@@ -163,7 +180,7 @@ export function layoutKicadStrokeText(text: string, charWidth: number, charHeigh
             continue;
         }
 
-        const glyph = getGlyph(glyphCodeForChar(ch));
+        const glyph = getGlyphForChar(ch);
         for (const stroke of glyph.strokes) {
             if (stroke.length === 0) {
                 continue;
