@@ -251,6 +251,44 @@ def get_build_outputs(project_root: str, target: str) -> BuildOutputs:
     return outputs
 
 
+def get_file_sizes(outputs: BuildOutputs) -> dict[str, int]:
+    """Return a map of output field name → file size in bytes for available outputs."""
+    sizes: dict[str, int] = {}
+    fields = [
+        "gerbers",
+        "bom_json",
+        "bom_csv",
+        "pick_and_place",
+        "step",
+        "glb",
+        "kicad_pcb",
+        "kicad_sch",
+        "pcb_summary",
+        "svg",
+        "dxf",
+        "png",
+        "testpoints",
+        "variables_report",
+        "power_tree",
+    ]
+    for field_name in fields:
+        path_str = getattr(outputs, field_name, None)
+        if path_str:
+            p = Path(path_str)
+            if p.exists():
+                sizes[field_name] = p.stat().st_size
+    # Datasheets: sum all files
+    if outputs.datasheets:
+        total = 0
+        for ds in outputs.datasheets:
+            p = Path(ds)
+            if p.exists():
+                total += p.stat().st_size
+        if total > 0:
+            sizes["datasheets"] = total
+    return sizes
+
+
 def estimate_cost(
     project_root: str,
     targets: list[str],
@@ -554,21 +592,25 @@ def get_review_comments(project_root: str, target: str) -> list[dict]:
 
 def add_review_comment(project_root: str, target: str, page_id: str, text: str) -> dict:
     """
-    Add a review comment for a build target.
+    Set the review comment for a page (one comment per page, replaces existing).
 
-    Returns the newly created comment dict.
+    Returns the comment dict.  If text is empty, removes the comment for that page.
     """
     comments_path = _review_comments_path(project_root, target)
     comments_path.parent.mkdir(parents=True, exist_ok=True)
 
     existing = get_review_comments(project_root, target)
+    # Remove any existing comment for this page
+    existing = [c for c in existing if c.get("pageId") != page_id]
 
     comment = {
         "pageId": page_id,
         "text": text,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    existing.append(comment)
+    # Only persist if text is non-empty
+    if text.strip():
+        existing.append(comment)
 
     comments_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     return comment
