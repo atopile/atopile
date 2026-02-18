@@ -167,7 +167,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     annotations.push(
       { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
       { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
-      { x: 0.98, y: req.actual, xref: 'paper', yref: 'y', text: `${formatEng(req.actual, req.unit)}`, showarrow: false, font: { size: 10, color: req.passed ? colors.success : colors.error }, xanchor: 'right', yanchor: 'bottom' },
+      { x: 0.98, y: req.actual ?? 0, xref: 'paper', yref: 'y', text: `${formatEng(req.actual ?? NaN, req.unit)}`, showarrow: false, font: { size: 10, color: req.passed ? colors.success : colors.error }, xanchor: 'right', yanchor: 'bottom' },
     );
     const span = req.maxVal - req.minVal;
     const pad = span * 0.5;
@@ -187,14 +187,15 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       { type: 'line', xref: 'x', yref: 'paper', x0: req.minVal * scale, x1: req.minVal * scale, y0: 0, y1: 1, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
       { type: 'line', xref: 'x', yref: 'paper', x0: req.maxVal * scale, x1: req.maxVal * scale, y0: 0, y1: 1, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
     );
+    const actualSettling = req.actual ?? 0;
     shapes.push({
       type: 'line', xref: 'x', yref: 'paper',
-      x0: req.actual * scale, x1: req.actual * scale, y0: 0, y1: 1,
+      x0: actualSettling * scale, x1: actualSettling * scale, y0: 0, y1: 1,
       line: { color: req.passed ? colors.success : colors.error, width: 2, dash: 'dash' },
     });
     annotations.push({
-      x: req.actual * scale, y: 0.9, xref: 'x', yref: 'paper',
-      text: `Settled @ ${formatEng(req.actual, 's')}`,
+      x: actualSettling * scale, y: 0.9, xref: 'x', yref: 'paper',
+      text: `Settled @ ${formatEng(actualSettling, 's')}`,
       showarrow: false, font: { size: 10, color: req.passed ? colors.success : colors.error },
       textangle: -90, xanchor: 'left', xshift: 6,
     });
@@ -211,7 +212,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     );
     annotations.push({
       x: 0.95, y: (peak + trough) / 2, xref: 'paper', yref: 'y',
-      text: `P-P: ${formatEng(req.actual, req.unit)}`,
+      text: `P-P: ${formatEng(req.actual ?? NaN, req.unit)}`,
       showarrow: false, font: { size: 11, color: colors.text },
       bgcolor: 'rgba(0,0,0,0.6)', borderpad: 3,
     });
@@ -239,7 +240,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     annotations.push(
       { x: 0.02, y: final, xref: 'paper', yref: 'y', text: `Final ${formatEng(final, 'V')}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
       { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
-      { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${req.actual.toFixed(2)}%`, showarrow: true, ay: -25, arrowcolor: colors.error, arrowwidth: 1.5, font: { size: 11, color: colors.error } },
+      { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${(req.actual ?? 0).toFixed(2)}%`, showarrow: true, ay: -25, arrowcolor: colors.error, arrowwidth: 1.5, font: { size: 11, color: colors.error } },
     );
     const visibleTop = Math.max(peak, maxOsV);
     const span = visibleTop - final;
@@ -295,7 +296,7 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData) {
     annotations: [
       { x: req.minVal, y: 1.05, xref: 'x', yref: 'paper', text: 'LSL', showarrow: false, font: { size: 9, color: colors.muted } },
       { x: req.maxVal, y: 1.05, xref: 'x', yref: 'paper', text: 'USL', showarrow: false, font: { size: 9, color: colors.muted } },
-      { x: req.actual, y: -0.15, xref: 'x', yref: 'paper', text: formatEng(req.actual, req.unit), showarrow: false, font: { size: 11, color: req.passed ? colors.success : colors.error } },
+      { x: req.actual ?? 0, y: -0.15, xref: 'x', yref: 'paper', text: formatEng(req.actual ?? NaN, req.unit), showarrow: false, font: { size: 11, color: req.passed ? colors.success : colors.error } },
     ],
   };
 

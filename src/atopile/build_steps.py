@@ -652,6 +652,72 @@ def _signal_unit(key: str) -> str:
     return "A" if key.startswith("i(") else "V"
 
 
+# ---------------------------------------------------------------------------
+# LTTB (Largest-Triangle-Three-Buckets) downsampling
+# ---------------------------------------------------------------------------
+_MAX_POINTS = 2000  # Visual fidelity limit — no chart is wider than ~2000px
+
+
+def _lttb_downsample(
+    x: list[float], ys: dict[str, list[float]], target: int
+) -> tuple[list[float], dict[str, list[float]]]:
+    """Downsample time-series using LTTB on the *primary* signal (first in ys).
+
+    All signals share the same index selection so they stay aligned.
+    Returns new (x, ys) with at most *target* points.
+    """
+    n = len(x)
+    if n <= target:
+        return x, ys
+
+    keys = list(ys.keys())
+    primary = ys[keys[0]]  # downsample decision based on primary signal
+
+    # Always keep first and last point
+    indices = [0]
+    bucket_size = (n - 2) / (target - 2)
+
+    a_idx = 0
+    for i in range(1, target - 1):
+        # Next bucket boundaries
+        b_start = int((i) * bucket_size) + 1
+        b_end = int((i + 1) * bucket_size) + 1
+        b_end = min(b_end, n)
+
+        # Average of the *next* bucket (look-ahead)
+        c_start = int((i + 1) * bucket_size) + 1
+        c_end = int((i + 2) * bucket_size) + 1
+        c_end = min(c_end, n)
+        if c_start >= n:
+            c_start = n - 1
+        if c_end > n:
+            c_end = n
+        avg_x = sum(x[c_start:c_end]) / max(c_end - c_start, 1)
+        avg_y = sum(primary[c_start:c_end]) / max(c_end - c_start, 1)
+
+        # Pick point in current bucket that maximises triangle area
+        best_idx = b_start
+        max_area = -1.0
+        pa_x = x[a_idx]
+        pa_y = primary[a_idx]
+        for j in range(b_start, b_end):
+            area = abs(
+                (x[j] - pa_x) * (avg_y - pa_y) - (avg_x - pa_x) * (primary[j] - pa_y)
+            )
+            if area > max_area:
+                max_area = area
+                best_idx = j
+
+        indices.append(best_idx)
+        a_idx = best_idx
+
+    indices.append(n - 1)
+
+    new_x = [x[i] for i in indices]
+    new_ys = {k: [v[i] for i in indices] for k, v in ys.items()}
+    return new_x, new_ys
+
+
 def _write_requirements_json(
     results, tran_data, group_key_fn, ac_data=None, ac_group_key_fn=None
 ) -> None:
@@ -744,8 +810,13 @@ def _write_requirements_json(
                     if sk in td.signals:
                         signals[sk] = list(td.signals[sk])
 
+                time_list = list(td.time)
+                time_list, signals = _lttb_downsample(
+                    time_list, signals, _MAX_POINTS
+                )
+
                 entry["timeSeries"] = {
-                    "time": list(td.time),
+                    "time": time_list,
                     "signals": signals,
                 }
 
@@ -762,10 +833,15 @@ def _write_requirements_json(
                 else:
                     gain = ad.gain_db(sig_key)
                     phase = ad.phase_deg(sig_key)
+                freq_list = list(ad.freq)
+                freq_signals = {"gain_db": gain, "phase_deg": phase}
+                freq_list, freq_signals = _lttb_downsample(
+                    freq_list, freq_signals, _MAX_POINTS
+                )
                 entry["frequencySeries"] = {
-                    "freq": list(ad.freq),
-                    "gain_db": gain,
-                    "phase_deg": phase,
+                    "freq": freq_list,
+                    "gain_db": freq_signals["gain_db"],
+                    "phase_deg": freq_signals["phase_deg"],
                 }
 
         reqs_json.append(entry)

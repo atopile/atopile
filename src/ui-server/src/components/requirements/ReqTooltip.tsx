@@ -8,7 +8,7 @@ interface ReqTooltipProps {
 
 export function ReqTooltip({ req, rect }: ReqTooltipProps) {
   if (!req || !rect) return null;
-  const margin = computeMargin(req.actual, req.minVal, req.maxVal);
+  const margin = computeMargin(req.actual ?? NaN, req.minVal, req.maxVal);
   const level = marginLevel(margin);
   const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : 'Transient';
   const measLabel = req.measurement.replace(/_/g, ' ');
@@ -27,7 +27,7 @@ export function ReqTooltip({ req, rect }: ReqTooltipProps) {
       </div>
       <div className="req-tooltip-row">
         <span className="tt-label">Actual</span>
-        <span className="tt-value">{formatEng(req.actual, req.unit)}</span>
+        <span className="tt-value">{req.actual !== null ? formatEng(req.actual, req.unit) : 'N/A'}</span>
       </div>
       <div className="req-tooltip-row">
         <span className="tt-label">Margin</span>

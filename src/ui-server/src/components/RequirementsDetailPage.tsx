@@ -103,7 +103,8 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
     );
   }
 
-  const margin = computeMargin(req.actual, req.minVal, req.maxVal);
+  const actualVal = req.actual ?? NaN;
+  const margin = computeMargin(actualVal, req.minVal, req.maxVal);
   const level = marginLevel(margin);
   const measLabel = req.measurement.replace(/_/g, ' ');
   const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : req.capture === 'ac' ? 'AC Analysis' : 'Transient';
@@ -128,7 +129,7 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
               <div className="ric-actual-row">
                 <span className="ric-label">Actual</span>
                 <span className={`ric-actual-value ${req.passed ? 'pass' : 'fail'}`}>
-                  {formatEng(req.actual, req.unit)}
+                  {req.actual !== null ? formatEng(req.actual, req.unit) : 'N/A'}
                 </span>
               </div>
               <div className="ric-row">

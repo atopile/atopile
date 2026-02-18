@@ -30,7 +30,7 @@ export const RequirementItem = memo(function RequirementItem({
         <div className="req-item-bounds">
           <span className="lsl">{formatEng(req.minVal, req.unit)}</span>
           <span className={`actual ${req.passed ? 'pass' : 'fail'}`}>
-            {formatEng(req.actual, req.unit)}
+            {req.actual !== null ? formatEng(req.actual, req.unit) : 'N/A'}
           </span>
           <span className="usl">{formatEng(req.maxVal, req.unit)}</span>
         </div>

@@ -29,7 +29,8 @@
 *   - UVLO: 4.3V rising threshold
 *   - EN threshold: 1.2V typical (1.1V min, 1.3V max)
 *   - Slope compensation: ~63mV/us
-*   - Current sense via RDSon, gain ~150mV/A
+*   - OCP: ~7A peak (cycle-by-cycle, set by COMP upper clamp)
+*   - Current sense via RDSon, gain ~140mV/A
 *   - Minimum on-time: 135ns typical
 *   - External catch diode required (included here for convenience)
 *
@@ -59,18 +60,20 @@ R_comp_bias COMP GND 28.57Meg
 * Prevents COMP from going below the Eco-mode threshold region
 B_comp_lo GND COMP I = (V(COMP,GND) < 0.6) ? (0.6 - V(COMP,GND)) / 1k : 0
 *
-* COMP to PWM comparator input, clamped 0.6V to 2.0V
-* Upper rail (2.0V) sets the peak current limit ceiling
-B_comp_cl comp_cl GND V = min(max(V(COMP,GND), 0.6), 2.0)
+* COMP to PWM comparator input, clamped 0.6V to 1.05V
+* Upper rail sets peak current limit: (1.05 - slope_comp) / 0.14 ≈ 7.2A
+* This matches datasheet OCP range of 6.3-8.8A
+B_comp_cl comp_cl GND V = min(max(V(COMP,GND), 0.6), 1.05)
 *
 * =====================================================================
 * CURRENT SENSE (via high-side FET RDSon)
 * =====================================================================
 * When FET ON: V(VIN,SW) = IL * RDSon (small, typically < 1V)
 * When FET OFF: V(VIN,SW) >> 5V (catch diode pulls SW below GND)
-* Sense gain: 150mV/A → at 6A OCP threshold, sense = 900mV
+* Sense gain: 140mV/A → OCP at ~7.2A (comp_cl = 1.05V)
+* Normal 5A avg (6.1A peak): sense = 0.854V, COMP ≈ 0.9V
 * Leading-edge blanking: not explicitly modeled (small effect)
-B_isense isense GND V = (V(VIN,SW) < 2) ? max(V(VIN,SW) / 0.092, 0) * 0.15 : 0
+B_isense isense GND V = (V(VIN,SW) < 2) ? max(V(VIN,SW) / 0.092, 0) * 0.14 : 0
 C_isense isense GND 1p
 *
 * =====================================================================
@@ -78,8 +81,9 @@ C_isense isense GND 1p
 * =====================================================================
 * Prevents sub-harmonic oscillation at duty cycles > 50%.
 * Ramp resets each switching cycle. Peak voltage at 600kHz:
-* 63mV/us * (0.99 / 600kHz) = ~104mV
-V_slope slope_ramp GND PULSE(0 {63m*0.99/FS} 0 {0.99/FS} 5n 1n {1/FS})
+* 63mV/us * (0.99/600kHz) = ~104mV
+* 63mV/us = 63e3 V/s, so V_peak = 63e3 * 0.99/FS
+V_slope slope_ramp GND PULSE(0 {63k*0.99/FS} 0 {0.99/FS} 5n 1n {1/FS})
 *
 * Sum of sensed current + slope compensation
 B_sum sense_sum GND V = V(isense,GND) + V(slope_ramp,GND)
