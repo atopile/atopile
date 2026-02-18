@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -50,6 +50,16 @@ class DrillModel(BaseModel):
     shape: str | None = None
     size_x: float | None = None
     size_y: float | None = None
+    offset_x: float | None = None
+    offset_y: float | None = None
+
+
+class HoleModel(BaseModel):
+    shape: str | None = None
+    size_x: float
+    size_y: float
+    offset: Point2 | None = None
+    plated: bool | None = None
 
 
 class PadModel(BaseModel):
@@ -62,6 +72,7 @@ class PadModel(BaseModel):
     net: int = 0
     roundrect_rratio: float | None = None
     drill: DrillModel | None = None
+    hole: HoleModel | None = None
 
 
 class DrawingModel(BaseModel):
@@ -83,7 +94,20 @@ class TextModel(BaseModel):
     size: Size2 | None = None
     thickness: float | None = None
     justify: list[str] | None = None
-    font: Literal["stroke", "canvas"] | None = None
+
+
+class PadNameAnnotationModel(BaseModel):
+    pad_index: int
+    pad: str
+    text: str
+    layer: str
+
+
+class PadNumberAnnotationModel(BaseModel):
+    pad_index: int
+    pad: str
+    text: str
+    layer: str
 
 
 class FootprintModel(BaseModel):
@@ -96,6 +120,8 @@ class FootprintModel(BaseModel):
     pads: list[PadModel]
     drawings: list[DrawingModel]
     texts: list[TextModel]
+    pad_names: list[PadNameAnnotationModel]
+    pad_numbers: list[PadNumberAnnotationModel]
 
 
 # --- Tracks / Vias ---
@@ -124,6 +150,7 @@ class ViaModel(BaseModel):
     at: Point2
     size: float
     drill: float
+    hole: HoleModel | None = None
     layers: list[str]
     net: int = 0
     uuid: str | None = None

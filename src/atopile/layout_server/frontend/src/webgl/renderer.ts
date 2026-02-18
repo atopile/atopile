@@ -161,7 +161,8 @@ export class Renderer {
     private polygonShader!: ShaderProgram;
     private pointShader!: ShaderProgram;
     private activeLayer: RenderLayer | null = null;
-    private nextDepth = 0.01;
+    private static readonly DEPTH_STEP = 0.0001;
+    private nextDepth = Renderer.DEPTH_STEP;
     private gridVao: VertexArray | null = null;
     private gridPosBuf: Buffer | null = null;
     private gridVertexCount = 0;
@@ -210,12 +211,12 @@ export class Renderer {
     dispose_layers() {
         for (const layer of this.layers) layer.dispose();
         this.layers = [];
-        this.nextDepth = 0.01;
+        this.nextDepth = Renderer.DEPTH_STEP;
     }
 
     start_layer(name: string): RenderLayer {
         const layer = new RenderLayer(this.gl, name, this.nextDepth);
-        this.nextDepth += 0.01;
+        this.nextDepth = Math.min(0.9999, this.nextDepth + Renderer.DEPTH_STEP);
         this.activeLayer = layer;
         return layer;
     }

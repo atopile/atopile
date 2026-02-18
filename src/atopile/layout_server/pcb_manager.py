@@ -16,8 +16,11 @@ from atopile.layout_server.models import (
     FilledPolygonModel,
     FootprintModel,
     FootprintSummary,
+    HoleModel,
     NetModel,
     PadModel,
+    PadNameAnnotationModel,
+    PadNumberAnnotationModel,
     Point2,
     Point3,
     RenderModel,
@@ -401,6 +404,7 @@ class PcbManager:
                     net=pad.net.number if pad.net else 0,
                     roundrect_rratio=pad.roundrect_rratio,
                     drill=(self._extract_drill(pad.drill) if pad.drill else None),
+                    hole=self._extract_pad_hole(pad),
                 )
             )
 
@@ -471,9 +475,10 @@ class PcbManager:
             )
 
         texts = self._extract_text_entries(fp, ref, value)
-        texts.extend(
-            self._extract_virtual_pad_net_texts_for_footprint(fp, net_names_by_number)
+        pad_names = self._extract_pad_name_annotations_for_footprint(
+            fp, net_names_by_number
         )
+        pad_numbers = self._extract_pad_number_annotations_for_footprint(fp)
 
         return FootprintModel(
             uuid=fp.uuid,
@@ -485,6 +490,8 @@ class PcbManager:
             pads=pads,
             drawings=drawings,
             texts=texts,
+            pad_names=pad_names,
+            pad_numbers=pad_numbers,
         )
 
     def _extract_global_drawings(self, pcb: kicad.pcb.KicadPcb) -> list[DrawingModel]:
@@ -741,18 +748,19 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(tb),
-            font="stroke",
         )
 
-    def _extract_virtual_pad_net_texts_for_footprint(
+    def _extract_pad_name_annotations_for_footprint(
         self, fp, net_names_by_number: dict[int, str]
-    ) -> list[TextModel]:
-        """Emit virtual annotation texts for pad net names for one footprint.
-
-        Emitted as footprint-local texts so they follow footprint transforms/moves.
-        """
-        out: list[TextModel] = []
-        for pad in fp.pads:
+    ) -> list[PadNameAnnotationModel]:
+        out: list[PadNameAnnotationModel] = []
+        for pad_index, pad in enumerate(fp.pads):
+            pad_name = (getattr(pad, "name", "") or "").strip()
+            if not pad_name:
+                continue
+            text_layer = _pad_net_text_layer(list(getattr(pad, "layers", []) or []))
+            if text_layer is None:
+                continue
             pad_net = getattr(pad, "net", None)
             if pad_net is None:
                 continue
@@ -764,33 +772,35 @@ class PcbManager:
                 net_name = (net_names_by_number.get(net_number) or "").strip()
             if not net_name:
                 continue
-
-            pad_w = float(getattr(pad.size, "w", 0.8) or 0.8)
-            pad_h = float(getattr(pad.size, "h", pad_w) or pad_w)
-            fitted = _fit_pad_net_text(net_name, pad_w, pad_h)
-            if fitted is None:
-                continue
-            display_text, metrics = fitted
-            char_w, char_h, thickness = metrics
-            total_pad_rotation = float(fp.at.r or 0) + float(pad.at.r or 0)
-            text_world_angle = _pad_net_text_rotation(total_pad_rotation, pad_w, pad_h)
-            text_local_angle = (text_world_angle - float(fp.at.r or 0)) % 360.0
-            text_layer = _pad_net_text_layer(pad.layers)
-            if text_layer is None:
-                continue
-
             out.append(
-                TextModel(
-                    text=display_text,
-                    at=Point3(x=float(pad.at.x), y=float(pad.at.y), r=text_local_angle),
+                PadNameAnnotationModel(
+                    pad_index=pad_index,
+                    pad=pad_name,
+                    text=net_name,
                     layer=text_layer,
-                    size=Size2(w=char_w, h=char_h),
-                    thickness=thickness,
-                    justify=["center"],
-                    font="canvas",
                 )
             )
+        return out
 
+    def _extract_pad_number_annotations_for_footprint(
+        self, fp
+    ) -> list[PadNumberAnnotationModel]:
+        out: list[PadNumberAnnotationModel] = []
+        for pad_index, pad in enumerate(fp.pads):
+            pad_name = (getattr(pad, "name", "") or "").strip()
+            if not pad_name:
+                continue
+            text_layer = _pad_number_text_layer(list(getattr(pad, "layers", []) or []))
+            if text_layer is None:
+                continue
+            out.append(
+                PadNumberAnnotationModel(
+                    pad_index=pad_index,
+                    pad=pad_name,
+                    text=pad_name,
+                    layer=text_layer,
+                )
+            )
         return out
 
     def _extract_table_cell_text(self, cell) -> TextModel:
@@ -816,7 +826,6 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(cell),
-            font="stroke",
         )
 
     def _extract_text_entries(
@@ -886,14 +895,55 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(obj),
-            font="stroke",
         )
 
     def _extract_drill(self, drill) -> DrillModel:
+        offset = getattr(drill, "offset", None)
         return DrillModel(
             shape=getattr(drill, "shape", None),
             size_x=(drill.size_x if hasattr(drill, "size_x") else None),
             size_y=(drill.size_y if hasattr(drill, "size_y") else None),
+            offset_x=(
+                float(offset.x) if offset is not None and hasattr(offset, "x") else None
+            ),
+            offset_y=(
+                float(offset.y) if offset is not None and hasattr(offset, "y") else None
+            ),
+        )
+
+    def _extract_pad_hole(self, pad) -> HoleModel | None:
+        drill = getattr(pad, "drill", None)
+        if drill is None:
+            return None
+        size_x = _safe_float(getattr(drill, "size_x", None))
+        size_y = _safe_float(getattr(drill, "size_y", None))
+        if size_x is None and size_y is None:
+            return None
+        if size_x is None:
+            size_x = size_y
+        if size_y is None:
+            size_y = size_x
+        if size_x is None or size_y is None or size_x <= 0 or size_y <= 0:
+            return None
+
+        offset_obj = getattr(drill, "offset", None)
+        offset: Point2 | None = None
+        ox = _safe_float(getattr(offset_obj, "x", None))
+        oy = _safe_float(getattr(offset_obj, "y", None))
+        if ox is not None or oy is not None:
+            offset = Point2(x=ox or 0.0, y=oy or 0.0)
+
+        plated = None
+        pad_type = str(getattr(pad, "type", "") or "")
+        if pad_type:
+            plated = pad_type != "np_thru_hole"
+
+        return HoleModel(
+            shape=_normalize_hole_shape(getattr(drill, "shape", None), size_x, size_y),
+            size_x=size_x,
+            size_y=size_y,
+            offset=offset,
+            plated=plated,
         )
 
     def _extract_segment(self, seg) -> TrackModel:
@@ -918,13 +968,26 @@ class PcbManager:
         )
 
     def _extract_via(self, via) -> ViaModel:
+        drill = _safe_float(getattr(via, "drill", None)) or 0.0
         return ViaModel(
             at=Point2(x=via.at.x, y=via.at.y),
             size=via.size,
-            drill=via.drill,
+            drill=drill,
+            hole=self._extract_via_hole(via, drill),
             layers=list(via.layers),
             net=via.net,
             uuid=via.uuid,
+        )
+
+    def _extract_via_hole(self, via, drill: float) -> HoleModel | None:
+        if drill <= 0:
+            return None
+        return HoleModel(
+            shape=_normalize_hole_shape(getattr(via, "drillshape", None), drill, drill),
+            size_x=drill,
+            size_y=drill,
+            offset=None,
+            plated=True,
         )
 
     def _extract_zones(self, pcb: kicad.pcb.KicadPcb) -> list[ZoneModel]:
@@ -1160,6 +1223,15 @@ def _pad_net_text_layer(pad_layers: list[str] | None) -> str | None:
     return None
 
 
+def _pad_number_text_layer(pad_layers: list[str] | None) -> str | None:
+    if not pad_layers:
+        return None
+    for layer in pad_layers:
+        if layer.endswith(".Cu"):
+            return layer[:-3] + ".PadNumbers"
+    return None
+
+
 def _pad_net_text_rotation(
     total_pad_rotation_deg: float, pad_w: float, pad_h: float
 ) -> float:
@@ -1202,6 +1274,25 @@ def _to_optional_bool(value) -> bool | None:
     if token in {"no", "false", "off", "disable", "disabled"}:
         return False
     return None
+
+
+def _safe_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_hole_shape(raw_shape, size_x: float, size_y: float) -> str:
+    token = str(raw_shape or "").strip().lower()
+    if token:
+        if token in {"oblong", "slot"}:
+            return "oval"
+        if token in {"circle", "oval"}:
+            return token
+    return "oval" if abs(size_x - size_y) > 1e-6 else "circle"
 
 
 def _text_layer_name(layer_obj) -> str | None:

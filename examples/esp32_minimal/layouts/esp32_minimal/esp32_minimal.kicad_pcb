@@ -3513,7 +3513,7 @@
 	(footprint "Samsung_Electro_Mechanics_CL05A105KA5NQNC:C0402"
 		(layer "F.Cu")
 		(uuid "c2075455-ec6c-4b03-a3e8-495c4642524b")
-		(at 136.79 121.22 180)
+		(at 136.8182922 121.22 180)
 		(property "Reference" "C1"
 			(at 0 -4 180)
 			(layer "F.SilkS")
@@ -4784,7 +4784,7 @@
 	(footprint "Samsung_Electro_Mechanics_CL21A226MQQNNNE:C0805"
 		(layer "F.Cu")
 		(uuid "e7e43041-2f98-4e82-a8ec-ce1a4642524b")
-		(at 139.09 119.62 90)
+		(at 139.09 119.5917078 90)
 		(property "Reference" "C9"
 			(at 0 -4 90)
 			(layer "F.SilkS")
@@ -5711,7 +5711,7 @@
 	(footprint "Espressif_Systems_ESP32_S3_WROOM_1_N8R8:WIRELM-SMD_ESP32-S3-WROOM-1"
 		(layer "F.Cu")
 		(uuid "fbf239b1-7307-4d12-bb27-80154642524b")
-		(at 151.85 127.45 0)
+		(at 151.8208462 127.4748432 0)
 		(property "Reference" "U2"
 			(at 0 -12.89 0)
 			(layer "F.SilkS")

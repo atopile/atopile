@@ -33,6 +33,7 @@ export const ZONE_COLOR_ALPHA = 0.25;
 
 export function getLayerColor(layer: string | null | undefined): Color {
     if (!layer) return [0.5, 0.5, 0.5, 0.5];
+    if (layer.endsWith(".PadNumbers")) return [1.0, 1.0, 1.0, 1.0];
     if (layer.endsWith(".Nets")) return [1.0, 1.0, 1.0, 1.0];
     return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
 }

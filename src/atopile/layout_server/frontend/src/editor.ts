@@ -9,10 +9,6 @@ import type { RenderModel } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
-const CANVAS_FONT_SCALE = 1.15;
-const CANVAS_LINE_PITCH = 1.2;
-const CANVAS_OPTICAL_OFFSET = 0.35;
-const CANVAS_MIN_ALPHA = 0.95;
 
 function expandLayerName(layerName: string, concreteLayers: Set<string>): string[] {
     if (!layerName) return [];
@@ -20,7 +16,10 @@ function expandLayerName(layerName: string, concreteLayers: Set<string>): string
         const suffixIdx = layerName.indexOf(".");
         const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
         const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
-        return expanded.length > 0 ? expanded : (suffix === ".Cu" ? ["F.Cu", "B.Cu"] : []);
+        if (expanded.length > 0) return expanded;
+        if (suffix === ".Cu") return ["F.Cu", "B.Cu"];
+        if (suffix === ".Nets" || suffix === ".PadNumbers") return [`F${suffix}`, `B${suffix}`];
+        return [];
     }
     if (layerName.includes("&")) {
         const dotIdx = layerName.indexOf(".");
@@ -348,6 +347,12 @@ export class Editor {
             for (const t of fp.texts) {
                 if (t.layer) layers.add(t.layer);
             }
+            for (const a of fp.pad_names) {
+                if (a.layer) layers.add(a.layer);
+            }
+            for (const a of fp.pad_numbers) {
+                if (a.layer) layers.add(a.layer);
+            }
         }
         for (const t of this.model.tracks) {
             if (t.layer) layers.add(t.layer);
@@ -361,6 +366,11 @@ export class Editor {
         const concreteLayers = new Set<string>(
             [...layers].filter(l => !l.includes("*") && !l.includes("&")),
         );
+        for (const layerName of [...layers]) {
+            for (const expanded of expandLayerName(layerName, concreteLayers)) {
+                layers.add(expanded);
+            }
+        }
         for (const z of this.model.zones) {
             for (const layerName of z.layers) {
                 for (const expanded of expandLayerName(layerName, concreteLayers)) {
@@ -418,20 +428,19 @@ export class Editor {
             if (!text.text.trim()) continue;
             const layerName = text.layer ?? "Dwgs.User";
             if (this.hiddenLayers.has(layerName)) continue;
-                this.drawOverlayText(
-                    text.text,
-                    layerName,
-                    text.at.x,
-                    text.at.y,
-                    text.at.r || 0,
-                    text.size?.w ?? text.size?.h ?? 1,
-                    text.size?.h ?? text.size?.w ?? 1,
-                    text.thickness,
-                    text.justify,
-                    text.font,
-                    width,
-                    height,
-                );
+            this.drawOverlayText(
+                text.text,
+                layerName,
+                text.at.x,
+                text.at.y,
+                text.at.r || 0,
+                text.size?.w ?? text.size?.h ?? 1,
+                text.size?.h ?? text.size?.w ?? 1,
+                text.thickness,
+                text.justify,
+                width,
+                height,
+            );
         }
         for (const fp of this.model.footprints) {
             for (const text of fp.texts) {
@@ -450,7 +459,6 @@ export class Editor {
                     text.size?.h ?? text.size?.w ?? 1,
                     text.thickness,
                     text.justify,
-                    text.font,
                     width,
                     height,
                 );
@@ -468,7 +476,6 @@ export class Editor {
         textHeight: number,
         thickness: number | null,
         justify: string[] | null,
-        fontRenderer: "stroke" | "canvas" | null | undefined,
         width: number,
         height: number,
     ) {
@@ -486,19 +493,6 @@ export class Editor {
         const lines = text.split("\n");
         if (lines.length === 0) return;
         const justifySet = new Set(justify ?? []);
-
-        if (fontRenderer === "canvas") {
-            this.drawCanvasOverlayText(
-                lines,
-                layerName,
-                screenPos.x,
-                screenPos.y,
-                rotationDeg,
-                textHeight,
-                justifySet,
-            );
-            return;
-        }
 
         const [r, g, b, a] = getLayerColor(layerName);
         const rotation = -(rotationDeg || 0) * DEG_TO_RAD;
@@ -543,51 +537,6 @@ export class Editor {
                 }
                 this.textCtx.stroke();
             }
-        }
-        this.textCtx.restore();
-    }
-
-    private drawCanvasOverlayText(
-        lines: string[],
-        layerName: string,
-        screenX: number,
-        screenY: number,
-        rotationDeg: number,
-        textHeight: number,
-        justifySet: Set<string>,
-    ) {
-        if (!this.textCtx) return;
-        const [r, g, b, a] = getLayerColor(layerName);
-        const linePitch = textHeight * CANVAS_LINE_PITCH;
-        const lineSpan = Math.max(0, lines.length - 1) * linePitch;
-        // Canvas middle-baseline renders uppercase-heavy strings visually too high.
-        // Apply a small downward optical correction to center labels in pads.
-        const opticalOffsetY = textHeight * CANVAS_OPTICAL_OFFSET;
-        let baseOffsetY = 0;
-        if (justifySet.has("center") || (!justifySet.has("top") && !justifySet.has("bottom"))) {
-            baseOffsetY = -lineSpan / 2;
-        } else if (justifySet.has("bottom")) {
-            baseOffsetY = -lineSpan;
-        }
-
-        let textAlign: CanvasTextAlign = "left";
-        if (justifySet.has("right")) {
-            textAlign = "right";
-        } else if (justifySet.has("center") || (!justifySet.has("left") && !justifySet.has("right"))) {
-            textAlign = "center";
-        }
-
-        this.textCtx.save();
-        this.textCtx.translate(screenX, screenY);
-        this.textCtx.rotate(-(rotationDeg || 0) * DEG_TO_RAD);
-        this.textCtx.scale(this.camera.zoom, this.camera.zoom);
-        this.textCtx.font = `700 ${Math.max(textHeight * CANVAS_FONT_SCALE, 0.18)}px "Atkinson Hyperlegible", "Noto Sans", "Segoe UI", Arial, sans-serif`;
-        this.textCtx.textAlign = textAlign;
-        this.textCtx.textBaseline = "middle";
-        this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, CANVAS_MIN_ALPHA)})`;
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-            const lineOffsetY = baseOffsetY + lineIdx * linePitch + opticalOffsetY;
-            this.textCtx.fillText(lines[lineIdx]!, 0, lineOffsetY);
         }
         this.textCtx.restore();
     }

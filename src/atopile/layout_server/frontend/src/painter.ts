@@ -1,9 +1,28 @@
 import { Vec2, BBox } from "./math";
 import { Renderer, RenderLayer } from "./webgl/renderer";
 import { getLayerColor, getPadColor, VIA_COLOR, VIA_DRILL_COLOR, SELECTION_COLOR, ZONE_COLOR_ALPHA } from "./colors";
-import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
+import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3, HoleModel } from "./types";
+import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
+const HOLE_SEGMENTS = 36;
+const PAD_ANNOTATION_BOX_RATIO = 0.78;
+const PAD_ANNOTATION_MAJOR_FIT = 0.96;
+const PAD_ANNOTATION_MINOR_FIT = 0.88;
+const PAD_ANNOTATION_CHAR_SCALE = 0.60;
+const PAD_ANNOTATION_MIN_CHAR_H = 0.08;
+const PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
+const PAD_ANNOTATION_STROKE_SCALE = 0.22;
+const PAD_ANNOTATION_STROKE_MIN = 0.02;
+const PAD_ANNOTATION_STROKE_MAX = 0.16;
+const PAD_NAME_GENERIC_TOKENS = new Set(["input", "output", "line", "net"]);
+const PAD_NAME_PREFIXES = ["power_in-", "power_vbus-", "power-"];
+const PAD_NAME_TRUNCATE_LENGTHS = [16, 12, 10, 8, 6, 5, 4, 3, 2];
+const PAD_NAME_TARGET_CHAR_H = 0.14;
+const PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
+const PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
+const PAD_NUMBER_CHAR_SCALE = 0.80;
+const PAD_NUMBER_MIN_CHAR_H = 0.04;
 
 function p2v(p: Point2): Vec2 {
     return new Vec2(p.x, p.y);
@@ -68,6 +87,245 @@ function arcToPoints(start: Point2, mid: Point2, end: Point2, segments = 32): Ve
     return points;
 }
 
+function circleToPoints(cx: number, cy: number, radius: number, segments = HOLE_SEGMENTS): Vec2[] {
+    const points: Vec2[] = [];
+    if (radius <= 0) return points;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * 2 * Math.PI;
+        points.push(new Vec2(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)));
+    }
+    return points;
+}
+
+function estimateStrokeTextAdvance(text: string): number {
+    if (!text) return 0.6;
+    const narrow = new Set(["1", "I", "i", "l", "|", "!", ".", ",", ":", ";", "'", "`"]);
+    const wide = new Set(["M", "W", "@", "%", "#"]);
+    let advance = 0;
+    for (const ch of text) {
+        if (ch === " ") advance += 0.6;
+        else if (narrow.has(ch)) advance += 0.45;
+        else if (wide.has(ch)) advance += 0.95;
+        else advance += 0.72;
+    }
+    return Math.max(advance, 0.6);
+}
+
+function fitTextInsideBox(
+    text: string,
+    boxW: number,
+    boxH: number,
+    minCharH = PAD_ANNOTATION_MIN_CHAR_H,
+    charScale = PAD_ANNOTATION_CHAR_SCALE,
+): [number, number, number] | null {
+    if (boxW <= 0 || boxH <= 0) return null;
+    const usableW = Math.max(0, boxW * PAD_ANNOTATION_BOX_RATIO);
+    const usableH = Math.max(0, boxH * PAD_ANNOTATION_BOX_RATIO);
+    if (usableW <= 0 || usableH <= 0) return null;
+    const vertical = usableH > usableW;
+    const major = vertical ? usableH : usableW;
+    const minor = vertical ? usableW : usableH;
+    const advance = estimateStrokeTextAdvance(text);
+    const maxHByWidth = major / Math.max(advance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
+    let charH = Math.min(minor * PAD_ANNOTATION_MINOR_FIT, maxHByWidth * PAD_ANNOTATION_MAJOR_FIT);
+    charH *= charScale;
+    if (charH < minCharH) return null;
+    const charW = charH * PAD_ANNOTATION_CHAR_W_RATIO;
+    const thickness = Math.min(
+        PAD_ANNOTATION_STROKE_MAX,
+        Math.max(PAD_ANNOTATION_STROKE_MIN, charH * PAD_ANNOTATION_STROKE_SCALE),
+    );
+    return [charW, charH, thickness];
+}
+
+function padNameCandidates(text: string): string[] {
+    const base = text.trim();
+    if (!base) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const add = (v: string) => {
+        const t = v.trim();
+        if (!t || seen.has(t)) return;
+        seen.add(t);
+        out.push(t);
+    };
+
+    add(base);
+    let normalized = base;
+    for (const prefix of PAD_NAME_PREFIXES) {
+        if (normalized.startsWith(prefix)) normalized = normalized.slice(prefix.length);
+    }
+    add(normalized);
+
+    const tokens = normalized.replaceAll("/", "-").split("-").map(t => t.trim()).filter(Boolean);
+    for (let idx = tokens.length - 1; idx >= 0; idx--) {
+        const token = tokens[idx]!;
+        if (PAD_NAME_GENERIC_TOKENS.has(token.toLowerCase())) continue;
+        add(token);
+        add(token.replaceAll("[", "").replaceAll("]", ""));
+    }
+
+    for (const maxLen of PAD_NAME_TRUNCATE_LENGTHS) {
+        if (normalized.length > maxLen) add(normalized.slice(0, maxLen));
+    }
+
+    return out;
+}
+
+function fitPadNameLabel(text: string, boxW: number, boxH: number): [string, [number, number, number]] | null {
+    let fallback: [string, [number, number, number]] | null = null;
+    for (const candidate of padNameCandidates(text)) {
+        const fit = fitTextInsideBox(candidate, boxW, boxH);
+        if (!fit) continue;
+        if (!fallback || fit[1] > fallback[1][1]) {
+            fallback = [candidate, fit];
+        }
+        if (fit[1] >= PAD_NAME_TARGET_CHAR_H) {
+            return [candidate, fit];
+        }
+    }
+    return fallback;
+}
+
+function rotatedRectExtents(width: number, height: number, rotationDeg: number): [number, number] {
+    const halfW = Math.max(width, 0) / 2;
+    const halfH = Math.max(height, 0) / 2;
+    const theta = rotationDeg * DEG_TO_RAD;
+    const c = Math.abs(Math.cos(theta));
+    const s = Math.abs(Math.sin(theta));
+    const extentX = c * halfW + s * halfH;
+    const extentY = s * halfW + c * halfH;
+    return [extentX * 2, extentY * 2];
+}
+
+function padLabelWorldRotation(totalPadRotationDeg: number, padW: number, padH: number): number {
+    if (padW <= 0 || padH <= 0) return 0;
+    if (Math.abs(padW - padH) <= 1e-6) return 0;
+    const longAxisDeg = padW > padH ? totalPadRotationDeg : totalPadRotationDeg + 90;
+    const axisX = Math.abs(Math.cos(longAxisDeg * DEG_TO_RAD));
+    const axisY = Math.abs(Math.sin(longAxisDeg * DEG_TO_RAD));
+    return axisY > axisX ? 90 : 0;
+}
+
+function drawStrokeTextGeometry(
+    layer: RenderLayer,
+    text: string,
+    x: number,
+    y: number,
+    rotationDeg: number,
+    charW: number,
+    charH: number,
+    thickness: number,
+    color: [number, number, number, number],
+) {
+    const layout = layoutKicadStrokeLine(text, charW, charH);
+    if (layout.strokes.length === 0) return;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const stroke of layout.strokes) {
+        for (const pt of stroke) {
+            if (pt.x < minX) minX = pt.x;
+            if (pt.y < minY) minY = pt.y;
+            if (pt.x > maxX) maxX = pt.x;
+            if (pt.y > maxY) maxY = pt.y;
+        }
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const theta = -(rotationDeg || 0) * DEG_TO_RAD;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+
+    const [r, g, b, a] = color;
+    for (const stroke of layout.strokes) {
+        if (stroke.length < 2) continue;
+        const points: Vec2[] = [];
+        for (const pt of stroke) {
+            const lx = pt.x - cx;
+            const ly = pt.y - cy;
+            points.push(
+                new Vec2(
+                    x + lx * cos - ly * sin,
+                    y + lx * sin + ly * cos,
+                ),
+            );
+        }
+        layer.geometry.add_polyline(points, thickness, r, g, b, a);
+    }
+}
+
+function expandAnnotationLayerName(layerName: string, concreteLayers: Set<string>): string[] {
+    const expanded = expandLayerName(layerName, concreteLayers);
+    if (expanded.length > 0) return expanded;
+    if (!layerName.includes("*")) return [];
+    const suffixIdx = layerName.indexOf(".");
+    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
+    if (suffix === ".Nets" || suffix === ".PadNumbers") {
+        return [`F${suffix}`, `B${suffix}`];
+    }
+    return [];
+}
+
+function holeSize(hole: HoleModel | null | undefined): [number, number] {
+    if (!hole) return [0, 0];
+    const sx = Number.isFinite(hole.size_x) ? Math.max(0, hole.size_x) : 0;
+    const sy = Number.isFinite(hole.size_y) ? Math.max(0, hole.size_y) : sx;
+    return [sx, sy > 0 ? sy : sx];
+}
+
+function holeOffset(hole: HoleModel | null | undefined): [number, number] {
+    const ox = hole?.offset?.x;
+    const oy = hole?.offset?.y;
+    return [Number.isFinite(ox) ? ox : 0, Number.isFinite(oy) ? oy : 0];
+}
+
+function paintViaHole(layer: RenderLayer, viaX: number, viaY: number, hole: HoleModel | null | undefined) {
+    const [dr, dg, db, da] = VIA_DRILL_COLOR;
+    const [sx, sy] = holeSize(hole);
+    if (sx <= 0 || sy <= 0) return;
+    const [ox, oy] = holeOffset(hole);
+    const cx = viaX + ox;
+    const cy = viaY + oy;
+    const shape = (hole?.shape ?? "").toLowerCase();
+    if (shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6) {
+        const major = Math.max(sx, sy) / 2;
+        const minor = Math.min(sx, sy) / 2;
+        const focal = Math.max(0, major - minor);
+        const p1 = sx >= sy ? new Vec2(cx - focal, cy) : new Vec2(cx, cy - focal);
+        const p2 = sx >= sy ? new Vec2(cx + focal, cy) : new Vec2(cx, cy + focal);
+        layer.geometry.add_polyline([p1, p2], minor * 2, dr, dg, db, da);
+        return;
+    }
+    layer.geometry.add_circle(cx, cy, sx / 2, dr, dg, db, da);
+}
+
+function paintPadHole(layer: RenderLayer, fpAt: Point3, pad: PadModel, hole: HoleModel | null | undefined) {
+    const [dr, dg, db, da] = VIA_DRILL_COLOR;
+    const [sx, sy] = holeSize(hole);
+    if (sx <= 0 || sy <= 0) return;
+    const [ox, oy] = holeOffset(hole);
+    const shape = (hole?.shape ?? "").toLowerCase();
+    if (shape === "oval" || shape === "slot" || Math.abs(sx - sy) > 1e-6) {
+        const major = Math.max(sx, sy) / 2;
+        const minor = Math.min(sx, sy) / 2;
+        const focal = Math.max(0, major - minor);
+        const p1 = sx >= sy
+            ? padTransform(fpAt, pad.at, ox - focal, oy)
+            : padTransform(fpAt, pad.at, ox, oy - focal);
+        const p2 = sx >= sy
+            ? padTransform(fpAt, pad.at, ox + focal, oy)
+            : padTransform(fpAt, pad.at, ox, oy + focal);
+        layer.geometry.add_polyline([p1, p2], minor * 2, dr, dg, db, da);
+        return;
+    }
+    const center = padTransform(fpAt, pad.at, ox, oy);
+    layer.geometry.add_circle(center.x, center.y, sx / 2, dr, dg, db, da);
+}
+
 /**
  * Check if a pad layer (possibly a wildcard) has any visible concrete layer.
  * Wildcards: "*.Cu" matches all layers ending in ".Cu",
@@ -106,6 +364,8 @@ function collectConcreteLayers(model: RenderModel): Set<string> {
         }
         for (const d of fp.drawings) if (d.layer) layers.add(d.layer);
         for (const t of fp.texts) if (t.layer) layers.add(t.layer);
+        for (const a of fp.pad_names) if (a.layer) layers.add(a.layer);
+        for (const a of fp.pad_numbers) if (a.layer) layers.add(a.layer);
     }
     for (const t of model.tracks) if (t.layer) layers.add(t.layer);
     for (const a of model.arcs) if (a.layer) layers.add(a.layer);
@@ -124,8 +384,10 @@ function expandLayerName(layerName: string, concreteLayers: Set<string>): string
         const suffixIdx = layerName.indexOf(".");
         const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
         const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
-        // If the board has no concrete copper layers yet, still target outer copper.
-        return expanded.length > 0 ? expanded : (suffix === ".Cu" ? ["F.Cu", "B.Cu"] : []);
+        if (expanded.length > 0) return expanded;
+        if (suffix === ".Cu") return ["F.Cu", "B.Cu"];
+        if (suffix === ".Nets" || suffix === ".PadNumbers") return [`F${suffix}`, `B${suffix}`];
+        return [];
     }
     if (layerName.includes("&")) {
         const dotIdx = layerName.indexOf(".");
@@ -335,9 +597,27 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     const layer = renderer.start_layer("vias");
     for (const via of model.vias) {
         const [vr, vg, vb, va] = VIA_COLOR;
-        layer.geometry.add_circle(via.at.x, via.at.y, via.size / 2, vr, vg, vb, va);
-        const [dr, dg, db, da] = VIA_DRILL_COLOR;
-        layer.geometry.add_circle(via.at.x, via.at.y, via.drill / 2, dr, dg, db, da);
+        const viaRadius = via.size / 2;
+        if (viaRadius <= 0) continue;
+        layer.geometry.add_circle(via.at.x, via.at.y, viaRadius, vr, vg, vb, va);
+        const ringWidth = Math.max(viaRadius * 0.18, 0.04);
+        const rimPoints = circleToPoints(via.at.x, via.at.y, viaRadius);
+        if (rimPoints.length > 1) {
+            layer.geometry.add_polyline(
+                rimPoints,
+                ringWidth,
+                Math.max(0, vr * 0.82),
+                Math.max(0, vg * 0.82),
+                Math.max(0, vb * 0.82),
+                Math.min(1, va * 0.9),
+            );
+        }
+        paintViaHole(
+            layer,
+            via.at.x,
+            via.at.y,
+            via.hole ?? { shape: "circle", size_x: via.drill, size_y: via.drill, offset: null, plated: true },
+        );
     }
     renderer.end_layer();
 }
@@ -393,6 +673,154 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
             }
             renderer.end_layer();
         }
+    }
+    paintPadAnnotations(renderer, fp, hidden, concreteLayers);
+}
+
+function paintPadAnnotations(renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>) {
+    if (fp.pads.length === 0) return;
+    if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0) return;
+
+    const resolvePad = (padIndex: number, padName: string): PadModel | null => {
+        const byIndex = fp.pads[padIndex];
+        if (byIndex && byIndex.name === padName) {
+            return byIndex;
+        }
+        // Fallback for older payloads or mismatched data.
+        for (const candidate of fp.pads) {
+            if (candidate.name === padName) return candidate;
+        }
+        return null;
+    };
+
+    type NameGeometry = {
+        text: string;
+        x: number;
+        y: number;
+        rotation: number;
+        charW: number;
+        charH: number;
+        thickness: number;
+    };
+    type NumberGeometry = {
+        text: string;
+        badgeCenterX: number;
+        badgeCenterY: number;
+        badgeRadius: number;
+        labelFit: [number, number, number] | null;
+    };
+    type LayerAnnotationGeometry = {
+        names: NameGeometry[];
+        numbers: NumberGeometry[];
+    };
+
+    const layerGeometry = new Map<string, LayerAnnotationGeometry>();
+    const ensureLayerGeometry = (layerName: string): LayerAnnotationGeometry => {
+        let entry = layerGeometry.get(layerName);
+        if (!entry) {
+            entry = { names: [], numbers: [] };
+            layerGeometry.set(layerName, entry);
+        }
+        return entry;
+    };
+
+    for (const annotation of fp.pad_names) {
+        if (!annotation.text.trim()) continue;
+        const pad = resolvePad(annotation.pad_index, annotation.pad);
+        if (!pad) continue;
+        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+        const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
+        if (!fitted) continue;
+        const [displayText, [charW, charH, thickness]] = fitted;
+        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+        const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
+        for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
+            if (hidden.has(layerName)) continue;
+            ensureLayerGeometry(layerName).names.push({
+                text: displayText,
+                x: worldCenter.x,
+                y: worldCenter.y,
+                rotation: textRotation,
+                charW,
+                charH,
+                thickness,
+            });
+        }
+    }
+
+    for (const annotation of fp.pad_numbers) {
+        if (!annotation.text.trim()) continue;
+        const pad = resolvePad(annotation.pad_index, annotation.pad);
+        if (!pad) continue;
+        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+        const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
+        const badgeRadius = badgeDiameter / 2;
+        const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
+        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+        const badgeCenterX = worldCenter.x - (bboxW / 2) + margin + badgeRadius;
+        const badgeCenterY = worldCenter.y - (bboxH / 2) + margin + badgeRadius;
+        const labelFit = fitTextInsideBox(
+            annotation.text,
+            badgeDiameter * 0.92,
+            badgeDiameter * 0.92,
+            PAD_NUMBER_MIN_CHAR_H,
+            PAD_NUMBER_CHAR_SCALE,
+        );
+        for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
+            if (hidden.has(layerName)) continue;
+            ensureLayerGeometry(layerName).numbers.push({
+                text: annotation.text,
+                badgeCenterX,
+                badgeCenterY,
+                badgeRadius,
+                labelFit,
+            });
+        }
+    }
+
+    for (const [layerName, geometry] of layerGeometry) {
+        const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
+        const [r, g, b, a] = getLayerColor(layerName);
+
+        for (const name of geometry.names) {
+            drawStrokeTextGeometry(
+                layer,
+                name.text,
+                name.x,
+                name.y,
+                name.rotation,
+                name.charW,
+                name.charH,
+                name.thickness,
+                [r, g, b, a],
+            );
+        }
+
+        for (const number of geometry.numbers) {
+            layer.geometry.add_circle(number.badgeCenterX, number.badgeCenterY, number.badgeRadius, r, g, b, Math.max(a, 0.98));
+            const outlinePoints = circleToPoints(number.badgeCenterX, number.badgeCenterY, number.badgeRadius);
+            if (outlinePoints.length > 1) {
+                layer.geometry.add_polyline(outlinePoints, Math.max(number.badgeRadius * 0.18, 0.04), 0.05, 0.08, 0.12, 0.8);
+            }
+            if (number.labelFit) {
+                const [charW, charH, thickness] = number.labelFit;
+                drawStrokeTextGeometry(
+                    layer,
+                    number.text,
+                    number.badgeCenterX,
+                    number.badgeCenterY,
+                    0,
+                    charW,
+                    charH,
+                    thickness,
+                    [0.05, 0.08, 0.12, 0.98],
+                );
+            }
+        }
+
+        renderer.end_layer();
     }
 }
 
@@ -482,10 +910,16 @@ function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
         layer.geometry.add_polygon(corners, cr, cg, cb, ca);
     }
 
-    if (pad.drill && pad.type === "thru_hole") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
-        layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1.0);
+    if (pad.type !== "smd") {
+        if (pad.hole) {
+            paintPadHole(layer, fpAt, pad, pad.hole);
+        } else if (pad.drill) {
+            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+            const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
+            if (drillR > 0) {
+                layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1.0);
+            }
+        }
     }
 }
 

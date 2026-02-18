@@ -16,6 +16,7 @@ from atopile.layout_server.pcb_manager import (
     _fit_text_inside_pad,
     _pad_net_text_layer,
     _pad_net_text_rotation,
+    _pad_number_text_layer,
 )
 
 TEST_PCB_V8 = Path("test/common/resources/fileformats/kicad/v8/pcb/test.kicad_pcb")
@@ -98,22 +99,54 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     silk_text = next((t for t in model.texts if t.text == "ESP32-S3-WROOM"), None)
     assert silk_text is not None
     assert {"left", "bottom"}.issubset(set(silk_text.justify or []))
-    pad_net_texts = [
-        t
+    pad_name_annotations = [
+        (footprint, t)
         for footprint in model.footprints
-        for t in footprint.texts
-        if t.layer is not None and t.layer.endswith(".Nets")
+        for t in footprint.pad_names
+        if t.layer.endswith(".Nets")
     ]
-    assert len(pad_net_texts) > 0
+    pad_number_annotations = [
+        (footprint, t)
+        for footprint in model.footprints
+        for t in footprint.pad_numbers
+        if t.layer.endswith(".PadNumbers")
+    ]
+    assert len(pad_name_annotations) > 0
+    assert len(pad_number_annotations) > 0
     assert all(
         t.layer != "Annotations.PadNetNames"
-        for t in model.texts + [tt for fp in model.footprints for tt in fp.texts]
+        for fp in model.footprints
+        for t in fp.pad_names
     )
-    assert any(t.text == "GND" for t in pad_net_texts)
-    assert all(t.font == "canvas" for t in pad_net_texts)
-    assert all(t.size is not None for t in pad_net_texts)
-    assert all((t.thickness or 0) > 0 for t in pad_net_texts)
-    assert any(t.font == "stroke" for t in all_texts)
+    assert all(
+        t.layer != "Annotations.PadNumbers"
+        for fp in model.footprints
+        for t in fp.pad_numbers
+    )
+    assert any(t.text == "GND" for _, t in pad_name_annotations)
+    assert all(t.pad for _, t in pad_name_annotations)
+    assert all(t.pad for _, t in pad_number_annotations)
+    for footprint, annotation in pad_name_annotations + pad_number_annotations:
+        assert any(p.name == annotation.pad for p in footprint.pads)
+    assert not any(
+        (t.layer or "").endswith(".Nets") or (t.layer or "").endswith(".PadNumbers")
+        for fp in model.footprints
+        for t in fp.texts
+    )
+
+    drilled_pads = [
+        pad
+        for footprint in model.footprints
+        for pad in footprint.pads
+        if pad.hole is not None
+    ]
+    assert len(drilled_pads) > 0
+    assert any((pad.hole.shape or "") == "oval" for pad in drilled_pads)
+    assert all(pad.hole.size_x > 0 and pad.hole.size_y > 0 for pad in drilled_pads)
+    drilled_vias = [via for via in model.vias if via.drill > 0]
+    assert len(drilled_vias) > 0
+    assert all(via.hole is not None for via in drilled_vias)
+    assert all(via.hole.size_x > 0 and via.hole.size_y > 0 for via in drilled_vias)
 
 
 def test_get_render_model_v9_zones(manager_v9: PcbManager):
@@ -337,3 +370,11 @@ def test_pad_net_text_layer_tracks_pad_copper_layer():
     assert _pad_net_text_layer(["*.Cu", "*.Mask"]) == "*.Nets"
     assert _pad_net_text_layer(["F&B.Cu"]) == "F&B.Nets"
     assert _pad_net_text_layer(["F.Mask", "F.Paste"]) is None
+
+
+def test_pad_number_text_layer_tracks_pad_copper_layer():
+    assert _pad_number_text_layer(["F.Cu", "F.Mask", "F.Paste"]) == "F.PadNumbers"
+    assert _pad_number_text_layer(["B.Cu"]) == "B.PadNumbers"
+    assert _pad_number_text_layer(["*.Cu", "*.Mask"]) == "*.PadNumbers"
+    assert _pad_number_text_layer(["F&B.Cu"]) == "F&B.PadNumbers"
+    assert _pad_number_text_layer(["F.Mask", "F.Paste"]) is None

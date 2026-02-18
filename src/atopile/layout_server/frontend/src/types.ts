@@ -51,6 +51,8 @@ export interface FootprintModel {
     pads: PadModel[];
     drawings: DrawingModel[];
     texts: TextModel[];
+    pad_names: PadNameAnnotationModel[];
+    pad_numbers: PadNumberAnnotationModel[];
 }
 
 export interface TextModel {
@@ -60,7 +62,20 @@ export interface TextModel {
     size: Size2 | null;
     thickness: number | null;
     justify: string[] | null;
-    font?: "stroke" | "canvas" | null;
+}
+
+export interface PadNameAnnotationModel {
+    pad_index: number;
+    pad: string;
+    text: string;
+    layer: string;
+}
+
+export interface PadNumberAnnotationModel {
+    pad_index: number;
+    pad: string;
+    text: string;
+    layer: string;
 }
 
 export interface PadModel {
@@ -73,12 +88,23 @@ export interface PadModel {
     net: number;
     roundrect_rratio: number | null;
     drill: DrillModel | null;
+    hole: HoleModel | null;
 }
 
 export interface DrillModel {
     shape: string | null;
     size_x: number | null;
     size_y: number | null;
+    offset_x: number | null;
+    offset_y: number | null;
+}
+
+export interface HoleModel {
+    shape: string | null;
+    size_x: number;
+    size_y: number;
+    offset: Point2 | null;
+    plated: boolean | null;
 }
 
 export interface DrawingModel {
@@ -116,6 +142,7 @@ export interface ViaModel {
     at: Point2;
     size: number;
     drill: number;
+    hole: HoleModel | null;
     layers: string[];
     net: number;
     uuid: string | null;
