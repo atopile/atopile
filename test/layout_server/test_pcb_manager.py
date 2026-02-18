@@ -13,6 +13,7 @@ from atopile.layout_server.models import (
 from atopile.layout_server.pcb_manager import PcbManager
 
 TEST_PCB_V8 = Path("test/common/resources/fileformats/kicad/v8/pcb/test.kicad_pcb")
+TEST_PCB_V9 = Path("test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb")
 ESP32_PCB = Path("examples/esp32_minimal/layouts/esp32_minimal/esp32_minimal.kicad_pcb")
 
 
@@ -27,6 +28,13 @@ def manager_v8():
 def manager_esp32():
     mgr = PcbManager()
     mgr.load(ESP32_PCB)
+    return mgr
+
+
+@pytest.fixture
+def manager_v9():
+    mgr = PcbManager()
+    mgr.load(TEST_PCB_V9)
     return mgr
 
 
@@ -84,6 +92,12 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     silk_text = next((t for t in model.texts if t.text == "ESP32-S3-WROOM"), None)
     assert silk_text is not None
     assert {"left", "bottom"}.issubset(set(silk_text.justify or []))
+
+
+def test_get_render_model_v9_zones(manager_v9: PcbManager):
+    model = manager_v9.get_render_model()
+    assert len(model.zones) > 0
+    assert any(len(z.filled_polygons) > 0 for z in model.zones)
 
 
 def test_move_footprint(manager_v8: PcbManager):

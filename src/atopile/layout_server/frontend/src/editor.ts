@@ -10,6 +10,24 @@ import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
 
+function expandLayerName(layerName: string, concreteLayers: Set<string>): string[] {
+    if (!layerName) return [];
+    if (layerName.includes("*")) {
+        const suffixIdx = layerName.indexOf(".");
+        const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
+        const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
+        return expanded.length > 0 ? expanded : (suffix === ".Cu" ? ["F.Cu", "B.Cu"] : []);
+    }
+    if (layerName.includes("&")) {
+        const dotIdx = layerName.indexOf(".");
+        if (dotIdx < 0) return [];
+        const prefixes = layerName.substring(0, dotIdx).split("&");
+        const suffix = layerName.substring(dotIdx);
+        return prefixes.map(p => `${p}${suffix}`);
+    }
+    return [layerName];
+}
+
 export class Editor {
     private canvas: HTMLCanvasElement;
     private textOverlay: HTMLCanvasElement;
@@ -335,6 +353,16 @@ export class Editor {
         }
         for (const z of this.model.zones) {
             for (const fp of z.filled_polygons) layers.add(fp.layer);
+        }
+        const concreteLayers = new Set<string>(
+            [...layers].filter(l => !l.includes("*") && !l.includes("&")),
+        );
+        for (const z of this.model.zones) {
+            for (const layerName of z.layers) {
+                for (const expanded of expandLayerName(layerName, concreteLayers)) {
+                    layers.add(expanded);
+                }
+            }
         }
         layers.add("Edge.Cuts");
         layers.add("Vias");

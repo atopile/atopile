@@ -289,7 +289,7 @@ class PcbManager:
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
             vias=[self._extract_via(via) for via in pcb.vias],
-            zones=[self._extract_zone(zone) for zone in pcb.zones],
+            zones=self._extract_zones(pcb),
             nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
         )
 
@@ -862,43 +862,70 @@ class PcbManager:
             uuid=via.uuid,
         )
 
+    def _extract_zones(self, pcb: kicad.pcb.KicadPcb) -> list[ZoneModel]:
+        raw_zones = getattr(pcb, "zones", None)
+        if raw_zones is None:
+            raw_zones = getattr(pcb, "zone", [])
+        return [self._extract_zone(zone) for zone in raw_zones]
+
     def _extract_zone(self, zone) -> ZoneModel:
-        layers = (
-            list(zone.layers) if zone.layers else ([zone.layer] if zone.layer else [])
-        )
+        layers = list(getattr(zone, "layers", []) or [])
+        layer = getattr(zone, "layer", None)
+        if not layers and layer:
+            layers = [layer]
+
+        polygon = getattr(zone, "polygon", None)
+        polygon_pts = getattr(getattr(polygon, "pts", None), "xys", None)
         pts = (
-            [Point2(x=p.x, y=p.y) for p in zone.polygon.pts.xys] if zone.polygon else []
+            [Point2(x=p.x, y=p.y) for p in polygon_pts]
+            if polygon_pts is not None
+            else []
         )
+
         filled: list[FilledPolygonModel] = []
-        for fp in zone.filled_polygon:
+        raw_filled = getattr(zone, "filled_polygon", None)
+        if raw_filled is None:
+            raw_filled = getattr(zone, "filled_polygons", [])
+
+        for fp in raw_filled:
+            fp_pts = getattr(getattr(fp, "pts", None), "xys", None)
+            if fp_pts is None:
+                fp_polygon = getattr(fp, "polygon", None)
+                fp_pts = getattr(getattr(fp_polygon, "pts", None), "xys", None)
+            if fp_pts is None:
+                continue
+
+            fp_layer = getattr(fp, "layer", None)
+            if fp_layer is None:
+                fp_layers = getattr(fp, "layers", None)
+                fp_layer = fp_layers[0] if fp_layers else (layers[0] if layers else "")
+            if not fp_layer:
+                continue
+
             filled.append(
                 FilledPolygonModel(
-                    layer=fp.layer,
-                    points=[Point2(x=p.x, y=p.y) for p in fp.pts.xys],
+                    layer=fp_layer,
+                    points=[Point2(x=p.x, y=p.y) for p in fp_pts],
                 )
             )
+
+        hatch = getattr(zone, "hatch", None)
+        hatch_mode = getattr(hatch, "mode", None)
+        hatch_pitch = getattr(hatch, "pitch", None)
+        zone_fill = getattr(zone, "fill", None)
+
         return ZoneModel(
-            net=zone.net,
-            net_name=zone.net_name,
+            net=getattr(zone, "net", 0),
+            net_name=getattr(zone, "net_name", ""),
             layers=layers,
-            name=zone.name,
-            uuid=zone.uuid,
-            keepout=(zone.keepout is not None),
-            hatch_mode=(
-                str(zone.hatch.mode).lower()
-                if zone.hatch is not None
-                and getattr(zone.hatch, "mode", None) is not None
-                else None
-            ),
-            hatch_pitch=(
-                float(zone.hatch.pitch)
-                if zone.hatch is not None
-                and getattr(zone.hatch, "pitch", None) is not None
-                else None
-            ),
+            name=getattr(zone, "name", None),
+            uuid=getattr(zone, "uuid", None),
+            keepout=(getattr(zone, "keepout", None) is not None),
+            hatch_mode=(str(hatch_mode).lower() if hatch_mode is not None else None),
+            hatch_pitch=(float(hatch_pitch) if hatch_pitch is not None else None),
             fill_enabled=(
-                _to_optional_bool(getattr(zone.fill, "enable", None))
-                if zone.fill is not None
+                _to_optional_bool(getattr(zone_fill, "enable", None))
+                if zone_fill is not None
                 else None
             ),
             outline=pts,

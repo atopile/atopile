@@ -118,6 +118,35 @@ function collectConcreteLayers(model: RenderModel): Set<string> {
     return layers;
 }
 
+function expandLayerName(layerName: string, concreteLayers: Set<string>): string[] {
+    if (!layerName) return [];
+    if (layerName.includes("*")) {
+        const suffixIdx = layerName.indexOf(".");
+        const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
+        const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
+        // If the board has no concrete copper layers yet, still target outer copper.
+        return expanded.length > 0 ? expanded : (suffix === ".Cu" ? ["F.Cu", "B.Cu"] : []);
+    }
+    if (layerName.includes("&")) {
+        const dotIdx = layerName.indexOf(".");
+        if (dotIdx < 0) return [];
+        const prefixes = layerName.substring(0, dotIdx).split("&");
+        const suffix = layerName.substring(dotIdx);
+        return prefixes.map(p => `${p}${suffix}`);
+    }
+    return [layerName];
+}
+
+function expandLayerNames(layerNames: string[], concreteLayers: Set<string>): string[] {
+    const out = new Set<string>();
+    for (const layerName of layerNames) {
+        for (const expanded of expandLayerName(layerName, concreteLayers)) {
+            out.add(expanded);
+        }
+    }
+    return [...out];
+}
+
 /** Paint the entire render model into renderer layers */
 export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>): void {
     const hidden = hiddenLayers ?? new Set<string>();
@@ -125,7 +154,7 @@ export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: 
     renderer.dispose_layers();
     if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
     paintGlobalDrawings(renderer, model, hidden);
-    paintZones(renderer, model, hidden);
+    paintZones(renderer, model, hidden, concreteLayers);
     paintTracks(renderer, model, hidden);
     if (!hidden.has("Vias")) paintVias(renderer, model);
     for (const fp of model.footprints) {
@@ -161,7 +190,7 @@ function paintBoardEdges(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
-function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
+function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>, concreteLayers: Set<string>) {
     for (const zone of model.zones) {
         for (const filled of zone.filled_polygons) {
             if (hidden.has(filled.layer)) continue;
@@ -174,12 +203,31 @@ function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>)
             renderer.end_layer();
         }
 
-        const shouldDrawKeepout = zone.keepout || zone.filled_polygons.length === 0 || zone.fill_enabled === false;
-        if (!shouldDrawKeepout || zone.outline.length < 3) continue;
-
-        const zoneLayers = zone.layers.length > 0
+        const zoneLayersRaw = zone.layers.length > 0
             ? zone.layers
             : [...new Set(zone.filled_polygons.map(fp => fp.layer))];
+        const zoneLayers = expandLayerNames(zoneLayersRaw, concreteLayers);
+
+        const shouldDrawFillFromOutline = (
+            !zone.keepout
+            && zone.fill_enabled !== false
+            && zone.filled_polygons.length === 0
+            && zone.outline.length >= 3
+        );
+        if (shouldDrawFillFromOutline) {
+            const outlinePts = zone.outline.map(p2v);
+            for (const layerName of zoneLayers) {
+                if (!layerName || hidden.has(layerName)) continue;
+                const [r, g, b] = getLayerColor(layerName);
+                const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
+                layer.geometry.add_polygon(outlinePts, r, g, b, ZONE_COLOR_ALPHA);
+                renderer.end_layer();
+            }
+        }
+
+        const shouldDrawKeepout = zone.keepout || zone.fill_enabled === false;
+        if (!shouldDrawKeepout || zone.outline.length < 3) continue;
+
         const outlinePts = zone.outline.map(p2v);
         const closedOutline = [...outlinePts, outlinePts[0]!.copy()];
         const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;

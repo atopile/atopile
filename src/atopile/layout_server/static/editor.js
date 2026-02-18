@@ -1472,6 +1472,34 @@ function collectConcreteLayers(model) {
   }
   return layers;
 }
+function expandLayerName(layerName, concreteLayers) {
+  if (!layerName)
+    return [];
+  if (layerName.includes("*")) {
+    const suffixIdx = layerName.indexOf(".");
+    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
+    const expanded = [...concreteLayers].filter((l) => l.endsWith(suffix));
+    return expanded.length > 0 ? expanded : suffix === ".Cu" ? ["F.Cu", "B.Cu"] : [];
+  }
+  if (layerName.includes("&")) {
+    const dotIdx = layerName.indexOf(".");
+    if (dotIdx < 0)
+      return [];
+    const prefixes = layerName.substring(0, dotIdx).split("&");
+    const suffix = layerName.substring(dotIdx);
+    return prefixes.map((p) => `${p}${suffix}`);
+  }
+  return [layerName];
+}
+function expandLayerNames(layerNames, concreteLayers) {
+  const out = /* @__PURE__ */ new Set();
+  for (const layerName of layerNames) {
+    for (const expanded of expandLayerName(layerName, concreteLayers)) {
+      out.add(expanded);
+    }
+  }
+  return [...out];
+}
 function paintAll(renderer, model, hiddenLayers) {
   const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
   const concreteLayers = collectConcreteLayers(model);
@@ -1479,7 +1507,7 @@ function paintAll(renderer, model, hiddenLayers) {
   if (!hidden.has("Edge.Cuts"))
     paintBoardEdges(renderer, model);
   paintGlobalDrawings(renderer, model, hidden);
-  paintZones(renderer, model, hidden);
+  paintZones(renderer, model, hidden, concreteLayers);
   paintTracks(renderer, model, hidden);
   if (!hidden.has("Vias"))
     paintVias(renderer, model);
@@ -1517,7 +1545,7 @@ function paintBoardEdges(renderer, model) {
   }
   renderer.end_layer();
 }
-function paintZones(renderer, model, hidden) {
+function paintZones(renderer, model, hidden, concreteLayers) {
   for (const zone of model.zones) {
     for (const filled of zone.filled_polygons) {
       if (hidden.has(filled.layer))
@@ -1530,10 +1558,23 @@ function paintZones(renderer, model, hidden) {
       }
       renderer.end_layer();
     }
-    const shouldDrawKeepout = zone.keepout || zone.filled_polygons.length === 0 || zone.fill_enabled === false;
+    const zoneLayersRaw = zone.layers.length > 0 ? zone.layers : [...new Set(zone.filled_polygons.map((fp) => fp.layer))];
+    const zoneLayers = expandLayerNames(zoneLayersRaw, concreteLayers);
+    const shouldDrawFillFromOutline = !zone.keepout && zone.fill_enabled !== false && zone.filled_polygons.length === 0 && zone.outline.length >= 3;
+    if (shouldDrawFillFromOutline) {
+      const outlinePts2 = zone.outline.map(p2v);
+      for (const layerName of zoneLayers) {
+        if (!layerName || hidden.has(layerName))
+          continue;
+        const [r, g, b] = getLayerColor(layerName);
+        const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
+        layer.geometry.add_polygon(outlinePts2, r, g, b, ZONE_COLOR_ALPHA);
+        renderer.end_layer();
+      }
+    }
+    const shouldDrawKeepout = zone.keepout || zone.fill_enabled === false;
     if (!shouldDrawKeepout || zone.outline.length < 3)
       continue;
-    const zoneLayers = zone.layers.length > 0 ? zone.layers : [...new Set(zone.filled_polygons.map((fp) => fp.layer))];
     const outlinePts = zone.outline.map(p2v);
     const closedOutline = [...outlinePts, outlinePts[0].copy()];
     const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;
@@ -22098,6 +22139,25 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
 
 // src/editor.ts
 var DEG_TO_RAD3 = Math.PI / 180;
+function expandLayerName2(layerName, concreteLayers) {
+  if (!layerName)
+    return [];
+  if (layerName.includes("*")) {
+    const suffixIdx = layerName.indexOf(".");
+    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
+    const expanded = [...concreteLayers].filter((l) => l.endsWith(suffix));
+    return expanded.length > 0 ? expanded : suffix === ".Cu" ? ["F.Cu", "B.Cu"] : [];
+  }
+  if (layerName.includes("&")) {
+    const dotIdx = layerName.indexOf(".");
+    if (dotIdx < 0)
+      return [];
+    const prefixes = layerName.substring(0, dotIdx).split("&");
+    const suffix = layerName.substring(dotIdx);
+    return prefixes.map((p) => `${p}${suffix}`);
+  }
+  return [layerName];
+}
 var Editor = class {
   canvas;
   textOverlay;
@@ -22394,6 +22454,16 @@ var Editor = class {
     for (const z of this.model.zones) {
       for (const fp of z.filled_polygons)
         layers.add(fp.layer);
+    }
+    const concreteLayers = new Set(
+      [...layers].filter((l) => !l.includes("*") && !l.includes("&"))
+    );
+    for (const z of this.model.zones) {
+      for (const layerName of z.layers) {
+        for (const expanded of expandLayerName2(layerName, concreteLayers)) {
+          layers.add(expanded);
+        }
+      }
     }
     layers.add("Edge.Cuts");
     layers.add("Vias");
