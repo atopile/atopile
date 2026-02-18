@@ -7,7 +7,7 @@
  * matching the same pattern used by the sidebar ManufacturingPanel.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -18,12 +18,24 @@ import {
   RefreshCw,
   Lightbulb,
   ImageIcon,
+  ExternalLink,
+  ChevronRight,
 } from 'lucide-react';
 import { useStore } from '../../../store';
 import { sendAction, sendActionWithResponse } from '../../../api/websocket';
 import { postToExtension } from '../../../api/vscodeApi';
+import { API_URL } from '../../../api/config';
 import type { BuildOutputs } from '../types';
 import { REVIEW_PAGES } from './reviewPages';
+import MarkdownRenderer from '../../MarkdownRenderer';
+import tipsData from '../../../../../../docs/tips_and_tricks/tips_and_tricks.json';
+
+interface TipItem {
+  title: string;
+  text: string;
+  image: string | null;
+  link: string | null;
+}
 
 type StepStatus = 'idle' | 'pending' | 'running' | 'success' | 'warning' | 'error';
 
@@ -49,7 +61,6 @@ export function BuildStep() {
   const gitStatus = dashboard?.gitStatus;
   const outputs = dashboard?.outputs ?? null;
 
-  const prevBuildStatusRef = useRef(buildStatus);
   // Track the buildId we're watching so we don't react to stale completed builds
   const trackedBuildIdRef = useRef<string | null>(null);
 
@@ -121,40 +132,27 @@ export function BuildStep() {
     postToExtension({ type: 'openSourceControl' });
   }, []);
 
-  const handleRefreshOutputs = useCallback(async () => {
-    const res = await sendActionWithResponse('getManufacturingOutputs', {
-      projectRoot,
-      target: targetName,
-    });
-    const r = res?.result as Record<string, unknown> | undefined;
-    if (r?.success && r.outputs) {
-      const o = r.outputs as BuildOutputs;
-      setDashboardOutputs(o);
-      setDashboardBuildStatus('ready');
-      setDashboardArtifactVerification({
-        gerbers: !!o.gerbers,
-        bom: !!o.bomCsv || !!o.bomJson,
-        pickAndPlace: !!o.pickAndPlace,
-        model3d: !!o.glb || !!o.step,
-      });
-    }
-  }, [projectRoot, targetName, setDashboardOutputs, setDashboardBuildStatus, setDashboardArtifactVerification]);
 
-  // Auto-navigate to first review tab when build transitions to ready
-  useEffect(() => {
-    const prev = prevBuildStatusRef.current;
-    prevBuildStatusRef.current = buildStatus;
-    if (prev !== 'ready' && prev !== 'confirmed' && (buildStatus === 'ready' || buildStatus === 'confirmed')) {
-      const firstPage = REVIEW_PAGES.find(
-        (p) => !outputs || p.definition.isAvailable(outputs)
-      );
-      if (firstPage) {
-        setDashboardReviewPage(firstPage.definition.id);
-      } else {
-        setDashboardStep('review');
-      }
+  // Pick a random tip, allow cycling with "Next"
+  const tips = tipsData as TipItem[];
+  const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * tips.length));
+  const tip = tips[tipIndex];
+  const handleNextTip = useCallback(() => {
+    setTipIndex((i) => (i + 1) % tips.length);
+  }, [tips.length]);
+
+  // Resolve image URL: external URLs pass through, local paths use the backend file API
+  const tipImageUrl = useMemo(() => {
+    if (!tip.image) return null;
+    if (tip.image.startsWith('http://') || tip.image.startsWith('https://')) {
+      return tip.image;
     }
-  }, [buildStatus, outputs, setDashboardReviewPage, setDashboardStep]);
+    if (!projectRoot) return null;
+    const absPath = tip.image.startsWith('/')
+      ? `${projectRoot}${tip.image}`
+      : `${projectRoot}/${tip.image}`;
+    return `${API_URL}/api/file?path=${encodeURIComponent(absPath)}`;
+  }, [tip.image, projectRoot]);
 
   if (!dashboard) return null;
 
@@ -226,51 +224,53 @@ export function BuildStep() {
 
       {/* Three-panel grid */}
       <div className="mfg-build-grid">
-        {/* Left column: build stages (full height) */}
+        {/* Left column: build stages (scrollable) + pinned bottom actions */}
         <div className="mfg-build-grid-left">
-          <h3 className="mfg-build-section-title">Build Steps</h3>
-          <ul className="mfg-build-stages">
-            {displaySteps.map((step) => {
-              const hasLogs = !!activeBuild?.buildId;
-              return (
-                <li
-                  key={step.id}
-                  className={`mfg-build-stage-item status-${step.status}${hasLogs ? ' clickable' : ''}`}
-                  onClick={() => {
-                    if (activeBuild?.buildId) {
-                      useStore.getState().setLogViewerBuildId(activeBuild.buildId);
-                      sendAction('setLogViewCurrentId', {
-                        buildId: activeBuild.buildId,
-                        stage: step.id,
-                      });
-                      postToExtension({ type: 'showBuildLogs' });
-                    }
-                  }}
-                  title={hasLogs ? `View logs for ${step.label}` : step.label}
-                >
-                  {renderStageIcon(step.status)}
-                  <span>{step.label}</span>
-                  {step.elapsed && (
-                    <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.5 }}>{step.elapsed}</span>
-                  )}
+          <div className="mfg-build-stages-scroll">
+            <h3 className="mfg-build-section-title">Build Steps</h3>
+            <ul className="mfg-build-stages">
+              {displaySteps.map((step) => {
+                const hasLogs = !!activeBuild?.buildId;
+                return (
+                  <li
+                    key={step.id}
+                    className={`mfg-build-stage-item status-${step.status}${hasLogs ? ' clickable' : ''}`}
+                    onClick={() => {
+                      if (activeBuild?.buildId) {
+                        useStore.getState().setLogViewerBuildId(activeBuild.buildId);
+                        sendAction('setLogViewCurrentId', {
+                          buildId: activeBuild.buildId,
+                          stage: step.id,
+                        });
+                        postToExtension({ type: 'showBuildLogs' });
+                      }
+                    }}
+                    title={hasLogs ? `View logs for ${step.label}` : step.label}
+                  >
+                    {renderStageIcon(step.status)}
+                    <span>{step.label}</span>
+                    {step.elapsed && (
+                      <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.5 }}>{step.elapsed}</span>
+                    )}
+                  </li>
+                );
+              })}
+              {showPlaceholder && (
+                <li className="mfg-build-stage-item status-pending">
+                  <Loader2 size={14} className="spinning" style={{ opacity: 0.4 }} />
+                  <span>Starting build...</span>
                 </li>
-              );
-            })}
-            {showPlaceholder && (
-              <li className="mfg-build-stage-item status-pending">
-                <Loader2 size={14} className="spinning" style={{ opacity: 0.4 }} />
-                <span>Starting build...</span>
-              </li>
-            )}
-            {!isBuilding && !isFailed && !isReady && displaySteps.length === 0 && (
-              <li className="mfg-build-stage-item status-idle">
-                <Circle size={14} style={{ opacity: 0.3 }} />
-                <span>No build started</span>
-              </li>
-            )}
-          </ul>
+              )}
+              {!isBuilding && !isFailed && !isReady && displaySteps.length === 0 && (
+                <li className="mfg-build-stage-item status-idle">
+                  <Circle size={14} style={{ opacity: 0.3 }} />
+                  <span>No build started</span>
+                </li>
+              )}
+            </ul>
+          </div>
 
-          {/* Build actions */}
+          {/* Build actions — pinned to bottom */}
           <div className="mfg-build-actions">
             {buildStatus === 'pending' && !outputs && (
               <button className="mfg-btn mfg-btn-primary" onClick={handleStartBuild}>
@@ -295,20 +295,34 @@ export function BuildStep() {
                 </button>
               </>
             )}
-            {isBuilding && (
-              <button className="mfg-btn mfg-btn-secondary" onClick={handleRefreshOutputs}>
-                Check for Outputs
-              </button>
-            )}
             {isFailed && (
               <button className="mfg-btn mfg-btn-primary" onClick={handleStartBuild}>
                 <RefreshCw size={14} /> Retry Build
               </button>
             )}
-            {isReady && (
-              <button className="mfg-btn mfg-btn-secondary" onClick={handleStartBuild}>
-                <RefreshCw size={14} /> Rebuild
+            {isBuilding && (
+              <button className="mfg-btn mfg-btn-secondary" disabled>
+                <Loader2 size={14} className="spinning" /> Building...
               </button>
+            )}
+            {isReady && (
+              <>
+                <button className="mfg-btn mfg-btn-secondary" onClick={handleStartBuild}>
+                  <RefreshCw size={14} /> Rebuild
+                </button>
+                <button className="mfg-btn mfg-btn-primary" onClick={() => {
+                  const firstPage = REVIEW_PAGES.find(
+                    (p) => !outputs || p.definition.isAvailable(outputs)
+                  );
+                  if (firstPage) {
+                    setDashboardReviewPage(firstPage.definition.id);
+                  } else {
+                    setDashboardStep('review');
+                  }
+                }}>
+                  Start Review <ChevronRight size={14} />
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -319,20 +333,45 @@ export function BuildStep() {
           <div className="mfg-build-grid-cell mfg-build-tips-text">
             <div className="mfg-tips-header">
               <Lightbulb size={16} />
-              <span>Tips & Tricks</span>
+              <span>{tip.title}</span>
+              {tip.link && (
+                <a
+                  href={tip.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mfg-tips-link"
+                  title="More info"
+                >
+                  <ExternalLink size={12} />
+                </a>
+              )}
+              <button
+                className="mfg-tips-next-btn"
+                onClick={handleNextTip}
+                title="Next tip"
+              >
+                Next <ChevronRight size={14} />
+              </button>
             </div>
             <div className="mfg-tips-body">
-              <p>TODO: manufacturing tips & tricks content</p>
-              <p style={{ fontSize: 12, opacity: 0.6 }}>Placeholder for helpful tips about the manufacturing process, common pitfalls, and best practices.</p>
+              <MarkdownRenderer content={tip.text} className="mfg-tips-markdown" />
             </div>
           </div>
 
           {/* Right-bottom: tips & tricks image */}
           <div className="mfg-build-grid-cell mfg-build-tips-image">
-            <div className="mfg-tips-image-placeholder">
-              <ImageIcon size={32} style={{ opacity: 0.3 }} />
-              <span style={{ fontSize: 12, opacity: 0.5 }}>Image placeholder</span>
-            </div>
+            {tipImageUrl ? (
+              <img
+                src={tipImageUrl}
+                alt={tip.title}
+                className="mfg-tips-image"
+              />
+            ) : (
+              <div className="mfg-tips-image-placeholder">
+                <ImageIcon size={32} style={{ opacity: 0.3 }} />
+                <span style={{ fontSize: 12, opacity: 0.5 }}>No image available</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

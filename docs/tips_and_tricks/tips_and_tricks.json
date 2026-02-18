@@ -1,0 +1,62 @@
+[
+  {
+    "title": "Pin Your Component Versions",
+    "text": "Always pin component versions in your `ato.yaml` to ensure reproducible builds. Without pinning, a library update could silently change your BOM.\n\n```yaml\ndependencies:\n  generics: \"0.2.1\"\n  rp2040: \"0.1.3\"\n```",
+    "image": "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExOXF0ZTdhYXdnZGlodDN3bmR0ZnFuM3pmMmN4dGY2ZGpib3F5dTRtdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/mcsPU3SkKrYDdW3aAU/giphy.gif",
+    "link": "https://docs.atopile.io/getting-started/configuration"
+  },
+  {
+    "title": "Check Your Gerber Output",
+    "text": "After generating Gerbers, always **visually inspect** them before sending to your fab house. Look for missing copper pours, incorrect drill sizes, and misaligned layers.",
+    "image":  null,
+    "link": null
+  },
+  {
+    "title": "Use Assertions for Critical Values",
+    "text": "Use `assert` statements to enforce voltage and current limits at design time. The solver will catch violations before you ever send a board to manufacturing.\n\n```ato\nmodule PowerSupply:\n  power = new Power\n  assert power.voltage within 3.0V to 3.6V\n  assert power.current within 0A to 500mA\n```",
+    "image": "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3MHR6dWlnajMwNzR6ZHk4NHdmd2ExcjdoeHd6d3EzMWZiZnphZW5vNSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/AAsj7jdrHjtp6/giphy.gif",
+    "link": "https://docs.atopile.io/language/assertions"
+  },
+  {
+    "title": "JLCPCB Part Selection",
+    "text": "Prefer JLCPCB **Basic** parts over **Extended** parts to avoid the $3 per-component loading fee. Basic parts are pre-loaded on their pick-and-place machines.",
+    "image":  null,
+    "link": "https://jlcpcb.com/parts"
+  },
+  {
+    "title": "Keep Decoupling Caps Close",
+    "text": "Place decoupling capacitors as close as possible to the power pins of ICs. The shorter the trace, the more effective the decoupling. Use the layout editor to verify placement.",
+    "image":  null,
+    "link": null
+  },
+  {
+    "title": "Freeze Builds for Manufacturing",
+    "text": "Use the `--frozen` flag when building for manufacturing. This ensures no packages are auto-updated during the build, giving you a reproducible output.\n\n```bash\nato build --frozen --target default\n```",
+    "image": "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3bHJsN2NxdmEzeHduMWc2ZWVpdTg5dmUybDU1N3M5dDI0MHR3Z2tjaCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/iXaXJVF0t72rm/giphy.gif",
+    "link": null
+  },
+  {
+    "title": "Review the BOM Before Ordering",
+    "text": "Double-check your BOM for components marked as *no stock* or *lifecycle: obsolete*. Catching these early saves time and avoids costly board respins.",
+    "image":  null,
+    "link": null
+  },
+  {
+    "title": "Set Board Dimensions Early",
+    "text": "Define your board outline and mounting holes before routing. This prevents having to redo work when the mechanical constraints change late in the design.",
+    "image":  null,
+    "link": null
+  },
+  {
+    "title": "Use Modules for Reusability",
+    "text": "Break your design into reusable modules. A well-tested power supply or sensor interface module can be shared across projects and reduces review time.\n\n```ato\nfrom \"generics/resistors.ato\" import Resistor\n\nmodule VoltageDivider:\n  r_top = new Resistor\n  r_bottom = new Resistor\n  signal top ~ r_top.p1\n  r_top.p2 ~ r_bottom.p1 ~ signal output\n  r_bottom.p2 ~ signal bottom\n```",
+    "image":  null,
+    "link": "https://docs.atopile.io/language/modules"
+  },
+  {
+    "title": "Check Thermal Relief on Ground Pads",
+    "text": "Large ground planes can make hand-soldering difficult. Ensure **thermal relief spokes** are present on pads connected to ground planes, especially for through-hole components.",
+    "image":  null,
+    "link": null
+  }
+]
