@@ -62,6 +62,11 @@ interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+interface ProjectCreatedMessage {
+  type: 'projectCreated';
+  projectRoot: string;
+}
+
 interface BrowseExportDirectoryMessage {
   type: 'browseExportDirectory';
 }
@@ -181,6 +186,7 @@ type WebviewMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | ProjectCreatedMessage
   | BrowseExportDirectoryMessage
   | OpenSourceControlMessage
   | ShowProblemsMessage
@@ -489,6 +495,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'browseProjectPath':
         this._handleBrowseProjectPath().catch((error) => {
           traceError(`[SidebarProvider] Error browsing project path: ${error}`);
+        });
+        break;
+      case 'projectCreated':
+        this._handleProjectCreated(message).catch((error) => {
+          traceError(`[SidebarProvider] Error handling project created: ${error}`);
         });
         break;
       case 'browseExportDirectory':
@@ -1131,6 +1142,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       type: 'browseProjectPathResult',
       path: selectedPath,
     });
+  }
+
+  private _isInCurrentWorkspace(folderPath: string): boolean {
+    const workspaces = vscode.workspace.workspaceFolders ?? [];
+    for (const workspaceFolder of workspaces) {
+      const relative = path.relative(workspaceFolder.uri.fsPath, folderPath);
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async _handleProjectCreated(message: ProjectCreatedMessage): Promise<void> {
+    const projectRoot = message.projectRoot;
+    if (!projectRoot) {
+      return;
+    }
+
+    const containingFolder = path.dirname(projectRoot);
+    if (this._isInCurrentWorkspace(containingFolder)) {
+      return;
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+      `Project created at ${projectRoot}. Open the containing folder?`,
+      { modal: true },
+      'Open Folder',
+    );
+
+    if (choice === 'Open Folder') {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(containingFolder), {
+        forceNewWindow: false,
+      });
+    }
   }
 
   /**
