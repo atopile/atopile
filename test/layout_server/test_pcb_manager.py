@@ -10,7 +10,13 @@ from atopile.layout_server.models import (
     FootprintSummary,
     RenderModel,
 )
-from atopile.layout_server.pcb_manager import PcbManager
+from atopile.layout_server.pcb_manager import (
+    PcbManager,
+    _fit_pad_net_text,
+    _fit_text_inside_pad,
+    _pad_net_text_layer,
+    _pad_net_text_rotation,
+)
 
 TEST_PCB_V8 = Path("test/common/resources/fileformats/kicad/v8/pcb/test.kicad_pcb")
 TEST_PCB_V9 = Path("test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb")
@@ -92,6 +98,22 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     silk_text = next((t for t in model.texts if t.text == "ESP32-S3-WROOM"), None)
     assert silk_text is not None
     assert {"left", "bottom"}.issubset(set(silk_text.justify or []))
+    pad_net_texts = [
+        t
+        for footprint in model.footprints
+        for t in footprint.texts
+        if t.layer is not None and t.layer.endswith(".Nets")
+    ]
+    assert len(pad_net_texts) > 0
+    assert all(
+        t.layer != "Annotations.PadNetNames"
+        for t in model.texts + [tt for fp in model.footprints for tt in fp.texts]
+    )
+    assert any(t.text == "GND" for t in pad_net_texts)
+    assert all(t.font == "canvas" for t in pad_net_texts)
+    assert all(t.size is not None for t in pad_net_texts)
+    assert all((t.thickness or 0) > 0 for t in pad_net_texts)
+    assert any(t.font == "stroke" for t in all_texts)
 
 
 def test_get_render_model_v9_zones(manager_v9: PcbManager):
@@ -254,3 +276,64 @@ def test_flip_roundtrip(manager_v8: PcbManager):
 
     after = next(f for f in manager_v8.get_footprints() if f.uuid == uuid)
     assert after.layer == orig_layer
+
+
+def test_fit_text_inside_pad_rejects_non_positive_dimensions():
+    assert _fit_text_inside_pad("GND", 0.0, 1.0) is None
+    assert _fit_text_inside_pad("GND", 1.0, 0.0) is None
+    assert _fit_text_inside_pad("GND", -1.0, 1.0) is None
+
+
+def test_fit_text_inside_pad_stays_bounded_and_orients_with_long_axis():
+    # Horizontal pad: bounded fit and thickness range.
+    fit_h = _fit_text_inside_pad("GND", 1.2, 0.8)
+    assert fit_h is not None
+    char_w_h, char_h_h, thickness_h = fit_h
+    assert 0 < char_w_h < 1.2
+    assert 0 < char_h_h < 0.8
+    assert 0.06 <= thickness_h <= 0.20
+
+    # Vertical pad: still bounded.
+    fit_v = _fit_text_inside_pad("GND", 0.8, 1.2)
+    assert fit_v is not None
+    _, char_h_v, thickness_v = fit_v
+    assert 0 < char_h_v < 0.8
+    assert 0.06 <= thickness_v <= 0.20
+
+
+def test_pad_net_text_rotation_is_snapped_and_uses_total_rotation():
+    # Symmetric pads are always horizontal.
+    assert _pad_net_text_rotation(37.0, 1.0, 1.0) == pytest.approx(0.0)
+
+    # Long axis horizontal at 0 deg => horizontal text.
+    assert _pad_net_text_rotation(0.0, 1.2, 0.8) == pytest.approx(0.0)
+
+    # Same pad at 90 deg => vertical text.
+    assert _pad_net_text_rotation(90.0, 1.2, 0.8) == pytest.approx(90.0)
+
+    # Tall pad with no rotation already has vertical long axis.
+    assert _pad_net_text_rotation(0.0, 0.8, 1.2) == pytest.approx(90.0)
+
+    # Tall pad rotated by 90 deg becomes horizontal.
+    assert _pad_net_text_rotation(90.0, 0.8, 1.2) == pytest.approx(0.0)
+
+    # Allowed outputs are only 0 and +90.
+    for angle in (0, 15, 30, 45, 60, 75, 90, 135, 180, 225, 270, 315):
+        snapped = _pad_net_text_rotation(float(angle), 1.2, 0.8)
+        assert snapped in {0.0, 90.0}
+
+
+def test_fit_pad_net_text_uses_shorter_fallbacks_for_small_pads():
+    fitted = _fit_pad_net_text("power_in-VCC", 0.79, 0.54)
+    assert fitted is not None
+    label, metrics = fitted
+    assert label == "VCC"
+    assert metrics[0] > 0 and metrics[1] > 0
+
+
+def test_pad_net_text_layer_tracks_pad_copper_layer():
+    assert _pad_net_text_layer(["F.Cu", "F.Mask", "F.Paste"]) == "F.Nets"
+    assert _pad_net_text_layer(["B.Cu"]) == "B.Nets"
+    assert _pad_net_text_layer(["*.Cu", "*.Mask"]) == "*.Nets"
+    assert _pad_net_text_layer(["F&B.Cu"]) == "F&B.Nets"
+    assert _pad_net_text_layer(["F.Mask", "F.Paste"]) is None

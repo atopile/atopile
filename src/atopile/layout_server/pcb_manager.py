@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import math
 import time
 from pathlib import Path
 
@@ -281,11 +282,18 @@ class PcbManager:
 
     def get_render_model(self) -> RenderModel:
         pcb = self.pcb
+        global_texts = self._extract_global_texts(pcb)
+        net_names_by_number = {
+            int(net.number): net.name for net in pcb.nets if getattr(net, "name", None)
+        }
         return RenderModel(
             board=self._extract_board(pcb),
             drawings=self._extract_global_drawings(pcb),
-            texts=self._extract_global_texts(pcb),
-            footprints=[self._extract_footprint(fp) for fp in pcb.footprints],
+            texts=global_texts,
+            footprints=[
+                self._extract_footprint(fp, net_names_by_number)
+                for fp in pcb.footprints
+            ],
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
             vias=[self._extract_via(via) for via in pcb.vias],
@@ -373,7 +381,9 @@ class PcbManager:
             origin=Point2(x=origin_x, y=origin_y),
         )
 
-    def _extract_footprint(self, fp) -> FootprintModel:
+    def _extract_footprint(
+        self, fp, net_names_by_number: dict[int, str]
+    ) -> FootprintModel:
         ref = _get_property(fp, "Reference")
         value = _get_property(fp, "Value")
 
@@ -461,6 +471,9 @@ class PcbManager:
             )
 
         texts = self._extract_text_entries(fp, ref, value)
+        texts.extend(
+            self._extract_virtual_pad_net_texts_for_footprint(fp, net_names_by_number)
+        )
 
         return FootprintModel(
             uuid=fp.uuid,
@@ -728,7 +741,57 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(tb),
+            font="stroke",
         )
+
+    def _extract_virtual_pad_net_texts_for_footprint(
+        self, fp, net_names_by_number: dict[int, str]
+    ) -> list[TextModel]:
+        """Emit virtual annotation texts for pad net names for one footprint.
+
+        Emitted as footprint-local texts so they follow footprint transforms/moves.
+        """
+        out: list[TextModel] = []
+        for pad in fp.pads:
+            pad_net = getattr(pad, "net", None)
+            if pad_net is None:
+                continue
+            net_number = int(getattr(pad_net, "number", 0) or 0)
+            if net_number <= 0:
+                continue
+            net_name = (getattr(pad_net, "name", None) or "").strip()
+            if not net_name:
+                net_name = (net_names_by_number.get(net_number) or "").strip()
+            if not net_name:
+                continue
+
+            pad_w = float(getattr(pad.size, "w", 0.8) or 0.8)
+            pad_h = float(getattr(pad.size, "h", pad_w) or pad_w)
+            fitted = _fit_pad_net_text(net_name, pad_w, pad_h)
+            if fitted is None:
+                continue
+            display_text, metrics = fitted
+            char_w, char_h, thickness = metrics
+            total_pad_rotation = float(fp.at.r or 0) + float(pad.at.r or 0)
+            text_world_angle = _pad_net_text_rotation(total_pad_rotation, pad_w, pad_h)
+            text_local_angle = (text_world_angle - float(fp.at.r or 0)) % 360.0
+            text_layer = _pad_net_text_layer(pad.layers)
+            if text_layer is None:
+                continue
+
+            out.append(
+                TextModel(
+                    text=display_text,
+                    at=Point3(x=float(pad.at.x), y=float(pad.at.y), r=text_local_angle),
+                    layer=text_layer,
+                    size=Size2(w=char_w, h=char_h),
+                    thickness=thickness,
+                    justify=["center"],
+                    font="canvas",
+                )
+            )
+
+        return out
 
     def _extract_table_cell_text(self, cell) -> TextModel:
         at = _table_cell_position(cell)
@@ -753,6 +816,7 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(cell),
+            font="stroke",
         )
 
     def _extract_text_entries(
@@ -822,6 +886,7 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(obj),
+            font="stroke",
         )
 
     def _extract_drill(self, drill) -> DrillModel:
@@ -965,6 +1030,139 @@ def _stroke_width(obj, default: float = 0.12) -> float:
     if width_value < 0:
         return 0.0
     return width_value
+
+
+def _estimate_stroke_text_advance(text: str) -> float:
+    """Approximate Newstroke advance units for a single-line label."""
+    if not text:
+        return 0.6
+
+    narrow = set("1Iil|!.,:;'`")
+    wide = set("MW@%#")
+    advance = 0.0
+    for ch in text:
+        if ch == " ":
+            advance += 0.6
+        elif ch in narrow:
+            advance += 0.45
+        elif ch in wide:
+            advance += 0.95
+        else:
+            advance += 0.72
+    return max(advance, 0.6)
+
+
+def _fit_text_inside_pad(
+    text: str, pad_w: float, pad_h: float
+) -> tuple[float, float, float] | None:
+    """Return (char_w, char_h, thickness) fitted to pad size."""
+    if pad_w <= 0 or pad_h <= 0:
+        return None
+
+    # Keep margin so labels do not touch pad boundaries.
+    usable_w = max(0.0, pad_w * 0.78)
+    usable_h = max(0.0, pad_h * 0.78)
+    if usable_w <= 0 or usable_h <= 0:
+        return None
+
+    # Fit text against the longer/shorter pad dimensions, leaving margin.
+    vertical = usable_h > usable_w
+    major = usable_h if vertical else usable_w
+    minor = usable_w if vertical else usable_h
+
+    char_w_ratio = 0.72
+    advance_units = _estimate_stroke_text_advance(text)
+    max_h_by_width = major / max(advance_units * char_w_ratio, 1e-6)
+    # Fit first, then downscale so text sits comfortably inside pads like KiCad.
+    char_h = min(minor * 0.88, max_h_by_width * 0.96)
+    # Larger baseline for readability while still fitting within pads.
+    char_h *= 0.60
+
+    # Tiny text is unreadable and expensive to draw at scale.
+    if char_h < 0.11:
+        return None
+
+    char_w = char_h * char_w_ratio
+    thickness = min(0.20, max(0.06, char_h * 0.30))
+    return (char_w, char_h, thickness)
+
+
+def _fit_pad_net_text(
+    text: str, pad_w: float, pad_h: float
+) -> tuple[str, tuple[float, float, float]] | None:
+    for candidate in _pad_net_text_candidates(text):
+        fitted = _fit_text_inside_pad(candidate, pad_w, pad_h)
+        if fitted is not None:
+            return (candidate, fitted)
+    return None
+
+
+def _pad_net_text_candidates(text: str) -> list[str]:
+    base = text.strip()
+    if not base:
+        return []
+
+    generic_tokens = {"input", "output", "line", "net"}
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add(candidate: str) -> None:
+        token = candidate.strip()
+        if not token or token in seen:
+            return
+        seen.add(token)
+        candidates.append(token)
+
+    add(base)
+
+    normalized = base
+    for prefix in ("power_in-", "power_vbus-", "power-"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+    add(normalized)
+
+    tokens = [t for t in normalized.replace("/", "-").split("-") if t.strip()]
+    for token in reversed(tokens):
+        if token.lower() in generic_tokens:
+            continue
+        add(token)
+        add(token.replace("[", "").replace("]", ""))
+
+    for max_len in (16, 12, 10, 8, 6, 5, 4, 3, 2, 1):
+        if len(normalized) > max_len:
+            add(normalized[:max_len])
+
+    return candidates
+
+
+def _pad_net_text_layer(pad_layers: list[str] | None) -> str | None:
+    if not pad_layers:
+        return None
+    for layer in pad_layers:
+        if layer.endswith(".Cu"):
+            return layer[:-3] + ".Nets"
+    return None
+
+
+def _pad_net_text_rotation(
+    total_pad_rotation_deg: float, pad_w: float, pad_h: float
+) -> float:
+    """Snap pad net label rotation to world 0 or +90 degrees.
+
+    - Symmetric pads always return 0.
+    - Non-symmetric pads consider total pad rotation (footprint + pad).
+    """
+    if pad_w <= 0 or pad_h <= 0:
+        return 0.0
+    if abs(pad_w - pad_h) <= 1e-6:
+        return 0.0
+
+    long_axis_deg = (
+        total_pad_rotation_deg if pad_w > pad_h else total_pad_rotation_deg + 90.0
+    )
+    axis_x = abs(math.cos(math.radians(long_axis_deg)))
+    axis_y = abs(math.sin(math.radians(long_axis_deg)))
+    return 90.0 if axis_y > axis_x else 0.0
 
 
 def _is_filled(obj) -> bool:

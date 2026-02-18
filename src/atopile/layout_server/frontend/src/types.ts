@@ -60,6 +60,7 @@ export interface TextModel {
     size: Size2 | null;
     thickness: number | null;
     justify: string[] | null;
+    font?: "stroke" | "canvas" | null;
 }
 
 export interface PadModel {

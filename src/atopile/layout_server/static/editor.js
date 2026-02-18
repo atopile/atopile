@@ -1221,7 +1221,7 @@ var Renderer = class {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.GREATER);
-    gl.clearColor(0.12, 0.12, 0.12, 1);
+    gl.clearColor(0.03, 0.05, 0.08, 1);
     gl.clearDepth(0);
     this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
     this.polygonShader = new ShaderProgram(gl, polygon_vert, polygon_frag);
@@ -1305,7 +1305,7 @@ var Renderer = class {
       this.pointShader.bind();
       this.pointShader.uniforms["u_matrix"].mat3f(false, total.elements);
       this.pointShader.uniforms["u_pointSize"].f1(2 * window.devicePixelRatio);
-      this.pointShader.uniforms["u_color"].f4(1, 1, 1, 0.22);
+      this.pointShader.uniforms["u_color"].f4(1, 1, 1, 0.15);
       this.gridVao.bind();
       this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
     }
@@ -1317,6 +1317,7 @@ var Renderer = class {
 
 // src/colors.ts
 var LAYER_COLORS = {
+  "Annotations.PadNetNames": [1, 1, 1, 1],
   "F.Cu": [0.86, 0.23, 0.22, 0.88],
   "B.Cu": [0.16, 0.28, 0.47, 0.88],
   "In1.Cu": [0.7, 0.58, 0.24, 0.78],
@@ -1345,6 +1346,8 @@ var ZONE_COLOR_ALPHA = 0.25;
 function getLayerColor(layer) {
   if (!layer)
     return [0.5, 0.5, 0.5, 0.5];
+  if (layer.endsWith(".Nets"))
+    return [1, 1, 1, 1];
   return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
 }
 function getPadColor(layers) {
@@ -22518,6 +22521,7 @@ var Editor = class {
         text.size?.h ?? text.size?.w ?? 1,
         text.thickness,
         text.justify,
+        text.font,
         width,
         height
       );
@@ -22541,13 +22545,14 @@ var Editor = class {
           text.size?.h ?? text.size?.w ?? 1,
           text.thickness,
           text.justify,
+          text.font,
           width,
           height
         );
       }
     }
   }
-  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, width, height) {
+  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, fontRenderer, width, height) {
     if (!this.textCtx)
       return;
     const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
@@ -22560,9 +22565,21 @@ var Editor = class {
     const lines = text.split("\n");
     if (lines.length === 0)
       return;
+    const justifySet = new Set(justify ?? []);
+    if (fontRenderer === "canvas") {
+      this.drawCanvasOverlayText(
+        lines,
+        layerName,
+        screenPos.x,
+        screenPos.y,
+        rotationDeg,
+        textHeight,
+        justifySet
+      );
+      return;
+    }
     const [r, g, b, a] = getLayerColor(layerName);
     const rotation = -(rotationDeg || 0) * DEG_TO_RAD3;
-    const justifySet = new Set(justify ?? []);
     const linePitch = textHeight * 1.62;
     const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
     let baseOffsetY = textHeight;
@@ -22605,6 +22622,39 @@ var Editor = class {
         }
         this.textCtx.stroke();
       }
+    }
+    this.textCtx.restore();
+  }
+  drawCanvasOverlayText(lines, layerName, screenX, screenY, rotationDeg, textHeight, justifySet) {
+    if (!this.textCtx)
+      return;
+    const [r, g, b, a] = getLayerColor(layerName);
+    const linePitch = textHeight * 1.2;
+    const lineSpan = Math.max(0, lines.length - 1) * linePitch;
+    const opticalOffsetY = textHeight * 0.35;
+    let baseOffsetY = 0;
+    if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
+      baseOffsetY = -lineSpan / 2;
+    } else if (justifySet.has("bottom")) {
+      baseOffsetY = -lineSpan;
+    }
+    let textAlign = "left";
+    if (justifySet.has("right")) {
+      textAlign = "right";
+    } else if (justifySet.has("center") || !justifySet.has("left") && !justifySet.has("right")) {
+      textAlign = "center";
+    }
+    this.textCtx.save();
+    this.textCtx.translate(screenX, screenY);
+    this.textCtx.rotate(-(rotationDeg || 0) * DEG_TO_RAD3);
+    this.textCtx.scale(this.camera.zoom, this.camera.zoom);
+    this.textCtx.font = `700 ${Math.max(textHeight * 1.15, 0.18)}px "Atkinson Hyperlegible", "Noto Sans", "Segoe UI", Arial, sans-serif`;
+    this.textCtx.textAlign = textAlign;
+    this.textCtx.textBaseline = "middle";
+    this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.95)})`;
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const lineOffsetY = baseOffsetY + lineIdx * linePitch + opticalOffsetY;
+      this.textCtx.fillText(lines[lineIdx], 0, lineOffsetY);
     }
     this.textCtx.restore();
   }
@@ -22758,22 +22808,33 @@ function buildLayerPanel() {
     });
     chevron.addEventListener("click", (e) => {
       e.stopPropagation();
+      const childContainer2 = groupRow.nextElementSibling;
+      if (!childContainer2)
+        return;
       if (collapsedGroups.has(group.prefix)) {
         collapsedGroups.delete(group.prefix);
         chevron.textContent = "\u25BE";
+        childContainer2.style.maxHeight = childContainer2.scrollHeight + "px";
+        const onEnd = () => {
+          childContainer2.style.maxHeight = "";
+          childContainer2.removeEventListener("transitionend", onEnd);
+        };
+        childContainer2.addEventListener("transitionend", onEnd);
       } else {
         collapsedGroups.add(group.prefix);
         chevron.textContent = "\u25B8";
-      }
-      const childContainer2 = groupRow.nextElementSibling;
-      if (childContainer2) {
-        childContainer2.style.display = collapsedGroups.has(group.prefix) ? "none" : "block";
+        childContainer2.style.maxHeight = childContainer2.scrollHeight + "px";
+        requestAnimationFrame(() => {
+          childContainer2.style.maxHeight = "0";
+        });
       }
     });
     content.appendChild(groupRow);
     const childContainer = document.createElement("div");
     childContainer.className = "layer-group-children";
-    childContainer.style.display = isCollapsed ? "none" : "block";
+    if (isCollapsed) {
+      childContainer.style.maxHeight = "0";
+    }
     for (const child of group.layers) {
       const row = document.createElement("div");
       row.className = "layer-row";
@@ -22815,23 +22876,24 @@ function buildLayerPanel() {
     expandTab.classList.add("visible");
   }
 }
-var statusEl = document.getElementById("status");
-var helpText = "scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip, Ctrl+Z undo, Ctrl+Shift+Z redo";
-if (statusEl)
-  statusEl.textContent = helpText;
+var coordsEl = document.getElementById("status-coords");
+var helpEl = document.getElementById("status-help");
+var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click select/drag \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
+if (helpEl)
+  helpEl.textContent = helpText;
 canvas.addEventListener("mouseenter", () => {
-  if (statusEl)
-    statusEl.dataset.hover = "1";
+  if (coordsEl)
+    coordsEl.dataset.hover = "1";
 });
 canvas.addEventListener("mouseleave", () => {
-  if (statusEl) {
-    delete statusEl.dataset.hover;
-    statusEl.textContent = helpText;
+  if (coordsEl) {
+    delete coordsEl.dataset.hover;
+    coordsEl.textContent = "";
   }
 });
 editor.setOnMouseMove((x, y) => {
-  if (statusEl && statusEl.dataset.hover) {
-    statusEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
+  if (coordsEl && coordsEl.dataset.hover) {
+    coordsEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
   }
 });
 editor.init().then(() => {

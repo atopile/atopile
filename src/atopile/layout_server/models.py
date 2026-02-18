@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -83,6 +83,7 @@ class TextModel(BaseModel):
     size: Size2 | None = None
     thickness: float | None = None
     justify: list[str] | None = None
+    font: Literal["stroke", "canvas"] | None = None
 
 
 class FootprintModel(BaseModel):

@@ -3,6 +3,7 @@ export type Color = [number, number, number, number];
 
 /** Layer name → color mapping for PCB rendering */
 export const LAYER_COLORS: Record<string, Color> = {
+    "Annotations.PadNetNames": [1.00, 1.00, 1.00, 1.00],
     "F.Cu":      [0.86, 0.23, 0.22, 0.88],
     "B.Cu":      [0.16, 0.28, 0.47, 0.88],
     "In1.Cu":    [0.70, 0.58, 0.24, 0.78],
@@ -33,6 +34,7 @@ export const ZONE_COLOR_ALPHA = 0.25;
 
 export function getLayerColor(layer: string | null | undefined): Color {
     if (!layer) return [0.5, 0.5, 0.5, 0.5];
+    if (layer.endsWith(".Nets")) return [1.0, 1.0, 1.0, 1.0];
     return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
 }
 
