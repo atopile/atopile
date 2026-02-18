@@ -68,7 +68,7 @@ def generate_ibom_html(
     pickable_parts: list[Pickable.has_part_picked],
     output_path: Path,
     project_name: str = "",
-    include_zones: bool = False,
+    include_zones: bool = True,
 ) -> Path:
     """Generate a self-contained interactive BOM HTML file.
 

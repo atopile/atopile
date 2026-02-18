@@ -27,10 +27,10 @@ from atopile.errors import (
     accumulate,
     iter_leaf_exceptions,
 )
-from atopile.ibom_viewer.generate import generate_ibom_html
 from atopile.logging import AtoLogger, get_logger
 from atopile.logging_utils import get_status_style, print_bar
 from faebryk.core.solver.solver import Solver
+from faebryk.exporters.bom.ibom.generate import generate_ibom_html
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.bom.json_bom import write_json_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
