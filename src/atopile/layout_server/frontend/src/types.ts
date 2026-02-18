@@ -16,6 +16,8 @@ export interface Size2 {
 
 export interface RenderModel {
     board: BoardModel;
+    drawings: DrawingModel[];
+    texts: TextModel[];
     footprints: FootprintModel[];
     tracks: TrackModel[];
     arcs: ArcTrackModel[];
@@ -48,18 +50,16 @@ export interface FootprintModel {
     layer: string;
     pads: PadModel[];
     drawings: DrawingModel[];
-    texts: FootprintTextModel[];
+    texts: TextModel[];
 }
 
-export interface FootprintTextModel {
-    kind: string;
-    name: string | null;
+export interface TextModel {
     text: string;
     at: Point3;
     layer: string | null;
-    hide: boolean;
     size: Size2 | null;
     thickness: number | null;
+    justify: string[] | null;
 }
 
 export interface PadModel {
@@ -81,7 +81,7 @@ export interface DrillModel {
 }
 
 export interface DrawingModel {
-    type: "line" | "arc" | "circle" | "rect" | "polygon";
+    type: "line" | "arc" | "circle" | "rect" | "polygon" | "curve";
     start?: Point2;
     end?: Point2;
     mid?: Point2;
@@ -89,6 +89,7 @@ export interface DrawingModel {
     width: number;
     layer: string | null;
     points?: Point2[];
+    filled: boolean;
 }
 
 export interface TrackModel {
@@ -125,6 +126,10 @@ export interface ZoneModel {
     layers: string[];
     name: string | null;
     uuid: string | null;
+    keepout: boolean;
+    hatch_mode: string | null;
+    hatch_pitch: number | null;
+    fill_enabled: boolean | null;
     outline: Point2[];
     filled_polygons: FilledPolygonModel[];
 }

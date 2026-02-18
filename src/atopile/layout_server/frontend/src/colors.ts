@@ -3,32 +3,32 @@ export type Color = [number, number, number, number];
 
 /** Layer name → color mapping for PCB rendering */
 export const LAYER_COLORS: Record<string, Color> = {
-    "F.Cu":     [0.85, 0.20, 0.20, 0.8],
-    "B.Cu":     [0.20, 0.40, 0.85, 0.8],
-    "In1.Cu":   [0.85, 0.85, 0.20, 0.8],
-    "In2.Cu":   [0.85, 0.40, 0.85, 0.8],
-    "F.SilkS":  [0.0,  0.85, 0.85, 0.9],
-    "B.SilkS":  [0.85, 0.0,  0.85, 0.9],
-    "F.Mask":   [0.6,  0.15, 0.6,  0.4],
-    "B.Mask":   [0.15, 0.6,  0.15, 0.4],
-    "F.Paste":  [0.85, 0.55, 0.55, 0.5],
-    "B.Paste":  [0.55, 0.55, 0.85, 0.5],
-    "F.Fab":    [0.6,  0.6,  0.2,  0.7],
-    "B.Fab":    [0.2,  0.2,  0.6,  0.7],
-    "F.CrtYd":  [0.4,  0.4,  0.4,  0.5],
-    "B.CrtYd":  [0.3,  0.3,  0.5,  0.5],
-    "Edge.Cuts": [0.9, 0.85, 0.2,  1.0],
-    "Dwgs.User": [0.6, 0.6,  0.6,  0.6],
-    "Cmts.User": [0.4, 0.4,  0.8,  0.6],
+    "F.Cu":      [0.86, 0.23, 0.22, 0.88],
+    "B.Cu":      [0.16, 0.28, 0.47, 0.88],
+    "In1.Cu":    [0.70, 0.58, 0.24, 0.78],
+    "In2.Cu":    [0.53, 0.40, 0.70, 0.78],
+    "F.SilkS":   [0.92, 0.90, 0.62, 0.95],
+    "B.SilkS":   [0.78, 0.86, 0.87, 0.92],
+    "F.Mask":    [0.70, 0.35, 0.48, 0.42],
+    "B.Mask":    [0.12, 0.19, 0.34, 0.38],
+    "F.Paste":   [0.90, 0.80, 0.60, 0.48],
+    "B.Paste":   [0.66, 0.74, 0.86, 0.48],
+    "F.Fab":     [0.95, 0.62, 0.45, 0.90],
+    "B.Fab":     [0.62, 0.73, 0.90, 0.90],
+    "F.CrtYd":   [0.91, 0.91, 0.91, 0.62],
+    "B.CrtYd":   [0.80, 0.85, 0.93, 0.62],
+    "Edge.Cuts": [0.93, 0.95, 0.95, 1.00],
+    "Dwgs.User": [0.70, 0.70, 0.72, 0.65],
+    "Cmts.User": [0.74, 0.66, 0.84, 0.65],
 };
 
-export const PAD_COLOR: Color = [0.35, 0.60, 0.35, 0.9];
-export const PAD_FRONT_COLOR: Color = [0.85, 0.20, 0.20, 0.7];
-export const PAD_BACK_COLOR: Color = [0.20, 0.40, 0.85, 0.7];
-export const VIA_COLOR: Color = [0.6, 0.6, 0.6, 0.9];
+export const PAD_COLOR: Color = [0.57, 0.57, 0.30, 0.90];
+export const PAD_FRONT_COLOR: Color = [0.86, 0.23, 0.22, 0.78];
+export const PAD_BACK_COLOR: Color = [0.16, 0.28, 0.47, 0.78];
+export const VIA_COLOR: Color = [0.72, 0.72, 0.72, 0.92];
 export const VIA_DRILL_COLOR: Color = [0.15, 0.15, 0.15, 1.0];
 export const SELECTION_COLOR: Color = [1.0, 1.0, 1.0, 0.3];
-export const BOARD_BG: Color = [0.08, 0.08, 0.08, 1.0];
+export const BOARD_BG: Color = [0.02, 0.10, 0.22, 1.0];
 export const ZONE_COLOR_ALPHA = 0.25;
 
 export function getLayerColor(layer: string | null | undefined): Color {

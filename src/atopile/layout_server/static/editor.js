@@ -1317,28 +1317,28 @@ var Renderer = class {
 
 // src/colors.ts
 var LAYER_COLORS = {
-  "F.Cu": [0.85, 0.2, 0.2, 0.8],
-  "B.Cu": [0.2, 0.4, 0.85, 0.8],
-  "In1.Cu": [0.85, 0.85, 0.2, 0.8],
-  "In2.Cu": [0.85, 0.4, 0.85, 0.8],
-  "F.SilkS": [0, 0.85, 0.85, 0.9],
-  "B.SilkS": [0.85, 0, 0.85, 0.9],
-  "F.Mask": [0.6, 0.15, 0.6, 0.4],
-  "B.Mask": [0.15, 0.6, 0.15, 0.4],
-  "F.Paste": [0.85, 0.55, 0.55, 0.5],
-  "B.Paste": [0.55, 0.55, 0.85, 0.5],
-  "F.Fab": [0.6, 0.6, 0.2, 0.7],
-  "B.Fab": [0.2, 0.2, 0.6, 0.7],
-  "F.CrtYd": [0.4, 0.4, 0.4, 0.5],
-  "B.CrtYd": [0.3, 0.3, 0.5, 0.5],
-  "Edge.Cuts": [0.9, 0.85, 0.2, 1],
-  "Dwgs.User": [0.6, 0.6, 0.6, 0.6],
-  "Cmts.User": [0.4, 0.4, 0.8, 0.6]
+  "F.Cu": [0.86, 0.23, 0.22, 0.88],
+  "B.Cu": [0.16, 0.28, 0.47, 0.88],
+  "In1.Cu": [0.7, 0.58, 0.24, 0.78],
+  "In2.Cu": [0.53, 0.4, 0.7, 0.78],
+  "F.SilkS": [0.92, 0.9, 0.62, 0.95],
+  "B.SilkS": [0.78, 0.86, 0.87, 0.92],
+  "F.Mask": [0.7, 0.35, 0.48, 0.42],
+  "B.Mask": [0.12, 0.19, 0.34, 0.38],
+  "F.Paste": [0.9, 0.8, 0.6, 0.48],
+  "B.Paste": [0.66, 0.74, 0.86, 0.48],
+  "F.Fab": [0.95, 0.62, 0.45, 0.9],
+  "B.Fab": [0.62, 0.73, 0.9, 0.9],
+  "F.CrtYd": [0.91, 0.91, 0.91, 0.62],
+  "B.CrtYd": [0.8, 0.85, 0.93, 0.62],
+  "Edge.Cuts": [0.93, 0.95, 0.95, 1],
+  "Dwgs.User": [0.7, 0.7, 0.72, 0.65],
+  "Cmts.User": [0.74, 0.66, 0.84, 0.65]
 };
-var PAD_COLOR = [0.35, 0.6, 0.35, 0.9];
-var PAD_FRONT_COLOR = [0.85, 0.2, 0.2, 0.7];
-var PAD_BACK_COLOR = [0.2, 0.4, 0.85, 0.7];
-var VIA_COLOR = [0.6, 0.6, 0.6, 0.9];
+var PAD_COLOR = [0.57, 0.57, 0.3, 0.9];
+var PAD_FRONT_COLOR = [0.86, 0.23, 0.22, 0.78];
+var PAD_BACK_COLOR = [0.16, 0.28, 0.47, 0.78];
+var VIA_COLOR = [0.72, 0.72, 0.72, 0.92];
 var VIA_DRILL_COLOR = [0.15, 0.15, 0.15, 1];
 var SELECTION_COLOR = [1, 1, 1, 0.3];
 var ZONE_COLOR_ALPHA = 0.25;
@@ -1437,6 +1437,12 @@ function isPadLayerVisible(padLayer, hidden, concreteLayers) {
 }
 function collectConcreteLayers(model) {
   const layers = /* @__PURE__ */ new Set();
+  for (const d of model.drawings)
+    if (d.layer)
+      layers.add(d.layer);
+  for (const t of model.texts)
+    if (t.layer)
+      layers.add(t.layer);
   for (const fp of model.footprints) {
     layers.add(fp.layer);
     for (const pad of fp.pads) {
@@ -1472,6 +1478,7 @@ function paintAll(renderer, model, hiddenLayers) {
   renderer.dispose_layers();
   if (!hidden.has("Edge.Cuts"))
     paintBoardEdges(renderer, model);
+  paintGlobalDrawings(renderer, model, hidden);
   paintZones(renderer, model, hidden);
   paintTracks(renderer, model, hidden);
   if (!hidden.has("Vias"))
@@ -1523,7 +1530,77 @@ function paintZones(renderer, model, hidden) {
       }
       renderer.end_layer();
     }
+    const shouldDrawKeepout = zone.keepout || zone.filled_polygons.length === 0 || zone.fill_enabled === false;
+    if (!shouldDrawKeepout || zone.outline.length < 3)
+      continue;
+    const zoneLayers = zone.layers.length > 0 ? zone.layers : [...new Set(zone.filled_polygons.map((fp) => fp.layer))];
+    const outlinePts = zone.outline.map(p2v);
+    const closedOutline = [...outlinePts, outlinePts[0].copy()];
+    const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;
+    const hatchSegments = hatchSegmentsForPolygon(outlinePts, hatchPitch);
+    for (const layerName of zoneLayers) {
+      if (!layerName || hidden.has(layerName))
+        continue;
+      const [r, g, b, a] = getLayerColor(layerName);
+      const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
+      layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
+      for (const [start, end] of hatchSegments) {
+        layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45));
+      }
+      renderer.end_layer();
+    }
   }
+}
+function hatchSegmentsForPolygon(points, pitch) {
+  if (points.length < 3 || pitch <= 0)
+    return [];
+  const eps = 1e-6;
+  const closed = [...points, points[0]];
+  let minV = Infinity;
+  let maxV = -Infinity;
+  for (const p of points) {
+    const v = p.y - p.x;
+    if (v < minV)
+      minV = v;
+    if (v > maxV)
+      maxV = v;
+  }
+  const segments = [];
+  for (let c = minV - pitch; c <= maxV + pitch; c += pitch) {
+    const rawIntersections = [];
+    for (let i = 0; i < closed.length - 1; i++) {
+      const a = closed[i];
+      const b = closed[i + 1];
+      const fa = a.y - a.x - c;
+      const fb = b.y - b.x - c;
+      if (fa > eps && fb > eps || fa < -eps && fb < -eps)
+        continue;
+      const denom = fa - fb;
+      if (Math.abs(denom) < eps)
+        continue;
+      const t = fa / denom;
+      if (t < -eps || t > 1 + eps)
+        continue;
+      rawIntersections.push(
+        new Vec2(
+          a.x + (b.x - a.x) * t,
+          a.y + (b.y - a.y) * t
+        )
+      );
+    }
+    rawIntersections.sort((p, q) => p.x - q.x || p.y - q.y);
+    const intersections = [];
+    for (const p of rawIntersections) {
+      const last = intersections[intersections.length - 1];
+      if (!last || Math.abs(last.x - p.x) > eps || Math.abs(last.y - p.y) > eps) {
+        intersections.push(p);
+      }
+    }
+    for (let i = 0; i + 1 < intersections.length; i += 2) {
+      segments.push([intersections[i], intersections[i + 1]]);
+    }
+  }
+  return segments;
 }
 function paintTracks(renderer, model, hidden) {
   const byLayer = /* @__PURE__ */ new Map();
@@ -1581,6 +1658,29 @@ function paintVias(renderer, model) {
   }
   renderer.end_layer();
 }
+function paintGlobalDrawings(renderer, model, hidden) {
+  const byLayer = /* @__PURE__ */ new Map();
+  for (const drawing of model.drawings) {
+    const ln = drawing.layer ?? "Dwgs.User";
+    if (hidden.has(ln))
+      continue;
+    let arr = byLayer.get(ln);
+    if (!arr) {
+      arr = [];
+      byLayer.set(ln, arr);
+    }
+    arr.push(drawing);
+  }
+  const worldAt = { x: 0, y: 0, r: 0 };
+  for (const [layerName, drawings] of byLayer) {
+    const [r, g, b, a] = getLayerColor(layerName);
+    const layer = renderer.start_layer(`global:${layerName}`);
+    for (const drawing of drawings) {
+      paintDrawing(layer, worldAt, drawing, r, g, b, a);
+    }
+    renderer.end_layer();
+  }
+}
 function paintFootprint(renderer, fp, hidden, concreteLayers) {
   const drawingsByLayer = /* @__PURE__ */ new Map();
   for (const drawing of fp.drawings) {
@@ -1618,15 +1718,16 @@ function paintFootprint(renderer, fp, hidden, concreteLayers) {
   }
 }
 function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
-  const w2 = drawing.width || 0.12;
+  const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
+  const strokeWidth = rawWidth > 0 ? rawWidth : drawing.filled ? 0 : 0.12;
   if (drawing.type === "line" && drawing.start && drawing.end) {
     const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
     const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
-    layer.geometry.add_polyline([p1, p2], w2, r, g, b, a);
+    layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
   } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
     const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
     const worldPts = localPts.map((p) => fpTransform(fpAt, p.x, p.y));
-    layer.geometry.add_polyline(worldPts, w2, r, g, b, a);
+    layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
   } else if (drawing.type === "circle" && drawing.center && drawing.end) {
     const cx = drawing.center.x, cy = drawing.center.y;
     const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
@@ -1635,22 +1736,41 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       const angle = i / 48 * 2 * Math.PI;
       pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
     }
-    layer.geometry.add_polyline(pts.map((p) => fpTransform(fpAt, p.x, p.y)), w2, r, g, b, a);
+    const worldPts = pts.map((p) => fpTransform(fpAt, p.x, p.y));
+    if (drawing.filled && worldPts.length >= 3) {
+      layer.geometry.add_polygon(worldPts, r, g, b, a);
+    }
+    if (strokeWidth > 0) {
+      layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+    }
   } else if (drawing.type === "rect" && drawing.start && drawing.end) {
     const s = drawing.start, e = drawing.end;
     const corners = [
       fpTransform(fpAt, s.x, s.y),
       fpTransform(fpAt, e.x, s.y),
       fpTransform(fpAt, e.x, e.y),
-      fpTransform(fpAt, s.x, e.y),
-      fpTransform(fpAt, s.x, s.y)
+      fpTransform(fpAt, s.x, e.y)
     ];
-    layer.geometry.add_polyline(corners, w2, r, g, b, a);
+    if (drawing.filled) {
+      layer.geometry.add_polygon(corners, r, g, b, a);
+    }
+    if (strokeWidth > 0) {
+      layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, r, g, b, a);
+    }
   } else if (drawing.type === "polygon" && drawing.points) {
     const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
     if (worldPts.length >= 3) {
-      worldPts.push(worldPts[0].copy());
-      layer.geometry.add_polyline(worldPts, w2, r, g, b, a);
+      if (drawing.filled) {
+        layer.geometry.add_polygon(worldPts, r, g, b, a);
+      }
+      if (strokeWidth > 0) {
+        layer.geometry.add_polyline([...worldPts, worldPts[0].copy()], strokeWidth, r, g, b, a);
+      }
+    }
+  } else if (drawing.type === "curve" && drawing.points) {
+    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
+    if (worldPts.length >= 2) {
+      layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
     }
   }
 }
@@ -1708,8 +1828,6 @@ function paintSelection(renderer, fp) {
       allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
   }
   for (const text of fp.texts) {
-    if (text.hide)
-      continue;
     allPoints.push(fpTransform(fp.at, text.at.x, text.at.y));
   }
   if (allPoints.length > 0) {
@@ -1736,14 +1854,29 @@ function computeBBox(model) {
     if (edge.center)
       points.push(p2v(edge.center));
   }
+  for (const drawing of model.drawings) {
+    if (drawing.start)
+      points.push(p2v(drawing.start));
+    if (drawing.end)
+      points.push(p2v(drawing.end));
+    if (drawing.mid)
+      points.push(p2v(drawing.mid));
+    if (drawing.center)
+      points.push(p2v(drawing.center));
+    if (drawing.points) {
+      for (const p of drawing.points)
+        points.push(p2v(p));
+    }
+  }
+  for (const text of model.texts) {
+    points.push(new Vec2(text.at.x, text.at.y));
+  }
   for (const fp of model.footprints) {
     points.push(new Vec2(fp.at.x, fp.at.y));
     for (const pad of fp.pads) {
       points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
     }
     for (const text of fp.texts) {
-      if (text.hide)
-        continue;
       points.push(fpTransform(fp.at, text.at.x, text.at.y));
     }
   }
@@ -1813,6 +1946,237 @@ function hitTestFootprints(worldPos, footprints) {
     }
   }
   return -1;
+}
+
+// src/kicad_stroke_font_data.ts
+var KICAD_STROKE_ASCII_32_126 = [
+  "JZ",
+  "MWRYSZR[QZRYR[ RRSQGRFSGRSRF",
+  "JZNFNJ RVFVJ",
+  "H]LM[M RRDL_ RYVJV RS_YD",
+  "H\\LZO[T[VZWYXWXUWSVRTQPPNOMNLLLJMHNGPFUFXG RRCR^",
+  "F^J[ZF RMFOGPIOKMLKKJIKGMF RYZZXYVWUUVTXUZW[YZ",
+  "E_[[Z[XZUWPQNNMKMINGPFQFSGTITJSLRMLQKRJTJWKYLZN[Q[SZTYWUXRXP",
+  "MWSFQJ",
+  "KYVcUbS_R]QZPUPQQLRISGUDVC",
+  "KYNcObQ_R]SZTUTQSLRIQGODNC",
+  "JZRFRK RMIRKWI ROORKUO",
+  "E_JSZS RR[RK",
+  "MWSZS[R]Q^",
+  "E_JSZS",
+  "MWRYSZR[QZRYR[",
+  "G][EI`",
+  "H\\QFSFUGVHWJXNXSWWVYUZS[Q[OZNYMWLSLNMJNHOGQF",
+  "H\\X[L[ RR[RFPINKLL",
+  "H\\LHMGOFTFVGWHXJXLWOK[X[",
+  "H\\KFXFQNTNVOWPXRXWWYVZT[N[LZKY",
+  "H\\VMV[ RQELTYT",
+  "H\\WFMFLPMOONTNVOWPXRXWWYVZT[O[MZLY",
+  "H\\VFRFPGOHMKLOLWMYNZP[T[VZWYXWXRWPVOTNPNNOMPLR",
+  "H\\KFYFP[",
+  "H\\PONNMMLKLJMHNGPFTFVGWHXJXKWMVNTOPONPMQLSLWMYNZP[T[VZWYXWXSWQVPTO",
+  "H\\N[R[TZUYWVXRXJWHVGTFPFNGMHLJLOMQNRPSTSVRWQXO",
+  "MWRYSZR[QZRYR[ RRNSORPQORNRP",
+  "MWSZS[R]Q^ RRNSORPQORNRP",
+  "E_ZMJSZY",
+  "E_JPZP RZVJV",
+  "E_JMZSJY",
+  "I[QYRZQ[PZQYQ[ RMGOFTFVGWIWKVMUNSORPQRQS",
+  "D_VQUPSOQOOPNQMSMUNWOXQYSYUXVW RVOVWWXXXZW[U[PYMVKRJNKKMIPHTIXK[N]R^V]Y[",
+  "I[MUWU RK[RFY[",
+  "G\\SPVQWRXTXWWYVZT[L[LFSFUGVHWJWLVNUOSPLP",
+  "F[WYVZS[Q[NZLXKVJRJOKKLINGQFSFVGWH",
+  "G\\L[LFQFTGVIWKXOXRWVVXTZQ[L[",
+  "H[MPTP RW[M[MFWF",
+  "HZTPMP RM[MFWF",
+  "F[VGTFQFNGLIKKJOJRKVLXNZQ[S[VZWYWRSR",
+  "G]L[LF RLPXP RX[XF",
+  "MWR[RF",
+  "JZUFUUTXRZO[M[",
+  "G\\L[LF RX[OO RXFLR",
+  "HYW[M[MF",
+  "F^K[KFRUYFY[",
+  "G]L[LFX[XF",
+  "G]PFTFVGXIYMYTXXVZT[P[NZLXKTKMLINGPF",
+  "G\\L[LFTFVGWHXJXMWOVPTQLQ",
+  "G]Z]X\\VZSWQVOV RP[NZLXKTKMLINGPFTFVGXIYMYTXXVZT[P[",
+  "G\\X[QQ RL[LFTFVGWHXJXMWOVPTQLQ",
+  "H\\LZO[T[VZWYXWXUWSVRTQPPNOMNLLLJMHNGPFUFXG",
+  "JZLFXF RR[RF",
+  "G]LFLWMYNZP[T[VZWYXWXF",
+  "I[KFR[YF",
+  "F^IFN[RLV[[F",
+  "H\\KFY[ RYFK[",
+  "I[RQR[ RKFRQYF",
+  "H\\KFYFK[Y[",
+  "KYVbQbQDVD",
+  "KYID[_",
+  "KYNbSbSDND",
+  "LXNHREVH",
+  "JZJ]Z]",
+  "NVPESH",
+  "I\\W[WPVNTMPMNN RWZU[P[NZMXMVNTPSUSWR",
+  "H[M[MF RMNOMSMUNVOWQWWVYUZS[O[MZ",
+  "HZVZT[P[NZMYLWLQMONNPMTMVN",
+  "I\\W[WF RWZU[Q[OZNYMWMQNOONQMUMWN",
+  "I[VZT[P[NZMXMPNNPMTMVNWPWRMT",
+  "MYOMWM RR[RISGUFWF",
+  "I\\WMW^V`UaSbPbNa RWZU[Q[OZNYMWMQNOONQMUMWN",
+  "H[M[MF RV[VPUNSMPMNNMO",
+  "MWR[RM RRFQGRHSGRFRH",
+  "MWRMR_QaObNb RRFQGRHSGRFRH",
+  "IZN[NF RPSV[ RVMNU",
+  "MXU[SZRXRF",
+  "D`I[IM RIOJNLMOMQNRPR[ RRPSNUMXMZN[P[[",
+  "I\\NMN[ RNOONQMTMVNWPW[",
+  "H[P[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[",
+  "H[MMMb RMNOMSMUNVOWQWWVYUZS[O[MZ",
+  "I\\WMWb RWZU[Q[OZNYMWMQNOONQMUMWN",
+  "KXP[PM RPQQORNTMVM",
+  "J[NZP[T[VZWXWWVUTTQTOSNQNPONQMTMVN",
+  "MYOMWM RRFRXSZU[W[",
+  "H[VMV[ RMMMXNZP[S[UZVY",
+  "JZMMR[WM",
+  "G]JMN[RQV[ZM",
+  "IZL[WM RLMW[",
+  "JZMMR[ RWMR[P`OaMb",
+  "IZLMWML[W[",
+  "KYVcUcSbR`RVQTOSQRRPRFSDUCVC",
+  "H\\RbRD",
+  "KYNcOcQbR`RVSTUSSRRPRFQDOCNC",
+  "KZMSNRPQTSVRWQ"
+];
+
+// src/kicad_stroke_font.ts
+var ASCII_MIN = 32;
+var ASCII_MAX = 126;
+var ASCII_QMARK = 63;
+var REF_CHAR_CODE = "R".charCodeAt(0);
+var FONT_SCALE = 1 / 21;
+var FONT_OFFSET = -10;
+var INTERLINE_PITCH = 1.62;
+var glyphCache = /* @__PURE__ */ new Map();
+var layoutCache = /* @__PURE__ */ new Map();
+function decodeCoord(c) {
+  return c.charCodeAt(0) - REF_CHAR_CODE;
+}
+function decodeGlyph(encoded) {
+  const left = decodeCoord(encoded[0] ?? "R") * FONT_SCALE;
+  const right = decodeCoord(encoded[1] ?? "R") * FONT_SCALE;
+  const strokes = [];
+  let currentStroke = null;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (let i = 2; i + 1 < encoded.length; i += 2) {
+    const xChar = encoded[i];
+    const yChar = encoded[i + 1];
+    if (xChar === " " && yChar === "R") {
+      currentStroke = null;
+      continue;
+    }
+    const x = decodeCoord(xChar) * FONT_SCALE - left;
+    const y = (decodeCoord(yChar) + FONT_OFFSET) * FONT_SCALE;
+    const point = new Vec2(x, y);
+    if (currentStroke == null) {
+      currentStroke = [];
+      strokes.push(currentStroke);
+    }
+    currentStroke.push(point);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minY)) {
+    minY = 0;
+    maxY = 0;
+  }
+  return {
+    advance: right - left,
+    strokes,
+    minY,
+    maxY
+  };
+}
+function getGlyph(charCode) {
+  const normalized = charCode >= ASCII_MIN && charCode <= ASCII_MAX ? charCode : ASCII_QMARK;
+  const cached = glyphCache.get(normalized);
+  if (cached) {
+    return cached;
+  }
+  const encoded = KICAD_STROKE_ASCII_32_126[normalized - ASCII_MIN] ?? KICAD_STROKE_ASCII_32_126[ASCII_QMARK - ASCII_MIN];
+  const glyph = decodeGlyph(encoded);
+  glyphCache.set(normalized, glyph);
+  return glyph;
+}
+function layoutKicadStrokeText(text, charWidth, charHeight) {
+  const cacheKey = `${text}|${charWidth}|${charHeight}`;
+  const cached = layoutCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const strokes = [];
+  let cursorX = 0;
+  let cursorY = 0;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let lineMaxX = 0;
+  const linePitch = charHeight * INTERLINE_PITCH;
+  for (const ch of text) {
+    if (ch === "\n") {
+      lineMaxX = Math.max(lineMaxX, cursorX);
+      cursorX = 0;
+      cursorY += linePitch;
+      continue;
+    }
+    if (ch === "	") {
+      const tab = charWidth * 3.28;
+      const rem = cursorX % tab;
+      cursorX += tab - rem;
+      lineMaxX = Math.max(lineMaxX, cursorX);
+      continue;
+    }
+    if (ch === " ") {
+      cursorX += charWidth * 0.6;
+      lineMaxX = Math.max(lineMaxX, cursorX);
+      continue;
+    }
+    const glyph = getGlyph(ch.codePointAt(0) ?? ASCII_QMARK);
+    for (const stroke of glyph.strokes) {
+      if (stroke.length === 0) {
+        continue;
+      }
+      const transformed = [];
+      for (const p of stroke) {
+        const tx = cursorX + p.x * charWidth;
+        const ty = cursorY + p.y * charHeight;
+        transformed.push(new Vec2(tx, ty));
+        minX = Math.min(minX, tx);
+        minY = Math.min(minY, ty);
+        maxX = Math.max(maxX, tx);
+        maxY = Math.max(maxY, ty);
+      }
+      strokes.push(transformed);
+    }
+    minY = Math.min(minY, cursorY + glyph.minY * charHeight);
+    maxY = Math.max(maxY, cursorY + glyph.maxY * charHeight);
+    cursorX += glyph.advance * charWidth;
+    lineMaxX = Math.max(lineMaxX, cursorX);
+  }
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    maxX = lineMaxX;
+    minY = 0;
+    maxY = charHeight;
+  } else {
+    maxX = Math.max(maxX, lineMaxX);
+  }
+  const layout = { strokes, advance: lineMaxX, minX, minY, maxX, maxY };
+  layoutCache.set(cacheKey, layout);
+  return layout;
+}
+function layoutKicadStrokeLine(text, charWidth, charHeight) {
+  return layoutKicadStrokeText(text, charWidth, charHeight);
 }
 
 // src/editor.ts
@@ -2079,6 +2443,14 @@ var Editor = class {
     if (!this.model)
       return [];
     const layers = /* @__PURE__ */ new Set();
+    for (const d of this.model.drawings) {
+      if (d.layer)
+        layers.add(d.layer);
+    }
+    for (const t of this.model.texts) {
+      if (t.layer)
+        layers.add(t.layer);
+    }
     for (const fp of this.model.footprints) {
       layers.add(fp.layer);
       for (const pad of fp.pads) {
@@ -2143,36 +2515,111 @@ var Editor = class {
     this.textCtx.clearRect(0, 0, width, height);
     if (!this.model || this.camera.zoom < 0.2)
       return;
-    this.textCtx.textAlign = "center";
-    this.textCtx.textBaseline = "middle";
+    for (const text of this.model.texts) {
+      if (!text.text.trim())
+        continue;
+      const layerName = text.layer ?? "Dwgs.User";
+      if (this.hiddenLayers.has(layerName))
+        continue;
+      this.drawOverlayText(
+        text.text,
+        layerName,
+        text.at.x,
+        text.at.y,
+        text.at.r || 0,
+        text.size?.w ?? text.size?.h ?? 1,
+        text.size?.h ?? text.size?.w ?? 1,
+        text.thickness,
+        text.justify,
+        width,
+        height
+      );
+    }
     for (const fp of this.model.footprints) {
       for (const text of fp.texts) {
-        if (text.hide || !text.text.trim())
+        if (!text.text.trim())
           continue;
         const layerName = text.layer ?? fp.layer;
         if (this.hiddenLayers.has(layerName))
           continue;
         const worldPos = this.transformFootprintPoint(fp.at, text.at.x, text.at.y);
-        const screenPos = this.camera.world_to_screen(worldPos);
-        if (screenPos.x < -200 || screenPos.x > width + 200 || screenPos.y < -50 || screenPos.y > height + 50) {
-          continue;
-        }
-        const textHeight = text.size?.h ?? 1;
-        const screenFontSize = textHeight * this.camera.zoom;
-        if (screenFontSize < 2)
-          continue;
-        const fontPx = Math.max(8, Math.min(screenFontSize, 64));
-        const [r, g, b, a] = getLayerColor(layerName);
-        const rotation = -((fp.at.r || 0) + (text.at.r || 0)) * DEG_TO_RAD3;
-        this.textCtx.save();
-        this.textCtx.translate(screenPos.x, screenPos.y);
-        this.textCtx.rotate(rotation);
-        this.textCtx.font = `${fontPx}px monospace`;
-        this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
-        this.textCtx.fillText(text.text, 0, 0);
-        this.textCtx.restore();
+        const textRotation = (fp.at.r || 0) + (text.at.r || 0);
+        this.drawOverlayText(
+          text.text,
+          layerName,
+          worldPos.x,
+          worldPos.y,
+          textRotation,
+          text.size?.w ?? text.size?.h ?? 1,
+          text.size?.h ?? text.size?.w ?? 1,
+          text.thickness,
+          text.justify,
+          width,
+          height
+        );
       }
     }
+  }
+  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, width, height) {
+    if (!this.textCtx)
+      return;
+    const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
+    if (screenPos.x < -200 || screenPos.x > width + 200 || screenPos.y < -50 || screenPos.y > height + 50) {
+      return;
+    }
+    const screenFontSize = textHeight * this.camera.zoom;
+    if (screenFontSize < 2)
+      return;
+    const lines = text.split("\n");
+    if (lines.length === 0)
+      return;
+    const [r, g, b, a] = getLayerColor(layerName);
+    const rotation = -(rotationDeg || 0) * DEG_TO_RAD3;
+    const justifySet = new Set(justify ?? []);
+    const linePitch = textHeight * 1.62;
+    const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
+    let baseOffsetY = textHeight;
+    if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
+      baseOffsetY -= totalHeight / 2;
+    } else if (justifySet.has("bottom")) {
+      baseOffsetY -= totalHeight;
+    }
+    const minWorldStroke = 0.8 / Math.max(this.camera.zoom, 1e-6);
+    const worldStroke = Math.max(minWorldStroke, thickness ?? textHeight * 0.15);
+    this.textCtx.save();
+    this.textCtx.translate(screenPos.x, screenPos.y);
+    this.textCtx.rotate(rotation);
+    this.textCtx.scale(this.camera.zoom, this.camera.zoom);
+    const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
+    this.textCtx.strokeStyle = color;
+    this.textCtx.lineWidth = worldStroke;
+    this.textCtx.lineCap = "round";
+    this.textCtx.lineJoin = "round";
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx];
+      const layout = layoutKicadStrokeLine(line, textWidth, textHeight);
+      if (layout.strokes.length === 0) {
+        continue;
+      }
+      let lineOffsetX = 0;
+      if (justifySet.has("right")) {
+        lineOffsetX = -layout.advance;
+      } else if (justifySet.has("center") || !justifySet.has("left") && !justifySet.has("right")) {
+        lineOffsetX = -layout.advance / 2;
+      }
+      const lineOffsetY = baseOffsetY + lineIdx * linePitch;
+      for (const stroke of layout.strokes) {
+        if (stroke.length < 2)
+          continue;
+        this.textCtx.beginPath();
+        this.textCtx.moveTo(stroke[0].x + lineOffsetX, stroke[0].y + lineOffsetY);
+        for (let i = 1; i < stroke.length; i++) {
+          this.textCtx.lineTo(stroke[i].x + lineOffsetX, stroke[i].y + lineOffsetY);
+        }
+        this.textCtx.stroke();
+      }
+    }
+    this.textCtx.restore();
   }
   transformFootprintPoint(fpAt, localX, localY) {
     const rad = -(fpAt.r || 0) * DEG_TO_RAD3;

@@ -15,13 +15,13 @@ from atopile.layout_server.models import (
     FilledPolygonModel,
     FootprintModel,
     FootprintSummary,
-    FootprintTextModel,
     NetModel,
     PadModel,
     Point2,
     Point3,
     RenderModel,
     Size2,
+    TextModel,
     TrackModel,
     ViaModel,
     ZoneModel,
@@ -283,6 +283,8 @@ class PcbManager:
         pcb = self.pcb
         return RenderModel(
             board=self._extract_board(pcb),
+            drawings=self._extract_global_drawings(pcb),
+            texts=self._extract_global_texts(pcb),
             footprints=[self._extract_footprint(fp) for fp in pcb.footprints],
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
@@ -395,7 +397,7 @@ class PcbManager:
         drawings: list[DrawingModel] = []
         for line in fp.fp_lines:
             layer = _get_layer(line)
-            sw = line.stroke.width if line.stroke else 0.12
+            sw = _stroke_width(line)
             drawings.append(
                 DrawingModel(
                     type="line",
@@ -407,7 +409,7 @@ class PcbManager:
             )
         for arc in fp.fp_arcs:
             layer = _get_layer(arc)
-            sw = arc.stroke.width if arc.stroke else 0.12
+            sw = _stroke_width(arc)
             drawings.append(
                 DrawingModel(
                     type="arc",
@@ -420,7 +422,7 @@ class PcbManager:
             )
         for circle in fp.fp_circles:
             layer = _get_layer(circle)
-            sw = circle.stroke.width if circle.stroke else 0.12
+            sw = _stroke_width(circle)
             drawings.append(
                 DrawingModel(
                     type="circle",
@@ -428,11 +430,12 @@ class PcbManager:
                     end=Point2(x=circle.end.x, y=circle.end.y),
                     width=sw,
                     layer=layer,
+                    filled=_is_filled(circle),
                 )
             )
         for rect in fp.fp_rects:
             layer = _get_layer(rect)
-            sw = rect.stroke.width if rect.stroke else 0.12
+            sw = _stroke_width(rect)
             drawings.append(
                 DrawingModel(
                     type="rect",
@@ -440,11 +443,12 @@ class PcbManager:
                     end=Point2(x=rect.end.x, y=rect.end.y),
                     width=sw,
                     layer=layer,
+                    filled=_is_filled(rect),
                 )
             )
         for poly in fp.fp_poly:
             layer = _get_layer(poly)
-            sw = poly.stroke.width if poly.stroke else 0.12
+            sw = _stroke_width(poly)
             pts = [Point2(x=p.x, y=p.y) for p in poly.pts.xys]
             drawings.append(
                 DrawingModel(
@@ -452,6 +456,7 @@ class PcbManager:
                     points=pts,
                     width=sw,
                     layer=layer,
+                    filled=_is_filled(poly),
                 )
             )
 
@@ -469,10 +474,291 @@ class PcbManager:
             texts=texts,
         )
 
+    def _extract_global_drawings(self, pcb: kicad.pcb.KicadPcb) -> list[DrawingModel]:
+        drawings: list[DrawingModel] = []
+
+        for line in pcb.gr_lines:
+            if _on_layer(line, "Edge.Cuts"):
+                continue
+            layer = _get_layer(line)
+            sw = _stroke_width(line)
+            drawings.append(
+                DrawingModel(
+                    type="line",
+                    start=Point2(x=line.start.x, y=line.start.y),
+                    end=Point2(x=line.end.x, y=line.end.y),
+                    width=sw,
+                    layer=layer,
+                )
+            )
+
+        for arc in pcb.gr_arcs:
+            if _on_layer(arc, "Edge.Cuts"):
+                continue
+            layer = _get_layer(arc)
+            sw = _stroke_width(arc)
+            drawings.append(
+                DrawingModel(
+                    type="arc",
+                    start=Point2(x=arc.start.x, y=arc.start.y),
+                    mid=Point2(x=arc.mid.x, y=arc.mid.y),
+                    end=Point2(x=arc.end.x, y=arc.end.y),
+                    width=sw,
+                    layer=layer,
+                )
+            )
+
+        for circle in pcb.gr_circles:
+            if _on_layer(circle, "Edge.Cuts"):
+                continue
+            layer = _get_layer(circle)
+            sw = _stroke_width(circle)
+            drawings.append(
+                DrawingModel(
+                    type="circle",
+                    center=Point2(x=circle.center.x, y=circle.center.y),
+                    end=Point2(x=circle.end.x, y=circle.end.y),
+                    width=sw,
+                    layer=layer,
+                    filled=_is_filled(circle),
+                )
+            )
+
+        for rect in pcb.gr_rects:
+            if _on_layer(rect, "Edge.Cuts"):
+                continue
+            layer = _get_layer(rect)
+            sw = _stroke_width(rect)
+            drawings.append(
+                DrawingModel(
+                    type="rect",
+                    start=Point2(x=rect.start.x, y=rect.start.y),
+                    end=Point2(x=rect.end.x, y=rect.end.y),
+                    width=sw,
+                    layer=layer,
+                    filled=_is_filled(rect),
+                )
+            )
+
+        for poly in pcb.gr_polys:
+            if _on_layer(poly, "Edge.Cuts"):
+                continue
+            layer = _get_layer(poly)
+            sw = _stroke_width(poly)
+            drawings.append(
+                DrawingModel(
+                    type="polygon",
+                    points=[Point2(x=p.x, y=p.y) for p in poly.pts.xys],
+                    width=sw,
+                    layer=layer,
+                    filled=_is_filled(poly),
+                )
+            )
+
+        for curve in pcb.gr_curves:
+            if _on_layer(curve, "Edge.Cuts"):
+                continue
+            layer = _get_layer(curve)
+            sw = _stroke_width(curve)
+            drawings.append(
+                DrawingModel(
+                    type="curve",
+                    points=[Point2(x=p.x, y=p.y) for p in curve.pts.xys],
+                    width=sw,
+                    layer=layer,
+                )
+            )
+
+        for tb in pcb.gr_text_boxes:
+            if _is_hidden(tb) or not tb.border:
+                continue
+            sw = tb.stroke.width if tb.stroke else 0.12
+            if tb.start is not None and tb.end is not None:
+                drawings.append(
+                    DrawingModel(
+                        type="rect",
+                        start=Point2(x=tb.start.x, y=tb.start.y),
+                        end=Point2(x=tb.end.x, y=tb.end.y),
+                        width=sw,
+                        layer=tb.layer,
+                    )
+                )
+            elif tb.pts is not None:
+                drawings.append(
+                    DrawingModel(
+                        type="polygon",
+                        points=[Point2(x=p.x, y=p.y) for p in tb.pts.xys],
+                        width=sw,
+                        layer=tb.layer,
+                    )
+                )
+
+        for dimension in pcb.dimensions:
+            if not dimension.pts.xys:
+                continue
+            thickness = (
+                dimension.style.thickness
+                if dimension.style is not None and dimension.style.thickness is not None
+                else 0.12
+            )
+            drawings.append(
+                DrawingModel(
+                    type="curve",
+                    points=[Point2(x=p.x, y=p.y) for p in dimension.pts.xys],
+                    width=thickness,
+                    layer=dimension.layer,
+                )
+            )
+
+        for target in pcb.targets:
+            half_x = target.size.x / 2
+            half_y = target.size.y / 2
+            width = target.width if target.width is not None else 0.12
+            drawings.append(
+                DrawingModel(
+                    type="line",
+                    start=Point2(x=target.at.x - half_x, y=target.at.y),
+                    end=Point2(x=target.at.x + half_x, y=target.at.y),
+                    width=width,
+                    layer=target.layer,
+                )
+            )
+            drawings.append(
+                DrawingModel(
+                    type="line",
+                    start=Point2(x=target.at.x, y=target.at.y - half_y),
+                    end=Point2(x=target.at.x, y=target.at.y + half_y),
+                    width=width,
+                    layer=target.layer,
+                )
+            )
+
+        for table in pcb.tables:
+            for cell in table.cells.table_cells:
+                if _is_hidden(cell) or not cell.border:
+                    continue
+                sw = (
+                    cell.stroke.width
+                    if cell.stroke is not None and cell.stroke.width is not None
+                    else (
+                        table.border.stroke.width
+                        if table.border is not None
+                        and table.border.stroke is not None
+                        and table.border.stroke.width is not None
+                        else 0.12
+                    )
+                )
+                if cell.start is not None and cell.end is not None:
+                    drawings.append(
+                        DrawingModel(
+                            type="rect",
+                            start=Point2(x=cell.start.x, y=cell.start.y),
+                            end=Point2(x=cell.end.x, y=cell.end.y),
+                            width=sw,
+                            layer=cell.layer,
+                        )
+                    )
+                elif cell.pts is not None:
+                    drawings.append(
+                        DrawingModel(
+                            type="polygon",
+                            points=[Point2(x=p.x, y=p.y) for p in cell.pts.xys],
+                            width=sw,
+                            layer=cell.layer,
+                        )
+                    )
+
+        return drawings
+
+    def _extract_global_texts(self, pcb: kicad.pcb.KicadPcb) -> list[TextModel]:
+        texts: list[TextModel] = []
+        for txt in pcb.gr_texts:
+            if _is_hidden(txt):
+                continue
+            text_value = getattr(txt, "text", "")
+            if not text_value.strip():
+                continue
+            texts.append(self._extract_text_entry(text_value, txt))
+
+        for tb in pcb.gr_text_boxes:
+            if _is_hidden(tb):
+                continue
+            if not tb.text.strip():
+                continue
+            texts.append(self._extract_text_box_text(tb))
+
+        for dimension in pcb.dimensions:
+            if _is_hidden(dimension.gr_text):
+                continue
+            text_value = getattr(dimension.gr_text, "text", "")
+            if not text_value.strip():
+                continue
+            texts.append(self._extract_text_entry(text_value, dimension.gr_text))
+
+        for table in pcb.tables:
+            for cell in table.cells.table_cells:
+                if _is_hidden(cell):
+                    continue
+                if not cell.text.strip():
+                    continue
+                texts.append(self._extract_table_cell_text(cell))
+
+        return texts
+
+    def _extract_text_box_text(self, tb) -> TextModel:
+        at = _text_box_position(tb)
+        effects = getattr(tb, "effects", None)
+        font = getattr(effects, "font", None)
+        font_size = getattr(font, "size", None)
+        size: Size2 | None = None
+        if (
+            font_size is not None
+            and getattr(font_size, "w", None) is not None
+            and getattr(font_size, "h", None) is not None
+        ):
+            size = Size2(w=float(font_size.w), h=float(font_size.h))
+        return TextModel(
+            text=tb.text,
+            at=at,
+            layer=tb.layer,
+            size=size,
+            thickness=(
+                float(font.thickness)
+                if font is not None and getattr(font, "thickness", None) is not None
+                else None
+            ),
+            justify=_extract_text_justify(tb),
+        )
+
+    def _extract_table_cell_text(self, cell) -> TextModel:
+        at = _table_cell_position(cell)
+        effects = getattr(cell, "effects", None)
+        font = getattr(effects, "font", None)
+        font_size = getattr(font, "size", None)
+        size: Size2 | None = None
+        if (
+            font_size is not None
+            and getattr(font_size, "w", None) is not None
+            and getattr(font_size, "h", None) is not None
+        ):
+            size = Size2(w=float(font_size.w), h=float(font_size.h))
+        return TextModel(
+            text=cell.text,
+            at=at,
+            layer=cell.layer,
+            size=size,
+            thickness=(
+                float(font.thickness)
+                if font is not None and getattr(font, "thickness", None) is not None
+                else None
+            ),
+            justify=_extract_text_justify(cell),
+        )
+
     def _extract_text_entries(
         self, fp, reference: str | None, footprint_value: str | None
-    ) -> list[FootprintTextModel]:
-        texts: list[FootprintTextModel] = []
+    ) -> list[TextModel]:
+        texts: list[TextModel] = []
 
         for prop in fp.propertys:
             if _is_hidden(prop):
@@ -485,8 +771,6 @@ class PcbManager:
                 continue
             texts.append(
                 self._extract_text_entry(
-                    kind="property",
-                    name=getattr(prop, "name", None),
                     text=resolved,
                     obj=prop,
                 )
@@ -503,8 +787,6 @@ class PcbManager:
                 continue
             texts.append(
                 self._extract_text_entry(
-                    kind="fp_text",
-                    name=_text_type_name(getattr(txt, "type", None)),
                     text=resolved,
                     obj=txt,
                 )
@@ -512,25 +794,20 @@ class PcbManager:
 
         return texts
 
-    def _extract_text_entry(
-        self, kind: str, name: str | None, text: str, obj
-    ) -> FootprintTextModel:
+    def _extract_text_entry(self, text: str, obj) -> TextModel:
         at = getattr(obj, "at", None)
         effects = getattr(obj, "effects", None)
         font = getattr(effects, "font", None)
         font_size = getattr(font, "size", None)
-
         size: Size2 | None = None
         if (
             font_size is not None
             and getattr(font_size, "w", None) is not None
             and getattr(font_size, "h", None) is not None
         ):
-            size = Size2(w=font_size.w, h=font_size.h)
+            size = Size2(w=float(font_size.w), h=float(font_size.h))
 
-        return FootprintTextModel(
-            kind=kind,
-            name=name,
+        return TextModel(
             text=text,
             at=Point3(
                 x=getattr(at, "x", 0.0),
@@ -538,9 +815,13 @@ class PcbManager:
                 r=(getattr(at, "r", 0.0) or 0.0),
             ),
             layer=_text_layer_name(getattr(obj, "layer", None)),
-            hide=bool(getattr(obj, "hide", False)),
             size=size,
-            thickness=getattr(font, "thickness", None),
+            thickness=(
+                float(font.thickness)
+                if font is not None and getattr(font, "thickness", None) is not None
+                else None
+            ),
+            justify=_extract_text_justify(obj),
         )
 
     def _extract_drill(self, drill) -> DrillModel:
@@ -602,6 +883,24 @@ class PcbManager:
             layers=layers,
             name=zone.name,
             uuid=zone.uuid,
+            keepout=(zone.keepout is not None),
+            hatch_mode=(
+                str(zone.hatch.mode).lower()
+                if zone.hatch is not None
+                and getattr(zone.hatch, "mode", None) is not None
+                else None
+            ),
+            hatch_pitch=(
+                float(zone.hatch.pitch)
+                if zone.hatch is not None
+                and getattr(zone.hatch, "pitch", None) is not None
+                else None
+            ),
+            fill_enabled=(
+                _to_optional_bool(getattr(zone.fill, "enable", None))
+                if zone.fill is not None
+                else None
+            ),
             outline=pts,
             filled_polygons=filled,
         )
@@ -630,6 +929,40 @@ def _get_layer(obj) -> str | None:
     return None
 
 
+def _stroke_width(obj, default: float = 0.12) -> float:
+    stroke = getattr(obj, "stroke", None)
+    width = getattr(stroke, "width", None)
+    if width is None:
+        return default
+    width_value = float(width)
+    if width_value < 0:
+        return 0.0
+    return width_value
+
+
+def _is_filled(obj) -> bool:
+    fill = getattr(obj, "fill", None)
+    if isinstance(fill, bool):
+        return fill
+    if fill is None:
+        return False
+    token = str(fill).strip().lower()
+    return token in {"yes", "true", "solid", "fill"}
+
+
+def _to_optional_bool(value) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    token = str(value).strip().lower()
+    if token in {"yes", "true", "on", "enable", "enabled"}:
+        return True
+    if token in {"no", "false", "off", "disable", "disabled"}:
+        return False
+    return None
+
+
 def _text_layer_name(layer_obj) -> str | None:
     if layer_obj is None:
         return None
@@ -638,16 +971,6 @@ def _text_layer_name(layer_obj) -> str | None:
     if hasattr(layer_obj, "layer") and layer_obj.layer:
         return layer_obj.layer
     return None
-
-
-def _text_type_name(text_type) -> str | None:
-    if text_type is None:
-        return None
-    if isinstance(text_type, str):
-        return text_type
-    if hasattr(text_type, "name"):
-        return str(text_type.name).lower()
-    return str(text_type).split(".")[-1].lower()
 
 
 def _is_hidden(text_obj) -> bool:
@@ -692,3 +1015,56 @@ def _resolve_text_tokens(text: str, reference: str | None, value: str | None) ->
         i += 1
 
     return "".join(result_parts)
+
+
+def _extract_text_justify(text_obj) -> list[str] | None:
+    effects = getattr(text_obj, "effects", None)
+    justify = getattr(effects, "justify", None)
+    if justify is None:
+        return None
+
+    out: list[str] = []
+    for attr in ("justify1", "justify2", "justify3"):
+        value = getattr(justify, attr, None)
+        if value is None:
+            continue
+        token = str(value).strip().lower()
+        if token:
+            out.append(token)
+    return out or None
+
+
+def _text_box_position(tb) -> Point3:
+    if tb.start is not None and tb.end is not None:
+        return Point3(
+            x=(tb.start.x + tb.end.x) / 2,
+            y=(tb.start.y + tb.end.y) / 2,
+            r=float(tb.angle or 0),
+        )
+    if tb.pts is not None and tb.pts.xys:
+        xs = [p.x for p in tb.pts.xys]
+        ys = [p.y for p in tb.pts.xys]
+        return Point3(
+            x=(min(xs) + max(xs)) / 2,
+            y=(min(ys) + max(ys)) / 2,
+            r=float(tb.angle or 0),
+        )
+    return Point3(x=0, y=0, r=float(tb.angle or 0))
+
+
+def _table_cell_position(cell) -> Point3:
+    if cell.start is not None and cell.end is not None:
+        return Point3(
+            x=(cell.start.x + cell.end.x) / 2,
+            y=(cell.start.y + cell.end.y) / 2,
+            r=float(cell.angle or 0),
+        )
+    if cell.pts is not None and cell.pts.xys:
+        xs = [p.x for p in cell.pts.xys]
+        ys = [p.y for p in cell.pts.xys]
+        return Point3(
+            x=(min(xs) + max(xs)) / 2,
+            y=(min(ys) + max(ys)) / 2,
+            r=float(cell.angle or 0),
+        )
+    return Point3(x=0, y=0, r=float(cell.angle or 0))

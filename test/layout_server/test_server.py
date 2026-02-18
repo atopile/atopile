@@ -35,8 +35,13 @@ async def test_render_model(client: AsyncClient):
     assert resp.status_code == 200
     model = resp.json()
     assert "footprints" in model
+    assert "drawings" in model
+    assert "texts" in model
     assert "tracks" in model
     assert "board" in model
+    assert isinstance(model["drawings"], list)
+    assert isinstance(model["texts"], list)
+    assert all("filled" in d for d in model["drawings"])
     assert isinstance(model["footprints"], list)
     assert len(model["footprints"]) > 0
     fp = model["footprints"][0]
@@ -46,9 +51,19 @@ async def test_render_model(client: AsyncClient):
     assert isinstance(fp["texts"], list)
 
     texts = [t for footprint in model["footprints"] for t in footprint.get("texts", [])]
-    assert any(t.get("name") == "Reference" for t in texts)
-    assert all(not t.get("hide", False) for t in texts)
+    assert all("text" in t for t in texts)
+    assert all("at" in t for t in texts)
+    assert all("layer" in t for t in texts)
+    assert all("size" in t for t in texts)
+    assert all("thickness" in t for t in texts)
+    assert all("justify" in t for t in texts)
     assert all(t.get("text") not in ("%R", "%V", "${REFERENCE}") for t in texts)
+    if model.get("zones"):
+        zone = model["zones"][0]
+        assert "keepout" in zone
+        assert "hatch_mode" in zone
+        assert "hatch_pitch" in zone
+        assert "fill_enabled" in zone
 
 
 @pytest.mark.anyio

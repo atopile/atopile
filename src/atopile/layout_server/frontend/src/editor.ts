@@ -6,6 +6,7 @@ import { paintAll, paintSelection, computeBBox } from "./painter";
 import { hitTestFootprints } from "./hit-test";
 import { getLayerColor } from "./colors";
 import type { RenderModel } from "./types";
+import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -308,6 +309,12 @@ export class Editor {
     getLayers(): string[] {
         if (!this.model) return [];
         const layers = new Set<string>();
+        for (const d of this.model.drawings) {
+            if (d.layer) layers.add(d.layer);
+        }
+        for (const t of this.model.texts) {
+            if (t.layer) layers.add(t.layer);
+        }
         for (const fp of this.model.footprints) {
             layers.add(fp.layer);
             for (const pad of fp.pads) {
@@ -375,39 +382,121 @@ export class Editor {
         this.textCtx.clearRect(0, 0, width, height);
         if (!this.model || this.camera.zoom < 0.2) return;
 
-        this.textCtx.textAlign = "center";
-        this.textCtx.textBaseline = "middle";
+        for (const text of this.model.texts) {
+            if (!text.text.trim()) continue;
+            const layerName = text.layer ?? "Dwgs.User";
+            if (this.hiddenLayers.has(layerName)) continue;
+            this.drawOverlayText(
+                text.text,
+                layerName,
+                text.at.x,
+                text.at.y,
+                text.at.r || 0,
+                text.size?.w ?? text.size?.h ?? 1,
+                text.size?.h ?? text.size?.w ?? 1,
+                text.thickness,
+                text.justify,
+                width,
+                height,
+            );
+        }
         for (const fp of this.model.footprints) {
             for (const text of fp.texts) {
-                if (text.hide || !text.text.trim()) continue;
+                if (!text.text.trim()) continue;
                 const layerName = text.layer ?? fp.layer;
                 if (this.hiddenLayers.has(layerName)) continue;
-
                 const worldPos = this.transformFootprintPoint(fp.at, text.at.x, text.at.y);
-                const screenPos = this.camera.world_to_screen(worldPos);
-                if (
-                    screenPos.x < -200 || screenPos.x > width + 200
-                    || screenPos.y < -50 || screenPos.y > height + 50
-                ) {
-                    continue;
-                }
-
-                const textHeight = text.size?.h ?? 1;
-                const screenFontSize = textHeight * this.camera.zoom;
-                if (screenFontSize < 2) continue;
-                const fontPx = Math.max(8, Math.min(screenFontSize, 64));
-
-                const [r, g, b, a] = getLayerColor(layerName);
-                const rotation = -((fp.at.r || 0) + (text.at.r || 0)) * DEG_TO_RAD;
-                this.textCtx.save();
-                this.textCtx.translate(screenPos.x, screenPos.y);
-                this.textCtx.rotate(rotation);
-                this.textCtx.font = `${fontPx}px monospace`;
-                this.textCtx.fillStyle = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
-                this.textCtx.fillText(text.text, 0, 0);
-                this.textCtx.restore();
+                const textRotation = (fp.at.r || 0) + (text.at.r || 0);
+                this.drawOverlayText(
+                    text.text,
+                    layerName,
+                    worldPos.x,
+                    worldPos.y,
+                    textRotation,
+                    text.size?.w ?? text.size?.h ?? 1,
+                    text.size?.h ?? text.size?.w ?? 1,
+                    text.thickness,
+                    text.justify,
+                    width,
+                    height,
+                );
             }
         }
+    }
+
+    private drawOverlayText(
+        text: string,
+        layerName: string,
+        worldX: number,
+        worldY: number,
+        rotationDeg: number,
+        textWidth: number,
+        textHeight: number,
+        thickness: number | null,
+        justify: string[] | null,
+        width: number,
+        height: number,
+    ) {
+        if (!this.textCtx) return;
+        const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
+        if (
+            screenPos.x < -200 || screenPos.x > width + 200
+            || screenPos.y < -50 || screenPos.y > height + 50
+        ) {
+            return;
+        }
+
+        const screenFontSize = textHeight * this.camera.zoom;
+        if (screenFontSize < 2) return;
+        const lines = text.split("\n");
+        if (lines.length === 0) return;
+
+        const [r, g, b, a] = getLayerColor(layerName);
+        const rotation = -(rotationDeg || 0) * DEG_TO_RAD;
+        const justifySet = new Set(justify ?? []);
+        const linePitch = textHeight * 1.62;
+        const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
+        let baseOffsetY = textHeight;
+        if (justifySet.has("center") || (!justifySet.has("top") && !justifySet.has("bottom"))) {
+            baseOffsetY -= totalHeight / 2;
+        } else if (justifySet.has("bottom")) {
+            baseOffsetY -= totalHeight;
+        }
+        const minWorldStroke = 0.8 / Math.max(this.camera.zoom, 1e-6);
+        const worldStroke = Math.max(minWorldStroke, thickness ?? (textHeight * 0.15));
+        this.textCtx.save();
+        this.textCtx.translate(screenPos.x, screenPos.y);
+        this.textCtx.rotate(rotation);
+        this.textCtx.scale(this.camera.zoom, this.camera.zoom);
+        const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
+        this.textCtx.strokeStyle = color;
+        this.textCtx.lineWidth = worldStroke;
+        this.textCtx.lineCap = "round";
+        this.textCtx.lineJoin = "round";
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx]!;
+            const layout = layoutKicadStrokeLine(line, textWidth, textHeight);
+            if (layout.strokes.length === 0) {
+                continue;
+            }
+            let lineOffsetX = 0;
+            if (justifySet.has("right")) {
+                lineOffsetX = -layout.advance;
+            } else if (justifySet.has("center") || (!justifySet.has("left") && !justifySet.has("right"))) {
+                lineOffsetX = -layout.advance / 2;
+            }
+            const lineOffsetY = baseOffsetY + lineIdx * linePitch;
+            for (const stroke of layout.strokes) {
+                if (stroke.length < 2) continue;
+                this.textCtx.beginPath();
+                this.textCtx.moveTo(stroke[0]!.x + lineOffsetX, stroke[0]!.y + lineOffsetY);
+                for (let i = 1; i < stroke.length; i++) {
+                    this.textCtx.lineTo(stroke[i]!.x + lineOffsetX, stroke[i]!.y + lineOffsetY);
+                }
+                this.textCtx.stroke();
+            }
+        }
+        this.textCtx.restore();
     }
 
     private transformFootprintPoint(

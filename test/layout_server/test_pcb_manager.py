@@ -54,6 +54,8 @@ def test_get_render_model_v8(manager_v8: PcbManager):
 def test_get_render_model_esp32(manager_esp32: PcbManager):
     model = manager_esp32.get_render_model()
     assert len(model.footprints) >= 10
+    assert len(model.drawings) > 0
+    assert len(model.texts) > 0
     assert len(model.tracks) > 0
     assert len(model.vias) > 0
     assert len(model.board.edges) > 0
@@ -64,13 +66,24 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     assert len(fp.pads) >= 0
 
     assert any(
-        f.reference
-        and any(t.kind == "fp_text" and t.text == f.reference for t in f.texts)
+        f.reference and any(t.text == f.reference for t in f.texts)
         for f in model.footprints
     )
     all_texts = [t for f in model.footprints for t in f.texts]
-    assert all(not t.hide for t in all_texts)
     assert all(t.text not in ("%R", "%V", "${REFERENCE}") for t in all_texts)
+    assert all(t.size is not None for t in all_texts)
+    assert any(t.thickness is not None for t in all_texts)
+    assert any(t.layer == "F.SilkS" for t in model.texts)
+    assert any(d.filled for d in model.drawings)
+    assert all(d.width >= 0 for d in model.drawings)
+    keepout_zone = next((z for z in model.zones if z.keepout), None)
+    assert keepout_zone is not None
+    assert keepout_zone.hatch_pitch is not None
+    assert keepout_zone.hatch_pitch > 0
+    assert len(keepout_zone.outline) >= 3
+    silk_text = next((t for t in model.texts if t.text == "ESP32-S3-WROOM"), None)
+    assert silk_text is not None
+    assert {"left", "bottom"}.issubset(set(silk_text.justify or []))
 
 
 def test_move_footprint(manager_v8: PcbManager):

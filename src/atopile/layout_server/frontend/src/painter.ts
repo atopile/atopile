@@ -97,6 +97,8 @@ function isPadLayerVisible(padLayer: string, hidden: Set<string>, concreteLayers
 /** Collect all concrete (non-wildcard) layer names from the model */
 function collectConcreteLayers(model: RenderModel): Set<string> {
     const layers = new Set<string>();
+    for (const d of model.drawings) if (d.layer) layers.add(d.layer);
+    for (const t of model.texts) if (t.layer) layers.add(t.layer);
     for (const fp of model.footprints) {
         layers.add(fp.layer);
         for (const pad of fp.pads) {
@@ -122,6 +124,7 @@ export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: 
     const concreteLayers = collectConcreteLayers(model);
     renderer.dispose_layers();
     if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
+    paintGlobalDrawings(renderer, model, hidden);
     paintZones(renderer, model, hidden);
     paintTracks(renderer, model, hidden);
     if (!hidden.has("Vias")) paintVias(renderer, model);
@@ -170,7 +173,76 @@ function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>)
             }
             renderer.end_layer();
         }
+
+        const shouldDrawKeepout = zone.keepout || zone.filled_polygons.length === 0 || zone.fill_enabled === false;
+        if (!shouldDrawKeepout || zone.outline.length < 3) continue;
+
+        const zoneLayers = zone.layers.length > 0
+            ? zone.layers
+            : [...new Set(zone.filled_polygons.map(fp => fp.layer))];
+        const outlinePts = zone.outline.map(p2v);
+        const closedOutline = [...outlinePts, outlinePts[0]!.copy()];
+        const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;
+        const hatchSegments = hatchSegmentsForPolygon(outlinePts, hatchPitch);
+        for (const layerName of zoneLayers) {
+            if (!layerName || hidden.has(layerName)) continue;
+            const [r, g, b, a] = getLayerColor(layerName);
+            const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
+            layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
+            for (const [start, end] of hatchSegments) {
+                layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45));
+            }
+            renderer.end_layer();
+        }
     }
+}
+
+function hatchSegmentsForPolygon(points: Vec2[], pitch: number): Array<[Vec2, Vec2]> {
+    if (points.length < 3 || pitch <= 0) return [];
+    const eps = 1e-6;
+    const closed = [...points, points[0]!];
+    let minV = Infinity;
+    let maxV = -Infinity;
+    for (const p of points) {
+        const v = p.y - p.x;
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+    }
+
+    const segments: Array<[Vec2, Vec2]> = [];
+    for (let c = minV - pitch; c <= maxV + pitch; c += pitch) {
+        const rawIntersections: Vec2[] = [];
+        for (let i = 0; i < closed.length - 1; i++) {
+            const a = closed[i]!;
+            const b = closed[i + 1]!;
+            const fa = a.y - a.x - c;
+            const fb = b.y - b.x - c;
+            if ((fa > eps && fb > eps) || (fa < -eps && fb < -eps)) continue;
+            const denom = fa - fb;
+            if (Math.abs(denom) < eps) continue;
+            const t = fa / denom;
+            if (t < -eps || t > 1 + eps) continue;
+            rawIntersections.push(
+                new Vec2(
+                    a.x + (b.x - a.x) * t,
+                    a.y + (b.y - a.y) * t,
+                ),
+            );
+        }
+
+        rawIntersections.sort((p, q) => (p.x - q.x) || (p.y - q.y));
+        const intersections: Vec2[] = [];
+        for (const p of rawIntersections) {
+            const last = intersections[intersections.length - 1];
+            if (!last || Math.abs(last.x - p.x) > eps || Math.abs(last.y - p.y) > eps) {
+                intersections.push(p);
+            }
+        }
+        for (let i = 0; i + 1 < intersections.length; i += 2) {
+            segments.push([intersections[i]!, intersections[i + 1]!]);
+        }
+    }
+    return segments;
 }
 
 function paintTracks(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
@@ -222,6 +294,26 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
+function paintGlobalDrawings(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
+    const byLayer = new Map<string, DrawingModel[]>();
+    for (const drawing of model.drawings) {
+        const ln = drawing.layer ?? "Dwgs.User";
+        if (hidden.has(ln)) continue;
+        let arr = byLayer.get(ln);
+        if (!arr) { arr = []; byLayer.set(ln, arr); }
+        arr.push(drawing);
+    }
+    const worldAt: Point3 = { x: 0, y: 0, r: 0 };
+    for (const [layerName, drawings] of byLayer) {
+        const [r, g, b, a] = getLayerColor(layerName);
+        const layer = renderer.start_layer(`global:${layerName}`);
+        for (const drawing of drawings) {
+            paintDrawing(layer, worldAt, drawing, r, g, b, a);
+        }
+        renderer.end_layer();
+    }
+}
+
 function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
     for (const drawing of fp.drawings) {
@@ -257,16 +349,17 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
 }
 
 function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r: number, g: number, b: number, a: number) {
-    const w = drawing.width || 0.12;
+    const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
+    const strokeWidth = rawWidth > 0 ? rawWidth : (drawing.filled ? 0 : 0.12);
 
     if (drawing.type === "line" && drawing.start && drawing.end) {
         const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
         const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
-        layer.geometry.add_polyline([p1, p2], w, r, g, b, a);
+        layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
     } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
         const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
         const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
-        layer.geometry.add_polyline(worldPts, w, r, g, b, a);
+        layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
     } else if (drawing.type === "circle" && drawing.center && drawing.end) {
         const cx = drawing.center.x, cy = drawing.center.y;
         const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
@@ -275,20 +368,39 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
             const angle = (i / 48) * 2 * Math.PI;
             pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
         }
-        layer.geometry.add_polyline(pts.map(p => fpTransform(fpAt, p.x, p.y)), w, r, g, b, a);
+        const worldPts = pts.map(p => fpTransform(fpAt, p.x, p.y));
+        if (drawing.filled && worldPts.length >= 3) {
+            layer.geometry.add_polygon(worldPts, r, g, b, a);
+        }
+        if (strokeWidth > 0) {
+            layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+        }
     } else if (drawing.type === "rect" && drawing.start && drawing.end) {
         const s = drawing.start, e = drawing.end;
         const corners = [
             fpTransform(fpAt, s.x, s.y), fpTransform(fpAt, e.x, s.y),
             fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
-            fpTransform(fpAt, s.x, s.y),
         ];
-        layer.geometry.add_polyline(corners, w, r, g, b, a);
+        if (drawing.filled) {
+            layer.geometry.add_polygon(corners, r, g, b, a);
+        }
+        if (strokeWidth > 0) {
+            layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, r, g, b, a);
+        }
     } else if (drawing.type === "polygon" && drawing.points) {
         const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
         if (worldPts.length >= 3) {
-            worldPts.push(worldPts[0]!.copy());
-            layer.geometry.add_polyline(worldPts, w, r, g, b, a);
+            if (drawing.filled) {
+                layer.geometry.add_polygon(worldPts, r, g, b, a);
+            }
+            if (strokeWidth > 0) {
+                layer.geometry.add_polyline([...worldPts, worldPts[0]!.copy()], strokeWidth, r, g, b, a);
+            }
+        }
+    } else if (drawing.type === "curve" && drawing.points) {
+        const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
+        if (worldPts.length >= 2) {
+            layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
         }
     }
 }
@@ -347,7 +459,6 @@ export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLa
         if (drawing.center) allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
     }
     for (const text of fp.texts) {
-        if (text.hide) continue;
         allPoints.push(fpTransform(fp.at, text.at.x, text.at.y));
     }
 
@@ -372,13 +483,24 @@ export function computeBBox(model: RenderModel): BBox {
         if (edge.mid) points.push(p2v(edge.mid));
         if (edge.center) points.push(p2v(edge.center));
     }
+    for (const drawing of model.drawings) {
+        if (drawing.start) points.push(p2v(drawing.start));
+        if (drawing.end) points.push(p2v(drawing.end));
+        if (drawing.mid) points.push(p2v(drawing.mid));
+        if (drawing.center) points.push(p2v(drawing.center));
+        if (drawing.points) {
+            for (const p of drawing.points) points.push(p2v(p));
+        }
+    }
+    for (const text of model.texts) {
+        points.push(new Vec2(text.at.x, text.at.y));
+    }
     for (const fp of model.footprints) {
         points.push(new Vec2(fp.at.x, fp.at.y));
         for (const pad of fp.pads) {
             points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
         }
         for (const text of fp.texts) {
-            if (text.hide) continue;
             points.push(fpTransform(fp.at, text.at.x, text.at.y));
         }
     }

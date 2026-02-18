@@ -65,7 +65,7 @@ class PadModel(BaseModel):
 
 
 class DrawingModel(BaseModel):
-    type: str  # "line" | "arc" | "circle" | "rect" | "polygon"
+    type: str  # "line" | "arc" | "circle" | "rect" | "polygon" | "curve"
     start: Point2 | None = None
     end: Point2 | None = None
     mid: Point2 | None = None
@@ -73,17 +73,16 @@ class DrawingModel(BaseModel):
     width: float = 0.12
     layer: str | None = None
     points: list[Point2] | None = None
+    filled: bool = False
 
 
-class FootprintTextModel(BaseModel):
-    kind: str  # "property" | "fp_text"
-    name: str | None = None
+class TextModel(BaseModel):
     text: str
     at: Point3
     layer: str | None = None
-    hide: bool = False
     size: Size2 | None = None
     thickness: float | None = None
+    justify: list[str] | None = None
 
 
 class FootprintModel(BaseModel):
@@ -95,7 +94,7 @@ class FootprintModel(BaseModel):
     layer: str
     pads: list[PadModel]
     drawings: list[DrawingModel]
-    texts: list[FootprintTextModel]
+    texts: list[TextModel]
 
 
 # --- Tracks / Vias ---
@@ -143,6 +142,10 @@ class ZoneModel(BaseModel):
     layers: list[str]
     name: str | None = None
     uuid: str | None = None
+    keepout: bool = False
+    hatch_mode: str | None = None
+    hatch_pitch: float | None = None
+    fill_enabled: bool | None = None
     outline: list[Point2]
     filled_polygons: list[FilledPolygonModel]
 
@@ -157,6 +160,8 @@ class NetModel(BaseModel):
 
 class RenderModel(BaseModel):
     board: BoardModel
+    drawings: list[DrawingModel]
+    texts: list[TextModel]
     footprints: list[FootprintModel]
     tracks: list[TrackModel]
     arcs: list[ArcTrackModel]
