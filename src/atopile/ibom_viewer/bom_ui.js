@@ -55,6 +55,10 @@ BomUI.prototype._buildUI = function() {
     });
     searchInput.addEventListener("keydown", function(e) {
         if (e.key === "Escape") { this.blur(); }
+        else if (e.key === "Enter") {
+            e.preventDefault();
+            self._navigateResult(e.shiftKey ? -1 : 1);
+        }
     });
     this.searchWrap.appendChild(searchInput);
 
@@ -106,6 +110,7 @@ BomUI.prototype.render = function() {
     var self = this;
     var filtered = this._getFiltered();
     filtered = this._getSorted(filtered);
+    this._filteredIds = filtered.map(function(c) { return c.id; });
 
     // Update summary
     var totalQty = 0, totalCost = 0;
@@ -286,6 +291,18 @@ BomUI.prototype._getSorted = function(arr) {
         if (typeof va === "string") return va.localeCompare(vb) * asc;
         return (va - vb) * asc;
     });
+};
+
+// --- Navigate search results with Enter/Shift+Enter ---
+
+BomUI.prototype._navigateResult = function(direction) {
+    var ids = this._filteredIds;
+    if (!ids || ids.length === 0) return;
+    var curIdx = this.selectedId ? ids.indexOf(this.selectedId) : -1;
+    var nextIdx = curIdx + direction;
+    if (nextIdx < 0) nextIdx = ids.length - 1;
+    if (nextIdx >= ids.length) nextIdx = 0;
+    this._selectComponent(ids[nextIdx]);
 };
 
 // --- Selection ---
