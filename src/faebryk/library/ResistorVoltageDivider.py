@@ -180,6 +180,17 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
+        # total_R = r_bottom / ratio (inverse for backward propagation)
+        F.Expressions.Is.MakeChild(
+            [total_resistance],
+            [
+                _total_r_from_r1_ratio := F.Expressions.Divide.MakeChild(
+                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+                    [ratio],
+                )
+            ],
+            assert_=True,
+        ),
         # r_top = total_R - r_bottom
         F.Expressions.Is.MakeChild(
             [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
