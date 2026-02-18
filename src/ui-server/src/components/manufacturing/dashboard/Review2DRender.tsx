@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { Image } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import type { ReviewPageProps, ReviewPageDefinition } from '../types';
+import { API_URL } from '../../../api/config';
 
 export const Review2DRenderDefinition: ReviewPageDefinition = {
   id: '2d-render',
@@ -22,7 +23,7 @@ export function Review2DRender({ outputs }: ReviewPageProps) {
   useEffect(() => {
     if (!outputs.svg) return;
 
-    fetch(outputs.svg)
+    fetch(`${API_URL}/api/file?path=${encodeURIComponent(outputs.svg)}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.text();
