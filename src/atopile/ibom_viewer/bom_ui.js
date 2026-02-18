@@ -128,7 +128,7 @@ BomUI.prototype.render = function() {
     var cols = [
         { key: "quantity",    label: "Qty" },
         { key: "designators", label: "Designators" },
-        { key: "value",       label: "Value" }
+        { key: "value",       label: "Value/MPN" }
     ];
     for (var c = 0; c < cols.length; c++) {
         var arrow = "";
@@ -146,7 +146,7 @@ BomUI.prototype.render = function() {
         html += "<tr class='" + rowClass + "' data-id='" + comp.id + "'>";
         html += "<td>" + comp.quantity + "</td>";
         html += "<td class='desig-cell'>" + this._formatDesignators(desigs) + "</td>";
-        html += "<td>" + esc(comp.value || "") + "</td>";
+        html += "<td>" + esc(comp.value || comp.mpn || "") + "</td>";
         html += "</tr>";
     }
 
