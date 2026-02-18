@@ -555,16 +555,6 @@ class AtoLogger(logging.Logger):
         )
         return cls._active_unscoped_logger
 
-
-class AtoTestLogger(AtoLogger):
-    """
-    Test-only helpers for managing global logger state.
-
-    These APIs intentionally centralize test setup/teardown for logging contexts.
-    Production code should continue to use `AtoLogger.activate_build()`,
-    `AtoLogger.activate_test()`, and related runtime methods.
-    """
-
     @classmethod
     @contextmanager
     def test_context(
