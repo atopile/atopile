@@ -273,8 +273,8 @@ export class Renderer {
         if (this.gridVertexCount > 0) {
             this.pointShader.bind();
             this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
-            this.pointShader.uniforms["u_pointSize"]!.f1(1.5 * window.devicePixelRatio);
-            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
+            this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
+            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.22);
             this.gridVao!.bind();
             this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
         }
