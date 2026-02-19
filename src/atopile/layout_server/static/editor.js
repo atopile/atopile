@@ -1339,7 +1339,6 @@ var LAYER_COLORS = {
 var PAD_COLOR = [0.57, 0.57, 0.3, 0.9];
 var PAD_FRONT_COLOR = [0.86, 0.23, 0.22, 0.78];
 var PAD_BACK_COLOR = [0.16, 0.28, 0.47, 0.78];
-var SELECTION_COLOR = [1, 1, 1, 0.3];
 var ZONE_COLOR_ALPHA = 0.25;
 function getLayerColor(layer) {
   if (!layer)
@@ -1362,62 +1361,6 @@ function getPadColor(layers) {
   if (hasBack)
     return PAD_BACK_COLOR;
   return PAD_COLOR;
-}
-
-// src/hit-test.ts
-var DEG_TO_RAD = Math.PI / 180;
-function fpTransform(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return new Vec2(
-    fpAt.x + localX * cos - localY * sin,
-    fpAt.y + localX * sin + localY * cos
-  );
-}
-function padTransform(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
-  const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = lx * pc - ly * ps;
-  const py = lx * ps + ly * pc;
-  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
-}
-function footprintBBox(fp) {
-  const points = [];
-  for (const pad of fp.pads) {
-    const hw = pad.size.w / 2;
-    const hh = pad.size.h / 2;
-    points.push(padTransform(fp.at, pad.at, -hw, -hh));
-    points.push(padTransform(fp.at, pad.at, hw, -hh));
-    points.push(padTransform(fp.at, pad.at, hw, hh));
-    points.push(padTransform(fp.at, pad.at, -hw, hh));
-  }
-  for (const drawing of fp.drawings) {
-    if (drawing.start)
-      points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
-    if (drawing.end)
-      points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
-    if (drawing.center)
-      points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
-    if (drawing.points) {
-      for (const p of drawing.points) {
-        points.push(fpTransform(fp.at, p.x, p.y));
-      }
-    }
-  }
-  if (points.length === 0) {
-    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
-  }
-  return BBox.from_points(points).grow(0.2);
-}
-function hitTestFootprints(worldPos, footprints) {
-  for (let i = footprints.length - 1; i >= 0; i--) {
-    const bbox = footprintBBox(footprints[i]);
-    if (bbox.contains_point(worldPos)) {
-      return i;
-    }
-  }
-  return -1;
 }
 
 // src/kicad_newstroke_glyphs.ts
@@ -21568,6 +21511,62 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
   return layoutKicadStrokeText(text, charWidth, charHeight);
 }
 
+// src/hit-test.ts
+var DEG_TO_RAD = Math.PI / 180;
+function fpTransform(fpAt, localX, localY) {
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return new Vec2(
+    fpAt.x + localX * cos - localY * sin,
+    fpAt.y + localX * sin + localY * cos
+  );
+}
+function padTransform(fpAt, padAt, lx, ly) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
+  const pc = Math.cos(padRad), ps = Math.sin(padRad);
+  const px = lx * pc - ly * ps;
+  const py = lx * ps + ly * pc;
+  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
+}
+function footprintBBox(fp) {
+  const points = [];
+  for (const pad of fp.pads) {
+    const hw = pad.size.w / 2;
+    const hh = pad.size.h / 2;
+    points.push(padTransform(fp.at, pad.at, -hw, -hh));
+    points.push(padTransform(fp.at, pad.at, hw, -hh));
+    points.push(padTransform(fp.at, pad.at, hw, hh));
+    points.push(padTransform(fp.at, pad.at, -hw, hh));
+  }
+  for (const drawing of fp.drawings) {
+    if (drawing.start)
+      points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+    if (drawing.end)
+      points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+    if (drawing.center)
+      points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
+    if (drawing.points) {
+      for (const p of drawing.points) {
+        points.push(fpTransform(fp.at, p.x, p.y));
+      }
+    }
+  }
+  if (points.length === 0) {
+    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
+  }
+  return BBox.from_points(points).grow(0.2);
+}
+function hitTestFootprints(worldPos, footprints) {
+  for (let i = footprints.length - 1; i >= 0; i--) {
+    const bbox = footprintBBox(footprints[i]);
+    if (bbox.contains_point(worldPos)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 // src/layer_order.ts
 var IN_ROOT_RE = /^In(\d+)$/i;
 var SUFFIX_PRIORITY = /* @__PURE__ */ new Map([
@@ -21683,6 +21682,12 @@ var PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
 var PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
 var PAD_NUMBER_CHAR_SCALE = 0.8;
 var PAD_NUMBER_MIN_CHAR_H = 0.04;
+var SELECTION_STROKE_WIDTH = 0.12;
+var GROUP_SELECTION_STROKE_WIDTH = 0.1;
+var HOVER_SELECTION_STROKE_WIDTH = 0.08;
+var SELECTION_GROW = 0.2;
+var GROUP_SELECTION_GROW = 0.16;
+var HOVER_SELECTION_GROW = 0.12;
 function p2v(p) {
   return new Vec2(p.x, p.y);
 }
@@ -21747,6 +21752,22 @@ function circleToPoints(cx, cy, radius, segments = HOLE_SEGMENTS) {
     points.push(new Vec2(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)));
   }
   return points;
+}
+function drawFootprintSelectionBox(layer, fp, strokeWidth, strokeAlpha, grow, fillAlpha = 0) {
+  const bbox = footprintBBox(fp).grow(grow);
+  if (bbox.w <= 0 || bbox.h <= 0)
+    return;
+  const corners = [
+    new Vec2(bbox.x, bbox.y),
+    new Vec2(bbox.x2, bbox.y),
+    new Vec2(bbox.x2, bbox.y2),
+    new Vec2(bbox.x, bbox.y2),
+    new Vec2(bbox.x, bbox.y)
+  ];
+  if (fillAlpha > 0) {
+    layer.geometry.add_polygon(corners.slice(0, 4), 1, 1, 1, fillAlpha);
+  }
+  layer.geometry.add_polyline(corners, strokeWidth, 1, 1, 1, strokeAlpha);
 }
 function estimateStrokeTextAdvance(text) {
   if (!text)
@@ -22505,47 +22526,25 @@ function paintPad(layer, fpAt, pad) {
 }
 function paintSelection(renderer, fp) {
   const layer = renderer.start_layer("selection");
-  const [r, g, b, a] = SELECTION_COLOR;
-  const bbox = footprintBBox(fp).grow(0.5);
-  if (bbox.w > 0 && bbox.h > 0) {
-    layer.geometry.add_polygon([
-      new Vec2(bbox.x, bbox.y),
-      new Vec2(bbox.x2, bbox.y),
-      new Vec2(bbox.x2, bbox.y2),
-      new Vec2(bbox.x, bbox.y2)
-    ], r, g, b, a);
-  }
+  drawFootprintSelectionBox(layer, fp, SELECTION_STROKE_WIDTH, 0.85, SELECTION_GROW, 0.12);
   renderer.end_layer();
-  return layer;
 }
 function paintGroupHalos(renderer, footprints, memberIndices, mode) {
   if (memberIndices.length === 0)
     return null;
-  const layerName = mode === "selected" ? "group-selection" : "group-hover";
-  const layer = renderer.start_layer(layerName);
-  const [sr, sg, sb, sa] = SELECTION_COLOR;
-  const fillAlpha = mode === "selected" ? Math.max(sa * 0.55, 0.14) : Math.max(sa * 0.32, 0.08);
-  const strokeAlpha = mode === "selected" ? Math.max(sa * 0.9, 0.34) : Math.max(sa * 0.65, 0.22);
-  const grow = mode === "selected" ? 0.34 : 0.24;
-  const strokeWidth = mode === "selected" ? 0.14 : 0.1;
+  const layer = renderer.start_layer(mode === "selected" ? "group-selection" : "group-hover");
+  const strokeWidth = mode === "selected" ? GROUP_SELECTION_STROKE_WIDTH : HOVER_SELECTION_STROKE_WIDTH;
+  const alpha = mode === "selected" ? 0.7 : 0.45;
+  const grow = mode === "selected" ? GROUP_SELECTION_GROW : HOVER_SELECTION_GROW;
+  const fillAlpha = mode === "selected" ? 0.09 : 0.055;
   for (const index of memberIndices) {
     const fp = footprints[index];
     if (!fp)
       continue;
-    const bbox = footprintBBox(fp).grow(grow);
-    if (bbox.w <= 0 || bbox.h <= 0)
-      continue;
-    const corners = [
-      new Vec2(bbox.x, bbox.y),
-      new Vec2(bbox.x2, bbox.y),
-      new Vec2(bbox.x2, bbox.y2),
-      new Vec2(bbox.x, bbox.y2)
-    ];
-    layer.geometry.add_polygon(corners, sr, sg, sb, fillAlpha);
-    layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, sr, sg, sb, strokeAlpha);
+    drawFootprintSelectionBox(layer, fp, strokeWidth, alpha, grow, fillAlpha);
   }
   renderer.end_layer();
-  return layer;
+  return null;
 }
 function computeBBox(model) {
   const points = [];
@@ -22639,6 +22638,7 @@ var Editor = class {
   selectedFpIndex = -1;
   selectedGroupId = null;
   hoveredGroupId = null;
+  hoveredFpIndex = -1;
   singleOverrideMode = false;
   groupsById = /* @__PURE__ */ new Map();
   groupIdByFpIndex = /* @__PURE__ */ new Map();
@@ -22733,6 +22733,9 @@ var Editor = class {
         paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
       }
     }
+    if (!this.singleOverrideMode && this.hoveredFpIndex >= 0 && this.hoveredFpIndex < this.model.footprints.length && !(this.selectionMode === "single" && this.selectedFpIndex === this.hoveredFpIndex)) {
+      paintGroupHalos(this.renderer, this.model.footprints, [this.hoveredFpIndex], "hover");
+    }
     if (!this.singleOverrideMode && this.selectedGroupId) {
       const selectedGroup = this.groupsById.get(this.selectedGroupId);
       if (selectedGroup) {
@@ -22804,6 +22807,7 @@ var Editor = class {
     this.selectedFpIndex = -1;
     this.selectedGroupId = null;
     this.hoveredGroupId = null;
+    this.hoveredFpIndex = -1;
     this.singleOverrideMode = prevSingleOverride;
     if (!this.model) {
       this.singleOverrideMode = false;
@@ -22846,6 +22850,7 @@ var Editor = class {
     this.selectedFpIndex = -1;
     this.selectedGroupId = null;
     this.hoveredGroupId = null;
+    this.hoveredFpIndex = -1;
     if (exitSingleOverride) {
       this.singleOverrideMode = false;
     }
@@ -22865,15 +22870,22 @@ var Editor = class {
   }
   updateHoverGroup(worldPos) {
     let nextHoverId = null;
+    let nextHoverFp = -1;
     if (this.model && !this.singleOverrideMode) {
       const hitIndex = hitTestFootprints(worldPos, this.model.footprints);
       if (hitIndex >= 0) {
-        nextHoverId = this.groupIdByFpIndex.get(hitIndex) ?? null;
+        const groupId = this.groupIdByFpIndex.get(hitIndex) ?? null;
+        if (groupId) {
+          nextHoverId = groupId;
+        } else {
+          nextHoverFp = hitIndex;
+        }
       }
     }
-    if (nextHoverId === this.hoveredGroupId)
+    if (nextHoverId === this.hoveredGroupId && nextHoverFp === this.hoveredFpIndex)
       return;
     this.hoveredGroupId = nextHoverId;
+    this.hoveredFpIndex = nextHoverFp;
     this.repaintWithSelection();
   }
   connectWebSocket() {

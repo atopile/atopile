@@ -62,6 +62,7 @@ export class Editor {
     private selectedFpIndex = -1;
     private selectedGroupId: string | null = null;
     private hoveredGroupId: string | null = null;
+    private hoveredFpIndex = -1;
     private singleOverrideMode = false;
     private groupsById = new Map<string, UiFootprintGroup>();
     private groupIdByFpIndex = new Map<number, string>();
@@ -169,6 +170,14 @@ export class Editor {
                 paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
             }
         }
+        if (
+            !this.singleOverrideMode
+            && this.hoveredFpIndex >= 0
+            && this.hoveredFpIndex < this.model.footprints.length
+            && !(this.selectionMode === "single" && this.selectedFpIndex === this.hoveredFpIndex)
+        ) {
+            paintGroupHalos(this.renderer, this.model.footprints, [this.hoveredFpIndex], "hover");
+        }
 
         if (!this.singleOverrideMode && this.selectedGroupId) {
             const selectedGroup = this.groupsById.get(this.selectedGroupId);
@@ -246,6 +255,7 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedGroupId = null;
         this.hoveredGroupId = null;
+        this.hoveredFpIndex = -1;
         this.singleOverrideMode = prevSingleOverride;
 
         if (!this.model) {
@@ -295,6 +305,7 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedGroupId = null;
         this.hoveredGroupId = null;
+        this.hoveredFpIndex = -1;
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
@@ -317,14 +328,21 @@ export class Editor {
 
     private updateHoverGroup(worldPos: Vec2) {
         let nextHoverId: string | null = null;
+        let nextHoverFp = -1;
         if (this.model && !this.singleOverrideMode) {
             const hitIndex = hitTestFootprints(worldPos, this.model.footprints);
             if (hitIndex >= 0) {
-                nextHoverId = this.groupIdByFpIndex.get(hitIndex) ?? null;
+                const groupId = this.groupIdByFpIndex.get(hitIndex) ?? null;
+                if (groupId) {
+                    nextHoverId = groupId;
+                } else {
+                    nextHoverFp = hitIndex;
+                }
             }
         }
-        if (nextHoverId === this.hoveredGroupId) return;
+        if (nextHoverId === this.hoveredGroupId && nextHoverFp === this.hoveredFpIndex) return;
         this.hoveredGroupId = nextHoverId;
+        this.hoveredFpIndex = nextHoverFp;
         this.repaintWithSelection();
     }
 

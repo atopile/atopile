@@ -3,12 +3,11 @@ import { Renderer, RenderLayer } from "./webgl/renderer";
 import {
     getLayerColor,
     getPadColor,
-    SELECTION_COLOR,
     ZONE_COLOR_ALPHA,
 } from "./colors";
 import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
-import { footprintBBox } from "./hit-test";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
+import { footprintBBox } from "./hit-test";
 import {
     compareLayerNamesForPaint,
     sortLayerNamesForPaint,
@@ -33,6 +32,13 @@ const PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
 const PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
 const PAD_NUMBER_CHAR_SCALE = 0.80;
 const PAD_NUMBER_MIN_CHAR_H = 0.04;
+const SELECTION_STROKE_WIDTH = 0.12;
+const GROUP_SELECTION_STROKE_WIDTH = 0.1;
+const HOVER_SELECTION_STROKE_WIDTH = 0.08;
+const SELECTION_GROW = 0.2;
+const GROUP_SELECTION_GROW = 0.16;
+const HOVER_SELECTION_GROW = 0.12;
+
 
 function p2v(p: Point2): Vec2 {
     return new Vec2(p.x, p.y);
@@ -105,6 +111,29 @@ function circleToPoints(cx: number, cy: number, radius: number, segments = HOLE_
         points.push(new Vec2(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)));
     }
     return points;
+}
+
+function drawFootprintSelectionBox(
+    layer: RenderLayer,
+    fp: FootprintModel,
+    strokeWidth: number,
+    strokeAlpha: number,
+    grow: number,
+    fillAlpha = 0,
+) {
+    const bbox = footprintBBox(fp).grow(grow);
+    if (bbox.w <= 0 || bbox.h <= 0) return;
+    const corners = [
+        new Vec2(bbox.x, bbox.y),
+        new Vec2(bbox.x2, bbox.y),
+        new Vec2(bbox.x2, bbox.y2),
+        new Vec2(bbox.x, bbox.y2),
+        new Vec2(bbox.x, bbox.y),
+    ];
+    if (fillAlpha > 0) {
+        layer.geometry.add_polygon(corners.slice(0, 4), 1.0, 1.0, 1.0, fillAlpha);
+    }
+    layer.geometry.add_polyline(corners, strokeWidth, 1.0, 1.0, 1.0, strokeAlpha);
 }
 
 function estimateStrokeTextAdvance(text: string): number {
@@ -879,19 +908,10 @@ function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
 }
 
 /** Paint a selection highlight around a footprint */
-export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLayer {
+export function paintSelection(renderer: Renderer, fp: FootprintModel): void {
     const layer = renderer.start_layer("selection");
-    const [r, g, b, a] = SELECTION_COLOR;
-    const bbox = footprintBBox(fp).grow(0.5);
-    if (bbox.w > 0 && bbox.h > 0) {
-        layer.geometry.add_polygon([
-            new Vec2(bbox.x, bbox.y), new Vec2(bbox.x2, bbox.y),
-            new Vec2(bbox.x2, bbox.y2), new Vec2(bbox.x, bbox.y2),
-        ], r, g, b, a);
-    }
-
+    drawFootprintSelectionBox(layer, fp, SELECTION_STROKE_WIDTH, 0.85, SELECTION_GROW, 0.12);
     renderer.end_layer();
-    return layer;
 }
 
 /** Paint per-member halos for a selected/hovered footprint group. */
@@ -900,33 +920,20 @@ export function paintGroupHalos(
     footprints: FootprintModel[],
     memberIndices: number[],
     mode: "selected" | "hover",
-): RenderLayer | null {
+): null {
     if (memberIndices.length === 0) return null;
-    const layerName = mode === "selected" ? "group-selection" : "group-hover";
-    const layer = renderer.start_layer(layerName);
-    const [sr, sg, sb, sa] = SELECTION_COLOR;
-    const fillAlpha = mode === "selected" ? Math.max(sa * 0.55, 0.14) : Math.max(sa * 0.32, 0.08);
-    const strokeAlpha = mode === "selected" ? Math.max(sa * 0.9, 0.34) : Math.max(sa * 0.65, 0.22);
-    const grow = mode === "selected" ? 0.34 : 0.24;
-    const strokeWidth = mode === "selected" ? 0.14 : 0.1;
-
+    const layer = renderer.start_layer(mode === "selected" ? "group-selection" : "group-hover");
+    const strokeWidth = mode === "selected" ? GROUP_SELECTION_STROKE_WIDTH : HOVER_SELECTION_STROKE_WIDTH;
+    const alpha = mode === "selected" ? 0.7 : 0.45;
+    const grow = mode === "selected" ? GROUP_SELECTION_GROW : HOVER_SELECTION_GROW;
+    const fillAlpha = mode === "selected" ? 0.09 : 0.055;
     for (const index of memberIndices) {
         const fp = footprints[index];
         if (!fp) continue;
-        const bbox = footprintBBox(fp).grow(grow);
-        if (bbox.w <= 0 || bbox.h <= 0) continue;
-        const corners = [
-            new Vec2(bbox.x, bbox.y),
-            new Vec2(bbox.x2, bbox.y),
-            new Vec2(bbox.x2, bbox.y2),
-            new Vec2(bbox.x, bbox.y2),
-        ];
-        layer.geometry.add_polygon(corners, sr, sg, sb, fillAlpha);
-        layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, sr, sg, sb, strokeAlpha);
+        drawFootprintSelectionBox(layer, fp, strokeWidth, alpha, grow, fillAlpha);
     }
-
     renderer.end_layer();
-    return layer;
+    return null;
 }
 
 /** Compute a bounding box for the full render model */
