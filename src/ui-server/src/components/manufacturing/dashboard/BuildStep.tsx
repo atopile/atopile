@@ -32,7 +32,7 @@ import type { BuildOutputs, MusterTargetInfo } from '../types';
 import { CATEGORY_CONFIG, DEFAULT_BUILD_TARGETS } from '../types';
 import { REVIEW_PAGES } from './reviewPages';
 import MarkdownRenderer from '../../MarkdownRenderer';
-import tipsData from '../../../../../../docs/tips_and_tricks/tips_and_tricks.json';
+import tipsData from '../../../../docs/tips_and_tricks/tips_and_tricks.json';
 
 interface TipItem {
   title: string;
