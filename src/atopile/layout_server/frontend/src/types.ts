@@ -21,7 +21,6 @@ export interface RenderModel {
     footprints: FootprintModel[];
     tracks: TrackModel[];
     arcs: ArcTrackModel[];
-    vias: ViaModel[];
     zones: ZoneModel[];
     nets: NetModel[];
 }
@@ -87,24 +86,6 @@ export interface PadModel {
     layers: string[];
     net: number;
     roundrect_rratio: number | null;
-    drill: DrillModel | null;
-    hole: HoleModel | null;
-}
-
-export interface DrillModel {
-    shape: string | null;
-    size_x: number | null;
-    size_y: number | null;
-    offset_x: number | null;
-    offset_y: number | null;
-}
-
-export interface HoleModel {
-    shape: string | null;
-    size_x: number;
-    size_y: number;
-    offset: Point2 | null;
-    plated: boolean | null;
 }
 
 export interface DrawingModel {
@@ -134,16 +115,6 @@ export interface ArcTrackModel {
     end: Point2;
     width: number;
     layer: string | null;
-    net: number;
-    uuid: string | null;
-}
-
-export interface ViaModel {
-    at: Point2;
-    size: number;
-    drill: number;
-    hole: HoleModel | null;
-    layers: string[];
     net: number;
     uuid: string | null;
 }

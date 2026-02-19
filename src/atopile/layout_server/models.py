@@ -71,8 +71,6 @@ class PadModel(BaseModel):
     layers: list[str]
     net: int = 0
     roundrect_rratio: float | None = None
-    drill: DrillModel | None = None
-    hole: HoleModel | None = None
 
 
 class DrawingModel(BaseModel):
@@ -193,7 +191,6 @@ class RenderModel(BaseModel):
     footprints: list[FootprintModel]
     tracks: list[TrackModel]
     arcs: list[ArcTrackModel]
-    vias: list[ViaModel]
     zones: list[ZoneModel]
     nets: list[NetModel]
 

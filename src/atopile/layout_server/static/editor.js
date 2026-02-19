@@ -22308,36 +22308,36 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   }
 }
 function paintPad(layer, fpAt, pad) {
-  const padIsHoleOnly = pad.type === "np_thru_hole";
-  const [cr, cg, cb, ca] = padIsHoleOnly ? [0, 0, 0, 0] : getPadColor(pad.layers);
+  if (pad.layers.length === 0) {
+    return;
+  }
+  const [cr, cg, cb, ca] = getPadColor(pad.layers);
   const hw = pad.size.w / 2;
   const hh = pad.size.h / 2;
-  if (!padIsHoleOnly) {
-    if (pad.shape === "circle") {
-      const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-      layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
-    } else if (pad.shape === "oval") {
-      const longAxis = Math.max(hw, hh);
-      const shortAxis = Math.min(hw, hh);
-      const focalDist = longAxis - shortAxis;
-      let p1, p2;
-      if (hw >= hh) {
-        p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-        p2 = padTransform(fpAt, pad.at, focalDist, 0);
-      } else {
-        p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-        p2 = padTransform(fpAt, pad.at, 0, focalDist);
-      }
-      layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+  if (pad.shape === "circle") {
+    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+    layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+  } else if (pad.shape === "oval") {
+    const longAxis = Math.max(hw, hh);
+    const shortAxis = Math.min(hw, hh);
+    const focalDist = longAxis - shortAxis;
+    let p1, p2;
+    if (hw >= hh) {
+      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+      p2 = padTransform(fpAt, pad.at, focalDist, 0);
     } else {
-      const corners = [
-        padTransform(fpAt, pad.at, -hw, -hh),
-        padTransform(fpAt, pad.at, hw, -hh),
-        padTransform(fpAt, pad.at, hw, hh),
-        padTransform(fpAt, pad.at, -hw, hh)
-      ];
-      layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+      p2 = padTransform(fpAt, pad.at, 0, focalDist);
     }
+    layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+  } else {
+    const corners = [
+      padTransform(fpAt, pad.at, -hw, -hh),
+      padTransform(fpAt, pad.at, hw, -hh),
+      padTransform(fpAt, pad.at, hw, hh),
+      padTransform(fpAt, pad.at, -hw, hh)
+    ];
+    layer.geometry.add_polygon(corners, cr, cg, cb, ca);
   }
 }
 function paintSelection(renderer, fp) {
@@ -22414,9 +22414,6 @@ function computeBBox(model) {
   for (const track of model.tracks) {
     points.push(p2v(track.start));
     points.push(p2v(track.end));
-  }
-  for (const via of model.vias) {
-    points.push(p2v(via.at));
   }
   if (points.length === 0)
     return new BBox(0, 0, 100, 100);

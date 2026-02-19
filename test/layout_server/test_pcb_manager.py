@@ -72,7 +72,7 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     assert len(model.drawings) > 0
     assert len(model.texts) > 0
     assert len(model.tracks) > 0
-    assert len(model.vias) > 0
+    assert not hasattr(model, "vias")
     assert len(model.board.edges) > 0
 
     fp = model.footprints[0]
@@ -134,21 +134,16 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
         for t in fp.texts
     )
 
-    drilled_pads = [
-        pad
+    assert all(
+        not hasattr(pad, "hole") and not hasattr(pad, "drill")
         for footprint in model.footprints
         for pad in footprint.pads
-        if pad.hole is not None
-    ]
-    assert len(drilled_pads) > 0
-    assert any((pad.hole.shape or "") == "oval" for pad in drilled_pads)
-    assert all(pad.hole.size_x > 0 and pad.hole.size_y > 0 for pad in drilled_pads)
-    drilled_vias = [via for via in model.vias if via.drill > 0]
-    assert len(drilled_vias) > 0
-    assert all(via.hole is not None for via in drilled_vias)
-    assert all(via.hole.size_x > 0 and via.hole.size_y > 0 for via in drilled_vias)
+    )
     assert any((d.layer or "").endswith(".Drill") for d in model.drawings)
-    assert any((d.layer or "").endswith(".Cu") and d.filled for d in model.drawings)
+    assert any(
+        (d.layer or "").endswith(".Cu") and (d.filled or d.width > 0)
+        for d in model.drawings
+    )
     assert any(
         (d.layer or "").endswith(".Drill")
         for footprint in model.footprints

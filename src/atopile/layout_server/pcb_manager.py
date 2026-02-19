@@ -11,7 +11,6 @@ from atopile.layout_server.models import (
     ArcTrackModel,
     BoardModel,
     DrawingModel,
-    DrillModel,
     EdgeModel,
     FilledPolygonModel,
     FootprintModel,
@@ -301,7 +300,6 @@ class PcbManager:
             ],
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
-            vias=vias,
             zones=self._extract_zones(pcb),
             nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
         )
@@ -393,8 +391,16 @@ class PcbManager:
         value = _get_property(fp, "Value")
 
         pads: list[PadModel] = []
-        for pad in fp.pads:
+        raw_pads = list(fp.pads)
+        for pad in raw_pads:
             pad_h = pad.size.h if pad.size.h is not None else pad.size.w
+            pad_layers = list(pad.layers)
+            pad_type = str(getattr(pad, "type", "") or "")
+            if pad_type in {"thru_hole", "np_thru_hole"}:
+                # Through-hole copper/drill are synthesized into normal drawings.
+                # Keep pad metadata (name/position/size/net) but don't draw
+                # pads directly.
+                pad_layers = []
             pads.append(
                 PadModel(
                     name=pad.name,
@@ -402,11 +408,9 @@ class PcbManager:
                     size=Size2(w=pad.size.w, h=pad_h),
                     shape=pad.shape,
                     type=pad.type,
-                    layers=list(pad.layers),
+                    layers=pad_layers,
                     net=pad.net.number if pad.net else 0,
                     roundrect_rratio=pad.roundrect_rratio,
-                    drill=(self._extract_drill(pad.drill) if pad.drill else None),
-                    hole=self._extract_pad_hole(pad),
                 )
             )
 
@@ -475,7 +479,8 @@ class PcbManager:
                     filled=_is_filled(poly),
                 )
             )
-        drawings.extend(self._synthesize_pad_drill_drawings(pads))
+        drawings.extend(self._synthesize_th_pad_copper_drawings(raw_pads))
+        drawings.extend(self._synthesize_pad_drill_drawings(raw_pads))
 
         texts = self._extract_text_entries(fp, ref, value)
         pad_names = self._extract_pad_name_annotations_for_footprint(
@@ -900,20 +905,6 @@ class PcbManager:
             justify=_extract_text_justify(obj),
         )
 
-    def _extract_drill(self, drill) -> DrillModel:
-        offset = getattr(drill, "offset", None)
-        return DrillModel(
-            shape=getattr(drill, "shape", None),
-            size_x=(drill.size_x if hasattr(drill, "size_x") else None),
-            size_y=(drill.size_y if hasattr(drill, "size_y") else None),
-            offset_x=(
-                float(offset.x) if offset is not None and hasattr(offset, "x") else None
-            ),
-            offset_y=(
-                float(offset.y) if offset is not None and hasattr(offset, "y") else None
-            ),
-        )
-
     def _extract_pad_hole(self, pad) -> HoleModel | None:
         drill = getattr(pad, "drill", None)
         if drill is None:
@@ -996,21 +987,6 @@ class PcbManager:
     def _synthesize_via_drawings(self, vias: list[ViaModel]) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for via in vias:
-            via_radius = _safe_float(via.size)
-            via_radius = (via_radius / 2.0) if via_radius is not None else None
-            if via_radius is not None and via_radius > 0:
-                for copper_layer in _expand_copper_layers(via.layers):
-                    drawings.append(
-                        DrawingModel(
-                            type="circle",
-                            center=Point2(x=via.at.x, y=via.at.y),
-                            end=Point2(x=via.at.x + via_radius, y=via.at.y),
-                            width=0.0,
-                            layer=copper_layer,
-                            filled=True,
-                        )
-                    )
-
             hole = via.hole
             if hole is None and via.drill > 0:
                 hole = HoleModel(
@@ -1020,6 +996,45 @@ class PcbManager:
                     offset=None,
                     plated=True,
                 )
+
+            outer_diameter = _safe_float(via.size) or 0.0
+            drill_diameter = 0.0
+            if hole is not None:
+                hx = _safe_float(hole.size_x) or 0.0
+                hy = _safe_float(hole.size_y) or hx
+                drill_diameter = max(hx, hy)
+            if drill_diameter <= 0:
+                drill_diameter = _safe_float(via.drill) or 0.0
+
+            for copper_layer in _expand_copper_layers(via.layers):
+                if outer_diameter <= 0:
+                    continue
+                if drill_diameter > 0 and outer_diameter > drill_diameter:
+                    annulus_thickness = (outer_diameter - drill_diameter) / 2.0
+                    centerline_radius = (outer_diameter + drill_diameter) / 4.0
+                    if annulus_thickness > 0 and centerline_radius > 0:
+                        drawings.append(
+                            DrawingModel(
+                                type="circle",
+                                center=Point2(x=via.at.x, y=via.at.y),
+                                end=Point2(x=via.at.x + centerline_radius, y=via.at.y),
+                                width=annulus_thickness,
+                                layer=copper_layer,
+                                filled=False,
+                            )
+                        )
+                        continue
+                drawings.append(
+                    DrawingModel(
+                        type="circle",
+                        center=Point2(x=via.at.x, y=via.at.y),
+                        end=Point2(x=via.at.x + outer_diameter / 2.0, y=via.at.y),
+                        width=0.0,
+                        layer=copper_layer,
+                        filled=True,
+                    )
+                )
+
             if hole is None:
                 continue
             for drill_layer in _drill_layers_from_copper_layers(via.layers):
@@ -1034,21 +1049,184 @@ class PcbManager:
                 )
         return drawings
 
-    def _synthesize_pad_drill_drawings(
-        self, pads: list[PadModel]
-    ) -> list[DrawingModel]:
+    def _synthesize_th_pad_copper_drawings(self, pads: list) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for pad in pads:
-            hole = _pad_hole_from_model(pad)
+            pad_type = str(getattr(pad, "type", "") or "")
+            if pad_type != "thru_hole":
+                continue
+
+            pad_at = getattr(pad, "at", None)
+            pad_size = getattr(pad, "size", None)
+            if pad_at is None or pad_size is None:
+                continue
+
+            cx = _safe_float(getattr(pad_at, "x", None))
+            cy = _safe_float(getattr(pad_at, "y", None))
+            if cx is None or cy is None:
+                continue
+
+            pad_w = _safe_float(getattr(pad_size, "w", None))
+            pad_h = _safe_float(getattr(pad_size, "h", None))
+            if pad_w is None:
+                continue
+            if pad_h is None:
+                pad_h = pad_w
+            if pad_w <= 0 or pad_h <= 0:
+                continue
+
+            pad_rotation = _safe_float(getattr(pad_at, "r", None)) or 0.0
+            pad_shape = str(getattr(pad, "shape", "") or "").strip().lower()
+            copper_layers = _expand_copper_layers(
+                list(getattr(pad, "layers", []) or [])
+            )
+            if not copper_layers:
+                continue
+
+            hole = self._extract_pad_hole(pad)
+            hole_diameter = 0.0
+            if hole is not None:
+                sx = _safe_float(hole.size_x) or 0.0
+                sy = _safe_float(hole.size_y) or sx
+                hole_diameter = max(sx, sy)
+
+            for copper_layer in copper_layers:
+                if pad_shape == "circle":
+                    outer_diameter = max(pad_w, pad_h)
+                    if hole_diameter > 0 and outer_diameter > hole_diameter:
+                        annulus_thickness = (outer_diameter - hole_diameter) / 2.0
+                        centerline_radius = (outer_diameter + hole_diameter) / 4.0
+                        if annulus_thickness > 0 and centerline_radius > 0:
+                            drawings.append(
+                                DrawingModel(
+                                    type="circle",
+                                    center=Point2(x=cx, y=cy),
+                                    end=Point2(x=cx + centerline_radius, y=cy),
+                                    width=annulus_thickness,
+                                    layer=copper_layer,
+                                    filled=False,
+                                )
+                            )
+                            continue
+                    drawings.append(
+                        DrawingModel(
+                            type="circle",
+                            center=Point2(x=cx, y=cy),
+                            end=Point2(x=cx + outer_diameter / 2.0, y=cy),
+                            width=0.0,
+                            layer=copper_layer,
+                            filled=True,
+                        )
+                    )
+                    continue
+
+                if pad_shape == "oval":
+                    major = max(pad_w, pad_h)
+                    minor = min(pad_w, pad_h)
+                    if hole is not None:
+                        hsx = _safe_float(hole.size_x) or 0.0
+                        hsy = _safe_float(hole.size_y) or hsx
+                        inner_major = max(hsx, hsy)
+                        inner_minor = min(hsx, hsy)
+                        if (
+                            inner_major > 0
+                            and inner_minor > 0
+                            and major > inner_major
+                            and minor > inner_minor
+                        ):
+                            delta_major = major - inner_major
+                            delta_minor = minor - inner_minor
+                            if abs(delta_major - delta_minor) <= 1e-3:
+                                # `delta_*` are diameter deltas and line width is
+                                # full stroke width. Annulus radial thickness is
+                                # delta/2, so stroke width is delta/2.
+                                annulus_thickness = (delta_major + delta_minor) / 4.0
+                                center_major = (major + inner_major) / 2.0
+                                center_minor = (minor + inner_minor) / 2.0
+                                if (
+                                    annulus_thickness > 0
+                                    and center_major > 0
+                                    and center_minor > 0
+                                ):
+                                    ring_points_local = _capsule_outline_points(
+                                        center_major,
+                                        center_minor,
+                                        horizontal=pad_w >= pad_h,
+                                    )
+                                    ring_points = []
+                                    for pt in ring_points_local:
+                                        rx, ry = _rotate_kicad_xy(
+                                            pt[0], pt[1], pad_rotation
+                                        )
+                                        ring_points.append(Point2(x=cx + rx, y=cy + ry))
+                                    drawings.append(
+                                        DrawingModel(
+                                            type="curve",
+                                            points=ring_points,
+                                            width=annulus_thickness,
+                                            layer=copper_layer,
+                                            filled=False,
+                                        )
+                                    )
+                                    continue
+
+                    focal = max(0.0, (major - minor) / 2.0)
+                    if pad_w >= pad_h:
+                        p1_local = (-focal, 0.0)
+                        p2_local = (focal, 0.0)
+                    else:
+                        p1_local = (0.0, -focal)
+                        p2_local = (0.0, focal)
+                    p1r = _rotate_kicad_xy(p1_local[0], p1_local[1], pad_rotation)
+                    p2r = _rotate_kicad_xy(p2_local[0], p2_local[1], pad_rotation)
+                    drawings.append(
+                        DrawingModel(
+                            type="line",
+                            start=Point2(x=cx + p1r[0], y=cy + p1r[1]),
+                            end=Point2(x=cx + p2r[0], y=cy + p2r[1]),
+                            width=minor,
+                            layer=copper_layer,
+                        )
+                    )
+                    continue
+
+                hw = pad_w / 2.0
+                hh = pad_h / 2.0
+                corners_local = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
+                points: list[Point2] = []
+                for lx, ly in corners_local:
+                    rx, ry = _rotate_kicad_xy(lx, ly, pad_rotation)
+                    points.append(Point2(x=cx + rx, y=cy + ry))
+                drawings.append(
+                    DrawingModel(
+                        type="polygon",
+                        points=points,
+                        width=0.0,
+                        layer=copper_layer,
+                        filled=True,
+                    )
+                )
+
+        return drawings
+
+    def _synthesize_pad_drill_drawings(self, pads: list) -> list[DrawingModel]:
+        drawings: list[DrawingModel] = []
+        for pad in pads:
+            hole = self._extract_pad_hole(pad)
             if hole is None:
                 continue
 
+            pad_at = getattr(pad, "at", None)
+            if pad_at is None:
+                continue
             offset = hole.offset or Point2(x=0.0, y=0.0)
-            pad_rotation = pad.at.r or 0.0
+            pad_rotation = _safe_float(getattr(pad_at, "r", None)) or 0.0
             rox, roy = _rotate_kicad_xy(offset.x, offset.y, pad_rotation)
-            cx = pad.at.x + rox
-            cy = pad.at.y + roy
-            for drill_layer in _drill_layers_from_copper_layers(pad.layers):
+            cx = (_safe_float(getattr(pad_at, "x", None)) or 0.0) + rox
+            cy = (_safe_float(getattr(pad_at, "y", None)) or 0.0) + roy
+            for drill_layer in _drill_layers_from_copper_layers(
+                list(getattr(pad, "layers", []) or [])
+            ):
                 drawings.extend(
                     _drill_hole_drawings(
                         cx=cx,
@@ -1383,45 +1561,49 @@ def _expand_copper_layers(layers: list[str] | None) -> list[str]:
     return sorted(out)
 
 
+def _capsule_outline_points(
+    major: float,
+    minor: float,
+    *,
+    horizontal: bool,
+    arc_steps: int = 12,
+) -> list[tuple[float, float]]:
+    major = max(0.0, major)
+    minor = max(0.0, minor)
+    if major <= 0 or minor <= 0:
+        return []
+
+    radius = minor / 2.0
+    half_span = max(0.0, (major - minor) / 2.0)
+
+    points: list[tuple[float, float]] = []
+    for i in range(arc_steps + 1):
+        angle = math.pi / 2.0 - (math.pi * i / arc_steps)
+        x = half_span + radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        points.append((x, y))
+    for i in range(arc_steps + 1):
+        angle = -math.pi / 2.0 + (math.pi * i / arc_steps)
+        # Left cap must bulge to negative X; use mirrored cosine term.
+        x = -half_span - radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        points.append((x, y))
+
+    if not horizontal:
+        points = [(-y, x) for x, y in points]
+
+    if points and points[0] != points[-1]:
+        points.append(points[0])
+    return points
+
+
 def _drill_layers_from_copper_layers(layers: list[str] | None) -> list[str]:
-    return sorted({layer[:-3] + ".Drill" for layer in _expand_copper_layers(layers)})
-
-
-def _pad_hole_from_model(pad: PadModel) -> HoleModel | None:
-    if pad.hole is not None:
-        return pad.hole
-    drill = pad.drill
-    if drill is None:
-        return None
-
-    size_x = _safe_float(drill.size_x)
-    size_y = _safe_float(drill.size_y)
-    if size_x is None and size_y is None:
-        return None
-    if size_x is None:
-        size_x = size_y
-    if size_y is None:
-        size_y = size_x
-    if size_x is None or size_y is None or size_x <= 0 or size_y <= 0:
-        return None
-
-    offset_x = _safe_float(drill.offset_x)
-    offset_y = _safe_float(drill.offset_y)
-    offset: Point2 | None = None
-    if offset_x is not None or offset_y is not None:
-        offset = Point2(x=offset_x or 0.0, y=offset_y or 0.0)
-
-    plated = None
-    if pad.type:
-        plated = pad.type != "np_thru_hole"
-
-    return HoleModel(
-        shape=_normalize_hole_shape(drill.shape, size_x, size_y),
-        size_x=size_x,
-        size_y=size_y,
-        offset=offset,
-        plated=plated,
-    )
+    copper_layers = _expand_copper_layers(layers)
+    if not copper_layers:
+        # Drills are board-through visualization, even when copper layer set is empty
+        # (e.g. NPTH pads).
+        return ["B.Drill", "F.Drill"]
+    return sorted({layer[:-3] + ".Drill" for layer in copper_layers})
 
 
 def _drill_hole_drawings(
