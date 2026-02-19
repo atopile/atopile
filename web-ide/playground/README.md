@@ -22,7 +22,7 @@ Two Fly apps in the same org:
 | App | Role | Spec |
 |-----|------|------|
 | `atopile-playground` | Spawner (always-on) | shared-cpu-1x, 256MB |
-| `atopile-ws` | Workspaces (on-demand) | shared-cpu-1x, 1GB each |
+| `atopile-ws` | Workspaces (on-demand) | performance-1x, 2GB each |
 
 Traffic routing uses the `fly-replay` response header — the spawner tells the Fly proxy to replay the request to the correct workspace machine. Works for both HTTP and WebSocket.
 
@@ -30,24 +30,74 @@ Traffic routing uses the `fly-replay` response header — the spawner tells the 
 
 - [flyctl](https://fly.io/docs/flyctl/install/) installed and authenticated (`fly auth login`)
 - A [Fly.io API token](https://fly.io/dashboard/personal/tokens) with Machine management permissions
-- The web-IDE Docker image published to `ghcr.io/atopile/atopile-web-ide:latest`
 
 ## Deploy
 
+### Full deploy (workspace image + spawner)
+
+Builds the web-IDE Docker image via Fly's remote builder, pushes it to
+`registry.fly.io/atopile-ws:latest`, then deploys the spawner.
+
 ```bash
-# Set your API token (or the script will prompt you)
+cd web-ide/playground
+
+# Set your API token (or the script will prompt)
 export FLY_API_TOKEN="fo1_..."
 
-# Deploy both apps
+# Build workspace image + deploy spawner
 ./deploy.sh
 ```
 
 The script will:
-1. Create the `atopile-ws` workspace app (if it doesn't exist)
-2. Create the `atopile-playground` spawner app (if it doesn't exist)
-3. Set secrets (`FLY_API_TOKEN`, `WORKSPACE_APP`, `WORKSPACE_IMAGE`, `WORKSPACE_REGION`)
-4. Deploy the spawner
-5. Print the playground URL
+1. Create the `atopile-ws` and `atopile-playground` apps (if they don't exist)
+2. Build the workspace Docker image via Fly's remote builder
+3. Push the image to `registry.fly.io/atopile-ws:latest`
+4. Destroy old workspace machines so new sessions use the updated image
+5. Configure spawner secrets and deploy the spawner
+6. Print the playground URL and monitoring commands
+
+### Spawner-only deploy
+
+Use when you've only changed `server.js` or `fly.spawner.toml` and don't need
+to rebuild the workspace image:
+
+```bash
+./deploy.sh --spawner-only
+```
+
+### Workspace image-only deploy
+
+Use when you've changed the web-IDE (extension, Dockerfile, etc.) but don't
+need to redeploy the spawner:
+
+```bash
+./deploy.sh --workspace-only
+```
+
+This builds the image, pushes it, and cycles existing workspace machines.
+The spawner's pool replenishes automatically within ~30 seconds.
+
+### Validate after deploy
+
+```bash
+cd web-ide
+node scripts/validate.mjs 'https://atopile-playground.fly.dev' --timeout=120000
+```
+
+## How the image gets to Fly
+
+The workspace image lives in Fly's built-in registry at
+`registry.fly.io/atopile-ws:latest`. The deploy script uses `fly deploy` to
+build via Fly's remote builder and push to this registry. This avoids needing
+GHCR credentials or external registry auth.
+
+The spawner's `WORKSPACE_IMAGE` defaults to `registry.fly.io/atopile-ws:latest`
+(set in `server.js`), so new workspace machines automatically use the latest
+pushed image.
+
+When the deploy script cycles workspace machines (destroys old ones), the
+spawner's background pool replenishment loop creates fresh machines with the
+new image within ~30 seconds.
 
 ## Local Development
 
@@ -96,5 +146,34 @@ Machines are also configured with `auto_destroy: true`, so Fly will clean them u
 | `PORT` | `8080` | Spawner listen port |
 | `FLY_API_TOKEN` | — | Fly.io API token (required) |
 | `WORKSPACE_APP` | `atopile-ws` | Fly app name for workspaces |
-| `WORKSPACE_IMAGE` | `ghcr.io/atopile/atopile-web-ide:latest` | Docker image for workspaces |
+| `WORKSPACE_IMAGE` | `registry.fly.io/atopile-ws:latest` | Docker image for workspaces |
 | `WORKSPACE_REGION` | `iad` | Fly region for new machines |
+
+## Troubleshooting
+
+### Workspace machines stuck on old image
+
+Destroy all workspace machines — the spawner will replenish the pool with fresh
+ones using the latest image:
+
+```bash
+fly machines list --app atopile-ws
+fly machines destroy <id> --app atopile-ws --force
+```
+
+### Backend shows "Connecting..." in status bar
+
+The atopile backend server takes ~20-30 seconds to start after the machine
+boots. If it persists, SSH in and check:
+
+```bash
+fly ssh console --app atopile-ws --machine <id> \
+  -C 'sh -lc "pgrep -af ato"'
+```
+
+### Checking spawner health
+
+```bash
+curl https://atopile-playground.fly.dev/api/health
+fly logs --app atopile-playground
+```

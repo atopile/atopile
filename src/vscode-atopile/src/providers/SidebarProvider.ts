@@ -1247,8 +1247,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         // Sort: directories first, then alphabetically
         entries.sort((a, b) => {
-          const aIsDir = a[1] === vscode.FileType.Directory;
-          const bIsDir = b[1] === vscode.FileType.Directory;
+          const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
+          const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
           if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
           return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
         });
@@ -1262,7 +1262,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           const itemUri = vscode.Uri.joinPath(dirUri, name);
           const isHidden = name.startsWith('.');
 
-          if (fileType === vscode.FileType.Directory) {
+          if ((fileType & vscode.FileType.Directory) !== 0) {
             // Check if this directory should be lazy loaded
             const shouldLazyLoad = lazyLoadDirs.has(name) || (isHidden && !includeAll);
 
@@ -1287,7 +1287,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 });
               }
             }
-          } else if (fileType === vscode.FileType.File) {
+          } else if ((fileType & vscode.FileType.File) !== 0) {
             // Skip hidden files unless includeAll
             if (isHidden && !includeAll) continue;
 
@@ -1375,8 +1375,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       // Sort: directories first, then alphabetically
       entries.sort((a, b) => {
-        const aIsDir = a[1] === vscode.FileType.Directory;
-        const bIsDir = b[1] === vscode.FileType.Directory;
+        const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
+        const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
         if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
         return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
       });
@@ -1384,7 +1384,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       for (const [name, fileType] of entries) {
         const relativePath = `${directoryPath}/${name}`;
 
-        if (fileType === vscode.FileType.Directory) {
+        if ((fileType & vscode.FileType.Directory) !== 0) {
           // All directories inside a lazy-loaded parent are also lazy-loaded
           // This allows them to be expanded on demand
           nodes.push({
@@ -1394,7 +1394,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             children: [],
             lazyLoad: true,  // All nested dirs are lazy-loaded
           });
-        } else if (fileType === vscode.FileType.File) {
+        } else if ((fileType & vscode.FileType.File) !== 0) {
           const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
           nodes.push({
             name,
