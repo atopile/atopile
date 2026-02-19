@@ -366,9 +366,8 @@ export class Editor {
         this.selectedMultiIndices = [];
         this.hoveredGroupId = null;
         this.hoveredFpIndex = -1;
-        this.isBoxSelecting = false;
-        this.boxSelectStartWorld = null;
-        this.boxSelectCurrentWorld = null;
+        this.clearDragState();
+        this.clearBoxSelectionState();
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
@@ -389,6 +388,56 @@ export class Editor {
         return group ? group.memberUuids : [];
     }
 
+    private selectedBatchUuids(): string[] {
+        if (this.selectionMode === "group" && !this.singleOverrideMode) {
+            return this.selectedGroupMemberUuids();
+        }
+        if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
+            return this.getSelectedMultiUuids();
+        }
+        return [];
+    }
+
+    private clearDragState() {
+        this.isDragging = false;
+        this.dragStartWorld = null;
+        this.dragStartPositions = null;
+        this.dragTargetIndices = [];
+    }
+
+    private clearBoxSelectionState() {
+        this.isBoxSelecting = false;
+        this.boxSelectStartWorld = null;
+        this.boxSelectCurrentWorld = null;
+    }
+
+    private beginDragSelection(worldPos: Vec2, targetIndices: number[]) {
+        const dragStartPositions = new Map<number, { x: number; y: number }>();
+        for (const index of targetIndices) {
+            const fp = this.model?.footprints[index];
+            if (!fp) continue;
+            dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
+        }
+        if (dragStartPositions.size === 0) {
+            return false;
+        }
+        this.isDragging = true;
+        this.dragStartWorld = worldPos;
+        this.dragTargetIndices = [...dragStartPositions.keys()];
+        this.dragStartPositions = dragStartPositions;
+        return true;
+    }
+
+    private currentBoxSelection(): BBox | null {
+        if (!this.boxSelectStartWorld || !this.boxSelectCurrentWorld) return null;
+        return new BBox(
+            this.boxSelectStartWorld.x,
+            this.boxSelectStartWorld.y,
+            this.boxSelectCurrentWorld.x - this.boxSelectStartWorld.x,
+            this.boxSelectCurrentWorld.y - this.boxSelectStartWorld.y,
+        );
+    }
+
     private selectedIndicesForDrag(hitIdx: number): number[] {
         if (this.selectionMode === "group") {
             return this.selectedGroupMembers();
@@ -400,13 +449,9 @@ export class Editor {
     }
 
     private paintBoxSelectionOverlay() {
-        if (!this.isBoxSelecting || !this.boxSelectStartWorld || !this.boxSelectCurrentWorld) return;
-        const box = new BBox(
-            this.boxSelectStartWorld.x,
-            this.boxSelectStartWorld.y,
-            this.boxSelectCurrentWorld.x - this.boxSelectStartWorld.x,
-            this.boxSelectCurrentWorld.y - this.boxSelectStartWorld.y,
-        );
+        if (!this.isBoxSelecting) return;
+        const box = this.currentBoxSelection();
+        if (!box) return;
         const corners = [
             new Vec2(box.x, box.y),
             new Vec2(box.x2, box.y),
@@ -466,13 +511,10 @@ export class Editor {
             if (!this.model) return;
 
             if (e.shiftKey) {
+                this.clearDragState();
                 this.isBoxSelecting = true;
                 this.boxSelectStartWorld = worldPos;
                 this.boxSelectCurrentWorld = worldPos;
-                this.isDragging = false;
-                this.dragStartWorld = null;
-                this.dragStartPositions = null;
-                this.dragTargetIndices = [];
                 this.repaintWithSelection();
                 return;
             }
@@ -491,26 +533,15 @@ export class Editor {
                 }
 
                 const dragTargets = this.selectedIndicesForDrag(hitIdx);
-                const dragStartPositions = new Map<number, { x: number; y: number }>();
-                for (const index of dragTargets) {
-                    const fp = this.model.footprints[index];
-                    if (!fp) continue;
-                    dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
-                }
-                if (dragStartPositions.size === 0) {
+                if (!this.beginDragSelection(worldPos, dragTargets)) {
                     this.repaintWithSelection();
                     return;
                 }
 
-                this.isDragging = true;
-                this.dragStartWorld = worldPos;
-                this.dragTargetIndices = [...dragStartPositions.keys()];
-                this.dragStartPositions = dragStartPositions;
                 this.repaintWithSelection();
             } else {
                 this.clearSelection(true);
-                this.paint();
-                this.requestRedraw();
+                this.repaintWithSelection();
             }
         });
 
@@ -569,14 +600,8 @@ export class Editor {
             if (e.button !== 0) return;
 
             if (this.isBoxSelecting) {
-                this.isBoxSelecting = false;
-                if (this.model && this.boxSelectStartWorld && this.boxSelectCurrentWorld) {
-                    const selectionBox = new BBox(
-                        this.boxSelectStartWorld.x,
-                        this.boxSelectStartWorld.y,
-                        this.boxSelectCurrentWorld.x - this.boxSelectStartWorld.x,
-                        this.boxSelectCurrentWorld.y - this.boxSelectStartWorld.y,
-                    );
+                const selectionBox = this.currentBoxSelection();
+                if (this.model && selectionBox) {
                     const selected = hitTestFootprintsInBox(selectionBox, this.model.footprints);
                     if (selected.length > 0) {
                         this.setMultiSelection(selected);
@@ -584,8 +609,7 @@ export class Editor {
                         this.clearSelection(false);
                     }
                 }
-                this.boxSelectStartWorld = null;
-                this.boxSelectCurrentWorld = null;
+                this.clearBoxSelectionState();
                 this.repaintWithSelection();
                 return;
             }
@@ -594,9 +618,7 @@ export class Editor {
             this.isDragging = false;
 
             if (!this.model || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
-                this.dragStartWorld = null;
-                this.dragStartPositions = null;
-                this.dragTargetIndices = [];
+                this.clearDragState();
                 return;
             }
 
@@ -604,9 +626,7 @@ export class Editor {
             const firstStart = this.dragStartPositions.get(firstTarget);
             const firstFp = this.model.footprints[firstTarget];
             if (!firstStart || !firstFp) {
-                this.dragStartWorld = null;
-                this.dragStartPositions = null;
-                this.dragTargetIndices = [];
+                this.clearDragState();
                 return;
             }
 
@@ -614,29 +634,13 @@ export class Editor {
             const dy = firstFp.at.y - firstStart.y;
             const isNoop = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001;
 
-            this.dragStartWorld = null;
-            this.dragStartPositions = null;
-            this.dragTargetIndices = [];
+            this.clearDragState();
 
             if (isNoop) return;
 
-            if (this.selectionMode === "group" && !this.singleOverrideMode) {
-                const uuids = this.selectedGroupMemberUuids();
-                if (uuids.length > 0) {
-                    await this.executeAction("move", { uuids, dx, dy });
-                }
-                return;
-            }
-
-            if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
-                const uuids: string[] = [];
-                for (const index of this.selectedMultiIndices) {
-                    const uuid = this.model.footprints[index]?.uuid;
-                    if (uuid) uuids.push(uuid);
-                }
-                if (uuids.length > 0) {
-                    await this.executeAction("move", { uuids, dx, dy });
-                }
+            const batchUuids = this.selectedBatchUuids();
+            if (batchUuids.length > 0) {
+                await this.executeAction("move", { uuids: batchUuids, dx, dy });
                 return;
             }
 
@@ -699,18 +703,9 @@ export class Editor {
 
     private async rotateSelection(deltaDegrees: number) {
         if (!this.model) return;
-        if (this.selectionMode === "group" && !this.singleOverrideMode) {
-            const uuids = this.selectedGroupMemberUuids();
-            if (uuids.length > 0) {
-                await this.executeAction("rotate", { uuids, delta_degrees: deltaDegrees });
-            }
-            return;
-        }
-        if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
-            const uuids = this.getSelectedMultiUuids();
-            if (uuids.length > 0) {
-                await this.executeAction("rotate", { uuids, delta_degrees: deltaDegrees });
-            }
+        const batchUuids = this.selectedBatchUuids();
+        if (batchUuids.length > 0) {
+            await this.executeAction("rotate", { uuids: batchUuids, delta_degrees: deltaDegrees });
             return;
         }
         if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
@@ -721,18 +716,9 @@ export class Editor {
 
     private async flipSelection() {
         if (!this.model) return;
-        if (this.selectionMode === "group" && !this.singleOverrideMode) {
-            const uuids = this.selectedGroupMemberUuids();
-            if (uuids.length > 0) {
-                await this.executeAction("flip", { uuids });
-            }
-            return;
-        }
-        if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
-            const uuids = this.getSelectedMultiUuids();
-            if (uuids.length > 0) {
-                await this.executeAction("flip", { uuids });
-            }
+        const batchUuids = this.selectedBatchUuids();
+        if (batchUuids.length > 0) {
+            await this.executeAction("flip", { uuids: batchUuids });
             return;
         }
         if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {

@@ -596,20 +596,26 @@ function isCopperLayer(layerName: string | null | undefined): boolean {
     return (layerName ?? "").endsWith(".Cu");
 }
 
+type GlobalDrawingPaintMode = "drill" | "copper" | "non_copper";
+
+function shouldPaintGlobalDrawing(layerName: string, mode: GlobalDrawingPaintMode): boolean {
+    const drill = isDrillLayer(layerName);
+    const copper = isCopperLayer(layerName);
+    if (mode === "drill") return drill;
+    if (mode === "copper") return !drill && copper;
+    return !drill && !copper;
+}
+
 function paintGlobalDrawings(
     renderer: Renderer,
     model: RenderModel,
     hidden: Set<string>,
-    mode: "drill" | "copper" | "non_copper",
+    mode: GlobalDrawingPaintMode,
 ) {
     const byLayer = new Map<string, DrawingModel[]>();
     for (const drawing of model.drawings) {
         const ln = drawing.layer ?? "Dwgs.User";
-        const drill = isDrillLayer(ln);
-        const copper = isCopperLayer(ln);
-        if (mode === "drill" && !drill) continue;
-        if (mode === "copper" && (drill || !copper)) continue;
-        if (mode === "non_copper" && (drill || copper)) continue;
+        if (!shouldPaintGlobalDrawing(ln, mode)) continue;
         if (hidden.has(ln)) continue;
         let arr = byLayer.get(ln);
         if (!arr) { arr = []; byLayer.set(ln, arr); }

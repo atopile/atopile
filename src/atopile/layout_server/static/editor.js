@@ -227,7 +227,7 @@ var pan_speed = 1;
 var line_delta_multiplier = 8;
 var page_delta_multiplier = 24;
 var PanAndZoom = class {
-  constructor(target, camera, callback, min_zoom = 0.1, max_zoom = 100) {
+  constructor(target, camera, callback, min_zoom = 0.1, max_zoom = 400) {
     this.target = target;
     this.camera = camera;
     this.callback = callback;
@@ -21566,6 +21566,19 @@ function hitTestFootprints(worldPos, footprints) {
   }
   return -1;
 }
+function bboxIntersects(a, b) {
+  return !(a.x2 < b.x || b.x2 < a.x || a.y2 < b.y || b.y2 < a.y);
+}
+function hitTestFootprintsInBox(selectionBox, footprints) {
+  const hits = [];
+  for (let i = 0; i < footprints.length; i++) {
+    const bbox = footprintBBox(footprints[i]);
+    if (bboxIntersects(selectionBox, bbox)) {
+      hits.push(i);
+    }
+  }
+  return hits;
+}
 
 // src/layer_order.ts
 var IN_ROOT_RE = /^In(\d+)$/i;
@@ -22043,16 +22056,17 @@ function paintAll(renderer, model, hiddenLayers) {
   renderer.dispose_layers();
   if (!hidden.has("Edge.Cuts"))
     paintBoardEdges(renderer, model);
-  paintGlobalDrawings(renderer, model, hidden, false);
+  paintGlobalDrawings(renderer, model, hidden, "non_copper");
   paintZones(renderer, model, hidden, concreteLayers);
   paintTracks(renderer, model, hidden);
+  paintGlobalDrawings(renderer, model, hidden, "copper");
   const orderedFootprints = [...model.footprints].sort(
     (a, b) => compareLayerNamesForPaint(a.layer ?? "F.Cu", b.layer ?? "F.Cu")
   );
   for (const fp of orderedFootprints) {
     paintFootprint(renderer, fp, hidden, concreteLayers);
   }
-  paintGlobalDrawings(renderer, model, hidden, true);
+  paintGlobalDrawings(renderer, model, hidden, "drill");
 }
 function paintBoardEdges(renderer, model) {
   const layer = renderer.start_layer("Edge.Cuts");
@@ -22232,11 +22246,23 @@ function paintTracks(renderer, model, hidden) {
 function isDrillLayer(layerName) {
   return (layerName ?? "").endsWith(".Drill");
 }
-function paintGlobalDrawings(renderer, model, hidden, drillOnly) {
+function isCopperLayer(layerName) {
+  return (layerName ?? "").endsWith(".Cu");
+}
+function shouldPaintGlobalDrawing(layerName, mode) {
+  const drill = isDrillLayer(layerName);
+  const copper = isCopperLayer(layerName);
+  if (mode === "drill")
+    return drill;
+  if (mode === "copper")
+    return !drill && copper;
+  return !drill && !copper;
+}
+function paintGlobalDrawings(renderer, model, hidden, mode) {
   const byLayer = /* @__PURE__ */ new Map();
   for (const drawing of model.drawings) {
     const ln = drawing.layer ?? "Dwgs.User";
-    if (isDrillLayer(ln) !== drillOnly)
+    if (!shouldPaintGlobalDrawing(ln, mode))
       continue;
     if (hidden.has(ln))
       continue;
@@ -22637,6 +22663,7 @@ var Editor = class {
   selectionMode = "none";
   selectedFpIndex = -1;
   selectedGroupId = null;
+  selectedMultiIndices = [];
   hoveredGroupId = null;
   hoveredFpIndex = -1;
   singleOverrideMode = false;
@@ -22646,6 +22673,9 @@ var Editor = class {
   dragStartWorld = null;
   dragTargetIndices = [];
   dragStartPositions = null;
+  isBoxSelecting = false;
+  boxSelectStartWorld = null;
+  boxSelectCurrentWorld = null;
   needsRedraw = true;
   // Layer visibility
   hiddenLayers = /* @__PURE__ */ new Set();
@@ -22698,11 +22728,12 @@ var Editor = class {
   }
   applyModel(model, fitToView = false) {
     const prevSelectedUuid = this.getSelectedSingleUuid();
+    const prevSelectedMultiUuids = this.getSelectedMultiUuids();
     const prevSelectedGroupId = this.selectedGroupId;
     const prevSingleOverride = this.singleOverrideMode;
     this.model = model;
     this.rebuildGroupIndex();
-    this.restoreSelection(prevSelectedUuid, prevSelectedGroupId, prevSingleOverride);
+    this.restoreSelection(prevSelectedUuid, prevSelectedMultiUuids, prevSelectedGroupId, prevSingleOverride);
     this.applyDefaultLayerVisibility();
     this.paint();
     this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
@@ -22742,9 +22773,13 @@ var Editor = class {
         paintGroupHalos(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
       }
     }
+    if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
+      paintGroupHalos(this.renderer, this.model.footprints, this.selectedMultiIndices, "selected");
+    }
     if (this.selectionMode === "single" && this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
       paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]);
     }
+    this.paintBoxSelectionOverlay();
   }
   rebuildGroupIndex() {
     this.groupsById.clear();
@@ -22802,10 +22837,22 @@ var Editor = class {
       return null;
     return this.model.footprints[this.selectedFpIndex]?.uuid ?? null;
   }
-  restoreSelection(prevSelectedUuid, prevSelectedGroupId, prevSingleOverride) {
+  getSelectedMultiUuids() {
+    if (!this.model || this.selectionMode !== "multi" || this.selectedMultiIndices.length === 0)
+      return [];
+    const uuids = [];
+    for (const index of this.selectedMultiIndices) {
+      const uuid = this.model.footprints[index]?.uuid;
+      if (uuid)
+        uuids.push(uuid);
+    }
+    return uuids;
+  }
+  restoreSelection(prevSelectedUuid, prevSelectedMultiUuids, prevSelectedGroupId, prevSingleOverride) {
     this.selectionMode = "none";
     this.selectedFpIndex = -1;
     this.selectedGroupId = null;
+    this.selectedMultiIndices = [];
     this.hoveredGroupId = null;
     this.hoveredFpIndex = -1;
     this.singleOverrideMode = prevSingleOverride;
@@ -22817,6 +22864,23 @@ var Editor = class {
       this.selectionMode = "group";
       this.selectedGroupId = prevSelectedGroupId;
       return;
+    }
+    if (!prevSingleOverride && prevSelectedMultiUuids.length > 0) {
+      const selectedIndices = [];
+      const selectedSet = new Set(prevSelectedMultiUuids);
+      for (let i = 0; i < this.model.footprints.length; i++) {
+        const uuid = this.model.footprints[i].uuid;
+        if (uuid && selectedSet.has(uuid))
+          selectedIndices.push(i);
+      }
+      if (selectedIndices.length >= 2) {
+        this.setMultiSelection(selectedIndices);
+        return;
+      }
+      if (selectedIndices.length === 1) {
+        this.setSingleSelection(selectedIndices[0], false);
+        return;
+      }
     }
     if (prevSelectedUuid) {
       for (let i = 0; i < this.model.footprints.length; i++) {
@@ -22833,24 +22897,45 @@ var Editor = class {
     this.selectionMode = "single";
     this.selectedFpIndex = index;
     this.selectedGroupId = null;
+    this.selectedMultiIndices = [];
     if (enterOverride) {
       this.singleOverrideMode = true;
     } else if (!this.groupIdByFpIndex.has(index)) {
       this.singleOverrideMode = false;
     }
   }
+  setMultiSelection(indices) {
+    const normalized = [...new Set(indices)].filter((i) => i >= 0).sort((a, b) => a - b);
+    if (normalized.length === 0) {
+      this.clearSelection();
+      return;
+    }
+    if (normalized.length === 1) {
+      this.setSingleSelection(normalized[0], false);
+      return;
+    }
+    this.selectionMode = "multi";
+    this.selectedMultiIndices = normalized;
+    this.selectedGroupId = null;
+    this.selectedFpIndex = -1;
+    this.singleOverrideMode = false;
+  }
   setGroupSelection(groupId) {
     this.selectionMode = "group";
     this.selectedGroupId = groupId;
     this.selectedFpIndex = -1;
+    this.selectedMultiIndices = [];
     this.singleOverrideMode = false;
   }
   clearSelection(exitSingleOverride = false) {
     this.selectionMode = "none";
     this.selectedFpIndex = -1;
     this.selectedGroupId = null;
+    this.selectedMultiIndices = [];
     this.hoveredGroupId = null;
     this.hoveredFpIndex = -1;
+    this.clearDragState();
+    this.clearBoxSelectionState();
     if (exitSingleOverride) {
       this.singleOverrideMode = false;
     }
@@ -22867,6 +22952,79 @@ var Editor = class {
   selectedGroupMemberUuids() {
     const group = this.selectedGroup();
     return group ? group.memberUuids : [];
+  }
+  selectedBatchUuids() {
+    if (this.selectionMode === "group" && !this.singleOverrideMode) {
+      return this.selectedGroupMemberUuids();
+    }
+    if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
+      return this.getSelectedMultiUuids();
+    }
+    return [];
+  }
+  clearDragState() {
+    this.isDragging = false;
+    this.dragStartWorld = null;
+    this.dragStartPositions = null;
+    this.dragTargetIndices = [];
+  }
+  clearBoxSelectionState() {
+    this.isBoxSelecting = false;
+    this.boxSelectStartWorld = null;
+    this.boxSelectCurrentWorld = null;
+  }
+  beginDragSelection(worldPos, targetIndices) {
+    const dragStartPositions = /* @__PURE__ */ new Map();
+    for (const index of targetIndices) {
+      const fp = this.model?.footprints[index];
+      if (!fp)
+        continue;
+      dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
+    }
+    if (dragStartPositions.size === 0) {
+      return false;
+    }
+    this.isDragging = true;
+    this.dragStartWorld = worldPos;
+    this.dragTargetIndices = [...dragStartPositions.keys()];
+    this.dragStartPositions = dragStartPositions;
+    return true;
+  }
+  currentBoxSelection() {
+    if (!this.boxSelectStartWorld || !this.boxSelectCurrentWorld)
+      return null;
+    return new BBox(
+      this.boxSelectStartWorld.x,
+      this.boxSelectStartWorld.y,
+      this.boxSelectCurrentWorld.x - this.boxSelectStartWorld.x,
+      this.boxSelectCurrentWorld.y - this.boxSelectStartWorld.y
+    );
+  }
+  selectedIndicesForDrag(hitIdx) {
+    if (this.selectionMode === "group") {
+      return this.selectedGroupMembers();
+    }
+    if (this.selectionMode === "multi" && this.selectedMultiIndices.includes(hitIdx)) {
+      return this.selectedMultiIndices;
+    }
+    return [hitIdx];
+  }
+  paintBoxSelectionOverlay() {
+    if (!this.isBoxSelecting)
+      return;
+    const box = this.currentBoxSelection();
+    if (!box)
+      return;
+    const corners = [
+      new Vec2(box.x, box.y),
+      new Vec2(box.x2, box.y),
+      new Vec2(box.x2, box.y2),
+      new Vec2(box.x, box.y2)
+    ];
+    const layer = this.renderer.start_layer("selection-box");
+    layer.geometry.add_polygon(corners, 0.44, 0.62, 0.95, 0.12);
+    layer.geometry.add_polyline([...corners, corners[0].copy()], 0.1, 0.44, 0.62, 0.95, 0.55);
+    this.renderer.end_layer();
   }
   updateHoverGroup(worldPos) {
     let nextHoverId = null;
@@ -22912,35 +23070,34 @@ var Editor = class {
       const worldPos = this.camera.screen_to_world(screenPos);
       if (!this.model)
         return;
+      if (e.shiftKey) {
+        this.clearDragState();
+        this.isBoxSelecting = true;
+        this.boxSelectStartWorld = worldPos;
+        this.boxSelectCurrentWorld = worldPos;
+        this.repaintWithSelection();
+        return;
+      }
       const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
       if (hitIdx >= 0) {
-        const hitGroupId = this.groupIdByFpIndex.get(hitIdx) ?? null;
-        if (!this.singleOverrideMode && hitGroupId) {
-          this.setGroupSelection(hitGroupId);
-        } else {
-          this.setSingleSelection(hitIdx, false);
+        const keepMultiSelection = this.selectionMode === "multi" && this.selectedMultiIndices.includes(hitIdx);
+        if (!keepMultiSelection) {
+          const hitGroupId = this.groupIdByFpIndex.get(hitIdx) ?? null;
+          if (!this.singleOverrideMode && hitGroupId) {
+            this.setGroupSelection(hitGroupId);
+          } else {
+            this.setSingleSelection(hitIdx, false);
+          }
         }
-        const dragTargets = this.selectionMode === "group" ? this.selectedGroupMembers() : [hitIdx];
-        const dragStartPositions = /* @__PURE__ */ new Map();
-        for (const index of dragTargets) {
-          const fp = this.model.footprints[index];
-          if (!fp)
-            continue;
-          dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
-        }
-        if (dragStartPositions.size === 0) {
+        const dragTargets = this.selectedIndicesForDrag(hitIdx);
+        if (!this.beginDragSelection(worldPos, dragTargets)) {
           this.repaintWithSelection();
           return;
         }
-        this.isDragging = true;
-        this.dragStartWorld = worldPos;
-        this.dragTargetIndices = [...dragStartPositions.keys()];
-        this.dragStartPositions = dragStartPositions;
         this.repaintWithSelection();
       } else {
         this.clearSelection(true);
-        this.paint();
-        this.requestRedraw();
+        this.repaintWithSelection();
       }
     });
     this.canvas.addEventListener("dblclick", (e) => {
@@ -22965,6 +23122,11 @@ var Editor = class {
       if (!this.model)
         return;
       const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
+      if (this.isBoxSelecting) {
+        this.boxSelectCurrentWorld = worldPos;
+        this.repaintWithSelection();
+        return;
+      }
       if (!this.isDragging) {
         this.updateHoverGroup(worldPos);
         return;
@@ -22985,37 +23147,45 @@ var Editor = class {
       this.requestRedraw();
     });
     window.addEventListener("mouseup", async (e) => {
-      if (e.button !== 0 || !this.isDragging)
+      if (e.button !== 0)
+        return;
+      if (this.isBoxSelecting) {
+        const selectionBox = this.currentBoxSelection();
+        if (this.model && selectionBox) {
+          const selected = hitTestFootprintsInBox(selectionBox, this.model.footprints);
+          if (selected.length > 0) {
+            this.setMultiSelection(selected);
+          } else {
+            this.clearSelection(false);
+          }
+        }
+        this.clearBoxSelectionState();
+        this.repaintWithSelection();
+        return;
+      }
+      if (!this.isDragging)
         return;
       this.isDragging = false;
       if (!this.model || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
-        this.dragStartWorld = null;
-        this.dragStartPositions = null;
-        this.dragTargetIndices = [];
+        this.clearDragState();
         return;
       }
       const firstTarget = this.dragTargetIndices[0];
       const firstStart = this.dragStartPositions.get(firstTarget);
       const firstFp = this.model.footprints[firstTarget];
       if (!firstStart || !firstFp) {
-        this.dragStartWorld = null;
-        this.dragStartPositions = null;
-        this.dragTargetIndices = [];
+        this.clearDragState();
         return;
       }
       const dx = firstFp.at.x - firstStart.x;
       const dy = firstFp.at.y - firstStart.y;
       const isNoop = Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3;
-      this.dragStartWorld = null;
-      this.dragStartPositions = null;
-      this.dragTargetIndices = [];
+      this.clearDragState();
       if (isNoop)
         return;
-      if (this.selectionMode === "group" && !this.singleOverrideMode) {
-        const uuids = this.selectedGroupMemberUuids();
-        if (uuids.length > 0) {
-          await this.executeAction("move", { uuids, dx, dy });
-        }
+      const batchUuids = this.selectedBatchUuids();
+      if (batchUuids.length > 0) {
+        await this.executeAction("move", { uuids: batchUuids, dx, dy });
         return;
       }
       if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
@@ -23068,11 +23238,9 @@ var Editor = class {
   async rotateSelection(deltaDegrees) {
     if (!this.model)
       return;
-    if (this.selectionMode === "group" && !this.singleOverrideMode) {
-      const uuids = this.selectedGroupMemberUuids();
-      if (uuids.length > 0) {
-        await this.executeAction("rotate", { uuids, delta_degrees: deltaDegrees });
-      }
+    const batchUuids = this.selectedBatchUuids();
+    if (batchUuids.length > 0) {
+      await this.executeAction("rotate", { uuids: batchUuids, delta_degrees: deltaDegrees });
       return;
     }
     if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
@@ -23083,11 +23251,9 @@ var Editor = class {
   async flipSelection() {
     if (!this.model)
       return;
-    if (this.selectionMode === "group" && !this.singleOverrideMode) {
-      const uuids = this.selectedGroupMemberUuids();
-      if (uuids.length > 0) {
-        await this.executeAction("flip", { uuids });
-      }
+    const batchUuids = this.selectedBatchUuids();
+    if (batchUuids.length > 0) {
+      await this.executeAction("flip", { uuids: batchUuids });
       return;
     }
     if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
@@ -23567,7 +23733,7 @@ function buildLayerPanel() {
 }
 var coordsEl = document.getElementById("status-coords");
 var helpEl = document.getElementById("status-help");
-var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
+var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Shift+drag box-select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
 if (helpEl)
   helpEl.textContent = helpText;
 canvas.addEventListener("mouseenter", () => {
