@@ -79,12 +79,14 @@ function buildPadStyles(pins: PinInfo[]): PadStyles {
   for (const pin of pins) {
     if (!pin.pin_number) continue
 
-    const color = SIGNAL_PAD_COLORS[pin.signal_type]
+    // Default to digital color for pins with no signal type
+    const signalType = pin.signal_type || 'digital'
+    const color = SIGNAL_PAD_COLORS[signalType]
     if (color) {
       colorOverrides.set(pin.pin_number, color)
     }
 
-    if (pin.connected_to.length === 0) {
+    if (!pin.is_connected) {
       outlinePads.add(pin.pin_number)
     }
   }

@@ -170,9 +170,9 @@ export function PinoutPanel() {
 
     // Connection filter
     if (filterConnection === 'connected') {
-      pins = pins.filter(p => p.connected_to.length > 0)
+      pins = pins.filter(p => p.is_connected)
     } else if (filterConnection === 'unconnected') {
-      pins = pins.filter(p => p.connected_to.length === 0)
+      pins = pins.filter(p => !p.is_connected)
     }
 
     // Search filter
@@ -262,26 +262,6 @@ export function PinoutPanel() {
     )
   }
 
-  if (!report || report.components.length === 0) {
-    return (
-      <div style={containerStyle}>
-        <h2 style={{ marginTop: 0, fontWeight: 500 }}>Pinout Table</h2>
-        <p style={{ opacity: 0.6 }}>
-          No pinout data available. Add the <code>generate_pinout_details</code> trait
-          to a component and run <code>ato build</code>.
-        </p>
-        {selectedProject && (
-          <div style={{ marginTop: 12 }}>
-            <label style={labelStyle}>Project: </label>
-            <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={selectStyle}>
-              {projects.map(p => <option key={p.root} value={p.root}>{p.name}</option>)}
-            </select>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div style={containerStyle}>
       {/* Header */}
@@ -301,7 +281,7 @@ export function PinoutPanel() {
         </select>
 
         {/* Component tabs */}
-        {report.components.length > 1 && (
+        {report && report.components.length > 1 && (
           <div style={{ display: 'flex', gap: 4 }}>
             {report.components.map((c, i) => (
               <button
@@ -323,8 +303,22 @@ export function PinoutPanel() {
           </div>
         )}
 
-        <button onClick={loadPinout} style={btnStyle} title="Refresh">Refresh</button>
+        {selectedProject && selectedTarget && (
+          <button onClick={loadPinout} style={btnStyle} title="Refresh">Refresh</button>
+        )}
       </div>
+
+      {!report || report.components.length === 0 ? (
+        <p style={{ opacity: 0.6 }}>
+          {!selectedProject
+            ? 'Select a project and target to view pinout data.'
+            : !selectedTarget
+              ? 'Select a target to view pinout data.'
+              : <>No pinout data available. Add the <code>generate_pinout_details</code> trait to a component and run <code>ato build</code>.</>
+          }
+        </p>
+      ) : (
+        <>
 
 
       {/* Filters bar */}
@@ -504,6 +498,8 @@ export function PinoutPanel() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   )
 }
@@ -538,11 +534,6 @@ const inputStyle: React.CSSProperties = {
   background: 'var(--vscode-input-background, #3c3c3c)',
   color: 'var(--vscode-input-foreground, #ccc)',
   outline: 'none',
-  fontSize: '0.9em',
-}
-
-const labelStyle: React.CSSProperties = {
-  opacity: 0.7,
   fontSize: '0.9em',
 }
 

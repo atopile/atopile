@@ -327,6 +327,7 @@ export interface PinInfo {
   direction: string;
   interfaces: string[];
   connected_to: string[];
+  is_connected: boolean;
   voltage: string | null;
   net_name: string | null;
   notes: string[];

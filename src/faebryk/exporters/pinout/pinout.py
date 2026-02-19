@@ -80,6 +80,7 @@ class PinInfo:
     direction: str = "bidirectional"  # "input", "output", "bidirectional", "power"
     interfaces: list[str] = field(default_factory=list)  # ["I2C (SDA)", "ADC1[0]"]
     connected_to: list[str] = field(default_factory=list)  # External connections
+    is_connected: bool = False  # True if lead connects to another pad/lead
     voltage: str | None = None  # Logic level, e.g., "3.3V"
     notes: list[str] = field(default_factory=list)  # Warnings, capability notes
 
@@ -492,8 +493,9 @@ def _extract_footprint_geometry(
                 )
             )
 
-        # Extract drawings from silk screen and fabrication layers
-        drawing_layers = {"F.SilkS", "B.SilkS", "F.Fab", "B.Fab"}
+        # Extract drawings from silk screen layers only (Fab layer circles
+        # overlap pads and obscure signal-type coloring in the pinout viewer)
+        drawing_layers = {"F.SilkS", "B.SilkS"}
 
         for line in footprint.fp_lines:
             layer = line.layer
@@ -619,6 +621,34 @@ def _extract_net_name(pin: fabll.Node, sub_key: str | None = None) -> str | None
     return None
 
 
+def _lead_connects_to_other_lead(
+    lead: fabll.Node,
+    ic_module_full: str | None,
+) -> bool:
+    """Check if a lead electrically connects to any other lead outside the IC.
+
+    Walks BFS from the lead and returns True if any connected node has the
+    ``is_lead`` trait and is NOT part of the same IC module.
+    """
+    try:
+        iface_trait = lead.try_get_trait(fabll.is_interface)
+        if iface_trait is None:
+            return False
+        connected = iface_trait.get_connected(include_self=False)
+    except Exception:
+        return False
+
+    for conn_node, _ in connected.items():
+        if conn_node.try_get_trait(F.Lead.is_lead) is None:
+            continue
+        # It's a lead — check it's not in the same IC module
+        conn_full = conn_node.get_full_name()
+        if ic_module_full and conn_full.startswith(ic_module_full + "."):
+            continue  # same IC module's lead
+        return True
+    return False
+
+
 def _find_typed_pin_for_lead(
     lead: fabll.Node,
     component: fabll.Node,
@@ -656,11 +686,15 @@ def _find_typed_pin_for_lead(
     # Key: typed_pin full name → (score, typed_pin, sub_key)
     candidates: dict[str, tuple[tuple[int, int], fabll.Node, str | None]] = {}
 
+    def _is_graph_artifact(name: str) -> bool:
+        return bool(re.match(r"^0x[0-9a-fA-F]+", name))
+
     for conn_node, _ in connected.items():
         conn_full = conn_node.get_full_name()
+        is_internal = conn_full.startswith(comp_full + ".")
 
-        # Must be within the component
-        if not conn_full.startswith(comp_full + "."):
+        # For non-bare packages, only look inside the component
+        if not is_bare and not is_internal:
             continue
         # Skip other leads
         if conn_node.try_get_trait(F.Lead.is_lead) is not None:
@@ -672,6 +706,9 @@ def _find_typed_pin_for_lead(
             and conn_full.startswith(ic_module_full + ".")
         ):
             continue
+        # Skip graph artifacts (hex node IDs)
+        if _is_graph_artifact(conn_node.get_name()):
+            continue
 
         # Walk up from conn_node to find the nearest typed interface ancestor
         current = conn_node
@@ -681,26 +718,30 @@ def _find_typed_pin_for_lead(
                 break
             parent_node, name = parent_info
             parent_full = parent_node.get_full_name()
-            if not parent_full.startswith(comp_full):
+
+            # For non-bare packages, stop at the component boundary
+            if not is_bare and not parent_full.startswith(comp_full):
                 break
 
             found = False
             for pt in pin_types:
                 if parent_node.isinstance(pt):
                     sub_key = None
-                    if parent_node.isinstance(F.ElectricPower) and name in (
-                        "hv",
-                        "lv",
-                    ):
-                        sub_key = name
+                    if parent_node.isinstance(F.ElectricPower):
+                        if name in ("hv", "vcc"):
+                            sub_key = "hv"
+                        elif name in ("lv", "gnd"):
+                            sub_key = "lv"
 
                     dedup = f"{parent_full}:{sub_key or ''}"
                     if dedup not in candidates:
                         rel_name = _get_pin_name_relative_to(parent_node, component)
                         depth = rel_name.count(".")
+                        # External typed pins get a depth penalty so internal
+                        # ones are preferred when both exist
+                        if not parent_full.startswith(comp_full):
+                            depth += 100
                         tp = type_priority.get(pt, 99)
-                        # Cast to typed wrapper so callers can access
-                        # type-specific fields (.line, .reference, etc.)
                         typed = parent_node.cast(pt)
                         candidates[dedup] = ((depth, tp), typed, sub_key)
                     found = True
@@ -882,6 +923,9 @@ def extract_pinout(
                 voltage = None
                 sub_key = None
 
+            # Check if this lead connects to another pad/lead in the design
+            is_connected = _lead_connects_to_other_lead(lead, ic_module_full)
+
             # One row per physical pad on this lead
             for pad in lead_t.get_trait(F.Lead.has_associated_pads).get_pads():
                 pad_number = pad.pad_number
@@ -891,7 +935,7 @@ def extract_pinout(
                     else None
                 )
                 notes: list[str] = []
-                if not connected_to:
+                if not is_connected:
                     notes.append("Unconnected pin")
 
                 pinout_comp.pins.append(
@@ -903,6 +947,7 @@ def extract_pinout(
                         direction=direction,
                         interfaces=list(interfaces),
                         connected_to=list(connected_to),
+                        is_connected=is_connected,
                         voltage=voltage,
                         notes=notes,
                     )
