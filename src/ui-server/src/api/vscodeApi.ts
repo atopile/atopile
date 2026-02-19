@@ -59,6 +59,7 @@ export interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openMultiboard?: string | null;
 }
 
 export interface ConnectionStatusMessage {

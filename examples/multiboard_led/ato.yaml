@@ -1,0 +1,15 @@
+requires-atopile: ^0.14.0
+
+paths:
+  src: elec/src
+  layout: elec/layout
+
+builds:
+  driver:
+    entry: elec/src/driver_board.ato:DriverBoard
+  led_panel:
+    entry: elec/src/led_panel.ato:LEDPanel
+  system:
+    entry: elec/src/system.ato:LEDSystem
+    boards: [driver, led_panel]
+    cross_board_drc: warning

@@ -660,6 +660,14 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
+    case EventType.OpenMultiboard: {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openMultiboard: path,
+      });
+      break;
+    }
     case EventType.ProjectsChanged:
       void refreshProjects();
       break;

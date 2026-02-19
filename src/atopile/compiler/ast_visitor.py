@@ -124,6 +124,9 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.has_single_electric_reference,
         F.is_atomic_part,
         F.is_auto_generated,
+        F.is_board,
+        F.is_cable,
+        F.is_multiboard,
         F.Pickable.is_pickable,
         F.requires_external_usage,
     }

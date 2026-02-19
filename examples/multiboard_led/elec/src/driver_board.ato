@@ -1,0 +1,41 @@
+#pragma experiment("TRAITS")
+
+import LED
+import Resistor
+import Capacitor
+import ElectricPower
+import Electrical
+import is_board
+
+module DriverBoard:
+    """Driver board with power regulation, status LED, and data output."""
+    trait is_board
+
+    power = new ElectricPower
+    assert power.voltage within 5V +/- 10%
+
+    # Input decoupling
+    decap = new Capacitor
+    assert decap.capacitance within 100nF +/- 20%
+    power.hv ~ decap.unnamed[0]
+    decap.unnamed[1] ~ power.lv
+
+    # Bulk capacitor
+    bulk_cap = new Capacitor
+    assert bulk_cap.capacitance within 10uF +/- 20%
+    bulk_cap.package = "C0603"
+    power.hv ~ bulk_cap.unnamed[0]
+    bulk_cap.unnamed[1] ~ power.lv
+
+    # Status LED with current-limiting resistor
+    status_led = new LED
+    status_led.lcsc_id = "C2286"
+    status_res = new Resistor
+    assert status_res.resistance within 1kohm +/- 5%
+    power.hv ~> status_res ~> status_led ~> power.lv
+
+    # Output power and data
+    power_out = new ElectricPower
+    power_out ~ power
+
+    data_out = new Electrical

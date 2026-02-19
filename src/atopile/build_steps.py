@@ -536,6 +536,27 @@ def instantiate_app_step(ctx: BuildStepContext) -> None:
 def prepare_build(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     ctx.solver = Solver()
+
+    # Check for explicit is_multiboard trait
+    ctx.is_system_build = app.has_trait(F.is_multiboard)
+
+    if ctx.is_system_build:
+        boards = list(
+            app.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.is_board,
+            )
+        )
+        ctx.boards = boards
+        logger.info(
+            "System build detected with %d boards: %s",
+            len(boards),
+            [b.get_name() for b in boards],
+        )
+        # System builds don't produce a PCB — skip PCB creation
+        return
+
     if ctx.pcb is None:
         ctx.pcb = (
             F.PCB.bind_typegraph(app.tg)
@@ -571,6 +592,8 @@ def post_instantiation_graph_check(ctx: BuildStepContext) -> None:
     - Applying default constraints (has_default_constraint)
     - Early graph validation to catch malformed connections
     """
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     check_design(
         app,
@@ -592,6 +615,8 @@ def post_instantiation_setup(ctx: BuildStepContext) -> None:
     - Connecting deprecated aliases (ElectricPower vcc/gnd)
     - Connecting electric references (has_single_electric_reference)
     """
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     check_design(
         app,
@@ -616,6 +641,8 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     - Setting address lines based on solved offset (Addressor)
     - Other verification checks
     """
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     check_design(
         app,
@@ -630,6 +657,8 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     dependencies=[post_instantiation_design_check],
 )
 def load_pcb(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     pcb = ctx.require_pcb()
     pcb.run_transformer()
     if config.build.keep_designators:
@@ -638,6 +667,8 @@ def load_pcb(ctx: BuildStepContext) -> None:
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
 def pick_parts(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     solver = ctx.require_solver()
     if config.build.keep_picked_parts:
@@ -657,6 +688,8 @@ def pick_parts(ctx: BuildStepContext) -> None:
     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
 )
 def prepare_nets(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     pcb = ctx.require_pcb()
     logger.info("Preparing nets")
@@ -690,6 +723,8 @@ def prepare_nets(ctx: BuildStepContext) -> None:
     dependencies=[prepare_nets],
 )
 def post_solve_checks(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     logger.info("Running checks")
     check_design(
@@ -703,6 +738,8 @@ def post_solve_checks(ctx: BuildStepContext) -> None:
     "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
 )
 def update_pcb(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     pcb = ctx.require_pcb()
 
@@ -844,6 +881,8 @@ def update_pcb(ctx: BuildStepContext) -> None:
     "post-pcb-checks", description="Running post-pcb checks", dependencies=[update_pcb]
 )
 def post_pcb_checks(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     pcb = ctx.require_pcb()
     _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
@@ -859,6 +898,149 @@ def post_pcb_checks(ctx: BuildStepContext) -> None:
 @muster.register("build-design", dependencies=[post_pcb_checks], virtual=True)
 def build_design(ctx: BuildStepContext) -> None:
     pass
+
+
+@muster.register(
+    "cross-board-drc",
+    description="Cross-board DRC",
+    dependencies=[build_design],
+)
+def cross_board_drc(ctx: BuildStepContext) -> None:
+    """Check for cross-board connections that don't pass through a cable."""
+    if not ctx.is_system_build:
+        return
+    from atopile.cross_board_drc import check_cross_board_connections
+
+    violations = check_cross_board_connections(ctx.require_app(), ctx.boards)
+    drc_mode = config.build.cross_board_drc or "warning"
+    for v in violations:
+        if drc_mode == "error":
+            raise UserException(v.message)
+        else:
+            logger.warning(v.message)
+    if not violations:
+        logger.info("Cross-board DRC passed: all inter-board connections use cables")
+
+
+@muster.register(
+    "system-bom",
+    description="Generating system BOM",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_system_bom(ctx: BuildStepContext) -> None:
+    """Generate per-board BOMs and a system-level summary."""
+    if not ctx.is_system_build:
+        return
+    from faebryk.exporters.bom.system_bom import write_system_bom
+
+    write_system_bom(
+        ctx.require_app(),
+        ctx.boards,
+        config.build.paths.output_base.parent,
+        build_id=ctx.build_id,
+    )
+
+
+@muster.register(
+    "system-3d",
+    description="Generating system 3D manifest",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_system_3d(ctx: BuildStepContext) -> None:
+    """Generate a multiboard manifest JSON for the 3D viewer."""
+    if not ctx.is_system_build:
+        return
+
+    cables = list(
+        ctx.require_app().get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.is_cable,
+        )
+    )
+
+    # Build a mapping from board graph name -> build target name.
+    # config.build.boards has ato.yaml target names
+    # (e.g., ["driver", "led_panel"]).
+    # ctx.boards has graph nodes whose get_name() returns
+    # graph field names (e.g., "panel").
+    # We match by iterating build targets and checking if the
+    # board entry module type matches the board node's type name.
+    board_target_names = config.build.boards
+    graph_name_to_target: dict[str, str] = {}
+
+    if board_target_names:
+        # Build entry->target_name map from project config.
+        # Use config.project.builds (all targets) instead
+        # of config.builds (which only iterates
+        # selected_builds, excluding board targets).
+        entry_to_target: dict[str, str] = {}
+        for target_name in board_target_names:
+            board_cfg = config.project.builds.get(target_name)
+            if board_cfg and board_cfg.address:
+                # Extract module name from entry
+                # e.g. "elec/src/led_panel.ato:LEDPanel"
+                # -> "LEDPanel"
+                module_name = (
+                    board_cfg.address.split(":")[-1] if ":" in board_cfg.address else ""
+                )
+                if module_name:
+                    entry_to_target[module_name] = target_name
+
+        # Match each board node's type name to a build target
+        for board in ctx.boards:
+            type_name = board.get_type_name()
+            # type_name is fully qualified (e.g., "led_panel.ato::LEDPanel")
+            # Extract the short name after "::" to match entry_to_target keys
+            short_type_name = (
+                type_name.split("::")[-1]
+                if type_name and "::" in type_name
+                else type_name
+            )
+            if short_type_name and short_type_name in entry_to_target:
+                graph_name_to_target[board.get_name()] = entry_to_target[
+                    short_type_name
+                ]
+            else:
+                # Fallback: check if graph name matches a target name directly
+                if board.get_name() in board_target_names:
+                    graph_name_to_target[board.get_name()] = board.get_name()
+
+    def get_target_name(board: fabll.Node) -> str:
+        """Get the build target name for a board, falling back to graph name."""
+        return graph_name_to_target.get(board.get_name(), board.get_name())
+
+    manifest = {
+        "version": "1.0",
+        "type": "multiboard",
+        "boards": [
+            {
+                "name": board.get_name(),
+                "build_target": get_target_name(board),
+                "glb_path": (
+                    f"../{get_target_name(board)}/{get_target_name(board)}.pcba.glb"
+                ),
+            }
+            for board in ctx.boards
+        ],
+        "cables": [
+            {
+                "name": cable.get_name(),
+                "type": cable.get_full_name(include_uuid=False, types=True),
+                "from": ctx.boards[0].get_name() if ctx.boards else "",
+                "to": ctx.boards[-1].get_name() if ctx.boards else "",
+            }
+            for cable in cables
+        ],
+    }
+
+    output_path = config.build.paths.output_base.with_suffix(".multiboard.json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+    logger.info("Wrote multiboard manifest to %s", output_path)
 
 
 @muster.register(
@@ -1179,6 +1361,11 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
         generate_variable_report,
         # generate_power_tree,
         generate_datasheets,
+        # System build targets — gated by ctx.is_system_build, so they're
+        # no-ops for regular board builds
+        cross_board_drc,
+        generate_system_bom,
+        generate_system_3d,
     ],
     virtual=True,
 )

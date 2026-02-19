@@ -222,8 +222,20 @@ export function Sidebar() {
   // Memoized callbacks for event handlers (avoid new function references each render)
   const handleBuildTarget = useCallback((projectRoot: string, targetName: string) => {
     panels.collapseAllExceptProjects();
-    action('build', { projectRoot, targets: [targetName] });
-  }, [panels]);
+
+    const project = sidebarProjects?.find((p: any) => p.root === projectRoot);
+    const target = project?.builds?.find((b: any) => b.name === targetName);
+
+    // For system targets, build board targets + system target all in parallel
+    if (target?.isSystem && target.boards && target.boards.length > 0) {
+      action('build', {
+        projectRoot,
+        targets: [...target.boards, targetName],
+      });
+    } else {
+      action('build', { projectRoot, targets: [targetName] });
+    }
+  }, [panels, sidebarProjects]);
 
   // Manufacturing panel
   const manufacturingWizard = useStore((s) => s.manufacturingWizard);
@@ -235,7 +247,7 @@ export function Sidebar() {
   }, [openManufacturingWizard]);
 
   const handleOpenOutput = useCallback(async (
-    output: 'openKiCad' | 'open3D' | 'openLayout',
+    output: 'openKiCad' | 'open3D' | 'openLayout' | 'openMultiboard',
     projectRoot: string,
     targetName: string
   ) => {
@@ -243,6 +255,7 @@ export function Sidebar() {
       openKiCad: 'KiCad',
       open3D: '3D view',
       openLayout: 'Layout',
+      openMultiboard: 'Multiboard',
     };
     const outputName = outputNames[output] || output;
 
@@ -396,6 +409,7 @@ export function Sidebar() {
             onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
+            onOpenMultiboard={(projectRoot, targetName) => handleOpenOutput('openMultiboard', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
             onCreateTarget={async (projectRoot, data) => {
               const response = await sendActionWithResponse('addBuildTarget', {

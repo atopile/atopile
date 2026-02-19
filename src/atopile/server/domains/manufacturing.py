@@ -41,6 +41,7 @@ class BuildOutputs:
     kicad_pcb: Optional[str] = None
     kicad_sch: Optional[str] = None
     pcb_summary: Optional[str] = None
+    multiboard_manifest: Optional[str] = None
 
 
 @dataclass
@@ -201,6 +202,11 @@ def get_build_outputs(project_root: str, target: str) -> BuildOutputs:
     pcb_summary_path = build_dir / f"{target}.pcb_summary.json"
     if pcb_summary_path.exists():
         outputs.pcb_summary = str(pcb_summary_path)
+
+    # Multiboard manifest
+    multiboard_path = build_dir / f"{target}.multiboard.json"
+    if multiboard_path.exists():
+        outputs.multiboard_manifest = str(multiboard_path)
 
     return outputs
 
