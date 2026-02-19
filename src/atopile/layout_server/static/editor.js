@@ -1364,6 +1364,62 @@ function getPadColor(layers) {
   return PAD_COLOR;
 }
 
+// src/hit-test.ts
+var DEG_TO_RAD = Math.PI / 180;
+function fpTransform(fpAt, localX, localY) {
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return new Vec2(
+    fpAt.x + localX * cos - localY * sin,
+    fpAt.y + localX * sin + localY * cos
+  );
+}
+function padTransform(fpAt, padAt, lx, ly) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
+  const pc = Math.cos(padRad), ps = Math.sin(padRad);
+  const px = lx * pc - ly * ps;
+  const py = lx * ps + ly * pc;
+  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
+}
+function footprintBBox(fp) {
+  const points = [];
+  for (const pad of fp.pads) {
+    const hw = pad.size.w / 2;
+    const hh = pad.size.h / 2;
+    points.push(padTransform(fp.at, pad.at, -hw, -hh));
+    points.push(padTransform(fp.at, pad.at, hw, -hh));
+    points.push(padTransform(fp.at, pad.at, hw, hh));
+    points.push(padTransform(fp.at, pad.at, -hw, hh));
+  }
+  for (const drawing of fp.drawings) {
+    if (drawing.start)
+      points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+    if (drawing.end)
+      points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+    if (drawing.center)
+      points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
+    if (drawing.points) {
+      for (const p of drawing.points) {
+        points.push(fpTransform(fp.at, p.x, p.y));
+      }
+    }
+  }
+  if (points.length === 0) {
+    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
+  }
+  return BBox.from_points(points).grow(0.2);
+}
+function hitTestFootprints(worldPos, footprints) {
+  for (let i = footprints.length - 1; i >= 0; i--) {
+    const bbox = footprintBBox(footprints[i]);
+    if (bbox.contains_point(worldPos)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 // src/kicad_newstroke_glyphs.ts
 var shared_glyphs = ["E_JSZS", "G][EI`", "H\\KFXFQNTNVOWPXRXWWYVZT[N[LZKY", "I[MUWU RK[RFY[", "G\\SPVQWRXTXWWYVZT[L[LFSFUGVHWJWLVNUOSPLP", "F[WYVZS[Q[NZLXKVJRJOKKLINGQFSFVGWH", "H[MPTP RW[M[MFWF", "G]L[LF RLPXP RX[XF", "MWR[RF", "G\\L[LF RX[OO RXFLR", "F^K[KFRUYFY[", "G]PFTFVGXIYMYTXXVZT[P[NZLXKTKMLINGPF", "G\\L[LFTFVGWHXJXMWOVPTQLQ", "JZLFXF RR[RF", "H\\KFY[ RYFK[", "I[RQR[ RKFRQYF", "NVPESH", "HZVZT[P[NZMYLWLQMONNPMTMVN", "MWRMR_QaObNb RRFQGRHSGRFRH", "H[P[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[", "JZMMR[WM", "G]JMN[RQV[ZM", "H\\RbRD", "F^K[KFYFY[K[", "RR", "NVTEQH", "JZRRQSRTSSRRRT", "MWR[RF RN?O@NAM@N?NA RV?W@VAU@V?VA", "G\\L[LFQFTGVIWKXOXRWVVXTZQ[L[ RIPQP", "H[P[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[ RTEQH", "I[MUWU RK[RFY[ RN>O@QASAU@V>", "IZNMN[ RPSV[ RVMNU", "G]KPYP RPFTFVGXIYMYTXXVZT[P[NZLXKTKMLINGPF", "I[NNPMTMVNWPWXVZT[P[NZMXMVWT", "H]YMVWUYTZR[P[NZMYLVLRMONNPMRMTNUOVQWXXZZ[", "IZPTNUMWMXNZP[T[VZ RRTPTNSMQMPNNPMTMVN", "MXRMRXSZU[", "H[LTWT RP[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[", "G]RFRb RPMTMVNXPYRYVXXVZT[P[NZLXKVKRLPNNPM", "H]YMVWUYTZR[P[NZMYLVLRMONNPMRMTNUOVQWXXZZ[ RTEQH", "IZPTNUMWMXNZP[T[VZ RRTPTNSMQMPNNPMTMVN RTEQH", "I\\NMN[ RNOONQMTMVNWPWb RTEQH", "MXRMRXSZU[ RTEQH", "G]RTRX RMMLNKPKXLZN[O[QZRXSZU[V[XZYXYPXNWM", "H[MMMXNZP[S[UZVYWWWPVNUM RTEQH", "G]RTRX RMMLNKPKXLZN[O[QZRXSZU[V[XZYXYPXNWM RTEQH", "LXOTUT", "E_PKTKXMZQZUXYT[P[LYJUJQLMPK RPQRPTQUSTURVPUOSPQ", "Pf"];
 var glyph_data = [
@@ -21513,7 +21569,7 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
 }
 
 // src/painter.ts
-var DEG_TO_RAD = Math.PI / 180;
+var DEG_TO_RAD2 = Math.PI / 180;
 var HOLE_SEGMENTS = 36;
 var PAD_ANNOTATION_BOX_RATIO = 0.78;
 var PAD_ANNOTATION_MAJOR_FIT = 0.96;
@@ -21535,8 +21591,8 @@ var PAD_NUMBER_MIN_CHAR_H = 0.04;
 function p2v(p) {
   return new Vec2(p.x, p.y);
 }
-function fpTransform(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
+function fpTransform2(fpAt, localX, localY) {
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD2;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   return new Vec2(
@@ -21544,12 +21600,12 @@ function fpTransform(fpAt, localX, localY) {
     fpAt.y + localX * sin + localY * cos
   );
 }
-function padTransform(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
+function padTransform2(fpAt, padAt, lx, ly) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD2;
   const pc = Math.cos(padRad), ps = Math.sin(padRad);
   const px = lx * pc - ly * ps;
   const py = lx * ps + ly * pc;
-  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
+  return fpTransform2(fpAt, padAt.x + px, padAt.y + py);
 }
 function arcToPoints(start, mid, end, segments = 32) {
   const ax = start.x, ay = start.y;
@@ -21690,7 +21746,7 @@ function fitPadNameLabel(text, boxW, boxH) {
 function rotatedRectExtents(width, height, rotationDeg) {
   const halfW = Math.max(width, 0) / 2;
   const halfH = Math.max(height, 0) / 2;
-  const theta = rotationDeg * DEG_TO_RAD;
+  const theta = rotationDeg * DEG_TO_RAD2;
   const c = Math.abs(Math.cos(theta));
   const s = Math.abs(Math.sin(theta));
   const extentX = c * halfW + s * halfH;
@@ -21703,8 +21759,8 @@ function padLabelWorldRotation(totalPadRotationDeg, padW, padH) {
   if (Math.abs(padW - padH) <= 1e-6)
     return 0;
   const longAxisDeg = padW > padH ? totalPadRotationDeg : totalPadRotationDeg + 90;
-  const axisX = Math.abs(Math.cos(longAxisDeg * DEG_TO_RAD));
-  const axisY = Math.abs(Math.sin(longAxisDeg * DEG_TO_RAD));
+  const axisX = Math.abs(Math.cos(longAxisDeg * DEG_TO_RAD2));
+  const axisY = Math.abs(Math.sin(longAxisDeg * DEG_TO_RAD2));
   return axisY > axisX ? 90 : 0;
 }
 function drawStrokeTextGeometry(layer, text, x, y, rotationDeg, charW, charH, thickness, color) {
@@ -21731,7 +21787,7 @@ function drawStrokeTextGeometry(layer, text, x, y, rotationDeg, charW, charH, th
     return;
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  const theta = -(rotationDeg || 0) * DEG_TO_RAD;
+  const theta = -(rotationDeg || 0) * DEG_TO_RAD2;
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
   const [r, g, b, a] = color;
@@ -22161,7 +22217,7 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
     if (!fitted)
       continue;
     const [displayText, [charW, charH, thickness]] = fitted;
-    const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+    const worldCenter = fpTransform2(fp.at, pad.at.x, pad.at.y);
     const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
     for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
       if (hidden.has(layerName))
@@ -22188,7 +22244,7 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
     const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
     const badgeRadius = badgeDiameter / 2;
     const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
-    const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+    const worldCenter = fpTransform2(fp.at, pad.at.x, pad.at.y);
     const badgeCenterX = worldCenter.x - bboxW / 2 + margin + badgeRadius;
     const badgeCenterY = worldCenter.y - bboxH / 2 + margin + badgeRadius;
     const labelFit = fitTextInsideBox(
@@ -22254,12 +22310,12 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
   const strokeWidth = rawWidth > 0 ? rawWidth : drawing.filled ? 0 : 0.12;
   if (drawing.type === "line" && drawing.start && drawing.end) {
-    const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
-    const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
+    const p1 = fpTransform2(fpAt, drawing.start.x, drawing.start.y);
+    const p2 = fpTransform2(fpAt, drawing.end.x, drawing.end.y);
     layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
   } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
     const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
-    const worldPts = localPts.map((p) => fpTransform(fpAt, p.x, p.y));
+    const worldPts = localPts.map((p) => fpTransform2(fpAt, p.x, p.y));
     layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
   } else if (drawing.type === "circle" && drawing.center && drawing.end) {
     const cx = drawing.center.x, cy = drawing.center.y;
@@ -22269,7 +22325,7 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       const angle = i / 48 * 2 * Math.PI;
       pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
     }
-    const worldPts = pts.map((p) => fpTransform(fpAt, p.x, p.y));
+    const worldPts = pts.map((p) => fpTransform2(fpAt, p.x, p.y));
     if (drawing.filled && worldPts.length >= 3) {
       layer.geometry.add_polygon(worldPts, r, g, b, a);
     }
@@ -22279,10 +22335,10 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   } else if (drawing.type === "rect" && drawing.start && drawing.end) {
     const s = drawing.start, e = drawing.end;
     const corners = [
-      fpTransform(fpAt, s.x, s.y),
-      fpTransform(fpAt, e.x, s.y),
-      fpTransform(fpAt, e.x, e.y),
-      fpTransform(fpAt, s.x, e.y)
+      fpTransform2(fpAt, s.x, s.y),
+      fpTransform2(fpAt, e.x, s.y),
+      fpTransform2(fpAt, e.x, e.y),
+      fpTransform2(fpAt, s.x, e.y)
     ];
     if (drawing.filled) {
       layer.geometry.add_polygon(corners, r, g, b, a);
@@ -22291,7 +22347,7 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, r, g, b, a);
     }
   } else if (drawing.type === "polygon" && drawing.points) {
-    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
+    const worldPts = drawing.points.map((p) => fpTransform2(fpAt, p.x, p.y));
     if (worldPts.length >= 3) {
       if (drawing.filled) {
         layer.geometry.add_polygon(worldPts, r, g, b, a);
@@ -22301,7 +22357,7 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       }
     }
   } else if (drawing.type === "curve" && drawing.points) {
-    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
+    const worldPts = drawing.points.map((p) => fpTransform2(fpAt, p.x, p.y));
     if (worldPts.length >= 2) {
       layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
     }
@@ -22315,7 +22371,7 @@ function paintPad(layer, fpAt, pad) {
   const hw = pad.size.w / 2;
   const hh = pad.size.h / 2;
   if (pad.shape === "circle") {
-    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+    const center = fpTransform2(fpAt, pad.at.x, pad.at.y);
     layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
   } else if (pad.shape === "oval") {
     const longAxis = Math.max(hw, hh);
@@ -22323,19 +22379,19 @@ function paintPad(layer, fpAt, pad) {
     const focalDist = longAxis - shortAxis;
     let p1, p2;
     if (hw >= hh) {
-      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-      p2 = padTransform(fpAt, pad.at, focalDist, 0);
+      p1 = padTransform2(fpAt, pad.at, -focalDist, 0);
+      p2 = padTransform2(fpAt, pad.at, focalDist, 0);
     } else {
-      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-      p2 = padTransform(fpAt, pad.at, 0, focalDist);
+      p1 = padTransform2(fpAt, pad.at, 0, -focalDist);
+      p2 = padTransform2(fpAt, pad.at, 0, focalDist);
     }
     layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
   } else {
     const corners = [
-      padTransform(fpAt, pad.at, -hw, -hh),
-      padTransform(fpAt, pad.at, hw, -hh),
-      padTransform(fpAt, pad.at, hw, hh),
-      padTransform(fpAt, pad.at, -hw, hh)
+      padTransform2(fpAt, pad.at, -hw, -hh),
+      padTransform2(fpAt, pad.at, hw, -hh),
+      padTransform2(fpAt, pad.at, hw, hh),
+      padTransform2(fpAt, pad.at, -hw, hh)
     ];
     layer.geometry.add_polygon(corners, cr, cg, cb, ca);
   }
@@ -22343,32 +22399,43 @@ function paintPad(layer, fpAt, pad) {
 function paintSelection(renderer, fp) {
   const layer = renderer.start_layer("selection");
   const [r, g, b, a] = SELECTION_COLOR;
-  const allPoints = [];
-  for (const pad of fp.pads) {
-    const center = fpTransform(fp.at, pad.at.x, pad.at.y);
-    const hw = pad.size.w / 2, hh = pad.size.h / 2;
-    allPoints.push(center.add(new Vec2(-hw, -hh)));
-    allPoints.push(center.add(new Vec2(hw, hh)));
-  }
-  for (const drawing of fp.drawings) {
-    if (drawing.start)
-      allPoints.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
-    if (drawing.end)
-      allPoints.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
-    if (drawing.center)
-      allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
-  }
-  for (const text of fp.texts) {
-    allPoints.push(fpTransform(fp.at, text.at.x, text.at.y));
-  }
-  if (allPoints.length > 0) {
-    const bbox = BBox.from_points(allPoints).grow(0.5);
+  const bbox = footprintBBox(fp).grow(0.5);
+  if (bbox.w > 0 && bbox.h > 0) {
     layer.geometry.add_polygon([
       new Vec2(bbox.x, bbox.y),
       new Vec2(bbox.x2, bbox.y),
       new Vec2(bbox.x2, bbox.y2),
       new Vec2(bbox.x, bbox.y2)
     ], r, g, b, a);
+  }
+  renderer.end_layer();
+  return layer;
+}
+function paintGroupHalos(renderer, footprints, memberIndices, mode) {
+  if (memberIndices.length === 0)
+    return null;
+  const layerName = mode === "selected" ? "group-selection" : "group-hover";
+  const layer = renderer.start_layer(layerName);
+  const [sr, sg, sb, sa] = SELECTION_COLOR;
+  const fillAlpha = mode === "selected" ? Math.max(sa * 0.55, 0.14) : Math.max(sa * 0.32, 0.08);
+  const strokeAlpha = mode === "selected" ? Math.max(sa * 0.9, 0.34) : Math.max(sa * 0.65, 0.22);
+  const grow = mode === "selected" ? 0.34 : 0.24;
+  const strokeWidth = mode === "selected" ? 0.14 : 0.1;
+  for (const index of memberIndices) {
+    const fp = footprints[index];
+    if (!fp)
+      continue;
+    const bbox = footprintBBox(fp).grow(grow);
+    if (bbox.w <= 0 || bbox.h <= 0)
+      continue;
+    const corners = [
+      new Vec2(bbox.x, bbox.y),
+      new Vec2(bbox.x2, bbox.y),
+      new Vec2(bbox.x2, bbox.y2),
+      new Vec2(bbox.x, bbox.y2)
+    ];
+    layer.geometry.add_polygon(corners, sr, sg, sb, fillAlpha);
+    layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, sr, sg, sb, strokeAlpha);
   }
   renderer.end_layer();
   return layer;
@@ -22405,10 +22472,10 @@ function computeBBox(model) {
   for (const fp of model.footprints) {
     points.push(new Vec2(fp.at.x, fp.at.y));
     for (const pad of fp.pads) {
-      points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
+      points.push(fpTransform2(fp.at, pad.at.x, pad.at.y));
     }
     for (const text of fp.texts) {
-      points.push(fpTransform(fp.at, text.at.x, text.at.y));
+      points.push(fpTransform2(fp.at, text.at.x, text.at.y));
     }
   }
   for (const track of model.tracks) {
@@ -22418,62 +22485,6 @@ function computeBBox(model) {
   if (points.length === 0)
     return new BBox(0, 0, 100, 100);
   return BBox.from_points(points).grow(5);
-}
-
-// src/hit-test.ts
-var DEG_TO_RAD2 = Math.PI / 180;
-function fpTransform2(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD2;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return new Vec2(
-    fpAt.x + localX * cos - localY * sin,
-    fpAt.y + localX * sin + localY * cos
-  );
-}
-function padTransform2(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD2;
-  const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = lx * pc - ly * ps;
-  const py = lx * ps + ly * pc;
-  return fpTransform2(fpAt, padAt.x + px, padAt.y + py);
-}
-function footprintBBox(fp) {
-  const points = [];
-  for (const pad of fp.pads) {
-    const hw = pad.size.w / 2;
-    const hh = pad.size.h / 2;
-    points.push(padTransform2(fp.at, pad.at, -hw, -hh));
-    points.push(padTransform2(fp.at, pad.at, hw, -hh));
-    points.push(padTransform2(fp.at, pad.at, hw, hh));
-    points.push(padTransform2(fp.at, pad.at, -hw, hh));
-  }
-  for (const drawing of fp.drawings) {
-    if (drawing.start)
-      points.push(fpTransform2(fp.at, drawing.start.x, drawing.start.y));
-    if (drawing.end)
-      points.push(fpTransform2(fp.at, drawing.end.x, drawing.end.y));
-    if (drawing.center)
-      points.push(fpTransform2(fp.at, drawing.center.x, drawing.center.y));
-    if (drawing.points) {
-      for (const p of drawing.points) {
-        points.push(fpTransform2(fp.at, p.x, p.y));
-      }
-    }
-  }
-  if (points.length === 0) {
-    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
-  }
-  return BBox.from_points(points).grow(0.2);
-}
-function hitTestFootprints(worldPos, footprints) {
-  for (let i = footprints.length - 1; i >= 0; i--) {
-    const bbox = footprintBBox(footprints[i]);
-    if (bbox.contains_point(worldPos)) {
-      return i;
-    }
-  }
-  return -1;
 }
 
 // src/editor.ts
@@ -22516,11 +22527,18 @@ var Editor = class {
   apiPrefix;
   wsPath;
   ws = null;
-  // Selection & drag state
+  // Selection & interaction state
+  selectionMode = "none";
   selectedFpIndex = -1;
+  selectedGroupId = null;
+  hoveredGroupId = null;
+  singleOverrideMode = false;
+  groupsById = /* @__PURE__ */ new Map();
+  groupIdByFpIndex = /* @__PURE__ */ new Map();
   isDragging = false;
   dragStartWorld = null;
-  dragStartFpPos = null;
+  dragTargetIndices = [];
+  dragStartPositions = null;
   needsRedraw = true;
   // Layer visibility
   hiddenLayers = /* @__PURE__ */ new Set();
@@ -22572,7 +22590,12 @@ var Editor = class {
     this.applyModel(await resp.json(), true);
   }
   applyModel(model, fitToView = false) {
+    const prevSelectedUuid = this.getSelectedSingleUuid();
+    const prevSelectedGroupId = this.selectedGroupId;
+    const prevSingleOverride = this.singleOverrideMode;
     this.model = model;
+    this.rebuildGroupIndex();
+    this.restoreSelection(prevSelectedUuid, prevSelectedGroupId, prevSingleOverride);
     this.applyDefaultLayerVisibility();
     this.paint();
     this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
@@ -22597,9 +22620,154 @@ var Editor = class {
     if (!this.model)
       return;
     paintAll(this.renderer, this.model, this.hiddenLayers);
-    if (this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
+    if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
+      const hovered = this.groupsById.get(this.hoveredGroupId);
+      if (hovered) {
+        paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
+      }
+    }
+    if (!this.singleOverrideMode && this.selectedGroupId) {
+      const selectedGroup = this.groupsById.get(this.selectedGroupId);
+      if (selectedGroup) {
+        paintGroupHalos(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
+      }
+    }
+    if (this.selectionMode === "single" && this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
       paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]);
     }
+  }
+  rebuildGroupIndex() {
+    this.groupsById.clear();
+    this.groupIdByFpIndex.clear();
+    if (!this.model)
+      return;
+    const indexByUuid = /* @__PURE__ */ new Map();
+    for (let i = 0; i < this.model.footprints.length; i++) {
+      const uuid = this.model.footprints[i].uuid;
+      if (uuid)
+        indexByUuid.set(uuid, i);
+    }
+    const rawGroups = this.model.footprint_groups ?? [];
+    const usedIds = /* @__PURE__ */ new Set();
+    for (let i = 0; i < rawGroups.length; i++) {
+      const group = rawGroups[i];
+      const memberIndices = [];
+      const memberUuids = [];
+      for (const memberUuid of group.member_uuids) {
+        if (!memberUuid)
+          continue;
+        const fpIndex = indexByUuid.get(memberUuid);
+        if (fpIndex === void 0)
+          continue;
+        memberIndices.push(fpIndex);
+        memberUuids.push(memberUuid);
+      }
+      if (memberIndices.length < 2)
+        continue;
+      let idBase = group.uuid || group.name || `group-${i + 1}`;
+      if (usedIds.has(idBase)) {
+        let suffix = 2;
+        while (usedIds.has(`${idBase}:${suffix}`))
+          suffix++;
+        idBase = `${idBase}:${suffix}`;
+      }
+      usedIds.add(idBase);
+      const uiGroup = {
+        id: idBase,
+        uuid: group.uuid,
+        name: group.name,
+        memberUuids,
+        memberIndices
+      };
+      this.groupsById.set(idBase, uiGroup);
+      for (const fpIndex of memberIndices) {
+        if (!this.groupIdByFpIndex.has(fpIndex)) {
+          this.groupIdByFpIndex.set(fpIndex, idBase);
+        }
+      }
+    }
+  }
+  getSelectedSingleUuid() {
+    if (!this.model || this.selectedFpIndex < 0)
+      return null;
+    return this.model.footprints[this.selectedFpIndex]?.uuid ?? null;
+  }
+  restoreSelection(prevSelectedUuid, prevSelectedGroupId, prevSingleOverride) {
+    this.selectionMode = "none";
+    this.selectedFpIndex = -1;
+    this.selectedGroupId = null;
+    this.hoveredGroupId = null;
+    this.singleOverrideMode = prevSingleOverride;
+    if (!this.model) {
+      this.singleOverrideMode = false;
+      return;
+    }
+    if (!prevSingleOverride && prevSelectedGroupId && this.groupsById.has(prevSelectedGroupId)) {
+      this.selectionMode = "group";
+      this.selectedGroupId = prevSelectedGroupId;
+      return;
+    }
+    if (prevSelectedUuid) {
+      for (let i = 0; i < this.model.footprints.length; i++) {
+        if (this.model.footprints[i].uuid === prevSelectedUuid) {
+          this.selectionMode = "single";
+          this.selectedFpIndex = i;
+          return;
+        }
+      }
+    }
+    this.singleOverrideMode = false;
+  }
+  setSingleSelection(index, enterOverride) {
+    this.selectionMode = "single";
+    this.selectedFpIndex = index;
+    this.selectedGroupId = null;
+    if (enterOverride) {
+      this.singleOverrideMode = true;
+    } else if (!this.groupIdByFpIndex.has(index)) {
+      this.singleOverrideMode = false;
+    }
+  }
+  setGroupSelection(groupId) {
+    this.selectionMode = "group";
+    this.selectedGroupId = groupId;
+    this.selectedFpIndex = -1;
+    this.singleOverrideMode = false;
+  }
+  clearSelection(exitSingleOverride = false) {
+    this.selectionMode = "none";
+    this.selectedFpIndex = -1;
+    this.selectedGroupId = null;
+    this.hoveredGroupId = null;
+    if (exitSingleOverride) {
+      this.singleOverrideMode = false;
+    }
+  }
+  selectedGroup() {
+    if (!this.selectedGroupId)
+      return null;
+    return this.groupsById.get(this.selectedGroupId) ?? null;
+  }
+  selectedGroupMembers() {
+    const group = this.selectedGroup();
+    return group ? group.memberIndices : [];
+  }
+  selectedGroupMemberUuids() {
+    const group = this.selectedGroup();
+    return group ? group.memberUuids : [];
+  }
+  updateHoverGroup(worldPos) {
+    let nextHoverId = null;
+    if (this.model && !this.singleOverrideMode) {
+      const hitIndex = hitTestFootprints(worldPos, this.model.footprints);
+      if (hitIndex >= 0) {
+        nextHoverId = this.groupIdByFpIndex.get(hitIndex) ?? null;
+      }
+    }
+    if (nextHoverId === this.hoveredGroupId)
+      return;
+    this.hoveredGroupId = nextHoverId;
+    this.repaintWithSelection();
   }
   connectWebSocket() {
     const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
@@ -22627,19 +22795,46 @@ var Editor = class {
         return;
       const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
       if (hitIdx >= 0) {
-        this.selectedFpIndex = hitIdx;
-        const fp = this.model.footprints[hitIdx];
+        const hitGroupId = this.groupIdByFpIndex.get(hitIdx) ?? null;
+        if (!this.singleOverrideMode && hitGroupId) {
+          this.setGroupSelection(hitGroupId);
+        } else {
+          this.setSingleSelection(hitIdx, false);
+        }
+        const dragTargets = this.selectionMode === "group" ? this.selectedGroupMembers() : [hitIdx];
+        const dragStartPositions = /* @__PURE__ */ new Map();
+        for (const index of dragTargets) {
+          const fp = this.model.footprints[index];
+          if (!fp)
+            continue;
+          dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
+        }
+        if (dragStartPositions.size === 0) {
+          this.repaintWithSelection();
+          return;
+        }
         this.isDragging = true;
         this.dragStartWorld = worldPos;
-        this.dragStartFpPos = { x: fp.at.x, y: fp.at.y };
+        this.dragTargetIndices = [...dragStartPositions.keys()];
+        this.dragStartPositions = dragStartPositions;
         this.repaintWithSelection();
       } else {
-        if (this.selectedFpIndex >= 0) {
-          this.selectedFpIndex = -1;
-          this.paint();
-          this.requestRedraw();
-        }
+        this.clearSelection(true);
+        this.paint();
+        this.requestRedraw();
       }
+    });
+    this.canvas.addEventListener("dblclick", (e) => {
+      if (e.button !== 0 || !this.model)
+        return;
+      const rect = this.canvas.getBoundingClientRect();
+      const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+      const worldPos = this.camera.screen_to_world(screenPos);
+      const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
+      if (hitIdx < 0)
+        return;
+      this.setSingleSelection(hitIdx, true);
+      this.repaintWithSelection();
     });
     this.canvas.addEventListener("mousemove", (e) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -22648,13 +22843,25 @@ var Editor = class {
         const worldPos2 = this.camera.screen_to_world(this.lastMouseScreen);
         this.onMouseMoveCallback(worldPos2.x, worldPos2.y);
       }
-      if (!this.isDragging || !this.model || this.selectedFpIndex < 0)
+      if (!this.model)
         return;
       const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
+      if (!this.isDragging) {
+        this.updateHoverGroup(worldPos);
+        return;
+      }
+      if (!this.dragStartWorld || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
+        return;
+      }
       const delta = worldPos.sub(this.dragStartWorld);
-      const fp = this.model.footprints[this.selectedFpIndex];
-      fp.at.x = this.dragStartFpPos.x + delta.x;
-      fp.at.y = this.dragStartFpPos.y + delta.y;
+      for (const index of this.dragTargetIndices) {
+        const fp = this.model.footprints[index];
+        const start = this.dragStartPositions.get(index);
+        if (!fp || !start)
+          continue;
+        fp.at.x = start.x + delta.x;
+        fp.at.y = start.y + delta.y;
+      }
       this.paint();
       this.requestRedraw();
     });
@@ -22662,33 +22869,64 @@ var Editor = class {
       if (e.button !== 0 || !this.isDragging)
         return;
       this.isDragging = false;
-      if (!this.model || this.selectedFpIndex < 0 || !this.dragStartFpPos)
+      if (!this.model || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
+        this.dragStartWorld = null;
+        this.dragStartPositions = null;
+        this.dragTargetIndices = [];
         return;
-      const fp = this.model.footprints[this.selectedFpIndex];
-      const dx = fp.at.x - this.dragStartFpPos.x;
-      const dy = fp.at.y - this.dragStartFpPos.y;
-      if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3)
+      }
+      const firstTarget = this.dragTargetIndices[0];
+      const firstStart = this.dragStartPositions.get(firstTarget);
+      const firstFp = this.model.footprints[firstTarget];
+      if (!firstStart || !firstFp) {
+        this.dragStartWorld = null;
+        this.dragStartPositions = null;
+        this.dragTargetIndices = [];
         return;
-      await this.executeAction("move", {
-        uuid: fp.uuid,
-        x: fp.at.x,
-        y: fp.at.y,
-        r: fp.at.r || null
-      });
+      }
+      const dx = firstFp.at.x - firstStart.x;
+      const dy = firstFp.at.y - firstStart.y;
+      const isNoop = Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3;
+      this.dragStartWorld = null;
+      this.dragStartPositions = null;
+      this.dragTargetIndices = [];
+      if (isNoop)
+        return;
+      if (this.selectionMode === "group" && !this.singleOverrideMode) {
+        const uuids = this.selectedGroupMemberUuids();
+        if (uuids.length > 0) {
+          await this.executeAction("move", { uuids, dx, dy });
+        }
+        return;
+      }
+      if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+        const selectedFp = this.model.footprints[this.selectedFpIndex];
+        await this.executeAction("move", {
+          uuid: selectedFp.uuid,
+          x: selectedFp.at.x,
+          y: selectedFp.at.y,
+          r: selectedFp.at.r || null
+        });
+      }
     });
   }
   setupKeyboardHandlers() {
     window.addEventListener("keydown", async (e) => {
+      if (e.key === "Escape") {
+        this.clearSelection(true);
+        this.repaintWithSelection();
+        return;
+      }
       if (e.key === "r" || e.key === "R") {
         if (e.ctrlKey || e.metaKey || e.altKey)
           return;
-        await this.actionOnSelected("rotate", (fp) => ({ uuid: fp.uuid, delta_degrees: 90 }));
+        await this.rotateSelection(90);
         return;
       }
       if (e.key === "f" || e.key === "F") {
         if (e.ctrlKey || e.metaKey || e.altKey)
           return;
-        await this.actionOnSelected("flip", (fp) => ({ uuid: fp.uuid }));
+        await this.flipSelection();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -22708,11 +22946,35 @@ var Editor = class {
       this.requestRedraw();
     });
   }
-  async actionOnSelected(type, detailsFn) {
-    if (!this.model || this.selectedFpIndex < 0)
+  async rotateSelection(deltaDegrees) {
+    if (!this.model)
       return;
-    const fp = this.model.footprints[this.selectedFpIndex];
-    await this.executeAction(type, detailsFn(fp));
+    if (this.selectionMode === "group" && !this.singleOverrideMode) {
+      const uuids = this.selectedGroupMemberUuids();
+      if (uuids.length > 0) {
+        await this.executeAction("rotate", { uuids, delta_degrees: deltaDegrees });
+      }
+      return;
+    }
+    if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+      const fp = this.model.footprints[this.selectedFpIndex];
+      await this.executeAction("rotate", { uuid: fp.uuid, delta_degrees: deltaDegrees });
+    }
+  }
+  async flipSelection() {
+    if (!this.model)
+      return;
+    if (this.selectionMode === "group" && !this.singleOverrideMode) {
+      const uuids = this.selectedGroupMemberUuids();
+      if (uuids.length > 0) {
+        await this.executeAction("flip", { uuids });
+      }
+      return;
+    }
+    if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+      const fp = this.model.footprints[this.selectedFpIndex];
+      await this.executeAction("flip", { uuid: fp.uuid });
+    }
   }
   async executeAction(type, details) {
     try {
@@ -23186,7 +23448,7 @@ function buildLayerPanel() {
 }
 var coordsEl = document.getElementById("status-coords");
 var helpEl = document.getElementById("status-help");
-var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click select/drag \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
+var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
 if (helpEl)
   helpEl.textContent = helpText;
 canvas.addEventListener("mouseenter", () => {

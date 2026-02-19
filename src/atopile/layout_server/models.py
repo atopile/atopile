@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # --- Geometry primitives ---
 
@@ -122,6 +122,12 @@ class FootprintModel(BaseModel):
     pad_numbers: list[PadNumberAnnotationModel]
 
 
+class FootprintGroupModel(BaseModel):
+    uuid: str | None = None
+    name: str | None = None
+    member_uuids: list[str]
+
+
 # --- Tracks / Vias ---
 
 
@@ -189,6 +195,7 @@ class RenderModel(BaseModel):
     drawings: list[DrawingModel]
     texts: list[TextModel]
     footprints: list[FootprintModel]
+    footprint_groups: list[FootprintGroupModel] = Field(default_factory=list)
     tracks: list[TrackModel]
     arcs: list[ArcTrackModel]
     zones: list[ZoneModel]

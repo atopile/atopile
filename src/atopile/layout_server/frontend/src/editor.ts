@@ -2,7 +2,7 @@ import { Vec2 } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintAll, paintSelection, computeBBox } from "./painter";
+import { paintAll, paintGroupHalos, paintSelection, computeBBox } from "./painter";
 import { hitTestFootprints } from "./hit-test";
 import { getLayerColor } from "./colors";
 import type { RenderModel } from "./types";
@@ -33,6 +33,16 @@ function expandLayerName(layerName: string, concreteLayers: Set<string>): string
     return [layerName];
 }
 
+type SelectionMode = "none" | "single" | "group";
+
+interface UiFootprintGroup {
+    id: string;
+    uuid: string | null;
+    name: string | null;
+    memberUuids: string[];
+    memberIndices: number[];
+}
+
 export class Editor {
     private canvas: HTMLCanvasElement;
     private textOverlay: HTMLCanvasElement;
@@ -46,11 +56,19 @@ export class Editor {
     private wsPath: string;
     private ws: WebSocket | null = null;
 
-    // Selection & drag state
+    // Selection & interaction state
+    private selectionMode: SelectionMode = "none";
     private selectedFpIndex = -1;
+    private selectedGroupId: string | null = null;
+    private hoveredGroupId: string | null = null;
+    private singleOverrideMode = false;
+    private groupsById = new Map<string, UiFootprintGroup>();
+    private groupIdByFpIndex = new Map<number, string>();
+
     private isDragging = false;
     private dragStartWorld: Vec2 | null = null;
-    private dragStartFpPos: { x: number; y: number } | null = null;
+    private dragTargetIndices: number[] = [];
+    private dragStartPositions: Map<number, { x: number; y: number }> | null = null;
     private needsRedraw = true;
 
     // Layer visibility
@@ -112,7 +130,13 @@ export class Editor {
     }
 
     private applyModel(model: RenderModel, fitToView = false) {
+        const prevSelectedUuid = this.getSelectedSingleUuid();
+        const prevSelectedGroupId = this.selectedGroupId;
+        const prevSingleOverride = this.singleOverrideMode;
+
         this.model = model;
+        this.rebuildGroupIndex();
+        this.restoreSelection(prevSelectedUuid, prevSelectedGroupId, prevSingleOverride);
         this.applyDefaultLayerVisibility();
         this.paint();
 
@@ -138,9 +162,169 @@ export class Editor {
         if (!this.model) return;
         paintAll(this.renderer, this.model, this.hiddenLayers);
 
-        if (this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
+        if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
+            const hovered = this.groupsById.get(this.hoveredGroupId);
+            if (hovered) {
+                paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
+            }
+        }
+
+        if (!this.singleOverrideMode && this.selectedGroupId) {
+            const selectedGroup = this.groupsById.get(this.selectedGroupId);
+            if (selectedGroup) {
+                paintGroupHalos(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
+            }
+        }
+
+        if (this.selectionMode === "single" && this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
             paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]!);
         }
+    }
+
+    private rebuildGroupIndex() {
+        this.groupsById.clear();
+        this.groupIdByFpIndex.clear();
+        if (!this.model) return;
+
+        const indexByUuid = new Map<string, number>();
+        for (let i = 0; i < this.model.footprints.length; i++) {
+            const uuid = this.model.footprints[i]!.uuid;
+            if (uuid) indexByUuid.set(uuid, i);
+        }
+
+        const rawGroups = this.model.footprint_groups ?? [];
+        const usedIds = new Set<string>();
+        for (let i = 0; i < rawGroups.length; i++) {
+            const group = rawGroups[i]!;
+            const memberIndices: number[] = [];
+            const memberUuids: string[] = [];
+            for (const memberUuid of group.member_uuids) {
+                if (!memberUuid) continue;
+                const fpIndex = indexByUuid.get(memberUuid);
+                if (fpIndex === undefined) continue;
+                memberIndices.push(fpIndex);
+                memberUuids.push(memberUuid);
+            }
+            if (memberIndices.length < 2) continue;
+
+            let idBase = group.uuid || group.name || `group-${i + 1}`;
+            if (usedIds.has(idBase)) {
+                let suffix = 2;
+                while (usedIds.has(`${idBase}:${suffix}`)) suffix++;
+                idBase = `${idBase}:${suffix}`;
+            }
+            usedIds.add(idBase);
+
+            const uiGroup: UiFootprintGroup = {
+                id: idBase,
+                uuid: group.uuid,
+                name: group.name,
+                memberUuids,
+                memberIndices,
+            };
+            this.groupsById.set(idBase, uiGroup);
+            for (const fpIndex of memberIndices) {
+                if (!this.groupIdByFpIndex.has(fpIndex)) {
+                    this.groupIdByFpIndex.set(fpIndex, idBase);
+                }
+            }
+        }
+    }
+
+    private getSelectedSingleUuid(): string | null {
+        if (!this.model || this.selectedFpIndex < 0) return null;
+        return this.model.footprints[this.selectedFpIndex]?.uuid ?? null;
+    }
+
+    private restoreSelection(
+        prevSelectedUuid: string | null,
+        prevSelectedGroupId: string | null,
+        prevSingleOverride: boolean,
+    ) {
+        this.selectionMode = "none";
+        this.selectedFpIndex = -1;
+        this.selectedGroupId = null;
+        this.hoveredGroupId = null;
+        this.singleOverrideMode = prevSingleOverride;
+
+        if (!this.model) {
+            this.singleOverrideMode = false;
+            return;
+        }
+
+        if (!prevSingleOverride && prevSelectedGroupId && this.groupsById.has(prevSelectedGroupId)) {
+            this.selectionMode = "group";
+            this.selectedGroupId = prevSelectedGroupId;
+            return;
+        }
+
+        if (prevSelectedUuid) {
+            for (let i = 0; i < this.model.footprints.length; i++) {
+                if (this.model.footprints[i]!.uuid === prevSelectedUuid) {
+                    this.selectionMode = "single";
+                    this.selectedFpIndex = i;
+                    return;
+                }
+            }
+        }
+
+        this.singleOverrideMode = false;
+    }
+
+    private setSingleSelection(index: number, enterOverride: boolean) {
+        this.selectionMode = "single";
+        this.selectedFpIndex = index;
+        this.selectedGroupId = null;
+        if (enterOverride) {
+            this.singleOverrideMode = true;
+        } else if (!this.groupIdByFpIndex.has(index)) {
+            this.singleOverrideMode = false;
+        }
+    }
+
+    private setGroupSelection(groupId: string) {
+        this.selectionMode = "group";
+        this.selectedGroupId = groupId;
+        this.selectedFpIndex = -1;
+        this.singleOverrideMode = false;
+    }
+
+    private clearSelection(exitSingleOverride = false) {
+        this.selectionMode = "none";
+        this.selectedFpIndex = -1;
+        this.selectedGroupId = null;
+        this.hoveredGroupId = null;
+        if (exitSingleOverride) {
+            this.singleOverrideMode = false;
+        }
+    }
+
+    private selectedGroup(): UiFootprintGroup | null {
+        if (!this.selectedGroupId) return null;
+        return this.groupsById.get(this.selectedGroupId) ?? null;
+    }
+
+    private selectedGroupMembers(): number[] {
+        const group = this.selectedGroup();
+        return group ? group.memberIndices : [];
+    }
+
+    private selectedGroupMemberUuids(): string[] {
+        const group = this.selectedGroup();
+        return group ? group.memberUuids : [];
+    }
+
+    private updateHoverGroup(worldPos: Vec2) {
+        let nextHoverId: string | null = null;
+        if (this.model && !this.singleOverrideMode) {
+            const hitIndex = hitTestFootprints(worldPos, this.model.footprints);
+            if (hitIndex >= 0) {
+                nextHoverId = this.groupIdByFpIndex.get(hitIndex) ?? null;
+            }
+        }
+        if (nextHoverId === this.hoveredGroupId) return;
+        this.hoveredGroupId = nextHoverId;
+        this.repaintWithSelection();
     }
 
     private connectWebSocket() {
@@ -172,19 +356,48 @@ export class Editor {
             const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
 
             if (hitIdx >= 0) {
-                this.selectedFpIndex = hitIdx;
-                const fp = this.model.footprints[hitIdx]!;
+                const hitGroupId = this.groupIdByFpIndex.get(hitIdx) ?? null;
+                if (!this.singleOverrideMode && hitGroupId) {
+                    this.setGroupSelection(hitGroupId);
+                } else {
+                    this.setSingleSelection(hitIdx, false);
+                }
+
+                const dragTargets = this.selectionMode === "group"
+                    ? this.selectedGroupMembers()
+                    : [hitIdx];
+                const dragStartPositions = new Map<number, { x: number; y: number }>();
+                for (const index of dragTargets) {
+                    const fp = this.model.footprints[index];
+                    if (!fp) continue;
+                    dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
+                }
+                if (dragStartPositions.size === 0) {
+                    this.repaintWithSelection();
+                    return;
+                }
+
                 this.isDragging = true;
                 this.dragStartWorld = worldPos;
-                this.dragStartFpPos = { x: fp.at.x, y: fp.at.y };
+                this.dragTargetIndices = [...dragStartPositions.keys()];
+                this.dragStartPositions = dragStartPositions;
                 this.repaintWithSelection();
             } else {
-                if (this.selectedFpIndex >= 0) {
-                    this.selectedFpIndex = -1;
-                    this.paint();
-                    this.requestRedraw();
-                }
+                this.clearSelection(true);
+                this.paint();
+                this.requestRedraw();
             }
+        });
+
+        this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
+            if (e.button !== 0 || !this.model) return;
+            const rect = this.canvas.getBoundingClientRect();
+            const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            const worldPos = this.camera.screen_to_world(screenPos);
+            const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
+            if (hitIdx < 0) return;
+            this.setSingleSelection(hitIdx, true);
+            this.repaintWithSelection();
         });
 
         this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
@@ -196,13 +409,26 @@ export class Editor {
                 this.onMouseMoveCallback(worldPos.x, worldPos.y);
             }
 
-            if (!this.isDragging || !this.model || this.selectedFpIndex < 0) return;
-
+            if (!this.model) return;
             const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
-            const delta = worldPos.sub(this.dragStartWorld!);
-            const fp = this.model.footprints[this.selectedFpIndex]!;
-            fp.at.x = this.dragStartFpPos!.x + delta.x;
-            fp.at.y = this.dragStartFpPos!.y + delta.y;
+
+            if (!this.isDragging) {
+                this.updateHoverGroup(worldPos);
+                return;
+            }
+
+            if (!this.dragStartWorld || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
+                return;
+            }
+
+            const delta = worldPos.sub(this.dragStartWorld);
+            for (const index of this.dragTargetIndices) {
+                const fp = this.model.footprints[index];
+                const start = this.dragStartPositions.get(index);
+                if (!fp || !start) continue;
+                fp.at.x = start.x + delta.x;
+                fp.at.y = start.y + delta.y;
+            }
 
             this.paint();
             this.requestRedraw();
@@ -212,36 +438,72 @@ export class Editor {
             if (e.button !== 0 || !this.isDragging) return;
             this.isDragging = false;
 
-            if (!this.model || this.selectedFpIndex < 0 || !this.dragStartFpPos) return;
-            const fp = this.model.footprints[this.selectedFpIndex]!;
+            if (!this.model || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
+                this.dragStartWorld = null;
+                this.dragStartPositions = null;
+                this.dragTargetIndices = [];
+                return;
+            }
 
-            // Skip noop moves
-            const dx = fp.at.x - this.dragStartFpPos.x;
-            const dy = fp.at.y - this.dragStartFpPos.y;
-            if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+            const firstTarget = this.dragTargetIndices[0]!;
+            const firstStart = this.dragStartPositions.get(firstTarget);
+            const firstFp = this.model.footprints[firstTarget];
+            if (!firstStart || !firstFp) {
+                this.dragStartWorld = null;
+                this.dragStartPositions = null;
+                this.dragTargetIndices = [];
+                return;
+            }
 
-            await this.executeAction("move", {
-                uuid: fp.uuid,
-                x: fp.at.x,
-                y: fp.at.y,
-                r: fp.at.r || null,
-            });
+            const dx = firstFp.at.x - firstStart.x;
+            const dy = firstFp.at.y - firstStart.y;
+            const isNoop = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001;
+
+            this.dragStartWorld = null;
+            this.dragStartPositions = null;
+            this.dragTargetIndices = [];
+
+            if (isNoop) return;
+
+            if (this.selectionMode === "group" && !this.singleOverrideMode) {
+                const uuids = this.selectedGroupMemberUuids();
+                if (uuids.length > 0) {
+                    await this.executeAction("move", { uuids, dx, dy });
+                }
+                return;
+            }
+
+            if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+                const selectedFp = this.model.footprints[this.selectedFpIndex]!;
+                await this.executeAction("move", {
+                    uuid: selectedFp.uuid,
+                    x: selectedFp.at.x,
+                    y: selectedFp.at.y,
+                    r: selectedFp.at.r || null,
+                });
+            }
         });
     }
 
     private setupKeyboardHandlers() {
         window.addEventListener("keydown", async (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                this.clearSelection(true);
+                this.repaintWithSelection();
+                return;
+            }
+
             // R — rotate selected footprint by 90 degrees
             if (e.key === "r" || e.key === "R") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
-                await this.actionOnSelected("rotate", (fp) => ({ uuid: fp.uuid, delta_degrees: 90 }));
+                await this.rotateSelection(90);
                 return;
             }
 
             // F — flip selected footprint
             if (e.key === "f" || e.key === "F") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
-                await this.actionOnSelected("flip", (fp) => ({ uuid: fp.uuid }));
+                await this.flipSelection();
                 return;
             }
 
@@ -268,13 +530,34 @@ export class Editor {
         });
     }
 
-    private async actionOnSelected(
-        type: string,
-        detailsFn: (fp: RenderModel["footprints"][0]) => Record<string, unknown>,
-    ) {
-        if (!this.model || this.selectedFpIndex < 0) return;
-        const fp = this.model.footprints[this.selectedFpIndex]!;
-        await this.executeAction(type, detailsFn(fp));
+    private async rotateSelection(deltaDegrees: number) {
+        if (!this.model) return;
+        if (this.selectionMode === "group" && !this.singleOverrideMode) {
+            const uuids = this.selectedGroupMemberUuids();
+            if (uuids.length > 0) {
+                await this.executeAction("rotate", { uuids, delta_degrees: deltaDegrees });
+            }
+            return;
+        }
+        if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+            const fp = this.model.footprints[this.selectedFpIndex]!;
+            await this.executeAction("rotate", { uuid: fp.uuid, delta_degrees: deltaDegrees });
+        }
+    }
+
+    private async flipSelection() {
+        if (!this.model) return;
+        if (this.selectionMode === "group" && !this.singleOverrideMode) {
+            const uuids = this.selectedGroupMemberUuids();
+            if (uuids.length > 0) {
+                await this.executeAction("flip", { uuids });
+            }
+            return;
+        }
+        if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+            const fp = this.model.footprints[this.selectedFpIndex]!;
+            await this.executeAction("flip", { uuid: fp.uuid });
+        }
     }
 
     private async executeAction(type: string, details: Record<string, unknown>) {

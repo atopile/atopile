@@ -19,6 +19,7 @@ export interface RenderModel {
     drawings: DrawingModel[];
     texts: TextModel[];
     footprints: FootprintModel[];
+    footprint_groups: FootprintGroupModel[];
     tracks: TrackModel[];
     arcs: ArcTrackModel[];
     zones: ZoneModel[];
@@ -52,6 +53,12 @@ export interface FootprintModel {
     texts: TextModel[];
     pad_names: PadNameAnnotationModel[];
     pad_numbers: PadNumberAnnotationModel[];
+}
+
+export interface FootprintGroupModel {
+    uuid: string | null;
+    name: string | null;
+    member_uuids: string[];
 }
 
 export interface TextModel {

@@ -13,6 +13,7 @@ from atopile.layout_server.models import (
     DrawingModel,
     EdgeModel,
     FilledPolygonModel,
+    FootprintGroupModel,
     FootprintModel,
     FootprintSummary,
     HoleModel,
@@ -189,6 +190,21 @@ class FlipAction(Action):
         self._flip(pcb)  # Flip is its own inverse
 
 
+class CompositeAction(Action):
+    """Execute multiple actions as a single undo/redo unit."""
+
+    def __init__(self, actions: list[Action]) -> None:
+        self.actions = actions
+
+    def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        for action in self.actions:
+            action.execute(pcb)
+
+    def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
+        for action in reversed(self.actions):
+            action.undo(pcb)
+
+
 # --- PcbManager ---
 
 
@@ -256,6 +272,77 @@ class PcbManager:
     def flip_footprint(self, uuid: str) -> None:
         self.execute_action(FlipAction(uuid))
 
+    def move_footprints(self, uuids: list[str], dx: float, dy: float) -> None:
+        targets = self._footprints_from_uuids(uuids)
+        if not targets:
+            return
+        actions: list[Action] = []
+        for fp in targets:
+            if fp.uuid is None:
+                continue
+            actions.append(
+                MoveAction(
+                    uuid=fp.uuid,
+                    new_x=fp.at.x + dx,
+                    new_y=fp.at.y + dy,
+                    new_r=fp.at.r,
+                )
+            )
+        if actions:
+            self.execute_action(CompositeAction(actions))
+
+    def rotate_footprints(self, uuids: list[str], delta_degrees: float) -> None:
+        targets = self._footprints_from_uuids(uuids)
+        if not targets:
+            return
+        cx = sum(fp.at.x for fp in targets) / len(targets)
+        cy = sum(fp.at.y for fp in targets) / len(targets)
+        delta_rad = math.radians(delta_degrees)
+        cos_t = math.cos(delta_rad)
+        sin_t = math.sin(delta_rad)
+
+        actions: list[Action] = []
+        for fp in targets:
+            if fp.uuid is None:
+                continue
+            dx = fp.at.x - cx
+            dy = fp.at.y - cy
+            new_x = cx + dx * cos_t - dy * sin_t
+            new_y = cy + dx * sin_t + dy * cos_t
+            new_r = ((fp.at.r or 0.0) + delta_degrees) % 360.0
+            actions.append(
+                MoveAction(
+                    uuid=fp.uuid,
+                    new_x=new_x,
+                    new_y=new_y,
+                    new_r=new_r,
+                )
+            )
+        if actions:
+            self.execute_action(CompositeAction(actions))
+
+    def flip_footprints(self, uuids: list[str]) -> None:
+        targets = self._footprints_from_uuids(uuids)
+        if not targets:
+            return
+        cx = sum(fp.at.x for fp in targets) / len(targets)
+        actions: list[Action] = []
+        for fp in targets:
+            if fp.uuid is None:
+                continue
+            mirrored_x = 2.0 * cx - fp.at.x
+            actions.append(FlipAction(fp.uuid))
+            actions.append(
+                MoveAction(
+                    uuid=fp.uuid,
+                    new_x=mirrored_x,
+                    new_y=fp.at.y,
+                    new_r=None,
+                )
+            )
+        if actions:
+            self.execute_action(CompositeAction(actions))
+
     ACTION_HANDLERS: dict[str, str] = {
         "move": "move_footprint",
         "rotate": "rotate_footprint",
@@ -264,6 +351,28 @@ class PcbManager:
 
     def dispatch_action(self, action_type: str, details: dict) -> bool:
         """Dispatch an action by type name. Returns False if unknown action."""
+        group_uuids = details.get("uuids")
+        if isinstance(group_uuids, list) and group_uuids:
+            uuids = [str(uuid) for uuid in group_uuids if str(uuid).strip()]
+            if not uuids:
+                return True
+            if action_type == "move":
+                self.move_footprints(
+                    uuids=uuids,
+                    dx=float(details.get("dx", 0.0)),
+                    dy=float(details.get("dy", 0.0)),
+                )
+                return True
+            if action_type == "rotate":
+                self.rotate_footprints(
+                    uuids=uuids,
+                    delta_degrees=float(details.get("delta_degrees", 0.0)),
+                )
+                return True
+            if action_type == "flip":
+                self.flip_footprints(uuids=uuids)
+                return True
+
         method_name = self.ACTION_HANDLERS.get(action_type)
         if method_name is None:
             return False
@@ -299,6 +408,7 @@ class PcbManager:
                 self._extract_footprint(fp, net_names_by_number, copper_layers)
                 for fp in pcb.footprints
             ],
+            footprint_groups=self._extract_footprint_groups(pcb),
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
             zones=self._extract_zones(pcb),
@@ -324,6 +434,60 @@ class PcbManager:
         return result
 
     # --- Private extraction helpers ---
+
+    def _footprints_from_uuids(self, uuids: list[str]) -> list:
+        wanted = {uuid for uuid in uuids if uuid}
+        if not wanted:
+            return []
+        by_uuid = {
+            str(fp.uuid): fp
+            for fp in self.pcb.footprints
+            if getattr(fp, "uuid", None) is not None
+        }
+        ordered: list = []
+        seen: set[str] = set()
+        for uuid in uuids:
+            if uuid in seen:
+                continue
+            fp = by_uuid.get(uuid)
+            if fp is None:
+                continue
+            seen.add(uuid)
+            ordered.append(fp)
+        return ordered
+
+    def _extract_footprint_groups(
+        self, pcb: kicad.pcb.KicadPcb
+    ) -> list[FootprintGroupModel]:
+        footprints_by_uuid = {
+            str(fp.uuid)
+            for fp in pcb.footprints
+            if getattr(fp, "uuid", None) is not None
+        }
+        groups: list[FootprintGroupModel] = []
+        raw_groups = getattr(pcb, "groups", []) or []
+        for group in raw_groups:
+            raw_members = getattr(group, "members", []) or []
+            member_uuids: list[str] = []
+            seen_members: set[str] = set()
+            for member in raw_members:
+                token = str(member).strip()
+                if not token or token in seen_members:
+                    continue
+                if token not in footprints_by_uuid:
+                    continue
+                seen_members.add(token)
+                member_uuids.append(token)
+            if len(member_uuids) < 2:
+                continue
+            groups.append(
+                FootprintGroupModel(
+                    uuid=(str(getattr(group, "uuid", "") or "").strip() or None),
+                    name=(str(getattr(group, "name", "") or "").strip() or None),
+                    member_uuids=member_uuids,
+                )
+            )
+        return groups
 
     def _extract_board(self, pcb: kicad.pcb.KicadPcb) -> BoardModel:
         edges: list[EdgeModel] = []

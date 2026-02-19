@@ -7,6 +7,7 @@ import {
     ZONE_COLOR_ALPHA,
 } from "./colors";
 import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
+import { footprintBBox } from "./hit-test";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -865,29 +866,47 @@ function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
 export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLayer {
     const layer = renderer.start_layer("selection");
     const [r, g, b, a] = SELECTION_COLOR;
-
-    const allPoints: Vec2[] = [];
-    for (const pad of fp.pads) {
-        const center = fpTransform(fp.at, pad.at.x, pad.at.y);
-        const hw = pad.size.w / 2, hh = pad.size.h / 2;
-        allPoints.push(center.add(new Vec2(-hw, -hh)));
-        allPoints.push(center.add(new Vec2(hw, hh)));
-    }
-    for (const drawing of fp.drawings) {
-        if (drawing.start) allPoints.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
-        if (drawing.end) allPoints.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
-        if (drawing.center) allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
-    }
-    for (const text of fp.texts) {
-        allPoints.push(fpTransform(fp.at, text.at.x, text.at.y));
-    }
-
-    if (allPoints.length > 0) {
-        const bbox = BBox.from_points(allPoints).grow(0.5);
+    const bbox = footprintBBox(fp).grow(0.5);
+    if (bbox.w > 0 && bbox.h > 0) {
         layer.geometry.add_polygon([
             new Vec2(bbox.x, bbox.y), new Vec2(bbox.x2, bbox.y),
             new Vec2(bbox.x2, bbox.y2), new Vec2(bbox.x, bbox.y2),
         ], r, g, b, a);
+    }
+
+    renderer.end_layer();
+    return layer;
+}
+
+/** Paint per-member halos for a selected/hovered footprint group. */
+export function paintGroupHalos(
+    renderer: Renderer,
+    footprints: FootprintModel[],
+    memberIndices: number[],
+    mode: "selected" | "hover",
+): RenderLayer | null {
+    if (memberIndices.length === 0) return null;
+    const layerName = mode === "selected" ? "group-selection" : "group-hover";
+    const layer = renderer.start_layer(layerName);
+    const [sr, sg, sb, sa] = SELECTION_COLOR;
+    const fillAlpha = mode === "selected" ? Math.max(sa * 0.55, 0.14) : Math.max(sa * 0.32, 0.08);
+    const strokeAlpha = mode === "selected" ? Math.max(sa * 0.9, 0.34) : Math.max(sa * 0.65, 0.22);
+    const grow = mode === "selected" ? 0.34 : 0.24;
+    const strokeWidth = mode === "selected" ? 0.14 : 0.1;
+
+    for (const index of memberIndices) {
+        const fp = footprints[index];
+        if (!fp) continue;
+        const bbox = footprintBBox(fp).grow(grow);
+        if (bbox.w <= 0 || bbox.h <= 0) continue;
+        const corners = [
+            new Vec2(bbox.x, bbox.y),
+            new Vec2(bbox.x2, bbox.y),
+            new Vec2(bbox.x2, bbox.y2),
+            new Vec2(bbox.x, bbox.y2),
+        ];
+        layer.geometry.add_polygon(corners, sr, sg, sb, fillAlpha);
+        layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, sr, sg, sb, strokeAlpha);
     }
 
     renderer.end_layer();
