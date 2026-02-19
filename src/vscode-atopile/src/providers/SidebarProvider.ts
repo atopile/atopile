@@ -22,7 +22,7 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
-import { openManufacturingDashboard } from '../ui/manufacturing-webview';
+import { openManufacturingDashboard } from '../ui/review-webview';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview

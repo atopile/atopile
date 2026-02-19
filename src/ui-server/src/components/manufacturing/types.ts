@@ -285,6 +285,30 @@ export const FILE_EXPORT_OPTIONS: FileExportOption[] = [
 ];
 
 // =============================================================================
+// Muster Target Types (fetched from backend)
+// =============================================================================
+
+export interface MusterTargetInfo {
+  name: string;
+  description: string | null;
+  category: string | null;
+  virtual: boolean;
+  producesArtifact: boolean;
+  tags: string[];
+  aliases: string[];
+  dependencies: string[];
+}
+
+export const DEFAULT_BUILD_TARGETS = ['bom', 'manifest', 'variable-report', 'datasheets'];
+
+export const CATEGORY_CONFIG: Record<string, { label: string; order: number; alwaysIncluded: boolean }> = {
+  required: { label: 'Required', order: 0, alwaysIncluded: true },
+  visuals: { label: 'Visuals', order: 1, alwaysIncluded: false },
+  manufacturing: { label: 'Manufacturing', order: 2, alwaysIncluded: false },
+  documentation: { label: 'Documentation', order: 3, alwaysIncluded: false },
+};
+
+// =============================================================================
 // Manufacturing Dashboard Types
 // =============================================================================
 
@@ -337,6 +361,8 @@ export interface ManufacturingDashboardState {
   bomData: unknown;
   boardSummary: BoardSummary | null;
   gitStatus: GitStatus | null;
+  selectedBuildTargets: string[];
+  availableBuildTargets: MusterTargetInfo[];
   exportConfig: {
     directory: string;
     selectedFileTypes: FileExportType[];

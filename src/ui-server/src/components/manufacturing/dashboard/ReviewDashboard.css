@@ -319,6 +319,83 @@
   color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
 }
 
+/* ── Build target selector (in left column) ───────────────────── */
+.mfg-target-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mfg-btn-tiny {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #444));
+  background: transparent;
+  color: var(--vscode-foreground, var(--text-primary, #ccc));
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.mfg-btn-tiny:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.mfg-target-category {
+  margin-bottom: 10px;
+}
+
+.mfg-target-category:last-child {
+  margin-bottom: 0;
+}
+
+.mfg-target-category-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin-bottom: 2px;
+  padding-left: 2px;
+}
+
+.mfg-target-checkbox-input {
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.mfg-build-stage-item.disabled {
+  opacity: 0.5;
+}
+
+.mfg-target-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.mfg-stage-status-icon {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.mfg-stage-elapsed {
+  font-size: 11px;
+  opacity: 0.5;
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: right;
+}
+
 /* Git warning */
 .mfg-git-warning {
   display: flex;
