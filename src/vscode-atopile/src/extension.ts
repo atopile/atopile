@@ -55,6 +55,9 @@ function _registerDevStatusButtons(context: vscode.ExtensionContext): void {
     const restartExtHostCmd = vscode.commands.registerCommand('atopile.dev.restartExtensionHost', async () => {
         await vscode.commands.executeCommand('workbench.action.restartExtensionHost');
     });
+    const killBackendCmd = vscode.commands.registerCommand('atopile.dev.killBackendServer', async () => {
+        await backendServer.stopServer();
+    });
 
     const reloadWebviewsItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
     reloadWebviewsItem.text = '$(refresh)$(window)';
@@ -70,11 +73,20 @@ function _registerDevStatusButtons(context: vscode.ExtensionContext): void {
     restartExtHostItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     restartExtHostItem.show();
 
+    const killBackendItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -102);
+    killBackendItem.text = '$(debug-stop)';
+    killBackendItem.tooltip = 'Kill Backend Server';
+    killBackendItem.command = 'atopile.dev.killBackendServer';
+    killBackendItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    killBackendItem.show();
+
     context.subscriptions.push(
         reloadWebviewsCmd,
         restartExtHostCmd,
+        killBackendCmd,
         reloadWebviewsItem,
         restartExtHostItem,
+        killBackendItem,
     );
 }
 
