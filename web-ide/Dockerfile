@@ -88,6 +88,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     nodejs \
     npm \
+    fonts-liberation2 \
+    fonts-hack \
     && npm install -g @gltf-transform/cli@4.1.0 \
     && rm -rf /var/lib/apt/lists/*
 

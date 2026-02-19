@@ -388,75 +388,147 @@ const LANDING_HTML = `<!DOCTYPE html>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0d1117;
-    color: #c9d1d9;
+    background: #141B2B;
+    color: #e2e8f0;
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-decoration: none;
+    color: #e2e8f0;
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+  .logo svg { width: 28px; height: 28px; }
+  .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+  .nav-links a {
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: #e2e8f0; }
+  main {
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
   }
   .container {
     text-align: center;
-    max-width: 480px;
+    max-width: 600px;
     padding: 2rem;
   }
+  .icon { margin-bottom: 1.5rem; }
+  .icon svg { width: 80px; height: 80px; }
   h1 {
-    font-size: 2.5rem;
-    color: #58a6ff;
-    margin-bottom: 0.5rem;
+    font-size: 2.8rem;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 1rem;
+    color: #f1f5f9;
   }
+  h1 span { color: #f97316; }
   .tagline {
-    color: #8b949e;
+    color: #94a3b8;
     font-size: 1.1rem;
-    margin-bottom: 2rem;
+    line-height: 1.6;
+    margin-bottom: 2.5rem;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
   }
+  .buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
   .btn {
     display: inline-block;
-    padding: 0.9rem 2.5rem;
-    font-size: 1.1rem;
+    padding: 0.85rem 2rem;
+    font-size: 1rem;
     font-weight: 600;
-    color: #fff;
-    background: #238636;
-    border: none;
     border-radius: 8px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
+    text-decoration: none;
+    border: none;
   }
-  .btn:hover { background: #2ea043; }
-  .btn:disabled { background: #21262d; color: #484f58; cursor: wait; }
+  .btn-primary {
+    color: #fff;
+    background: #f97316;
+  }
+  .btn-primary:hover { background: #ea580c; }
+  .btn-primary:disabled { background: #1e293b; color: #475569; cursor: wait; }
+  .btn-secondary {
+    color: #e2e8f0;
+    background: transparent;
+    border: 1px solid #334155;
+  }
+  .btn-secondary:hover { border-color: #64748b; }
   .spinner {
     display: none;
     margin: 1.5rem auto 0;
     width: 36px;
     height: 36px;
-    border: 3px solid #21262d;
-    border-top-color: #58a6ff;
+    border: 3px solid #1e293b;
+    border-top-color: #f97316;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .status {
     margin-top: 1rem;
-    color: #8b949e;
+    color: #94a3b8;
     font-size: 0.9rem;
     min-height: 1.4em;
   }
   .error {
-    color: #f85149;
+    color: #ef4444;
     margin-top: 1rem;
     font-size: 0.9rem;
   }
 </style>
 </head>
 <body>
+<nav>
+  <a href="https://atopile.io" class="logo">
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 4h8v4H8v4h8v4H8v4h8v4H8v4H4V4zm12 0h8v4h-4v4h4v4h-4v4h4v4h-4v4h-4V4zm12 0h4v24h-4v-4h-4v-4h4v-4h-4V8h4V4z" fill="#f97316"/>
+    </svg>
+    atopile
+  </a>
+  <div class="nav-links">
+    <a href="https://atopile.io/docs">Docs</a>
+    <a href="https://packages.atopile.io">Packages</a>
+    <a href="https://github.com/atopile/atopile">GitHub</a>
+  </div>
+</nav>
+<main>
 <div class="container">
-  <h1>atopile</h1>
-  <p class="tagline">Design electronics with code</p>
-  <button class="btn" id="launch" onclick="spawn()">Try atopile</button>
+  <div class="icon">
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 8h16v8H16v8h16v8H16v8h16v8H16v8H8V8zm24 0h16v8H40v8h8v8h-8v8h8v8h-8v8h-8V8zm24 0h8v48h-8v-8h-8v-8h8v-8h-8V16h8V8z" fill="#f97316"/>
+    </svg>
+  </div>
+  <h1>Design circuit boards<br><span>blazing fast</span> with code</h1>
+  <p class="tagline">Try atopile in your browser. No installation required.</p>
+  <div class="buttons">
+    <button class="btn btn-primary" id="launch" onclick="spawn()">Get Started</button>
+    <a class="btn btn-secondary" href="https://atopile.io/docs">View Documentation</a>
+  </div>
   <div class="spinner" id="spinner"></div>
   <div class="status" id="status"></div>
   <div class="error" id="error"></div>
 </div>
+</main>
 <script>
 async function spawn() {
   const btn = document.getElementById('launch');
@@ -477,7 +549,6 @@ async function spawn() {
     }
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Spawn failed');
-    // Should have been redirected; fallback reload
     window.location.reload();
   } catch (err) {
     spinner.style.display = 'none';

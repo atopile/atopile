@@ -13,6 +13,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@fontsource-variable/fira-code": "^5.2.7",
+    "@fontsource-variable/inter": "^5.2.8",
     "@tracespace/core": "^5.0.0-alpha.0",
     "@tracespace/parser": "^5.0.0-next.0",
     "@tracespace/plotter": "^5.0.0-alpha.0",

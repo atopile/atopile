@@ -35,9 +35,9 @@
   --radius-md: 5px;
   --radius-lg: 6px;
 
-  /* Font - use VS Code's native fonts */
-  --font-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace);
-  --font-sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  /* Font - bundled Inter/Fira Code first, then VS Code + system fallbacks */
+  --font-mono: 'Fira Code Variable', 'Fira Code', var(--vscode-editor-font-family, 'SF Mono', Consolas, monospace);
+  --font-sans: 'Inter Variable', 'Inter', var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
 
   /* Transitions */
   --transition-fast: 0.1s ease;
