@@ -384,6 +384,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     traceInfo(`[SidebarProvider] File watcher set up for ${projectRoot}`);
   }
 
+  /**
+   * Notify the webview that files have changed so it refreshes the file explorer.
+   * Called after file operations to avoid relying solely on FileSystemWatcher
+   * (which can silently fail in Docker/containerized environments due to inotify limits).
+   */
+  private _notifyFilesChanged(): void {
+    if (this._watchedProjectRoot && this._view) {
+      // Debounce to coalesce rapid operations (e.g. bulk delete)
+      if (this._fileChangeDebounce) {
+        clearTimeout(this._fileChangeDebounce);
+      }
+      this._fileChangeDebounce = setTimeout(() => {
+        traceInfo(`[SidebarProvider] Notifying webview of file changes in ${this._watchedProjectRoot}`);
+        this._view?.webview.postMessage({
+          type: 'filesChanged',
+          projectRoot: this._watchedProjectRoot,
+        });
+      }, 300);
+    }
+  }
+
   private _refreshWebview(): void {
     if (!this._view) {
       return;
@@ -423,6 +444,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         (message: WebviewMessage) => this._handleWebviewMessage(message),
         undefined
       )
+    );
+
+    // Listen to VS Code workspace file events as a fallback for file system
+    // watcher failures in containerized environments (Docker, Fly.io).
+    // These fire for operations through VS Code's native UI and workspace API.
+    this._disposables.push(
+      vscode.workspace.onDidCreateFiles(() => this._notifyFilesChanged()),
+      vscode.workspace.onDidDeleteFiles(() => this._notifyFilesChanged()),
+      vscode.workspace.onDidRenameFiles(() => this._notifyFilesChanged()),
     );
 
     this._refreshWebview();
@@ -606,6 +636,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           vscode.workspace.fs.rename(oldUri, newUri).then(
             () => {
               traceInfo(`[SidebarProvider] Renamed ${message.oldPath} to ${message.newPath}`);
+              this._notifyFilesChanged();
             },
             (err) => {
               traceError(`[SidebarProvider] Failed to rename file: ${err}`);
@@ -628,6 +659,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               vscode.workspace.fs.delete(deleteUri, { recursive: true, useTrash: true }).then(
                 () => {
                   traceInfo(`[SidebarProvider] Deleted ${message.path}`);
+                  this._notifyFilesChanged();
                 },
                 (err) => {
                   traceError(`[SidebarProvider] Failed to delete file: ${err}`);
@@ -660,6 +692,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               vscode.workspace.fs.writeFile(newUri, new Uint8Array()).then(
                 () => {
                   traceInfo(`[SidebarProvider] Created file ${newFilePath}`);
+                  this._notifyFilesChanged();
                   // Open the new file
                   vscode.workspace.openTextDocument(newUri).then((doc) => {
                     vscode.window.showTextDocument(doc);
@@ -696,6 +729,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               vscode.workspace.fs.createDirectory(newUri).then(
                 () => {
                   traceInfo(`[SidebarProvider] Created folder ${newFolderPath}`);
+                  this._notifyFilesChanged();
                 },
                 (err) => {
                   traceError(`[SidebarProvider] Failed to create folder: ${err}`);
@@ -714,6 +748,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           vscode.workspace.fs.copy(sourceUri, destUri, { overwrite: false }).then(
             () => {
               traceInfo(`[SidebarProvider] Duplicated ${message.sourcePath} to ${message.destPath}`);
+              this._notifyFilesChanged();
               // Notify webview to start rename mode on the new file
               this._view?.webview.postMessage({
                 type: 'fileDuplicated',
