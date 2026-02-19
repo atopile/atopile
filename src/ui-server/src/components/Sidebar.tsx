@@ -45,8 +45,11 @@ const action = (name: string, data?: Record<string, unknown>) => {
 };
 
 export function Sidebar() {
+  const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
+
   // Granular selectors - only re-render when specific state changes
   const isConnected = useStore((s) => s.isConnected);
+  const hasEverConnected = useStore((s) => s.hasEverConnected);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
@@ -87,6 +90,28 @@ export function Sidebar() {
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
   const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
+  const [showDisconnectedOverlay, setShowDisconnectedOverlay] = useState(false);
+
+  useEffect(() => {
+    if (isConnected) {
+      setShowDisconnectedOverlay(false);
+      return;
+    }
+
+    // Never show the disconnected overlay before the first successful connection.
+    if (!hasEverConnected) {
+      setShowDisconnectedOverlay(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowDisconnectedOverlay(true);
+    }, POST_CONNECT_DISCONNECT_GRACE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isConnected, hasEverConnected]);
 
   // Build queue panel state
   const [buildQueueCollapsed, setBuildQueueCollapsed] = useState(false);
@@ -626,8 +651,8 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Disconnected overlay - covers sidebar when backend is down */}
-      {!isConnected && (
+      {/* Disconnected overlay with grace periods for startup and reconnect */}
+      {!isConnected && showDisconnectedOverlay && (
         <div className="disconnected-overlay">
           <div className="disconnected-content">
             <svg className="disconnected-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
