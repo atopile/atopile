@@ -28,7 +28,6 @@ import {
   type SelectedPackage,
   type SelectedPart,
 } from './sidebar-modules';
-import { ManufacturingPanel } from './manufacturing';
 import './Sidebar.css';
 import '../styles.css';
 
@@ -225,15 +224,6 @@ export function Sidebar() {
     action('build', { projectRoot, targets: [targetName] });
   }, [panels]);
 
-  // Manufacturing panel
-  const manufacturingWizard = useStore((s) => s.manufacturingWizard);
-  const openManufacturingWizard = useStore((s) => s.openManufacturingWizard);
-  const closeManufacturingWizard = useStore((s) => s.closeManufacturingWizard);
-  const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
-    // Open the manufacturing panel with the selected target
-    openManufacturingWizard(projectRoot, [targetName]);
-  }, [openManufacturingWizard]);
-
   const handleOpenOutput = useCallback(async (
     output: 'openKiCad' | 'open3D' | 'openLayout',
     projectRoot: string,
@@ -375,7 +365,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className={`unified-layout ${selectedPackage || selectedPart || manufacturingWizard?.isOpen ? 'package-detail-open' : ''}`}>
+    <div className={`unified-layout ${selectedPackage || selectedPart ? 'package-detail-open' : ''}`}>
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
@@ -411,7 +401,6 @@ export function Sidebar() {
               // Select the newly created target
               useStore.getState().setSelectedTargets([data.name]);
             }}
-            onGenerateManufacturingData={handleGenerateManufacturingData}
           />
         </div>
 
@@ -617,14 +606,7 @@ export function Sidebar() {
             onUninstall={handlePackageUninstall}
           />
         </div>
-      ) : manufacturingWizard?.isOpen && selectedProjectRoot && projects?.find((p) => p.root === selectedProjectRoot) && (
-        <div className="detail-panel-container">
-          <ManufacturingPanel
-            project={projects.find((p) => p.root === selectedProjectRoot)!}
-            onClose={closeManufacturingWizard}
-          />
-        </div>
-      )}
+      ) : null}
 
       {/* Disconnected overlay - covers sidebar when backend is down */}
       {!isConnected && (

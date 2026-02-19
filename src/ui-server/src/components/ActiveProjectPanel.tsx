@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, ClipboardList, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
 import { useStore } from '../store'
@@ -36,7 +36,6 @@ interface ActiveProjectPanelProps {
   onOpenLayout: (projectRoot: string, targetName: string) => void
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
-  onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
 }
 
 // Helper to format path for display - shows last 2 segments
@@ -851,7 +850,6 @@ export function ActiveProjectPanel({
   onOpenLayout,
   onCreateProject,
   onCreateTarget,
-  onGenerateManufacturingData,
 }: ActiveProjectPanelProps) {
   const [showNewProjectForm, setShowNewProjectForm] = useState(false)
   const [showNewTargetForm, setShowNewTargetForm] = useState(false)
@@ -1102,24 +1100,22 @@ export function ActiveProjectPanel({
 
           <div className="action-divider" />
 
-          {onGenerateManufacturingData && (
-            <button
-              className="action-btn"
-              onClick={() => {
-                if (!activeProject || !activeTargetName) return
-                onGenerateManufacturingData(activeProject.root, activeTargetName)
-              }}
-              disabled={!activeProject || !activeTargetName}
-              title={
-                activeProject && activeTargetName
-                  ? `Generate manufacturing files for ${activeTargetName}`
-                  : 'Run a build first to generate manufacturing data'
-              }
-            >
-              <Factory size={12} />
-              <span className="action-label">Manufacture</span>
-            </button>
-          )}
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (!activeProject || !activeTargetName) return
+              postMessage({ type: 'openManufacturingDashboard', projectRoot: activeProject.root, target: activeTargetName })
+            }}
+            disabled={!activeProject || !activeTargetName}
+            title={
+              activeProject && activeTargetName
+                ? `Open Review Dashboard for ${activeTargetName}`
+                : 'Select a build first'
+            }
+          >
+            <ClipboardList size={12} />
+            <span className="action-label">Review</span>
+          </button>
         </div>
 
         {/* Migration error display */}

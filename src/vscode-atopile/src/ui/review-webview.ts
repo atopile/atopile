@@ -34,10 +34,16 @@ export function openManufacturingDashboard(
 
   panel = vscode.window.createWebviewPanel(
     'atopile.manufacturingDashboard',
-    'Manufacturing Dashboard',
+    'Review Dashboard',
     vscode.ViewColumn.One,
     webviewOptions,
   );
+
+  const config = vscode.workspace.getConfiguration('atopile');
+  if (config.get<boolean>('review.hideBars', true)) {
+    vscode.commands.executeCommand('workbench.action.closeSidebar');
+    vscode.commands.executeCommand('workbench.action.closePanel');
+  }
 
   panel.webview.html = getProdHtml(panel.webview, extensionPath, projectRoot, target);
 
@@ -59,6 +65,11 @@ export function openManufacturingDashboard(
   });
 
   panel.onDidDispose(() => {
+    const cfg = vscode.workspace.getConfiguration('atopile');
+    if (cfg.get<boolean>('review.restoreBars', true)) {
+      vscode.commands.executeCommand('workbench.action.focusSidebarPart');
+      vscode.commands.executeCommand('workbench.action.focusPanel');
+    }
     panel = undefined;
   });
 }
@@ -128,7 +139,7 @@ function getProdHtml(
     img-src ${webview.cspSource} data: https: http:;
     connect-src ${apiUrl} ${wsOrigin};
   ">
-  <title>Manufacturing Dashboard</title>
+  <title>Review Dashboard</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
