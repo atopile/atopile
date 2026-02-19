@@ -112,51 +112,21 @@ class PinoutReport:
 # ---------------------------------------------------------------------------
 
 
-def _is_from_child_module(pin: fabll.Node, component: fabll.Node) -> bool:
-    """Check if a pin belongs to an internal sub-module (e.g., capacitor, resistor).
+def _get_iface_connected(
+    node: fabll.Node, include_self: bool = False
+) -> dict[fabll.Node, object]:
+    """Get electrically connected nodes from an interface node.
 
-    Walks from the pin up toward the component. If any intermediate node in
-    the path has the ``is_module`` trait, the pin is internal implementation
-    detail and should not appear in the pinout.
-    """
-    comp_full = component.get_full_name()
-    current = pin
-    while True:
-        parent_info = current.get_parent()
-        if parent_info is None:
-            return False
-        parent_node, _ = parent_info
-        parent_full = parent_node.get_full_name()
-        # Reached the component itself – no intermediate module found
-        if parent_full == comp_full:
-            return False
-        # Left the component's namespace
-        if not parent_full.startswith(comp_full + "."):
-            return False
-        # Intermediate node is a module → pin is internal
-        if parent_node.try_get_trait(fabll.is_module):
-            return True
-        current = parent_node
-
-
-def _has_connections(pin: fabll.Node) -> bool:
-    """Check if a pin has any electrical connections (is not floating).
-
-    For ElectricLogic / ElectricSignal, checks the signal *line*.
-    For ElectricPower, checks the top-level interface.
+    Works with both typed wrapper objects (which have ``._is_interface``)
+    and raw ``Node`` objects (which need the trait system).
     """
     try:
-        if pin.isinstance(F.ElectricLogic) or pin.isinstance(F.ElectricSignal):
-            line_iface = pin.line.get()._is_interface.get()
-            connected = line_iface.get_connected(include_self=False)
-            return bool(connected)
-        elif pin.isinstance(F.ElectricPower):
-            iface = pin._is_interface.get()
-            connected = iface.get_connected(include_self=False)
-            return bool(connected)
-    except Exception:
-        pass
-    return False
+        return node._is_interface.get().get_connected(include_self=include_self)
+    except AttributeError:
+        iface_trait = node.try_get_trait(fabll.is_interface)
+        if iface_trait is not None:
+            return iface_trait.get_connected(include_self=include_self)
+        return {}
 
 
 def _get_pin_name_relative_to(pin: fabll.Node, component: fabll.Node) -> str:
@@ -238,8 +208,7 @@ def _find_interface_assignments_via_connections(
         if not (pin.isinstance(F.ElectricLogic) or pin.isinstance(F.ElectricSignal)):
             return interfaces
 
-        line_iface = pin.line.get()._is_interface.get()
-        connected = line_iface.get_connected(include_self=False)
+        connected = _get_iface_connected(pin.line.get())
 
         for conn_node, _ in connected.items():
             conn_full = conn_node.get_full_name()
@@ -334,14 +303,12 @@ def _find_external_connections(
     # For ElectricLogic/ElectricSignal, check the line's connections
     if pin.isinstance(F.ElectricLogic) or pin.isinstance(F.ElectricSignal):
         try:
-            line_iface = pin.line.get()._is_interface.get()
-            _collect(line_iface.get_connected(include_self=False))
+            _collect(_get_iface_connected(pin.line.get()))
         except Exception:
             logger.debug("Could not get connections for %s", pin.get_full_name())
     elif pin.isinstance(F.ElectricPower):
         try:
-            iface = pin._is_interface.get()
-            _collect(iface.get_connected(include_self=False))
+            _collect(_get_iface_connected(pin))
         except Exception:
             logger.debug("Could not get power connections for %s", pin.get_full_name())
 
@@ -393,14 +360,12 @@ def _find_internal_connections(
 
     if pin.isinstance(F.ElectricLogic) or pin.isinstance(F.ElectricSignal):
         try:
-            line_iface = pin.line.get()._is_interface.get()
-            _collect(line_iface.get_connected(include_self=False))
+            _collect(_get_iface_connected(pin.line.get()))
         except Exception:
             pass
     elif pin.isinstance(F.ElectricPower):
         try:
-            iface = pin._is_interface.get()
-            _collect(iface.get_connected(include_self=False))
+            _collect(_get_iface_connected(pin))
         except Exception:
             pass
 
@@ -462,6 +427,18 @@ def _find_ic_module(
             ic_leads = leads
             ic_module = child
             ic_module_full = child.get_full_name()
+
+    # Fallback: component itself is a bare package (e.g. signal PA0 ~ pin D5)
+    if best_count == 0 and component.try_get_trait(F.is_atomic_part):
+        leads = component.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Lead.is_lead,
+        )
+        if leads:
+            ic_leads = leads
+            ic_module = component
+            ic_module_full = component.get_full_name()
 
     return ic_leads, ic_module, ic_module_full
 
@@ -598,67 +575,6 @@ def _extract_footprint_geometry(
     return pads, drawings
 
 
-def _extract_pin_numbers(
-    pin: fabll.Node,
-    component: fabll.Node,
-    ic_leads: list[fabll.Node],
-) -> list[tuple[str, str | None]]:
-    """Extract physical pad numbers by tracing to IC package leads.
-
-    Returns a list of ``(pad_number, sub_key)`` tuples.  *sub_key* is
-    ``"hv"`` or ``"lv"`` for ``ElectricPower`` pins (needed to resolve the
-    correct net name per pad), or ``None`` for signal pins.
-
-    Each physical pad gets its own entry (1 pad = 1 row).
-    """
-    comp_full = component.get_full_name()
-    results: list[tuple[str, str | None]] = []
-
-    def _is_ic_lead(node: fabll.Node) -> bool:
-        return any(node.is_same(lead) for lead in ic_leads)
-
-    def _check_leads_from_interface(iface: fabll.Node, sub_key: str | None) -> None:
-        try:
-            connected = iface.get_connected(include_self=False)
-            for conn_node, _path in connected.items():
-                if not _is_ic_lead(conn_node):
-                    continue
-                conn_full = conn_node.get_full_name()
-                if not conn_full.startswith(comp_full + "."):
-                    continue
-                lead_t = conn_node.get_trait(F.Lead.is_lead)
-                if lead_t.has_trait(F.Lead.has_associated_pads):
-                    for pad in lead_t.get_trait(F.Lead.has_associated_pads).get_pads():
-                        results.append((pad.pad_number, sub_key))
-        except Exception:
-            pass
-
-    try:
-        if pin.isinstance(F.ElectricLogic) or pin.isinstance(F.ElectricSignal):
-            _check_leads_from_interface(pin.line.get()._is_interface.get(), None)
-        elif pin.isinstance(F.ElectricPower):
-            for sub_name in ["hv", "lv"]:
-                try:
-                    sub = getattr(pin, sub_name).get()
-                    _check_leads_from_interface(sub._is_interface.get(), sub_name)
-                except Exception:
-                    pass
-    except Exception:
-        logger.debug("Could not extract pin numbers for %s", pin.get_full_name())
-
-    # Deduplicate by pad number, preserving order, then sort numerically
-    seen: set[str] = set()
-    unique_results: list[tuple[str, str | None]] = []
-    for pad_num, sub_key in results:
-        if pad_num not in seen:
-            seen.add(pad_num)
-            unique_results.append((pad_num, sub_key))
-    unique_results.sort(
-        key=lambda x: int(x[0]) if x[0].isdigit() else float("inf"),
-    )
-    return unique_results
-
-
 def _extract_net_name(pin: fabll.Node, sub_key: str | None = None) -> str | None:
     """Get the net name by finding the F.Net connected to the pin's electrical bus.
 
@@ -700,6 +616,150 @@ def _extract_net_name(pin: fabll.Node, sub_key: str | None = None) -> str | None
                         pass
     except Exception:
         logger.debug("Could not extract net name for %s", pin.get_full_name())
+    return None
+
+
+def _find_typed_pin_for_lead(
+    lead: fabll.Node,
+    component: fabll.Node,
+    ic_module_full: str | None,
+) -> tuple[fabll.Node | None, str | None]:
+    """Trace outward from a lead to find the best typed interface it connects to.
+
+    Walks the electrical connections from the lead, skipping other leads and
+    nodes internal to the IC module.  For each candidate node, walks up the
+    parent chain looking for an ``ElectricLogic``, ``ElectricSignal``, or
+    ``ElectricPower`` ancestor.
+
+    When multiple typed pins are found (e.g. ``io[17]`` and ``adc[17]`` for
+    the same lead), picks the best one using priority:
+      - ElectricLogic > ElectricSignal > ElectricPower
+      - Shallower pins (fewer dots in relative name) win ties
+
+    Returns ``(typed_pin, sub_key)`` where *sub_key* is ``"hv"``/``"lv"``
+    for power sub-interfaces, or ``None`` otherwise.
+    """
+    comp_full = component.get_full_name()
+    is_bare = ic_module_full == comp_full
+    pin_types = (F.ElectricLogic, F.ElectricSignal, F.ElectricPower)
+    type_priority = {F.ElectricLogic: 0, F.ElectricSignal: 1, F.ElectricPower: 2}
+
+    try:
+        iface_trait = lead.try_get_trait(fabll.is_interface)
+        if iface_trait is None:
+            return None, None
+        connected = iface_trait.get_connected(include_self=False)
+    except Exception:
+        return None, None
+
+    # Collect all candidate typed pins with their priority scores
+    # Key: typed_pin full name → (score, typed_pin, sub_key)
+    candidates: dict[str, tuple[tuple[int, int], fabll.Node, str | None]] = {}
+
+    for conn_node, _ in connected.items():
+        conn_full = conn_node.get_full_name()
+
+        # Must be within the component
+        if not conn_full.startswith(comp_full + "."):
+            continue
+        # Skip other leads
+        if conn_node.try_get_trait(F.Lead.is_lead) is not None:
+            continue
+        # For non-bare packages, skip nodes inside the IC module
+        if (
+            not is_bare
+            and ic_module_full
+            and conn_full.startswith(ic_module_full + ".")
+        ):
+            continue
+
+        # Walk up from conn_node to find the nearest typed interface ancestor
+        current = conn_node
+        while True:
+            parent_info = current.get_parent()
+            if parent_info is None:
+                break
+            parent_node, name = parent_info
+            parent_full = parent_node.get_full_name()
+            if not parent_full.startswith(comp_full):
+                break
+
+            found = False
+            for pt in pin_types:
+                if parent_node.isinstance(pt):
+                    sub_key = None
+                    if parent_node.isinstance(F.ElectricPower) and name in (
+                        "hv",
+                        "lv",
+                    ):
+                        sub_key = name
+
+                    dedup = f"{parent_full}:{sub_key or ''}"
+                    if dedup not in candidates:
+                        rel_name = _get_pin_name_relative_to(parent_node, component)
+                        depth = rel_name.count(".")
+                        tp = type_priority.get(pt, 99)
+                        # Cast to typed wrapper so callers can access
+                        # type-specific fields (.line, .reference, etc.)
+                        typed = parent_node.cast(pt)
+                        candidates[dedup] = ((depth, tp), typed, sub_key)
+                    found = True
+                    break
+            if found:
+                break  # stop walking up once we find the nearest typed ancestor
+
+            current = parent_node
+
+    if not candidates:
+        return None, None
+
+    # Pick the candidate with the lowest score (shallowest, best type)
+    best = min(candidates.values(), key=lambda x: x[0])
+    return best[1], best[2]
+
+
+def _find_package_pin_name_for_lead(
+    lead: fabll.Node,
+    ic_module: fabll.Node,
+    ic_module_full: str,
+) -> str | None:
+    """Find the signal name from the package definition for a lead.
+
+    Walks from the lead into the IC module/package to find the signal node
+    it connects to.  For example, for an ESP32 lead at pad 4, this returns
+    ``"IO4"`` (from ``signal IO4 ~ pin 4`` in the package ``.ato``).
+    """
+    try:
+        iface_trait = lead.try_get_trait(fabll.is_interface)
+        if iface_trait is None:
+            return None
+        connected = iface_trait.get_connected(include_self=False)
+    except Exception:
+        return None
+
+    for conn_node, _ in connected.items():
+        conn_full = conn_node.get_full_name()
+        # Must be inside the IC module
+        if not conn_full.startswith(ic_module_full + "."):
+            continue
+        # Skip other leads
+        if conn_node.try_get_trait(F.Lead.is_lead) is not None:
+            continue
+
+        # Walk up to find the direct child of the IC module
+        current = conn_node
+        while True:
+            parent_info = current.get_parent()
+            if parent_info is None:
+                break
+            parent_node, child_name = parent_info
+            parent_full = parent_node.get_full_name()
+            if parent_full == ic_module_full:
+                return child_name
+            if not parent_full.startswith(ic_module_full + "."):
+                break
+            current = parent_node
+
     return None
 
 
@@ -763,159 +823,104 @@ def extract_pinout(
                 _extract_footprint_geometry(ic_module)
             )
 
-        # Collect all pin-like children (ElectricLogic, ElectricSignal, ElectricPower)
-        pin_types = (F.ElectricLogic, F.ElectricSignal, F.ElectricPower)
+        # ----- Lead-first discovery -----
+        # Each physical pad/lead is one row. From each lead we explore
+        # outward to discover whatever metadata the graph provides.
+        seen_typed_pins: set[str] = set()  # dedup: only first lead per typed pin
 
-        all_pins: list[fabll.Node] = []
-        for pin_type in pin_types:
-            all_pins.extend(
-                comp.get_children(
-                    direct_only=False,
-                    types=pin_type,
-                    include_root=False,
-                    required_trait=fabll.is_interface,
-                )
+        for lead in ic_leads:
+            lead_t = lead.try_get_trait(F.Lead.is_lead)
+            if lead_t is None or not lead_t.has_trait(F.Lead.has_associated_pads):
+                continue
+
+            # --- Get the package-level signal name (e.g. "IO4", "EN", "GND") ---
+            package_pin_name = (
+                _find_package_pin_name_for_lead(lead, ic_module, ic_module_full)
+                if ic_module is not None and ic_module_full is not None
+                else None
             )
 
-        # Filter out sub-pins that are children of other pin-like types
-        # e.g., gpio[0].reference (ElectricPower) is a child of gpio[0]
-        # (ElectricLogic) and should not be a separate entry.
-        # Also filter out internal/private nodes (names containing '._').
-        pin_full_names = {p.get_full_name() for p in all_pins}
-        filtered_pins = []
-        for pin in all_pins:
-            pin_name = _get_pin_name_relative_to(pin, comp)
-            # Skip internal/private nodes
-            if "._" in pin_name:
-                continue
-            parent_info = pin.get_parent()
-            if parent_info is not None:
-                parent_node, _child_name = parent_info
-                if parent_node.get_full_name() in pin_full_names:
-                    continue  # Skip: parent is also a pin-type node
-            filtered_pins.append(pin)
+            # --- Try to find a typed interface connected to this lead ---
+            typed_pin, sub_key = _find_typed_pin_for_lead(lead, comp, ic_module_full)
 
-        # --- Additional filters ---
-
-        # Filter: Remove pins from internal sub-modules (capacitors,
-        # resistors, the IC package, etc.).  These are implementation
-        # details, not exposed module interfaces.
-        filtered_pins = [p for p in filtered_pins if not _is_from_child_module(p, comp)]
-
-        # Filter: Remove floating pins (no electrical connections at all).
-        # This catches unmapped GPIO indices (e.g. io[22-34] on the
-        # ESP32-WROOM) and unused protocol sub-pins (e.g. uart0.cts).
-        filtered_pins = [p for p in filtered_pins if _has_connections(p)]
-
-        # Filter: Remove ElectricSignal aliases that duplicate an
-        # ElectricLogic pin they are connected to (e.g. touch[1] and
-        # adc[1] are aliases of io[1]).
-        logic_line_names: set[str] = set()
-        for pin in filtered_pins:
-            if pin.isinstance(F.ElectricLogic):
-                try:
-                    logic_line_names.add(pin.line.get().get_full_name())
-                except Exception:
+            if typed_pin is not None:
+                typed_full = typed_pin.get_full_name()
+                # Dedup key: skip alias typed pins that another lead
+                # already resolved to.  For power pins, include sub_key
+                # so hv and lv are treated separately.
+                dedup_key = f"{typed_full}:{sub_key or ''}"
+                if dedup_key in seen_typed_pins:
+                    # Still emit the pad row, just reuse the metadata
                     pass
+                seen_typed_pins.add(dedup_key)
 
-        deduped_pins: list[fabll.Node] = []
-        for pin in filtered_pins:
-            # Skip ElectricSignal aliases (e.g. touch[1] → io[1])
-            if pin.isinstance(F.ElectricSignal):
-                try:
-                    line_iface = pin.line.get()._is_interface.get()
-                    connected = line_iface.get_connected(include_self=False)
-                    is_alias = any(
-                        cn.get_full_name() in logic_line_names
-                        for cn, _ in connected.items()
-                    )
-                    if is_alias:
-                        continue
-                except Exception:
-                    pass
+                pin_name = package_pin_name
+                signal_type = _detect_signal_type(typed_pin)
+                direction = _detect_direction(typed_pin)
+                interfaces = _find_interface_assignments(typed_pin, comp)
+                interfaces.extend(
+                    _find_interface_assignments_via_connections(typed_pin, comp)
+                )
+                interfaces = list(dict.fromkeys(interfaces))
+                connected_to = _find_external_connections(typed_pin, comp, app_prefix)
+                connected_to.extend(
+                    _find_internal_connections(typed_pin, comp, ic_module_full)
+                )
+                voltage = _extract_voltage(typed_pin)
 
-            # Skip ElectricLogic pins that are aliases of another
-            # ElectricLogic already in the list.  This catches:
-            #   - Known interface aliases (i2c.sda → io[8], spi.mosi → io[11])
-            #   - Standalone aliases  (spi_cs → io[10])
-            # We only skip non-array pins (e.g. "spi_cs") when they're
-            # connected to an array pin (e.g. "io[10]") to avoid removing
-            # the canonical io[] entries.
-            if pin.isinstance(F.ElectricLogic):
-                rel = _get_pin_name_relative_to(pin, comp)
-                is_array_pin = bool(re.match(r"^(\w+)\[\d+\]$", rel))
-                if not is_array_pin:
-                    try:
-                        own_line = pin.line.get().get_full_name()
-                        line_iface = pin.line.get()._is_interface.get()
-                        connected = line_iface.get_connected(include_self=False)
-                        is_alias = any(
-                            cn.get_full_name() in logic_line_names
-                            and cn.get_full_name() != own_line
-                            for cn, _ in connected.items()
-                        )
-                        if is_alias:
-                            continue
-                    except Exception:
-                        pass
-
-            deduped_pins.append(pin)
-        filtered_pins = deduped_pins
-
-        for pin in filtered_pins:
-            pad_entries = _extract_pin_numbers(pin, comp, ic_leads)
-            base_signal_type = _detect_signal_type(pin)
-            direction = _detect_direction(pin)
-            interfaces = _find_interface_assignments(pin, comp)
-            interfaces.extend(_find_interface_assignments_via_connections(pin, comp))
-            # Deduplicate while preserving order
-            interfaces = list(dict.fromkeys(interfaces))
-            connected_to = _find_external_connections(pin, comp, app_prefix)
-            connected_to.extend(_find_internal_connections(pin, comp, ic_module_full))
-            voltage = _extract_voltage(pin)
-
-            # Emit one row per physical pad (1 pin = 1 row)
-            if not pad_entries:
-                pad_entries = [(None, None)]
-
-            for pad_number, sub_key in pad_entries:
-                net_name = _extract_net_name(pin, sub_key)
-                signal_type = base_signal_type
-
-                # Add power polarity to interfaces for power pads
-                pad_interfaces = list(interfaces)
-                if base_signal_type == "power" and sub_key:
+                # Power polarity
+                if signal_type == "power" and sub_key:
                     polarity = "Power (VCC)" if sub_key == "hv" else "Power (GND)"
-                    pad_interfaces.insert(0, polarity)
+                    interfaces.insert(0, polarity)
 
+            else:
+                pin_name = package_pin_name
+                signal_type = ""
+                direction = "bidirectional"
+                interfaces = []
+                connected_to = []
+                voltage = None
+                sub_key = None
+
+            # One row per physical pad on this lead
+            for pad in lead_t.get_trait(F.Lead.has_associated_pads).get_pads():
+                pad_number = pad.pad_number
+                net_name = (
+                    _extract_net_name(typed_pin, sub_key)
+                    if typed_pin is not None
+                    else None
+                )
                 notes: list[str] = []
                 if not connected_to:
                     notes.append("Unconnected pin")
-                pin_name = (
-                    pad_number if pad_number else _get_pin_name_relative_to(pin, comp)
-                )
 
-                pin_info = PinInfo(
-                    pin_name=pin_name,
-                    pin_number=pad_number,
-                    net_name=net_name,
-                    signal_type=signal_type,
-                    direction=direction,
-                    interfaces=pad_interfaces,
-                    connected_to=connected_to,
-                    voltage=voltage,
-                    notes=notes,
+                pinout_comp.pins.append(
+                    PinInfo(
+                        pin_name=pin_name,
+                        pin_number=pad_number,
+                        net_name=net_name,
+                        signal_type=signal_type,
+                        direction=direction,
+                        interfaces=list(interfaces),
+                        connected_to=list(connected_to),
+                        voltage=voltage,
+                        notes=notes,
+                    )
                 )
-                pinout_comp.pins.append(pin_info)
 
         # Sort pins by pad number (numerically) when available, then by name
-        def _pin_sort_key(p: PinInfo) -> tuple[int, str]:
+        def _pin_sort_key(p: PinInfo) -> tuple[int, str, int, str]:
             if p.pin_number:
                 try:
-                    return (int(p.pin_number), p.pin_name)
+                    return (0, "", int(p.pin_number), p.pin_name)
                 except ValueError:
                     pass
-            return (9999, p.pin_name)
+                # BGA-style alphanumeric (e.g. A1, D5, K10)
+                m = re.match(r"^([A-Za-z]+)(\d+)$", p.pin_number)
+                if m:
+                    return (1, m.group(1).upper(), int(m.group(2)), p.pin_name)
+                return (2, p.pin_number, 0, p.pin_name)
+            return (3, "", 0, p.pin_name)
 
         pinout_comp.pins.sort(key=_pin_sort_key)
 

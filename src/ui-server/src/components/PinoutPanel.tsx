@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { api } from '../api/client'
 import type { PinoutData, PinInfo } from '../types/build'
 import { FootprintViewerCanvas } from './FootprintViewerCanvas'
@@ -36,7 +36,7 @@ function SignalBadge({ type }: { type: string }) {
 //  Sortable header
 // ---------------------------------------------------------------------------
 
-type SortKey = 'pin_name' | 'signal_type' | 'interfaces' | 'connected_to' | 'net_name'
+type SortKey = 'pin_number' | 'pin_name' | 'signal_type' | 'interfaces' | 'connected_to' | 'net_name'
 type SortDir = 'asc' | 'desc'
 
 function SortHeader({ label, sortKey, currentSort, currentDir, onSort }: {
@@ -65,17 +65,54 @@ export function PinoutPanel() {
   const [projects, setProjects] = useState<{ root: string; name: string }[]>([])
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [targets, setTargets] = useState<string[]>([])
-  const [selectedTarget, setSelectedTarget] = useState<string>('default')
+  const [selectedTarget, setSelectedTarget] = useState<string>('')
   const [report, setReport] = useState<PinoutData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedComp, setSelectedComp] = useState(0)
   const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('pin_name')
+  const [sortKey, setSortKey] = useState<SortKey>('pin_number')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [hoveredPinNumber, setHoveredPinNumber] = useState<string | null>(null)
   const [filterSignalType, setFilterSignalType] = useState<string>('all')
   const [filterConnection, setFilterConnection] = useState<string>('all')
+
+  // Track mouse position + update hover on scroll
+  const mousePos = useRef<{ x: number; y: number } | null>(null)
+
+  const updateHoverFromPoint = useCallback((x: number, y: number) => {
+    const el = document.elementFromPoint(x, y)
+    if (!el) return
+    const row = el.closest('tr[id^="pin-row-"]')
+    if (row) {
+      const pinNum = row.id.replace('pin-row-', '')
+      setHoveredPinNumber(pinNum)
+    } else {
+      setHoveredPinNumber(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      mousePos.current = { x: e.clientX, y: e.clientY }
+    }
+    const onWheel = () => {
+      // Check after the scroll has been applied to the DOM
+      requestAnimationFrame(() => {
+        if (mousePos.current) {
+          updateHoverFromPoint(mousePos.current.x, mousePos.current.y)
+        }
+      })
+    }
+
+    // Use document-level listeners so they work inside VS Code webview iframes
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('wheel', onWheel, { passive: true })
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('wheel', onWheel)
+    }
+  }, [updateHoverFromPoint])
 
   // Load projects on mount
   useEffect(() => {
@@ -83,9 +120,6 @@ export function PinoutPanel() {
       .then(data => {
         const projs = (data.projects || []).map(p => ({ root: p.root, name: p.name }))
         setProjects(projs)
-        if (projs.length > 0 && !selectedProject) {
-          setSelectedProject(projs[0].root)
-        }
       })
       .catch(() => setProjects([]))
   }, [])
@@ -93,12 +127,11 @@ export function PinoutPanel() {
   // Load targets when project changes
   useEffect(() => {
     if (!selectedProject) return
+    setTargets([])
+    setSelectedTarget('')
     api.pinout.targets(selectedProject)
       .then(data => {
         setTargets(data.targets || [])
-        if (data.targets?.length > 0) {
-          setSelectedTarget(data.targets[0])
-        }
       })
       .catch(() => setTargets([]))
   }, [selectedProject])
@@ -147,6 +180,7 @@ export function PinoutPanel() {
       const q = search.toLowerCase()
       pins = pins.filter(p =>
         p.pin_name.toLowerCase().includes(q) ||
+        (p.pin_number && p.pin_number.toLowerCase().includes(q)) ||
         p.interfaces.some(i => i.toLowerCase().includes(q)) ||
         p.connected_to.some(c => c.toLowerCase().includes(q)) ||
         (p.net_name && p.net_name.toLowerCase().includes(q))
@@ -157,6 +191,7 @@ export function PinoutPanel() {
     pins = [...pins].sort((a, b) => {
       let va: string, vb: string
       switch (sortKey) {
+        case 'pin_number': va = a.pin_number || ''; vb = b.pin_number || ''; break
         case 'pin_name': va = a.pin_name; vb = b.pin_name; break
         case 'signal_type': va = a.signal_type; vb = b.signal_type; break
         case 'interfaces': va = a.interfaces.join(','); vb = b.interfaces.join(','); break
@@ -254,18 +289,16 @@ export function PinoutPanel() {
         <h2 style={{ margin: 0, fontWeight: 500 }}>Pinout Table</h2>
 
         {/* Project selector */}
-        {projects.length > 1 && (
-          <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={selectStyle}>
-            {projects.map(p => <option key={p.root} value={p.root}>{p.name}</option>)}
-          </select>
-        )}
+        <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={selectStyle}>
+          <option value="">Select project...</option>
+          {projects.map(p => <option key={p.root} value={p.root}>{p.name}</option>)}
+        </select>
 
         {/* Target selector */}
-        {targets.length > 1 && (
-          <select value={selectedTarget} onChange={e => setSelectedTarget(e.target.value)} style={selectStyle}>
-            {targets.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        )}
+        <select value={selectedTarget} onChange={e => setSelectedTarget(e.target.value)} style={selectStyle} disabled={!selectedProject}>
+          <option value="">Select target...</option>
+          {targets.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
 
         {/* Component tabs */}
         {report.components.length > 1 && (
@@ -351,7 +384,8 @@ export function PinoutPanel() {
                 top: 0,
                 zIndex: 1,
               }}>
-                <SortHeader label="Pin Name" sortKey="pin_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Pin #" sortKey="pin_number" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Signal Name" sortKey="pin_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 <SortHeader label="Signal Type" sortKey="signal_type" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 <SortHeader label="Interfaces" sortKey="interfaces" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 <SortHeader label="Connected To" sortKey="connected_to" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
@@ -378,12 +412,10 @@ export function PinoutPanel() {
                     onMouseLeave={() => setHoveredPinNumber(prev => prev === pin.pin_number ? null : prev)}
                   >
                     <td style={cellStyle}>
+                      <code style={{ opacity: 0.7 }}>{pin.pin_number || '-'}</code>
+                    </td>
+                    <td style={cellStyle}>
                       <code style={{ fontWeight: 500 }}>{pin.pin_name}</code>
-                      {pin.pin_number && (
-                        <span style={{ marginLeft: 6, opacity: 0.5, fontSize: '0.85em' }}>
-                          (#{pin.pin_number})
-                        </span>
-                      )}
                     </td>
                     <td style={cellStyle}>
                       <SignalBadge type={pin.signal_type} />
