@@ -21,7 +21,9 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
-import { WebSocket as NodeWebSocket } from 'ws';
+import { WebviewProxyBridge } from '../common/webview-bridge';
+import type { FetchProxyRequest, WsProxyConnect, WsProxySend, WsProxyClose } from '../common/webview-bridge';
+import { generateBridgeRuntime } from '../common/webview-bridge-runtime';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -45,35 +47,6 @@ interface AtopileSettingsMessage {
     source?: string;
     localPath?: string | null;
   };
-}
-
-interface FetchProxyRequest {
-  type: 'fetchProxy';
-  id: number;
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  body: string | null;
-}
-
-// WebSocket proxy: bridges webview WebSocket connections through the extension host.
-// In OpenVSCode Server, webviews are served from HTTPS CDN which blocks
-// ws:// connections to the local backend (Mixed Content).
-interface WsProxyConnect {
-  type: 'wsProxyConnect';
-  id: number;
-  url: string;
-}
-interface WsProxySend {
-  type: 'wsProxySend';
-  id: number;
-  data: string;
-}
-interface WsProxyClose {
-  type: 'wsProxyClose';
-  id: number;
-  code?: number;
-  reason?: string;
 }
 
 interface SelectionChangedMessage {
@@ -261,8 +234,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
   private _lastAtopileSettingsKey: string | null = null;
-  private _wsProxies: Map<number, NodeWebSocket> = new Map();
-  private _wsProxyRetryTimers: Map<number, NodeJS.Timeout> = new Map();
+  private _bridge: WebviewProxyBridge;
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
   private _fileChangeDebounce: NodeJS.Timeout | null = null;
@@ -272,6 +244,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly _extensionVersion: string,
     private readonly _activationTime: number = Date.now()
   ) {
+    this._bridge = new WebviewProxyBridge({
+      postToWebview: (msg) => this._postToWebview(msg),
+      logTag: 'SidebarProvider',
+    });
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
         if (connected) {
@@ -313,16 +289,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._disposables = [];
     this._disposeFileWatcher();
-    // Clean up all WebSocket proxy connections
-    for (const ws of this._wsProxies.values()) {
-      ws.removeAllListeners();
-      ws.close();
-    }
-    this._wsProxies.clear();
-    for (const timer of this._wsProxyRetryTimers.values()) {
-      clearTimeout(timer);
-    }
-    this._wsProxyRetryTimers.clear();
+    this._bridge.dispose();
   }
 
   private _disposeFileWatcher(): void {
@@ -552,6 +519,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * Handle messages from the webview (forwarded from ui-server via postMessage).
    */
   private _handleWebviewMessage(message: WebviewMessage): void {
+    // Proxy messages (fetch, WebSocket) are handled by the shared bridge
+    if (this._bridge.handleMessage(message)) return;
+
     switch (message.type) {
       case 'openSignals':
         this._handleOpenSignals(message);
@@ -781,21 +751,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // Load contents of a lazy-loaded directory
         this._handleLoadDirectory(message.projectRoot, message.directoryPath);
         break;
-      case 'fetchProxy':
-        // Proxy HTTP requests from the webview through the extension host.
-        // In OpenVSCode Server, webviews are served from HTTPS CDN which blocks
-        // HTTP fetch() to the local backend (Mixed Content).
-        this._handleFetchProxy(message);
-        break;
-      case 'wsProxyConnect':
-        this._handleWsProxyConnect(message as WsProxyConnect);
-        break;
-      case 'wsProxySend':
-        this._handleWsProxySend(message as WsProxySend);
-        break;
-      case 'wsProxyClose':
-        this._handleWsProxyClose(message as WsProxyClose);
-        break;
       case 'threeDModelBuildResult':
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
@@ -806,203 +761,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         openMigratePreview(this._extensionUri, message.projectRoot);
         break;
       default:
-        traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
-    }
-  }
-
-  private _handleFetchProxy(req: FetchProxyRequest): void {
-    // Rewrite the URL to use the internal backend address.
-    // The webview sends the browser-visible URL (e.g. https://host/proxy/8501/...),
-    // but the extension host should always connect directly to the local backend.
-    let url = req.url;
-    try {
-      const externalBase = backendServer.apiUrl;
-      const internalBase = backendServer.internalApiUrl || externalBase;
-      if (externalBase && internalBase && url.startsWith(externalBase)) {
-        url = internalBase + url.slice(externalBase.length);
-      }
-    } catch {
-      // Use URL as-is if rewriting fails
-    }
-
-    const init: Record<string, unknown> = {
-      method: req.method,
-      headers: req.headers,
-    };
-    if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {
-      init.body = req.body;
-    }
-
-    // Use Node.js native fetch (available since Node 18)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch(url, init)
-      .then(async (response: { text: () => Promise<string>; status: number; statusText: string; headers: { forEach: (cb: (v: string, k: string) => void) => void } }) => {
-        const body = await response.text();
-        const headers: Record<string, string> = {};
-        response.headers.forEach((value: string, key: string) => {
-          headers[key] = value;
-        });
-        this._view?.webview.postMessage({
-          type: 'fetchProxyResult',
-          id: req.id,
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-          body,
-        });
-      })
-      .catch((err: Error) => {
-        this._view?.webview.postMessage({
-          type: 'fetchProxyResult',
-          id: req.id,
-          error: String(err),
-        });
-      });
-  }
-
-  // --- WebSocket proxy: bridge webview WS connections through the extension host ---
-
-  private _handleWsProxyConnect(msg: WsProxyConnect): void {
-    this._clearWsProxyRetry(msg.id);
-
-    // Close any existing proxy with the same id
-    const existing = this._wsProxies.get(msg.id);
-    if (existing) {
-      existing.removeAllListeners();
-      existing.close();
-      this._wsProxies.delete(msg.id);
-    }
-
-    // Rewrite the URL to use the internal backend address.
-    // The webview sends the browser-visible URL (e.g. wss://host/ws/state),
-    // but the extension host should always connect directly to the local backend.
-    let targetUrl = msg.url;
-    try {
-      const parsed = new URL(msg.url);
-      const internalBase = backendServer.internalApiUrl || backendServer.apiUrl;
-      if (internalBase) {
-        const internal = new URL(internalBase);
-        const wsProtocol = internal.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = internal.port ? `:${internal.port}` : '';
-        targetUrl = `${wsProtocol}//${internal.hostname}${port}${parsed.pathname}${parsed.search}`;
-      }
-    } catch {
-      // Use the URL as-is if parsing fails
-    }
-
-    this._connectWsProxy(msg.id, targetUrl, 0);
-  }
-
-  private _clearWsProxyRetry(id: number): void {
-    const timer = this._wsProxyRetryTimers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this._wsProxyRetryTimers.delete(id);
-    }
-  }
-
-  private _scheduleWsProxyRetry(id: number, targetUrl: string, attempt: number): void {
-    this._clearWsProxyRetry(id);
-
-    const delayMs = 500;
-    traceInfo(`[WsProxy] Retrying id=${id} in ${delayMs}ms (attempt ${attempt})`);
-
-    const timer = setTimeout(() => {
-      this._wsProxyRetryTimers.delete(id);
-      // Do not reconnect if this socket id has been replaced or explicitly closed.
-      if (this._wsProxies.has(id)) {
-        return;
-      }
-      this._connectWsProxy(id, targetUrl, attempt);
-    }, delayMs);
-
-    this._wsProxyRetryTimers.set(id, timer);
-  }
-
-  private _isTransientWsProxyError(err: Error): boolean {
-    const message = (err.message || '').toUpperCase();
-    return (
-      message.includes('ECONNREFUSED') ||
-      message.includes('ECONNRESET') ||
-      message.includes('EHOSTUNREACH') ||
-      message.includes('ETIMEDOUT')
-    );
-  }
-
-  private _connectWsProxy(id: number, targetUrl: string, attempt: number): void {
-    traceInfo(`[WsProxy] Connecting id=${id} to ${targetUrl}${attempt > 0 ? ` (attempt ${attempt})` : ''}`);
-    const ws = new NodeWebSocket(targetUrl);
-    this._wsProxies.set(id, ws);
-
-    let suppressClose = false;
-
-    ws.on('open', () => {
-      this._clearWsProxyRetry(id);
-      traceInfo(`[WsProxy] Connected id=${id}`);
-      this._view?.webview.postMessage({ type: 'wsProxyOpen', id });
-    });
-
-    ws.on('message', (data: Buffer | string) => {
-      const payload = typeof data === 'string' ? data : data.toString('utf-8');
-      this._view?.webview.postMessage({ type: 'wsProxyMessage', id, data: payload });
-    });
-
-    ws.on('close', (code: number, reason: Buffer) => {
-      this._wsProxies.delete(id);
-      if (suppressClose) {
-        return;
-      }
-
-      traceInfo(`[WsProxy] Closed id=${id} code=${code}`);
-      this._view?.webview.postMessage({
-        type: 'wsProxyClose',
-        id,
-        code,
-        reason: reason.toString('utf-8'),
-      });
-    });
-
-    ws.on('error', (err: Error) => {
-      // During crash/restart there is a short window where serverState can still be
-      // "running" while the WS is already down. Treat that as transient too.
-      const backendNotReady = backendServer.serverState !== 'running' || !backendServer.isConnected;
-      const shouldRetry =
-        this._isTransientWsProxyError(err) &&
-        backendNotReady &&
-        attempt < 8;
-
-      if (shouldRetry) {
-        suppressClose = true;
-        this._wsProxies.delete(id);
-        traceInfo(`[WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
-        this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
-        try {
-          ws.removeAllListeners();
-          ws.close();
-        } catch {
-          // Ignore close failures during transient reconnect handling.
-        }
-        return;
-      }
-
-      traceError(`[WsProxy] Error id=${id}: ${err.message}`);
-      this._view?.webview.postMessage({ type: 'wsProxyError', id, error: err.message });
-    });
-  }
-
-  private _handleWsProxySend(msg: WsProxySend): void {
-    const ws = this._wsProxies.get(msg.id);
-    if (ws?.readyState === NodeWebSocket.OPEN) {
-      ws.send(msg.data);
-    }
-  }
-
-  private _handleWsProxyClose(msg: WsProxyClose): void {
-    this._clearWsProxyRetry(msg.id);
-    const ws = this._wsProxies.get(msg.id);
-    if (ws) {
-      ws.close(msg.code ?? 1000, msg.reason ?? '');
-      this._wsProxies.delete(msg.id);
+        traceInfo(`[SidebarProvider] Unknown message type: ${(message as { type?: string }).type}`);
     }
   }
 
@@ -1708,325 +1467,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
 
-    // Fetch/WS proxy: route backend traffic through the extension host.
-    // The webview often runs in a CDN iframe where direct localhost access
-    // is blocked (Mixed Content / cross-origin). This bridge keeps comms local.
-    (function() {
-      var originalAcquire = window.acquireVsCodeApi;
-      var vsCodeApi = null;
-      if (typeof originalAcquire === 'function') {
-        window.acquireVsCodeApi = function() {
-          if (!vsCodeApi) vsCodeApi = originalAcquire();
-          return vsCodeApi;
-        };
-      }
-
-      function getVsCodeApi() {
-        try {
-          return vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
-        } catch (err) {
-          console.error('[atopile webview] Failed to acquire VS Code API:', err);
-          return null;
-        }
-      }
-
-      function postWebviewDiagnostic(phase, detail) {
-        var payload = {
-          type: 'webviewDiagnostic',
-          phase: String(phase || ''),
-          detail: detail == null ? undefined : String(detail),
-        };
-        if (!window.__ATOPILE_DIAG_QUEUE__) {
-          window.__ATOPILE_DIAG_QUEUE__ = [];
-        }
-        window.__ATOPILE_DIAG_QUEUE__.push(payload);
-        var attempts = 0;
-        var flush = function() {
-          var api = getVsCodeApi();
-          if (!api) {
-            attempts += 1;
-            if (attempts < 40) {
-              setTimeout(flush, 250);
-            }
-            return;
-          }
-          while (window.__ATOPILE_DIAG_QUEUE__.length > 0) {
-            var msg = window.__ATOPILE_DIAG_QUEUE__.shift();
-            try {
-              api.postMessage(msg);
-            } catch (err) {
-              console.error('[atopile webview] Failed to post diagnostic:', err);
-              break;
-            }
-          }
-        };
-        try {
-          flush();
-        } catch (err) {
-          console.error('[atopile webview] Diagnostic flush failed:', err);
-        }
-      }
-
-      window.__ATOPILE_POST_DIAG__ = postWebviewDiagnostic;
-      postWebviewDiagnostic('inline-bootstrap-start');
-      window.addEventListener('error', function(event) {
-        var msg = (event && event.message) ? event.message : 'unknown error';
-        postWebviewDiagnostic('window-error', msg);
-      });
-      window.addEventListener('unhandledrejection', function(event) {
-        var reason = event && event.reason;
-        var msg = reason && reason.message ? reason.message : String(reason);
-        postWebviewDiagnostic('unhandled-rejection', msg);
-      });
-
-      function normalizeHeaders(headers) {
-        if (!headers) return {};
-        if (typeof Headers !== 'undefined' && headers instanceof Headers) {
-          var out = {};
-          headers.forEach(function(v, k) { out[k] = v; });
-          return out;
-        }
-        if (Array.isArray(headers)) {
-          var outArray = {};
-          for (var i = 0; i < headers.length; i++) {
-            var entry = headers[i];
-            if (Array.isArray(entry) && entry.length >= 2) {
-              outArray[String(entry[0])] = String(entry[1]);
-            }
-          }
-          return outArray;
-        }
-        return headers;
-      }
-
-      function createCompatEvent(type, init) {
-        var evt;
-        try {
-          if (type === 'message' && typeof MessageEvent === 'function') {
-            evt = new MessageEvent('message', { data: init && init.data });
-          } else if (type === 'close' && typeof CloseEvent === 'function') {
-            evt = new CloseEvent('close', {
-              code: (init && init.code) || 1000,
-              reason: (init && init.reason) || '',
-              wasClean: true,
-            });
-          } else {
-            evt = new Event(type);
-          }
-        } catch {
-          evt = document.createEvent('Event');
-          evt.initEvent(type, false, false);
-        }
-        if (init && init.data !== undefined && evt.data === undefined) evt.data = init.data;
-        if (init && init.code !== undefined && evt.code === undefined) evt.code = init.code;
-        if (init && init.reason !== undefined && evt.reason === undefined) evt.reason = init.reason;
-        return evt;
-      }
-
-      function createProxySocket(url, id) {
-        var listeners = { open: [], message: [], close: [], error: [] };
-        var target = {
-          _readyState: 0,
-          url: url,
-          onopen: null,
-          onmessage: null,
-          onclose: null,
-          onerror: null,
-          CONNECTING: 0,
-          OPEN: 1,
-          CLOSING: 2,
-          CLOSED: 3,
-          addEventListener: function(type, cb) {
-            if (!listeners[type] || typeof cb !== 'function') return;
-            listeners[type].push(cb);
-          },
-          removeEventListener: function(type, cb) {
-            if (!listeners[type]) return;
-            listeners[type] = listeners[type].filter(function(fn) { return fn !== cb; });
-          },
-          dispatchEvent: function(evt) {
-            var type = evt && evt.type ? evt.type : '';
-            var fns = listeners[type] || [];
-            for (var i = 0; i < fns.length; i++) {
-              try { fns[i](evt); } catch (err) { console.error(err); }
-            }
-            return true;
-          },
-          send: function(data) {
-            var api = getVsCodeApi();
-            if (api) api.postMessage({ type: 'wsProxySend', id: id, data: data });
-          },
-          close: function(code, reason) {
-            target._readyState = 2;
-            var api = getVsCodeApi();
-            if (api) api.postMessage({ type: 'wsProxyClose', id: id, code: code, reason: reason });
-          },
-        };
-        Object.defineProperty(target, 'readyState', {
-          get: function() { return target._readyState; },
-        });
-        return target;
-      }
-
-      // Fetch proxy: expose as an explicit global so the React app can use it
-      // directly. Overriding window.fetch is unreliable in VS Code webview iframes
-      // (the framework may freeze or re-assign it after our script runs).
-      var _fpId = 0;
-      var _fpPending = new Map();
-
-      window.addEventListener('message', function(event) {
-        var msg = event.data;
-        if (msg && msg.type === 'fetchProxyResult' && _fpPending.has(msg.id)) {
-          var handler = _fpPending.get(msg.id);
-          _fpPending.delete(msg.id);
-          handler(msg);
-        }
-      });
-
-      window.__ATOPILE_PROXY_FETCH__ = function(url, init) {
-        var id = ++_fpId;
-        return new Promise(function(resolve, reject) {
-          var timeout = setTimeout(function() {
-            _fpPending.delete(id);
-            reject(new TypeError('Fetch proxy timeout'));
-          }, 30000);
-
-          _fpPending.set(id, function(msg) {
-            clearTimeout(timeout);
-            if (msg.error) {
-              reject(new TypeError(msg.error));
-            } else {
-              resolve(new Response(msg.body, {
-                status: msg.status || 200,
-                statusText: msg.statusText || 'OK',
-                headers: msg.headers || {},
-              }));
-            }
-          });
-
-          var api = getVsCodeApi();
-          if (api) {
-            api.postMessage({
-              type: 'fetchProxy',
-              id: id,
-              url: url,
-              method: (init && init.method) || 'GET',
-              headers: normalizeHeaders(init && init.headers),
-              body: (init && init.body) || null,
-            });
-          } else {
-            clearTimeout(timeout);
-            _fpPending.delete(id);
-            reject(new TypeError('VS Code API not available for fetch proxy'));
-          }
-        });
-      };
-
-      var wsProxyId = 0;
-      var wsProxyInstances = new Map();
-      var NativeWebSocket = window.WebSocket;
-
-      function resolveFallbackWsUrl(url) {
-        try {
-          var parsed = new URL(url, window.location.href);
-          if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
-            return url;
-          }
-
-          var parentOrigin = '';
-          try {
-            var params = new URLSearchParams(window.location.search);
-            parentOrigin = params.get('parentOrigin') || '';
-            if (parentOrigin) parentOrigin = decodeURIComponent(parentOrigin);
-          } catch {}
-
-          if (!parentOrigin && document.referrer) {
-            try {
-              parentOrigin = new URL(document.referrer).origin;
-            } catch {}
-          }
-
-          if (!parentOrigin) {
-            return url;
-          }
-
-          var parent = new URL(parentOrigin);
-          var wsProtocol = parent.protocol === 'https:' ? 'wss:' : 'ws:';
-          return wsProtocol + '//' + parent.host + parsed.pathname + parsed.search;
-        } catch {
-          return url;
-        }
-      }
-
-      window.addEventListener('message', function(event) {
-        var msg = event.data;
-        if (!msg || !msg.type) return;
-        var instance = msg.id != null ? wsProxyInstances.get(msg.id) : null;
-        if (!instance) return;
-        switch (msg.type) {
-          case 'wsProxyOpen': {
-            instance._readyState = 1;
-            var openEvt = createCompatEvent('open');
-            if (instance.onopen) instance.onopen(openEvt);
-            instance.dispatchEvent(openEvt);
-            break;
-          }
-          case 'wsProxyMessage': {
-            var msgEvt = createCompatEvent('message', { data: msg.data });
-            if (instance.onmessage) instance.onmessage(msgEvt);
-            instance.dispatchEvent(msgEvt);
-            break;
-          }
-          case 'wsProxyClose': {
-            instance._readyState = 3;
-            var closeEvt = createCompatEvent('close', { code: msg.code || 1000, reason: msg.reason || '' });
-            if (instance.onclose) instance.onclose(closeEvt);
-            instance.dispatchEvent(closeEvt);
-            wsProxyInstances.delete(msg.id);
-            break;
-          }
-          case 'wsProxyError': {
-            var errEvt = createCompatEvent('error');
-            if (instance.onerror) instance.onerror(errEvt);
-            instance.dispatchEvent(errEvt);
-            break;
-          }
-        }
-      });
-
-      function ProxyWebSocket(url, protocols) {
-        var api = getVsCodeApi();
-        if (!api && typeof NativeWebSocket === 'function') {
-          var fallbackUrl = resolveFallbackWsUrl(url);
-          return protocols !== undefined
-            ? new NativeWebSocket(fallbackUrl, protocols)
-            : new NativeWebSocket(fallbackUrl);
-        }
-
-        var id = ++wsProxyId;
-        var target = createProxySocket(url, id);
-        wsProxyInstances.set(id, target);
-        if (api) {
-          try {
-            api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
-          } catch {
-            wsProxyInstances.delete(id);
-            if (typeof NativeWebSocket === 'function') {
-              var fallbackUrl = resolveFallbackWsUrl(url);
-              return protocols !== undefined
-                ? new NativeWebSocket(fallbackUrl, protocols)
-                : new NativeWebSocket(fallbackUrl);
-            }
-          }
-        }
-        return target;
-      }
-      ProxyWebSocket.CONNECTING = 0;
-      ProxyWebSocket.OPEN = 1;
-      ProxyWebSocket.CLOSING = 2;
-      ProxyWebSocket.CLOSED = 3;
-      window.WebSocket = ProxyWebSocket;
-    })();
+    ${generateBridgeRuntime({ apiUrl, diagnostics: true, fetchMode: 'global' })}
 
     document.addEventListener('DOMContentLoaded', function() {
       var loading = document.getElementById('atopile-loading');

@@ -519,6 +519,7 @@ class BackendServerManager implements vscode.Disposable {
                     this._serverReady = true;
                     this._serverState = 'running';
                     this._updateStatusBar();
+                    this._onStatusChange.fire(true);
                     this._onWebviewMessage.fire({
                         type: 'atopileInstalling',
                         message: 'Connecting to server...',
@@ -710,6 +711,7 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
+                this._onStatusChange.fire(true);
 
                 // Send progress update: server ready (will be cleared by WebSocket connection)
                 this._onWebviewMessage.fire({
