@@ -22,6 +22,7 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
+import { openMultiboardViewerPreview } from '../ui/multiboard-viewer';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -33,6 +34,7 @@ interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openMultiboard?: string | null;
 }
 
 interface ConnectionStatusMessage {
@@ -769,6 +771,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (msg.open3d) {
       void this._open3dPreview(msg.open3d);
     }
+    if (msg.openMultiboard) {
+      void this._openMultiboardPreview(msg.openMultiboard);
+    }
   }
 
   /**
@@ -841,6 +846,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
       vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
     });
+  }
+
+  private async _openMultiboardPreview(filePath: string): Promise<void> {
+    const manifestPath = this._resolveFilePath(filePath, '.json') ?? filePath;
+    traceInfo(`[SidebarProvider] Opening multiboard viewer for: ${manifestPath}`);
+
+    await openMultiboardViewerPreview(manifestPath);
   }
 
   private async _open3dPreview(filePath: string): Promise<void> {

@@ -587,6 +587,12 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
         - `I2C.requires_unique_addresses`
         - `requires_external_usage`
     """
+    cross_board_drc: str | None = Field(default=None)
+    """Cross-board DRC mode: 'warning', 'error', or None (auto)"""
+
+    boards: list[str] = Field(default_factory=list)
+    """List of sub-board target names for system-level builds."""
+
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_designators: bool | None = Field(default=True)

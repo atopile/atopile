@@ -1,0 +1,47 @@
+#pragma experiment("TRAITS")
+#pragma experiment("FOR_LOOP")
+
+import LED
+import Resistor
+import Capacitor
+import ElectricPower
+import Electrical
+import is_board
+
+module LEDPanel:
+    """LED panel with 4 LEDs and current-limiting resistors."""
+    trait is_board
+
+    power = new ElectricPower
+    data_in = new Electrical
+
+    # Bulk decoupling on power input
+    bulk_cap = new Capacitor
+    assert bulk_cap.capacitance within 10uF +/- 20%
+    bulk_cap.package = "C0603"
+    power.hv ~ bulk_cap.unnamed[0]
+    bulk_cap.unnamed[1] ~ power.lv
+
+    # Bypass cap
+    bypass_cap = new Capacitor
+    assert bypass_cap.capacitance within 100nF +/- 20%
+    power.hv ~ bypass_cap.unnamed[0]
+    bypass_cap.unnamed[1] ~ power.lv
+
+    led = new LED[4]
+    current_res = new Resistor[4]
+
+    # Pick 0603 red LEDs (LCSC C2286)
+    led[0].lcsc_id = "C2286"
+    led[1].lcsc_id = "C2286"
+    led[2].lcsc_id = "C2286"
+    led[3].lcsc_id = "C2286"
+
+    for r in current_res:
+        assert r.resistance within 220ohm +/- 5%
+
+    # Wire: power.hv -> resistor -> LED -> power.lv
+    power.hv ~> current_res[0] ~> led[0] ~> power.lv
+    power.hv ~> current_res[1] ~> led[1] ~> power.lv
+    power.hv ~> current_res[2] ~> led[2] ~> power.lv
+    power.hv ~> current_res[3] ~> led[3] ~> power.lv

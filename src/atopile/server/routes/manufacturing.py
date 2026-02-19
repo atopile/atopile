@@ -42,6 +42,7 @@ class BuildOutputsResponse(BaseModel):
     kicad_pcb: Optional[str] = Field(None, alias="kicadPcb")
     kicad_sch: Optional[str] = Field(None, alias="kicadSch")
     pcb_summary: Optional[str] = Field(None, alias="pcbSummary")
+    multiboard_manifest: Optional[str] = Field(None, alias="multiboardManifest")
 
     class Config:
         populate_by_name = True
@@ -295,6 +296,7 @@ async def get_build_outputs(
         kicadPcb=outputs.kicad_pcb,
         kicadSch=outputs.kicad_sch,
         pcbSummary=outputs.pcb_summary,
+        multiboardManifest=outputs.multiboard_manifest,
     )
 
 

@@ -23,6 +23,9 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+from faebryk.library.is_board import is_board
+from faebryk.library.is_cable import is_cable
+from faebryk.library.is_multiboard import is_multiboard
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
 import faebryk.library.Literals as Literals
@@ -126,6 +129,9 @@ __all__ = [
     "Logic",
     "Mechanical",
     "Signal",
+    "is_board",
+    "is_cable",
+    "is_multiboard",
     "is_app_root",
     "bus_parameter_utils",
     "Literals",

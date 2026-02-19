@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2, Boxes } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
 import { useStore } from '../store'
@@ -34,6 +34,7 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
+  onOpenMultiboard?: (projectRoot: string, targetName: string) => void
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
@@ -334,7 +335,10 @@ function TargetSelector({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <Target size={14} className="target-icon" />
+        {(activeTarget?.isSystem || activeTarget?.hasMultiboardManifest)
+          ? <Boxes size={14} className="target-icon system-icon" />
+          : <Target size={14} className="target-icon" />
+        }
         <span className="target-trigger-name">{activeTarget?.name || activeTargetName || 'Select build'}</span>
         <span className="target-combobox-chevron">
           <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
@@ -356,7 +360,10 @@ function TargetSelector({
                   role="option"
                   aria-selected={isActive}
                 >
-                  <Target size={12} className="option-icon" />
+                  {(target.isSystem || target.hasMultiboardManifest)
+                    ? <Boxes size={12} className="option-icon system-icon" />
+                    : <Target size={12} className="option-icon" />
+                  }
                   <span className="target-option-name">{target.name}</span>
                   {target.entry && (
                     <span className="target-option-entry">{target.entry.split(':').pop()}</span>
@@ -849,6 +856,7 @@ export function ActiveProjectPanel({
   onOpenKiCad,
   onOpen3D,
   onOpenLayout,
+  onOpenMultiboard,
   onCreateProject,
   onCreateTarget,
   onGenerateManufacturingData,
@@ -917,6 +925,11 @@ export function ActiveProjectPanel({
     if (selectedTargetName) return selectedTargetName
     return activeProject?.targets?.[0]?.name ?? null
   }, [activeProject, selectedTargetName])
+
+  const activeTarget = useMemo(() => {
+    if (!activeProject?.targets || !activeTargetName) return null
+    return activeProject.targets.find(t => t.name === activeTargetName) ?? null
+  }, [activeProject, activeTargetName])
 
   const handleCreateTarget = useCallback(async (data: NewTargetData) => {
     if (!onCreateTarget || !activeProject) return
@@ -1084,6 +1097,24 @@ export function ActiveProjectPanel({
             <Cuboid size={12} />
             <span className="action-label">3D</span>
           </button>
+
+          {onOpenMultiboard && activeTarget?.hasMultiboardManifest && (
+            <>
+              <div className="action-divider" />
+              <button
+                className="action-btn"
+                onClick={() => {
+                  if (!activeProject || !activeTargetName) return
+                  onOpenMultiboard(activeProject.root, activeTargetName)
+                }}
+                disabled={!activeProject || !activeTargetName}
+                title={getOutputTooltip('multi-board 3D viewer')}
+              >
+                <Boxes size={12} />
+                <span className="action-label">Multiboard</span>
+              </button>
+            </>
+          )}
 
           <div className="action-divider" />
 

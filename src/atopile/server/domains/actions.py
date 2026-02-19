@@ -238,6 +238,27 @@ def _handle_build_sync(payload: dict) -> dict:
                 )
                 targets = ["default"]
 
+    # For system targets, auto-expand board targets and add GLB generation
+    board_targets_needing_glb: set[str] = set()
+    if not standalone:
+        try:
+            project_config = ProjectConfig.from_path(project_path)
+            for target_name in list(targets):
+                build_cfg = project_config.builds.get(target_name)
+                if build_cfg and build_cfg.boards:
+                    # This is a system target — ensure its boards are built with GLB
+                    for board_name in build_cfg.boards:
+                        board_targets_needing_glb.add(board_name)
+                        if board_name not in targets:
+                            targets.append(board_name)
+            if board_targets_needing_glb:
+                log.info(
+                    f"System build: auto-adding GLB for board targets: "
+                    f"{board_targets_needing_glb}"
+                )
+        except Exception as exc:
+            log.warning(f"Failed to check for system targets: {exc}")
+
     # Create one build per target
     build_ids = []
     build_label = entry if standalone else "project"
@@ -249,9 +270,14 @@ def _handle_build_sync(payload: dict) -> dict:
             build_ids.append(existing_build_id)
             continue
 
+        # Board targets of system builds need GLB generation
+        target_include = list(include_targets)
+        if target_name in board_targets_needing_glb and "glb" not in target_include:
+            target_include.append("glb")
+
         log.info(
             f"Creating build for target={target_name}, entry={entry}, "
-            f"include_targets={include_targets}"
+            f"include_targets={target_include}"
         )
         build_id = generate_build_id(project_root, target_name, timestamp)
         log.info(f"Allocated build_id={build_id}")
@@ -264,14 +290,14 @@ def _handle_build_sync(payload: dict) -> dict:
                 entry=entry,
                 standalone=standalone,
                 frozen=frozen,
-                include_targets=include_targets,
+                include_targets=target_include,
                 exclude_targets=exclude_targets,
                 status=BuildStatus.QUEUED,
                 started_at=time.time(),
             )
         )
 
-        log.info(f"Enqueueing build {build_id} with include_targets={include_targets}")
+        log.info(f"Enqueueing build {build_id} with include_targets={target_include}")
         build_ids.append(build_id)
 
     log.info(f"All {len(build_ids)} builds enqueued successfully")
@@ -1603,6 +1629,37 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.emit_event("open_3d", {"path": str(target)})
             return {"success": True}
 
+        if action == "openMultiboard":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
+
+            project_path = Path(resolved_project_root)
+            manifest_path = (
+                project_path
+                / "build"
+                / "builds"
+                / target_name
+                / f"{target_name}.multiboard.json"
+            )
+            if manifest_path.exists():
+                await server_state.emit_event(
+                    "open_multiboard", {"path": str(manifest_path)}
+                )
+                return {"success": True}
+            return {
+                "success": False,
+                "error": f"No multiboard manifest for target: {target_name}",
+            }
+
         elif action == "setLogViewCurrentId":
             build_id = payload.get("buildId")
             stage = payload.get("stage")
@@ -1745,6 +1802,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "kicadPcb": outputs.kicad_pcb,
                     "kicadSch": outputs.kicad_sch,
                     "pcbSummary": outputs.pcb_summary,
+                    "multiboardManifest": outputs.multiboard_manifest,
                 },
             }
 

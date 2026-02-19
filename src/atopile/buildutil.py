@@ -67,6 +67,8 @@ class BuildStepContext:
     build_id: str | None = None  # Build ID from server (via ATO_BUILD_ID env var)
     completed_stages: list[BuildStage] = field(default_factory=list)
     _stage_start_time: float = field(default=0.0, repr=False)
+    boards: list[fabll.Node] = field(default_factory=list)
+    is_system_build: bool = False
 
     def require_build(self) -> BuildContext:
         if self.build is None:
