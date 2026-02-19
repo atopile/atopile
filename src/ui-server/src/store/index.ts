@@ -36,8 +36,9 @@ import type {
   BuildOutputs as MfgBuildOutputs,
   ManufacturingBuildStatus,
   GitStatus as MfgGitStatus,
+  MusterTargetInfo,
 } from '../components/manufacturing/types';
-import { DEFAULT_FILE_TYPES } from '../components/manufacturing/types';
+import { DEFAULT_FILE_TYPES, DEFAULT_BUILD_TARGETS } from '../components/manufacturing/types';
 
 const ERROR_TIMEOUT_MS = 8000;
 
@@ -328,6 +329,9 @@ interface StoreActions {
   setDashboardExporting: (exporting: boolean) => void;
   setDashboardExportResult: (result: ManufacturingDashboardState['exportResult']) => void;
   setDashboardArtifactVerification: (verification: Record<string, boolean>) => void;
+  setDashboardBuildTargets: (targets: string[]) => void;
+  toggleDashboardBuildTarget: (target: string) => void;
+  setAvailableBuildTargets: (targets: MusterTargetInfo[]) => void;
 
   // Reset
   reset: () => void;
@@ -1048,6 +1052,8 @@ export const useStore = create<Store>()(
             bomData: null,
             boardSummary: null,
             gitStatus: null,
+            selectedBuildTargets: [...DEFAULT_BUILD_TARGETS],
+            availableBuildTargets: [],
             exportConfig: {
               directory: '',
               selectedFileTypes: [...DEFAULT_FILE_TYPES],
@@ -1240,6 +1246,34 @@ export const useStore = create<Store>()(
               ...state.manufacturingDashboard,
               artifactVerification: verification,
             },
+          };
+        }),
+
+      setDashboardBuildTargets: (targets) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, selectedBuildTargets: targets },
+          };
+        }),
+
+      toggleDashboardBuildTarget: (target) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          const current = state.manufacturingDashboard.selectedBuildTargets;
+          const next = current.includes(target)
+            ? current.filter((t) => t !== target)
+            : [...current, target];
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, selectedBuildTargets: next },
+          };
+        }),
+
+      setAvailableBuildTargets: (targets) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, availableBuildTargets: targets },
           };
         }),
 

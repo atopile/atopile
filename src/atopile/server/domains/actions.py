@@ -1924,6 +1924,25 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             )
             return {"success": True, "comment": comment}
 
+        elif action == "getMusterTargets":
+            from atopile.build_steps import muster
+
+            targets = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "category": str(t.category),
+                    "virtual": t.virtual,
+                    "producesArtifact": t.produces_artifact,
+                    "tags": [str(tag) for tag in t.tags],
+                    "aliases": list(t.aliases),
+                    "dependencies": [d.name for d in t.dependencies],
+                }
+                for t in muster.targets.values()
+                if t.category is not None
+            ]
+            return {"success": True, "targets": targets}
+
         return {"success": False, "error": f"Unknown action: {action}"}
 
     except Exception as exc:

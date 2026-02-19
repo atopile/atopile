@@ -156,6 +156,13 @@ class Tags(StrEnum):
     REQUIRES_KICAD = "requires_kicad"
 
 
+class TargetCategory(StrEnum):
+    REQUIRED = "required"
+    VISUALS = "visuals"
+    MANUFACTURING = "manufacturing"
+    DOCUMENTATION = "documentation"
+
+
 @contextlib.contextmanager
 def _githash_layout(layout: Path) -> Generator[Path, None, None]:
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -177,6 +184,7 @@ class MusterTarget:
     dependencies: list["MusterTarget"] = field(default_factory=list)
     tags: set[Tags] = field(default_factory=set)
     produces_artifact: bool = False  # TODO: as list of file paths
+    category: TargetCategory | None = None
     success: bool | None = None
 
     def __call__(self, ctx: BuildStepContext) -> None:
@@ -328,6 +336,7 @@ class Muster:
         dependencies: list["MusterTarget"] | None = None,
         tags: set[Tags] | None = None,
         produces_artifact: bool = False,
+        category: TargetCategory | None = None,
     ) -> Callable[[MusterFuncType], MusterTarget]:
         """Register a target under a given name."""
 
@@ -342,6 +351,7 @@ class Muster:
                 virtual=virtual,
                 tags=tags or set(),
                 produces_artifact=produces_artifact,
+                category=category,
             )
             self.add_target(target)
             return target
@@ -384,6 +394,7 @@ muster = Muster()
 @muster.register(
     "init-build-context",
     description="Initializing build context",
+    category=TargetCategory.REQUIRED,
 )
 def init_build_context_step(ctx: BuildStepContext) -> None:
     if ctx.build is not None or ctx.app is not None:
@@ -464,6 +475,7 @@ def init_build_context_step(ctx: BuildStepContext) -> None:
     "modify-typegraph",
     description="Modify type graph",
     dependencies=[init_build_context_step],
+    category=TargetCategory.REQUIRED,
 )
 def modify_typegraph(ctx: BuildStepContext) -> None:
     """Hook for typegraph mutations before instantiation."""
@@ -475,6 +487,7 @@ def modify_typegraph(ctx: BuildStepContext) -> None:
     "instantiate-app",
     description="Instantiate app",
     dependencies=[modify_typegraph],
+    category=TargetCategory.REQUIRED,
 )
 def instantiate_app_step(ctx: BuildStepContext) -> None:
     if ctx.app is not None:
@@ -532,6 +545,7 @@ def instantiate_app_step(ctx: BuildStepContext) -> None:
     "prepare-build",
     description="Preparing build",
     dependencies=[instantiate_app_step],
+    category=TargetCategory.REQUIRED,
 )
 def prepare_build(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
@@ -562,6 +576,7 @@ def prepare_build(ctx: BuildStepContext) -> None:
     "post-instantiation-graph-check",
     description="Verify instance graph",
     dependencies=[prepare_build],
+    category=TargetCategory.REQUIRED,
 )
 def post_instantiation_graph_check(ctx: BuildStepContext) -> None:
     """
@@ -583,6 +598,7 @@ def post_instantiation_graph_check(ctx: BuildStepContext) -> None:
     "post-instantiation-setup",
     description="Modify instance graph",
     dependencies=[post_instantiation_graph_check],
+    category=TargetCategory.REQUIRED,
 )
 def post_instantiation_setup(ctx: BuildStepContext) -> None:
     """
@@ -607,6 +623,7 @@ def post_instantiation_setup(ctx: BuildStepContext) -> None:
     "post-instantiation-design-check",
     description="Verify electrical design",
     dependencies=[post_instantiation_setup],
+    category=TargetCategory.REQUIRED,
 )
 def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     """
@@ -628,6 +645,7 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     "load-pcb",
     description="Loading PCB",
     dependencies=[post_instantiation_design_check],
+    category=TargetCategory.REQUIRED,
 )
 def load_pcb(ctx: BuildStepContext) -> None:
     pcb = ctx.require_pcb()
@@ -636,7 +654,12 @@ def load_pcb(ctx: BuildStepContext) -> None:
         load_kicad_pcb_designators(pcb.tg, attach=True)
 
 
-@muster.register("picker", description="Picking parts", dependencies=[load_pcb])
+@muster.register(
+    "picker",
+    description="Picking parts",
+    dependencies=[load_pcb],
+    category=TargetCategory.REQUIRED,
+)
 def pick_parts(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     solver = ctx.require_solver()
@@ -654,7 +677,10 @@ def pick_parts(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
-    "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
+    "prepare-nets",
+    description="Preparing nets",
+    dependencies=[pick_parts],
+    category=TargetCategory.REQUIRED,
 )
 def prepare_nets(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
@@ -688,6 +714,7 @@ def prepare_nets(ctx: BuildStepContext) -> None:
     "post-solve-checks",
     description="Running post-solve checks",
     dependencies=[prepare_nets],
+    category=TargetCategory.REQUIRED,
 )
 def post_solve_checks(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
@@ -700,7 +727,10 @@ def post_solve_checks(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
-    "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
+    "update-pcb",
+    description="Updating PCB",
+    dependencies=[post_solve_checks],
+    category=TargetCategory.REQUIRED,
 )
 def update_pcb(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
@@ -841,7 +871,10 @@ def update_pcb(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
-    "post-pcb-checks", description="Running post-pcb checks", dependencies=[update_pcb]
+    "post-pcb-checks",
+    description="Running post-pcb checks",
+    dependencies=[update_pcb],
+    category=TargetCategory.REQUIRED,
 )
 def post_pcb_checks(ctx: BuildStepContext) -> None:
     pcb = ctx.require_pcb()
@@ -856,7 +889,12 @@ def post_pcb_checks(ctx: BuildStepContext) -> None:
         raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
 
-@muster.register("build-design", dependencies=[post_pcb_checks], virtual=True)
+@muster.register(
+    "build-design",
+    dependencies=[post_pcb_checks],
+    virtual=True,
+    category=TargetCategory.REQUIRED,
+)
 def build_design(ctx: BuildStepContext) -> None:
     pass
 
@@ -865,6 +903,7 @@ def build_design(ctx: BuildStepContext) -> None:
     "bom",
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.MANUFACTURING,
 )
 def generate_bom(ctx: BuildStepContext) -> None:
     """Generate a BOM for the project in both CSV and JSON formats."""
@@ -895,6 +934,7 @@ def generate_bom(ctx: BuildStepContext) -> None:
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.VISUALS,
 )
 def generate_glb(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
@@ -941,6 +981,7 @@ def generate_glb_only(ctx: BuildStepContext) -> None:
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.VISUALS,
 )
 def generate_step(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as STEP."""
@@ -972,6 +1013,7 @@ def generate_3d_models(ctx: BuildStepContext) -> None:
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.VISUALS,
 )
 def generate_3d_render(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D rendered image."""
@@ -992,6 +1034,7 @@ def generate_3d_render(ctx: BuildStepContext) -> None:
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.VISUALS,
 )
 def generate_2d_render(ctx: BuildStepContext) -> None:
     """Generate PCBA 2D rendered image."""
@@ -1013,6 +1056,7 @@ def generate_2d_render(ctx: BuildStepContext) -> None:
     tags={Tags.REQUIRES_KICAD},
     dependencies=[generate_glb, generate_step, post_pcb_checks],
     produces_artifact=True,
+    category=TargetCategory.MANUFACTURING,
 )
 def generate_manufacturing_data(ctx: BuildStepContext) -> None:
     """
@@ -1086,6 +1130,7 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
     "manifest",
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.DOCUMENTATION,
 )
 def generate_manifest(ctx: BuildStepContext) -> None:
     """Generate a manifest for the project."""
@@ -1114,6 +1159,7 @@ def generate_manifest(ctx: BuildStepContext) -> None:
     "variable-report",
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.DOCUMENTATION,
 )
 def generate_variable_report(ctx: BuildStepContext) -> None:
     """Generate a report of all the variable values in the design."""
@@ -1131,6 +1177,7 @@ def generate_variable_report(ctx: BuildStepContext) -> None:
     "power-tree",
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.DOCUMENTATION,
 )
 def generate_power_tree(ctx: BuildStepContext) -> None:
     """Generate power tree visualization and data exports."""
@@ -1148,6 +1195,7 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
     "datasheets",
     dependencies=[build_design],
     produces_artifact=True,
+    category=TargetCategory.DOCUMENTATION,
 )
 def generate_datasheets(ctx: BuildStepContext) -> None:
     app = ctx.require_app()

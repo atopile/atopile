@@ -16,7 +16,7 @@ import { DashboardContent } from './DashboardContent';
 import { REVIEW_PAGES } from './reviewPages';
 import { CommentDialog } from './CommentDialog';
 import type { ReviewComment } from '../types';
-import './ManufacturingDashboard.css';
+import './ReviewDashboard.css';
 
 interface ManufacturingDashboardProps {
   projectRoot: string;

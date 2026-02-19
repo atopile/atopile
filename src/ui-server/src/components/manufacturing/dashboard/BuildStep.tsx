@@ -3,8 +3,11 @@
  * Three-panel layout: left (40%) build stages, right-top tips text,
  * right-bottom tips image placeholder.
  *
- * Build stages are driven by the real backend stage data from queuedBuilds,
- * matching the same pattern used by the sidebar ManufacturingPanel.
+ * Left column: muster targets fetched from getMusterTargets, grouped by
+ * category. Before build → checkboxes for selection. During/after build →
+ * spinner / status icons driven by queuedBuilds stage data.
+ *
+ * Right column: tips & tricks (always visible).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -25,7 +28,8 @@ import { useStore } from '../../../store';
 import { sendAction, sendActionWithResponse } from '../../../api/websocket';
 import { postToExtension } from '../../../api/vscodeApi';
 import { API_URL } from '../../../api/config';
-import type { BuildOutputs } from '../types';
+import type { BuildOutputs, MusterTargetInfo } from '../types';
+import { CATEGORY_CONFIG, DEFAULT_BUILD_TARGETS } from '../types';
 import { REVIEW_PAGES } from './reviewPages';
 import MarkdownRenderer from '../../MarkdownRenderer';
 import tipsData from '../../../../../../docs/tips_and_tricks/tips_and_tricks.json';
@@ -39,13 +43,6 @@ interface TipItem {
 
 type StepStatus = 'idle' | 'pending' | 'running' | 'success' | 'warning' | 'error';
 
-interface DisplayStep {
-  id: string;
-  label: string;
-  status: StepStatus;
-  elapsed?: string;
-}
-
 export function BuildStep() {
   const dashboard = useStore((s) => s.manufacturingDashboard);
   const setDashboardBuildStatus = useStore((s) => s.setDashboardBuildStatus);
@@ -53,6 +50,9 @@ export function BuildStep() {
   const setDashboardArtifactVerification = useStore((s) => s.setDashboardArtifactVerification);
   const setDashboardStep = useStore((s) => s.setDashboardStep);
   const setDashboardReviewPage = useStore((s) => s.setDashboardReviewPage);
+  const toggleDashboardBuildTarget = useStore((s) => s.toggleDashboardBuildTarget);
+  const setDashboardBuildTargets = useStore((s) => s.setDashboardBuildTargets);
+  const setAvailableBuildTargets = useStore((s) => s.setAvailableBuildTargets);
   const queuedBuilds = useStore((s) => s.queuedBuilds);
 
   const projectRoot = dashboard?.projectRoot ?? '';
@@ -60,9 +60,32 @@ export function BuildStep() {
   const buildStatus = dashboard?.buildStatus ?? 'pending';
   const gitStatus = dashboard?.gitStatus;
   const outputs = dashboard?.outputs ?? null;
+  const selectedBuildTargets = dashboard?.selectedBuildTargets ?? [...DEFAULT_BUILD_TARGETS];
+  const availableBuildTargets = dashboard?.availableBuildTargets ?? [];
 
   // Track the buildId we're watching so we don't react to stale completed builds
   const trackedBuildIdRef = useRef<string | null>(null);
+
+  // Fetch muster targets once dashboard is open, retrying until WS is ready
+  useEffect(() => {
+    if (!dashboard) return;
+    let cancelled = false;
+
+    function fetchTargets() {
+      sendActionWithResponse('getMusterTargets', {}).then((res) => {
+        if (cancelled) return;
+        const r = res?.result as Record<string, unknown> | undefined;
+        if (r?.success && Array.isArray(r.targets)) {
+          setAvailableBuildTargets(r.targets as MusterTargetInfo[]);
+        }
+      }).catch(() => {
+        if (!cancelled) setTimeout(fetchTargets, 1000);
+      });
+    }
+
+    fetchTargets();
+    return () => { cancelled = true; };
+  }, [dashboard?.projectRoot, setAvailableBuildTargets]);
 
   // Find the matching build from queuedBuilds (same matching as sidebar)
   const activeBuild = queuedBuilds.find(
@@ -75,7 +98,6 @@ export function BuildStep() {
     const qbStatus = activeBuild.status;
     const buildId = activeBuild.buildId ?? null;
 
-    // When a build is actively building, start tracking it
     if (qbStatus === 'building') {
       trackedBuildIdRef.current = buildId;
       if (buildStatus !== 'building') {
@@ -84,13 +106,11 @@ export function BuildStep() {
     } else if (
       (qbStatus === 'success' || qbStatus === 'warning') &&
       buildStatus === 'building' &&
-      // Only transition to ready if this is the build we've been tracking
       trackedBuildIdRef.current !== null &&
       buildId === trackedBuildIdRef.current
     ) {
       trackedBuildIdRef.current = null;
       setDashboardBuildStatus('ready');
-      // Fetch outputs when build completes
       sendActionWithResponse('getManufacturingOutputs', {
         projectRoot,
         target: targetName,
@@ -120,20 +140,23 @@ export function BuildStep() {
 
   const handleStartBuild = useCallback(() => {
     setDashboardBuildStatus('building');
+    const nonRequiredTargets = selectedBuildTargets.filter((t) => {
+      const info = availableBuildTargets.find((a) => a.name === t);
+      return info && info.category !== 'required';
+    });
     sendAction('build', {
       projectRoot,
       targets: [targetName],
-      includeTargets: ['mfg-data'],
+      includeTargets: nonRequiredTargets.length > 0 ? nonRequiredTargets : ['default'],
       frozen: true,
     });
-  }, [projectRoot, targetName, setDashboardBuildStatus]);
+  }, [projectRoot, targetName, setDashboardBuildStatus, selectedBuildTargets, availableBuildTargets]);
 
   const handleOpenSourceControl = useCallback(() => {
     postToExtension({ type: 'openSourceControl' });
   }, []);
 
-
-  // Pick a random tip, allow cycling with "Next"
+  // Tips
   const tips = tipsData as TipItem[];
   const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * tips.length));
   const tip = tips[tipIndex];
@@ -141,7 +164,6 @@ export function BuildStep() {
     setTipIndex((i) => (i + 1) % tips.length);
   }, [tips.length]);
 
-  // Resolve image URL: external URLs pass through, local paths use the backend file API
   const tipImageUrl = useMemo(() => {
     if (!tip.image) return null;
     if (tip.image.startsWith('http://') || tip.image.startsWith('https://')) {
@@ -154,33 +176,66 @@ export function BuildStep() {
     return `${API_URL}/api/file?path=${encodeURIComponent(absPath)}`;
   }, [tip.image, projectRoot]);
 
+  // Group available targets by category
+  const targetsByCategory = useMemo(() => {
+    const grouped: Record<string, MusterTargetInfo[]> = {};
+    for (const t of availableBuildTargets) {
+      const cat = t.category ?? 'other';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(t);
+    }
+    return grouped;
+  }, [availableBuildTargets]);
+
+  const sortedCategories = useMemo(() => {
+    return Object.keys(targetsByCategory).sort((a, b) => {
+      const orderA = CATEGORY_CONFIG[a]?.order ?? 99;
+      const orderB = CATEGORY_CONFIG[b]?.order ?? 99;
+      return orderA - orderB;
+    });
+  }, [targetsByCategory]);
+
+  // All non-required target names for "All" preset
+  const allSelectableTargets = useMemo(() => {
+    return availableBuildTargets
+      .filter((t) => t.category !== 'required')
+      .map((t) => t.name);
+  }, [availableBuildTargets]);
+
+  const handlePresetDefault = useCallback(() => {
+    setDashboardBuildTargets([...DEFAULT_BUILD_TARGETS]);
+  }, [setDashboardBuildTargets]);
+
+  const handlePresetAll = useCallback(() => {
+    setDashboardBuildTargets([...allSelectableTargets]);
+  }, [setDashboardBuildTargets, allSelectableTargets]);
+
   if (!dashboard) return null;
 
   const isBuilding = buildStatus === 'building';
   const isFailed = buildStatus === 'failed';
   const isReady = buildStatus === 'ready' || buildStatus === 'confirmed';
-
-  // Build display steps from real backend stages (same as sidebar)
+  // Build a map from stage id → status from live queuedBuilds data
   const realStages = activeBuild?.stages ?? [];
-  const displaySteps: DisplayStep[] = realStages.map((stage) => {
-    let status: StepStatus = 'pending';
-    switch (stage.status) {
-      case 'success': status = 'success'; break;
-      case 'running': status = 'running'; break;
-      case 'failed': case 'error': status = 'error'; break;
-      case 'warning': status = 'warning'; break;
-      default: status = 'pending';
+  const stageStatusMap = useMemo(() => {
+    const map: Record<string, { status: StepStatus; elapsed?: string }> = {};
+    for (const stage of realStages) {
+      const id = stage.stageId || stage.name;
+      let status: StepStatus = 'pending';
+      switch (stage.status) {
+        case 'success': status = 'success'; break;
+        case 'running': status = 'running'; break;
+        case 'failed': case 'error': status = 'error'; break;
+        case 'warning': status = 'warning'; break;
+        default: status = 'pending';
+      }
+      map[id] = {
+        status,
+        elapsed: stage.elapsedSeconds ? `${stage.elapsedSeconds.toFixed(1)}s` : undefined,
+      };
     }
-    return {
-      id: stage.stageId || stage.name,
-      label: stage.displayName || stage.name,
-      status,
-      elapsed: stage.elapsedSeconds ? `${stage.elapsedSeconds.toFixed(1)}s` : undefined,
-    };
-  });
-
-  // If no real stages yet but we're building, show a single "Building..." placeholder
-  const showPlaceholder = isBuilding && displaySteps.length === 0;
+    return map;
+  }, [realStages]);
 
   const renderStageIcon = (status: StepStatus) => {
     switch (status) {
@@ -197,6 +252,55 @@ export function BuildStep() {
       default:
         return <Circle size={14} style={{ opacity: 0.3 }} />;
     }
+  };
+
+  // Determine whether a target is included in the current build
+  // (either required, or user-selected)
+  const isTargetIncluded = (t: MusterTargetInfo) => {
+    if (t.category === 'required') return true;
+    return selectedBuildTargets.includes(t.name);
+  };
+
+  // Whether we have an active or completed build (show status column)
+  const hasBuildActivity = isBuilding || isReady || isFailed;
+
+  // Render one target row — checkbox is always present, status icon + time
+  // appear as extra columns on the right during/after a build.
+  const renderTargetRow = (t: MusterTargetInfo, isRequired: boolean) => {
+    const stageInfo = stageStatusMap[t.name];
+    const hasLogs = !!activeBuild?.buildId;
+    const included = isTargetIncluded(t);
+    const status: StepStatus = stageInfo?.status ?? (isBuilding && included ? 'pending' : 'idle');
+    const checkboxDisabled = isRequired || hasBuildActivity;
+
+    return (
+      <li
+        key={t.name}
+        className={`mfg-build-stage-item status-${status}${isRequired ? ' disabled' : ''}${hasLogs ? ' clickable' : ''}`}
+        onClick={() => {
+          if (hasLogs) {
+            useStore.getState().setLogViewerBuildId(activeBuild!.buildId!);
+            sendAction('setLogViewCurrentId', {
+              buildId: activeBuild!.buildId!,
+              stage: t.name,
+            });
+            postToExtension({ type: 'showBuildLogs' });
+          }
+        }}
+        title={hasLogs ? `View logs for ${t.description || t.name}` : (t.description || t.name)}
+      >
+        <input
+          type="checkbox"
+          checked={isRequired || selectedBuildTargets.includes(t.name)}
+          disabled={checkboxDisabled}
+          onChange={() => { if (!isRequired && !hasBuildActivity) toggleDashboardBuildTarget(t.name); }}
+          className="mfg-target-checkbox-input"
+        />
+        <span>{t.description || t.name}</span>
+        <span className="mfg-stage-status-icon">{renderStageIcon(status)}</span>
+        <span className="mfg-stage-elapsed">{stageInfo?.elapsed ?? ''}</span>
+      </li>
+    );
   };
 
   return (
@@ -224,50 +328,53 @@ export function BuildStep() {
 
       {/* Three-panel grid */}
       <div className="mfg-build-grid">
-        {/* Left column: build stages (scrollable) + pinned bottom actions */}
+        {/* Left column: build targets list + pinned bottom actions */}
         <div className="mfg-build-grid-left">
           <div className="mfg-build-stages-scroll">
-            <h3 className="mfg-build-section-title">Build Steps</h3>
-            <ul className="mfg-build-stages">
-              {displaySteps.map((step) => {
-                const hasLogs = !!activeBuild?.buildId;
+            {/* Header with preset buttons */}
+            <div className="mfg-target-presets">
+              <h3 className="mfg-build-section-title" style={{ margin: 0 }}>Build Targets</h3>
+              {!hasBuildActivity && (
+                <>
+                  <button className="mfg-btn mfg-btn-tiny" onClick={handlePresetDefault}>Default</button>
+                  <button className="mfg-btn mfg-btn-tiny" onClick={handlePresetAll}>All</button>
+                </>
+              )}
+            </div>
+
+            {/* Target list grouped by category */}
+            {availableBuildTargets.length > 0 ? (
+              sortedCategories.map((cat) => {
+                const catConfig = CATEGORY_CONFIG[cat];
+                const targets = targetsByCategory[cat];
+                if (!catConfig || !targets) return null;
+                const isRequired = catConfig.alwaysIncluded;
+                if (targets.length === 0) return null;
+
                 return (
-                  <li
-                    key={step.id}
-                    className={`mfg-build-stage-item status-${step.status}${hasLogs ? ' clickable' : ''}`}
-                    onClick={() => {
-                      if (activeBuild?.buildId) {
-                        useStore.getState().setLogViewerBuildId(activeBuild.buildId);
-                        sendAction('setLogViewCurrentId', {
-                          buildId: activeBuild.buildId,
-                          stage: step.id,
-                        });
-                        postToExtension({ type: 'showBuildLogs' });
-                      }
-                    }}
-                    title={hasLogs ? `View logs for ${step.label}` : step.label}
-                  >
-                    {renderStageIcon(step.status)}
-                    <span>{step.label}</span>
-                    {step.elapsed && (
-                      <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.5 }}>{step.elapsed}</span>
-                    )}
-                  </li>
+                  <div key={cat} className="mfg-target-category">
+                    <div className="mfg-target-category-title">{catConfig.label}</div>
+                    <ul className="mfg-build-stages">
+                      {targets.map((t) => renderTargetRow(t, isRequired))}
+                    </ul>
+                  </div>
                 );
-              })}
-              {showPlaceholder && (
-                <li className="mfg-build-stage-item status-pending">
-                  <Loader2 size={14} className="spinning" style={{ opacity: 0.4 }} />
-                  <span>Starting build...</span>
-                </li>
-              )}
-              {!isBuilding && !isFailed && !isReady && displaySteps.length === 0 && (
-                <li className="mfg-build-stage-item status-idle">
-                  <Circle size={14} style={{ opacity: 0.3 }} />
-                  <span>No build started</span>
-                </li>
-              )}
-            </ul>
+              })
+            ) : (
+              <ul className="mfg-build-stages">
+                {isBuilding ? (
+                  <li className="mfg-build-stage-item status-pending">
+                    <Loader2 size={14} className="spinning" style={{ opacity: 0.4 }} />
+                    <span>Starting build...</span>
+                  </li>
+                ) : (
+                  <li className="mfg-build-stage-item status-idle">
+                    <Circle size={14} style={{ opacity: 0.3 }} />
+                    <span>Loading targets...</span>
+                  </li>
+                )}
+              </ul>
+            )}
           </div>
 
           {/* Build actions — pinned to bottom */}
@@ -327,7 +434,7 @@ export function BuildStep() {
           </div>
         </div>
 
-        {/* Right column: two stacked rows */}
+        {/* Right column: tips & tricks (always visible) */}
         <div className="mfg-build-grid-right">
           {/* Right-top: tips & tricks text */}
           <div className="mfg-build-grid-cell mfg-build-tips-text">
