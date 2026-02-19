@@ -18,7 +18,7 @@ services:
     image: atopile-web-ide:dev
     container_name: atopile-web-ide
     ports:
-      - "${WEB_IDE_BIND_ADDR:-0.0.0.0}:${WEB_IDE_HTTPS_PORT:-3443}:3443"
+      - "${WEB_IDE_BIND_ADDR:-127.0.0.1}:${WEB_IDE_HTTPS_PORT:-3443}:3443"
       # Port 3443 is the HTTPS front door. Caddy terminates TLS and routes
       # /ws/* to backend (8501), everything else to OpenVSCode Server (3001).
       # WEB_IDE_BIND_ADDR controls which host interface publishes these ports.
