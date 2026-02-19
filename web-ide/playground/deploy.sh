@@ -189,7 +189,10 @@ print('yes' if any(s.get('Name') == 'FLY_API_TOKEN' or s.get('name') == 'FLY_API
   echo "--- Deploying spawner"
   # fly deploy uses cwd as build context; the spawner Dockerfile expects
   # server.js in the context root, so we cd into the playground dir.
+  # Copy the shared Caddyfile so server.js can read it at runtime.
+  cp "${SCRIPT_DIR}/../scripts/Caddyfile" "${SCRIPT_DIR}/Caddyfile"
   (cd "${SCRIPT_DIR}" && $FLY deploy --config fly.spawner.toml)
+  rm -f "${SCRIPT_DIR}/Caddyfile"
   echo ""
 fi
 

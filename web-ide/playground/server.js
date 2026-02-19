@@ -4,6 +4,8 @@
 const http = require("node:http");
 const https = require("node:https");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 
 // ---------------------------------------------------------------------------
 // Config
@@ -132,36 +134,15 @@ function machinesRequest(method, path, body) {
   });
 }
 
-// Caddyfile with an additional plain-HTTP listener on :3080 for Fly proxy.
+// Build Caddyfile from the shared scripts/Caddyfile + Fly-specific HTTP listener.
 // Fly terminates TLS at the edge and forwards plain HTTP to internal_port.
-const CADDYFILE = `{
-\tdefault_sni {$WEB_IDE_PUBLIC_HOST:code-vm}
-}
-
-(atopile_proxy) {
-\tlog {
-\t\toutput stderr
-\t}
-\t@backend path /ws/* /api/* /health
-\thandle @backend {
-\t\treverse_proxy 127.0.0.1:8501
-\t}
-\thandle {
-\t\treverse_proxy 127.0.0.1:3001
-\t}
-}
-
-# Plain HTTP for Fly proxy (internal_port)
-http://:3080 {
-\timport atopile_proxy
-}
-
-# HTTPS for direct/local access
-https://localhost:3443, https://127.0.0.1:3443, https://code-vm:3443, https://{$WEB_IDE_PUBLIC_HOST:code-vm}:3443 {
-\ttls internal
-\timport atopile_proxy
-}
-`;
+// The shared Caddyfile is copied into the container at build time (see Dockerfile).
+const SHARED_CADDYFILE_PATH = path.join(__dirname, "Caddyfile");
+const SHARED_CADDYFILE = fs.readFileSync(SHARED_CADDYFILE_PATH, "utf8");
+const CADDYFILE =
+  SHARED_CADDYFILE +
+  "\n# Plain HTTP for Fly proxy (internal_port)\n" +
+  "http://:3080 {\n\timport atopile_proxy\n}\n";
 
 function machineConfig() {
   return {
