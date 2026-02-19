@@ -9,6 +9,10 @@ import {
 import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
 import { footprintBBox } from "./hit-test";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
+import {
+    compareLayerNamesForPaint,
+    sortLayerNamesForPaint,
+} from "./layer_order";
 
 const DEG_TO_RAD = Math.PI / 180;
 const HOLE_SEGMENTS = 36;
@@ -361,6 +365,10 @@ function expandLayerNames(layerNames: string[], concreteLayers: Set<string>): st
     return [...out];
 }
 
+function sortedLayerEntries<T>(layerMap: Map<string, T>): Array<[string, T]> {
+    return [...layerMap.entries()].sort(([a], [b]) => compareLayerNamesForPaint(a, b));
+}
+
 /** Paint the entire render model into renderer layers */
 export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>): void {
     const hidden = hiddenLayers ?? new Set<string>();
@@ -370,7 +378,10 @@ export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: 
     paintGlobalDrawings(renderer, model, hidden, false);
     paintZones(renderer, model, hidden, concreteLayers);
     paintTracks(renderer, model, hidden);
-    for (const fp of model.footprints) {
+    const orderedFootprints = [...model.footprints].sort(
+        (a, b) => compareLayerNamesForPaint(a.layer ?? "F.Cu", b.layer ?? "F.Cu"),
+    );
+    for (const fp of orderedFootprints) {
         paintFootprint(renderer, fp, hidden, concreteLayers);
     }
     paintGlobalDrawings(renderer, model, hidden, true);
@@ -406,7 +417,10 @@ function paintBoardEdges(renderer: Renderer, model: RenderModel) {
 
 function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>, concreteLayers: Set<string>) {
     for (const zone of model.zones) {
-        for (const filled of zone.filled_polygons) {
+        const sortedFilledPolygons = [...zone.filled_polygons].sort(
+            (a, b) => compareLayerNamesForPaint(a.layer, b.layer),
+        );
+        for (const filled of sortedFilledPolygons) {
             if (hidden.has(filled.layer)) continue;
             const [r, g, b] = getLayerColor(filled.layer);
             const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
@@ -420,7 +434,7 @@ function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>,
         const zoneLayersRaw = zone.layers.length > 0
             ? zone.layers
             : [...new Set(zone.filled_polygons.map(fp => fp.layer))];
-        const zoneLayers = expandLayerNames(zoneLayersRaw, concreteLayers);
+        const zoneLayers = sortLayerNamesForPaint(expandLayerNames(zoneLayersRaw, concreteLayers));
 
         const shouldDrawFillFromOutline = (
             !zone.keepout
@@ -516,7 +530,7 @@ function paintTracks(renderer: Renderer, model: RenderModel, hidden: Set<string>
         if (!arr) { arr = []; byLayer.set(ln, arr); }
         arr.push(track);
     }
-    for (const [layerName, tracks] of byLayer) {
+    for (const [layerName, tracks] of sortedLayerEntries(byLayer)) {
         const [r, g, b, a] = getLayerColor(layerName);
         const layer = renderer.start_layer(`tracks:${layerName}`);
         for (const track of tracks) {
@@ -533,7 +547,7 @@ function paintTracks(renderer: Renderer, model: RenderModel, hidden: Set<string>
             if (!arr) { arr = []; arcByLayer.set(ln, arr); }
             arr.push(arc);
         }
-        for (const [layerName, arcs] of arcByLayer) {
+        for (const [layerName, arcs] of sortedLayerEntries(arcByLayer)) {
             const [r, g, b, a] = getLayerColor(layerName);
             const layer = renderer.start_layer(`arc_tracks:${layerName}`);
             for (const arc of arcs) {
@@ -564,7 +578,7 @@ function paintGlobalDrawings(
         arr.push(drawing);
     }
     const worldAt: Point3 = { x: 0, y: 0, r: 0 };
-    for (const [layerName, drawings] of byLayer) {
+    for (const [layerName, drawings] of sortedLayerEntries(byLayer)) {
         const [r, g, b, a] = getLayerColor(layerName);
         const layer = renderer.start_layer(`global:${layerName}`);
         for (const drawing of drawings) {
@@ -588,7 +602,7 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
         }
         arr.push(drawing);
     }
-    for (const [layerName, drawings] of drawingsByLayer) {
+    for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer)) {
         const [r, g, b, a] = getLayerColor(layerName);
         const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
         for (const drawing of drawings) {
@@ -612,7 +626,7 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
             renderer.end_layer();
         }
     }
-    for (const [layerName, drawings] of drillDrawingsByLayer) {
+    for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer)) {
         const [r, g, b, a] = getLayerColor(layerName);
         const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
         for (const drawing of drawings) {
@@ -726,7 +740,9 @@ function paintPadAnnotations(renderer: Renderer, fp: FootprintModel, hidden: Set
         }
     }
 
-    for (const [layerName, geometry] of layerGeometry) {
+    for (const layerName of sortLayerNamesForPaint(layerGeometry.keys())) {
+        const geometry = layerGeometry.get(layerName);
+        if (!geometry) continue;
         const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
         const [r, g, b, a] = getLayerColor(layerName);
 

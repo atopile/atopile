@@ -7,6 +7,7 @@ import { hitTestFootprints } from "./hit-test";
 import { getLayerColor } from "./colors";
 import type { RenderModel } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
+import { sortLayerNames } from "./layer_order";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -668,7 +669,7 @@ export class Editor {
         for (const l of layers) {
             if (l.includes("*") || l.includes("&")) layers.delete(l);
         }
-        return [...layers].sort();
+        return sortLayerNames(layers);
     }
 
     setOnLayersChanged(cb: () => void) {
