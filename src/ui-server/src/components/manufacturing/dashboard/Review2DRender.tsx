@@ -55,9 +55,11 @@ export function Review2DRender({ outputs }: ReviewPageProps) {
     <div className="mfg-2d-render">
       <TransformWrapper
         initialScale={1}
-        minScale={0.1}
-        maxScale={10}
-        centerOnInit
+        minScale={0.01}
+        maxScale={20}
+        centerOnInit={true}
+        limitToBounds={false}
+        doubleClick={{ mode: 'reset' }}
       >
         <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
           {svgContent ? (
