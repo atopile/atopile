@@ -23,7 +23,7 @@ Host port publish (podman compose, WEB_IDE_BIND_ADDR)
     |
     v
 Container: Caddy
-    |-- /ws/* -------------------------> 127.0.0.1:8501 (atopile backend)
+    |-- /ws/* /api/* /health ----------> 127.0.0.1:8501 (atopile backend)
     \-- everything else ---------------> 127.0.0.1:3001 (OpenVSCode Server)
 ```
 
@@ -86,7 +86,7 @@ Fallback path for websocket (new behavior):
 ## Security Posture (Network-relevant)
 
 - Backend is not directly exposed by port publish.
-- Caddy only exposes backend websocket namespace via `/ws/*`.
+- Caddy routes `/ws/*`, `/api/*`, and `/health` to the backend (`127.0.0.1:8501`); all other paths go to OpenVSCode Server.
 - OpenVSCode and backend listen on loopback inside container.
 - External exposure is controlled by:
   - `WEB_IDE_BIND_ADDR` (interface binding)
@@ -106,5 +106,8 @@ Fallback path for websocket (new behavior):
 - `scripts/Caddyfile`
 - `scripts/entrypoint.sh`
 - `../src/vscode-atopile/src/common/backendServer.ts`
+- `../src/vscode-atopile/src/common/webview-bridge.ts`
+- `../src/vscode-atopile/src/common/webview-bridge-runtime.ts`
 - `../src/vscode-atopile/src/providers/SidebarProvider.ts`
 - `../src/vscode-atopile/src/providers/LogViewerProvider.ts`
+- `../src/vscode-atopile/src/ui/layout-editor.ts`
