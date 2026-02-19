@@ -384,176 +384,448 @@ const LANDING_HTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>atopile playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --bg: #0c1118;
+    --surface: #131b24;
+    --border: rgba(255,255,255,0.07);
+    --text: #dde6f0;
+    --muted: #6b7a8d;
+    --accent: #f95015;
+    --accent-dim: rgba(249,80,21,0.13);
+    --accent-glow: rgba(249,80,21,0.28);
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #141B2B;
-    color: #e2e8f0;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    background: var(--bg);
+    color: var(--text);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
   }
+
+  .bg-grid {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(rgba(249,80,21,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(249,80,21,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .bg-glow {
+    position: fixed;
+    top: 38%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 900px;
+    height: 600px;
+    background: radial-gradient(ellipse at center, rgba(249,80,21,0.07) 0%, transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
   nav {
+    position: relative;
+    z-index: 10;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 2rem;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 1.1rem 2.5rem;
+    border-bottom: 1px solid var(--border);
   }
   .logo {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
     text-decoration: none;
-    color: #e2e8f0;
-    font-size: 1.25rem;
-    font-weight: 700;
   }
-  .logo svg { width: 28px; height: 28px; }
-  .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+  .logo-wordmark { height: 26px; width: auto; display: block; }
+  .nav-links { display: flex; gap: 2rem; align-items: center; }
   .nav-links a {
-    color: #94a3b8;
+    color: var(--muted);
     text-decoration: none;
-    font-size: 0.9rem;
-    transition: color 0.2s;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color 0.18s;
   }
-  .nav-links a:hover { color: #e2e8f0; }
+  .nav-links a:hover { color: var(--text); }
+
   main {
+    position: relative;
+    z-index: 1;
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-  }
-  .container {
+    padding: 5rem 2rem 3rem;
     text-align: center;
-    max-width: 600px;
-    padding: 2rem;
   }
-  .icon { margin-bottom: 1.5rem; }
-  .icon svg { width: 80px; height: 80px; }
-  h1 {
-    font-size: 2.8rem;
-    font-weight: 800;
-    line-height: 1.2;
-    margin-bottom: 1rem;
-    color: #f1f5f9;
+
+  .hero-mark {
+    width: 72px;
+    height: 72px;
+    margin-bottom: 2.25rem;
+    filter: drop-shadow(0 0 20px var(--accent-glow));
+    animation: fadein 0.7s ease 0.1s both, levitate 5s ease-in-out 0.8s infinite;
   }
-  h1 span { color: #f97316; }
-  .tagline {
-    color: #94a3b8;
-    font-size: 1.1rem;
-    line-height: 1.6;
-    margin-bottom: 2.5rem;
-    max-width: 480px;
-    margin-left: auto;
-    margin-right: auto;
+  @keyframes levitate {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-9px); }
   }
-  .buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-  .btn {
-    display: inline-block;
-    padding: 0.85rem 2rem;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-decoration: none;
-    border: none;
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--accent-dim);
+    border: 1px solid rgba(249,80,21,0.2);
+    border-radius: 100px;
+    padding: 0.3rem 0.85rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.75rem;
+    animation: fadein 0.7s ease 0.2s both;
   }
-  .btn-primary {
-    color: #fff;
-    background: #f97316;
-  }
-  .btn-primary:hover { background: #ea580c; }
-  .btn-primary:disabled { background: #1e293b; color: #475569; cursor: wait; }
-  .btn-secondary {
-    color: #e2e8f0;
-    background: transparent;
-    border: 1px solid #334155;
-  }
-  .btn-secondary:hover { border-color: #64748b; }
-  .spinner {
-    display: none;
-    margin: 1.5rem auto 0;
-    width: 36px;
-    height: 36px;
-    border: 3px solid #1e293b;
-    border-top-color: #f97316;
+  .eyebrow-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: pulse 2s ease-in-out infinite;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .status {
-    margin-top: 1rem;
-    color: #94a3b8;
-    font-size: 0.9rem;
-    min-height: 1.4em;
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.65); }
   }
-  .error {
-    color: #ef4444;
-    margin-top: 1rem;
-    font-size: 0.9rem;
+
+  h1 {
+    font-family: 'Barlow', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.6rem, 7vw, 5rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    max-width: 720px;
+    margin-bottom: 1.5rem;
+    animation: fadein 0.7s ease 0.3s both;
+  }
+  h1 .accent { color: var(--accent); }
+
+  .tagline {
+    font-size: 0.86rem;
+    line-height: 1.85;
+    color: var(--muted);
+    max-width: 400px;
+    margin-bottom: 2.75rem;
+    animation: fadein 0.7s ease 0.4s both;
+  }
+
+  .cta-row {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 2.5rem;
+    animation: fadein 0.7s ease 0.5s both;
+  }
+
+  .btn-launch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.8rem 1.75rem;
+    background: var(--accent);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.18s, transform 0.18s, box-shadow 0.18s;
+    overflow: hidden;
+  }
+  .btn-launch::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 55%);
+    pointer-events: none;
+  }
+  .btn-launch:hover:not(:disabled) {
+    background: #e04510;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(249,80,21,0.45);
+  }
+  .btn-launch:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+  .btn-launch:disabled { background: #251812; color: #5a3a2a; cursor: wait; }
+
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.8rem 1.4rem;
+    background: transparent;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    text-decoration: none;
+    transition: color 0.18s, border-color 0.18s;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
+
+  .terminal {
+    width: 100%;
+    max-width: 460px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: none;
+    margin-bottom: 1.5rem;
+    animation: fadein 0.4s ease both;
+  }
+  .terminal.visible { display: block; }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0.55rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+  }
+  .term-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .td-r { background: #ff5f57; }
+  .td-y { background: #febc2e; }
+  .td-g { background: #28c840; }
+  .term-title { margin-left: auto; font-size: 0.65rem; color: var(--muted); letter-spacing: 0.05em; }
+  .term-body { padding: 0.75rem 1rem; font-size: 0.75rem; line-height: 1.9; min-height: 4.5rem; }
+  .term-line {
+    display: flex;
+    gap: 0.5rem;
+    opacity: 0;
+    animation: line-in 0.35s ease forwards;
+  }
+  @keyframes line-in {
+    from { opacity: 0; transform: translateX(-4px); }
+    to { opacity: 1; transform: none; }
+  }
+  .term-prompt { color: var(--accent); user-select: none; }
+  .term-text { color: var(--text); }
+  .term-text.dim { color: var(--muted); }
+
+  .error-msg {
+    font-size: 0.78rem;
+    color: #f87171;
+    margin-bottom: 1rem;
+    min-height: 1.2em;
+  }
+
+  .features {
+    display: flex;
+    gap: 1.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: fadein 0.7s ease 0.6s both;
+  }
+  .feat { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--muted); letter-spacing: 0.04em; }
+  .feat-gem { width: 5px; height: 5px; background: var(--accent); border-radius: 1px; transform: rotate(45deg); flex-shrink: 0; }
+
+  .trace {
+    position: fixed;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.11;
+  }
+  .trace-tl { top: 64px; left: 0; }
+  .trace-br { bottom: 0; right: 0; transform: rotate(180deg); }
+
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
   }
 </style>
 </head>
 <body>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<svg class="trace trace-tl" width="220" height="180" viewBox="0 0 220 180" fill="none">
+  <path d="M0 50 H70 V10" stroke="#f95015" stroke-width="2" stroke-linecap="round"/>
+  <path d="M0 90 H110 V10" stroke="#f95015" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M0 130 H130 Q150 130 150 110 V10" stroke="#f95015" stroke-width="1" stroke-linecap="round"/>
+  <circle cx="70" cy="10" r="4.5" fill="#f95015"/>
+  <circle cx="110" cy="10" r="3" fill="#f95015"/>
+  <circle cx="70" cy="50" r="3" fill="#f95015"/>
+</svg>
+<svg class="trace trace-br" width="220" height="180" viewBox="0 0 220 180" fill="none">
+  <path d="M0 50 H70 V10" stroke="#f95015" stroke-width="2" stroke-linecap="round"/>
+  <path d="M0 90 H110 V10" stroke="#f95015" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M0 130 H130 Q150 130 150 110 V10" stroke="#f95015" stroke-width="1" stroke-linecap="round"/>
+  <circle cx="70" cy="10" r="4.5" fill="#f95015"/>
+  <circle cx="110" cy="10" r="3" fill="#f95015"/>
+</svg>
+
 <nav>
   <a href="https://atopile.io" class="logo">
-    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M4 4h8v4H8v4h8v4H8v4h8v4H8v4H4V4zm12 0h8v4h-4v4h4v4h-4v4h4v4h-4v4h-4V4zm12 0h4v24h-4v-4h-4v-4h4v-4h-4V8h4V4z" fill="#f97316"/>
+    <svg class="logo-wordmark" viewBox="0 0 414 98" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M130.24 76.19V70.75H129.7C128.76 71.91 127.49 73 125.89 74.01C122.41 76.19 118.42 77.27 113.92 77.27C107.83 77.27 102.95 75.64 99.29 72.37C95.63 69.11 93.8 65.12 93.8 60.41C93.8 54.75 95.76 50.26 99.67 46.92C103.59 43.59 109.24 41.92 116.64 41.92H129.15V40.83C129.15 37.71 128.26 35.21 126.49 33.32C124.71 31.44 122.34 30.49 119.37 30.49C116.4 30.49 114.27 31.22 112.57 32.67C110.87 34.12 109.87 35.75 109.58 37.56H95.98C96.63 32.56 98.95 28.31 102.94 24.83C106.93 21.35 112.4 19.61 119.37 19.61C126.34 19.61 131.97 21.64 136.28 25.7C140.59 29.76 142.75 34.8 142.75 40.82V76.17H130.24V76.19ZM129.15 53.89V52.26H117.73C110.84 52.26 107.4 54.62 107.4 59.33C107.4 61.51 108.16 63.23 109.68 64.5C111.2 65.77 113.34 66.4 116.1 66.4C120.23 66.4 123.44 65.3 125.73 63.08C128.01 60.87 129.16 57.81 129.16 53.89H129.15Z" fill="white"/>
+      <path d="M155.26 63.14V33.77H146.56V20.72H155.26V4.95001H168.86V20.72H181.37V33.77H168.86V60.42C168.86 62.96 170.13 64.23 172.67 64.23H181.37V76.19H169.41C164.84 76.19 161.34 75.05 158.91 72.76C156.48 70.48 155.27 67.27 155.27 63.13L155.26 63.14Z" fill="white"/>
+      <path d="M193.17 27.74C198.5 22.34 205.26 19.64 213.46 19.64C221.66 19.64 228.42 22.34 233.75 27.74C239.08 33.14 241.74 40.05 241.74 48.46C241.74 56.87 239.07 63.78 233.75 69.18C228.42 74.58 221.66 77.28 213.46 77.28C205.26 77.28 198.5 74.58 193.17 69.18C187.84 63.78 185.18 56.87 185.18 48.46C185.18 40.05 187.84 33.14 193.17 27.74ZM203.01 60.21C205.84 63.26 209.32 64.78 213.45 64.78C217.58 64.78 221.06 63.26 223.89 60.21C226.72 57.16 228.13 53.25 228.13 48.46C228.13 43.67 226.72 39.76 223.89 36.71C221.06 33.66 217.58 32.14 213.45 32.14C209.32 32.14 205.84 33.66 203.01 36.71C200.18 39.76 198.77 43.67 198.77 48.46C198.77 53.25 200.18 57.16 203.01 60.21Z" fill="white"/>
+      <path d="M249.89 97.95V20.72H263.49V26.7H264.03C265.04 25.4 266.32 24.24 267.84 23.22C271.47 20.83 275.46 19.63 279.8 19.63C287.05 19.63 293.13 22.3 298.02 27.62C302.91 32.95 305.36 39.89 305.36 48.45C305.36 57.01 302.91 63.95 298.02 69.28C293.13 74.61 287.05 77.28 279.8 77.28C275.02 77.28 270.95 76.19 267.62 74.02C266.17 73.01 264.97 71.92 264.03 70.76H263.49V97.95H249.89ZM287.85 60.48C290.46 57.62 291.76 53.61 291.76 48.46C291.76 43.31 290.45 39.31 287.85 36.44C285.24 33.58 281.83 32.14 277.62 32.14C273.41 32.14 270.01 33.57 267.4 36.44C264.79 39.31 263.48 43.31 263.48 48.46C263.48 53.61 264.79 57.62 267.4 60.48C270.01 63.35 273.42 64.78 277.62 64.78C281.82 64.78 285.24 63.35 287.85 60.48Z" fill="white"/>
+      <path d="M313.52 20.72V76.19H327.12V20.72H313.52Z" fill="white"/>
+      <path d="M327.66 0.05H312.98V13.1H327.66V0.05Z" fill="#F95015"/>
+      <path d="M336.65 76.19V0.05H350.25V76.19H336.65Z" fill="white"/>
+      <path d="M398.19 59.88H412.33C411.97 61.26 411.26 62.8 410.21 64.5C409.16 66.2 407.67 68.09 405.75 70.16C403.83 72.23 401.2 73.93 397.86 75.27C394.52 76.61 390.83 77.28 386.77 77.28C378.57 77.28 371.81 74.58 366.48 69.18C361.15 63.78 358.49 56.87 358.49 48.46C358.49 40.05 361.15 33.14 366.48 27.74C371.81 22.34 378.57 19.64 386.77 19.64C394.38 19.64 400.82 22.31 406.08 27.63C411.34 32.96 413.97 39.54 413.97 47.37C413.97 48.02 413.86 49.33 413.64 51.29L413.42 52.81H372.09C372.67 56.73 374.3 59.88 376.99 62.27C379.67 64.66 382.93 65.86 386.78 65.86C389.68 65.86 392.15 65.23 394.18 63.96C396.21 62.69 397.55 61.33 398.21 59.88H398.19ZM372.08 43.56H400.36C399.71 39.86 398.2 36.85 395.85 34.53C393.49 32.21 390.47 31.05 386.77 31.05C382.85 31.05 379.64 32.19 377.14 34.48C374.64 36.76 372.95 39.79 372.08 43.56Z" fill="white"/>
+      <path d="M2.54 87.25H14.4C15.78 87.25 16.9 86.13 16.9 84.75V79.55C16.9 78.17 15.78 77.05 14.4 77.05H2.54C1.16 77.05 0.04 78.17 0.04 79.55V84.75C0.04 86.13 1.16 87.25 2.54 87.25Z" fill="#F95015"/>
+      <path d="M49.55 17.37V12.16C49.55 10.78 50.67 9.66 52.05 9.66H75.13C76.51 9.66 77.63 10.78 77.63 12.16V38.09C77.63 39.47 76.51 40.59 75.13 40.59H69.92C68.54 40.59 67.42 39.47 67.42 38.09V22.36C67.42 20.98 66.3 19.86 64.92 19.86H52.04C50.66 19.86 49.54 18.74 49.54 17.36L49.55 17.37Z" fill="#F95015"/>
+      <path d="M0.04 52.87V47.66C0.04 46.28 1.16 45.16 2.54 45.16H14.4C15.78 45.16 16.9 46.28 16.9 47.66V58.61C16.9 59.99 18.02 61.11 19.4 61.11H28.16C29.54 61.11 30.66 62.23 30.66 63.61V74.56C30.66 75.94 31.78 77.06 33.16 77.06H64.93C66.31 77.06 67.43 75.94 67.43 74.56V57.88C67.43 56.5 66.31 55.38 64.93 55.38H51.43C50.05 55.38 48.93 54.26 48.93 52.88V40.13C48.93 38.75 47.81 37.63 46.43 37.63H37.72C36.34 37.63 35.22 36.51 35.22 35.13V22.37C35.22 20.99 34.1 19.87 32.72 19.87H25.66C24.28 19.87 23.16 18.75 23.16 17.37V12.16C23.16 10.78 24.28 9.66 25.66 9.66H42.48C43.86 9.66 44.98 10.78 44.98 12.16V24.91C44.98 26.29 46.1 27.41 47.48 27.41H56.19C57.57 27.41 58.69 28.53 58.69 29.91V42.66C58.69 44.04 59.81 45.16 61.19 45.16H75.14C76.52 45.16 77.64 46.28 77.64 47.66V84.75C77.64 86.13 76.52 87.25 75.14 87.25H23.25C21.87 87.25 20.75 86.13 20.75 84.75V73.8C20.75 72.42 19.63 71.3 18.25 71.3H9.49C8.11 71.3 6.99 70.18 6.99 68.8V57.85C6.99 56.47 5.87 55.35 4.49 55.35H2.55C1.17 55.35 0.05 54.23 0.05 52.85L0.04 52.87Z" fill="#F95015"/>
+      <path d="M7.41 35.12V29.91C7.41 28.53 8.53 27.41 9.91 27.41H28.08C29.46 27.41 30.58 28.53 30.58 29.91V42.66C30.58 44.04 31.7 45.16 33.08 45.16H42.49C43.87 45.16 44.99 46.28 44.99 47.66V58.61C44.99 59.99 46.11 61.11 47.49 61.11H59.15C60.53 61.11 61.65 62.23 61.65 63.61V68.82C61.65 70.2 60.53 71.32 59.15 71.32H37.57C36.19 71.32 35.07 70.2 35.07 68.82V57.87C35.07 56.49 33.95 55.37 32.57 55.37H23.33C21.95 55.37 20.83 54.25 20.83 52.87V40.12C20.83 38.74 19.71 37.62 18.33 37.62H9.92C8.54 37.62 7.42 36.5 7.42 35.12H7.41Z" fill="#F95015"/>
+      <path d="M9.91 19.87H15.11C16.49 19.87 17.61 18.75 17.61 17.37V12.17C17.61 10.79 16.49 9.67 15.11 9.67H9.91C8.53 9.67 7.41 10.79 7.41 12.17V17.37C7.41 18.75 8.53 19.87 9.91 19.87Z" fill="#F95015"/>
     </svg>
-    atopile
   </a>
   <div class="nav-links">
-    <a href="https://atopile.io/docs">Docs</a>
-    <a href="https://packages.atopile.io">Packages</a>
-    <a href="https://github.com/atopile/atopile">GitHub</a>
+    <a href="https://atopile.io/docs">docs</a>
+    <a href="https://packages.atopile.io">packages</a>
+    <a href="https://github.com/atopile/atopile">github</a>
   </div>
 </nav>
+
 <main>
-<div class="container">
-  <div class="icon">
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 8h16v8H16v8h16v8H16v8h16v8H16v8H8V8zm24 0h16v8H40v8h8v8h-8v8h8v8h-8v8h-8V8zm24 0h8v48h-8v-8h-8v-8h8v-8h-8V16h8V8z" fill="#f97316"/>
-    </svg>
+  <svg class="hero-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g transform="matrix(0.20349758,0,0,0.19542038,2.446668,-3.609417)">
+      <rect x="0" y="286.42" width="62.71" height="37.95" rx="2.5" ry="2.5" transform="rotate(180,31.355,305.395)" fill="#f95015"/>
+      <path d="M184.16,64.43V45.06c0-5.13,4.16-9.29,9.29-9.29h85.86c5.13,0,9.29,4.16,9.29,9.29v96.45c0,5.13-4.16,9.29-9.29,9.29h-19.37c-5.13,0-9.29-4.16-9.29-9.29V83.21c0-5.13-4.16-9.29-9.29-9.29h-47.9c-5.13,0-9.29-4.16-9.29-9.29z" fill="#f95015"/>
+      <path d="M0,196.49v-19.37c0-5.13,4.16-9.29,9.29-9.29h44.13c5.13,0,9.29,4.16,9.29,9.29v40.72c0,5.13,4.16,9.29,9.29,9.29h32.59c5.13,0,9.29,4.16,9.29,9.29v40.72c0,5.13,4.16,9.29,9.29,9.29h118.19c5.13,0,9.29-4.16,9.29-9.29v-62.06c0-5.13-4.16-9.29-9.29-9.29h-50.2c-5.13,0-9.29-4.16-9.29-9.29v-47.44c0-5.13-4.16-9.29-9.29-9.29H140.5c-5.13,0-9.29-4.16-9.29-9.29V83.03c0-5.13-4.16-9.29-9.29-9.29H95.3c-5.13,0-9.29-4.16-9.29-9.29V45.08c0-5.13,4.16-9.29,9.29-9.29h62.55c5.13,0,9.29,4.16,9.29,9.29v47.44c0,5.13,4.16,9.29,9.29,9.29h32.42c5.13,0,9.29,4.16,9.29,9.29v47.44c0,5.13,4.16,9.29,9.29,9.29h51.88c5.13,0,9.29,4.16,9.29,9.29v137.97c0,5.13-4.16,9.29-9.29,9.29H86.26c-5.13,0-9.29-4.16-9.29-9.29v-40.72c0-5.13-4.16-9.29-9.29-9.29H35.09c-5.13,0-9.29-4.16-9.29-9.29v-40.72c0-5.13-4.16-9.29-9.29-9.29H9.29C4.16,205.78,0,201.62,0,196.49z" fill="#f95015"/>
+      <path d="M27.41,130.46v-19.37c0-5.13,4.16-9.29,9.29-9.29h67.58c5.13,0,9.29,4.16,9.29,9.29v47.44c0,5.13,4.16,9.29,9.29,9.29h35c5.13,0,9.29,4.16,9.29,9.29v40.72c0,5.13,4.16,9.29,9.29,9.29h43.37c5.13,0,9.29,4.16,9.29,9.29v19.37c0,5.13-4.16,9.29-9.29,9.29h-80.27c-5.13,0-9.29-4.16-9.29-9.29v-40.72c0-5.13-4.16-9.29-9.29-9.29H86.59c-5.13,0-9.29-4.16-9.29-9.29v-47.44c0-5.13-4.16-9.29-9.29-9.29h-31.3c-5.13,0-9.29-4.16-9.29-9.29z" fill="#f95015"/>
+      <rect x="27.41" y="35.77" width="37.95" height="37.95" rx="2.5" ry="2.5" transform="rotate(180,46.38,54.75)" fill="#f95015"/>
+    </g>
+  </svg>
+
+  <div class="eyebrow">
+    <div class="eyebrow-dot"></div>
+    Browser Playground
   </div>
-  <h1>Design circuit boards<br><span>blazing fast</span> with code</h1>
-  <p class="tagline">Try atopile in your browser. No installation required.</p>
-  <div class="buttons">
-    <button class="btn btn-primary" id="launch" onclick="spawn()">Get Started</button>
-    <a class="btn btn-secondary" href="https://atopile.io/docs">View Documentation</a>
+
+  <h1>Design circuits<br>with <span class="accent">code.</span></h1>
+
+  <p class="tagline">
+    Instant cloud workspace &mdash; no install, no friction.<br>
+    Write ato, see your board come to life.
+  </p>
+
+  <div class="cta-row">
+    <button class="btn-launch" id="launch" onclick="spawn()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Launch workspace
+    </button>
+    <a class="btn-ghost" href="https://atopile.io/docs">
+      View docs
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
   </div>
-  <div class="spinner" id="spinner"></div>
-  <div class="status" id="status"></div>
-  <div class="error" id="error"></div>
-</div>
+
+  <div class="terminal" id="terminal">
+    <div class="term-bar">
+      <div class="term-dot td-r"></div>
+      <div class="term-dot td-y"></div>
+      <div class="term-dot td-g"></div>
+      <span class="term-title">spawner</span>
+    </div>
+    <div class="term-body" id="term-body"></div>
+  </div>
+
+  <div class="error-msg" id="error"></div>
+
+  <div class="features">
+    <div class="feat"><div class="feat-gem"></div>Ephemeral workspace</div>
+    <div class="feat"><div class="feat-gem"></div>30-min session</div>
+    <div class="feat"><div class="feat-gem"></div>Full IDE in browser</div>
+    <div class="feat"><div class="feat-gem"></div>No signup required</div>
+  </div>
 </main>
+
 <script>
+var MSGS = [
+  "Provisioning cloud machine...",
+  "Pulling atopile runtime...",
+  "Mounting workspace volume...",
+  "Starting language server...",
+  "Launching IDE..."
+];
+var msgIdx = 0;
+var msgTimer;
+
+function addLine(text, dim) {
+  var body = document.getElementById('term-body');
+  var line = document.createElement('div');
+  line.className = 'term-line';
+  var prompt = document.createElement('span');
+  prompt.className = 'term-prompt';
+  prompt.textContent = '$';
+  var msg = document.createElement('span');
+  msg.className = dim ? 'term-text dim' : 'term-text';
+  msg.textContent = ' ' + text;
+  line.appendChild(prompt);
+  line.appendChild(msg);
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function tickMessages() {
+  if (msgIdx < MSGS.length) {
+    addLine(MSGS[msgIdx], msgIdx > 0);
+    msgIdx++;
+    msgTimer = setTimeout(tickMessages, 900);
+  }
+}
+
 async function spawn() {
-  const btn = document.getElementById('launch');
-  const spinner = document.getElementById('spinner');
-  const status = document.getElementById('status');
-  const error = document.getElementById('error');
+  var btn = document.getElementById('launch');
+  var terminal = document.getElementById('terminal');
+  var error = document.getElementById('error');
 
   btn.disabled = true;
-  spinner.style.display = 'block';
-  status.textContent = 'Starting your workspace...';
   error.textContent = '';
+  terminal.classList.add('visible');
+  tickMessages();
 
   try {
-    const res = await fetch('/api/spawn', { method: 'POST' });
+    var res = await fetch('/api/spawn', { method: 'POST' });
     if (res.redirected) {
+      clearTimeout(msgTimer);
+      addLine('Ready \u2014 redirecting...', false);
       window.location.href = res.url;
       return;
     }
-    const data = await res.json();
+    var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Spawn failed');
     window.location.reload();
   } catch (err) {
-    spinner.style.display = 'none';
+    clearTimeout(msgTimer);
+    terminal.classList.remove('visible');
     error.textContent = err.message;
     btn.disabled = false;
+    msgIdx = 0;
   }
 }
 </script>
@@ -568,6 +840,13 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const cookies = parseCookies(req.headers.cookie);
   const machineId = verifyCookie(cookies.session);
+
+  // Favicon
+  if (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico") {
+    res.writeHead(200, { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400" });
+    res.end(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="matrix(0.20349758,0,0,0.19542038,2.446668,-3.609417)"><rect x="0" y="286.42" width="62.71" height="37.95" rx="2.5" transform="rotate(180,31.355,305.395)" fill="#f95015"/><path d="M184.16,64.43V45.06c0-5.13,4.16-9.29,9.29-9.29h85.86c5.13,0,9.29,4.16,9.29,9.29v96.45c0,5.13-4.16,9.29-9.29,9.29h-19.37c-5.13,0-9.29-4.16-9.29-9.29V83.21c0-5.13-4.16-9.29-9.29-9.29h-47.9c-5.13,0-9.29-4.16-9.29-9.29z" fill="#f95015"/><path d="M0,196.49v-19.37c0-5.13,4.16-9.29,9.29-9.29h44.13c5.13,0,9.29,4.16,9.29,9.29v40.72c0,5.13,4.16,9.29,9.29,9.29h32.59c5.13,0,9.29,4.16,9.29,9.29v40.72c0,5.13,4.16,9.29,9.29,9.29h118.19c5.13,0,9.29-4.16,9.29-9.29v-62.06c0-5.13-4.16-9.29-9.29-9.29h-50.2c-5.13,0-9.29-4.16-9.29-9.29v-47.44c0-5.13-4.16-9.29-9.29-9.29H140.5c-5.13,0-9.29-4.16-9.29-9.29V83.03c0-5.13-4.16-9.29-9.29-9.29H95.3c-5.13,0-9.29-4.16-9.29-9.29V45.08c0-5.13,4.16-9.29,9.29-9.29h62.55c5.13,0,9.29,4.16,9.29,9.29v47.44c0,5.13,4.16,9.29,9.29,9.29h32.42c5.13,0,9.29,4.16,9.29,9.29v47.44c0,5.13,4.16,9.29,9.29,9.29h51.88c5.13,0,9.29,4.16,9.29,9.29v137.97c0,5.13-4.16,9.29-9.29,9.29H86.26c-5.13,0-9.29-4.16-9.29-9.29v-40.72c0-5.13-4.16-9.29-9.29-9.29H35.09c-5.13,0-9.29-4.16-9.29-9.29v-40.72c0-5.13-4.16-9.29-9.29-9.29H9.29C4.16,205.78,0,201.62,0,196.49z" fill="#f95015"/><path d="M27.41,130.46v-19.37c0-5.13,4.16-9.29,9.29-9.29h67.58c5.13,0,9.29,4.16,9.29,9.29v47.44c0,5.13,4.16,9.29,9.29,9.29h35c5.13,0,9.29,4.16,9.29,9.29v40.72c0,5.13,4.16,9.29,9.29,9.29h43.37c5.13,0,9.29,4.16,9.29,9.29v19.37c0,5.13-4.16,9.29-9.29,9.29h-80.27c-5.13,0-9.29-4.16-9.29-9.29v-40.72c0-5.13-4.16-9.29-9.29-9.29H86.59c-5.13,0-9.29-4.16-9.29-9.29v-47.44c0-5.13-4.16-9.29-9.29-9.29h-31.3c-5.13,0-9.29-4.16-9.29-9.29z" fill="#f95015"/><rect x="27.41" y="35.77" width="37.95" height="37.95" rx="2.5" transform="rotate(180,46.38,54.75)" fill="#f95015"/></g></svg>`);
+    return;
+  }
 
   // Health check
   if (url.pathname === "/api/health") {
