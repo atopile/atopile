@@ -545,7 +545,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       window.WebSocket = ProxyWebSocket;
     })();
 
-    (function() {
+    document.addEventListener('DOMContentLoaded', function() {
       var loading = document.getElementById('atopile-log-loading');
       var root = document.getElementById('root');
       function showFailure(message) {
@@ -574,7 +574,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
           showFailure('Log viewer failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
         }
       }, 7000);
-    })();
+    });
   </script>
 </head>
 <body>
