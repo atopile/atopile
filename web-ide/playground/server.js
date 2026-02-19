@@ -668,6 +668,7 @@ const LANDING_HTML = `<!DOCTYPE html>
 <body>
 <div class="bg-grid"></div>
 <div class="bg-glow"></div>
+<canvas id="bg-canvas" style="position:fixed;inset:0;z-index:0;pointer-events:none;"></canvas>
 
 <svg class="trace trace-tl" width="220" height="180" viewBox="0 0 220 180" fill="none">
   <path d="M0 50 H70 V10" stroke="#f95015" stroke-width="2" stroke-linecap="round"/>
@@ -828,6 +829,145 @@ async function spawn() {
     msgIdx = 0;
   }
 }
+</script>
+<script>
+(function() {
+  var C = document.getElementById('bg-canvas');
+  var X = C.getContext('2d');
+  var G = 48;
+  var NUM = 7;
+  var DX = [1, 0, -1, 0];
+  var DY = [0, 1, 0, -1];
+  var snakes = [];
+
+  function cols() { return Math.ceil(C.width  / G) + 2; }
+  function rows() { return Math.ceil(C.height / G) + 2; }
+  function resize() { C.width = window.innerWidth; C.height = window.innerHeight; }
+
+  function pickDir(gx, gy, exclude) {
+    // Return all valid directions from (gx,gy), optionally excluding one
+    var nc = cols(), nr = rows(), out = [];
+    for (var d = 0; d < 4; d++) {
+      if (d === exclude) continue;
+      var tx = gx + DX[d], ty = gy + DY[d];
+      if (tx >= 0 && tx < nc && ty >= 0 && ty < nr) out.push(d);
+    }
+    return out;
+  }
+
+  function makeSnake() {
+    var nc = cols(), nr = rows();
+    var gx = Math.floor(Math.random() * nc);
+    var gy = Math.floor(Math.random() * nr);
+    var dirs = pickDir(gx, gy, -1);
+    var dir  = dirs[Math.floor(Math.random() * dirs.length)];
+    return {
+      gx: gx, gy: gy, dir: dir,
+      // pts holds corners the snake has ARRIVED at (current cell is last entry)
+      pts:    [[gx * G, gy * G]],
+      len:    12 + Math.floor(Math.random() * 8),
+      speed:  0.45 + Math.random() * 0.5,
+      alpha:  0.30 + Math.random() * 0.2,
+      t:      0,
+      runway: 4 + Math.floor(Math.random() * 8)
+    };
+  }
+
+  function stepSnake(s) {
+    // ── 1. ARRIVE at the cell we were heading toward ──────────────────────
+    s.gx += DX[s.dir];
+    s.gy += DY[s.dir];
+    var nc = cols(), nr = rows();
+    if (s.gx < 0 || s.gx >= nc || s.gy < 0 || s.gy >= nr) return false;
+
+    // Commit this corner to the trail
+    s.pts.push([s.gx * G, s.gy * G]);
+    if (s.pts.length > s.len + 1) s.pts.shift();
+
+    // ── 2. DECIDE next direction FROM the arrived corner ──────────────────
+    s.runway--;
+    var reverse   = (s.dir + 2) % 4;
+    var cw        = (s.dir + 1) % 4;
+    var ccw       = (s.dir + 3) % 4;
+    var fwd_ok    = (s.gx + DX[s.dir] >= 0 && s.gx + DX[s.dir] < nc &&
+                     s.gy + DY[s.dir] >= 0 && s.gy + DY[s.dir] < nr);
+    var hitWall   = !fwd_ok;
+
+    if (hitWall || (s.runway <= 0 && Math.random() < 0.5)) {
+      // Prefer the two perpendicular directions; fall back to forward if clear
+      var opts = [];
+      [cw, ccw].forEach(function(d) {
+        var tx = s.gx + DX[d], ty = s.gy + DY[d];
+        if (tx >= 0 && tx < nc && ty >= 0 && ty < nr) opts.push(d);
+      });
+      if (!hitWall && fwd_ok) opts.push(s.dir); // also allow going straight
+      if (!opts.length) opts = pickDir(s.gx, s.gy, reverse); // last resort
+      if (!opts.length) return false;
+      s.dir    = opts[Math.floor(Math.random() * opts.length)];
+      s.runway = 4 + Math.floor(Math.random() * 9);
+    }
+
+    return true;
+  }
+
+  function updateSnake(s, dt) {
+    s.t += s.speed * dt;
+    while (s.t >= 1) {
+      s.t -= 1;
+      if (!stepSnake(s)) return makeSnake();
+    }
+    return s;
+  }
+
+  function drawSnake(s) {
+    if (s.pts.length < 1) return;
+    // Head is smoothly interpolated from the last committed corner
+    var last = s.pts[s.pts.length - 1];
+    var hx = last[0] + DX[s.dir] * s.t * G;
+    var hy = last[1] + DY[s.dir] * s.t * G;
+
+    var pts = s.pts.slice();
+    pts.push([hx, hy]);
+    var n = pts.length;
+
+    X.lineWidth = 1.5;
+    X.lineCap = 'square';
+    for (var i = 1; i < n; i++) {
+      var a = Math.pow(i / (n - 1), 1.8) * s.alpha;
+      X.strokeStyle = 'rgba(249,80,21,' + a.toFixed(3) + ')';
+      X.beginPath();
+      X.moveTo(pts[i-1][0], pts[i-1][1]);
+      X.lineTo(pts[i][0],   pts[i][1]);
+      X.stroke();
+    }
+    // Glowing head dot
+    X.fillStyle = 'rgba(249,80,21,' + Math.min(s.alpha * 1.8, 0.8).toFixed(3) + ')';
+    X.beginPath();
+    X.arc(hx, hy, 2, 0, 6.2832);
+    X.fill();
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  for (var i = 0; i < NUM; i++) {
+    var s = makeSnake();
+    for (var j = 0; j < 20 + Math.floor(Math.random() * 40); j++) stepSnake(s);
+    snakes.push(s);
+  }
+
+  var last = 0;
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    var dt = Math.min((ts - last) / 1000, 0.05);
+    last = ts;
+    X.clearRect(0, 0, C.width, C.height);
+    for (var i = 0; i < snakes.length; i++) {
+      snakes[i] = updateSnake(snakes[i], dt);
+      drawSnake(snakes[i]);
+    }
+  }
+  requestAnimationFrame(frame);
+})();
 </script>
 </body>
 </html>`;
