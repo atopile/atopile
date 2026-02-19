@@ -427,15 +427,19 @@ def run_tests(
         varnames = inspect_target.__code__.co_varnames
         needs_tmpdir = "tmpdir" in varnames
         needs_tmp_path = "tmp_path" in varnames
-        if needs_tmpdir or needs_tmp_path:
+        if needs_tmpdir or needs_tmp_path or needs_setup_project_config:
             old_test_func = test_func
 
             def _(*args, _old=old_test_func, **kwargs):
-                if needs_tmpdir:
-                    kwargs["tmpdir"] = tmp_path
-                if needs_tmp_path:
-                    kwargs["tmp_path"] = tmp_path
-                _old(*args, **kwargs)
+                with tempfile.TemporaryDirectory() as tmp_path_str:
+                    tmp_path_obj = Path(tmp_path_str)
+                    if needs_tmpdir:
+                        kwargs["tmpdir"] = tmp_path_obj
+                    if needs_tmp_path:
+                        kwargs["tmp_path"] = tmp_path_obj
+                    if needs_setup_project_config:
+                        _fixture_setup_project_config(tmp_path_obj)
+                    _old(*args, **kwargs)
 
             test_func = _
 
@@ -487,11 +491,7 @@ def run_tests(
                 )
 
         try:
-            with tempfile.TemporaryDirectory() as tmp_path_str:
-                tmp_path = Path(tmp_path_str)
-                if needs_setup_project_config:
-                    _fixture_setup_project_config(tmp_path)
-                fn()
+            fn()
         except Exception:
             # Print Rich traceback with locals and suppressed internals
             console = Console(stderr=True)
