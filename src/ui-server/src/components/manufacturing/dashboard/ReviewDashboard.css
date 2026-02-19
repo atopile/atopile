@@ -461,8 +461,14 @@
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
 }
 
-.mfg-build-stage-item.status-idle {
-  opacity: 0.4;
+/* ── Build targets 2-column flow ──────────────────────────────── */
+.mfg-target-categories-grid {
+  columns: 2;
+  column-gap: 20px;
+}
+
+.mfg-target-categories-grid .mfg-target-category {
+  break-inside: avoid;
 }
 
 /* ── Buttons ────────────────────────────────────────────────────── */

@@ -1,16 +1,21 @@
 /**
  * ReviewShell — plugin host for review pages.
- * Toolbar (title, reviewed, comment) has been moved to the top header bar.
- * This shell just renders the active page component.
+ * Bottom action bar has Mark Reviewed + Comment buttons (matching build action bar position).
  */
 
+import { useState } from 'react';
+import { CheckCircle2, Circle, MessageSquare } from 'lucide-react';
 import { useStore } from '../../../store';
 import { REVIEW_PAGES } from './reviewPages';
-import type { BuildOutputs } from '../types';
+import { CommentDialog } from './CommentDialog';
+import type { BuildOutputs, ReviewComment } from '../types';
 
 export function ReviewShell() {
   const dashboard = useStore((s) => s.manufacturingDashboard);
   const markReviewed = useStore((s) => s.markReviewed);
+  const setDashboardReviewPage = useStore((s) => s.setDashboardReviewPage);
+  const setDashboardStep = useStore((s) => s.setDashboardStep);
+  const [commentDialogOpen, setCommentDialogOpen] = useState(false);
 
   if (!dashboard) return null;
 
@@ -33,6 +38,27 @@ export function ReviewShell() {
   const PageComponent = activePage.component;
   const isReviewed = !!reviewedPages[activePage.definition.id];
   const pageComments = reviewComments.filter((c) => c.pageId === activePage.definition.id);
+  const pageComment = reviewComments.find((c: ReviewComment) => c.pageId === activePage.definition.id) ?? null;
+
+  const handleMarkReviewed = () => {
+    if (!isReviewed) {
+      markReviewed(activePage.definition.id, true);
+      const availablePages = REVIEW_PAGES.filter(
+        (p) => !outputs || p.definition.isAvailable(outputs)
+      );
+      const currentIndex = availablePages.findIndex((p) => p.definition.id === activePage.definition.id);
+      for (let i = 1; i < availablePages.length; i++) {
+        const nextPage = availablePages[(currentIndex + i) % availablePages.length];
+        if (!reviewedPages[nextPage.definition.id]) {
+          setDashboardReviewPage(nextPage.definition.id);
+          return;
+        }
+      }
+      setDashboardStep('export');
+    } else {
+      markReviewed(activePage.definition.id, false);
+    }
+  };
 
   return (
     <div className="mfg-review-shell">
@@ -49,6 +75,32 @@ export function ReviewShell() {
           onAddComment={() => {}}
         />
       </div>
+
+      {/* Review actions — pinned to bottom, matching build actions location */}
+      <div className="mfg-build-actions">
+        <button
+          className={`mfg-btn ${isReviewed ? 'mfg-btn-secondary' : 'mfg-btn-primary'}`}
+          onClick={handleMarkReviewed}
+        >
+          {isReviewed ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+          {isReviewed ? ' Reviewed' : ' Mark Reviewed'}
+        </button>
+        <button
+          className={`mfg-btn mfg-btn-secondary${pageComment ? ' has-comment' : ''}`}
+          onClick={() => setCommentDialogOpen(true)}
+        >
+          <MessageSquare size={14} /> Comment
+        </button>
+      </div>
+
+      {commentDialogOpen && (
+        <CommentDialog
+          pageId={activePage.definition.id}
+          pageLabel={activePage.definition.label}
+          existingComment={pageComment}
+          onClose={() => setCommentDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

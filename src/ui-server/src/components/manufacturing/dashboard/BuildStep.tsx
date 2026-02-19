@@ -65,6 +65,8 @@ export function BuildStep() {
 
   // Track the buildId we're watching so we don't react to stale completed builds
   const trackedBuildIdRef = useRef<string | null>(null);
+  // Track whether user started a build in this session (avoid showing stale stage data)
+  const sessionBuildStartedRef = useRef(false);
 
   // Fetch muster targets once dashboard is open, retrying until WS is ready
   useEffect(() => {
@@ -139,6 +141,7 @@ export function BuildStep() {
       setDashboardBuildStatus, setDashboardOutputs, setDashboardArtifactVerification]);
 
   const handleStartBuild = useCallback(() => {
+    sessionBuildStartedRef.current = true;
     setDashboardBuildStatus('building');
     const nonRequiredTargets = selectedBuildTargets.filter((t) => {
       const info = availableBuildTargets.find((a) => a.name === t);
@@ -210,13 +213,25 @@ export function BuildStep() {
     setDashboardBuildTargets([...allSelectableTargets]);
   }, [setDashboardBuildTargets, allSelectableTargets]);
 
+  const handleStartReview = useCallback(() => {
+    const firstPage = REVIEW_PAGES.find(
+      (p) => !outputs || p.definition.isAvailable(outputs)
+    );
+    if (firstPage) {
+      setDashboardReviewPage(firstPage.definition.id);
+    } else {
+      setDashboardStep('review');
+    }
+  }, [outputs, setDashboardReviewPage, setDashboardStep]);
+
   if (!dashboard) return null;
 
   const isBuilding = buildStatus === 'building';
   const isFailed = buildStatus === 'failed';
   const isReady = buildStatus === 'ready' || buildStatus === 'confirmed';
   // Build a map from stage id → status from live queuedBuilds data
-  const realStages = activeBuild?.stages ?? [];
+  // Only use stage data if user started a build in this session (avoid stale data)
+  const realStages = sessionBuildStartedRef.current ? (activeBuild?.stages ?? []) : [];
   const stageStatusMap = useMemo(() => {
     const map: Record<string, { status: StepStatus; elapsed?: string }> = {};
     for (const stage of realStages) {
@@ -261,9 +276,6 @@ export function BuildStep() {
     return selectedBuildTargets.includes(t.name);
   };
 
-  // Whether we have an active or completed build (show status column)
-  const hasBuildActivity = isBuilding || isReady || isFailed;
-
   // Render one target row — checkbox is always present, status icon + time
   // appear as extra columns on the right during/after a build.
   const renderTargetRow = (t: MusterTargetInfo, isRequired: boolean) => {
@@ -271,7 +283,7 @@ export function BuildStep() {
     const hasLogs = !!activeBuild?.buildId;
     const included = isTargetIncluded(t);
     const status: StepStatus = stageInfo?.status ?? (isBuilding && included ? 'pending' : 'idle');
-    const checkboxDisabled = isRequired || hasBuildActivity;
+    const checkboxDisabled = isRequired || isBuilding;
 
     return (
       <li
@@ -293,7 +305,8 @@ export function BuildStep() {
           type="checkbox"
           checked={isRequired || selectedBuildTargets.includes(t.name)}
           disabled={checkboxDisabled}
-          onChange={() => { if (!isRequired && !hasBuildActivity) toggleDashboardBuildTarget(t.name); }}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => { if (!isRequired && !isBuilding) toggleDashboardBuildTarget(t.name); }}
           className="mfg-target-checkbox-input"
         />
         <span>{t.description || t.name}</span>
@@ -334,7 +347,7 @@ export function BuildStep() {
             {/* Header with preset buttons */}
             <div className="mfg-target-presets">
               <h3 className="mfg-build-section-title" style={{ margin: 0 }}>Build Targets</h3>
-              {!hasBuildActivity && (
+              {!isBuilding && (
                 <>
                   <button className="mfg-btn mfg-btn-tiny" onClick={handlePresetDefault}>Default</button>
                   <button className="mfg-btn mfg-btn-tiny" onClick={handlePresetAll}>All</button>
@@ -342,24 +355,26 @@ export function BuildStep() {
               )}
             </div>
 
-            {/* Target list grouped by category */}
+            {/* Target list grouped by category — 2-column grid */}
             {availableBuildTargets.length > 0 ? (
-              sortedCategories.map((cat) => {
-                const catConfig = CATEGORY_CONFIG[cat];
-                const targets = targetsByCategory[cat];
-                if (!catConfig || !targets) return null;
-                const isRequired = catConfig.alwaysIncluded;
-                if (targets.length === 0) return null;
+              <div className="mfg-target-categories-grid">
+                {sortedCategories.map((cat) => {
+                  const catConfig = CATEGORY_CONFIG[cat];
+                  const targets = targetsByCategory[cat];
+                  if (!catConfig || !targets) return null;
+                  const isRequired = catConfig.alwaysIncluded;
+                  if (targets.length === 0) return null;
 
-                return (
-                  <div key={cat} className="mfg-target-category">
-                    <div className="mfg-target-category-title">{catConfig.label}</div>
-                    <ul className="mfg-build-stages">
-                      {targets.map((t) => renderTargetRow(t, isRequired))}
-                    </ul>
-                  </div>
-                );
-              })
+                  return (
+                    <div key={cat} className="mfg-target-category">
+                      <div className="mfg-target-category-title">{catConfig.label}</div>
+                      <ul className="mfg-build-stages">
+                        {targets.map((t) => renderTargetRow(t, isRequired))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <ul className="mfg-build-stages">
                 {isBuilding ? (
@@ -379,14 +394,24 @@ export function BuildStep() {
 
           {/* Build actions — pinned to bottom */}
           <div className="mfg-build-actions">
+            {/* Start Review — always visible, enabled only when ready */}
+            <button
+              className="mfg-btn mfg-btn-primary"
+              disabled={!isReady}
+              onClick={handleStartReview}
+            >
+              Start Review <ChevronRight size={14} />
+            </button>
+
+            {/* Context-dependent build buttons */}
             {buildStatus === 'pending' && !outputs && (
-              <button className="mfg-btn mfg-btn-primary" onClick={handleStartBuild}>
+              <button className="mfg-btn mfg-btn-secondary" onClick={handleStartBuild}>
                 <Play size={16} /> Start Build
               </button>
             )}
             {buildStatus === 'pending' && outputs && (
               <>
-                <button className="mfg-btn mfg-btn-primary" onClick={() => {
+                <button className="mfg-btn mfg-btn-secondary" onClick={() => {
                   setDashboardBuildStatus('ready');
                   setDashboardArtifactVerification({
                     gerbers: !!outputs.gerbers,
@@ -403,7 +428,7 @@ export function BuildStep() {
               </>
             )}
             {isFailed && (
-              <button className="mfg-btn mfg-btn-primary" onClick={handleStartBuild}>
+              <button className="mfg-btn mfg-btn-secondary" onClick={handleStartBuild}>
                 <RefreshCw size={14} /> Retry Build
               </button>
             )}
@@ -413,23 +438,9 @@ export function BuildStep() {
               </button>
             )}
             {isReady && (
-              <>
-                <button className="mfg-btn mfg-btn-secondary" onClick={handleStartBuild}>
-                  <RefreshCw size={14} /> Rebuild
-                </button>
-                <button className="mfg-btn mfg-btn-primary" onClick={() => {
-                  const firstPage = REVIEW_PAGES.find(
-                    (p) => !outputs || p.definition.isAvailable(outputs)
-                  );
-                  if (firstPage) {
-                    setDashboardReviewPage(firstPage.definition.id);
-                  } else {
-                    setDashboardStep('review');
-                  }
-                }}>
-                  Start Review <ChevronRight size={14} />
-                </button>
-              </>
+              <button className="mfg-btn mfg-btn-secondary" onClick={handleStartBuild}>
+                <RefreshCw size={14} /> Rebuild
+              </button>
             )}
           </div>
         </div>
