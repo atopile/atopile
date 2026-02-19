@@ -179,6 +179,10 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+interface OpenPinoutTableMessage {
+  type: 'openPinoutTable';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -209,7 +213,8 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenPinoutTableMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -706,6 +711,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openMigrateTab':
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
+        break;
+      case 'openPinoutTable':
+        void vscode.commands.executeCommand('atopile.pinout_table');
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

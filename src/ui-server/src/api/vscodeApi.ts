@@ -167,6 +167,10 @@ export interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+export interface OpenPinoutTableMessage {
+  type: 'openPinoutTable';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -190,7 +194,8 @@ export type ExtensionMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenPinoutTableMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

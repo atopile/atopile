@@ -23,6 +23,7 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+from faebryk.library.generate_pinout_details import generate_pinout_details
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
 import faebryk.library.Literals as Literals
@@ -126,6 +127,7 @@ __all__ = [
     "Logic",
     "Mechanical",
     "Signal",
+    "generate_pinout_details",
     "is_app_root",
     "bus_parameter_utils",
     "Literals",

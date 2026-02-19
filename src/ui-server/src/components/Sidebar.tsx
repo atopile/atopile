@@ -421,6 +421,7 @@ export function Sidebar() {
             onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
+            onOpenPinoutTable={() => postMessage({ type: 'openPinoutTable' })}
             onCreateProject={handlers.handleCreateProject}
             onCreateTarget={async (projectRoot, data) => {
               const response = await sendActionWithResponse('addBuildTarget', {

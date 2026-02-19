@@ -13,6 +13,7 @@ import type {
   PackageDetails,
   StdLibItem,
   BOMData,
+  PinoutData,
   LcscPartsResponse,
   PartSearchResponse,
   PartDetailsResponse,
@@ -277,6 +278,18 @@ export const api = {
     targets: (projectRoot: string) =>
       fetchJSON<{ targets: string[] }>(
         `/api/variables/targets?project_root=${encodeURIComponent(projectRoot)}`
+      ),
+  },
+
+  // Pinout
+  pinout: {
+    get: (projectRoot: string, targetName: string) =>
+      fetchJSON<PinoutData>(
+        `/api/pinout?project_root=${encodeURIComponent(projectRoot)}&target=${encodeURIComponent(targetName)}`
+      ),
+    targets: (projectRoot: string) =>
+      fetchJSON<{ targets: string[] }>(
+        `/api/pinout/targets?project_root=${encodeURIComponent(projectRoot)}`
       ),
   },
 
