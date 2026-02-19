@@ -553,9 +553,7 @@ class MutationStage:
         out = ""
         node_by_depth = groupby(
             nodes,
-            key=lambda n: (
-                n.get_trait(F.Parameters.is_parameter_operatable).get_depth()
-            ),
+            key=lambda n: n.get_trait(F.Parameters.is_parameter_operatable).get_depth(),
         )
         for depth, dnodes in sorted(node_by_depth.items(), key=lambda t: t[0]):
             out += f"\n  --Depth {depth}--"
@@ -990,7 +988,9 @@ class MutationMap:
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> F.Literals.is_literal:
-        """Convert a dimensionless solver literal back to the parameter's unit system."""
+        """
+        Convert a dimensionless solver literal back to the parameter's unit system.
+        """
         param_unit_t = po.try_get_sibling_trait(F.Units.has_unit)
         lit_n = fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
         if not (param_unit_t and lit_n):
