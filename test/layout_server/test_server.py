@@ -83,20 +83,25 @@ async def test_reload(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
+    assert data["code"] == "ok"
 
 
 @pytest.mark.anyio
 async def test_undo_empty(client: AsyncClient):
     resp = await client.post("/api/undo")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "nothing_to_undo"
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["code"] == "nothing_to_undo"
 
 
 @pytest.mark.anyio
 async def test_redo_empty(client: AsyncClient):
     resp = await client.post("/api/redo")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "nothing_to_redo"
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["code"] == "nothing_to_redo"
 
 
 @pytest.mark.anyio
@@ -107,10 +112,12 @@ async def test_execute_action_rotate(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"type": "rotate", "details": {"uuid": uuid, "delta_degrees": 90}},
+        json={"command": "rotate_footprint", "uuid": uuid, "delta_degrees": 90},
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["code"] == "ok"
 
 
 @pytest.mark.anyio
@@ -121,10 +128,12 @@ async def test_execute_action_move(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"type": "move", "details": {"uuid": uuid, "x": 10.0, "y": 20.0}},
+        json={"command": "move_footprint", "uuid": uuid, "x": 10.0, "y": 20.0},
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["code"] == "ok"
 
 
 @pytest.mark.anyio
@@ -136,10 +145,12 @@ async def test_execute_action_flip(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"type": "flip", "details": {"uuid": uuid}},
+        json={"command": "flip_footprint", "uuid": uuid},
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["code"] == "ok"
 
     # Verify layer flipped
     fps_after = await client.get("/api/footprints")
@@ -152,7 +163,6 @@ async def test_execute_action_flip(client: AsyncClient):
 async def test_execute_action_unknown(client: AsyncClient):
     resp = await client.post(
         "/api/execute-action",
-        json={"type": "nonexistent", "details": {}},
+        json={"command": "nonexistent"},
     )
-    assert resp.status_code == 200
-    assert "unknown_action" in resp.json()["status"]
+    assert resp.status_code == 422

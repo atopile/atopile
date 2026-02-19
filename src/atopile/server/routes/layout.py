@@ -46,15 +46,15 @@ async def get_footprints() -> list[FootprintSummary]:
 async def execute_action(req: ActionRequest) -> StatusResponse:
     _require_loaded()
     try:
-        ok = await asyncio.to_thread(
-            layout_service.manager.dispatch_action, req.type, req.details
+        await asyncio.to_thread(layout_service.manager.dispatch_action, req)
+    except ValueError as e:
+        return StatusResponse(
+            status="error",
+            code="invalid_action_target",
+            message=str(e),
         )
-    except TypeError as e:
-        return StatusResponse(status=f"invalid_details:{e}")
-    if not ok:
-        return StatusResponse(status=f"unknown_action:{req.type}")
     model = await layout_service.save_and_broadcast()
-    return StatusResponse(status="ok", model=model)
+    return StatusResponse(status="ok", code="ok", model=model)
 
 
 @router.post("/api/layout/undo", response_model=StatusResponse)
@@ -63,8 +63,12 @@ async def undo() -> StatusResponse:
     ok = await asyncio.to_thread(layout_service.manager.undo)
     if ok:
         model = await layout_service.save_and_broadcast()
-        return StatusResponse(status="ok", model=model)
-    return StatusResponse(status="nothing_to_undo")
+        return StatusResponse(status="ok", code="ok", model=model)
+    return StatusResponse(
+        status="error",
+        code="nothing_to_undo",
+        message="No action available to undo.",
+    )
 
 
 @router.post("/api/layout/redo", response_model=StatusResponse)
@@ -73,8 +77,12 @@ async def redo() -> StatusResponse:
     ok = await asyncio.to_thread(layout_service.manager.redo)
     if ok:
         model = await layout_service.save_and_broadcast()
-        return StatusResponse(status="ok", model=model)
-    return StatusResponse(status="nothing_to_redo")
+        return StatusResponse(status="ok", code="ok", model=model)
+    return StatusResponse(
+        status="error",
+        code="nothing_to_redo",
+        message="No action available to redo.",
+    )
 
 
 @router.post("/api/layout/reload", response_model=StatusResponse)
@@ -84,7 +92,7 @@ async def reload() -> StatusResponse:
     await asyncio.to_thread(layout_service.manager.load, path)
     model = await asyncio.to_thread(layout_service.manager.get_render_model)
     await layout_service.broadcast(WsMessage(type="layout_updated", model=model))
-    return StatusResponse(status="ok", model=model)
+    return StatusResponse(status="ok", code="ok", model=model)
 
 
 @router.websocket("/ws/layout")

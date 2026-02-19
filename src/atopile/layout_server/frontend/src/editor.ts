@@ -5,7 +5,7 @@ import { Renderer } from "./webgl/renderer";
 import { paintAll, paintGroupHalos, paintSelection, computeBBox } from "./painter";
 import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
 import { getLayerColor } from "./colors";
-import type { RenderModel } from "./types";
+import type { ActionCommand, RenderModel, StatusResponse } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 import { sortLayerNames } from "./layer_order";
 
@@ -640,13 +640,20 @@ export class Editor {
 
             const batchUuids = this.selectedBatchUuids();
             if (batchUuids.length > 0) {
-                await this.executeAction("move", { uuids: batchUuids, dx, dy });
+                await this.executeAction({
+                    command: "move_footprints",
+                    uuids: batchUuids,
+                    dx,
+                    dy,
+                });
                 return;
             }
 
             if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
                 const selectedFp = this.model.footprints[this.selectedFpIndex]!;
-                await this.executeAction("move", {
+                if (!selectedFp.uuid) return;
+                await this.executeAction({
+                    command: "move_footprint",
                     uuid: selectedFp.uuid,
                     x: selectedFp.at.x,
                     y: selectedFp.at.y,
@@ -705,12 +712,21 @@ export class Editor {
         if (!this.model) return;
         const batchUuids = this.selectedBatchUuids();
         if (batchUuids.length > 0) {
-            await this.executeAction("rotate", { uuids: batchUuids, delta_degrees: deltaDegrees });
+            await this.executeAction({
+                command: "rotate_footprints",
+                uuids: batchUuids,
+                delta_degrees: deltaDegrees,
+            });
             return;
         }
         if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
             const fp = this.model.footprints[this.selectedFpIndex]!;
-            await this.executeAction("rotate", { uuid: fp.uuid, delta_degrees: deltaDegrees });
+            if (!fp.uuid) return;
+            await this.executeAction({
+                command: "rotate_footprint",
+                uuid: fp.uuid,
+                delta_degrees: deltaDegrees,
+            });
         }
     }
 
@@ -718,23 +734,33 @@ export class Editor {
         if (!this.model) return;
         const batchUuids = this.selectedBatchUuids();
         if (batchUuids.length > 0) {
-            await this.executeAction("flip", { uuids: batchUuids });
+            await this.executeAction({
+                command: "flip_footprints",
+                uuids: batchUuids,
+            });
             return;
         }
         if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
             const fp = this.model.footprints[this.selectedFpIndex]!;
-            await this.executeAction("flip", { uuid: fp.uuid });
+            if (!fp.uuid) return;
+            await this.executeAction({
+                command: "flip_footprint",
+                uuid: fp.uuid,
+            });
         }
     }
 
-    private async executeAction(type: string, details: Record<string, unknown>) {
+    private async executeAction(action: ActionCommand) {
         try {
             const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type, details }),
+                body: JSON.stringify(action),
             });
-            const data = await resp.json();
+            const data = await resp.json() as StatusResponse;
+            if (data.status === "error") {
+                console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
+            }
             if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
@@ -744,7 +770,10 @@ export class Editor {
     private async serverAction(path: string) {
         try {
             const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
-            const data = await resp.json();
+            const data = await resp.json() as StatusResponse;
+            if (data.status === "error") {
+                console.warn(`${path} failed (${data.code}): ${data.message ?? "unknown error"}`);
+            }
             if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error(`Failed ${path}:`, err);

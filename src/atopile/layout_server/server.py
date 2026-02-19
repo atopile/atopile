@@ -115,36 +115,46 @@ def create_app(pcb_path: Path) -> FastAPI:
     @app.post("/api/execute-action", response_model=StatusResponse)
     async def execute_action(req: ActionRequest) -> StatusResponse:
         try:
-            ok = await asyncio.to_thread(manager.dispatch_action, req.type, req.details)
-        except TypeError as e:
-            return StatusResponse(status=f"invalid_details:{e}")
-        if not ok:
-            return StatusResponse(status=f"unknown_action:{req.type}")
+            await asyncio.to_thread(manager.dispatch_action, req)
+        except ValueError as e:
+            return StatusResponse(
+                status="error",
+                code="invalid_action_target",
+                message=str(e),
+            )
         model = await _save_and_broadcast()
-        return StatusResponse(status="ok", model=model)
+        return StatusResponse(status="ok", code="ok", model=model)
 
     @app.post("/api/undo", response_model=StatusResponse)
     async def undo() -> StatusResponse:
         ok = await asyncio.to_thread(manager.undo)
         if ok:
             model = await _save_and_broadcast()
-            return StatusResponse(status="ok", model=model)
-        return StatusResponse(status="nothing_to_undo")
+            return StatusResponse(status="ok", code="ok", model=model)
+        return StatusResponse(
+            status="error",
+            code="nothing_to_undo",
+            message="No action available to undo.",
+        )
 
     @app.post("/api/redo", response_model=StatusResponse)
     async def redo() -> StatusResponse:
         ok = await asyncio.to_thread(manager.redo)
         if ok:
             model = await _save_and_broadcast()
-            return StatusResponse(status="ok", model=model)
-        return StatusResponse(status="nothing_to_redo")
+            return StatusResponse(status="ok", code="ok", model=model)
+        return StatusResponse(
+            status="error",
+            code="nothing_to_redo",
+            message="No action available to redo.",
+        )
 
     @app.post("/api/reload", response_model=StatusResponse)
     async def reload() -> StatusResponse:
         await asyncio.to_thread(manager.load, pcb_path)
         model = await asyncio.to_thread(manager.get_render_model)
         await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
-        return StatusResponse(status="ok", model=model)
+        return StatusResponse(status="ok", code="ok", model=model)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):

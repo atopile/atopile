@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- Geometry primitives ---
 
@@ -218,13 +218,62 @@ class FootprintSummary(BaseModel):
 # --- Request / Response models ---
 
 
-class ActionRequest(BaseModel):
-    type: str
-    details: dict[str, Any]
+class _StrictCommandModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class MoveFootprintCommand(_StrictCommandModel):
+    command: Literal["move_footprint"]
+    uuid: str
+    x: float
+    y: float
+    r: float | None = None
+
+
+class RotateFootprintCommand(_StrictCommandModel):
+    command: Literal["rotate_footprint"]
+    uuid: str
+    delta_degrees: float
+
+
+class FlipFootprintCommand(_StrictCommandModel):
+    command: Literal["flip_footprint"]
+    uuid: str
+
+
+class MoveFootprintsCommand(_StrictCommandModel):
+    command: Literal["move_footprints"]
+    uuids: list[str] = Field(min_length=1)
+    dx: float
+    dy: float
+
+
+class RotateFootprintsCommand(_StrictCommandModel):
+    command: Literal["rotate_footprints"]
+    uuids: list[str] = Field(min_length=1)
+    delta_degrees: float
+
+
+class FlipFootprintsCommand(_StrictCommandModel):
+    command: Literal["flip_footprints"]
+    uuids: list[str] = Field(min_length=1)
+
+
+ActionRequest = Annotated[
+    MoveFootprintCommand
+    | RotateFootprintCommand
+    | FlipFootprintCommand
+    | MoveFootprintsCommand
+    | RotateFootprintsCommand
+    | FlipFootprintsCommand,
+    Field(discriminator="command"),
+]
 
 
 class StatusResponse(BaseModel):
-    status: str
+    status: Literal["ok", "error"]
+    code: str
+    message: str | None = None
     model: RenderModel | None = None
 
 

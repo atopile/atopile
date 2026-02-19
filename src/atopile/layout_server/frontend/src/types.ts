@@ -149,3 +149,55 @@ export interface NetModel {
     number: number;
     name: string | null;
 }
+
+export interface StatusResponse {
+    status: "ok" | "error";
+    code: string;
+    message: string | null;
+    model: RenderModel | null;
+}
+
+export interface MoveFootprintCommand {
+    command: "move_footprint";
+    uuid: string;
+    x: number;
+    y: number;
+    r?: number | null;
+}
+
+export interface RotateFootprintCommand {
+    command: "rotate_footprint";
+    uuid: string;
+    delta_degrees: number;
+}
+
+export interface FlipFootprintCommand {
+    command: "flip_footprint";
+    uuid: string;
+}
+
+export interface MoveFootprintsCommand {
+    command: "move_footprints";
+    uuids: string[];
+    dx: number;
+    dy: number;
+}
+
+export interface RotateFootprintsCommand {
+    command: "rotate_footprints";
+    uuids: string[];
+    delta_degrees: number;
+}
+
+export interface FlipFootprintsCommand {
+    command: "flip_footprints";
+    uuids: string[];
+}
+
+export type ActionCommand =
+    | MoveFootprintCommand
+    | RotateFootprintCommand
+    | FlipFootprintCommand
+    | MoveFootprintsCommand
+    | RotateFootprintsCommand
+    | FlipFootprintsCommand;

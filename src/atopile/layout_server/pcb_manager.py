@@ -13,10 +13,14 @@ from atopile.layout_server.models import (
     DrawingModel,
     EdgeModel,
     FilledPolygonModel,
+    FlipFootprintCommand,
+    FlipFootprintsCommand,
     FootprintGroupModel,
     FootprintModel,
     FootprintSummary,
     HoleModel,
+    MoveFootprintCommand,
+    MoveFootprintsCommand,
     NetModel,
     PadModel,
     PadNameAnnotationModel,
@@ -24,6 +28,8 @@ from atopile.layout_server.models import (
     Point2,
     Point3,
     RenderModel,
+    RotateFootprintCommand,
+    RotateFootprintsCommand,
     Size2,
     TextModel,
     TrackModel,
@@ -343,42 +349,41 @@ class PcbManager:
         if actions:
             self.execute_action(CompositeAction(actions))
 
-    ACTION_HANDLERS: dict[str, str] = {
-        "move": "move_footprint",
-        "rotate": "rotate_footprint",
-        "flip": "flip_footprint",
-    }
-
-    def dispatch_action(self, action_type: str, details: dict) -> bool:
-        """Dispatch an action by type name. Returns False if unknown action."""
-        group_uuids = details.get("uuids")
-        if isinstance(group_uuids, list) and group_uuids:
-            uuids = [str(uuid) for uuid in group_uuids if str(uuid).strip()]
-            if not uuids:
-                return True
-            if action_type == "move":
-                self.move_footprints(
-                    uuids=uuids,
-                    dx=float(details.get("dx", 0.0)),
-                    dy=float(details.get("dy", 0.0)),
-                )
-                return True
-            if action_type == "rotate":
-                self.rotate_footprints(
-                    uuids=uuids,
-                    delta_degrees=float(details.get("delta_degrees", 0.0)),
-                )
-                return True
-            if action_type == "flip":
-                self.flip_footprints(uuids=uuids)
-                return True
-
-        method_name = self.ACTION_HANDLERS.get(action_type)
-        if method_name is None:
-            return False
-        method = getattr(self, method_name)
-        method(**details)
-        return True
+    def dispatch_action(
+        self,
+        request: MoveFootprintCommand
+        | RotateFootprintCommand
+        | FlipFootprintCommand
+        | MoveFootprintsCommand
+        | RotateFootprintsCommand
+        | FlipFootprintsCommand,
+    ) -> None:
+        """Execute a typed v2 action request."""
+        if isinstance(request, MoveFootprintCommand):
+            self.move_footprint(request.uuid, request.x, request.y, request.r)
+            return
+        if isinstance(request, RotateFootprintCommand):
+            self.rotate_footprint(request.uuid, request.delta_degrees)
+            return
+        if isinstance(request, FlipFootprintCommand):
+            self.flip_footprint(request.uuid)
+            return
+        if isinstance(request, MoveFootprintsCommand):
+            self.move_footprints(
+                uuids=[uuid for uuid in request.uuids if uuid.strip()],
+                dx=request.dx,
+                dy=request.dy,
+            )
+            return
+        if isinstance(request, RotateFootprintsCommand):
+            self.rotate_footprints(
+                uuids=[uuid for uuid in request.uuids if uuid.strip()],
+                delta_degrees=request.delta_degrees,
+            )
+            return
+        if isinstance(request, FlipFootprintsCommand):
+            self.flip_footprints(uuids=[uuid for uuid in request.uuids if uuid.strip()])
+            return
 
     def was_recently_saved(self, threshold: float = 2.0) -> bool:
         """Check if we saved within the last `threshold` seconds."""
