@@ -1,17 +1,18 @@
 /**
- * ReviewGerber — Gerber file viewer.
- * Falls back to placeholder if gerbers aren't available.
+ * ReviewGerber — Gerber file viewer using the existing GerberViewer component.
  */
 
 import { Layers } from 'lucide-react';
+import GerberViewer from '../../GerberViewer';
 import type { ReviewPageProps, ReviewPageDefinition } from '../types';
+import { API_URL } from '../../../api/config';
 
 export const ReviewGerberDefinition: ReviewPageDefinition = {
   id: 'gerber',
   label: 'Gerber Viewer',
   icon: Layers,
   order: 40,
-  isAvailable: () => true,
+  isAvailable: (outputs) => !!outputs.gerbers,
 };
 
 export function ReviewGerber({ outputs }: ReviewPageProps) {
@@ -25,16 +26,12 @@ export function ReviewGerber({ outputs }: ReviewPageProps) {
     );
   }
 
-  // The GerberViewer component requires unzipped gerber files.
-  // For now, show a placeholder with the gerber zip path.
   return (
-    <div className="mfg-review-placeholder">
-      <Layers size={48} />
-      <p>Gerber files ready for review.</p>
-      <span className="coming-soon">Inline viewer coming soon</span>
-      <p style={{ marginTop: 16, fontSize: 12, color: 'var(--vscode-descriptionForeground)' }}>
-        Gerbers: {outputs.gerbers.split('/').pop()}
-      </p>
+    <div className="mfg-gerber-view">
+      <GerberViewer
+        src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.gerbers)}`}
+        hideControls
+      />
     </div>
   );
 }

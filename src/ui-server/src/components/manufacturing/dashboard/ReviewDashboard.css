@@ -628,6 +628,15 @@
   object-fit: contain;
 }
 
+/* Gerber view wrapper */
+.mfg-gerber-view {
+  width: 100%;
+  height: 500px;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
 /* 3D view wrapper */
 .mfg-3d-view {
   width: 100%;
