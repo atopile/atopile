@@ -256,7 +256,7 @@ function buildLayerPanel() {
 
 const coordsEl = document.getElementById("status-coords");
 const helpEl = document.getElementById("status-help");
-const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click group/select \u00b7 Double-click single \u00b7 Esc clear \u00b7 R rotate \u00b7 F flip \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
+const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click group/select \u00b7 Shift+drag box-select \u00b7 Double-click single \u00b7 Esc clear \u00b7 R rotate \u00b7 F flip \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
 if (helpEl) helpEl.textContent = helpText;
 
 canvas.addEventListener("mouseenter", () => {

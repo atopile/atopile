@@ -59,3 +59,19 @@ export function hitTestFootprints(worldPos: Vec2, footprints: FootprintModel[]):
     }
     return -1;
 }
+
+function bboxIntersects(a: BBox, b: BBox): boolean {
+    return !(a.x2 < b.x || b.x2 < a.x || a.y2 < b.y || b.y2 < a.y);
+}
+
+/** Find all footprints intersecting a world-space selection box. */
+export function hitTestFootprintsInBox(selectionBox: BBox, footprints: FootprintModel[]): number[] {
+    const hits: number[] = [];
+    for (let i = 0; i < footprints.length; i++) {
+        const bbox = footprintBBox(footprints[i]!);
+        if (bboxIntersects(selectionBox, bbox)) {
+            hits.push(i);
+        }
+    }
+    return hits;
+}
