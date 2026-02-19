@@ -284,9 +284,10 @@ class PcbManager:
 
     def get_render_model(self) -> RenderModel:
         pcb = self.pcb
+        copper_layers = _board_copper_layers(pcb)
         global_texts = self._extract_global_texts(pcb)
         vias = [self._extract_via(via) for via in pcb.vias]
-        via_drawings = self._synthesize_via_drawings(vias)
+        via_drawings = self._synthesize_via_drawings(vias, copper_layers)
         net_names_by_number = {
             int(net.number): net.name for net in pcb.nets if getattr(net, "name", None)
         }
@@ -295,7 +296,7 @@ class PcbManager:
             drawings=[*self._extract_global_drawings(pcb), *via_drawings],
             texts=global_texts,
             footprints=[
-                self._extract_footprint(fp, net_names_by_number)
+                self._extract_footprint(fp, net_names_by_number, copper_layers)
                 for fp in pcb.footprints
             ],
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
@@ -385,7 +386,10 @@ class PcbManager:
         )
 
     def _extract_footprint(
-        self, fp, net_names_by_number: dict[int, str]
+        self,
+        fp,
+        net_names_by_number: dict[int, str],
+        copper_layers: list[str],
     ) -> FootprintModel:
         ref = _get_property(fp, "Reference")
         value = _get_property(fp, "Value")
@@ -479,8 +483,10 @@ class PcbManager:
                     filled=_is_filled(poly),
                 )
             )
-        drawings.extend(self._synthesize_th_pad_copper_drawings(raw_pads))
-        drawings.extend(self._synthesize_pad_drill_drawings(raw_pads))
+        drawings.extend(
+            self._synthesize_th_pad_copper_drawings(raw_pads, copper_layers)
+        )
+        drawings.extend(self._synthesize_pad_drill_drawings(raw_pads, copper_layers))
 
         texts = self._extract_text_entries(fp, ref, value)
         pad_names = self._extract_pad_name_annotations_for_footprint(
@@ -984,7 +990,9 @@ class PcbManager:
             plated=True,
         )
 
-    def _synthesize_via_drawings(self, vias: list[ViaModel]) -> list[DrawingModel]:
+    def _synthesize_via_drawings(
+        self, vias: list[ViaModel], copper_layers: list[str]
+    ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for via in vias:
             hole = via.hole
@@ -1006,7 +1014,11 @@ class PcbManager:
             if drill_diameter <= 0:
                 drill_diameter = _safe_float(via.drill) or 0.0
 
-            for copper_layer in _expand_copper_layers(via.layers):
+            for copper_layer in _expand_copper_layers(
+                via.layers,
+                all_copper_layers=copper_layers,
+                include_between=True,
+            ):
                 if outer_diameter <= 0:
                     continue
                 if drill_diameter > 0 and outer_diameter > drill_diameter:
@@ -1037,7 +1049,11 @@ class PcbManager:
 
             if hole is None:
                 continue
-            for drill_layer in _drill_layers_from_copper_layers(via.layers):
+            for drill_layer in _drill_layers_from_copper_layers(
+                via.layers,
+                all_copper_layers=copper_layers,
+                include_between=True,
+            ):
                 drawings.extend(
                     _drill_hole_drawings(
                         cx=via.at.x,
@@ -1049,7 +1065,9 @@ class PcbManager:
                 )
         return drawings
 
-    def _synthesize_th_pad_copper_drawings(self, pads: list) -> list[DrawingModel]:
+    def _synthesize_th_pad_copper_drawings(
+        self, pads: list, copper_layer_stack: list[str]
+    ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for pad in pads:
             pad_type = str(getattr(pad, "type", "") or "")
@@ -1077,10 +1095,12 @@ class PcbManager:
 
             pad_rotation = _safe_float(getattr(pad_at, "r", None)) or 0.0
             pad_shape = str(getattr(pad, "shape", "") or "").strip().lower()
-            copper_layers = _expand_copper_layers(
-                list(getattr(pad, "layers", []) or [])
+            pad_copper_layers = _expand_copper_layers(
+                list(getattr(pad, "layers", []) or []),
+                all_copper_layers=copper_layer_stack,
+                include_between=True,
             )
-            if not copper_layers:
+            if not pad_copper_layers:
                 continue
 
             hole = self._extract_pad_hole(pad)
@@ -1090,7 +1110,7 @@ class PcbManager:
                 sy = _safe_float(hole.size_y) or sx
                 hole_diameter = max(sx, sy)
 
-            for copper_layer in copper_layers:
+            for copper_layer in pad_copper_layers:
                 if pad_shape == "circle":
                     outer_diameter = max(pad_w, pad_h)
                     if hole_diameter > 0 and outer_diameter > hole_diameter:
@@ -1209,7 +1229,9 @@ class PcbManager:
 
         return drawings
 
-    def _synthesize_pad_drill_drawings(self, pads: list) -> list[DrawingModel]:
+    def _synthesize_pad_drill_drawings(
+        self, pads: list, copper_layers: list[str]
+    ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for pad in pads:
             hole = self._extract_pad_hole(pad)
@@ -1225,7 +1247,9 @@ class PcbManager:
             cx = (_safe_float(getattr(pad_at, "x", None)) or 0.0) + rox
             cy = (_safe_float(getattr(pad_at, "y", None)) or 0.0) + roy
             for drill_layer in _drill_layers_from_copper_layers(
-                list(getattr(pad, "layers", []) or [])
+                list(getattr(pad, "layers", []) or []),
+                all_copper_layers=copper_layers,
+                include_between=True,
             ):
                 drawings.extend(
                     _drill_hole_drawings(
@@ -1541,14 +1565,38 @@ def _rotate_kicad_xy(x: float, y: float, rotation_deg: float) -> tuple[float, fl
     return (x * cos_t - y * sin_t, x * sin_t + y * cos_t)
 
 
-def _expand_copper_layers(layers: list[str] | None) -> list[str]:
+def _board_copper_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
+    copper: list[str] = []
+    seen: set[str] = set()
+    for layer in getattr(pcb, "layers", []) or []:
+        name = str(getattr(layer, "name", "") or "")
+        if not name.endswith(".Cu"):
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        # Keep PCB file layer order; this reflects stack/root ordering
+        # (e.g. F, In1, In2, B) better than numeric IDs.
+        copper.append(name)
+    if not copper:
+        return ["F.Cu", "B.Cu"]
+    return copper
+
+
+def _expand_copper_layers(
+    layers: list[str] | None,
+    *,
+    all_copper_layers: list[str] | None = None,
+    include_between: bool = False,
+) -> list[str]:
+    known_copper_layers = all_copper_layers or ["F.Cu", "B.Cu"]
     out: set[str] = set()
     for layer in layers or []:
         token = (layer or "").strip()
         if not token:
             continue
         if token == "*.Cu":
-            out.update({"F.Cu", "B.Cu"})
+            out.update(known_copper_layers)
             continue
         if token.endswith(".Cu") and "&" in token:
             suffix_idx = token.find(".")
@@ -1558,7 +1606,21 @@ def _expand_copper_layers(layers: list[str] | None) -> list[str]:
             continue
         if token.endswith(".Cu"):
             out.add(token)
-    return sorted(out)
+    if not out:
+        return []
+
+    expanded = set(out)
+    if include_between and known_copper_layers:
+        index_by_layer = {name: idx for idx, name in enumerate(known_copper_layers)}
+        indices = sorted(
+            {index_by_layer[name] for name in expanded if name in index_by_layer}
+        )
+        if len(indices) >= 2:
+            expanded.update(known_copper_layers[indices[0] : indices[-1] + 1])
+
+    ordered_known = [name for name in known_copper_layers if name in expanded]
+    unknown = sorted(expanded.difference(ordered_known))
+    return [*ordered_known, *unknown]
 
 
 def _capsule_outline_points(
@@ -1597,13 +1659,25 @@ def _capsule_outline_points(
     return points
 
 
-def _drill_layers_from_copper_layers(layers: list[str] | None) -> list[str]:
-    copper_layers = _expand_copper_layers(layers)
+def _drill_layers_from_copper_layers(
+    layers: list[str] | None,
+    *,
+    all_copper_layers: list[str] | None = None,
+    include_between: bool = False,
+) -> list[str]:
+    copper_layers = _expand_copper_layers(
+        layers,
+        all_copper_layers=all_copper_layers,
+        include_between=include_between,
+    )
     if not copper_layers:
         # Drills are board-through visualization, even when copper layer set is empty
         # (e.g. NPTH pads).
-        return ["B.Drill", "F.Drill"]
-    return sorted({layer[:-3] + ".Drill" for layer in copper_layers})
+        fallback_copper = all_copper_layers or ["F.Cu", "B.Cu"]
+        ordered = list(dict.fromkeys(fallback_copper))
+        return [layer[:-3] + ".Drill" for layer in ordered]
+    ordered = list(dict.fromkeys(copper_layers))
+    return [layer[:-3] + ".Drill" for layer in ordered]
 
 
 def _drill_hole_drawings(
