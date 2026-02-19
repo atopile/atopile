@@ -999,8 +999,8 @@ class PCB_Transformer:
                 end=kicad.pcb.Xy(
                     x=center_at.x + size.value.x / 2, y=center_at.y + size.value.y / 2
                 ),
-                stroke=kicad.pcb.Stroke(width=0.15, type="solid"),
-                fill="yes",
+                stroke=kicad.pcb.Stroke(width=0.15, type=kicad.pcb.E_stroke_type.SOLID),
+                fill=kicad.pcb.E_fill.YES,
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
                 layers=[],

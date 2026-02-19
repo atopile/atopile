@@ -398,6 +398,7 @@ const NetlistModule = generateModule("netlist", sexp.kicad.netlist, sexp.kicad.n
 const FpLibTableModule = generateModule("fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile);
 const SymbolModule = generateModule("symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile);
 const SchematicModule = generateModule("schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile);
+const DruModule = generateModule("dru", sexp.kicad.dru, sexp.kicad.dru.DruFile);
 const FootprintV5Module = generateModule("footprint_v5", sexp.kicad.v5.footprint, sexp.kicad.v5.footprint.FootprintFile);
 const SymbolV6Module = generateModule("symbol_v6", sexp.kicad.v6.symbol, sexp.kicad.v6.symbol.SymbolFile);
 
@@ -432,6 +433,7 @@ pub fn make_python_module() ?*py.PyObject {
     _ = FpLibTableModule.addToModule(module.?);
     _ = SymbolModule.addToModule(module.?);
     _ = SchematicModule.addToModule(module.?);
+    _ = DruModule.addToModule(module.?);
     _ = FootprintV5Module.addToModule(module.?);
     _ = SymbolV6Module.addToModule(module.?);
 

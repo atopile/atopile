@@ -247,7 +247,7 @@ class Xyr:
     y: float
     r: float | None
 
-    def __init__(self, *, x: float, y: float, r: float | None) -> None: ...
+    def __init__(self, *, x: float, y: float, r: float | None = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -257,7 +257,7 @@ class Wh:
     w: float
     h: float | None
 
-    def __init__(self, *, w: float, h: float | None) -> None: ...
+    def __init__(self, *, w: float, h: float | None = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -265,9 +265,9 @@ class Wh:
 
 class Stroke:
     width: float
-    type: str
+    type: E_stroke_type
 
-    def __init__(self, *, width: float, type: str) -> None: ...
+    def __init__(self, *, width: float, type: E_stroke_type) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -283,9 +283,9 @@ class Font:
         self,
         *,
         size: Wh,
-        thickness: float | None,
-        bold: bool | None,
-        italic: bool | None,
+        thickness: float | None = ...,
+        bold: bool | None = ...,
+        italic: bool | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -293,12 +293,16 @@ class Font:
     def __zig_address__(self) -> int: ...
 
 class Justify:
-    justify1: str | None
-    justify2: str | None
-    justify3: str | None
+    justify1: E_justify | None
+    justify2: E_justify | None
+    justify3: E_justify | None
 
     def __init__(
-        self, *, justify1: str | None, justify2: str | None, justify3: str | None
+        self,
+        *,
+        justify1: E_justify | None = ...,
+        justify2: E_justify | None = ...,
+        justify3: E_justify | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -311,7 +315,7 @@ class Effects:
     justify: Justify | None
 
     def __init__(
-        self, *, font: Font, hide: bool | None, justify: Justify | None
+        self, *, font: Font, hide: bool | None = ..., justify: Justify | None = ...
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -320,9 +324,9 @@ class Effects:
 
 class TextLayer:
     layer: str
-    knockout: str | None
+    knockout: E_knockout | None
 
-    def __init__(self, *, layer: str, knockout: str | None) -> None: ...
+    def __init__(self, *, layer: str, knockout: E_knockout | None = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -333,7 +337,7 @@ class Line:
     end: Xy
     solder_mask_margin: float | None
     stroke: Stroke | None
-    fill: str | None
+    fill: E_fill | None
     layer: str | None
     layers: list[str]
     locked: bool | None
@@ -344,13 +348,13 @@ class Line:
         *,
         start: Xy,
         end: Xy,
-        solder_mask_margin: float | None,
-        stroke: Stroke | None,
-        fill: str | None,
-        layer: str | None,
-        layers: list[str],
-        locked: bool | None,
-        uuid: str | None,
+        solder_mask_margin: float | None = ...,
+        stroke: Stroke | None = ...,
+        fill: E_fill | None = ...,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -363,7 +367,7 @@ class Arc:
     end: Xy
     solder_mask_margin: float | None
     stroke: Stroke | None
-    fill: str | None
+    fill: E_fill | None
     layer: str | None
     layers: list[str]
     locked: bool | None
@@ -375,13 +379,13 @@ class Arc:
         start: Xy,
         mid: Xy,
         end: Xy,
-        solder_mask_margin: float | None,
-        stroke: Stroke | None,
-        fill: str | None,
-        layer: str | None,
-        layers: list[str],
-        locked: bool | None,
-        uuid: str | None,
+        solder_mask_margin: float | None = ...,
+        stroke: Stroke | None = ...,
+        fill: E_fill | None = ...,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -393,7 +397,7 @@ class Circle:
     end: Xy
     solder_mask_margin: float | None
     stroke: Stroke | None
-    fill: str | None
+    fill: E_fill | None
     layer: str | None
     layers: list[str]
     locked: bool | None
@@ -404,13 +408,13 @@ class Circle:
         *,
         center: Xy,
         end: Xy,
-        solder_mask_margin: float | None,
-        stroke: Stroke | None,
-        fill: str | None,
-        layer: str | None,
-        layers: list[str],
-        locked: bool | None,
-        uuid: str | None,
+        solder_mask_margin: float | None = ...,
+        stroke: Stroke | None = ...,
+        fill: E_fill | None = ...,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -422,7 +426,7 @@ class Rect:
     end: Xy
     solder_mask_margin: float | None
     stroke: Stroke | None
-    fill: str | None
+    fill: E_fill | None
     layer: str | None
     layers: list[str]
     locked: bool | None
@@ -433,13 +437,13 @@ class Rect:
         *,
         start: Xy,
         end: Xy,
-        solder_mask_margin: float | None,
-        stroke: Stroke | None,
-        fill: str | None,
-        layer: str | None,
-        layers: list[str],
-        locked: bool | None,
-        uuid: str | None,
+        solder_mask_margin: float | None = ...,
+        stroke: Stroke | None = ...,
+        fill: E_fill | None = ...,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -449,7 +453,7 @@ class Rect:
 class Pts:
     xys: list[Xy]
 
-    def __init__(self, *, xys: list[Xy]) -> None: ...
+    def __init__(self, *, xys: list[Xy] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -459,7 +463,7 @@ class Polygon:
     pts: Pts
     solder_mask_margin: float | None
     stroke: Stroke | None
-    fill: str | None
+    fill: E_fill | None
     layer: str | None
     layers: list[str]
     locked: bool | None
@@ -469,13 +473,13 @@ class Polygon:
         self,
         *,
         pts: Pts,
-        solder_mask_margin: float | None,
-        stroke: Stroke | None,
-        fill: str | None,
-        layer: str | None,
-        layers: list[str],
-        locked: bool | None,
-        uuid: str | None,
+        solder_mask_margin: float | None = ...,
+        stroke: Stroke | None = ...,
+        fill: E_fill | None = ...,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -486,7 +490,7 @@ class Curve:
     pts: Pts
     solder_mask_margin: float | None
     stroke: Stroke | None
-    fill: str | None
+    fill: E_fill | None
     layer: str | None
     layers: list[str]
     locked: bool | None
@@ -496,13 +500,13 @@ class Curve:
         self,
         *,
         pts: Pts,
-        solder_mask_margin: float | None,
-        stroke: Stroke | None,
-        fill: str | None,
-        layer: str | None,
-        layers: list[str],
-        locked: bool | None,
-        uuid: str | None,
+        solder_mask_margin: float | None = ...,
+        stroke: Stroke | None = ...,
+        fill: E_fill | None = ...,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -522,7 +526,7 @@ class Text:
         text: str,
         at: Xyr,
         layer: TextLayer,
-        uuid: str | None,
+        uuid: str | None = ...,
         effects: Effects,
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -531,7 +535,7 @@ class Text:
     def __zig_address__(self) -> int: ...
 
 class FpText:
-    type: str
+    type: E_fp_text_type
     text: str
     at: Xyr
     layer: TextLayer
@@ -542,12 +546,12 @@ class FpText:
     def __init__(
         self,
         *,
-        type: str,
+        type: E_fp_text_type,
         text: str,
         at: Xyr,
         layer: TextLayer,
-        hide: bool | None,
-        uuid: str | None,
+        hide: bool | None = ...,
+        uuid: str | None = ...,
         effects: Effects,
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -558,14 +562,14 @@ class FpText:
 class PadPrimitives:
     gr_polys: list[Polygon]
 
-    def __init__(self, *, gr_polys: list[Polygon]) -> None: ...
+    def __init__(self, *, gr_polys: list[Polygon] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class PadDrill:
-    shape: str | None
+    shape: E_pad_drill_shape | None
     size_x: float | None
     size_y: float | None
     offset: Xy | None
@@ -573,10 +577,10 @@ class PadDrill:
     def __init__(
         self,
         *,
-        shape: str | None,
-        size_x: float | None,
-        size_y: float | None,
-        offset: Xy | None,
+        shape: E_pad_drill_shape | None = ...,
+        size_x: float | None = ...,
+        size_y: float | None = ...,
+        offset: Xy | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -584,19 +588,24 @@ class PadDrill:
     def __zig_address__(self) -> int: ...
 
 class PadOptions:
-    clearance: str | None
-    anchor: str | None
+    clearance: E_pad_clearance | None
+    anchor: E_pad_anchor | None
 
-    def __init__(self, *, clearance: str | None, anchor: str | None) -> None: ...
+    def __init__(
+        self,
+        *,
+        clearance: E_pad_clearance | None = ...,
+        anchor: E_pad_anchor | None = ...,
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class PadTenting:
-    type: str
+    type: E_pad_tenting
 
-    def __init__(self, *, type: str) -> None: ...
+    def __init__(self, *, type: E_pad_tenting) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -604,8 +613,8 @@ class PadTenting:
 
 class Pad:
     name: str
-    type: str
-    shape: str
+    type: E_pad_type
+    shape: E_pad_shape
     at: Xyr
     size: Wh
     drill: PadDrill | None
@@ -616,13 +625,13 @@ class Pad:
     solder_paste_margin: float | None
     solder_paste_margin_ratio: float | None
     clearance: float | None
-    zone_connect: int | None
+    zone_connect: E_zone_connection | None
     thermal_bridge_width: float | None
     thermal_gap: float | None
     roundrect_rratio: float | None
     chamfer_ratio: float | None
-    chamfer: str | None
-    properties: str | None
+    chamfer: E_pad_chamfer | None
+    properties: E_pad_property | None
     options: PadOptions | None
     tenting: PadTenting | None
     uuid: str | None
@@ -632,29 +641,29 @@ class Pad:
         self,
         *,
         name: str,
-        type: str,
-        shape: str,
+        type: E_pad_type,
+        shape: E_pad_shape,
         at: Xyr,
         size: Wh,
-        drill: PadDrill | None,
-        layers: list[str],
-        remove_unused_layers: bool | None,
-        net: Net | None,
-        solder_mask_margin: float | None,
-        solder_paste_margin: float | None,
-        solder_paste_margin_ratio: float | None,
-        clearance: float | None,
-        zone_connect: int | None,
-        thermal_bridge_width: float | None,
-        thermal_gap: float | None,
-        roundrect_rratio: float | None,
-        chamfer_ratio: float | None,
-        chamfer: str | None,
-        properties: str | None,
-        options: PadOptions | None,
-        tenting: PadTenting | None,
-        uuid: str | None,
-        primitives: PadPrimitives | None,
+        drill: PadDrill | None = ...,
+        layers: list[str] = ...,
+        remove_unused_layers: bool | None = ...,
+        net: Net | None = ...,
+        solder_mask_margin: float | None = ...,
+        solder_paste_margin: float | None = ...,
+        solder_paste_margin_ratio: float | None = ...,
+        clearance: float | None = ...,
+        zone_connect: E_zone_connection | None = ...,
+        thermal_bridge_width: float | None = ...,
+        thermal_gap: float | None = ...,
+        roundrect_rratio: float | None = ...,
+        chamfer_ratio: float | None = ...,
+        chamfer: E_pad_chamfer | None = ...,
+        properties: E_pad_property | None = ...,
+        options: PadOptions | None = ...,
+        tenting: PadTenting | None = ...,
+        uuid: str | None = ...,
+        primitives: PadPrimitives | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -665,7 +674,7 @@ class Net:
     number: int
     name: str | None
 
-    def __init__(self, *, number: int, name: str | None) -> None: ...
+    def __init__(self, *, number: int, name: str | None = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -687,11 +696,11 @@ class Property:
         name: str,
         value: str,
         at: Xyr,
-        unlocked: bool | None,
+        unlocked: bool | None = ...,
         layer: str,
-        hide: bool | None,
-        uuid: str | None,
-        effects: Effects | None,
+        hide: bool | None = ...,
+        uuid: str | None = ...,
+        effects: Effects | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -728,7 +737,7 @@ class Footprint:
     at: Xyr
     path: str | None
     propertys: list[Property]
-    attr: list[str]
+    attr: list[E_Attr]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -743,21 +752,21 @@ class Footprint:
         self,
         *,
         name: str,
-        layer: str,
-        uuid: str | None,
+        layer: str = ...,
+        uuid: str | None = ...,
         at: Xyr,
-        path: str | None,
-        propertys: list[Property],
-        attr: list[str],
-        fp_lines: list[Line],
-        fp_arcs: list[Arc],
-        fp_circles: list[Circle],
-        fp_rects: list[Rect],
-        fp_poly: list[Polygon],
-        fp_texts: list[FpText],
-        pads: list[Pad],
-        embedded_fonts: bool | None,
-        models: list[Model],
+        path: str | None = ...,
+        propertys: list[Property] = ...,
+        attr: list[E_Attr] = ...,
+        fp_lines: list[Line] = ...,
+        fp_arcs: list[Arc] = ...,
+        fp_circles: list[Circle] = ...,
+        fp_rects: list[Rect] = ...,
+        fp_poly: list[Polygon] = ...,
+        fp_texts: list[FpText] = ...,
+        pads: list[Pad] = ...,
+        embedded_fonts: bool | None = ...,
+        models: list[Model] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -770,17 +779,17 @@ class ViaLayer:
     thermal_gap: float | None
     thermal_bridge_width: float | None
     thermal_bridge_angle: float | None
-    zone_connect: int | None
+    zone_connect: E_zone_connection | None
 
     def __init__(
         self,
         *,
         name: str,
-        size: Xy | None,
-        thermal_gap: float | None,
-        thermal_bridge_width: float | None,
-        thermal_bridge_angle: float | None,
-        zone_connect: int | None,
+        size: Xy | None = ...,
+        thermal_gap: float | None = ...,
+        thermal_bridge_width: float | None = ...,
+        thermal_bridge_angle: float | None = ...,
+        zone_connect: E_zone_connection | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -788,10 +797,12 @@ class ViaLayer:
     def __zig_address__(self) -> int: ...
 
 class ViaPadstack:
-    mode: str
+    mode: E_padstack_mode
     layers: list[ViaLayer]
 
-    def __init__(self, *, mode: str, layers: list[ViaLayer]) -> None: ...
+    def __init__(
+        self, *, mode: E_padstack_mode, layers: list[ViaLayer] = ...
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -801,7 +812,7 @@ class ViaTenting:
     front: bool
     back: bool
 
-    def __init__(self, *, front: bool, back: bool) -> None: ...
+    def __init__(self, *, front: bool = ..., back: bool = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -829,17 +840,17 @@ class Via:
         at: Xy,
         size: float,
         drill: float,
-        layers: list[str],
+        layers: list[str] = ...,
         net: int,
-        remove_unused_layers: bool | None,
-        keep_end_layers: bool | None,
-        zone_layer_connections: list[str],
-        padstack: ViaPadstack | None,
-        teardrops: Teardrop | None,
-        tenting: ViaTenting | None,
-        free: bool | None,
-        locked: bool | None,
-        uuid: str | None,
+        remove_unused_layers: bool | None = ...,
+        keep_end_layers: bool | None = ...,
+        zone_layer_connections: list[str] = ...,
+        padstack: ViaPadstack | None = ...,
+        teardrops: Teardrop | None = ...,
+        tenting: ViaTenting | None = ...,
+        free: bool | None = ...,
+        locked: bool | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -847,39 +858,44 @@ class Via:
     def __zig_address__(self) -> int: ...
 
 class Hatch:
-    mode: str
+    mode: E_zone_hatch_mode
     pitch: float
 
-    def __init__(self, *, mode: str, pitch: float) -> None: ...
+    def __init__(self, *, mode: E_zone_hatch_mode, pitch: float) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class ConnectPads:
-    mode: str | None
+    mode: E_zone_connect_pads_mode | None
     clearance: float | None
 
-    def __init__(self, *, mode: str | None, clearance: float | None) -> None: ...
+    def __init__(
+        self,
+        *,
+        mode: E_zone_connect_pads_mode | None = ...,
+        clearance: float | None = ...,
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class ZoneFill:
-    enable: str | None
-    mode: str | None
+    enable: E_zone_fill_enable | None
+    mode: E_zone_fill_mode | None
     hatch_thickness: float | None
     hatch_gap: float | None
     hatch_orientation: float | None
     hatch_smoothing_level: float | None
     hatch_smoothing_value: float | None
-    hatch_border_algorithm: str | None
+    hatch_border_algorithm: E_zone_hatch_border_algorithm | None
     hatch_min_hole_area: float | None
     arc_segments: int | None
     thermal_gap: float | None
     thermal_bridge_width: float | None
-    smoothing: str | None
+    smoothing: E_zone_smoothing | None
     radius: float | None
     island_removal_mode: int | None
     island_area_min: float | None
@@ -887,22 +903,22 @@ class ZoneFill:
     def __init__(
         self,
         *,
-        enable: str | None,
-        mode: str | None,
-        hatch_thickness: float | None,
-        hatch_gap: float | None,
-        hatch_orientation: float | None,
-        hatch_smoothing_level: float | None,
-        hatch_smoothing_value: float | None,
-        hatch_border_algorithm: str | None,
-        hatch_min_hole_area: float | None,
-        arc_segments: int | None,
-        thermal_gap: float | None,
-        thermal_bridge_width: float | None,
-        smoothing: str | None,
-        radius: float | None,
-        island_removal_mode: int | None,
-        island_area_min: float | None,
+        enable: E_zone_fill_enable | None = ...,
+        mode: E_zone_fill_mode | None = ...,
+        hatch_thickness: float | None = ...,
+        hatch_gap: float | None = ...,
+        hatch_orientation: float | None = ...,
+        hatch_smoothing_level: float | None = ...,
+        hatch_smoothing_value: float | None = ...,
+        hatch_border_algorithm: E_zone_hatch_border_algorithm | None = ...,
+        hatch_min_hole_area: float | None = ...,
+        arc_segments: int | None = ...,
+        thermal_gap: float | None = ...,
+        thermal_bridge_width: float | None = ...,
+        smoothing: E_zone_smoothing | None = ...,
+        radius: float | None = ...,
+        island_removal_mode: int | None = ...,
+        island_area_min: float | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -920,14 +936,20 @@ class FilledPolygon:
     def __zig_address__(self) -> int: ...
 
 class ZoneKeepout:
-    tracks: str
-    vias: str
-    pads: str
-    copperpour: str
-    footprints: str
+    tracks: E_zone_keepout
+    vias: E_zone_keepout
+    pads: E_zone_keepout
+    copperpour: E_zone_keepout
+    footprints: E_zone_keepout
 
     def __init__(
-        self, *, tracks: str, vias: str, pads: str, copperpour: str, footprints: str
+        self,
+        *,
+        tracks: E_zone_keepout,
+        vias: E_zone_keepout,
+        pads: E_zone_keepout,
+        copperpour: E_zone_keepout,
+        footprints: E_zone_keepout,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -935,7 +957,7 @@ class ZoneKeepout:
     def __zig_address__(self) -> int: ...
 
 class ZonePlacement:
-    source_type: str | None
+    source_type: E_zone_placement_source_type | None
     source: str | None
     enabled: bool
     sheetname: str | None
@@ -943,10 +965,10 @@ class ZonePlacement:
     def __init__(
         self,
         *,
-        source_type: str | None,
-        source: str | None,
-        enabled: bool,
-        sheetname: str | None,
+        source_type: E_zone_placement_source_type | None = ...,
+        source: str | None = ...,
+        enabled: bool = ...,
+        sheetname: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -954,9 +976,9 @@ class ZonePlacement:
     def __zig_address__(self) -> int: ...
 
 class ZoneTeardrop:
-    type: str
+    type: E_zone_teardrop_type
 
-    def __init__(self, *, type: str) -> None: ...
+    def __init__(self, *, type: E_zone_teardrop_type) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -965,7 +987,7 @@ class ZoneTeardrop:
 class ZoneAttr:
     teardrop: ZoneTeardrop | None
 
-    def __init__(self, *, teardrop: ZoneTeardrop | None) -> None: ...
+    def __init__(self, *, teardrop: ZoneTeardrop | None = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -995,21 +1017,21 @@ class Zone:
         *,
         net: int,
         net_name: str,
-        layer: str | None,
-        layers: list[str],
-        uuid: str | None,
-        name: str | None,
+        layer: str | None = ...,
+        layers: list[str] = ...,
+        uuid: str | None = ...,
+        name: str | None = ...,
         hatch: Hatch,
-        priority: int | None,
-        attr: ZoneAttr | None,
-        connect_pads: ConnectPads | None,
-        min_thickness: float | None,
-        filled_areas_thickness: bool | None,
-        keepout: ZoneKeepout | None,
-        placement: ZonePlacement | None,
-        fill: ZoneFill | None,
+        priority: int | None = ...,
+        attr: ZoneAttr | None = ...,
+        connect_pads: ConnectPads | None = ...,
+        min_thickness: float | None = ...,
+        filled_areas_thickness: bool | None = ...,
+        keepout: ZoneKeepout | None = ...,
+        placement: ZonePlacement | None = ...,
+        fill: ZoneFill | None = ...,
         polygon: Polygon,
-        filled_polygon: list[FilledPolygon],
+        filled_polygon: list[FilledPolygon] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1030,9 +1052,9 @@ class Segment:
         start: Xy,
         end: Xy,
         width: float,
-        layer: str | None,
+        layer: str | None = ...,
         net: int,
-        uuid: str | None,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1055,9 +1077,9 @@ class ArcSegment:
         mid: Xy,
         end: Xy,
         width: float,
-        layer: str | None,
+        layer: str | None = ...,
         net: int,
-        uuid: str | None,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1068,19 +1090,25 @@ class General:
     thickness: float
     legacy_teardrops: bool
 
-    def __init__(self, *, thickness: float, legacy_teardrops: bool) -> None: ...
+    def __init__(
+        self, *, thickness: float = ..., legacy_teardrops: bool = ...
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class Paper:
-    type: str
+    type: E_paper_type
     size: Xy | None
-    orientation: str | None
+    orientation: E_paper_orientation | None
 
     def __init__(
-        self, *, type: str, size: Xy | None, orientation: str | None
+        self,
+        *,
+        type: E_paper_type = ...,
+        size: Xy | None = ...,
+        orientation: E_paper_orientation | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1097,11 +1125,11 @@ class TitleBlock:
     def __init__(
         self,
         *,
-        title: str | None,
-        date: str | None,
-        revision: str | None,
-        company: str | None,
-        comment: list[Comment],
+        title: str | None = ...,
+        date: str | None = ...,
+        revision: str | None = ...,
+        company: str | None = ...,
+        comment: list[Comment] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1121,11 +1149,11 @@ class Comment:
 class Layer:
     number: int
     name: str
-    type: str
+    type: E_layer_type
     alias: str | None
 
     def __init__(
-        self, *, number: int, name: str, type: str, alias: str | None
+        self, *, number: int, name: str, type: E_layer_type, alias: str | None = ...
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1134,21 +1162,21 @@ class Layer:
 
 class Stackup:
     layers: list[StackupLayer]
-    copper_finish: str | None
+    copper_finish: E_copper_finish | None
     dielectric_constraints: bool | None
-    edge_connector: str | None
+    edge_connector: E_edge_connector | None
     castellated_pads: bool | None
     edge_plating: bool | None
 
     def __init__(
         self,
         *,
-        layers: list[StackupLayer],
-        copper_finish: str | None,
-        dielectric_constraints: bool | None,
-        edge_connector: str | None,
-        castellated_pads: bool | None,
-        edge_plating: bool | None,
+        layers: list[StackupLayer] = ...,
+        copper_finish: E_copper_finish | None = ...,
+        dielectric_constraints: bool | None = ...,
+        edge_connector: E_edge_connector | None = ...,
+        castellated_pads: bool | None = ...,
+        edge_plating: bool | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1169,11 +1197,11 @@ class StackupLayer:
         *,
         name: str,
         type: str,
-        color: str | None,
-        thickness: float | None,
-        material: str | None,
-        epsilon_r: float | None,
-        loss_tangent: float | None,
+        color: str | None = ...,
+        thickness: float | None = ...,
+        material: str | None = ...,
+        epsilon_r: float | None = ...,
+        loss_tangent: float | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1203,24 +1231,24 @@ class Rules:
     def __init__(
         self,
         *,
-        max_error: float,
-        min_clearance: float,
-        min_connection: float,
-        min_copper_edge_clearance: float,
-        min_hole_clearance: float,
-        min_hole_to_hole: float,
-        min_microvia_diameter: float,
-        min_microvia_drill: float,
-        min_resolved_spokes: int,
-        min_silk_clearance: float,
-        min_text_height: float,
-        min_text_thickness: float,
-        min_through_hole_diameter: float,
-        min_track_width: float,
-        min_via_annular_width: float,
-        min_via_diameter: float,
-        solder_mask_to_copper_clearance: float,
-        use_height_for_length_calcs: bool,
+        max_error: float = ...,
+        min_clearance: float = ...,
+        min_connection: float = ...,
+        min_copper_edge_clearance: float = ...,
+        min_hole_clearance: float = ...,
+        min_hole_to_hole: float = ...,
+        min_microvia_diameter: float = ...,
+        min_microvia_drill: float = ...,
+        min_resolved_spokes: int = ...,
+        min_silk_clearance: float = ...,
+        min_text_height: float = ...,
+        min_text_thickness: float = ...,
+        min_through_hole_diameter: float = ...,
+        min_track_width: float = ...,
+        min_via_annular_width: float = ...,
+        min_via_diameter: float = ...,
+        solder_mask_to_copper_clearance: float = ...,
+        use_height_for_length_calcs: bool = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1274,48 +1302,48 @@ class PcbPlotParams:
     def __init__(
         self,
         *,
-        layerselection: str,
-        plot_on_all_layers_selection: str,
-        disableapertmacros: bool | None,
-        usegerberextensions: bool | None,
-        usegerberattributes: bool | None,
-        usegerberadvancedattributes: bool | None,
-        creategerberjobfile: bool | None,
-        dashed_line_dash_ratio: float,
-        dashed_line_gap_ratio: float,
-        svgprecision: int,
-        plotframeref: bool | None,
-        viasonmask: bool | None,
-        mode: int,
-        useauxorigin: bool | None,
-        hpglpennumber: int,
-        hpglpenspeed: int,
-        hpglpendiameter: float,
-        pdf_front_fp_property_popups: bool | None,
-        pdf_back_fp_property_popups: bool | None,
-        pdf_metadata: bool | None,
-        pdf_single_document: bool | None,
-        dxfpolygonmode: bool | None,
-        dxfimperialunits: bool | None,
-        dxfusepcbnewfont: bool | None,
-        psnegative: bool | None,
-        psa4output: bool | None,
-        plot_black_and_white: bool | None,
-        plotinvisibletext: bool | None,
-        sketchpadsonfab: bool | None,
-        plotreference: bool | None,
-        plotvalue: bool | None,
-        plotpadnumbers: bool | None,
-        hidednponfab: bool | None,
-        sketchdnponfab: bool | None,
-        crossoutdnponfab: bool | None,
-        plotfptext: bool | None,
-        subtractmaskfromsilk: bool | None,
-        outputformat: int,
-        mirror: bool | None,
-        drillshape: int,
-        scaleselection: int,
-        outputdirectory: str,
+        layerselection: str = ...,
+        plot_on_all_layers_selection: str = ...,
+        disableapertmacros: bool | None = ...,
+        usegerberextensions: bool | None = ...,
+        usegerberattributes: bool | None = ...,
+        usegerberadvancedattributes: bool | None = ...,
+        creategerberjobfile: bool | None = ...,
+        dashed_line_dash_ratio: float = ...,
+        dashed_line_gap_ratio: float = ...,
+        svgprecision: int = ...,
+        plotframeref: bool | None = ...,
+        viasonmask: bool | None = ...,
+        mode: int = ...,
+        useauxorigin: bool | None = ...,
+        hpglpennumber: int = ...,
+        hpglpenspeed: int = ...,
+        hpglpendiameter: float = ...,
+        pdf_front_fp_property_popups: bool | None = ...,
+        pdf_back_fp_property_popups: bool | None = ...,
+        pdf_metadata: bool | None = ...,
+        pdf_single_document: bool | None = ...,
+        dxfpolygonmode: bool | None = ...,
+        dxfimperialunits: bool | None = ...,
+        dxfusepcbnewfont: bool | None = ...,
+        psnegative: bool | None = ...,
+        psa4output: bool | None = ...,
+        plot_black_and_white: bool | None = ...,
+        plotinvisibletext: bool | None = ...,
+        sketchpadsonfab: bool | None = ...,
+        plotreference: bool | None = ...,
+        plotvalue: bool | None = ...,
+        plotpadnumbers: bool | None = ...,
+        hidednponfab: bool | None = ...,
+        sketchdnponfab: bool | None = ...,
+        crossoutdnponfab: bool | None = ...,
+        plotfptext: bool | None = ...,
+        subtractmaskfromsilk: bool | None = ...,
+        outputformat: int = ...,
+        mirror: bool | None = ...,
+        drillshape: int = ...,
+        scaleselection: int = ...,
+        outputdirectory: str = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1325,7 +1353,7 @@ class PcbPlotParams:
 class Tenting:
     values: list[str]
 
-    def __init__(self, *, values: list[str]) -> None: ...
+    def __init__(self, *, values: list[str] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -1342,12 +1370,12 @@ class Setup:
     def __init__(
         self,
         *,
-        stackup: Stackup | None,
-        pad_to_mask_clearance: int,
-        allow_soldermask_bridges_in_footprints: bool,
-        tenting: list[str],
-        pcbplotparams: PcbPlotParams,
-        rules: Rules | None,
+        stackup: Stackup | None = ...,
+        pad_to_mask_clearance: int = ...,
+        allow_soldermask_bridges_in_footprints: bool = ...,
+        tenting: list[str] = ...,
+        pcbplotparams: PcbPlotParams = ...,
+        rules: Rules | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1359,7 +1387,7 @@ class KicadPcb:
     generator: str
     generator_version: str
     general: General
-    paper: str | None
+    paper: E_paper_type | None
     title_block: TitleBlock | None
     layers: list[Layer]
     setup: Setup
@@ -1389,36 +1417,36 @@ class KicadPcb:
     def __init__(
         self,
         *,
-        version: int,
+        version: int = ...,
         generator: str,
         generator_version: str,
-        general: General,
-        paper: str | None,
-        title_block: TitleBlock | None,
-        layers: list[Layer],
-        setup: Setup,
-        nets: list[Net],
-        footprints: list[Footprint],
-        vias: list[Via],
-        segments: list[Segment],
-        arcs: list[ArcSegment],
-        gr_lines: list[Line],
-        gr_arcs: list[Arc],
-        gr_curves: list[Curve],
-        gr_circles: list[Circle],
-        gr_rects: list[Rect],
-        gr_polys: list[Polygon],
-        gr_texts: list[Text],
-        gr_text_boxes: list[TextBox],
-        zones: list[Zone],
-        images: list[Image],
-        dimensions: list[Dimension],
-        groups: list[Group],
-        targets: list[Target],
-        embedded_fonts: bool | None,
-        embedded_files: EmbeddedFiles | None,
-        tables: list[Table],
-        generateds: list[Generated],
+        general: General = ...,
+        paper: E_paper_type | None = ...,
+        title_block: TitleBlock | None = ...,
+        layers: list[Layer] = ...,
+        setup: Setup = ...,
+        nets: list[Net] = ...,
+        footprints: list[Footprint] = ...,
+        vias: list[Via] = ...,
+        segments: list[Segment] = ...,
+        arcs: list[ArcSegment] = ...,
+        gr_lines: list[Line] = ...,
+        gr_arcs: list[Arc] = ...,
+        gr_curves: list[Curve] = ...,
+        gr_circles: list[Circle] = ...,
+        gr_rects: list[Rect] = ...,
+        gr_polys: list[Polygon] = ...,
+        gr_texts: list[Text] = ...,
+        gr_text_boxes: list[TextBox] = ...,
+        zones: list[Zone] = ...,
+        images: list[Image] = ...,
+        dimensions: list[Dimension] = ...,
+        groups: list[Group] = ...,
+        targets: list[Target] = ...,
+        embedded_fonts: bool | None = ...,
+        embedded_files: EmbeddedFiles | None = ...,
+        tables: list[Table] = ...,
+        generateds: list[Generated] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1440,8 +1468,8 @@ class Generated:
         type: str,
         name: str,
         layer: str,
-        members: list[str],
-        locked: bool | None,
+        members: list[str] = ...,
+        locked: bool | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1456,7 +1484,13 @@ class Image:
     uuid: str | None
 
     def __init__(
-        self, *, at: Xy, layer: str, scale: float, data: list[str], uuid: str | None
+        self,
+        *,
+        at: Xy,
+        layer: str,
+        scale: float = ...,
+        data: list[str] = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1465,12 +1499,17 @@ class Image:
 
 class EmbeddedFile:
     name: str
-    type: str
+    type: E_embedded_file_type
     data: list[str]
     checksum: str | None
 
     def __init__(
-        self, *, name: str, type: str, data: list[str], checksum: str | None
+        self,
+        *,
+        name: str,
+        type: E_embedded_file_type,
+        data: list[str] = ...,
+        checksum: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1480,7 +1519,7 @@ class EmbeddedFile:
 class EmbeddedFiles:
     files: list[EmbeddedFile]
 
-    def __init__(self, *, files: list[EmbeddedFile]) -> None: ...
+    def __init__(self, *, files: list[EmbeddedFile] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -1500,9 +1539,9 @@ class Teardrop:
     def __init__(
         self,
         *,
-        enabled: bool,
-        allow_two_segments: bool,
-        prefer_zone_connections: bool,
+        enabled: bool = ...,
+        allow_two_segments: bool = ...,
+        prefer_zone_connections: bool = ...,
         best_length_ratio: float,
         max_length: float,
         best_width_ratio: float,
@@ -1521,7 +1560,7 @@ class RenderCache:
     polygons: list[Polygon]
 
     def __init__(
-        self, *, text: str, rotation: float, polygons: list[Polygon]
+        self, *, text: str = ..., rotation: float = ..., polygons: list[Polygon] = ...
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1570,17 +1609,17 @@ class TextBox:
         self,
         *,
         text: str,
-        start: Xy | None,
-        end: Xy | None,
-        pts: Pts | None,
-        margins: Margins | None,
-        angle: float | None,
+        start: Xy | None = ...,
+        end: Xy | None = ...,
+        pts: Pts | None = ...,
+        margins: Margins | None = ...,
+        angle: float | None = ...,
         layer: str,
-        uuid: str | None,
+        uuid: str | None = ...,
         effects: Effects,
-        border: bool | None,
-        stroke: Stroke | None,
-        locked: bool | None,
+        border: bool | None = ...,
+        stroke: Stroke | None = ...,
+        locked: bool | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1607,19 +1646,19 @@ class TableCell:
         self,
         *,
         text: str,
-        locked: bool,
-        start: Xy | None,
-        end: Xy | None,
-        pts: Pts | None,
-        angle: float | None,
-        stroke: Stroke | None,
-        border: bool | None,
-        margins: Margins | None,
+        locked: bool = ...,
+        start: Xy | None = ...,
+        end: Xy | None = ...,
+        pts: Pts | None = ...,
+        angle: float | None = ...,
+        stroke: Stroke | None = ...,
+        border: bool | None = ...,
+        margins: Margins | None = ...,
         layer: str,
-        span: Span | None,
+        span: Span | None = ...,
         effects: Effects,
-        render_cache: RenderCache | None,
-        uuid: str | None,
+        render_cache: RenderCache | None = ...,
+        uuid: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1629,7 +1668,7 @@ class TableCell:
 class Cells:
     table_cells: list[TableCell]
 
-    def __init__(self, *, table_cells: list[TableCell]) -> None: ...
+    def __init__(self, *, table_cells: list[TableCell] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -1671,10 +1710,10 @@ class Table:
         self,
         *,
         column_count: int,
-        locked: bool | None,
+        locked: bool | None = ...,
         layer: str,
-        column_widths: list[float],
-        row_heights: list[float],
+        column_widths: list[float] = ...,
+        row_heights: list[float] = ...,
         cells: Cells,
         border: Border,
         separators: Separator,
@@ -1687,7 +1726,7 @@ class Table:
 class DimensionPts:
     xys: list[Xy]
 
-    def __init__(self, *, xys: list[Xy]) -> None: ...
+    def __init__(self, *, xys: list[Xy] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -1710,8 +1749,8 @@ class DimensionFormat:
         units: int,
         units_format: int,
         precision: int,
-        override_value: str | None,
-        suppress_zeroes: bool,
+        override_value: str | None = ...,
+        suppress_zeroes: bool = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1721,7 +1760,7 @@ class DimensionFormat:
 class DimensionStyle:
     thickness: float | None
     arrow_length: float | None
-    arrow_direction: str
+    arrow_direction: E_dimension_arrow_direction
     text_position_mode: int | None
     extension_height: float | None
     extension_offset: float | None
@@ -1731,14 +1770,14 @@ class DimensionStyle:
     def __init__(
         self,
         *,
-        thickness: float | None,
-        arrow_length: float | None,
-        arrow_direction: str,
-        text_position_mode: int | None,
-        extension_height: float | None,
-        extension_offset: float | None,
-        keep_text_aligned: bool,
-        text_frame: int | None,
+        thickness: float | None = ...,
+        arrow_length: float | None = ...,
+        arrow_direction: E_dimension_arrow_direction = ...,
+        text_position_mode: int | None = ...,
+        extension_height: float | None = ...,
+        extension_offset: float | None = ...,
+        keep_text_aligned: bool = ...,
+        text_frame: int | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1746,7 +1785,7 @@ class DimensionStyle:
     def __zig_address__(self) -> int: ...
 
 class Dimension:
-    type: str
+    type: E_dimension_type
     layer: str
     uuid: str | None
     pts: DimensionPts
@@ -1760,15 +1799,15 @@ class Dimension:
     def __init__(
         self,
         *,
-        type: str,
+        type: E_dimension_type,
         layer: str,
-        uuid: str | None,
+        uuid: str | None = ...,
         pts: DimensionPts,
         height: float,
-        orientation: float | None,
-        leader_length: float | None,
-        format: DimensionFormat | None,
-        style: DimensionStyle | None,
+        orientation: float | None = ...,
+        leader_length: float | None = ...,
+        format: DimensionFormat | None = ...,
+        style: DimensionStyle | None = ...,
         gr_text: Text,
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -1785,10 +1824,10 @@ class Group:
     def __init__(
         self,
         *,
-        name: str | None,
-        uuid: str | None,
-        locked: bool | None,
-        members: list[str],
+        name: str | None = ...,
+        uuid: str | None = ...,
+        locked: bool | None = ...,
+        members: list[str] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1803,7 +1842,7 @@ class Target:
     uuid: str | None
 
     def __init__(
-        self, *, at: Xy, size: Xy, width: float, layer: str, uuid: str | None
+        self, *, at: Xy, size: Xy, width: float, layer: str, uuid: str | None = ...
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
