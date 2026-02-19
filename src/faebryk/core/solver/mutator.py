@@ -1542,11 +1542,23 @@ class ExpressionBuilder[
             return False
 
         same_type = fabll.Traits(other).get_obj_raw().isinstance(self.factory)
-        same_operands = len(self.operands) == len(
-            other_ops := other.get_operands()
-        ) and all(
-            _operand_matches(x1, x2) for x1, x2 in zip_equal(self.operands, other_ops)
+        other_obj = fabll.Traits(other).get_obj_raw()
+        other_ops = other.get_operands()
+        same_operands = (
+            len(self.operands) == len(other_ops := other.get_operands())
+            # order-sensitive comparison for non-commutative expressions
+            and all(
+                _operand_matches(x1, x2)
+                for x1, x2 in zip_equal(self.operands, other_ops)
+            )
+            # order-insensitive comparison for commutative expressions
+            if other_obj.try_get_trait(F.Expressions.is_commutative) is None
+            else all(
+                any(_operand_matches(x1, x2) for x2 in other_ops)
+                for x1 in self.operands
+            )
         )
+
         same_terminate = self.terminate == bool(
             other.try_get_sibling_trait(is_terminated)
         )
