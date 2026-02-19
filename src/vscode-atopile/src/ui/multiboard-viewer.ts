@@ -121,7 +121,7 @@ class MultiboardViewerWebview extends BaseWebview {
                 // Ambient light so nothing is ever fully black
                 scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
-                function createTextSprite(text, position, scale) {
+                function createTextSprite(text, position) {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     canvas.width = 256;
@@ -137,19 +137,176 @@ class MultiboardViewerWebview extends BaseWebview {
                         map: texture,
                         transparent: true,
                         depthTest: false,
+                        sizeAttenuation: false,
                     });
                     const sprite = new THREE.Sprite(spriteMaterial);
                     sprite.position.copy(position);
-                    sprite.scale.set(scale, scale * 0.25, 1);
+                    sprite.scale.set(0.18, 0.045, 1);
                     return sprite;
                 }
+
+                // --- Shared state ---
+                let masterGroup = null;
+                const loadedBoards = [];
+                const cableObjects = [];
+
+                // --- Drag state ---
+                const raycaster = new THREE.Raycaster();
+                const pointer = new THREE.Vector2();
+                const dragPlane = new THREE.Plane();
+                let draggedBoard = null;
+                const dragStartBoardPos = new THREE.Vector3();
+                const dragStartHit = new THREE.Vector3();
+                let hoveredBoard = null;
+
+                // --- Board center helper ---
+                // The GLB origin (0,0,0) in boardGroup-local = boardGroup.position in masterGroup-local
+                function getBoardCenterLocal(board) {
+                    return board.group.position.clone();
+                }
+
+                // --- Cable helpers ---
+                function createCableCurve(fromPos, toPos) {
+                    return new THREE.LineCurve3(fromPos, toPos);
+                }
+
+                function updateCable(cableObj) {
+                    const fromBoard = loadedBoards.find(b => b.name === cableObj.fromName);
+                    const toBoard = loadedBoards.find(b => b.name === cableObj.toName);
+                    if (!fromBoard || !toBoard) return;
+
+                    const fromCenter = getBoardCenterLocal(fromBoard);
+                    const toCenter = getBoardCenterLocal(toBoard);
+                    const curve = createCableCurve(fromCenter, toCenter);
+
+                    cableObj.mesh.geometry.dispose();
+                    cableObj.mesh.geometry = new THREE.TubeGeometry(curve, 32, cableObj.radius, 8, false);
+
+                    if (cableObj.label) {
+                        const mid = new THREE.Vector3().addVectors(fromCenter, toCenter).multiplyScalar(0.5);
+                        mid.y += cableObj.radius * 4;
+                        cableObj.label.position.copy(mid);
+                    }
+                }
+
+                // --- Hover highlight ---
+                function setHighlight(board, on) {
+                    board.group.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            const mat = child.material;
+                            if (on) {
+                                if (!mat._origEmissive) {
+                                    mat._origEmissive = mat.emissive ? mat.emissive.clone() : new THREE.Color(0, 0, 0);
+                                }
+                                mat.emissive = new THREE.Color(0x334466);
+                            } else if (mat._origEmissive) {
+                                mat.emissive.copy(mat._origEmissive);
+                                delete mat._origEmissive;
+                            }
+                        }
+                    });
+                }
+
+                // --- Pointer helpers ---
+                function getPointerNDC(event) {
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                }
+
+                function findHitBoard(event) {
+                    if (loadedBoards.length === 0) return null;
+                    getPointerNDC(event);
+                    raycaster.setFromCamera(pointer, camera);
+                    const meshes = [];
+                    for (const board of loadedBoards) {
+                        board.group.traverse(child => {
+                            if (child.isMesh) {
+                                child.userData._boardRef = board;
+                                meshes.push(child);
+                            }
+                        });
+                    }
+                    const hits = raycaster.intersectObjects(meshes, false);
+                    return hits.length > 0 ? hits[0].object.userData._boardRef : null;
+                }
+
+                // --- Pointer events for drag & hover ---
+                renderer.domElement.addEventListener('pointerdown', (event) => {
+                    const board = findHitBoard(event);
+                    if (!board) return;
+
+                    renderer.domElement.setPointerCapture(event.pointerId);
+                    draggedBoard = board;
+                    controls.enabled = false;
+                    renderer.domElement.style.cursor = 'grabbing';
+
+                    // Snapshot the board's starting position (local to masterGroup)
+                    dragStartBoardPos.copy(board.group.position);
+
+                    // Set drag plane at the board's world Y so raycasting
+                    // produces movement strictly in the XZ world plane
+                    masterGroup.updateMatrixWorld(true);
+                    const worldPos = new THREE.Vector3();
+                    board.group.getWorldPosition(worldPos);
+                    dragPlane.setFromNormalAndCoplanarPoint(
+                        new THREE.Vector3(0, 1, 0),
+                        worldPos
+                    );
+
+                    // Record where on the plane the pointer first hit
+                    getPointerNDC(event);
+                    raycaster.setFromCamera(pointer, camera);
+                    raycaster.ray.intersectPlane(dragPlane, dragStartHit);
+                });
+
+                renderer.domElement.addEventListener('pointermove', (event) => {
+                    if (draggedBoard) {
+                        getPointerNDC(event);
+                        raycaster.setFromCamera(pointer, camera);
+                        const planeHit = new THREE.Vector3();
+                        if (raycaster.ray.intersectPlane(dragPlane, planeHit)) {
+                            // Delta in world XZ — equals local delta since
+                            // masterGroup has no rotation, only translation
+                            const dx = planeHit.x - dragStartHit.x;
+                            const dz = planeHit.z - dragStartHit.z;
+                            draggedBoard.group.position.x = dragStartBoardPos.x + dx;
+                            draggedBoard.group.position.z = dragStartBoardPos.z + dz;
+                            // Y is never touched — stays at original value
+
+                            // Update all cables connected to this board
+                            for (const cable of cableObjects) {
+                                if (cable.fromName === draggedBoard.name || cable.toName === draggedBoard.name) {
+                                    updateCable(cable);
+                                }
+                            }
+                        }
+                    } else {
+                        // Hover detection
+                        const board = findHitBoard(event);
+                        if (board !== hoveredBoard) {
+                            if (hoveredBoard) setHighlight(hoveredBoard, false);
+                            hoveredBoard = board;
+                            if (hoveredBoard) setHighlight(hoveredBoard, true);
+                            renderer.domElement.style.cursor = hoveredBoard ? 'grab' : '';
+                        }
+                    }
+                });
+
+                renderer.domElement.addEventListener('pointerup', (event) => {
+                    if (draggedBoard) {
+                        renderer.domElement.releasePointerCapture(event.pointerId);
+                        draggedBoard = null;
+                        controls.enabled = true;
+                        renderer.domElement.style.cursor = hoveredBoard ? 'grab' : '';
+                    }
+                });
 
                 async function loadBoards() {
                     const loader = new GLTFLoader();
 
-                    const masterGroup = new THREE.Group();
+                    masterGroup = new THREE.Group();
                     let xOffset = 0;
-                    const loadedBoards = [];
 
                     setStatus('Loading ' + boards.length + ' boards...');
 
@@ -181,39 +338,54 @@ class MultiboardViewerWebview extends BaseWebview {
                             loadedBoards.push({ name: board.name, group: boardGroup, size });
                             masterGroup.add(boardGroup);
 
-                            // Board name label below the board
-                            const labelScale = Math.max(size.x, size.y) * 0.5;
+                            // Board name label — child of boardGroup at GLB origin, below the board
                             const labelPos = new THREE.Vector3(
-                                boardGroup.position.x + size.x / 2,
-                                bbox.min.y - size.y * 0.15,
-                                bbox.getCenter(new THREE.Vector3()).z
+                                0,
+                                bbox.min.y - boardGroup.position.y - size.y * 0.15,
+                                0
                             );
-                            masterGroup.add(createTextSprite(board.name, labelPos, labelScale));
+                            boardGroup.add(createTextSprite(board.name, labelPos));
                         } catch (err) {
                             setStatus('Failed: ' + board.name);
                             console.error('Failed to load GLB for ' + board.name, err);
                         }
                     }
 
-                    // Draw dashed cable lines between boards
+                    // Create cable tubes between boards
                     for (const cable of cables) {
                         const fromBoard = loadedBoards.find(b => b.name === cable.from);
                         const toBoard = loadedBoards.find(b => b.name === cable.to);
                         if (fromBoard && toBoard) {
-                            const fromCenter = new THREE.Vector3();
-                            new THREE.Box3().setFromObject(fromBoard.group).getCenter(fromCenter);
-                            const toCenter = new THREE.Vector3();
-                            new THREE.Box3().setFromObject(toBoard.group).getCenter(toCenter);
+                            const fromCenter = getBoardCenterLocal(fromBoard);
+                            const toCenter = getBoardCenterLocal(toBoard);
                             const avgSize = (fromBoard.size.x + toBoard.size.x) / 2;
-                            const lineMaterial = new THREE.LineDashedMaterial({
-                                color: 0x88aaff,
-                                dashSize: avgSize * 0.05,
-                                gapSize: avgSize * 0.03,
+                            const radius = avgSize * 0.015;
+
+                            const curve = createCableCurve(fromCenter, toCenter);
+                            const tubeGeo = new THREE.TubeGeometry(curve, 32, radius, 8, false);
+                            const tubeMat = new THREE.MeshStandardMaterial({
+                                color: 0x6688bb,
+                                transparent: true,
+                                opacity: 0.7,
+                                roughness: 0.6,
+                                metalness: 0.1,
                             });
-                            const lineGeometry = new THREE.BufferGeometry().setFromPoints([fromCenter, toCenter]);
-                            const line = new THREE.Line(lineGeometry, lineMaterial);
-                            line.computeLineDistances();
-                            masterGroup.add(line);
+                            const mesh = new THREE.Mesh(tubeGeo, tubeMat);
+                            masterGroup.add(mesh);
+
+                            // Cable label at midpoint
+                            const mid = new THREE.Vector3().addVectors(fromCenter, toCenter).multiplyScalar(0.5);
+                            mid.y += radius * 4;
+                            const label = createTextSprite(cable.name, mid);
+                            masterGroup.add(label);
+
+                            cableObjects.push({
+                                fromName: cable.from,
+                                toName: cable.to,
+                                mesh,
+                                label,
+                                radius,
+                            });
                         }
                     }
 
