@@ -43,6 +43,35 @@ KNOWN_INTERFACES: dict[type, str] = {
 
 
 @dataclass
+class FootprintPadGeometry:
+    pad_number: str  # matches PinInfo.pin_number
+    x: float  # center x in mm
+    y: float  # center y in mm
+    width: float  # mm
+    height: float  # mm
+    shape: str  # "rect", "circle", "roundrect", "oval"
+    rotation: float  # degrees
+    pad_type: str  # "smd", "thru_hole"
+    layers: list[str] = field(default_factory=list)
+    roundrect_ratio: float | None = None
+
+
+@dataclass
+class FootprintDrawing:
+    type: str  # "line", "arc", "circle", "rect"
+    layer: str
+    width: float
+    start_x: float | None = None
+    start_y: float | None = None
+    end_x: float | None = None
+    end_y: float | None = None
+    mid_x: float | None = None
+    mid_y: float | None = None
+    center_x: float | None = None
+    center_y: float | None = None
+
+
+@dataclass
 class PinInfo:
     pin_name: str  # e.g., "gpio[0]", "i2c.scl"
     pin_number: str | None = None  # Physical pin/pad number if available
@@ -61,6 +90,8 @@ class PinoutComponent:
     type_name: str  # Type name (e.g., "ESP32_C3_MINI_1")
     pins: list[PinInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    footprint_pads: list[FootprintPadGeometry] = field(default_factory=list)
+    footprint_drawings: list[FootprintDrawing] = field(default_factory=list)
 
 
 @dataclass
@@ -402,18 +433,19 @@ def _extract_voltage(pin: fabll.Node) -> str | None:
     return None
 
 
-def _find_ic_leads(
+def _find_ic_module(
     component: fabll.Node,
-) -> tuple[list[fabll.Node], str | None]:
+) -> tuple[list[fabll.Node], fabll.Node | None, str | None]:
     """Find IC lead nodes (from the child module with the most leads).
 
     This identifies the main IC package within a module so that lead tracing
     only picks up physical package pins, not leads from passive components
     like resistors or capacitors.
 
-    Returns ``(ic_leads, ic_module_full_name)``.
+    Returns ``(ic_leads, ic_module_node, ic_module_full_name)``.
     """
     ic_leads: list[fabll.Node] = []
+    ic_module: fabll.Node | None = None
     ic_module_full: str | None = None
     best_count = 0
 
@@ -428,9 +460,142 @@ def _find_ic_leads(
         if len(leads) > best_count:
             best_count = len(leads)
             ic_leads = leads
+            ic_module = child
             ic_module_full = child.get_full_name()
 
-    return ic_leads, ic_module_full
+    return ic_leads, ic_module, ic_module_full
+
+
+def _extract_footprint_geometry(
+    ic_module: fabll.Node,
+) -> tuple[list[FootprintPadGeometry], list[FootprintDrawing]]:
+    """Extract pad geometry and silk/fab drawings from the IC's KiCad footprint.
+
+    Returns ``(pads, drawings)``.
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    pads: list[FootprintPadGeometry] = []
+    drawings: list[FootprintDrawing] = []
+
+    try:
+        atomic_part = ic_module.try_get_trait(F.is_atomic_part)
+        if atomic_part is None:
+            return pads, drawings
+
+        fp_path = atomic_part.get_kicad_footprint_file_path()
+        if not Path(fp_path).exists():
+            logger.debug("Footprint file not found: %s", fp_path)
+            return pads, drawings
+
+        fp_file = kicad.loads(kicad.footprint.FootprintFile, Path(fp_path))
+        footprint = fp_file.footprint
+
+        # Extract pads (filter to copper layers)
+        copper_layers = {"F.Cu", "B.Cu", "*.Cu", "F&B.Cu"}
+        for pad in footprint.pads:
+            has_copper = any(
+                layer in copper_layers or layer.endswith(".Cu") for layer in pad.layers
+            )
+            if not has_copper:
+                continue
+
+            pads.append(
+                FootprintPadGeometry(
+                    pad_number=pad.name,
+                    x=pad.at.x,
+                    y=pad.at.y,
+                    width=pad.size.w,
+                    height=pad.size.h if pad.size.h is not None else pad.size.w,
+                    shape=pad.shape,
+                    rotation=pad.at.r if pad.at.r is not None else 0.0,
+                    pad_type=pad.type,
+                    layers=list(pad.layers),
+                    roundrect_ratio=pad.roundrect_rratio,
+                )
+            )
+
+        # Extract drawings from silk screen and fabrication layers
+        drawing_layers = {"F.SilkS", "B.SilkS", "F.Fab", "B.Fab"}
+
+        for line in footprint.fp_lines:
+            layer = line.layer
+            if layer not in drawing_layers:
+                continue
+            stroke_width = line.stroke.width if line.stroke else 0.12
+            drawings.append(
+                FootprintDrawing(
+                    type="line",
+                    layer=layer,
+                    width=stroke_width,
+                    start_x=line.start.x,
+                    start_y=line.start.y,
+                    end_x=line.end.x,
+                    end_y=line.end.y,
+                )
+            )
+
+        for arc in footprint.fp_arcs:
+            layer = arc.layer
+            if layer not in drawing_layers:
+                continue
+            stroke_width = arc.stroke.width if arc.stroke else 0.12
+            drawings.append(
+                FootprintDrawing(
+                    type="arc",
+                    layer=layer,
+                    width=stroke_width,
+                    start_x=arc.start.x,
+                    start_y=arc.start.y,
+                    end_x=arc.end.x,
+                    end_y=arc.end.y,
+                    mid_x=arc.mid.x,
+                    mid_y=arc.mid.y,
+                )
+            )
+
+        for rect in footprint.fp_rects:
+            layer = rect.layer
+            if layer not in drawing_layers:
+                continue
+            stroke_width = rect.stroke.width if rect.stroke else 0.12
+            drawings.append(
+                FootprintDrawing(
+                    type="rect",
+                    layer=layer,
+                    width=stroke_width,
+                    start_x=rect.start.x,
+                    start_y=rect.start.y,
+                    end_x=rect.end.x,
+                    end_y=rect.end.y,
+                )
+            )
+
+        for circle in footprint.fp_circles:
+            layer = circle.layer
+            if layer not in drawing_layers:
+                continue
+            stroke_width = circle.stroke.width if circle.stroke else 0.12
+            drawings.append(
+                FootprintDrawing(
+                    type="circle",
+                    layer=layer,
+                    width=stroke_width,
+                    center_x=circle.center.x,
+                    center_y=circle.center.y,
+                    end_x=circle.end.x,
+                    end_y=circle.end.y,
+                )
+            )
+
+    except Exception:
+        logger.debug(
+            "Could not extract footprint geometry for %s",
+            ic_module.get_full_name(),
+            exc_info=True,
+        )
+
+    return pads, drawings
 
 
 def _extract_pin_numbers(
@@ -590,7 +755,13 @@ def extract_pinout(
         pinout_comp = PinoutComponent(name=comp_name, type_name=comp_type)
 
         # Identify IC package leads for pad number extraction
-        ic_leads, ic_module_full = _find_ic_leads(comp)
+        ic_leads, ic_module, ic_module_full = _find_ic_module(comp)
+
+        # Extract footprint geometry if IC module found
+        if ic_module is not None:
+            pinout_comp.footprint_pads, pinout_comp.footprint_drawings = (
+                _extract_footprint_geometry(ic_module)
+            )
 
         # Collect all pin-like children (ElectricLogic, ElectricSignal, ElectricPower)
         pin_types = (F.ElectricLogic, F.ElectricSignal, F.ElectricPower)

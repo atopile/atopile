@@ -10,6 +10,7 @@ class PinoutTableWebview extends BaseWebview {
             id: 'pinout_table',
             title: 'Pinout Table',
             iconName: 'pcb-icon-transparent.svg',
+            column: vscode.ViewColumn.Active,
         });
     }
 

@@ -19,6 +19,7 @@
     "@tracespace/renderer": "^5.0.0-alpha.0",
     "@types/three": "^0.182.0",
     "ansi-to-html": "^0.7.2",
+    "earcut": "^3.0.2",
     "hast-util-to-html": "^9.0.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",

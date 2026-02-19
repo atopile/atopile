@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { api } from '../api/client'
 import type { PinoutData, PinInfo } from '../types/build'
+import { FootprintViewerCanvas } from './FootprintViewerCanvas'
 
 // ---------------------------------------------------------------------------
 //  Signal type color badges
@@ -35,7 +36,7 @@ function SignalBadge({ type }: { type: string }) {
 //  Sortable header
 // ---------------------------------------------------------------------------
 
-type SortKey = 'pin_name' | 'signal_type' | 'interfaces' | 'connected_to' | 'voltage' | 'net_name'
+type SortKey = 'pin_name' | 'signal_type' | 'interfaces' | 'connected_to' | 'net_name'
 type SortDir = 'asc' | 'desc'
 
 function SortHeader({ label, sortKey, currentSort, currentDir, onSort }: {
@@ -72,7 +73,7 @@ export function PinoutPanel() {
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('pin_name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
-  const [expandedPin, setExpandedPin] = useState<string | null>(null)
+  const [hoveredPinNumber, setHoveredPinNumber] = useState<string | null>(null)
   const [filterSignalType, setFilterSignalType] = useState<string>('all')
   const [filterConnection, setFilterConnection] = useState<string>('all')
 
@@ -160,7 +161,6 @@ export function PinoutPanel() {
         case 'signal_type': va = a.signal_type; vb = b.signal_type; break
         case 'interfaces': va = a.interfaces.join(','); vb = b.interfaces.join(','); break
         case 'connected_to': va = a.connected_to.join(','); vb = b.connected_to.join(','); break
-        case 'voltage': va = a.voltage || ''; vb = b.voltage || ''; break
         case 'net_name': va = a.net_name || ''; vb = b.net_name || ''; break
         default: va = ''; vb = ''
       }
@@ -186,19 +186,32 @@ export function PinoutPanel() {
     return [...new Set(comp.pins.map(p => p.signal_type))].sort()
   }, [comp])
 
-  // Stats
-  const warningCount = comp?.warnings.length ?? 0
   const totalPins = comp?.pins.length ?? 0
-  const connectedPins = comp?.pins.filter(p => p.connected_to.length > 0).length ?? 0
+
+  // Check if footprint data is available
+  const hasFootprint = (comp?.footprint_pads?.length ?? 0) > 0
+
+  // Handle pad hover from footprint viewer → scroll to table row
+  const handlePadHover = useCallback((padNumber: string) => {
+    setHoveredPinNumber(padNumber)
+    const row = document.getElementById(`pin-row-${padNumber}`)
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [])
 
   // Container style (uses VS Code CSS variables)
   const containerStyle: React.CSSProperties = {
     padding: '16px 24px',
-    maxWidth: 1400,
     margin: '0 auto',
     fontFamily: 'var(--vscode-font-family, monospace)',
     fontSize: 'var(--vscode-font-size, 13px)',
     color: 'var(--vscode-foreground, #ccc)',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
   }
 
   if (loading) {
@@ -280,42 +293,6 @@ export function PinoutPanel() {
         <button onClick={loadPinout} style={btnStyle} title="Refresh">Refresh</button>
       </div>
 
-      {/* Component info bar */}
-      {comp && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-          padding: '8px 12px', marginBottom: 12,
-          background: 'var(--vscode-input-background, #252526)',
-          borderRadius: 4,
-          fontSize: '0.9em',
-        }}>
-          <span><strong>{comp.name}</strong></span>
-          <span style={{ opacity: 0.7 }}>Type: {comp.type_name}</span>
-          <span style={{ opacity: 0.7 }}>Pins: {totalPins}</span>
-          <span style={{ opacity: 0.7 }}>Connected: {connectedPins}/{totalPins}</span>
-          {warningCount > 0 && (
-            <span style={{ color: 'var(--vscode-editorWarning-foreground, #cca700)' }}>
-              {warningCount} warning(s)
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Warnings */}
-      {comp && comp.warnings.length > 0 && (
-        <div style={{
-          padding: '8px 12px', marginBottom: 12,
-          background: 'rgba(204, 167, 0, 0.1)',
-          border: '1px solid var(--vscode-editorWarning-foreground, #cca700)',
-          borderRadius: 4,
-        }}>
-          {comp.warnings.map((w, i) => (
-            <div key={i} style={{ color: 'var(--vscode-editorWarning-foreground, #cca700)' }}>
-              {w}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Filters bar */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -347,133 +324,154 @@ export function PinoutPanel() {
         </span>
       </div>
 
-      {/* Table */}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontSize: '0.9em',
+      {/* Side-by-side layout: Table + Footprint Viewer */}
+      <div style={{
+        display: 'flex',
+        gap: 16,
+        alignItems: 'stretch',
+        flex: 1,
+        minHeight: 0,
+      }}>
+        {/* Table */}
+        <div style={{
+          flex: hasFootprint ? '0 0 60%' : '1 1 100%',
+          overflowX: 'auto',
+          overflowY: 'auto',
         }}>
-          <thead>
-            <tr style={{
-              borderBottom: '2px solid var(--vscode-panel-border, #444)',
-              background: 'var(--vscode-input-background, #252526)',
-            }}>
-              <SortHeader label="Pin Name" sortKey="pin_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Signal Type" sortKey="signal_type" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Interfaces" sortKey="interfaces" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Connected To" sortKey="connected_to" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Voltage" sortKey="voltage" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <SortHeader label="Net Name" sortKey="net_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <th style={{ padding: '8px 12px', textAlign: 'left' }}>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPins.map((pin) => {
-              const isExpanded = expandedPin === pin.pin_name
-              const hasNotes = pin.notes.length > 0
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '0.9em',
+          }}>
+            <thead>
+              <tr style={{
+                borderBottom: '2px solid var(--vscode-panel-border, #444)',
+                background: 'var(--vscode-input-background, #252526)',
+                position: 'sticky',
+                top: 0,
+                zIndex: 1,
+              }}>
+                <SortHeader label="Pin Name" sortKey="pin_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Signal Type" sortKey="signal_type" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Interfaces" sortKey="interfaces" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Connected To" sortKey="connected_to" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Net Name" sortKey="net_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPins.map((pin) => {
+                const isHovered = hoveredPinNumber === pin.pin_number
+                const hasNotes = pin.notes.length > 0
 
-              return (
-                <tr
-                  key={pin.pin_name}
-                  onClick={() => setExpandedPin(isExpanded ? null : pin.pin_name)}
-                  style={{
-                    borderBottom: '1px solid var(--vscode-panel-border, #333)',
-                    cursor: 'pointer',
-                    background: isExpanded
-                      ? 'var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.05))'
-                      : 'transparent',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--vscode-list-hoverBackground, rgba(255,255,255,0.04))')}
-                  onMouseLeave={e => (e.currentTarget.style.background = isExpanded ? 'var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.05))' : 'transparent')}
-                >
-                  <td style={cellStyle}>
-                    <code style={{ fontWeight: 500 }}>{pin.pin_name}</code>
-                    {pin.pin_number && (
-                      <span style={{ marginLeft: 6, opacity: 0.5, fontSize: '0.85em' }}>
-                        (#{pin.pin_number})
-                      </span>
-                    )}
-                  </td>
-                  <td style={cellStyle}>
-                    <SignalBadge type={pin.signal_type} />
-                  </td>
-                  <td style={cellStyle}>
-                    {pin.interfaces.length > 0
-                      ? pin.interfaces.map((iface, i) => (
-                          <span key={i} style={{
-                            display: 'inline-block',
-                            padding: '1px 6px',
-                            marginRight: 4,
-                            marginBottom: 2,
-                            borderRadius: 3,
-                            background: 'var(--vscode-badge-background, #4d4d4d)',
-                            color: 'var(--vscode-badge-foreground, #fff)',
-                            fontSize: '0.85em',
-                          }}>
-                            {iface}
-                          </span>
-                        ))
-                      : <span style={{ opacity: 0.4 }}>-</span>
-                    }
-                  </td>
-                  <td style={{ ...cellStyle, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {pin.connected_to.length > 0
-                      ? (
-                        <span title={pin.connected_to.join('\n')}>
-                          {pin.connected_to.map((c, i) => (
-                            <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              <code style={{ fontSize: '0.85em' }}>{c}</code>
-                            </div>
-                          ))}
+                return (
+                  <tr
+                    key={pin.pin_number ?? pin.pin_name}
+                    id={`pin-row-${pin.pin_number}`}
+                    style={{
+                      borderBottom: '1px solid var(--vscode-panel-border, #333)',
+                      background: isHovered
+                        ? 'var(--vscode-list-hoverBackground, rgba(255,255,255,0.04))'
+                        : 'transparent',
+                    }}
+                    onMouseEnter={() => setHoveredPinNumber(pin.pin_number)}
+                    onMouseLeave={() => setHoveredPinNumber(prev => prev === pin.pin_number ? null : prev)}
+                  >
+                    <td style={cellStyle}>
+                      <code style={{ fontWeight: 500 }}>{pin.pin_name}</code>
+                      {pin.pin_number && (
+                        <span style={{ marginLeft: 6, opacity: 0.5, fontSize: '0.85em' }}>
+                          (#{pin.pin_number})
                         </span>
-                      )
-                      : <span style={{ opacity: 0.4 }}>-</span>
-                    }
-                  </td>
-                  <td style={cellStyle}>
-                    {pin.voltage
-                      ? <code>{pin.voltage}</code>
-                      : <span style={{ opacity: 0.4 }}>-</span>
-                    }
-                  </td>
-                  <td style={cellStyle}>
-                    {pin.net_name
-                      ? <code>{pin.net_name}</code>
-                      : <span style={{ opacity: 0.4 }}>-</span>
-                    }
-                  </td>
-                  <td style={cellStyle}>
-                    {hasNotes && pin.notes.map((n, i) => (
-                      <span key={i} style={{
-                        display: 'inline-block',
-                        padding: '1px 6px',
-                        marginRight: 4,
-                        borderRadius: 3,
-                        background: n.includes('Unconnected')
-                          ? 'rgba(204, 167, 0, 0.15)'
-                          : 'rgba(100, 100, 100, 0.2)',
-                        color: n.includes('Unconnected')
-                          ? 'var(--vscode-editorWarning-foreground, #cca700)'
-                          : 'inherit',
-                        fontSize: '0.85em',
-                      }}>
-                        {n}
-                      </span>
-                    ))}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+                      )}
+                    </td>
+                    <td style={cellStyle}>
+                      <SignalBadge type={pin.signal_type} />
+                    </td>
+                    <td style={cellStyle}>
+                      {pin.interfaces.length > 0
+                        ? pin.interfaces.map((iface, i) => (
+                            <span key={i} style={{
+                              display: 'inline-block',
+                              padding: '1px 6px',
+                              marginRight: 4,
+                              marginBottom: 2,
+                              borderRadius: 3,
+                              background: 'var(--vscode-badge-background, #4d4d4d)',
+                              color: 'var(--vscode-badge-foreground, #fff)',
+                              fontSize: '0.85em',
+                            }}>
+                              {iface}
+                            </span>
+                          ))
+                        : <span style={{ opacity: 0.4 }}>-</span>
+                      }
+                    </td>
+                    <td style={{ ...cellStyle, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {pin.connected_to.length > 0
+                        ? (
+                          <span title={pin.connected_to.join('\n')}>
+                            {pin.connected_to.map((c, i) => (
+                              <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <code style={{ fontSize: '0.85em' }}>{c}</code>
+                              </div>
+                            ))}
+                          </span>
+                        )
+                        : <span style={{ opacity: 0.4 }}>-</span>
+                      }
+                    </td>
+                    <td style={cellStyle}>
+                      {pin.net_name
+                        ? <code>{pin.net_name}</code>
+                        : <span style={{ opacity: 0.4 }}>-</span>
+                      }
+                    </td>
+                    <td style={cellStyle}>
+                      {hasNotes && pin.notes.map((n, i) => (
+                        <span key={i} style={{
+                          display: 'inline-block',
+                          padding: '1px 6px',
+                          marginRight: 4,
+                          borderRadius: 3,
+                          background: n.includes('Unconnected')
+                            ? 'rgba(204, 167, 0, 0.15)'
+                            : 'rgba(100, 100, 100, 0.2)',
+                          color: n.includes('Unconnected')
+                            ? 'var(--vscode-editorWarning-foreground, #cca700)'
+                            : 'inherit',
+                          fontSize: '0.85em',
+                        }}>
+                          {n}
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
 
-      {filteredPins.length === 0 && comp && (
-        <div style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
-          No pins match the current filter
+          {filteredPins.length === 0 && comp && (
+            <div style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
+              No pins match the current filter
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Footprint Viewer */}
+        {hasFootprint && comp && (
+          <div style={{ flex: '0 0 38%', minHeight: 0 }}>
+            <FootprintViewerCanvas
+              pads={comp.footprint_pads!}
+              drawings={comp.footprint_drawings ?? []}
+              pins={comp.pins}
+              selectedPinNumber={hoveredPinNumber}
+              onPadClick={handlePadHover}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

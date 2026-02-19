@@ -1342,6 +1342,7 @@ var VIA_COLOR = [0.6, 0.6, 0.6, 0.9];
 var VIA_DRILL_COLOR = [0.15, 0.15, 0.15, 1];
 var SELECTION_COLOR = [1, 1, 1, 0.3];
 var ZONE_COLOR_ALPHA = 0.25;
+var UNCONNECTED_PAD_COLOR = [0.45, 0.45, 0.45, 0.7];
 var PAD_HIGHLIGHT_COLOR = [1, 1, 1, 0.6];
 function getLayerColor(layer) {
   if (!layer)
@@ -1579,7 +1580,7 @@ function paintVias(renderer, model) {
   }
   renderer.end_layer();
 }
-function paintFootprint(renderer, fp, hidden, concreteLayers, padColorOverrides, highlightedPads) {
+function paintFootprint(renderer, fp, hidden, concreteLayers, padColorOverrides, highlightedPads, outlinePads) {
   const drawingsByLayer = /* @__PURE__ */ new Map();
   for (const drawing of fp.drawings) {
     const ln = drawing.layer ?? "F.SilkS";
@@ -1608,8 +1609,13 @@ function paintFootprint(renderer, fp, hidden, concreteLayers, padColorOverrides,
       const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
       for (const pad of fp.pads) {
         if (pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))) {
-          const colorOverride = padColorOverrides?.get(pad.name);
-          paintPad(layer, fp.at, pad, colorOverride);
+          if (outlinePads?.has(pad.name)) {
+            const outlineColor = padColorOverrides?.get(pad.name) ?? UNCONNECTED_PAD_COLOR;
+            paintPadOutline(layer, fp.at, pad, outlineColor);
+          } else {
+            const colorOverride = padColorOverrides?.get(pad.name);
+            paintPad(layer, fp.at, pad, colorOverride);
+          }
         }
       }
       renderer.end_layer();
@@ -1695,6 +1701,51 @@ function paintPad(layer, fpAt, pad, colorOverride) {
     const center = fpTransform(fpAt, pad.at.x, pad.at.y);
     const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
     layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1);
+  }
+}
+function paintPadOutline(layer, fpAt, pad, color) {
+  const [cr, cg, cb, ca] = color;
+  const hw = pad.size.w / 2;
+  const hh = pad.size.h / 2;
+  const lineWidth = Math.min(hw, hh) * 0.2;
+  if (pad.shape === "circle") {
+    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+    const pts = [];
+    for (let i = 0; i <= 32; i++) {
+      const angle = i / 32 * 2 * Math.PI;
+      pts.push(new Vec2(center.x + hw * Math.cos(angle), center.y + hw * Math.sin(angle)));
+    }
+    layer.geometry.add_polyline(pts, lineWidth, cr, cg, cb, ca);
+  } else if (pad.shape === "oval") {
+    const longAxis = Math.max(hw, hh);
+    const shortAxis = Math.min(hw, hh);
+    const focalDist = longAxis - shortAxis;
+    let p1, p2;
+    if (hw >= hh) {
+      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+      p2 = padTransform(fpAt, pad.at, focalDist, 0);
+    } else {
+      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+      p2 = padTransform(fpAt, pad.at, 0, focalDist);
+    }
+    const innerWidth = shortAxis * 2;
+    const outerPts = [];
+    for (let i = 0; i <= 32; i++) {
+      const angle = i / 32 * 2 * Math.PI;
+      const lx = hw * Math.cos(angle);
+      const ly = hh * Math.sin(angle);
+      outerPts.push(padTransform(fpAt, pad.at, lx, ly));
+    }
+    layer.geometry.add_polyline(outerPts, lineWidth, cr, cg, cb, ca);
+  } else {
+    const corners = [
+      padTransform(fpAt, pad.at, -hw, -hh),
+      padTransform(fpAt, pad.at, hw, -hh),
+      padTransform(fpAt, pad.at, hw, hh),
+      padTransform(fpAt, pad.at, -hw, hh),
+      padTransform(fpAt, pad.at, -hw, -hh)
+    ];
+    layer.geometry.add_polyline(corners, lineWidth, cr, cg, cb, ca);
   }
 }
 function paintPadHighlight(layer, fpAt, pad) {
@@ -1896,6 +1947,7 @@ var Editor = class {
   padColorOverrides;
   highlightedPads;
   onPadClickCallback = null;
+  outlinePads;
   externalModel = false;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
@@ -1938,6 +1990,12 @@ var Editor = class {
     this.paint();
     this.requestRedraw();
   }
+  /** Set which pads should be drawn as outlines (unconnected) */
+  setOutlinePads(padNames) {
+    this.outlinePads = padNames;
+    this.paint();
+    this.requestRedraw();
+  }
   /** Set callback when a pad is clicked (read-only mode) */
   setOnPadClick(cb) {
     this.onPadClickCallback = cb;
@@ -1960,7 +2018,7 @@ var Editor = class {
   paint() {
     if (!this.model)
       return;
-    if (this.padColorOverrides || this.highlightedPads) {
+    if (this.padColorOverrides || this.highlightedPads || this.outlinePads) {
       const hidden = this.hiddenLayers;
       const concreteLayers = /* @__PURE__ */ new Set();
       for (const fp of this.model.footprints) {
@@ -1984,7 +2042,8 @@ var Editor = class {
           hidden,
           concreteLayers,
           this.padColorOverrides,
-          this.highlightedPads
+          this.highlightedPads,
+          this.outlinePads
         );
       }
     } else {

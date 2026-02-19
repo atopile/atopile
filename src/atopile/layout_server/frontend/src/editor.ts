@@ -2,8 +2,9 @@ import { Vec2 } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintAll, paintSelection, computeBBox } from "./painter";
-import { hitTestFootprints } from "./hit-test";
+import { paintAll, paintSelection, paintFootprint, computeBBox } from "./painter";
+import { hitTestFootprints, hitTestPads } from "./hit-test";
+import type { Color } from "./colors";
 import type { RenderModel } from "./types";
 
 export class Editor {
@@ -34,6 +35,14 @@ export class Editor {
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
 
+    // Pinout viewer mode
+    private readOnly = false;
+    private padColorOverrides: Map<string, Color> | undefined;
+    private highlightedPads: Set<string> | undefined;
+    private onPadClickCallback: ((padName: string) => void) | null = null;
+    private outlinePads: Set<string> | undefined;
+    private externalModel = false;
+
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
         this.baseUrl = baseUrl;
@@ -51,8 +60,46 @@ export class Editor {
     }
 
     async init() {
+        if (this.externalModel) return;
         await this.fetchAndPaint();
         this.connectWebSocket();
+    }
+
+    /** Inject a model externally (for pinout viewer use) */
+    setModel(model: RenderModel, fitToView = true) {
+        this.externalModel = true;
+        this.applyModel(model, fitToView);
+    }
+
+    /** Set read-only mode (disables drag, keyboard, footprint selection) */
+    setReadOnly(readOnly: boolean) {
+        this.readOnly = readOnly;
+    }
+
+    /** Set per-pad color overrides (pad name → color) */
+    setPadColorOverrides(overrides: Map<string, Color>) {
+        this.padColorOverrides = overrides;
+        this.paint();
+        this.requestRedraw();
+    }
+
+    /** Set which pads should be highlighted */
+    setHighlightedPads(padNames: Set<string>) {
+        this.highlightedPads = padNames;
+        this.paint();
+        this.requestRedraw();
+    }
+
+    /** Set which pads should be drawn as outlines (unconnected) */
+    setOutlinePads(padNames: Set<string>) {
+        this.outlinePads = padNames;
+        this.paint();
+        this.requestRedraw();
+    }
+
+    /** Set callback when a pad is clicked (read-only mode) */
+    setOnPadClick(cb: ((padName: string) => void) | null) {
+        this.onPadClickCallback = cb;
     }
 
     private async fetchAndPaint() {
@@ -74,7 +121,27 @@ export class Editor {
 
     private paint() {
         if (!this.model) return;
-        paintAll(this.renderer, this.model, this.hiddenLayers);
+
+        if (this.padColorOverrides || this.highlightedPads || this.outlinePads) {
+            // Pinout mode: paint with per-pad overrides
+            const hidden = this.hiddenLayers;
+            const concreteLayers = new Set<string>();
+            for (const fp of this.model.footprints) {
+                concreteLayers.add(fp.layer);
+                for (const pad of fp.pads) for (const l of pad.layers) concreteLayers.add(l);
+                for (const d of fp.drawings) if (d.layer) concreteLayers.add(d.layer);
+            }
+            for (const l of concreteLayers) {
+                if (l.includes("*") || l.includes("&")) concreteLayers.delete(l);
+            }
+            this.renderer.dispose_layers();
+            for (const fp of this.model.footprints) {
+                paintFootprint(this.renderer, fp, hidden, concreteLayers,
+                    this.padColorOverrides, this.highlightedPads, this.outlinePads);
+            }
+        } else {
+            paintAll(this.renderer, this.model, this.hiddenLayers);
+        }
 
         if (this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
             paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]!);
@@ -82,6 +149,7 @@ export class Editor {
     }
 
     private connectWebSocket() {
+        if (!this.wsPath) return;
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);
         this.ws.onopen = () => console.log("WS connected");
@@ -106,6 +174,20 @@ export class Editor {
             const worldPos = this.camera.screen_to_world(screenPos);
 
             if (!this.model) return;
+
+            // Read-only mode: pad-level hit testing only
+            if (this.readOnly) {
+                if (this.onPadClickCallback && this.model.footprints.length > 0) {
+                    for (const fp of this.model.footprints) {
+                        const padIdx = hitTestPads(worldPos, fp);
+                        if (padIdx >= 0) {
+                            this.onPadClickCallback(fp.pads[padIdx]!.name);
+                            return;
+                        }
+                    }
+                }
+                return;
+            }
 
             const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
 
@@ -134,7 +216,7 @@ export class Editor {
                 this.onMouseMoveCallback(worldPos.x, worldPos.y);
             }
 
-            if (!this.isDragging || !this.model || this.selectedFpIndex < 0) return;
+            if (this.readOnly || !this.isDragging || !this.model || this.selectedFpIndex < 0) return;
 
             const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
             const delta = worldPos.sub(this.dragStartWorld!);
@@ -169,6 +251,7 @@ export class Editor {
 
     private setupKeyboardHandlers() {
         window.addEventListener("keydown", async (e: KeyboardEvent) => {
+            if (this.readOnly) return;
             // R — rotate selected footprint by 90 degrees
             if (e.key === "r" || e.key === "R") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;

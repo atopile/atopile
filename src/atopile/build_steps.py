@@ -1169,18 +1169,19 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
 def generate_pinout(ctx: BuildStepContext) -> None:
     """Generate pinout details for components with generate_pinout_details trait."""
     app = ctx.require_app()
+    pinout_dir = config.build.paths.output_base.parent / "pinout"
     report = export_pinout_json(
         app,
-        config.build.paths.output_base.with_suffix(".pinout.json"),
+        pinout_dir / "pinout.json",
         build_id=ctx.build_id,
     )
     export_pinout_csv(
         report,
-        config.build.paths.output_base.with_suffix(".pinout.csv"),
+        pinout_dir / "pinout.csv",
     )
     export_pinout_markdown(
         report,
-        config.build.paths.output_base.parent / "pinout.md",
+        pinout_dir / "pinout.md",
     )
 
 

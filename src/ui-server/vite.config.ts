@@ -333,6 +333,11 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), screenshotPlugin()],
     // Use relative base path for VS Code webviews
     base: './',
+    resolve: {
+      alias: {
+        '@layout-editor': resolve(__dirname, '../atopile/layout_server/frontend/src'),
+      },
+    },
     // Dev server settings
     server: {
       port: 5173,

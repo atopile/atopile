@@ -23,7 +23,7 @@ def handle_get_pinout(project_root: str, target: str = "default") -> dict | None
     if not (project_path / "ato.yaml").exists():
         raise ValueError(f"No ato.yaml found in: {project_root}")
 
-    pinout_path = project_path / "build" / "builds" / target / f"{target}.pinout.json"
+    pinout_path = project_path / "build" / "builds" / target / "pinout" / "pinout.json"
 
     if not pinout_path.exists():
         return None
@@ -48,7 +48,7 @@ def handle_get_pinout_targets(project_root: str) -> dict:
     for target_dir in builds_dir.iterdir():
         if not target_dir.is_dir():
             continue
-        pinout_path = target_dir / f"{target_dir.name}.pinout.json"
+        pinout_path = target_dir / "pinout" / "pinout.json"
         if pinout_path.exists():
             targets.append(target_dir.name)
 
@@ -74,7 +74,7 @@ def handle_get_pinout_by_build_id(build_id: str) -> dict | None:
         return None
 
     project_path = Path(project_root)
-    pinout_path = project_path / "build" / "builds" / target / f"{target}.pinout.json"
+    pinout_path = project_path / "build" / "builds" / target / "pinout" / "pinout.json"
 
     if not pinout_path.exists():
         return None
