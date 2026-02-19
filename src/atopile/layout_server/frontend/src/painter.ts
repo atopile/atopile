@@ -404,16 +404,17 @@ export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: 
     const concreteLayers = collectConcreteLayers(model);
     renderer.dispose_layers();
     if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
-    paintGlobalDrawings(renderer, model, hidden, false);
+    paintGlobalDrawings(renderer, model, hidden, "non_copper");
     paintZones(renderer, model, hidden, concreteLayers);
     paintTracks(renderer, model, hidden);
+    paintGlobalDrawings(renderer, model, hidden, "copper");
     const orderedFootprints = [...model.footprints].sort(
         (a, b) => compareLayerNamesForPaint(a.layer ?? "F.Cu", b.layer ?? "F.Cu"),
     );
     for (const fp of orderedFootprints) {
         paintFootprint(renderer, fp, hidden, concreteLayers);
     }
-    paintGlobalDrawings(renderer, model, hidden, true);
+    paintGlobalDrawings(renderer, model, hidden, "drill");
 }
 
 function paintBoardEdges(renderer: Renderer, model: RenderModel) {
@@ -591,16 +592,24 @@ function isDrillLayer(layerName: string | null | undefined): boolean {
     return (layerName ?? "").endsWith(".Drill");
 }
 
+function isCopperLayer(layerName: string | null | undefined): boolean {
+    return (layerName ?? "").endsWith(".Cu");
+}
+
 function paintGlobalDrawings(
     renderer: Renderer,
     model: RenderModel,
     hidden: Set<string>,
-    drillOnly: boolean,
+    mode: "drill" | "copper" | "non_copper",
 ) {
     const byLayer = new Map<string, DrawingModel[]>();
     for (const drawing of model.drawings) {
         const ln = drawing.layer ?? "Dwgs.User";
-        if (isDrillLayer(ln) !== drillOnly) continue;
+        const drill = isDrillLayer(ln);
+        const copper = isCopperLayer(ln);
+        if (mode === "drill" && !drill) continue;
+        if (mode === "copper" && (drill || !copper)) continue;
+        if (mode === "non_copper" && (drill || copper)) continue;
         if (hidden.has(ln)) continue;
         let arr = byLayer.get(ln);
         if (!arr) { arr = []; byLayer.set(ln, arr); }
