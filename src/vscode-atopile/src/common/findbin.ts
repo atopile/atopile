@@ -364,6 +364,18 @@ function isTerminalValid(terminal: vscode.Terminal | undefined): terminal is vsc
 }
 
 /**
+ * In web-ide mode, the user shell is set to restricted-shell.sh which blocks
+ * interactive use.  Force /bin/bash so programmatic terminal commands work.
+ * On other platforms, omit shellPath so VS Code uses the user's default shell.
+ */
+export function getTerminalShellPath(): string | undefined {
+    const isWebIde =
+        process.env.WEB_IDE_MODE === '1' ||
+        Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+    return isWebIde ? '/bin/bash' : undefined;
+}
+
+/**
  * Get or create the build terminal, reusing if it still exists.
  */
 function getOrCreateBuildTerminal(name: string, cwd: string | undefined, hideFromUser: boolean): vscode.Terminal {
@@ -377,7 +389,7 @@ function getOrCreateBuildTerminal(name: string, cwd: string | undefined, hideFro
     // Create new terminal and track it
     g_buildTerminal = vscode.window.createTerminal({
         name: `ato: ${name}`,
-        shellPath: '/bin/bash',
+        shellPath: getTerminalShellPath(),
         cwd: cwd,
         hideFromUser: hideFromUser,
     });
@@ -406,7 +418,7 @@ export async function runAtoCommandInTerminal(
         } else {
             terminal = vscode.window.createTerminal({
                 name: `ato: ${terminal_or_name}`,
-                shellPath: '/bin/bash',
+                shellPath: getTerminalShellPath(),
                 cwd: cwd,
                 hideFromUser: hideFromUser,
             });

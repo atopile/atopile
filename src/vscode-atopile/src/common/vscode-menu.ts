@@ -6,7 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { getAtoCommand } from './findbin';
+import { getAtoCommand, getTerminalShellPath } from './findbin';
 import { backendServer } from './backendServer';
 
 /**
@@ -37,7 +37,7 @@ export async function openAtoShell(): Promise<void> {
 
     const terminal = vscode.window.createTerminal({
         name: 'ato shell',
-        shellPath: '/bin/bash',
+        shellPath: getTerminalShellPath(),
         cwd: cwd,
     });
 
@@ -63,7 +63,7 @@ async function clearBuildLogs(): Promise<void> {
         return;
     }
 
-    const terminal = vscode.window.createTerminal({ name: 'atopile', shellPath: '/bin/bash' });
+    const terminal = vscode.window.createTerminal({ name: 'atopile', shellPath: getTerminalShellPath() });
     terminal.show();
     terminal.sendText(atoCommand);
 }
