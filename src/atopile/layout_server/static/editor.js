@@ -22593,6 +22593,29 @@ function renderTextOverlay(ctx, model, camera, hiddenLayers, layerById) {
   }
 }
 
+// src/render_loop.ts
+var RenderLoop = class {
+  constructor(tick) {
+    this.tick = tick;
+  }
+  rafHandle = null;
+  start() {
+    if (this.rafHandle !== null)
+      return;
+    const loop = () => {
+      this.tick();
+      this.rafHandle = window.requestAnimationFrame(loop);
+    };
+    this.rafHandle = window.requestAnimationFrame(loop);
+  }
+  stop() {
+    if (this.rafHandle === null)
+      return;
+    window.cancelAnimationFrame(this.rafHandle);
+    this.rafHandle = null;
+  }
+};
+
 // src/editor.ts
 var Editor = class {
   canvas;
@@ -22602,6 +22625,7 @@ var Editor = class {
   camera;
   panAndZoom;
   client;
+  renderLoop;
   model = null;
   // Selection & interaction state
   selectionMode = "none";
@@ -22637,12 +22661,16 @@ var Editor = class {
     this.camera = new Camera2();
     this.panAndZoom = new PanAndZoom(canvas2, this.camera, () => this.requestRedraw());
     this.client = new LayoutClient(baseUrl2, apiPrefix2, wsPath2);
+    this.renderLoop = new RenderLoop(() => this.onRenderFrame());
     this.setupMouseHandlers();
     this.setupKeyboardHandlers();
     this.setupResizeHandler();
-    window.addEventListener("beforeunload", () => this.client.disconnect());
+    window.addEventListener("beforeunload", () => {
+      this.renderLoop.stop();
+      this.client.disconnect();
+    });
     this.renderer.setup();
-    this.startRenderLoop();
+    this.renderLoop.start();
   }
   createTextOverlay() {
     const existing = document.getElementById("editor-text-overlay");
@@ -23314,18 +23342,14 @@ var Editor = class {
       this.getLayerMap()
     );
   }
-  startRenderLoop() {
-    const loop = () => {
-      if (this.needsRedraw) {
-        this.needsRedraw = false;
-        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
-        this.renderer.updateGrid(this.camera.bbox, 1);
-        this.renderer.draw(this.camera.matrix);
-        this.drawTextOverlay();
-      }
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
+  onRenderFrame() {
+    if (!this.needsRedraw)
+      return;
+    this.needsRedraw = false;
+    this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+    this.renderer.updateGrid(this.camera.bbox, 1);
+    this.renderer.draw(this.camera.matrix);
+    this.drawTextOverlay();
   }
 };
 

@@ -6,6 +6,7 @@ import { paintAll, paintGroupHalos, paintSelection, computeBBox } from "./painte
 import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
 import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
+import { RenderLoop } from "./render_loop";
 import type { ActionCommand, LayerModel, RenderModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
@@ -26,6 +27,7 @@ export class Editor {
     private camera: Camera2;
     private panAndZoom: PanAndZoom;
     private client: LayoutClient;
+    private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
 
     // Selection & interaction state
@@ -67,13 +69,17 @@ export class Editor {
         this.camera = new Camera2();
         this.panAndZoom = new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
         this.client = new LayoutClient(baseUrl, apiPrefix, wsPath);
+        this.renderLoop = new RenderLoop(() => this.onRenderFrame());
 
         this.setupMouseHandlers();
         this.setupKeyboardHandlers();
         this.setupResizeHandler();
-        window.addEventListener("beforeunload", () => this.client.disconnect());
+        window.addEventListener("beforeunload", () => {
+            this.renderLoop.stop();
+            this.client.disconnect();
+        });
         this.renderer.setup();
-        this.startRenderLoop();
+        this.renderLoop.start();
     }
 
     private createTextOverlay(): HTMLCanvasElement {
@@ -811,17 +817,12 @@ export class Editor {
         );
     }
 
-    private startRenderLoop() {
-        const loop = () => {
-            if (this.needsRedraw) {
-                this.needsRedraw = false;
-                this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
-                this.renderer.updateGrid(this.camera.bbox, 1.0);
-                this.renderer.draw(this.camera.matrix);
-                this.drawTextOverlay();
-            }
-            requestAnimationFrame(loop);
-        };
-        requestAnimationFrame(loop);
+    private onRenderFrame() {
+        if (!this.needsRedraw) return;
+        this.needsRedraw = false;
+        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+        this.renderer.updateGrid(this.camera.bbox, 1.0);
+        this.renderer.draw(this.camera.matrix);
+        this.drawTextOverlay();
     }
 }
