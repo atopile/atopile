@@ -3,12 +3,12 @@ import { Renderer, RenderLayer } from "./webgl/renderer";
 import { fpTransform, padTransform } from "./geometry";
 import {
     getLayerColor,
-    getPadColor,
     ZONE_COLOR_ALPHA,
 } from "./colors";
 import type {
     RenderModel,
     FootprintModel,
+    HoleModel,
     PadModel,
     TrackModel,
     DrawingModel,
@@ -344,6 +344,92 @@ function isCopperLayer(layerName: string | null | undefined, layerById: Map<stri
     return layerName !== null && layerName !== undefined && layerKind(layerName, layerById) === "cu";
 }
 
+function orderedCopperLayers(layerById: Map<string, LayerModel>): string[] {
+    return [...layerById.values()]
+        .filter(layer => layer.kind === "Cu")
+        .sort((a, b) => a.panel_order - b.panel_order)
+        .map(layer => layer.id);
+}
+
+function expandCopperLayerSpan(
+    layers: string[],
+    layerById: Map<string, LayerModel>,
+    includeBetween = false,
+): string[] {
+    const copperOrder = orderedCopperLayers(layerById);
+    const selected = new Set(layers.filter(layer => isCopperLayer(layer, layerById)));
+    if (selected.size === 0) return [];
+
+    const expanded = new Set(selected);
+    if (includeBetween) {
+        const selectedIndices = copperOrder
+            .map((layerName, index) => ({ layerName, index }))
+            .filter(({ layerName }) => selected.has(layerName))
+            .map(({ index }) => index)
+            .sort((a, b) => a - b);
+        if (selectedIndices.length >= 2) {
+            const first = selectedIndices[0]!;
+            const last = selectedIndices[selectedIndices.length - 1]!;
+            for (let i = first; i <= last; i++) {
+                expanded.add(copperOrder[i]!);
+            }
+        }
+    }
+
+    return copperOrder.filter(layerName => expanded.has(layerName));
+}
+
+function padDrillLayerIds(
+    pad: PadModel,
+    layerById: Map<string, LayerModel>,
+): string[] {
+    const copperLayers = expandCopperLayerSpan(pad.layers, layerById, true);
+    if (copperLayers.length > 0) {
+        return copperLayers
+            .filter(layer => layer.endsWith(".Cu"))
+            .map(layer => `${layer.slice(0, -3)}.Drill`);
+    }
+    const drillLayers = [...layerById.values()]
+        .filter(layer => layer.kind === "Drill")
+        .sort((a, b) => a.panel_order - b.panel_order)
+        .map(layer => layer.id);
+    return drillLayers;
+}
+
+function paintPadHole(
+    layer: RenderLayer,
+    fpAt: Point3,
+    pad: PadModel,
+    hole: HoleModel,
+    r: number,
+    g: number,
+    b: number,
+    a: number,
+) {
+    const sx = Math.max(0, hole.size_x || 0);
+    const sy = Math.max(0, hole.size_y || 0);
+    if (sx <= 0 || sy <= 0) return;
+
+    const offset = hole.offset ?? { x: 0, y: 0 };
+    const center = padTransform(fpAt, pad.at, offset.x, offset.y);
+    const isOval = (hole.shape ?? "").toLowerCase() === "oval" || Math.abs(sx - sy) > 1e-6;
+    if (!isOval) {
+        layer.geometry.add_circle(center.x, center.y, sx / 2, r, g, b, a);
+        return;
+    }
+
+    const major = Math.max(sx, sy);
+    const minor = Math.min(sx, sy);
+    const focal = Math.max(0, (major - minor) / 2);
+    const p1 = sx >= sy
+        ? padTransform(fpAt, pad.at, offset.x - focal, offset.y)
+        : padTransform(fpAt, pad.at, offset.x, offset.y - focal);
+    const p2 = sx >= sy
+        ? padTransform(fpAt, pad.at, offset.x + focal, offset.y)
+        : padTransform(fpAt, pad.at, offset.x, offset.y + focal);
+    layer.geometry.add_polyline([p1, p2], minor, r, g, b, a);
+}
+
 type GlobalDrawingPaintMode = "drill" | "copper" | "non_copper";
 
 function shouldPaintGlobalDrawing(
@@ -394,6 +480,7 @@ function paintFootprint(
 ) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
     const drillDrawingsByLayer = new Map<string, DrawingModel[]>();
+    const padHolesByLayer = new Map<string, Array<{ pad: PadModel; hole: HoleModel }>>();
     for (const drawing of fp.drawings) {
         const ln = drawing.layer;
         if (!ln) continue;
@@ -406,6 +493,19 @@ function paintFootprint(
         }
         arr.push(drawing);
     }
+    for (const pad of fp.pads) {
+        const hole = pad.hole;
+        if (!hole) continue;
+        for (const drillLayer of padDrillLayerIds(pad, layerById)) {
+            if (!drillLayer || hidden.has(drillLayer)) continue;
+            let arr = padHolesByLayer.get(drillLayer);
+            if (!arr) {
+                arr = [];
+                padHolesByLayer.set(drillLayer, arr);
+            }
+            arr.push({ pad, hole });
+        }
+    }
     for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
         const [r, g, b, a] = getLayerColor(layerName, layerById);
         const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
@@ -414,20 +514,37 @@ function paintFootprint(
         }
         renderer.end_layer();
     }
-    if (fp.pads.length > 0) {
-        const anyVisible = fp.pads.some(pad =>
-            pad.layers.some(layerName => !hidden.has(layerName))
-        );
-        if (anyVisible) {
-            const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-            const visiblePads = fp.pads.filter(pad =>
-                pad.layers.some(layerName => !hidden.has(layerName))
-            );
-            for (const pad of visiblePads) {
-                paintPad(layer, fp.at, pad, layerById);
+    const padsByLayer = new Map<string, PadModel[]>();
+    for (const pad of fp.pads) {
+        const hole = pad.hole;
+        const hasHole = !!hole && Math.max(0, hole.size_x || 0) > 0 && Math.max(0, hole.size_y || 0) > 0;
+        const padType = (pad.type || "").toLowerCase();
+        for (const layerName of pad.layers) {
+            if (!layerName || hidden.has(layerName) || isDrillLayer(layerName, layerById)) continue;
+            if (padType === "np_thru_hole") continue;
+            if (hasHole && !isCopperLayer(layerName, layerById)) continue;
+            let layerPads = padsByLayer.get(layerName);
+            if (!layerPads) {
+                layerPads = [];
+                padsByLayer.set(layerName, layerPads);
             }
-            renderer.end_layer();
+            layerPads.push(pad);
         }
+    }
+    for (const [layerName, layerPads] of sortedLayerEntries(padsByLayer, layerById)) {
+        const layer = renderer.start_layer(`fp:${fp.uuid}:pads:${layerName}`);
+        for (const pad of layerPads) {
+            paintPad(layer, fp.at, pad, layerName, layerById);
+        }
+        renderer.end_layer();
+    }
+    for (const [layerName, holeEntries] of sortedLayerEntries(padHolesByLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`fp:${fp.uuid}:pad-drill:${layerName}`);
+        for (const { pad, hole } of holeEntries) {
+            paintPadHole(layer, fp.at, pad, hole, r, g, b, a);
+        }
+        renderer.end_layer();
     }
     for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
         const [r, g, b, a] = getLayerColor(layerName, layerById);
@@ -476,55 +593,70 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
     const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
     const strokeWidth = rawWidth > 0 ? rawWidth : (drawing.filled ? 0 : 0.12);
 
-    if (drawing.type === "line" && drawing.start && drawing.end) {
-        const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
-        const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
-        layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
-    } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
-        const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
-        const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
-        layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
-    } else if (drawing.type === "circle" && drawing.center && drawing.end) {
-        const cx = drawing.center.x, cy = drawing.center.y;
-        const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
-        const pts: Vec2[] = [];
-        for (let i = 0; i <= 48; i++) {
-            const angle = (i / 48) * 2 * Math.PI;
-            pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
+    switch (drawing.type) {
+        case "line": {
+            const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
+            const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
+            layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
+            break;
         }
-        const worldPts = pts.map(p => fpTransform(fpAt, p.x, p.y));
-        if (drawing.filled && worldPts.length >= 3) {
-            layer.geometry.add_polygon(worldPts, r, g, b, a);
-        }
-        if (strokeWidth > 0) {
+        case "arc": {
+            const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
+            const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
             layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+            break;
         }
-    } else if (drawing.type === "rect" && drawing.start && drawing.end) {
-        const s = drawing.start, e = drawing.end;
-        const corners = [
-            fpTransform(fpAt, s.x, s.y), fpTransform(fpAt, e.x, s.y),
-            fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
-        ];
-        if (drawing.filled) {
-            layer.geometry.add_polygon(corners, r, g, b, a);
-        }
-        if (strokeWidth > 0) {
-            layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, r, g, b, a);
-        }
-    } else if (drawing.type === "polygon" && drawing.points) {
-        const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
-        if (worldPts.length >= 3) {
-            if (drawing.filled) {
+        case "circle": {
+            const cx = drawing.center.x;
+            const cy = drawing.center.y;
+            const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
+            const pts: Vec2[] = [];
+            for (let i = 0; i <= 48; i++) {
+                const angle = (i / 48) * 2 * Math.PI;
+                pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
+            }
+            const worldPts = pts.map(p => fpTransform(fpAt, p.x, p.y));
+            if (drawing.filled && worldPts.length >= 3) {
                 layer.geometry.add_polygon(worldPts, r, g, b, a);
             }
             if (strokeWidth > 0) {
-                layer.geometry.add_polyline([...worldPts, worldPts[0]!.copy()], strokeWidth, r, g, b, a);
+                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
             }
+            break;
         }
-    } else if (drawing.type === "curve" && drawing.points) {
-        const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
-        if (worldPts.length >= 2) {
-            layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+        case "rect": {
+            const s = drawing.start;
+            const e = drawing.end;
+            const corners = [
+                fpTransform(fpAt, s.x, s.y), fpTransform(fpAt, e.x, s.y),
+                fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
+            ];
+            if (drawing.filled) {
+                layer.geometry.add_polygon(corners, r, g, b, a);
+            }
+            if (strokeWidth > 0) {
+                layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, r, g, b, a);
+            }
+            break;
+        }
+        case "polygon": {
+            const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
+            if (worldPts.length >= 3) {
+                if (drawing.filled) {
+                    layer.geometry.add_polygon(worldPts, r, g, b, a);
+                }
+                if (strokeWidth > 0) {
+                    layer.geometry.add_polyline([...worldPts, worldPts[0]!.copy()], strokeWidth, r, g, b, a);
+                }
+            }
+            break;
+        }
+        case "curve": {
+            const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
+            if (worldPts.length >= 2) {
+                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+            }
+            break;
         }
     }
 }
@@ -533,14 +665,108 @@ function paintPad(
     layer: RenderLayer,
     fpAt: Point3,
     pad: PadModel,
+    layerName: string,
     layerById: Map<string, LayerModel>,
 ) {
     if (pad.layers.length === 0) {
         return;
     }
-    const [cr, cg, cb, ca] = getPadColor(pad.layers, layerById);
+    const layerIsCopper = isCopperLayer(layerName, layerById);
+    const [lr, lg, lb, la] = getLayerColor(layerName, layerById);
+    const cr = lr;
+    const cg = lg;
+    const cb = lb;
+    const ca = Math.max(la, 0.78);
     const hw = pad.size.w / 2;
     const hh = pad.size.h / 2;
+
+    const hole = pad.hole;
+    const isThroughHole = (pad.type || "").toLowerCase() === "thru_hole";
+    const isNpThroughHole = (pad.type || "").toLowerCase() === "np_thru_hole";
+    const holeSx = hole ? Math.max(0, hole.size_x || 0) : 0;
+    const holeSy = hole ? Math.max(0, hole.size_y || 0) : 0;
+    const hasPadHole = holeSx > 0 && holeSy > 0;
+    if (hasPadHole && !layerIsCopper) {
+        return;
+    }
+    if (isNpThroughHole) {
+        return;
+    }
+    const renderAsAnnularRing =
+        isThroughHole
+        && hasPadHole
+        && layerIsCopper;
+    if (renderAsAnnularRing) {
+        if (pad.shape === "circle") {
+            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+            const outerDiameter = Math.max(pad.size.w, pad.size.h);
+            const holeDiameter = Math.max(holeSx, holeSy);
+            const annulus = (outerDiameter - holeDiameter) / 2;
+            const centerlineRadius = (outerDiameter + holeDiameter) / 4;
+            if (annulus > 0 && centerlineRadius > 0) {
+                const ringPoints = circleToPoints(center.x, center.y, centerlineRadius);
+                if (ringPoints.length > 1) {
+                    layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca);
+                    return;
+                }
+            }
+        } else if (pad.shape === "oval") {
+            const outerMajor = Math.max(pad.size.w, pad.size.h);
+            const outerMinor = Math.min(pad.size.w, pad.size.h);
+            const holeMajor = Math.max(holeSx, holeSy);
+            const holeMinor = Math.min(holeSx, holeSy);
+            const annulus = Math.min(
+                (outerMajor - holeMajor) / 2,
+                (outerMinor - holeMinor) / 2,
+            );
+            if (annulus > 0) {
+                const centerMajor = outerMajor - annulus;
+                const centerMinor = outerMinor - annulus;
+                if (centerMajor > 0 && centerMinor > 0) {
+                    const horizontal = pad.size.w >= pad.size.h;
+                    const radius = centerMinor / 2;
+                    const halfSpan = Math.max(0, (centerMajor - centerMinor) / 2);
+                    const arcSegments = 18;
+                    const localPoints: Vec2[] = [];
+                    for (let i = 0; i <= arcSegments; i++) {
+                        const angle = Math.PI / 2 - (Math.PI * i / arcSegments);
+                        localPoints.push(
+                            horizontal
+                                ? new Vec2(
+                                    halfSpan + radius * Math.cos(angle),
+                                    radius * Math.sin(angle),
+                                )
+                                : new Vec2(
+                                    -radius * Math.sin(angle),
+                                    halfSpan + radius * Math.cos(angle),
+                                ),
+                        );
+                    }
+                    for (let i = 0; i <= arcSegments; i++) {
+                        const angle = -Math.PI / 2 + (Math.PI * i / arcSegments);
+                        localPoints.push(
+                            horizontal
+                                ? new Vec2(
+                                    -halfSpan - radius * Math.cos(angle),
+                                    radius * Math.sin(angle),
+                                )
+                                : new Vec2(
+                                    -radius * Math.sin(angle),
+                                    -halfSpan - radius * Math.cos(angle),
+                                ),
+                        );
+                    }
+                    if (localPoints.length > 2) {
+                        // Closed centerline loop for oval annulus ring (prevents C/U-shaped artifacts).
+                        localPoints.push(localPoints[0]!.copy());
+                        const ringPoints = localPoints.map(p => padTransform(fpAt, pad.at, p.x, p.y));
+                        layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca);
+                        return;
+                    }
+                }
+            }
+        }
+    }
 
     if (pad.shape === "circle") {
         const center = fpTransform(fpAt, pad.at.x, pad.at.y);
@@ -608,12 +834,28 @@ export function computeBBox(model: RenderModel): BBox {
         if (edge.center) points.push(p2v(edge.center));
     }
     for (const drawing of model.drawings) {
-        if (drawing.start) points.push(p2v(drawing.start));
-        if (drawing.end) points.push(p2v(drawing.end));
-        if (drawing.mid) points.push(p2v(drawing.mid));
-        if (drawing.center) points.push(p2v(drawing.center));
-        if (drawing.points) {
-            for (const p of drawing.points) points.push(p2v(p));
+        switch (drawing.type) {
+            case "line":
+                points.push(p2v(drawing.start));
+                points.push(p2v(drawing.end));
+                break;
+            case "arc":
+                points.push(p2v(drawing.start));
+                points.push(p2v(drawing.mid));
+                points.push(p2v(drawing.end));
+                break;
+            case "circle":
+                points.push(p2v(drawing.center));
+                points.push(p2v(drawing.end));
+                break;
+            case "rect":
+                points.push(p2v(drawing.start));
+                points.push(p2v(drawing.end));
+                break;
+            case "polygon":
+            case "curve":
+                for (const p of drawing.points) points.push(p2v(p));
+                break;
         }
     }
     for (const text of model.texts) {
