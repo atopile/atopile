@@ -22420,9 +22420,9 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
 
 // src/text_overlay.ts
 var DEG_TO_RAD3 = Math.PI / 180;
-var PAD_ANNOTATION_FONT_STACK = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
-var PAD_ANNOTATION_NAME_WEIGHT = 600;
-var PAD_ANNOTATION_NUMBER_WEIGHT = 700;
+var PAD_ANNOTATION_FONT_STACK = '"Liberation Sans", "Noto Sans", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif';
+var PAD_ANNOTATION_NAME_WEIGHT = 550;
+var PAD_ANNOTATION_NUMBER_WEIGHT = 650;
 var PAD_ANNOTATION_NUMBER_COLOR = "rgba(13, 20, 31, 0.98)";
 function drawPadAnnotationText(ctx, camera, viewportWidth, viewportHeight, text, worldX, worldY, rotationDeg, charH, color, fontWeight) {
   const screenPos = camera.world_to_screen(new Vec2(worldX, worldY));
@@ -22434,10 +22434,18 @@ function drawPadAnnotationText(ctx, camera, viewportWidth, viewportHeight, text,
   ctx.rotate(-(rotationDeg || 0) * DEG_TO_RAD3);
   ctx.scale(camera.zoom, camera.zoom);
   ctx.font = `${fontWeight} ${Math.max(charH, 0.02)}px ${PAD_ANNOTATION_FONT_STACK}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.fontKerning = "normal";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   ctx.fillStyle = color;
-  ctx.fillText(text, 0, 0);
+  const metrics = ctx.measureText(text);
+  const left = metrics.actualBoundingBoxLeft ?? 0;
+  const right = metrics.actualBoundingBoxRight ?? metrics.width;
+  const ascent = metrics.actualBoundingBoxAscent ?? charH * 0.78;
+  const descent = metrics.actualBoundingBoxDescent ?? charH * 0.22;
+  const x = -((left + right) / 2);
+  const y = (ascent - descent) / 2;
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 function drawStrokeText(ctx, camera, layerById, viewportWidth, viewportHeight, spec) {
