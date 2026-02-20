@@ -457,7 +457,9 @@ def _fix_3d_model_offsets(ki_footprint: ExporterFootprintKicad):
         return
 
     if WORKAROUND_SMD_3D_MODEL_FIX:
-        if ki_footprint.input.info.fp_type == "smd":
+        if ki_footprint.input.info.fp_type == "smd" or re.search(
+            r"[cCrR]0201", ki_footprint.input.info.name
+        ):
             ki_footprint.output.model_3d.translation.x = 0
             ki_footprint.output.model_3d.translation.y = 0
     if WORKAROUND_THT_INCH_MM_SWAP_FIX:
