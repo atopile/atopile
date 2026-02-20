@@ -1,26 +1,9 @@
+import type { LayerModel } from "./types";
+
 /** RGBA color tuples [r, g, b, a] in 0-1 range */
 export type Color = [number, number, number, number];
 
-/** Layer name → color mapping for PCB rendering */
-export const LAYER_COLORS: Record<string, Color> = {
-    "F.Cu":      [0.86, 0.23, 0.22, 0.88],
-    "B.Cu":      [0.16, 0.28, 0.47, 0.88],
-    "In1.Cu":    [0.70, 0.58, 0.24, 0.78],
-    "In2.Cu":    [0.53, 0.40, 0.70, 0.78],
-    "F.SilkS":   [0.92, 0.90, 0.62, 0.95],
-    "B.SilkS":   [0.78, 0.86, 0.87, 0.92],
-    "F.Mask":    [0.70, 0.35, 0.48, 0.42],
-    "B.Mask":    [0.12, 0.19, 0.34, 0.38],
-    "F.Paste":   [0.90, 0.80, 0.60, 0.48],
-    "B.Paste":   [0.66, 0.74, 0.86, 0.48],
-    "F.Fab":     [0.95, 0.62, 0.45, 0.90],
-    "B.Fab":     [0.62, 0.73, 0.90, 0.90],
-    "F.CrtYd":   [0.91, 0.91, 0.91, 0.62],
-    "B.CrtYd":   [0.80, 0.85, 0.93, 0.62],
-    "Edge.Cuts": [0.93, 0.95, 0.95, 1.00],
-    "Dwgs.User": [0.70, 0.70, 0.72, 0.65],
-    "Cmts.User": [0.74, 0.66, 0.84, 0.65],
-};
+const UNKNOWN_LAYER_COLOR: Color = [0.5, 0.5, 0.5, 0.5];
 
 export const PAD_COLOR: Color = [0.57, 0.57, 0.30, 0.90];
 export const PAD_FRONT_COLOR: Color = [0.86, 0.23, 0.22, 0.78];
@@ -39,17 +22,36 @@ export const SELECTION_COLOR: Color = [1.0, 1.0, 1.0, 0.3];
 export const BOARD_BG: Color = [0.02, 0.10, 0.22, 1.0];
 export const ZONE_COLOR_ALPHA = 0.25;
 
-export function getLayerColor(layer: string | null | undefined): Color {
-    if (!layer) return [0.5, 0.5, 0.5, 0.5];
-    if (layer.endsWith(".PadNumbers")) return [1.0, 1.0, 1.0, 1.0];
-    if (layer.endsWith(".Nets")) return [1.0, 1.0, 1.0, 1.0];
-    if (layer.endsWith(".Drill")) return [0.89, 0.82, 0.15, 1.0];
-    return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
+export function getLayerColor(
+    layer: string | null | undefined,
+    layerById?: Map<string, LayerModel>,
+): Color {
+    if (!layer) return UNKNOWN_LAYER_COLOR;
+    const fromModel = layerById?.get(layer)?.color;
+    if (fromModel) return fromModel;
+    return UNKNOWN_LAYER_COLOR;
 }
 
-export function getPadColor(layers: string[]): Color {
-    const hasFront = layers.some(l => l === "F.Cu" || l === "*.Cu");
-    const hasBack = layers.some(l => l === "B.Cu" || l === "*.Cu");
+function withPadAlpha(color: Color): Color {
+    return [color[0], color[1], color[2], Math.max(0.78, color[3])];
+}
+
+export function getPadColor(
+    layers: string[],
+    layerById?: Map<string, LayerModel>,
+): Color {
+    const infos = layers
+        .map((layer) => layerById?.get(layer))
+        .filter((info): info is LayerModel => Boolean(info));
+    const copperInfos = infos.filter((info) => info.kind === "Cu");
+    const roots = new Set(copperInfos.map((info) => info.root).filter((root): root is string => Boolean(root)));
+
+    if (roots.size === 1 && copperInfos[0]) {
+        return withPadAlpha(copperInfos[0].color);
+    }
+
+    const hasFront = copperInfos.some((info) => info.root === "F");
+    const hasBack = copperInfos.some((info) => info.root === "B");
     if (hasFront && hasBack) return PAD_COLOR;
     if (hasFront) return PAD_FRONT_COLOR;
     if (hasBack) return PAD_BACK_COLOR;

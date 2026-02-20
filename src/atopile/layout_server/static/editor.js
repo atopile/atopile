@@ -1316,44 +1316,61 @@ var Renderer = class _Renderer {
   }
 };
 
+// src/geometry.ts
+var DEG_TO_RAD = Math.PI / 180;
+function fpTransform(fpAt, localX, localY) {
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return new Vec2(
+    fpAt.x + localX * cos - localY * sin,
+    fpAt.y + localX * sin + localY * cos
+  );
+}
+function padTransform(fpAt, padAt, localX, localY) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
+  const cos = Math.cos(padRad);
+  const sin = Math.sin(padRad);
+  const px = localX * cos - localY * sin;
+  const py = localX * sin + localY * cos;
+  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
+}
+function rotatedRectExtents(width, height, rotationDeg) {
+  const theta = -(rotationDeg || 0) * DEG_TO_RAD;
+  const absCos = Math.abs(Math.cos(theta));
+  const absSin = Math.abs(Math.sin(theta));
+  return [
+    width * absCos + height * absSin,
+    width * absSin + height * absCos
+  ];
+}
+
 // src/colors.ts
-var LAYER_COLORS = {
-  "F.Cu": [0.86, 0.23, 0.22, 0.88],
-  "B.Cu": [0.16, 0.28, 0.47, 0.88],
-  "In1.Cu": [0.7, 0.58, 0.24, 0.78],
-  "In2.Cu": [0.53, 0.4, 0.7, 0.78],
-  "F.SilkS": [0.92, 0.9, 0.62, 0.95],
-  "B.SilkS": [0.78, 0.86, 0.87, 0.92],
-  "F.Mask": [0.7, 0.35, 0.48, 0.42],
-  "B.Mask": [0.12, 0.19, 0.34, 0.38],
-  "F.Paste": [0.9, 0.8, 0.6, 0.48],
-  "B.Paste": [0.66, 0.74, 0.86, 0.48],
-  "F.Fab": [0.95, 0.62, 0.45, 0.9],
-  "B.Fab": [0.62, 0.73, 0.9, 0.9],
-  "F.CrtYd": [0.91, 0.91, 0.91, 0.62],
-  "B.CrtYd": [0.8, 0.85, 0.93, 0.62],
-  "Edge.Cuts": [0.93, 0.95, 0.95, 1],
-  "Dwgs.User": [0.7, 0.7, 0.72, 0.65],
-  "Cmts.User": [0.74, 0.66, 0.84, 0.65]
-};
+var UNKNOWN_LAYER_COLOR = [0.5, 0.5, 0.5, 0.5];
 var PAD_COLOR = [0.57, 0.57, 0.3, 0.9];
 var PAD_FRONT_COLOR = [0.86, 0.23, 0.22, 0.78];
 var PAD_BACK_COLOR = [0.16, 0.28, 0.47, 0.78];
 var ZONE_COLOR_ALPHA = 0.25;
-function getLayerColor(layer) {
+function getLayerColor(layer, layerById) {
   if (!layer)
-    return [0.5, 0.5, 0.5, 0.5];
-  if (layer.endsWith(".PadNumbers"))
-    return [1, 1, 1, 1];
-  if (layer.endsWith(".Nets"))
-    return [1, 1, 1, 1];
-  if (layer.endsWith(".Drill"))
-    return [0.89, 0.82, 0.15, 1];
-  return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
+    return UNKNOWN_LAYER_COLOR;
+  const fromModel = layerById?.get(layer)?.color;
+  if (fromModel)
+    return fromModel;
+  return UNKNOWN_LAYER_COLOR;
 }
-function getPadColor(layers) {
-  const hasFront = layers.some((l) => l === "F.Cu" || l === "*.Cu");
-  const hasBack = layers.some((l) => l === "B.Cu" || l === "*.Cu");
+function withPadAlpha(color) {
+  return [color[0], color[1], color[2], Math.max(0.78, color[3])];
+}
+function getPadColor(layers, layerById) {
+  const infos = layers.map((layer) => layerById?.get(layer)).filter((info) => Boolean(info));
+  const copperInfos = infos.filter((info) => info.kind === "Cu");
+  const roots = new Set(copperInfos.map((info) => info.root).filter((root) => Boolean(root)));
+  if (roots.size === 1 && copperInfos[0]) {
+    return withPadAlpha(copperInfos[0].color);
+  }
+  const hasFront = copperInfos.some((info) => info.root === "F");
+  const hasBack = copperInfos.some((info) => info.root === "B");
   if (hasFront && hasBack)
     return PAD_COLOR;
   if (hasFront)
@@ -21512,23 +21529,6 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
 }
 
 // src/hit-test.ts
-var DEG_TO_RAD = Math.PI / 180;
-function fpTransform(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return new Vec2(
-    fpAt.x + localX * cos - localY * sin,
-    fpAt.y + localX * sin + localY * cos
-  );
-}
-function padTransform(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
-  const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = lx * pc - ly * ps;
-  const py = lx * ps + ly * pc;
-  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
-}
 function footprintBBox(fp) {
   const points = [];
   for (const pad of fp.pads) {
@@ -21580,101 +21580,6 @@ function hitTestFootprintsInBox(selectionBox, footprints) {
   return hits;
 }
 
-// src/layer_order.ts
-var IN_ROOT_RE = /^In(\d+)$/i;
-var SUFFIX_PRIORITY = /* @__PURE__ */ new Map([
-  ["Cu", 0],
-  ["Drill", 1],
-  ["Fab", 2],
-  ["Mask", 3],
-  ["Nets", 4],
-  ["PadNumbers", 5],
-  ["Paste", 6],
-  ["SilkS", 7],
-  ["User", 8]
-]);
-function naturalCompare(a, b) {
-  return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
-}
-function rootKey(root) {
-  if (root === "F")
-    return [0, 0, root];
-  const inMatch = root.match(IN_ROOT_RE);
-  if (inMatch)
-    return [1, Number.parseInt(inMatch[1], 10), root];
-  if (root === "B")
-    return [2, 0, root];
-  return [3, 0, root];
-}
-function paintRootKey(root) {
-  if (root === "B")
-    return [0, 0, root];
-  const inMatch = root.match(IN_ROOT_RE);
-  if (inMatch)
-    return [1, -Number.parseInt(inMatch[1], 10), root];
-  if (root === "F")
-    return [2, 0, root];
-  return [3, 0, root];
-}
-function splitLayerName(layerName) {
-  const dotIdx = layerName.indexOf(".");
-  if (dotIdx < 0) {
-    return { root: layerName, suffix: "" };
-  }
-  return {
-    root: layerName.substring(0, dotIdx),
-    suffix: layerName.substring(dotIdx + 1)
-  };
-}
-function compareLayerNames(a, b) {
-  const aSplit = splitLayerName(a);
-  const bSplit = splitLayerName(b);
-  const aRoot = rootKey(aSplit.root);
-  const bRoot = rootKey(bSplit.root);
-  if (aRoot[0] !== bRoot[0])
-    return aRoot[0] - bRoot[0];
-  if (aRoot[1] !== bRoot[1])
-    return aRoot[1] - bRoot[1];
-  const rootNameCmp = naturalCompare(aRoot[2], bRoot[2]);
-  if (rootNameCmp !== 0)
-    return rootNameCmp;
-  const aSuffixPriority = SUFFIX_PRIORITY.get(aSplit.suffix) ?? 99;
-  const bSuffixPriority = SUFFIX_PRIORITY.get(bSplit.suffix) ?? 99;
-  if (aSuffixPriority !== bSuffixPriority)
-    return aSuffixPriority - bSuffixPriority;
-  const suffixCmp = naturalCompare(aSplit.suffix, bSplit.suffix);
-  if (suffixCmp !== 0)
-    return suffixCmp;
-  return naturalCompare(a, b);
-}
-function compareLayerNamesForPaint(a, b) {
-  const aSplit = splitLayerName(a);
-  const bSplit = splitLayerName(b);
-  const aRoot = paintRootKey(aSplit.root);
-  const bRoot = paintRootKey(bSplit.root);
-  if (aRoot[0] !== bRoot[0])
-    return aRoot[0] - bRoot[0];
-  if (aRoot[1] !== bRoot[1])
-    return aRoot[1] - bRoot[1];
-  const rootNameCmp = naturalCompare(aRoot[2], bRoot[2]);
-  if (rootNameCmp !== 0)
-    return rootNameCmp;
-  const aSuffixPriority = SUFFIX_PRIORITY.get(aSplit.suffix) ?? 99;
-  const bSuffixPriority = SUFFIX_PRIORITY.get(bSplit.suffix) ?? 99;
-  if (aSuffixPriority !== bSuffixPriority)
-    return aSuffixPriority - bSuffixPriority;
-  const suffixCmp = naturalCompare(aSplit.suffix, bSplit.suffix);
-  if (suffixCmp !== 0)
-    return suffixCmp;
-  return naturalCompare(a, b);
-}
-function sortLayerNames(layerNames) {
-  return [...layerNames].sort(compareLayerNames);
-}
-function sortLayerNamesForPaint(layerNames) {
-  return [...layerNames].sort(compareLayerNamesForPaint);
-}
-
 // src/painter.ts
 var DEG_TO_RAD2 = Math.PI / 180;
 var HOLE_SEGMENTS = 36;
@@ -21703,22 +21608,6 @@ var GROUP_SELECTION_GROW = 0.16;
 var HOVER_SELECTION_GROW = 0.12;
 function p2v(p) {
   return new Vec2(p.x, p.y);
-}
-function fpTransform2(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD2;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return new Vec2(
-    fpAt.x + localX * cos - localY * sin,
-    fpAt.y + localX * sin + localY * cos
-  );
-}
-function padTransform2(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD2;
-  const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = lx * pc - ly * ps;
-  const py = lx * ps + ly * pc;
-  return fpTransform2(fpAt, padAt.x + px, padAt.y + py);
 }
 function arcToPoints(start, mid, end, segments = 32) {
   const ax = start.x, ay = start.y;
@@ -21872,16 +21761,6 @@ function fitPadNameLabel(text, boxW, boxH) {
   }
   return fallback;
 }
-function rotatedRectExtents(width, height, rotationDeg) {
-  const halfW = Math.max(width, 0) / 2;
-  const halfH = Math.max(height, 0) / 2;
-  const theta = rotationDeg * DEG_TO_RAD2;
-  const c = Math.abs(Math.cos(theta));
-  const s = Math.abs(Math.sin(theta));
-  const extentX = c * halfW + s * halfH;
-  const extentY = s * halfW + c * halfH;
-  return [extentX * 2, extentY * 2];
-}
 function padLabelWorldRotation(totalPadRotationDeg, padW, padH) {
   if (padW <= 0 || padH <= 0)
     return 0;
@@ -21937,140 +21816,48 @@ function drawStrokeTextGeometry(layer, text, x, y, rotationDeg, charW, charH, th
     layer.geometry.add_polyline(points, thickness, r, g, b, a);
   }
 }
-function expandAnnotationLayerName(layerName, concreteLayers) {
-  const expanded = expandLayerName(layerName, concreteLayers);
-  if (expanded.length > 0)
-    return expanded;
-  if (!layerName.includes("*"))
-    return [];
-  const suffixIdx = layerName.indexOf(".");
-  const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-  if (suffix === ".Nets" || suffix === ".PadNumbers") {
-    return [`F${suffix}`, `B${suffix}`];
+function buildLayerMap(model) {
+  const layerById = /* @__PURE__ */ new Map();
+  for (const layer of model.layers) {
+    layerById.set(layer.id, layer);
   }
-  return [];
+  return layerById;
 }
-function isPadLayerVisible(padLayer, hidden, concreteLayers) {
-  if (padLayer.includes("*")) {
-    const suffix = padLayer.substring(padLayer.indexOf("."));
-    for (const l of concreteLayers) {
-      if (l.endsWith(suffix) && !hidden.has(l))
-        return true;
-    }
-    return false;
-  }
-  if (padLayer.includes("&")) {
-    const dotIdx = padLayer.indexOf(".");
-    if (dotIdx >= 0) {
-      const prefixes = padLayer.substring(0, dotIdx).split("&");
-      const suffix = padLayer.substring(dotIdx);
-      return prefixes.some((p) => !hidden.has(p + suffix));
-    }
-  }
-  return !hidden.has(padLayer);
+function layerPaintOrder(layerName, layerById) {
+  return layerById.get(layerName)?.paint_order ?? Number.MAX_SAFE_INTEGER;
 }
-function collectConcreteLayers(model) {
-  const layers = /* @__PURE__ */ new Set();
-  for (const d of model.drawings)
-    if (d.layer)
-      layers.add(d.layer);
-  for (const t of model.texts)
-    if (t.layer)
-      layers.add(t.layer);
-  for (const fp of model.footprints) {
-    layers.add(fp.layer);
-    for (const pad of fp.pads) {
-      for (const l of pad.layers)
-        layers.add(l);
-    }
-    for (const d of fp.drawings)
-      if (d.layer)
-        layers.add(d.layer);
-    for (const t of fp.texts)
-      if (t.layer)
-        layers.add(t.layer);
-    for (const a of fp.pad_names)
-      if (a.layer)
-        layers.add(a.layer);
-    for (const a of fp.pad_numbers)
-      if (a.layer)
-        layers.add(a.layer);
-  }
-  for (const t of model.tracks)
-    if (t.layer)
-      layers.add(t.layer);
-  for (const a of model.arcs)
-    if (a.layer)
-      layers.add(a.layer);
-  for (const z of model.zones) {
-    for (const f of z.filled_polygons)
-      layers.add(f.layer);
-  }
-  for (const l of layers) {
-    if (l.includes("*") || l.includes("&"))
-      layers.delete(l);
-  }
-  return layers;
+function layerKind(layerName, layerById) {
+  return (layerById.get(layerName)?.kind ?? "").toLowerCase();
 }
-function expandLayerName(layerName, concreteLayers) {
-  if (!layerName)
-    return [];
-  if (layerName.includes("*")) {
-    const suffixIdx = layerName.indexOf(".");
-    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-    const expanded = [...concreteLayers].filter((l) => l.endsWith(suffix));
-    if (expanded.length > 0)
-      return expanded;
-    if (suffix === ".Cu")
-      return ["F.Cu", "B.Cu"];
-    if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
-      return [`F${suffix}`, `B${suffix}`];
-    }
-    return [];
-  }
-  if (layerName.includes("&")) {
-    const dotIdx = layerName.indexOf(".");
-    if (dotIdx < 0)
-      return [];
-    const prefixes = layerName.substring(0, dotIdx).split("&");
-    const suffix = layerName.substring(dotIdx);
-    return prefixes.map((p) => `${p}${suffix}`);
-  }
-  return [layerName];
-}
-function expandLayerNames(layerNames, concreteLayers) {
-  const out = /* @__PURE__ */ new Set();
-  for (const layerName of layerNames) {
-    for (const expanded of expandLayerName(layerName, concreteLayers)) {
-      out.add(expanded);
-    }
-  }
-  return [...out];
-}
-function sortedLayerEntries(layerMap) {
-  return [...layerMap.entries()].sort(([a], [b]) => compareLayerNamesForPaint(a, b));
+function sortedLayerEntries(layerMap, layerById) {
+  return [...layerMap.entries()].sort(([a], [b]) => {
+    const orderDiff = layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById);
+    if (orderDiff !== 0)
+      return orderDiff;
+    return a.localeCompare(b);
+  });
 }
 function paintAll(renderer, model, hiddenLayers) {
   const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
-  const concreteLayers = collectConcreteLayers(model);
+  const layerById = buildLayerMap(model);
   renderer.dispose_layers();
   if (!hidden.has("Edge.Cuts"))
-    paintBoardEdges(renderer, model);
-  paintGlobalDrawings(renderer, model, hidden, "non_copper");
-  paintZones(renderer, model, hidden, concreteLayers);
-  paintTracks(renderer, model, hidden);
-  paintGlobalDrawings(renderer, model, hidden, "copper");
+    paintBoardEdges(renderer, model, layerById);
+  paintGlobalDrawings(renderer, model, hidden, "non_copper", layerById);
+  paintZones(renderer, model, hidden, layerById);
+  paintTracks(renderer, model, hidden, layerById);
+  paintGlobalDrawings(renderer, model, hidden, "copper", layerById);
   const orderedFootprints = [...model.footprints].sort(
-    (a, b) => compareLayerNamesForPaint(a.layer ?? "F.Cu", b.layer ?? "F.Cu")
+    (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById)
   );
   for (const fp of orderedFootprints) {
-    paintFootprint(renderer, fp, hidden, concreteLayers);
+    paintFootprint(renderer, fp, hidden, layerById);
   }
-  paintGlobalDrawings(renderer, model, hidden, "drill");
+  paintGlobalDrawings(renderer, model, hidden, "drill", layerById);
 }
-function paintBoardEdges(renderer, model) {
+function paintBoardEdges(renderer, model, layerById) {
   const layer = renderer.start_layer("Edge.Cuts");
-  const [r, g, b, a] = getLayerColor("Edge.Cuts");
+  const [r, g, b, a] = getLayerColor("Edge.Cuts", layerById);
   for (const edge of model.board.edges) {
     if (edge.type === "line" && edge.start && edge.end) {
       layer.geometry.add_polyline([p2v(edge.start), p2v(edge.end)], 0.15, r, g, b, a);
@@ -22098,15 +21885,15 @@ function paintBoardEdges(renderer, model) {
   }
   renderer.end_layer();
 }
-function paintZones(renderer, model, hidden, concreteLayers) {
+function paintZones(renderer, model, hidden, layerById) {
   for (const zone of model.zones) {
     const sortedFilledPolygons = [...zone.filled_polygons].sort(
-      (a, b) => compareLayerNamesForPaint(a.layer, b.layer)
+      (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById)
     );
     for (const filled of sortedFilledPolygons) {
       if (hidden.has(filled.layer))
         continue;
-      const [r, g, b] = getLayerColor(filled.layer);
+      const [r, g, b] = getLayerColor(filled.layer, layerById);
       const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
       const pts = filled.points.map(p2v);
       if (pts.length >= 3) {
@@ -22115,14 +21902,16 @@ function paintZones(renderer, model, hidden, concreteLayers) {
       renderer.end_layer();
     }
     const zoneLayersRaw = zone.layers.length > 0 ? zone.layers : [...new Set(zone.filled_polygons.map((fp) => fp.layer))];
-    const zoneLayers = sortLayerNamesForPaint(expandLayerNames(zoneLayersRaw, concreteLayers));
+    const zoneLayers = [...new Set(zoneLayersRaw)].sort(
+      (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById)
+    );
     const shouldDrawFillFromOutline = !zone.keepout && zone.fill_enabled !== false && zone.filled_polygons.length === 0 && zone.outline.length >= 3;
     if (shouldDrawFillFromOutline) {
       const outlinePts2 = zone.outline.map(p2v);
       for (const layerName of zoneLayers) {
         if (!layerName || hidden.has(layerName))
           continue;
-        const [r, g, b] = getLayerColor(layerName);
+        const [r, g, b] = getLayerColor(layerName, layerById);
         const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
         layer.geometry.add_polygon(outlinePts2, r, g, b, ZONE_COLOR_ALPHA);
         renderer.end_layer();
@@ -22138,7 +21927,7 @@ function paintZones(renderer, model, hidden, concreteLayers) {
     for (const layerName of zoneLayers) {
       if (!layerName || hidden.has(layerName))
         continue;
-      const [r, g, b, a] = getLayerColor(layerName);
+      const [r, g, b, a] = getLayerColor(layerName, layerById);
       const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
       layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
       for (const [start, end] of hatchSegments) {
@@ -22199,10 +21988,12 @@ function hatchSegmentsForPolygon(points, pitch) {
   }
   return segments;
 }
-function paintTracks(renderer, model, hidden) {
+function paintTracks(renderer, model, hidden, layerById) {
   const byLayer = /* @__PURE__ */ new Map();
   for (const track of model.tracks) {
-    const ln = track.layer ?? "F.Cu";
+    const ln = track.layer;
+    if (!ln)
+      continue;
     if (hidden.has(ln))
       continue;
     let arr = byLayer.get(ln);
@@ -22212,8 +22003,8 @@ function paintTracks(renderer, model, hidden) {
     }
     arr.push(track);
   }
-  for (const [layerName, tracks] of sortedLayerEntries(byLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
+  for (const [layerName, tracks] of sortedLayerEntries(byLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
     const layer = renderer.start_layer(`tracks:${layerName}`);
     for (const track of tracks) {
       layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
@@ -22223,7 +22014,9 @@ function paintTracks(renderer, model, hidden) {
   if (model.arcs.length > 0) {
     const arcByLayer = /* @__PURE__ */ new Map();
     for (const arc of model.arcs) {
-      const ln = arc.layer ?? "F.Cu";
+      const ln = arc.layer;
+      if (!ln)
+        continue;
       if (hidden.has(ln))
         continue;
       let arr = arcByLayer.get(ln);
@@ -22233,8 +22026,8 @@ function paintTracks(renderer, model, hidden) {
       }
       arr.push(arc);
     }
-    for (const [layerName, arcs] of sortedLayerEntries(arcByLayer)) {
-      const [r, g, b, a] = getLayerColor(layerName);
+    for (const [layerName, arcs] of sortedLayerEntries(arcByLayer, layerById)) {
+      const [r, g, b, a] = getLayerColor(layerName, layerById);
       const layer = renderer.start_layer(`arc_tracks:${layerName}`);
       for (const arc of arcs) {
         layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
@@ -22243,26 +22036,28 @@ function paintTracks(renderer, model, hidden) {
     }
   }
 }
-function isDrillLayer(layerName) {
-  return (layerName ?? "").endsWith(".Drill");
+function isDrillLayer(layerName, layerById) {
+  return layerName !== null && layerName !== void 0 && layerKind(layerName, layerById) === "drill";
 }
-function isCopperLayer(layerName) {
-  return (layerName ?? "").endsWith(".Cu");
+function isCopperLayer(layerName, layerById) {
+  return layerName !== null && layerName !== void 0 && layerKind(layerName, layerById) === "cu";
 }
-function shouldPaintGlobalDrawing(layerName, mode) {
-  const drill = isDrillLayer(layerName);
-  const copper = isCopperLayer(layerName);
+function shouldPaintGlobalDrawing(layerName, mode, layerById) {
+  const drill = isDrillLayer(layerName, layerById);
+  const copper = isCopperLayer(layerName, layerById);
   if (mode === "drill")
     return drill;
   if (mode === "copper")
     return !drill && copper;
   return !drill && !copper;
 }
-function paintGlobalDrawings(renderer, model, hidden, mode) {
+function paintGlobalDrawings(renderer, model, hidden, mode, layerById) {
   const byLayer = /* @__PURE__ */ new Map();
   for (const drawing of model.drawings) {
-    const ln = drawing.layer ?? "Dwgs.User";
-    if (!shouldPaintGlobalDrawing(ln, mode))
+    const ln = drawing.layer;
+    if (!ln)
+      continue;
+    if (!shouldPaintGlobalDrawing(ln, mode, layerById))
       continue;
     if (hidden.has(ln))
       continue;
@@ -22274,8 +22069,8 @@ function paintGlobalDrawings(renderer, model, hidden, mode) {
     arr.push(drawing);
   }
   const worldAt = { x: 0, y: 0, r: 0 };
-  for (const [layerName, drawings] of sortedLayerEntries(byLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
+  for (const [layerName, drawings] of sortedLayerEntries(byLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
     const layer = renderer.start_layer(`global:${layerName}`);
     for (const drawing of drawings) {
       paintDrawing(layer, worldAt, drawing, r, g, b, a);
@@ -22283,14 +22078,16 @@ function paintGlobalDrawings(renderer, model, hidden, mode) {
     renderer.end_layer();
   }
 }
-function paintFootprint(renderer, fp, hidden, concreteLayers) {
+function paintFootprint(renderer, fp, hidden, layerById) {
   const drawingsByLayer = /* @__PURE__ */ new Map();
   const drillDrawingsByLayer = /* @__PURE__ */ new Map();
   for (const drawing of fp.drawings) {
-    const ln = drawing.layer ?? "F.SilkS";
+    const ln = drawing.layer;
+    if (!ln)
+      continue;
     if (hidden.has(ln))
       continue;
-    const map = isDrillLayer(ln) ? drillDrawingsByLayer : drawingsByLayer;
+    const map = isDrillLayer(ln, layerById) ? drillDrawingsByLayer : drawingsByLayer;
     let arr = map.get(ln);
     if (!arr) {
       arr = [];
@@ -22298,8 +22095,8 @@ function paintFootprint(renderer, fp, hidden, concreteLayers) {
     }
     arr.push(drawing);
   }
-  for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
+  for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
     const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
     for (const drawing of drawings) {
       paintDrawing(layer, fp.at, drawing, r, g, b, a);
@@ -22308,30 +22105,30 @@ function paintFootprint(renderer, fp, hidden, concreteLayers) {
   }
   if (fp.pads.length > 0) {
     const anyVisible = fp.pads.some(
-      (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
+      (pad) => pad.layers.some((layerName) => !hidden.has(layerName))
     );
     if (anyVisible) {
       const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
       const visiblePads = fp.pads.filter(
-        (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
+        (pad) => pad.layers.some((layerName) => !hidden.has(layerName))
       );
       for (const pad of visiblePads) {
-        paintPad(layer, fp.at, pad);
+        paintPad(layer, fp.at, pad, layerById);
       }
       renderer.end_layer();
     }
   }
-  for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
+  for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
     const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
     for (const drawing of drawings) {
       paintDrawing(layer, fp.at, drawing, r, g, b, a);
     }
     renderer.end_layer();
   }
-  paintPadAnnotations(renderer, fp, hidden, concreteLayers);
+  paintPadAnnotations(renderer, fp, hidden, layerById);
 }
-function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
+function paintPadAnnotations(renderer, fp, hidden, layerById) {
   if (fp.pads.length === 0)
     return;
   if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0)
@@ -22340,10 +22137,6 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
     const byIndex = fp.pads[padIndex];
     if (byIndex && byIndex.name === padName) {
       return byIndex;
-    }
-    for (const candidate of fp.pads) {
-      if (candidate.name === padName)
-        return candidate;
     }
     return null;
   };
@@ -22368,9 +22161,9 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
     if (!fitted)
       continue;
     const [displayText, [charW, charH, thickness]] = fitted;
-    const worldCenter = fpTransform2(fp.at, pad.at.x, pad.at.y);
+    const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
     const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
-    for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
+    for (const layerName of annotation.layer_ids) {
       if (hidden.has(layerName))
         continue;
       ensureLayerGeometry(layerName).names.push({
@@ -22395,7 +22188,7 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
     const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
     const badgeRadius = badgeDiameter / 2;
     const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
-    const worldCenter = fpTransform2(fp.at, pad.at.x, pad.at.y);
+    const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
     const badgeCenterX = worldCenter.x - bboxW / 2 + margin + badgeRadius;
     const badgeCenterY = worldCenter.y - bboxH / 2 + margin + badgeRadius;
     const labelFit = fitTextInsideBox(
@@ -22405,7 +22198,7 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
       PAD_NUMBER_MIN_CHAR_H,
       PAD_NUMBER_CHAR_SCALE
     );
-    for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
+    for (const layerName of annotation.layer_ids) {
       if (hidden.has(layerName))
         continue;
       ensureLayerGeometry(layerName).numbers.push({
@@ -22417,12 +22210,15 @@ function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
       });
     }
   }
-  for (const layerName of sortLayerNamesForPaint(layerGeometry.keys())) {
+  const orderedAnnotationLayers = [...layerGeometry.keys()].sort(
+    (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById)
+  );
+  for (const layerName of orderedAnnotationLayers) {
     const geometry = layerGeometry.get(layerName);
     if (!geometry)
       continue;
     const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
-    const [r, g, b, a] = getLayerColor(layerName);
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
     for (const name of geometry.names) {
       drawStrokeTextGeometry(
         layer,
@@ -22464,12 +22260,12 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
   const strokeWidth = rawWidth > 0 ? rawWidth : drawing.filled ? 0 : 0.12;
   if (drawing.type === "line" && drawing.start && drawing.end) {
-    const p1 = fpTransform2(fpAt, drawing.start.x, drawing.start.y);
-    const p2 = fpTransform2(fpAt, drawing.end.x, drawing.end.y);
+    const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
+    const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
     layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
   } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
     const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
-    const worldPts = localPts.map((p) => fpTransform2(fpAt, p.x, p.y));
+    const worldPts = localPts.map((p) => fpTransform(fpAt, p.x, p.y));
     layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
   } else if (drawing.type === "circle" && drawing.center && drawing.end) {
     const cx = drawing.center.x, cy = drawing.center.y;
@@ -22479,7 +22275,7 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       const angle = i / 48 * 2 * Math.PI;
       pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
     }
-    const worldPts = pts.map((p) => fpTransform2(fpAt, p.x, p.y));
+    const worldPts = pts.map((p) => fpTransform(fpAt, p.x, p.y));
     if (drawing.filled && worldPts.length >= 3) {
       layer.geometry.add_polygon(worldPts, r, g, b, a);
     }
@@ -22489,10 +22285,10 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   } else if (drawing.type === "rect" && drawing.start && drawing.end) {
     const s = drawing.start, e = drawing.end;
     const corners = [
-      fpTransform2(fpAt, s.x, s.y),
-      fpTransform2(fpAt, e.x, s.y),
-      fpTransform2(fpAt, e.x, e.y),
-      fpTransform2(fpAt, s.x, e.y)
+      fpTransform(fpAt, s.x, s.y),
+      fpTransform(fpAt, e.x, s.y),
+      fpTransform(fpAt, e.x, e.y),
+      fpTransform(fpAt, s.x, e.y)
     ];
     if (drawing.filled) {
       layer.geometry.add_polygon(corners, r, g, b, a);
@@ -22501,7 +22297,7 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, r, g, b, a);
     }
   } else if (drawing.type === "polygon" && drawing.points) {
-    const worldPts = drawing.points.map((p) => fpTransform2(fpAt, p.x, p.y));
+    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
     if (worldPts.length >= 3) {
       if (drawing.filled) {
         layer.geometry.add_polygon(worldPts, r, g, b, a);
@@ -22511,21 +22307,21 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
       }
     }
   } else if (drawing.type === "curve" && drawing.points) {
-    const worldPts = drawing.points.map((p) => fpTransform2(fpAt, p.x, p.y));
+    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
     if (worldPts.length >= 2) {
       layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
     }
   }
 }
-function paintPad(layer, fpAt, pad) {
+function paintPad(layer, fpAt, pad, layerById) {
   if (pad.layers.length === 0) {
     return;
   }
-  const [cr, cg, cb, ca] = getPadColor(pad.layers);
+  const [cr, cg, cb, ca] = getPadColor(pad.layers, layerById);
   const hw = pad.size.w / 2;
   const hh = pad.size.h / 2;
   if (pad.shape === "circle") {
-    const center = fpTransform2(fpAt, pad.at.x, pad.at.y);
+    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
     layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
   } else if (pad.shape === "oval") {
     const longAxis = Math.max(hw, hh);
@@ -22533,19 +22329,19 @@ function paintPad(layer, fpAt, pad) {
     const focalDist = longAxis - shortAxis;
     let p1, p2;
     if (hw >= hh) {
-      p1 = padTransform2(fpAt, pad.at, -focalDist, 0);
-      p2 = padTransform2(fpAt, pad.at, focalDist, 0);
+      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+      p2 = padTransform(fpAt, pad.at, focalDist, 0);
     } else {
-      p1 = padTransform2(fpAt, pad.at, 0, -focalDist);
-      p2 = padTransform2(fpAt, pad.at, 0, focalDist);
+      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+      p2 = padTransform(fpAt, pad.at, 0, focalDist);
     }
     layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
   } else {
     const corners = [
-      padTransform2(fpAt, pad.at, -hw, -hh),
-      padTransform2(fpAt, pad.at, hw, -hh),
-      padTransform2(fpAt, pad.at, hw, hh),
-      padTransform2(fpAt, pad.at, -hw, hh)
+      padTransform(fpAt, pad.at, -hw, -hh),
+      padTransform(fpAt, pad.at, hw, -hh),
+      padTransform(fpAt, pad.at, hw, hh),
+      padTransform(fpAt, pad.at, -hw, hh)
     ];
     layer.geometry.add_polygon(corners, cr, cg, cb, ca);
   }
@@ -22604,10 +22400,10 @@ function computeBBox(model) {
   for (const fp of model.footprints) {
     points.push(new Vec2(fp.at.x, fp.at.y));
     for (const pad of fp.pads) {
-      points.push(fpTransform2(fp.at, pad.at.x, pad.at.y));
+      points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
     }
     for (const text of fp.texts) {
-      points.push(fpTransform2(fp.at, text.at.x, text.at.y));
+      points.push(fpTransform(fp.at, text.at.x, text.at.y));
     }
   }
   for (const track of model.tracks) {
@@ -22621,32 +22417,6 @@ function computeBBox(model) {
 
 // src/editor.ts
 var DEG_TO_RAD3 = Math.PI / 180;
-function expandLayerName2(layerName, concreteLayers) {
-  if (!layerName)
-    return [];
-  if (layerName.includes("*")) {
-    const suffixIdx = layerName.indexOf(".");
-    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-    const expanded = [...concreteLayers].filter((l) => l.endsWith(suffix));
-    if (expanded.length > 0)
-      return expanded;
-    if (suffix === ".Cu")
-      return ["F.Cu", "B.Cu"];
-    if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
-      return [`F${suffix}`, `B${suffix}`];
-    }
-    return [];
-  }
-  if (layerName.includes("&")) {
-    const dotIdx = layerName.indexOf(".");
-    if (dotIdx < 0)
-      return [];
-    const prefixes = layerName.substring(0, dotIdx).split("&");
-    const suffix = layerName.substring(dotIdx);
-    return prefixes.map((p) => `${p}${suffix}`);
-  }
-  return [layerName];
-}
 var Editor = class {
   canvas;
   textOverlay;
@@ -22679,7 +22449,7 @@ var Editor = class {
   needsRedraw = true;
   // Layer visibility
   hiddenLayers = /* @__PURE__ */ new Set();
-  defaultLayerVisibilityInitialized = false;
+  defaultLayerVisibilityApplied = /* @__PURE__ */ new Set();
   onLayersChanged = null;
   // Track current mouse position
   lastMouseScreen = new Vec2(0, 0);
@@ -22745,12 +22515,14 @@ var Editor = class {
       this.onLayersChanged();
   }
   applyDefaultLayerVisibility() {
-    if (!this.model || this.defaultLayerVisibilityInitialized)
+    if (!this.model)
       return;
-    this.defaultLayerVisibilityInitialized = true;
-    for (const layerName of this.getLayers()) {
-      if (layerName.endsWith(".Fab")) {
-        this.hiddenLayers.add(layerName);
+    for (const layer of this.model.layers) {
+      if (this.defaultLayerVisibilityApplied.has(layer.id))
+        continue;
+      this.defaultLayerVisibilityApplied.add(layer.id);
+      if (!layer.default_visible) {
+        this.hiddenLayers.add(layer.id);
       }
     }
   }
@@ -22792,7 +22564,7 @@ var Editor = class {
       if (uuid)
         indexByUuid.set(uuid, i);
     }
-    const rawGroups = this.model.footprint_groups ?? [];
+    const rawGroups = this.model.footprint_groups;
     const usedIds = /* @__PURE__ */ new Set();
     for (let i = 0; i < rawGroups.length; i++) {
       const group = rawGroups[i];
@@ -23341,74 +23113,27 @@ var Editor = class {
   isLayerVisible(layer) {
     return !this.hiddenLayers.has(layer);
   }
-  getLayers() {
+  getLayerMap() {
+    const layerById = /* @__PURE__ */ new Map();
+    if (!this.model)
+      return layerById;
+    for (const layer of this.model.layers) {
+      layerById.set(layer.id, layer);
+    }
+    return layerById;
+  }
+  getLayerModels() {
     if (!this.model)
       return [];
-    const layers = /* @__PURE__ */ new Set();
-    for (const d of this.model.drawings) {
-      if (d.layer)
-        layers.add(d.layer);
-    }
-    for (const t of this.model.texts) {
-      if (t.layer)
-        layers.add(t.layer);
-    }
-    for (const fp of this.model.footprints) {
-      layers.add(fp.layer);
-      for (const pad of fp.pads) {
-        for (const l of pad.layers)
-          layers.add(l);
-      }
-      for (const d of fp.drawings) {
-        if (d.layer)
-          layers.add(d.layer);
-      }
-      for (const t of fp.texts) {
-        if (t.layer)
-          layers.add(t.layer);
-      }
-      for (const a of fp.pad_names) {
-        if (a.layer)
-          layers.add(a.layer);
-      }
-      for (const a of fp.pad_numbers) {
-        if (a.layer)
-          layers.add(a.layer);
-      }
-    }
-    for (const t of this.model.tracks) {
-      if (t.layer)
-        layers.add(t.layer);
-    }
-    for (const a of this.model.arcs) {
-      if (a.layer)
-        layers.add(a.layer);
-    }
-    for (const z of this.model.zones) {
-      for (const fp of z.filled_polygons)
-        layers.add(fp.layer);
-    }
-    const concreteLayers = new Set(
-      [...layers].filter((l) => !l.includes("*") && !l.includes("&"))
-    );
-    for (const layerName of [...layers]) {
-      for (const expanded of expandLayerName2(layerName, concreteLayers)) {
-        layers.add(expanded);
-      }
-    }
-    for (const z of this.model.zones) {
-      for (const layerName of z.layers) {
-        for (const expanded of expandLayerName2(layerName, concreteLayers)) {
-          layers.add(expanded);
-        }
-      }
-    }
-    layers.add("Edge.Cuts");
-    for (const l of layers) {
-      if (l.includes("*") || l.includes("&"))
-        layers.delete(l);
-    }
-    return sortLayerNames(layers);
+    return [...this.model.layers].sort((a, b) => {
+      const orderDiff = a.panel_order - b.panel_order;
+      if (orderDiff !== 0)
+        return orderDiff;
+      return a.id.localeCompare(b.id);
+    });
+  }
+  getLayers() {
+    return this.getLayerModels().map((layer) => layer.id);
   }
   setOnLayersChanged(cb) {
     this.onLayersChanged = cb;
@@ -23439,10 +23164,13 @@ var Editor = class {
     this.textCtx.clearRect(0, 0, width, height);
     if (!this.model || this.camera.zoom < 0.2)
       return;
+    const layerById = this.getLayerMap();
     for (const text of this.model.texts) {
       if (!text.text.trim())
         continue;
-      const layerName = text.layer ?? "Dwgs.User";
+      const layerName = text.layer;
+      if (!layerName)
+        continue;
       if (this.hiddenLayers.has(layerName))
         continue;
       this.drawOverlayText(
@@ -23456,17 +23184,20 @@ var Editor = class {
         text.thickness,
         text.justify,
         width,
-        height
+        height,
+        layerById
       );
     }
     for (const fp of this.model.footprints) {
       for (const text of fp.texts) {
         if (!text.text.trim())
           continue;
-        const layerName = text.layer ?? fp.layer;
+        const layerName = text.layer;
+        if (!layerName)
+          continue;
         if (this.hiddenLayers.has(layerName))
           continue;
-        const worldPos = this.transformFootprintPoint(fp.at, text.at.x, text.at.y);
+        const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
         const textRotation = (fp.at.r || 0) + (text.at.r || 0);
         this.drawOverlayText(
           text.text,
@@ -23479,12 +23210,13 @@ var Editor = class {
           text.thickness,
           text.justify,
           width,
-          height
+          height,
+          layerById
         );
       }
     }
   }
-  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, width, height) {
+  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, width, height, layerById) {
     if (!this.textCtx)
       return;
     const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
@@ -23498,7 +23230,7 @@ var Editor = class {
     if (lines.length === 0)
       return;
     const justifySet = new Set(justify ?? []);
-    const [r, g, b, a] = getLayerColor(layerName);
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
     const rotation = -(rotationDeg || 0) * DEG_TO_RAD3;
     const linePitch = textHeight * 1.62;
     const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
@@ -23545,15 +23277,6 @@ var Editor = class {
     }
     this.textCtx.restore();
   }
-  transformFootprintPoint(fpAt, localX, localY) {
-    const rad = -(fpAt.r || 0) * DEG_TO_RAD3;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return new Vec2(
-      fpAt.x + localX * cos - localY * sin,
-      fpAt.y + localX * sin + localY * cos
-    );
-  }
   startRenderLoop() {
     const loop = () => {
       if (this.needsRedraw) {
@@ -23581,29 +23304,30 @@ var wsPath = w.__LAYOUT_WS_PATH__ || "/ws";
 var editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 var panelCollapsed = false;
 var collapsedGroups = /* @__PURE__ */ new Set();
-function groupLayers(layerNames) {
+function groupLayers(layers) {
   const groupMap = /* @__PURE__ */ new Map();
   const topLevel = [];
-  for (const name of layerNames) {
-    const dotIdx = name.indexOf(".");
-    if (dotIdx >= 0) {
-      const prefix = name.substring(0, dotIdx);
-      const suffix = name.substring(dotIdx + 1);
-      if (!groupMap.has(prefix))
-        groupMap.set(prefix, []);
-      groupMap.get(prefix).push({ name, suffix });
-    } else {
-      topLevel.push(name);
+  for (const layer of layers) {
+    const group = layer.group?.trim() ?? "";
+    if (!group) {
+      topLevel.push(layer);
+      continue;
     }
+    if (!groupMap.has(group))
+      groupMap.set(group, []);
+    groupMap.get(group).push(layer);
   }
-  const groups = [];
-  for (const [prefix, layers] of groupMap) {
-    groups.push({ prefix, layers });
-  }
+  const groups = [...groupMap.entries()].map(([group, groupedLayers]) => ({ group, layers: groupedLayers })).sort((a, b) => {
+    const aOrder = a.layers[0]?.panel_order ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = b.layers[0]?.panel_order ?? Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder)
+      return aOrder - bOrder;
+    return a.group.localeCompare(b.group);
+  });
   return { groups, topLevel };
 }
-function colorToCSS(layerName) {
-  const [r, g, b] = getLayerColor(layerName);
+function colorToCSS(layerName, layerById) {
+  const [r, g, b] = getLayerColor(layerName, layerById);
   return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
 }
 function createSwatch(color) {
@@ -23662,21 +23386,22 @@ function buildLayerPanel() {
   panel.appendChild(header);
   const content = document.createElement("div");
   content.className = "layer-panel-content";
-  const layers = editor.getLayers();
+  const layers = editor.getLayerModels();
+  const layerById = new Map(layers.map((layer) => [layer.id, layer]));
   const { groups, topLevel } = groupLayers(layers);
   for (const group of groups) {
-    const childNames = group.layers.map((l) => l.name);
-    const isCollapsed = collapsedGroups.has(group.prefix);
+    const childNames = group.layers.map((l) => l.id);
+    const isCollapsed = collapsedGroups.has(group.group);
     const groupRow = document.createElement("div");
     groupRow.className = "layer-group-header";
     const chevron = document.createElement("span");
     chevron.className = "layer-chevron";
     chevron.textContent = isCollapsed ? "\u25B8" : "\u25BE";
-    const primaryColor = colorToCSS(childNames[0]);
+    const primaryColor = colorToCSS(childNames[0], layerById);
     const swatch = createSwatch(primaryColor);
     const label = document.createElement("span");
     label.className = "layer-group-name";
-    label.textContent = group.prefix;
+    label.textContent = group.group;
     groupRow.appendChild(chevron);
     groupRow.appendChild(swatch);
     groupRow.appendChild(label);
@@ -23698,8 +23423,8 @@ function buildLayerPanel() {
       const childContainer2 = groupRow.nextElementSibling;
       if (!childContainer2)
         return;
-      if (collapsedGroups.has(group.prefix)) {
-        collapsedGroups.delete(group.prefix);
+      if (collapsedGroups.has(group.group)) {
+        collapsedGroups.delete(group.group);
         chevron.textContent = "\u25BE";
         childContainer2.style.maxHeight = childContainer2.scrollHeight + "px";
         const onEnd = () => {
@@ -23708,7 +23433,7 @@ function buildLayerPanel() {
         };
         childContainer2.addEventListener("transitionend", onEnd);
       } else {
-        collapsedGroups.add(group.prefix);
+        collapsedGroups.add(group.group);
         chevron.textContent = "\u25B8";
         childContainer2.style.maxHeight = childContainer2.scrollHeight + "px";
         requestAnimationFrame(() => {
@@ -23725,15 +23450,15 @@ function buildLayerPanel() {
     for (const child of group.layers) {
       const row = document.createElement("div");
       row.className = "layer-row";
-      const childSwatch = createSwatch(colorToCSS(child.name));
+      const childSwatch = createSwatch(colorToCSS(child.id, layerById));
       const childLabel = document.createElement("span");
-      childLabel.textContent = child.suffix;
+      childLabel.textContent = child.label ?? child.id;
       row.appendChild(childSwatch);
       row.appendChild(childLabel);
-      updateRowVisual(row, editor.isLayerVisible(child.name));
+      updateRowVisual(row, editor.isLayerVisible(child.id));
       row.addEventListener("click", () => {
-        const vis = !editor.isLayerVisible(child.name);
-        editor.setLayerVisible(child.name, vis);
+        const vis = !editor.isLayerVisible(child.id);
+        editor.setLayerVisible(child.id, vis);
         updateRowVisual(row, vis);
         updateGroupVisual(groupRow, childNames);
       });
@@ -23741,18 +23466,18 @@ function buildLayerPanel() {
     }
     content.appendChild(childContainer);
   }
-  for (const name of topLevel) {
+  for (const layer of topLevel) {
     const row = document.createElement("div");
     row.className = "layer-row layer-top-level";
-    const swatch = createSwatch(colorToCSS(name));
+    const swatch = createSwatch(colorToCSS(layer.id, layerById));
     const label = document.createElement("span");
-    label.textContent = name;
+    label.textContent = layer.label ?? layer.id;
     row.appendChild(swatch);
     row.appendChild(label);
-    updateRowVisual(row, editor.isLayerVisible(name));
+    updateRowVisual(row, editor.isLayerVisible(layer.id));
     row.addEventListener("click", () => {
-      const vis = !editor.isLayerVisible(name);
-      editor.setLayerVisible(name, vis);
+      const vis = !editor.isLayerVisible(layer.id);
+      editor.setLayerVisible(layer.id, vis);
       updateRowVisual(row, vis);
     });
     content.appendChild(row);

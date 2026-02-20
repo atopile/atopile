@@ -14,9 +14,9 @@ from atopile.layout_server.pcb_manager import (
     PcbManager,
     _fit_pad_net_text,
     _fit_text_inside_pad,
-    _pad_net_text_layer,
+    _pad_net_text_layers,
     _pad_net_text_rotation,
-    _pad_number_text_layer,
+    _pad_number_text_layers,
 )
 
 TEST_PCB_V8 = Path("test/common/resources/fileformats/kicad/v8/pcb/test.kicad_pcb")
@@ -103,31 +103,36 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
         (footprint, t)
         for footprint in model.footprints
         for t in footprint.pad_names
-        if t.layer.endswith(".Nets")
+        if all(layer.endswith(".Nets") for layer in t.layer_ids)
     ]
     pad_number_annotations = [
         (footprint, t)
         for footprint in model.footprints
         for t in footprint.pad_numbers
-        if t.layer.endswith(".PadNumbers")
+        if all(layer.endswith(".PadNumbers") for layer in t.layer_ids)
     ]
     assert len(pad_name_annotations) > 0
     assert len(pad_number_annotations) > 0
     assert all(
-        t.layer != "Annotations.PadNetNames"
+        all(layer != "Annotations.PadNetNames" for layer in t.layer_ids)
         for fp in model.footprints
         for t in fp.pad_names
     )
     assert all(
-        t.layer != "Annotations.PadNumbers"
+        all(layer != "Annotations.PadNumbers" for layer in t.layer_ids)
         for fp in model.footprints
         for t in fp.pad_numbers
     )
     assert any(t.text == "GND" for _, t in pad_name_annotations)
     assert all(t.pad for _, t in pad_name_annotations)
     assert all(t.pad for _, t in pad_number_annotations)
+    assert all(t.layer_ids for _, t in pad_name_annotations)
+    assert all(t.layer_ids for _, t in pad_number_annotations)
     for footprint, annotation in pad_name_annotations + pad_number_annotations:
         assert any(p.name == annotation.pad for p in footprint.pads)
+    assert len(model.layers) > 0
+    assert all(layer.panel_order >= 0 for layer in model.layers)
+    assert all(layer.paint_order >= 0 for layer in model.layers)
     assert not any(
         (t.layer or "").endswith(".Nets") or (t.layer or "").endswith(".PadNumbers")
         for fp in model.footprints
@@ -366,17 +371,41 @@ def test_fit_pad_net_text_uses_shorter_fallbacks_for_small_pads():
     assert metrics[0] > 0 and metrics[1] > 0
 
 
-def test_pad_net_text_layer_tracks_pad_copper_layer():
-    assert _pad_net_text_layer(["F.Cu", "F.Mask", "F.Paste"]) == "F.Nets"
-    assert _pad_net_text_layer(["B.Cu"]) == "B.Nets"
-    assert _pad_net_text_layer(["*.Cu", "*.Mask"]) == "*.Nets"
-    assert _pad_net_text_layer(["F&B.Cu"]) == "F&B.Nets"
-    assert _pad_net_text_layer(["F.Mask", "F.Paste"]) is None
+def test_pad_net_text_layers_track_pad_copper_layers():
+    copper = ["F.Cu", "In1.Cu", "B.Cu"]
+    assert _pad_net_text_layers(
+        ["F.Cu", "F.Mask", "F.Paste"], all_copper_layers=copper
+    ) == ["F.Nets"]
+    assert _pad_net_text_layers(["B.Cu"], all_copper_layers=copper) == ["B.Nets"]
+    assert _pad_net_text_layers(["*.Cu", "*.Mask"], all_copper_layers=copper) == [
+        "F.Nets",
+        "In1.Nets",
+        "B.Nets",
+    ]
+    assert _pad_net_text_layers(["F&B.Cu"], all_copper_layers=copper) == [
+        "F.Nets",
+        "B.Nets",
+    ]
+    assert _pad_net_text_layers(["F.Mask", "F.Paste"], all_copper_layers=copper) == []
 
 
-def test_pad_number_text_layer_tracks_pad_copper_layer():
-    assert _pad_number_text_layer(["F.Cu", "F.Mask", "F.Paste"]) == "F.PadNumbers"
-    assert _pad_number_text_layer(["B.Cu"]) == "B.PadNumbers"
-    assert _pad_number_text_layer(["*.Cu", "*.Mask"]) == "*.PadNumbers"
-    assert _pad_number_text_layer(["F&B.Cu"]) == "F&B.PadNumbers"
-    assert _pad_number_text_layer(["F.Mask", "F.Paste"]) is None
+def test_pad_number_text_layers_track_pad_copper_layers():
+    copper = ["F.Cu", "In1.Cu", "B.Cu"]
+    assert _pad_number_text_layers(
+        ["F.Cu", "F.Mask", "F.Paste"], all_copper_layers=copper
+    ) == ["F.PadNumbers"]
+    assert _pad_number_text_layers(["B.Cu"], all_copper_layers=copper) == [
+        "B.PadNumbers"
+    ]
+    assert _pad_number_text_layers(["*.Cu", "*.Mask"], all_copper_layers=copper) == [
+        "F.PadNumbers",
+        "In1.PadNumbers",
+        "B.PadNumbers",
+    ]
+    assert _pad_number_text_layers(["F&B.Cu"], all_copper_layers=copper) == [
+        "F.PadNumbers",
+        "B.PadNumbers",
+    ]
+    assert (
+        _pad_number_text_layers(["F.Mask", "F.Paste"], all_copper_layers=copper) == []
+    )

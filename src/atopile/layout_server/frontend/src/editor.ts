@@ -4,35 +4,12 @@ import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
 import { paintAll, paintGroupHalos, paintSelection, computeBBox } from "./painter";
 import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
+import { fpTransform } from "./geometry";
 import { getLayerColor } from "./colors";
-import type { ActionCommand, RenderModel, StatusResponse } from "./types";
+import type { ActionCommand, LayerModel, RenderModel, StatusResponse } from "./types";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
-import { sortLayerNames } from "./layer_order";
 
 const DEG_TO_RAD = Math.PI / 180;
-
-function expandLayerName(layerName: string, concreteLayers: Set<string>): string[] {
-    if (!layerName) return [];
-    if (layerName.includes("*")) {
-        const suffixIdx = layerName.indexOf(".");
-        const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-        const expanded = [...concreteLayers].filter(l => l.endsWith(suffix));
-        if (expanded.length > 0) return expanded;
-        if (suffix === ".Cu") return ["F.Cu", "B.Cu"];
-        if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
-            return [`F${suffix}`, `B${suffix}`];
-        }
-        return [];
-    }
-    if (layerName.includes("&")) {
-        const dotIdx = layerName.indexOf(".");
-        if (dotIdx < 0) return [];
-        const prefixes = layerName.substring(0, dotIdx).split("&");
-        const suffix = layerName.substring(dotIdx);
-        return prefixes.map(p => `${p}${suffix}`);
-    }
-    return [layerName];
-}
 
 type SelectionMode = "none" | "single" | "group" | "multi";
 
@@ -79,7 +56,7 @@ export class Editor {
 
     // Layer visibility
     private hiddenLayers: Set<string> = new Set();
-    private defaultLayerVisibilityInitialized = false;
+    private defaultLayerVisibilityApplied = new Set<string>();
     private onLayersChanged: (() => void) | null = null;
 
     // Track current mouse position
@@ -156,11 +133,12 @@ export class Editor {
     }
 
     private applyDefaultLayerVisibility() {
-        if (!this.model || this.defaultLayerVisibilityInitialized) return;
-        this.defaultLayerVisibilityInitialized = true;
-        for (const layerName of this.getLayers()) {
-            if (layerName.endsWith(".Fab")) {
-                this.hiddenLayers.add(layerName);
+        if (!this.model) return;
+        for (const layer of this.model.layers) {
+            if (this.defaultLayerVisibilityApplied.has(layer.id)) continue;
+            this.defaultLayerVisibilityApplied.add(layer.id);
+            if (!layer.default_visible) {
+                this.hiddenLayers.add(layer.id);
             }
         }
     }
@@ -213,7 +191,7 @@ export class Editor {
             if (uuid) indexByUuid.set(uuid, i);
         }
 
-        const rawGroups = this.model.footprint_groups ?? [];
+        const rawGroups = this.model.footprint_groups;
         const usedIds = new Set<string>();
         for (let i = 0; i < rawGroups.length; i++) {
             const group = rawGroups[i]!;
@@ -808,63 +786,26 @@ export class Editor {
         return !this.hiddenLayers.has(layer);
     }
 
-    getLayers(): string[] {
+    private getLayerMap(): Map<string, LayerModel> {
+        const layerById = new Map<string, LayerModel>();
+        if (!this.model) return layerById;
+        for (const layer of this.model.layers) {
+            layerById.set(layer.id, layer);
+        }
+        return layerById;
+    }
+
+    getLayerModels(): LayerModel[] {
         if (!this.model) return [];
-        const layers = new Set<string>();
-        for (const d of this.model.drawings) {
-            if (d.layer) layers.add(d.layer);
-        }
-        for (const t of this.model.texts) {
-            if (t.layer) layers.add(t.layer);
-        }
-        for (const fp of this.model.footprints) {
-            layers.add(fp.layer);
-            for (const pad of fp.pads) {
-                for (const l of pad.layers) layers.add(l);
-            }
-            for (const d of fp.drawings) {
-                if (d.layer) layers.add(d.layer);
-            }
-            for (const t of fp.texts) {
-                if (t.layer) layers.add(t.layer);
-            }
-            for (const a of fp.pad_names) {
-                if (a.layer) layers.add(a.layer);
-            }
-            for (const a of fp.pad_numbers) {
-                if (a.layer) layers.add(a.layer);
-            }
-        }
-        for (const t of this.model.tracks) {
-            if (t.layer) layers.add(t.layer);
-        }
-        for (const a of this.model.arcs) {
-            if (a.layer) layers.add(a.layer);
-        }
-        for (const z of this.model.zones) {
-            for (const fp of z.filled_polygons) layers.add(fp.layer);
-        }
-        const concreteLayers = new Set<string>(
-            [...layers].filter(l => !l.includes("*") && !l.includes("&")),
-        );
-        for (const layerName of [...layers]) {
-            for (const expanded of expandLayerName(layerName, concreteLayers)) {
-                layers.add(expanded);
-            }
-        }
-        for (const z of this.model.zones) {
-            for (const layerName of z.layers) {
-                for (const expanded of expandLayerName(layerName, concreteLayers)) {
-                    layers.add(expanded);
-                }
-            }
-        }
-        layers.add("Edge.Cuts");
-        // Filter out wildcard layers (*.Cu, F&B.Cu, etc.)
-        for (const l of layers) {
-            if (l.includes("*") || l.includes("&")) layers.delete(l);
-        }
-        return sortLayerNames(layers);
+        return [...this.model.layers].sort((a, b) => {
+            const orderDiff = a.panel_order - b.panel_order;
+            if (orderDiff !== 0) return orderDiff;
+            return a.id.localeCompare(b.id);
+        });
+    }
+
+    getLayers(): string[] {
+        return this.getLayerModels().map(layer => layer.id);
     }
 
     setOnLayersChanged(cb: () => void) {
@@ -903,10 +844,12 @@ export class Editor {
         this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.textCtx.clearRect(0, 0, width, height);
         if (!this.model || this.camera.zoom < 0.2) return;
+        const layerById = this.getLayerMap();
 
         for (const text of this.model.texts) {
             if (!text.text.trim()) continue;
-            const layerName = text.layer ?? "Dwgs.User";
+            const layerName = text.layer;
+            if (!layerName) continue;
             if (this.hiddenLayers.has(layerName)) continue;
             this.drawOverlayText(
                 text.text,
@@ -920,14 +863,16 @@ export class Editor {
                 text.justify,
                 width,
                 height,
+                layerById,
             );
         }
         for (const fp of this.model.footprints) {
             for (const text of fp.texts) {
                 if (!text.text.trim()) continue;
-                const layerName = text.layer ?? fp.layer;
+                const layerName = text.layer;
+                if (!layerName) continue;
                 if (this.hiddenLayers.has(layerName)) continue;
-                const worldPos = this.transformFootprintPoint(fp.at, text.at.x, text.at.y);
+                const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
                 const textRotation = (fp.at.r || 0) + (text.at.r || 0);
                 this.drawOverlayText(
                     text.text,
@@ -941,6 +886,7 @@ export class Editor {
                     text.justify,
                     width,
                     height,
+                    layerById,
                 );
             }
         }
@@ -958,6 +904,7 @@ export class Editor {
         justify: string[] | null,
         width: number,
         height: number,
+        layerById: Map<string, LayerModel>,
     ) {
         if (!this.textCtx) return;
         const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
@@ -974,7 +921,7 @@ export class Editor {
         if (lines.length === 0) return;
         const justifySet = new Set(justify ?? []);
 
-        const [r, g, b, a] = getLayerColor(layerName);
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
         const rotation = -(rotationDeg || 0) * DEG_TO_RAD;
         const linePitch = textHeight * 1.62;
         const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
@@ -1019,20 +966,6 @@ export class Editor {
             }
         }
         this.textCtx.restore();
-    }
-
-    private transformFootprintPoint(
-        fpAt: { x: number; y: number; r: number },
-        localX: number,
-        localY: number,
-    ): Vec2 {
-        const rad = -(fpAt.r || 0) * DEG_TO_RAD;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-        return new Vec2(
-            fpAt.x + localX * cos - localY * sin,
-            fpAt.y + localX * sin + localY * cos,
-        );
     }
 
     private startRenderLoop() {

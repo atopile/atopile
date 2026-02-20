@@ -19,6 +19,7 @@ from atopile.layout_server.models import (
     FootprintModel,
     FootprintSummary,
     HoleModel,
+    LayerModel,
     MoveFootprintCommand,
     MoveFootprintsCommand,
     NetModel,
@@ -398,6 +399,7 @@ class PcbManager:
 
     def get_render_model(self) -> RenderModel:
         pcb = self.pcb
+        all_layers = _board_all_layers(pcb)
         copper_layers = _board_copper_layers(pcb)
         global_texts = self._extract_global_texts(pcb)
         vias = [self._extract_via(via) for via in pcb.vias]
@@ -405,20 +407,27 @@ class PcbManager:
         net_names_by_number = {
             int(net.number): net.name for net in pcb.nets if getattr(net, "name", None)
         }
-        return RenderModel(
+        model = RenderModel(
             board=self._extract_board(pcb),
             drawings=[*self._extract_global_drawings(pcb), *via_drawings],
             texts=global_texts,
             footprints=[
-                self._extract_footprint(fp, net_names_by_number, copper_layers)
+                self._extract_footprint(
+                    fp,
+                    net_names_by_number,
+                    copper_layers,
+                    all_layers,
+                )
                 for fp in pcb.footprints
             ],
             footprint_groups=self._extract_footprint_groups(pcb),
             tracks=[self._extract_segment(seg) for seg in pcb.segments],
             arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
-            zones=self._extract_zones(pcb),
+            zones=self._extract_zones(pcb, all_layers),
             nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
         )
+        model.layers = _build_layer_models(model, all_layers, copper_layers)
+        return model
 
     def get_footprints(self) -> list[FootprintSummary]:
         result: list[FootprintSummary] = []
@@ -559,6 +568,7 @@ class PcbManager:
         fp,
         net_names_by_number: dict[int, str],
         copper_layers: list[str],
+        all_layers: list[str],
     ) -> FootprintModel:
         ref = _get_property(fp, "Reference")
         value = _get_property(fp, "Value")
@@ -574,6 +584,8 @@ class PcbManager:
                 # Keep pad metadata (name/position/size/net) but don't draw
                 # pads directly.
                 pad_layers = []
+            else:
+                pad_layers = _expand_layer_rules(pad_layers, known_layers=all_layers)
             pads.append(
                 PadModel(
                     name=pad.name,
@@ -659,9 +671,13 @@ class PcbManager:
 
         texts = self._extract_text_entries(fp, ref, value)
         pad_names = self._extract_pad_name_annotations_for_footprint(
-            fp, net_names_by_number
+            fp,
+            net_names_by_number,
+            copper_layers,
         )
-        pad_numbers = self._extract_pad_number_annotations_for_footprint(fp)
+        pad_numbers = self._extract_pad_number_annotations_for_footprint(
+            fp, copper_layers
+        )
 
         return FootprintModel(
             uuid=fp.uuid,
@@ -934,15 +950,21 @@ class PcbManager:
         )
 
     def _extract_pad_name_annotations_for_footprint(
-        self, fp, net_names_by_number: dict[int, str]
+        self,
+        fp,
+        net_names_by_number: dict[int, str],
+        copper_layers: list[str],
     ) -> list[PadNameAnnotationModel]:
         out: list[PadNameAnnotationModel] = []
         for pad_index, pad in enumerate(fp.pads):
             pad_name = (getattr(pad, "name", "") or "").strip()
             if not pad_name:
                 continue
-            text_layer = _pad_net_text_layer(list(getattr(pad, "layers", []) or []))
-            if text_layer is None:
+            text_layer_ids = _pad_net_text_layers(
+                list(getattr(pad, "layers", []) or []),
+                all_copper_layers=copper_layers,
+            )
+            if not text_layer_ids:
                 continue
             pad_net = getattr(pad, "net", None)
             if pad_net is None:
@@ -960,28 +982,31 @@ class PcbManager:
                     pad_index=pad_index,
                     pad=pad_name,
                     text=net_name,
-                    layer=text_layer,
+                    layer_ids=text_layer_ids,
                 )
             )
         return out
 
     def _extract_pad_number_annotations_for_footprint(
-        self, fp
+        self, fp, copper_layers: list[str]
     ) -> list[PadNumberAnnotationModel]:
         out: list[PadNumberAnnotationModel] = []
         for pad_index, pad in enumerate(fp.pads):
             pad_name = (getattr(pad, "name", "") or "").strip()
             if not pad_name:
                 continue
-            text_layer = _pad_number_text_layer(list(getattr(pad, "layers", []) or []))
-            if text_layer is None:
+            text_layer_ids = _pad_number_text_layers(
+                list(getattr(pad, "layers", []) or []),
+                all_copper_layers=copper_layers,
+            )
+            if not text_layer_ids:
                 continue
             out.append(
                 PadNumberAnnotationModel(
                     pad_index=pad_index,
                     pad=pad_name,
                     text=pad_name,
-                    layer=text_layer,
+                    layer_ids=text_layer_ids,
                 )
             )
         return out
@@ -1431,17 +1456,20 @@ class PcbManager:
                 )
         return drawings
 
-    def _extract_zones(self, pcb: kicad.pcb.KicadPcb) -> list[ZoneModel]:
+    def _extract_zones(
+        self, pcb: kicad.pcb.KicadPcb, all_layers: list[str]
+    ) -> list[ZoneModel]:
         raw_zones = getattr(pcb, "zones", None)
         if raw_zones is None:
             raw_zones = getattr(pcb, "zone", [])
-        return [self._extract_zone(zone) for zone in raw_zones]
+        return [self._extract_zone(zone, all_layers) for zone in raw_zones]
 
-    def _extract_zone(self, zone) -> ZoneModel:
+    def _extract_zone(self, zone, all_layers: list[str]) -> ZoneModel:
         layers = list(getattr(zone, "layers", []) or [])
         layer = getattr(zone, "layer", None)
         if not layers and layer:
             layers = [layer]
+        layers = _expand_layer_rules(layers, known_layers=all_layers)
 
         polygon = getattr(zone, "polygon", None)
         polygon_pts = getattr(getattr(polygon, "pts", None), "xys", None)
@@ -1655,22 +1683,26 @@ def _pad_net_text_candidates(text: str) -> list[str]:
     return candidates
 
 
-def _pad_net_text_layer(pad_layers: list[str] | None) -> str | None:
-    if not pad_layers:
-        return None
-    for layer in pad_layers:
-        if layer.endswith(".Cu"):
-            return layer[:-3] + ".Nets"
-    return None
+def _pad_net_text_layers(
+    pad_layers: list[str] | None, *, all_copper_layers: list[str]
+) -> list[str]:
+    copper_layers = _expand_copper_layers(
+        pad_layers,
+        all_copper_layers=all_copper_layers,
+    )
+    return [layer[:-3] + ".Nets" for layer in copper_layers if layer.endswith(".Cu")]
 
 
-def _pad_number_text_layer(pad_layers: list[str] | None) -> str | None:
-    if not pad_layers:
-        return None
-    for layer in pad_layers:
-        if layer.endswith(".Cu"):
-            return layer[:-3] + ".PadNumbers"
-    return None
+def _pad_number_text_layers(
+    pad_layers: list[str] | None, *, all_copper_layers: list[str]
+) -> list[str]:
+    copper_layers = _expand_copper_layers(
+        pad_layers,
+        all_copper_layers=all_copper_layers,
+    )
+    return [
+        layer[:-3] + ".PadNumbers" for layer in copper_layers if layer.endswith(".Cu")
+    ]
 
 
 def _pad_net_text_rotation(
@@ -1750,6 +1782,232 @@ def _board_copper_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
     if not copper:
         return ["F.Cu", "B.Cu"]
     return copper
+
+
+def _board_all_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
+    layers: list[str] = []
+    seen: set[str] = set()
+    for layer in getattr(pcb, "layers", []) or []:
+        name = str(getattr(layer, "name", "") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        layers.append(name)
+    if not layers:
+        return ["F.Cu", "B.Cu", "F.Mask", "B.Mask", "F.SilkS", "B.SilkS", "Edge.Cuts"]
+    return layers
+
+
+def _expand_layer_rules(
+    layers: list[str] | None,
+    *,
+    known_layers: list[str],
+) -> list[str]:
+    if not layers:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    known_set = set(known_layers)
+
+    def add(layer: str) -> None:
+        token = layer.strip()
+        if not token or token in seen:
+            return
+        seen.add(token)
+        out.append(token)
+
+    for layer in layers:
+        token = (layer or "").strip()
+        if not token:
+            continue
+
+        if "*" in token:
+            dot_idx = token.find(".")
+            suffix = token[dot_idx:] if dot_idx >= 0 else ""
+            expanded = [
+                name for name in known_layers if suffix and name.endswith(suffix)
+            ]
+            for candidate in expanded:
+                add(candidate)
+            continue
+
+        if "&" in token and "." in token:
+            dot_idx = token.find(".")
+            prefixes = token[:dot_idx].split("&")
+            suffix = token[dot_idx:]
+            for prefix in prefixes:
+                candidate = f"{prefix}{suffix}".strip()
+                if candidate in known_set:
+                    add(candidate)
+            continue
+
+        add(token)
+
+    return out
+
+
+_LAYER_COLOR_OVERRIDES: dict[str, tuple[float, float, float, float]] = {
+    "F.Cu": (0.86, 0.23, 0.22, 0.88),
+    "B.Cu": (0.16, 0.28, 0.47, 0.88),
+    "In1.Cu": (0.70, 0.58, 0.24, 0.78),
+    "In2.Cu": (0.53, 0.40, 0.70, 0.78),
+    "F.SilkS": (0.92, 0.90, 0.62, 0.95),
+    "B.SilkS": (0.78, 0.86, 0.87, 0.92),
+    "F.Mask": (0.70, 0.35, 0.48, 0.42),
+    "B.Mask": (0.12, 0.19, 0.34, 0.38),
+    "F.Paste": (0.90, 0.80, 0.60, 0.48),
+    "B.Paste": (0.66, 0.74, 0.86, 0.48),
+    "F.Fab": (0.95, 0.62, 0.45, 0.90),
+    "B.Fab": (0.62, 0.73, 0.90, 0.90),
+    "F.CrtYd": (0.91, 0.91, 0.91, 0.62),
+    "B.CrtYd": (0.80, 0.85, 0.93, 0.62),
+    "Edge.Cuts": (0.93, 0.95, 0.95, 1.00),
+    "Dwgs.User": (0.70, 0.70, 0.72, 0.65),
+    "Cmts.User": (0.74, 0.66, 0.84, 0.65),
+}
+
+_LAYER_KIND_PANEL_PRIORITY: dict[str, int] = {
+    "Cu": 0,
+    "Drill": 1,
+    "Fab": 2,
+    "Mask": 3,
+    "Nets": 4,
+    "PadNumbers": 5,
+    "Paste": 6,
+    "SilkS": 7,
+    "User": 8,
+    "Cuts": 9,
+}
+
+
+def _collect_scene_layers(model: RenderModel) -> set[str]:
+    layer_ids: set[str] = set()
+    layer_ids.add("Edge.Cuts")
+    for drawing in model.drawings:
+        if drawing.layer:
+            layer_ids.add(drawing.layer)
+    for text in model.texts:
+        if text.layer:
+            layer_ids.add(text.layer)
+    for track in model.tracks:
+        if track.layer:
+            layer_ids.add(track.layer)
+    for arc in model.arcs:
+        if arc.layer:
+            layer_ids.add(arc.layer)
+    for zone in model.zones:
+        layer_ids.update(zone.layers)
+        for filled in zone.filled_polygons:
+            if filled.layer:
+                layer_ids.add(filled.layer)
+    for fp in model.footprints:
+        if fp.layer:
+            layer_ids.add(fp.layer)
+        for pad in fp.pads:
+            layer_ids.update(pad.layers)
+        for drawing in fp.drawings:
+            if drawing.layer:
+                layer_ids.add(drawing.layer)
+        for text in fp.texts:
+            if text.layer:
+                layer_ids.add(text.layer)
+        for annotation in fp.pad_names:
+            layer_ids.update(annotation.layer_ids)
+        for annotation in fp.pad_numbers:
+            layer_ids.update(annotation.layer_ids)
+    return {
+        layer for layer in layer_ids if layer and "*" not in layer and "&" not in layer
+    }
+
+
+def _split_layer_id(layer_id: str) -> tuple[str | None, str]:
+    dot_idx = layer_id.find(".")
+    if dot_idx < 0:
+        return (None, layer_id)
+    return (layer_id[:dot_idx], layer_id[dot_idx + 1 :])
+
+
+def _root_panel_key(root: str | None) -> tuple[int, int, str]:
+    if root is None:
+        return (3, 0, "")
+    token = root.strip()
+    if token == "F":
+        return (0, 0, token)
+    if token == "B":
+        return (2, 0, token)
+    if token.startswith("In") and token[2:].isdigit():
+        return (1, int(token[2:]), token)
+    return (3, 0, token)
+
+
+def _layer_color(layer_id: str, kind: str) -> tuple[float, float, float, float]:
+    if layer_id in _LAYER_COLOR_OVERRIDES:
+        return _LAYER_COLOR_OVERRIDES[layer_id]
+    if kind in {"Nets", "PadNumbers"}:
+        return (1.0, 1.0, 1.0, 1.0)
+    if kind == "Drill":
+        return (0.89, 0.82, 0.15, 1.0)
+    return (0.50, 0.50, 0.50, 0.50)
+
+
+def _build_layer_models(
+    model: RenderModel,
+    all_layers: list[str],
+    copper_layers: list[str],
+) -> list[LayerModel]:
+    # Include all board-defined layers plus any synthesized layers from scene geometry.
+    layer_ids = _collect_scene_layers(model)
+    layer_ids.update(all_layers)
+    layer_ids = {layer for layer in layer_ids if layer}
+
+    copper_roots = [name[:-3] for name in copper_layers if name.endswith(".Cu")]
+    panel_root_index = {root: idx for idx, root in enumerate(copper_roots)}
+    paint_root_order = list(reversed(copper_roots))
+    paint_root_index = {root: idx for idx, root in enumerate(paint_root_order)}
+
+    def panel_key(layer_id: str) -> tuple[int, int, int, str]:
+        root, kind = _split_layer_id(layer_id)
+        root_key = _root_panel_key(root)
+        root_index = panel_root_index.get(root or "", 999)
+        kind_priority = _LAYER_KIND_PANEL_PRIORITY.get(kind, 99)
+        return (
+            root_key[0],
+            root_key[1] if root_index == 999 else root_index,
+            kind_priority,
+            layer_id,
+        )
+
+    def paint_key(layer_id: str) -> tuple[int, int, int, str]:
+        root, kind = _split_layer_id(layer_id)
+        kind_priority = _LAYER_KIND_PANEL_PRIORITY.get(kind, 99)
+        # Bottom-to-top: B first, then inner, then F. Non-stack layers last.
+        if root in paint_root_index:
+            return (0, paint_root_index[root], kind_priority, layer_id)
+        root_fallback = _root_panel_key(root)
+        return (1, root_fallback[0] * 100 + root_fallback[1], kind_priority, layer_id)
+
+    panel_sorted = sorted(layer_ids, key=panel_key)
+    panel_order_by_id = {layer_id: idx for idx, layer_id in enumerate(panel_sorted)}
+    paint_sorted = sorted(layer_ids, key=paint_key)
+    paint_order_by_id = {layer_id: idx for idx, layer_id in enumerate(paint_sorted)}
+
+    layers: list[LayerModel] = []
+    for layer_id in panel_sorted:
+        root, kind = _split_layer_id(layer_id)
+        layers.append(
+            LayerModel(
+                id=layer_id,
+                root=root,
+                kind=kind,
+                group=root,
+                label=kind if root is not None else layer_id,
+                panel_order=panel_order_by_id[layer_id],
+                paint_order=paint_order_by_id[layer_id],
+                color=_layer_color(layer_id, kind),
+                default_visible=(kind != "Fab"),
+            )
+        )
+    return layers
 
 
 def _expand_copper_layers(

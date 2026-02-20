@@ -1,25 +1,6 @@
 import { Vec2, BBox } from "./math";
-import type { FootprintModel, Point3 } from "./types";
-
-const DEG_TO_RAD = Math.PI / 180;
-
-function fpTransform(fpAt: Point3, localX: number, localY: number): Vec2 {
-    const rad = -(fpAt.r || 0) * DEG_TO_RAD;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return new Vec2(
-        fpAt.x + localX * cos - localY * sin,
-        fpAt.y + localX * sin + localY * cos,
-    );
-}
-
-function padTransform(fpAt: Point3, padAt: Point3, lx: number, ly: number): Vec2 {
-    const padRad = -(padAt.r || 0) * DEG_TO_RAD;
-    const pc = Math.cos(padRad), ps = Math.sin(padRad);
-    const px = lx * pc - ly * ps;
-    const py = lx * ps + ly * pc;
-    return fpTransform(fpAt, padAt.x + px, padAt.y + py);
-}
+import type { FootprintModel } from "./types";
+import { fpTransform, padTransform } from "./geometry";
 
 /** Compute bounding box for a footprint in world coords */
 export function footprintBBox(fp: FootprintModel): BBox {

@@ -98,14 +98,14 @@ class PadNameAnnotationModel(BaseModel):
     pad_index: int
     pad: str
     text: str
-    layer: str
+    layer_ids: list[str]
 
 
 class PadNumberAnnotationModel(BaseModel):
     pad_index: int
     pad: str
     text: str
-    layer: str
+    layer_ids: list[str]
 
 
 class FootprintModel(BaseModel):
@@ -187,11 +187,24 @@ class NetModel(BaseModel):
     name: str | None = None
 
 
+class LayerModel(BaseModel):
+    id: str
+    root: str | None = None
+    kind: str | None = None
+    group: str | None = None
+    label: str | None = None
+    panel_order: int
+    paint_order: int
+    color: tuple[float, float, float, float]
+    default_visible: bool = True
+
+
 # --- Top-level render model ---
 
 
 class RenderModel(BaseModel):
     board: BoardModel
+    layers: list[LayerModel] = Field(default_factory=list)
     drawings: list[DrawingModel]
     texts: list[TextModel]
     footprints: list[FootprintModel]

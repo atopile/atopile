@@ -16,6 +16,7 @@ export interface Size2 {
 
 export interface RenderModel {
     board: BoardModel;
+    layers: LayerModel[];
     drawings: DrawingModel[];
     texts: TextModel[];
     footprints: FootprintModel[];
@@ -74,14 +75,14 @@ export interface PadNameAnnotationModel {
     pad_index: number;
     pad: string;
     text: string;
-    layer: string;
+    layer_ids: string[];
 }
 
 export interface PadNumberAnnotationModel {
     pad_index: number;
     pad: string;
     text: string;
-    layer: string;
+    layer_ids: string[];
 }
 
 export interface PadModel {
@@ -148,6 +149,18 @@ export interface FilledPolygonModel {
 export interface NetModel {
     number: number;
     name: string | null;
+}
+
+export interface LayerModel {
+    id: string;
+    root: string | null;
+    kind: string | null;
+    group: string | null;
+    label: string | null;
+    panel_order: number;
+    paint_order: number;
+    color: [number, number, number, number];
+    default_visible: boolean;
 }
 
 export interface StatusResponse {
