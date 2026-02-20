@@ -127,10 +127,6 @@ class E_padstack_mode(str, Enum):
     FRONT_INNER_BACK = "front_inner_back"
     CUSTOM = "custom"
 
-class E_via_tenting(str, Enum):
-    FRONT = "front"
-    BACK = "back"
-
 class E_zone_hatch_mode(str, Enum):
     EDGE = "edge"
     FULL = "full"
@@ -220,6 +216,10 @@ class E_Attr(str, Enum):
 
 class E_zone_fill_enable(str, Enum):
     YES = "yes"
+
+class E_tenting(str, Enum):
+    FRONT = "front"
+    BACK = "back"
 
 class Xy:
     x: float
@@ -512,12 +512,18 @@ class Curve:
 class Text:
     text: str
     at: Xyr
-    layer: str
+    layer: TextLayer
     uuid: str | None
     effects: Effects
 
     def __init__(
-        self, *, text: str, at: Xyr, layer: str, uuid: str | None, effects: Effects
+        self,
+        *,
+        text: str,
+        at: Xyr,
+        layer: TextLayer,
+        uuid: str | None,
+        effects: Effects,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1149,11 +1155,21 @@ class Stackup:
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
+class Thickness:
+    thickness: float
+    locked: bool | None
+
+    def __init__(self, *, thickness: float, locked: bool | None) -> None: ...
+    def __repr__(self) -> str: ...
+    @staticmethod
+    def __field_names__() -> list[str]: ...
+    def __zig_address__(self) -> int: ...
+
 class StackupLayer:
     name: str
     type: str
     color: str | None
-    thickness: float | None
+    thickness: Thickness | None
     material: str | None
     epsilon_r: float | None
     loss_tangent: float | None
@@ -1164,7 +1180,7 @@ class StackupLayer:
         name: str,
         type: str,
         color: str | None,
-        thickness: float | None,
+        thickness: Thickness | None,
         material: str | None,
         epsilon_r: float | None,
         loss_tangent: float | None,
@@ -1311,15 +1327,6 @@ class PcbPlotParams:
         scaleselection: int,
         outputdirectory: str,
     ) -> None: ...
-    def __repr__(self) -> str: ...
-    @staticmethod
-    def __field_names__() -> list[str]: ...
-    def __zig_address__(self) -> int: ...
-
-class Tenting:
-    values: list[str]
-
-    def __init__(self, *, values: list[str]) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...

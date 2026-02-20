@@ -4,17 +4,28 @@ const py_lib_name = "pyzig";
 
 const ModuleMap = std.StringArrayHashMap(*std.Build.Module);
 
-fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
+fn build_pyi(
+    b: *std.Build,
+    modules: ModuleMap,
+    compat_mod: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step {
     // Build a small executable that generates the pyi files
     const pyi_exe = b.addExecutable(.{
         .name = "pyi",
-        .root_source_file = b.path("src/python/pyi.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/python/pyi.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
+        .imports = &.{
+            .{ .name = "compat", .module = compat_mod },
+        },
     });
     pyi_exe.root_module.addImport("pyzig", pyzig_mod);
 
@@ -46,6 +57,7 @@ fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget
 fn addPythonExtension(
     b: *std.Build,
     modules: ModuleMap,
+    compat_mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     python_include: []const u8,
@@ -53,16 +65,22 @@ fn addPythonExtension(
     python_lib_dir_opt: ?[]const u8,
     sexp_lib: *std.Build.Step.Compile,
 ) *std.Build.Step {
-    const python_ext = b.addSharedLibrary(.{
+    const python_ext = b.addLibrary(.{
+        .linkage = .dynamic,
         .name = py_lib_name,
-        .root_source_file = b.path("src/python/py.zig"),
-        .target = target,
-        .optimize = optimize,
-        .pic = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/python/py.zig"),
+            .target = target,
+            .optimize = optimize,
+            .pic = true,
+        }),
     });
 
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
+        .imports = &.{
+            .{ .name = "compat", .module = compat_mod },
+        },
     });
     python_ext.root_module.addImport("pyzig", pyzig_mod);
 
@@ -113,21 +131,28 @@ fn addSexpExtension(
     b: *std.Build,
     sexp_mod: *std.Build.Module,
     sexp_lib: *std.Build.Step.Compile,
+    compat_mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     python_lib_opt: ?[]const u8,
     python_lib_dir_opt: ?[]const u8,
 ) *std.Build.Step {
-    const sexp_ext = b.addSharedLibrary(.{
+    const sexp_ext = b.addLibrary(.{
+        .linkage = .dynamic,
         .name = "pyzig_sexp",
-        .root_source_file = b.path("src/python/sexp/init.zig"),
-        .target = target,
-        .optimize = optimize,
-        .pic = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/python/sexp/init.zig"),
+            .target = target,
+            .optimize = optimize,
+            .pic = true,
+        }),
     });
 
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
+        .imports = &.{
+            .{ .name = "compat", .module = compat_mod },
+        },
     });
     sexp_ext.root_module.addImport("pyzig", pyzig_mod);
     sexp_ext.root_module.addImport("sexp", sexp_mod);
@@ -164,6 +189,7 @@ fn addSexpExtension(
 fn build_python_module(
     b: *std.Build,
     modules: ModuleMap,
+    compat_mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     sexp_lib: *std.Build.Step.Compile,
@@ -172,7 +198,7 @@ fn build_python_module(
     python_lib_dir: ?[]const u8,
 ) *std.Build.Step {
     if (python_include_opt) |include_path| {
-        return addPythonExtension(b, modules, target, optimize, include_path, python_lib, python_lib_dir, sexp_lib);
+        return addPythonExtension(b, modules, compat_mod, target, optimize, include_path, python_lib, python_lib_dir, sexp_lib);
     }
     // No-op step to keep a consistent return type.
     return b.step("python-ext-skip", "Skip python extension (no python-include)");
@@ -182,21 +208,33 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const graph_mod = b.addModule("graph", .{
+    // Compat module for Zig 0.15 compatibility (e.g., DoublyLinkedList)
+    // Create a single shared instance to avoid module conflicts.
+    const compat_mod = b.createModule(.{
+        .root_source_file = b.path("src/compat/lib.zig"),
+    });
+
+    const graph_mod = b.createModule(.{
         .root_source_file = b.path("src/graph/lib.zig"),
     });
-    const faebryk_mod = b.addModule("faebryk", .{
+    const faebryk_mod = b.createModule(.{
         .root_source_file = b.path("src/faebryk/lib.zig"),
     });
     faebryk_mod.addImport("graph", graph_mod);
 
     // Build sexp once as a standalone static library (PIC for shared linking).
-    const sexp_lib = b.addStaticLibrary(.{
+    const sexp_lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "sexp",
-        .root_source_file = b.path("src/sexp/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-        .pic = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/sexp/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+            .pic = true,
+            .imports = &.{
+                .{ .name = "compat", .module = compat_mod },
+            },
+        }),
     });
 
     const install_sexp = b.addInstallArtifact(sexp_lib, .{});
@@ -222,11 +260,41 @@ pub fn build(b: *std.Build) void {
     const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
 
     // Build standalone sexp extension, main extension, and pyi (all modules).
-    const sexp_ext_step = addSexpExtension(b, sexp_lib.root_module, sexp_lib, target, optimize, python_lib, python_lib_dir);
-    const py_ext_step = build_python_module(b, modules_main, target, optimize, sexp_lib, python_include, python_lib, python_lib_dir);
-    const pyi_step = build_pyi(b, modules_all, target, optimize);
+    const sexp_ext_step = addSexpExtension(b, sexp_lib.root_module, sexp_lib, compat_mod, target, optimize, python_lib, python_lib_dir);
+    const py_ext_step = build_python_module(b, modules_main, compat_mod, target, optimize, sexp_lib, python_include, python_lib, python_lib_dir);
+    const pyi_step = build_pyi(b, modules_all, compat_mod, target, optimize);
 
     // Ensure python-ext depends on sexp ext and pyi generation so one command builds all.
     py_ext_step.dependOn(sexp_ext_step);
     py_ext_step.dependOn(pyi_step);
+
+    // --- Test file step: compile a single source file as a test binary ---
+    const test_file_opt = b.option([]const u8, "test-file", "Zig source file to compile as test binary (e.g. src/faebryk/composition.zig)");
+    if (test_file_opt) |test_file_path| {
+        const test_name_opt = b.option([]const u8, "test-name", "Output binary name") orelse "test";
+
+        const test_comp = b.addTest(.{
+            .name = test_name_opt,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(test_file_path),
+                .target = target,
+                .optimize = optimize,
+            }),
+            .test_runner = .{ .path = b.path("src/test_runner.zig"), .mode = .simple },
+        });
+
+        // Add all known modules — zig's lazy compilation skips unused ones
+        test_comp.root_module.addImport("graph", graph_mod);
+        test_comp.root_module.addImport("faebryk", faebryk_mod);
+
+        // Match existing compile flags
+        test_comp.root_module.sanitize_c = .full;
+        test_comp.root_module.omit_frame_pointer = false;
+        test_comp.root_module.strip = false;
+        test_comp.linkLibC();
+
+        const install_test = b.addInstallArtifact(test_comp, .{});
+        const test_file_step = b.step("test-file", "Build test binary for a zig source file");
+        test_file_step.dependOn(&install_test.step);
+    }
 }

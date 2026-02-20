@@ -1003,7 +1003,7 @@ pub const TypeGraph = struct {
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
     ) []ValidationError {
-        var errors = std.ArrayList(ValidationError).init(allocator);
+        var errors = std.array_list.Managed(ValidationError).init(allocator);
 
         // Soft-created resolution is handled dynamically by visit_make_children,
         // so collect_make_children already returns only the "winning" nodes.
@@ -1148,7 +1148,7 @@ pub const TypeGraph = struct {
         }
 
         // Build the formatted path
-        var buf = std.ArrayList(u8).init(allocator);
+        var buf = std.array_list.Managed(u8).init(allocator);
         for (path, 0..) |segment, i| {
             // Check if segment is purely numeric (array index)
             const is_numeric = blk: {
@@ -1317,7 +1317,7 @@ pub const TypeGraph = struct {
                 make_child = self.find_make_child_node(current_type, identifier) catch |err| switch (err) {
                     error.ChildNotFound => blk: {
                         // Extract parent path identifiers for mount lookup
-                        var parent_identifiers = std.ArrayList([]const u8).init(allocator);
+                        var parent_identifiers = std.array_list.Managed([]const u8).init(allocator);
                         defer parent_identifiers.deinit();
                         for (path[0..idx]) |p| {
                             parent_identifiers.append(p.identifier) catch return error.ChildNotFound;
@@ -1454,11 +1454,11 @@ pub const TypeGraph = struct {
         const allocator = self.self_node.g.allocator;
 
         // First, collect all MakeChild nodes
-        var all_children = std.ArrayList(MakeChildInfo).init(allocator);
+        var all_children = std.array_list.Managed(MakeChildInfo).init(allocator);
         defer all_children.deinit();
 
         const RawCollector = struct {
-            list_ptr: *std.ArrayList(MakeChildInfo),
+            list_ptr: *std.array_list.Managed(MakeChildInfo),
 
             pub fn collect(ctx_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const collector: *@This() = @ptrCast(@alignCast(ctx_ptr));
@@ -1532,10 +1532,10 @@ pub const TypeGraph = struct {
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
     ) []MakeChildInfo {
-        var list = std.ArrayList(MakeChildInfo).init(allocator);
+        var list = std.array_list.Managed(MakeChildInfo).init(allocator);
 
         const Collector = struct {
-            list_ptr: *std.ArrayList(MakeChildInfo),
+            list_ptr: *std.array_list.Managed(MakeChildInfo),
 
             pub fn collect(ctx_ptr: *anyopaque, info: MakeChildInfo) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
@@ -1572,7 +1572,7 @@ pub const TypeGraph = struct {
     ) error{InvalidReference}![]const ChildReferenceNode.EdgeTraversal {
         _ = self;
 
-        var segments = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
+        var segments = std.array_list.Managed(ChildReferenceNode.EdgeTraversal).init(allocator);
         errdefer segments.deinit();
 
         var current = reference;
@@ -1681,7 +1681,7 @@ pub const TypeGraph = struct {
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
     ) error{InvalidReference}![]MakeLinkInfo {
-        var list = std.ArrayList(MakeLinkInfo).init(allocator);
+        var list = std.array_list.Managed(MakeLinkInfo).init(allocator);
         errdefer {
             for (list.items) |info| {
                 allocator.free(info.lhs_path);
@@ -1691,7 +1691,7 @@ pub const TypeGraph = struct {
         }
 
         const Collector = struct {
-            list_ptr: *std.ArrayList(MakeLinkInfo),
+            list_ptr: *std.array_list.Managed(MakeLinkInfo),
 
             pub fn collect(ctx_ptr: *anyopaque, info: MakeLinkInfo) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
@@ -1730,7 +1730,7 @@ pub const TypeGraph = struct {
         const allocator = std.heap.c_allocator;
 
         // Convert string path to EdgeTraversals (all Composition edges)
-        var traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
+        var traversals = std.array_list.Managed(ChildReferenceNode.EdgeTraversal).init(allocator);
         defer traversals.deinit();
         for (container_path) |segment| {
             traversals.append(EdgeComposition.traverse(segment)) catch return error.ChildNotFound;
@@ -1825,10 +1825,10 @@ pub const TypeGraph = struct {
         container_path: []const []const u8,
         failure: ?*?PathResolutionFailure,
     ) error{ UnresolvedTypeReference, ChildNotFound }![]MakeChildInfo {
-        var list = std.ArrayList(MakeChildInfo).init(allocator);
+        var list = std.array_list.Managed(MakeChildInfo).init(allocator);
 
         const Collector = struct {
-            list_ptr: *std.ArrayList(MakeChildInfo),
+            list_ptr: *std.array_list.Managed(MakeChildInfo),
 
             pub fn collect(ctx_ptr: *anyopaque, info: MakeChildInfo) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
@@ -2130,11 +2130,11 @@ pub const TypeGraph = struct {
         return EdgeComposition.visit_children_edges(self.self_node, T, &visitor_, Visit.visit);
     }
 
-    pub fn get_type_instance_overview(self: *const @This(), allocator: std.mem.Allocator) std.ArrayList(TypeInstanceCount) {
-        var result = std.ArrayList(TypeInstanceCount).init(allocator);
+    pub fn get_type_instance_overview(self: *const @This(), allocator: std.mem.Allocator) std.array_list.Managed(TypeInstanceCount) {
+        var result = std.array_list.Managed(TypeInstanceCount).init(allocator);
 
         const Counter = struct {
-            counts: *std.ArrayList(TypeInstanceCount),
+            counts: *std.array_list.Managed(TypeInstanceCount),
 
             pub fn visit(self_ptr: *anyopaque, type_node: BoundNodeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
@@ -2220,12 +2220,12 @@ pub const TypeGraph = struct {
         const allocator = arena.allocator();
         defer arena.deinit();
 
-        var queue = std.ArrayList(NodeReference).init(allocator);
+        var queue = std.array_list.Managed(NodeReference).init(allocator);
         defer queue.deinit();
 
-        var node_collect = std.ArrayList(NodeReference).init(allocator);
+        var node_collect = std.array_list.Managed(NodeReference).init(allocator);
         defer node_collect.deinit();
-        var edge_collect = std.ArrayList(EdgeReference).init(allocator);
+        var edge_collect = std.array_list.Managed(EdgeReference).init(allocator);
         defer edge_collect.deinit();
         const node_uuid_set = &dst.node_set;
         const edge_uuid_set = &dst.edge_set;
@@ -2236,10 +2236,10 @@ pub const TypeGraph = struct {
         // Helper struct with functions to collect nodes
         const Collector = struct {
             allocator: std.mem.Allocator,
-            queue: *std.ArrayList(NodeReference),
+            queue: *std.array_list.Managed(NodeReference),
             dst: *GraphView,
-            node_collect: *std.ArrayList(NodeReference),
-            edge_collect: *std.ArrayList(EdgeReference),
+            node_collect: *std.array_list.Managed(NodeReference),
+            edge_collect: *std.array_list.Managed(EdgeReference),
             node_uuid_set: *graph.UUIDBitSet,
             edge_uuid_set: *graph.UUIDBitSet,
             type_map: *graph.NodeRefMap.T(NodeReference),
@@ -2472,7 +2472,7 @@ pub const TypeGraph = struct {
 
         dst.nodes.ensureUnusedCapacity(@intCast(node_collect.items.len)) catch @panic("OOM");
         for (node_collect.items) |node| {
-            dst.nodes.put(node, graph.EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(dst.allocator)) catch @panic("OOM");
+            dst.nodes.put(node, graph.EdgeTypeMap.T(std.array_list.Managed(EdgeReference)).init(dst.allocator)) catch @panic("OOM");
         }
         for (edge_collect.items) |edge| {
             dst.insert_edge_unchecked(edge);
@@ -2488,7 +2488,7 @@ test "basic typegraph" {
     defer g.deinit();
 
     const Example = try tg.add_type("Example");
-    var children = std.ArrayList(graph.BoundEdgeReference).init(a);
+    var children = std.array_list.Managed(graph.BoundEdgeReference).init(a);
     defer children.deinit();
     const visit_result = EdgeComposition.visit_children_edges(Example, void, &children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
     switch (visit_result) {
@@ -2571,7 +2571,7 @@ test "basic instantiation" {
     std.debug.print("Node attributes copied successfully: test_attr={s}, pin_number={d}\n", .{ p1_test_attr.?.String, p1_pin_number.?.Int });
 
     // print children of resistor
-    var resistor_children = std.ArrayList(graph.BoundEdgeReference).init(a);
+    var resistor_children = std.array_list.Managed(graph.BoundEdgeReference).init(a);
     defer resistor_children.deinit();
     const resistor_visit_result = EdgeComposition.visit_children_edges(resistor, void, &resistor_children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
     switch (resistor_visit_result) {

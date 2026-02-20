@@ -262,6 +262,16 @@ function handleMessage(event: MessageEvent): void {
         // Action response (success/failure)
         // Result is nested in message.result from backend
         const result = message.result || message;
+        if (message.action === 'createProject' && result.success === true) {
+          const projectRootValue = (result as Record<string, unknown>)['project_root'];
+          const projectRoot = typeof projectRootValue === 'string' ? projectRootValue : null;
+          if (projectRoot) {
+            postMessage({
+              type: 'projectCreated',
+              projectRoot,
+            });
+          }
+        }
         const requestId = typeof message.payload?.requestId === 'string'
           ? message.payload.requestId
           : null;
@@ -597,6 +607,12 @@ function handleEventMessage(message: EventMessage): void {
     (typeof data.projectRoot === 'string' && data.projectRoot) ||
     (typeof data.project_root === 'string' && data.project_root) ||
     null;
+
+  // Handle migration_step_result event (per-step progress for migrate dialog)
+  if ((message.event as string) === 'migration_step_result') {
+    window.dispatchEvent(new CustomEvent('migration-step-result', { detail: data }));
+    return;
+  }
 
   // Handle migration_result event (not in EventType enum)
   if ((message.event as string) === 'migration_result') {

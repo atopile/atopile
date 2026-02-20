@@ -195,14 +195,14 @@ def compare_status(current: str | None, baseline: str | None) -> str | None:
         return "new"
     if current is None:
         return None
-    valid = {"passed", "failed", "error", "crashed", "skipped"}
+    valid = {"passed", "failed", "error", "crashed", "timeout", "skipped"}
     if current not in valid:
         return None
     if current == baseline:
         return "same"
-    if baseline == "passed" and current in ("failed", "error", "crashed"):
+    if baseline == "passed" and current in ("failed", "error", "crashed", "timeout"):
         return "regression"
-    if baseline in ("failed", "error", "crashed") and current == "passed":
+    if baseline in ("failed", "error", "crashed", "timeout") and current == "passed":
         return "fixed"
     return "same"
 

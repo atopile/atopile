@@ -103,6 +103,18 @@ High-level steps:
 pytest -q
 ```
 
+- Fast worktree setup (CoW-clone `.venv` + Zig cache/output, then path rewrite):
+
+```sh
+ato dev worktree <suffix>
+cd ../atopile_<suffix>
+source .venv/bin/activate
+ato --help
+```
+
+By default this command starts an interactive shell in the new worktree.
+Pass `--no-cd` to skip shell handoff.
+
 - Issues and feature requests: https://github.com/atopile/atopile/issues
 
 ## Support

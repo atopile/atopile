@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 import threading
 import time
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from fastapi import BackgroundTasks, HTTPException
 
+from atopile.cli import install as cli_install
 from atopile.dataclasses import (
     AppContext,
+    InstalledPackage,
     PackageActionRequest,
     PackageActionResponse,
     PackageArtifact,
@@ -34,9 +36,9 @@ from atopile.dataclasses import (
     SyncPackagesRequest,
     SyncPackagesResponse,
 )
-from atopile.model.model_state import model_state
+from atopile.errors import UserException as AtopileUserException
 from atopile.server.connections import server_state
-from atopile.server.core import packages as core_packages
+from atopile.server.domains import projects as projects_domain
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 
 
@@ -47,46 +49,12 @@ def _get_api() -> PackagesAPIClient:
 
 log = logging.getLogger(__name__)
 
-# Registry cache
-_registry_cache: dict[str, list[PackageInfo]] = {}
-_registry_cache_time: float = 0.0
-_REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
-
 _SEMVER_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:[-+].*)?$")
-
-# Lock to prevent concurrent refresh_packages_state calls
-_refresh_lock: asyncio.Lock | None = None
-
-
-def _get_refresh_lock() -> asyncio.Lock:
-    """Get or create the refresh lock (must be called from async context)."""
-    global _refresh_lock
-    if _refresh_lock is None:
-        _refresh_lock = asyncio.Lock()
-    return _refresh_lock
-
 
 # Track active package operations
 _active_package_ops: dict[str, dict[str, object]] = {}
 _package_op_counter = 0
 _package_op_lock = threading.Lock()
-
-
-def _cache_get(key: str) -> list[PackageInfo] | None:
-    if _REGISTRY_CACHE_TTL <= 0:
-        return None
-    now = time.time()
-    if key in _registry_cache and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL:
-        return _registry_cache[key]
-    return None
-
-
-def _cache_set(key: str, packages: list[PackageInfo]) -> None:
-    if _REGISTRY_CACHE_TTL <= 0:
-        return
-    global _registry_cache_time
-    _registry_cache[key] = packages
-    _registry_cache_time = time.time()
 
 
 def version_is_newer(installed: str | None, latest: str | None) -> bool:
@@ -129,21 +97,160 @@ def next_package_op_id(prefix: str) -> str:
     return op_id
 
 
-def get_installed_packages_for_project(project_root: Path):
+def _format_install_error(exc: Exception) -> str:
+    if isinstance(exc, AtopileUserException):
+        message = getattr(exc, "message", "") or str(exc)
+        return message or "ato add/remove failed"
+    return str(exc) or "ato add/remove failed"
+
+
+def get_installed_packages_for_project(project_root: Path) -> list[InstalledPackage]:
     """
     Read installed packages from a project's ato.yaml dependencies section.
     """
-    return core_packages.get_installed_packages_for_project(project_root)
+    ato_yaml = project_root / "ato.yaml"
+    if not ato_yaml.exists():
+        return []
+
+    try:
+        with open(ato_yaml, "r") as f:
+            data = yaml.safe_load(f)
+
+        if not data:
+            return []
+
+        packages: list[InstalledPackage] = []
+        dependencies = data.get("dependencies", [])
+
+        if isinstance(dependencies, list):
+            for dep in dependencies:
+                if isinstance(dep, dict):
+                    identifier = dep.get("identifier", "")
+                    version = dep.get("release", dep.get("version", "unknown"))
+                    if identifier:
+                        packages.append(
+                            InstalledPackage(
+                                identifier=identifier,
+                                version=version,
+                                project_root=str(project_root),
+                            )
+                        )
+        elif isinstance(dependencies, dict):
+            for dep_id, dep_info in dependencies.items():
+                if isinstance(dep_info, str):
+                    version = dep_info
+                elif isinstance(dep_info, dict):
+                    version = dep_info.get("version", "unknown")
+                else:
+                    continue
+
+                packages.append(
+                    InstalledPackage(
+                        identifier=dep_id,
+                        version=version,
+                        project_root=str(project_root),
+                    )
+                )
+
+        return packages
+
+    except Exception as e:
+        log.warning(f"Failed to read packages from {ato_yaml}: {e}")
+        return []
 
 
-def get_all_installed_packages(paths: list[Path]):
+def get_all_installed_packages(paths: list[Path]) -> dict[str, PackageInfo]:
     """
     Get all installed packages across all projects in the given paths.
-
-    Returns a dict of package_identifier -> PackageInfo, with installed_in
-    tracking which projects have each package.
     """
-    return core_packages.get_all_installed_packages(paths)
+    projects = projects_domain.discover_projects_in_paths(paths)
+    return get_all_installed_packages_from_projects(projects)
+
+
+def get_all_installed_packages_from_projects(
+    projects: list,
+) -> dict[str, PackageInfo]:
+    """Get all installed packages from pre-discovered projects."""
+    packages_map: dict[str, PackageInfo] = {}
+
+    for project in projects:
+        project_root = Path(project.root)
+        installed = get_installed_packages_for_project(project_root)
+
+        for pkg in installed:
+            if pkg.identifier not in packages_map:
+                parts = pkg.identifier.split("/")
+                if len(parts) == 2:
+                    publisher, name = parts
+                else:
+                    publisher = "unknown"
+                    name = pkg.identifier
+
+                packages_map[pkg.identifier] = PackageInfo(
+                    identifier=pkg.identifier,
+                    name=name,
+                    publisher=publisher,
+                    version=pkg.version,
+                    installed=True,
+                    installed_in=[project.root],
+                )
+            else:
+                if project.root not in packages_map[pkg.identifier].installed_in:
+                    packages_map[pkg.identifier].installed_in.append(project.root)
+
+    return packages_map
+
+
+def install_package_to_project(
+    project_root: Path, package_identifier: str, version: str | None = None
+) -> None:
+    """Install or update a package in a project via the internal CLI implementation."""
+    pkg_spec = f"{package_identifier}@{version}" if version else package_identifier
+    try:
+        cli_install.add([pkg_spec], path=project_root)
+    except Exception as exc:
+        raise RuntimeError(_format_install_error(exc)) from exc
+
+
+def remove_package_from_project(project_root: Path, package_identifier: str) -> None:
+    """Remove a package from a project via the internal CLI implementation."""
+    try:
+        cli_install.remove([package_identifier], path=project_root)
+    except Exception as exc:
+        raise RuntimeError(_format_install_error(exc)) from exc
+
+
+def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
+    """
+    Sync packages for a project - ensure installed versions match manifest.
+
+    Args:
+        project_root: Path to the project directory
+        force: If True, overwrite locally modified packages without error.
+               If False (default), raise error for modified packages.
+
+    Raises:
+        RuntimeError: If sync fails (with formatted error message)
+        PackageModifiedError: If packages have local modifications and force=False
+    """
+    from atopile.config import config
+    from faebryk.libs.package.meta import PackageModifiedError
+    from faebryk.libs.project.dependencies import ProjectDependencies
+
+    # Apply config for this project
+    config.apply_options(None, working_dir=project_root)
+
+    try:
+        ProjectDependencies(
+            install_missing=True,
+            clean_unmanaged_dirs=True,
+            force_sync=force,
+        )
+    except PackageModifiedError:
+        # Re-raise as-is so the caller can handle it specially
+        raise
+    except Exception as exc:
+        raise RuntimeError(_format_install_error(exc)) from exc
 
 
 def get_installed_packages_for_workspace(workspace_path: Path | None):
@@ -154,36 +261,16 @@ def get_installed_packages_for_workspace(workspace_path: Path | None):
     """
     if not workspace_path:
         return {}
-    return core_packages.get_all_installed_packages([workspace_path])
+    return get_all_installed_packages([workspace_path])
 
 
 def search_registry_packages(query: str) -> list[PackageInfo]:
-    """
-    Search the package registry for packages matching the query.
-
-    Uses the PackagesAPIClient to query the registry API.
-    Results are cached for 5 minutes.
-    """
+    """Search the package registry for packages matching the query."""
     if not query.strip():
-        cache_key = "all"
-        cached = _cache_get(cache_key)
-        if cached is not None:
-            log.debug(f"[registry] Cache HIT for all-packages: {len(cached)} packages")
-            return cached
-
-        packages = get_all_registry_packages()
-        _cache_set(cache_key, packages)
-        return packages
-
-    cache_key = f"search:{query}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        log.debug(f"[registry] Cache HIT for '{query}': {len(cached)} packages")
-        return cached
+        return get_all_registry_packages()
 
     try:
         result = _get_api().query_packages(query)
-        log.debug(f"[registry] Fetched {len(result.packages)} packages for '{query}'")
 
         packages: list[PackageInfo] = []
         for pkg in result.packages:
@@ -210,7 +297,6 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
                 )
             )
 
-        _cache_set(cache_key, packages)
         return packages
 
     except Exception as exc:
@@ -225,7 +311,6 @@ def get_all_registry_packages() -> list[PackageInfo]:
     try:
         api = PackagesAPIClient()
         result = api.get_all_packages()
-        log.debug(f"[registry] Fetched {len(result.packages)} packages from registry")
 
         packages: list[PackageInfo] = []
         for pkg in result.packages:
@@ -257,57 +342,6 @@ def get_all_registry_packages() -> list[PackageInfo]:
     except Exception as exc:
         log.warning(f"Failed to fetch all packages from registry: {exc}")
         return []
-
-
-async def get_all_registry_packages_async() -> list[PackageInfo]:
-    """
-    Async version of get_all_registry_packages.
-
-    Runs the API call in a thread pool to avoid blocking the event loop.
-    """
-    # Run the synchronous function in a thread to avoid blocking
-    return await asyncio.to_thread(get_all_registry_packages)
-
-
-async def enrich_packages_with_registry_async(
-    packages: dict[str, PackageInfo],
-) -> dict[str, PackageInfo]:
-    """
-    Async version of enrich_packages_with_registry.
-
-    Fetches latest_version, summary, homepage, etc. from the registry
-    for each installed package using parallel HTTP requests.
-    """
-    if not packages:
-        return packages
-
-    registry_data = await get_all_registry_packages_async()
-    registry_map: dict[str, PackageInfo] = {
-        pkg.identifier: pkg for pkg in registry_data
-    }
-
-    enriched: dict[str, PackageInfo] = {}
-    for identifier, pkg in packages.items():
-        if identifier in registry_map:
-            reg = registry_map[identifier]
-            enriched[identifier] = PackageInfo(
-                identifier=pkg.identifier,
-                name=pkg.name,
-                publisher=pkg.publisher,
-                version=pkg.version,
-                latest_version=reg.latest_version,
-                description=reg.description,
-                summary=reg.summary,
-                homepage=reg.homepage,
-                repository=reg.repository,
-                license=reg.license,
-                installed=True,
-                installed_in=pkg.installed_in,
-            )
-        else:
-            enriched[identifier] = pkg
-
-    return enriched
 
 
 def get_package_details_from_registry(
@@ -487,129 +521,17 @@ def enrich_packages_with_registry(
     return enriched
 
 
-def _fetch_packages_sync(
-    scan_path: Path | None,
-) -> tuple[list, str | None]:
-    """
-    Sync helper that fetches installed and registry packages.
-    Returns (state_packages_list, registry_error).
-    """
-    from atopile.dataclasses import PackageInfo as StatePackageInfo
-
-    packages_map: dict[str, StatePackageInfo] = {}
-    registry_error: str | None = None
-
-    if scan_path:
-        installed = get_installed_packages_for_workspace(scan_path)
-        for pkg in installed.values():
-            packages_map[pkg.identifier] = StatePackageInfo(
-                identifier=pkg.identifier,
-                name=pkg.name,
-                publisher=pkg.publisher,
-                version=pkg.version,
-                installed=True,
-                installed_in=pkg.installed_in,
-            )
-
-    try:
-        registry_packages = get_all_registry_packages()
-        log.info(
-            f"[refresh_packages_state] Registry returned {len(registry_packages)} packages"  # noqa: E501
-        )
-
-        for reg_pkg in registry_packages:
-            if reg_pkg.identifier in packages_map:
-                existing = packages_map[reg_pkg.identifier]
-                packages_map[reg_pkg.identifier] = StatePackageInfo(
-                    identifier=existing.identifier,
-                    name=existing.name,
-                    publisher=existing.publisher,
-                    version=existing.version,
-                    latest_version=reg_pkg.latest_version,
-                    description=reg_pkg.description or reg_pkg.summary,
-                    summary=reg_pkg.summary,
-                    homepage=reg_pkg.homepage,
-                    repository=reg_pkg.repository,
-                    license=reg_pkg.license,
-                    installed=True,
-                    installed_in=existing.installed_in,
-                    has_update=version_is_newer(
-                        existing.version, reg_pkg.latest_version
-                    ),
-                    downloads=reg_pkg.downloads,
-                    version_count=reg_pkg.version_count,
-                    keywords=reg_pkg.keywords or [],
-                )
-            else:
-                packages_map[reg_pkg.identifier] = StatePackageInfo(
-                    identifier=reg_pkg.identifier,
-                    name=reg_pkg.name,
-                    publisher=reg_pkg.publisher,
-                    latest_version=reg_pkg.latest_version,
-                    description=reg_pkg.description or reg_pkg.summary,
-                    summary=reg_pkg.summary,
-                    homepage=reg_pkg.homepage,
-                    repository=reg_pkg.repository,
-                    license=reg_pkg.license,
-                    installed=False,
-                    installed_in=[],
-                    has_update=False,
-                    downloads=reg_pkg.downloads,
-                    version_count=reg_pkg.version_count,
-                    keywords=reg_pkg.keywords or [],
-                )
-
-    except Exception as exc:
-        registry_error = str(exc)
-        log.warning(f"[refresh_packages_state] Registry fetch failed: {exc}")
-
-    state_packages = sorted(
-        packages_map.values(),
-        key=lambda p: (not p.installed, p.identifier.lower()),
-    )
-
-    return list(state_packages), registry_error
-
-
 async def refresh_packages_state(
     scan_path: Path | None = None,
 ) -> None:
-    """Refresh packages and emit a packages_changed event."""
-    lock = _get_refresh_lock()
-
-    # Skip if another refresh is already in progress
-    if lock.locked():
-        log.debug("[refresh_packages_state] Skipping - refresh already in progress")
-        return
-
-    async with lock:
-        if scan_path is None:
-            scan_path = model_state.workspace_path
-
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        state_packages, registry_error = await asyncio.to_thread(
-            _fetch_packages_sync, scan_path
-        )
-
-        await server_state.emit_event(
-            "packages_changed",
-            {"error": registry_error, "total": len(state_packages)},
-        )
-        log.info("Refreshed packages: %d packages", len(state_packages))
+    """Notify the frontend to refetch package data."""
+    await server_state.emit_event("packages_changed")
 
 
 async def refresh_installed_packages_state(
     scan_path: Path | None = None,
 ) -> None:
-    """Refresh installed package flags without hitting the registry."""
-    if scan_path is None:
-        scan_path = model_state.workspace_path
-
-    if not scan_path:
-        await server_state.emit_event("packages_changed")
-        return
-
-    await asyncio.to_thread(core_packages.get_all_installed_packages, [scan_path])
+    """Notify the frontend to refetch package data (installed only)."""
     await server_state.emit_event("packages_changed")
 
 
@@ -893,7 +815,7 @@ def handle_install_package(
         try:
             with _package_op_lock:
                 try:
-                    core_packages.install_package_to_project(
+                    install_package_to_project(
                         project_path, request.package_identifier, request.version
                     )
                     _active_package_ops[op_id]["status"] = "success"
@@ -941,7 +863,7 @@ def handle_remove_package(
         try:
             with _package_op_lock:
                 try:
-                    core_packages.remove_package_from_project(
+                    remove_package_from_project(
                         project_path, request.package_identifier
                     )
                     _active_package_ops[op_id]["status"] = "success"
@@ -1003,7 +925,7 @@ def handle_sync_packages(
 
     def run_sync():
         try:
-            core_packages.sync_packages_for_project(project_path, force=request.force)
+            sync_packages_for_project(project_path, force=request.force)
             with _package_op_lock:
                 _active_package_ops[op_id]["status"] = "success"
         except PackageModifiedError as exc:
@@ -1040,6 +962,7 @@ __all__ = [
     "_package_op_lock",
     "enrich_packages_with_registry",
     "get_all_installed_packages",
+    "get_all_installed_packages_from_projects",
     "get_all_registry_packages",
     "get_installed_packages_for_project",
     "get_installed_packages_for_workspace",
@@ -1052,9 +975,12 @@ __all__ = [
     "handle_remove_package",
     "handle_search_registry",
     "handle_sync_packages",
+    "install_package_to_project",
     "next_package_op_id",
     "refresh_packages_state",
+    "remove_package_from_project",
     "resolve_scan_path",
     "search_registry_packages",
+    "sync_packages_for_project",
     "version_is_newer",
 ]

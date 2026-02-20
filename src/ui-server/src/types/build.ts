@@ -433,6 +433,7 @@ export interface InstalledPartsResponse {
 export interface AppState {
   // Connection
   isConnected: boolean;
+  hasEverConnected: boolean;
 
   // Projects (from ato.yaml)
   projects: Project[];

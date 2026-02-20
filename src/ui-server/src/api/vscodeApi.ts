@@ -88,6 +88,11 @@ export interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+export interface ProjectCreatedMessage {
+  type: 'projectCreated';
+  projectRoot: string;
+}
+
 export interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
@@ -143,8 +148,23 @@ export interface ShowErrorMessage {
   message: string;
 }
 
+export interface ThreeDModelBuildResultMessage {
+  type: 'threeDModelBuildResult';
+  success: boolean;
+  error?: string | null;
+}
+
 export interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
+}
+
+export interface WebviewReadyMessage {
+  type: 'webviewReady';
+}
+
+export interface OpenMigrateTabMessage {
+  type: 'openMigrateTab';
+  projectRoot: string;
 }
 
 export type ExtensionMessage =
@@ -154,6 +174,7 @@ export type ExtensionMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | ProjectCreatedMessage
   | ReloadWindowMessage
   | ShowLogsMessage
   | ShowBuildLogsMessage
@@ -166,7 +187,10 @@ export type ExtensionMessage =
   | ShowProblemsMessage
   | ShowInfoMessage
   | ShowErrorMessage
-  | GetAtopileSettingsMessage;
+  | GetAtopileSettingsMessage
+  | ThreeDModelBuildResultMessage
+  | WebviewReadyMessage
+  | OpenMigrateTabMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -183,6 +207,7 @@ export interface TriggerBuildMessage {
   requestId?: string;  // For tracking responses
   includeTargets?: string[];
   frozen?: boolean;
+  excludeTargets?: string[];
 }
 
 export interface SetAtopileInstallingMessage {

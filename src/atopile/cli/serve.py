@@ -96,6 +96,11 @@ def backend(
         help="The pip/uv spec used to install atopile"
         " (e.g., 'atopile==0.14.0' or git URL)",
     ),
+    no_gen: bool = typer.Option(
+        False,
+        "--no-gen",
+        help="Skip TypeScript type generation from Pydantic models",
+    ),
 ) -> None:
     """Start the backend server in the current terminal."""
     from atopile.server.server import run_server
@@ -110,6 +115,7 @@ def backend(
         ato_local_path=ato_local_path,
         ato_from_branch=ato_from_branch,
         ato_from_spec=ato_from_spec,
+        no_gen=no_gen,
     )
 
 

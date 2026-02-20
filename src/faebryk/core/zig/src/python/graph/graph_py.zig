@@ -175,7 +175,7 @@ pub var bfs_path_type: ?*py.PyTypeObject = null;
 
 const Literal = graph.graph.Literal;
 
-fn bound_node_dealloc(self: *py.PyObject) callconv(.C) void {
+fn bound_node_dealloc(self: *py.PyObject) callconv(.c) void {
     const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
     // Only free if this payload was allocated by makeBoundNodePyObject().
     const owned: *OwnedBoundNodePayload = @fieldParentPtr("payload", wrapper.data);
@@ -185,7 +185,7 @@ fn bound_node_dealloc(self: *py.PyObject) callconv(.C) void {
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
@@ -193,7 +193,7 @@ fn bound_node_dealloc(self: *py.PyObject) callconv(.C) void {
     py._Py_Dealloc(self);
 }
 
-fn bound_edge_dealloc(self: *py.PyObject) callconv(.C) void {
+fn bound_edge_dealloc(self: *py.PyObject) callconv(.c) void {
     const wrapper = @as(*BoundEdgeWrapper, @ptrCast(@alignCast(self)));
     // Only free if this payload was allocated by makeBoundEdgePyObject().
     const owned: *OwnedBoundEdgePayload = @fieldParentPtr("payload", wrapper.data);
@@ -203,7 +203,7 @@ fn bound_edge_dealloc(self: *py.PyObject) callconv(.C) void {
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
@@ -211,7 +211,7 @@ fn bound_edge_dealloc(self: *py.PyObject) callconv(.C) void {
     py._Py_Dealloc(self);
 }
 
-fn node_dealloc(self: *py.PyObject) callconv(.C) void {
+fn node_dealloc(self: *py.PyObject) callconv(.c) void {
     const wrapper = @as(*NodeWrapper, @ptrCast(@alignCast(self)));
     // Only free if this payload was allocated by makeNodePyObject().
     const owned: *OwnedNodePayload = @alignCast(@fieldParentPtr("payload", wrapper.data));
@@ -221,7 +221,7 @@ fn node_dealloc(self: *py.PyObject) callconv(.C) void {
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
@@ -229,7 +229,7 @@ fn node_dealloc(self: *py.PyObject) callconv(.C) void {
     py._Py_Dealloc(self);
 }
 
-fn edge_dealloc(self: *py.PyObject) callconv(.C) void {
+fn edge_dealloc(self: *py.PyObject) callconv(.c) void {
     const wrapper = @as(*EdgeWrapper, @ptrCast(@alignCast(self)));
     // Only free if this payload was allocated by makeEdgePyObject().
     const owned: *OwnedEdgePayload = @alignCast(@fieldParentPtr("payload", wrapper.data));
@@ -239,7 +239,7 @@ fn edge_dealloc(self: *py.PyObject) callconv(.C) void {
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
@@ -443,7 +443,7 @@ fn wrap_node_get_attr() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("NodeReference", &node_type, NodeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -467,7 +467,7 @@ fn wrap_node_get_dynamic_attrs() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("NodeReference", &node_type, NodeWrapper, self) orelse return null;
 
             var map = std.StringHashMap(Literal).init(std.heap.c_allocator);
@@ -500,7 +500,7 @@ fn wrap_node_get_uuid() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("NodeReference", &node_type, NodeWrapper, self) orelse return null;
             const uuid = wrapper.data.get_uuid();
             return py.PyLong_FromUnsignedLongLong(uuid);
@@ -523,7 +523,7 @@ fn wrap_node_is_same() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("NodeReference", &node_type, NodeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -542,7 +542,7 @@ fn wrap_node_create() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const node_ref = graph.graph.NodeReference.init();
             return makeNodePyObject(node_ref);
         }
@@ -585,7 +585,7 @@ fn wrap_edge_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) catch {
@@ -646,7 +646,7 @@ fn wrap_edge_get_attr() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -676,7 +676,7 @@ fn wrap_edge_is_same() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -695,7 +695,7 @@ fn wrap_edge_get_source() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             return makeNodePyObject(wrapper.data.get_source_node());
         }
@@ -711,7 +711,7 @@ fn wrap_edge_get_target() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             return makeNodePyObject(wrapper.data.get_target_node());
         }
@@ -727,7 +727,7 @@ fn wrap_edge_get_edge_type() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             return bind.wrap_int(wrapper.data.get_attribute_edge_type());
         }
@@ -743,7 +743,7 @@ fn wrap_edge_get_directional() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             return bind.wrap_bool(wrapper.data.get_attribute_directional());
         }
@@ -759,7 +759,7 @@ fn wrap_edge_get_name() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("EdgeReference", &edge_type, EdgeWrapper, self) orelse return null;
             return bind.wrap_str(wrapper.data.get_attribute_name());
         }
@@ -794,7 +794,7 @@ fn wrap_bound_node_get_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
             return makeNodePyObject(wrapper.data.node);
         }
@@ -810,7 +810,7 @@ fn wrap_bound_node_get_graph() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
             return bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
@@ -831,7 +831,7 @@ fn wrap_bound_node_visit_edges_of_type() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -873,7 +873,7 @@ fn wrap_bound_node_visit_edges_of_type() type {
     };
 }
 
-fn bound_node_hash(self: *py.PyObject) callconv(.C) isize {
+fn bound_node_hash(self: *py.PyObject) callconv(.c) isize {
     const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
     const bound_node = wrapper.data;
     // Use the node's UUID as the hash
@@ -881,7 +881,7 @@ fn bound_node_hash(self: *py.PyObject) callconv(.C) isize {
     return @intCast(uuid);
 }
 
-fn bound_node_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
+fn bound_node_repr(self: *py.PyObject) callconv(.c) ?*py.PyObject {
     const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
     const bound_node = wrapper.data;
 
@@ -896,7 +896,7 @@ fn bound_node_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
     return py.PyUnicode_FromString(str);
 }
 
-fn bound_node_richcompare(self: *py.PyObject, other: *py.PyObject, op: c_int) callconv(.C) ?*py.PyObject {
+fn bound_node_richcompare(self: *py.PyObject, other: *py.PyObject, op: c_int) callconv(.c) ?*py.PyObject {
     // Only support equality (op == Py_EQ = 2) and inequality (op == Py_NE = 3)
     if (op != 2 and op != 3) {
         py.Py_INCREF(py.Py_NotImplemented());
@@ -953,7 +953,7 @@ fn wrap_bound_edge_get_edge() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
             return makeEdgePyObject(wrapper.data.edge);
         }
@@ -969,14 +969,14 @@ fn wrap_bound_edge_get_graph() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
             return bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
     };
 }
 
-fn bound_edge_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
+fn bound_edge_repr(self: *py.PyObject) callconv(.c) ?*py.PyObject {
     const wrapper = @as(*BoundEdgeWrapper, @ptrCast(@alignCast(self)));
     const bound_edge = wrapper.data;
 
@@ -1019,7 +1019,7 @@ fn wrap_bfs_path_get_length() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
             const path = wrapper.data;
             return py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
@@ -1036,7 +1036,7 @@ fn wrap_bfs_path_get_start_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
             const path = wrapper.data;
             return makeBoundNodePyObject(path.start_node);
@@ -1053,7 +1053,7 @@ fn wrap_bfs_path_get_end_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
             const path = wrapper.data;
             return makeBoundNodePyObject(path.get_last_node());
@@ -1070,7 +1070,7 @@ fn wrap_bfs_path_get_edges() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
             const path = wrapper.data;
 
@@ -1091,7 +1091,7 @@ fn wrap_bfs_path_get_edges() type {
     };
 }
 
-fn bfs_path_dealloc(self: *py.PyObject) callconv(.C) void {
+fn bfs_path_dealloc(self: *py.PyObject) callconv(.c) void {
     const wrapper = @as(*BFSPathWrapper, @ptrCast(@alignCast(self)));
     const path = wrapper.data;
 
@@ -1100,7 +1100,7 @@ fn bfs_path_dealloc(self: *py.PyObject) callconv(.C) void {
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
@@ -1136,7 +1136,7 @@ fn wrap_graphview_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self;
             _ = args;
             const allocator = std.heap.c_allocator;
@@ -1174,7 +1174,7 @@ fn wrap_graphview_insert_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -1200,7 +1200,7 @@ fn wrap_graphview_insert_edge() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -1233,7 +1233,7 @@ fn wrap_graphview_bind() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -1252,7 +1252,7 @@ fn wrap_graphview_get_node_count() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const count = wrapper.data.get_node_count();
             return py.PyLong_FromUnsignedLongLong(count);
@@ -1271,7 +1271,7 @@ fn wrap_graphview_get_subgraph_from_nodes() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -1282,7 +1282,7 @@ fn wrap_graphview_get_subgraph_from_nodes() type {
             }
 
             const list_size = py.PyList_Size(kwarg_obj.nodes);
-            var node_list = std.ArrayList(graph.graph.NodeReference).init(std.heap.c_allocator);
+            var node_list = std.array_list.Managed(graph.graph.NodeReference).init(std.heap.c_allocator);
             defer node_list.deinit();
 
             var i: isize = 0;
@@ -1340,7 +1340,7 @@ fn wrap_graphview_insert_subgraph() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -1360,7 +1360,7 @@ fn wrap_graphview_get_nodes() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
             // Count nodes first
@@ -1399,7 +1399,7 @@ fn wrap_graphview_get_self_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const bound = wrapper.data.get_self_node();
             return makeBoundNodePyObject(bound);
@@ -1416,7 +1416,7 @@ fn wrap_graphview_destroy() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const allocator = std.heap.c_allocator;
             wrapper.data.deinit();
@@ -1435,7 +1435,7 @@ fn wrap_graphview_create_and_insert_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const bound = wrapper.data.create_and_insert_node();
             return makeBoundNodePyObject(bound);
@@ -1443,7 +1443,7 @@ fn wrap_graphview_create_and_insert_node() type {
     };
 }
 
-fn graphview_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+fn graphview_repr(self: ?*py.PyObject) callconv(.c) ?*py.PyObject {
     const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
     const node_count = wrapper.data.get_node_count();
     const edge_count = wrapper.data.get_edge_count();

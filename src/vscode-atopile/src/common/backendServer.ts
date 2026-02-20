@@ -13,11 +13,10 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import axios from 'axios';
 import * as net from 'net';
-import { traceInfo, traceError, traceVerbose } from './log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
 
 const BACKEND_HOST = '127.0.0.1';
-const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
 
 interface BuildResponse {
     success: boolean;
@@ -504,6 +503,7 @@ class BackendServerManager implements vscode.Disposable {
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                '--no-gen',
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
             ];
@@ -525,7 +525,7 @@ class BackendServerManager implements vscode.Disposable {
             }
 
             const command = atoBin.command[0];
-            traceInfo(`BackendServer: Starting server: ${command} ${args.join(' ')}`);
+            traceMilestone('backend spawning');
             this._log('info', `server: Starting: ${command} ${args.join(' ')}`);
 
             // Spawn the server process with unbuffered Python output
@@ -598,7 +598,7 @@ class BackendServerManager implements vscode.Disposable {
 
             if (ready) {
                 this._serverReady = true;
-                traceInfo(`BackendServer: Server started successfully on port ${this.port}`);
+                traceMilestone(`backend ready (port ${this.port})`);
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
@@ -612,7 +612,7 @@ class BackendServerManager implements vscode.Disposable {
                 // which connects when the webview loads
             } else {
                 if (!this._lastError) {
-                    this._lastError = 'Server startup timeout';
+                    this._lastError = 'Server failed to become ready';
                 }
                 traceError(`BackendServer: Server failed to start: ${this._lastError}`);
                 this._log('error', `server: Failed to start: ${this._lastError}`);
@@ -648,8 +648,8 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     private async _waitForServerReady(child: cp.ChildProcess): Promise<boolean> {
-        const start = Date.now();
-        while (Date.now() - start < SERVER_STARTUP_TIMEOUT_MS) {
+        // Wait indefinitely: initial installation/download can take a long time.
+        while (true) {
             if (this._process !== child) {
                 return false;
             }
@@ -658,7 +658,6 @@ class BackendServerManager implements vscode.Disposable {
             }
             await new Promise(resolve => setTimeout(resolve, 500));
         }
-        return false;
     }
 
     /**

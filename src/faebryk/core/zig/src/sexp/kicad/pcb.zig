@@ -1,10 +1,11 @@
 const std = @import("std");
+const compat = @import("compat");
 const structure = @import("../structure.zig");
 
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return std.DoublyLinkedList(T);
+    return compat.DoublyLinkedList(T);
 }
 
 // Constants
@@ -253,12 +254,6 @@ pub const E_padstack_mode = enum {
     custom,
 };
 
-// Via tenting enum
-pub const E_via_tenting = enum {
-    front,
-    back,
-};
-
 // Zone hatch mode enum
 pub const E_zone_hatch_mode = enum {
     edge,
@@ -497,7 +492,7 @@ pub const Curve = struct {
 pub const Text = struct {
     text: str,
     at: Xyr,
-    layer: str,
+    layer: TextLayer,
     uuid: ?str = null,
     effects: Effects,
 
@@ -738,6 +733,10 @@ pub const Hatch = struct {
 pub const ConnectPads = struct {
     mode: ?E_zone_connect_pads_mode = null,
     clearance: ?f64 = null,
+
+    pub const fields_meta = .{
+        .mode = structure.SexpField{ .positional = true },
+    };
 };
 
 pub const E_zone_fill_enable = enum {
@@ -914,11 +913,21 @@ pub const Stackup = struct {
     };
 };
 
+pub const Thickness = struct {
+    thickness: f64,
+    locked: ?bool = null,
+
+    pub const fields_meta = .{
+        .thickness = structure.SexpField{ .positional = true },
+        .locked = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const StackupLayer = struct {
     name: str,
     type: str,
     color: ?str = null,
-    thickness: ?f64 = null,
+    thickness: ?Thickness = null,
     material: ?str = null,
     epsilon_r: ?f64 = null,
     loss_tangent: ?f64 = null,
@@ -998,23 +1007,17 @@ pub const PcbPlotParams = struct {
         .plot_on_all_layers_selection = structure.SexpField{ .symbol = true },
     };
 };
-
-// Special struct for tenting that encodes as positional symbols
-pub const Tenting = struct {
-    values: list(str) = .{},
+pub const E_tenting = enum {
+    front,
+    back,
 };
-
 pub const Setup = struct {
     stackup: ?Stackup = null,
     pad_to_mask_clearance: i32 = 0,
     allow_soldermask_bridges_in_footprints: bool = false,
-    tenting: list(str) = .{},
+    tenting: list(E_tenting) = .{},
     pcbplotparams: PcbPlotParams = .{},
     rules: ?Rules = null,
-
-    pub const fields_meta = .{
-        .tenting = structure.SexpField{ .symbol = true },
-    };
 };
 
 // Main PCB structure
@@ -1023,7 +1026,7 @@ pub const KicadPcb = struct {
     generator: str,
     generator_version: str,
     general: General = .{},
-    paper: ?E_paper_type = null,
+    paper: ?E_paper_type = .A4,
     title_block: ?TitleBlock = null,
     layers: list(Layer) = .{},
     setup: Setup = .{},

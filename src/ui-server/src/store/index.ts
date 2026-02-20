@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
-import { postMessage } from '../api/vscodeApi';
+import { postMessage, getVsCodeApi } from '../api/vscodeApi';
 import type {
   AppState,
   Project,
@@ -35,6 +35,8 @@ import { DEFAULT_FILE_TYPES } from '../components/manufacturing/types';
 
 const ERROR_TIMEOUT_MS = 8000;
 
+let _readySignalled = false;
+
 let installErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let packagesErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let bomErrorTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -57,18 +59,25 @@ const _channel: BroadcastChannel | null = (() => {
   }
 })();
 
+// Restore last selection from VS Code webview state (survives reloads)
+const persistedState = getVsCodeApi()?.getState() as {
+  selectedProjectRoot?: string | null;
+  selectedProjectName?: string | null;
+  selectedTargetNames?: string[];
+} | undefined;
+
 // Initial state for the store
 const initialState: AppState = {
-  // Connection - start as true so we don't flash error screen during startup
-  // WebSocket will set to false after 5s timeout if backend isn't ready
-  isConnected: true,
+  // Connection
+  isConnected: false,
+  hasEverConnected: false,
 
   // Projects
   projects: [],
   isLoadingProjects: false,
   projectsError: null,
-  selectedProjectRoot: null,
-  selectedTargetNames: [],
+  selectedProjectRoot: persistedState?.selectedProjectRoot ?? null,
+  selectedTargetNames: persistedState?.selectedTargetNames ?? [],
   migratingProjectRoots: [] as string[],
   migrationErrors: {} as Record<string, string>,
 
@@ -102,7 +111,7 @@ const initialState: AppState = {
   // Build selection
   selectedBuildId: null,
   selectedBuildName: null,
-  selectedProjectName: null,
+  selectedProjectName: persistedState?.selectedProjectName ?? null,
 
   // Log viewer
   logViewerBuildId: null as string | null,
@@ -304,7 +313,10 @@ export const useStore = create<Store>()(
         ...initialState,
 
       // Connection
-      setConnected: (connected) => set({ isConnected: connected }),
+      setConnected: (connected) => set((state) => ({
+        isConnected: connected,
+        ...(connected && !state.hasEverConnected ? { hasEverConnected: true } : {}),
+      })),
 
       // Full state replacement (from WebSocket broadcast)
       replaceState: (newState) => {
@@ -337,6 +349,7 @@ export const useStore = create<Store>()(
           ...state,
           ...newState,
           isConnected: true,
+          hasEverConnected: true,
         }));
 
         if (newState.packagesError) {
@@ -407,10 +420,43 @@ export const useStore = create<Store>()(
           // Keep in migrating list if project still needs migration
           return project?.needsMigration === true;
         });
+
+        // Validate current selection against discovered projects
+        let selectedProjectRoot = state.selectedProjectRoot;
+        let selectedProjectName = state.selectedProjectName;
+        let selectedTargetNames = state.selectedTargetNames;
+
+        const selectedProject = selectedProjectRoot
+          ? projects.find((p) => p.root === selectedProjectRoot)
+          : null;
+
+        if (selectedProject) {
+          // Selection is still valid — update name in case it changed
+          selectedProjectName = selectedProject.name;
+        } else if (projects.length > 0) {
+          // No valid selection — auto-select first project + its first target
+          const first = projects[0];
+          selectedProjectRoot = first.root;
+          selectedProjectName = first.name;
+          selectedTargetNames = first.targets?.[0]?.name ? [first.targets[0].name] : [];
+        } else {
+          selectedProjectRoot = null;
+          selectedProjectName = null;
+          selectedTargetNames = [];
+        }
+
+        if (!_readySignalled && projects.length > 0) {
+          _readySignalled = true;
+          postMessage({ type: 'webviewReady' });
+        }
+
         return {
           projects,
           isLoadingProjects: false,
           migratingProjectRoots: stillMigrating,
+          selectedProjectRoot,
+          selectedProjectName,
+          selectedTargetNames,
         };
       }),
 
@@ -436,7 +482,12 @@ export const useStore = create<Store>()(
         }
       },
 
-      selectProject: (projectRoot) => set({ selectedProjectRoot: projectRoot }),
+      selectProject: (projectRoot) => set((state) => ({
+        selectedProjectRoot: projectRoot,
+        selectedProjectName: projectRoot
+          ? state.projects.find((p) => p.root === projectRoot)?.name ?? state.selectedProjectName
+          : null,
+      })),
 
       setSelectedTargets: (targetNames) =>
         set({ selectedTargetNames: targetNames }),
@@ -974,20 +1025,32 @@ _channel?.addEventListener('message', (event: MessageEvent) => {
 useStore.subscribe(
   (state) => ({
     projectRoot: state.selectedProjectRoot,
+    projectName: state.selectedProjectName,
     targetNames: state.selectedTargetNames,
   }),
   (current, previous) => {
-    if (
-      current.projectRoot === previous.projectRoot &&
-      arraysEqual(current.targetNames, previous.targetNames)
-    ) {
-      return;
+    const selectionChanged =
+      current.projectRoot !== previous.projectRoot ||
+      !arraysEqual(current.targetNames, previous.targetNames);
+
+    if (selectionChanged) {
+      postMessage({
+        type: 'selectionChanged',
+        projectRoot: current.projectRoot,
+        targetNames: current.targetNames,
+      });
     }
-    postMessage({
-      type: 'selectionChanged',
-      projectRoot: current.projectRoot,
-      targetNames: current.targetNames,
-    });
+
+    // Persist for next webview load — also fires when project name is
+    // resolved after discovery, even if root/targets didn't change.
+    if (selectionChanged || current.projectName !== previous.projectName) {
+      const api = getVsCodeApi();
+      api?.setState({
+        selectedProjectRoot: current.projectRoot,
+        selectedProjectName: current.projectName,
+        selectedTargetNames: current.targetNames,
+      });
+    }
   }
 );
 // Selectors for common derived state

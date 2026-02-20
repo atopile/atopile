@@ -773,11 +773,10 @@ class PCB_Transformer:
         text_o = GR_Text(
             text=text,
             at=at,
-            # TODO
-            # layer=kicad.pcb.TextLayer(layer, kicad.pcb.E_knockout.knockout)
-            # if knockout
-            # else kicad.pcb.TextLayer(layer),
-            layer=layer,
+            layer=kicad.pcb.TextLayer(
+                layer=layer,
+                knockout=kicad.pcb.E_knockout.KNOCKOUT if knockout else None,
+            ),
             effects=kicad.pcb.Effects(
                 font=font,
                 justify=alignment,
@@ -944,7 +943,7 @@ class PCB_Transformer:
             if keepout
             else None,
             connect_pads=kicad.pcb.ConnectPads(
-                mode=kicad.pcb.E_zone_connect_pads_mode.THERMAL_RELIEFS,
+                mode=None,
                 clearance=0.2,
             ),
             filled_polygon=[],

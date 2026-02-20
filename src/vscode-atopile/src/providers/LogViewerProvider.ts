@@ -3,51 +3,21 @@
  *
  * This provider is minimal - it just opens the webview and loads the UI.
  * All state management and backend communication happens in the React app.
- *
- * In development: Loads from Vite dev server (http://localhost:5173)
- * In production: Loads from compiled assets
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
-
-/**
- * Check if we're running in development mode.
- */
-function isDevelopmentMode(extensionPath: string): boolean {
-  const prodPath = path.join(extensionPath, 'resources', 'webviews', 'logViewer.js');
-  return !fs.existsSync(prodPath);
-}
-
-/**
- * Generate a nonce for Content Security Policy.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-function getWsOrigin(wsUrl: string): string {
-  try {
-    return new URL(wsUrl).origin;
-  } catch {
-    return wsUrl;
-  }
-}
+import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 
 export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
-  private _lastMode: 'dev' | 'prod' | null = null;
-  private _hasHtml: boolean = false;
+  private _hasHtml = false;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
 
@@ -70,36 +40,25 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
   private _refreshWebview(): void {
     if (!this._view) {
-      console.log('[LogViewerProvider] _refreshWebview called but no view');
       return;
     }
-
-    console.log('[LogViewerProvider] Refreshing webview with URLs:', {
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-      port: backendServer.port,
-      isConnected: backendServer.isConnected,
-    });
 
     const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
-    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
-      console.log('[LogViewerProvider] Skipping refresh (already loaded)', { mode });
+
+    // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
+    if (this._hasHtml && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
-    if (isDev) {
-      this._view.webview.html = this._getDevHtml();
-    } else {
-      this._view.webview.html = this._getProdHtml(this._view.webview);
-    }
+    this._view.webview.options = createWebviewOptions({
+      extensionPath,
+      port: backendServer.port,
+      prodLocalResourceRoots: LogViewerProvider.PROD_LOCAL_RESOURCE_ROOTS,
+    });
+    this._view.webview.html = this._getProdHtml(this._view.webview);
     this._hasHtml = true;
-    this._lastMode = mode;
     this._lastApiUrl = apiUrl;
     this._lastWsUrl = wsUrl;
   }
@@ -110,95 +69,11 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-
-    const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
-    const webviewOptions: vscode.WebviewOptions & {
-      retainContextWhenHidden?: boolean;
-    } = {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: isDev
-        ? []
-        : [
-            vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-            vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-          ],
-    };
-    webviewView.webview.options = webviewOptions;
-
-    if (isDev) {
-      webviewView.webview.html = this._getDevHtml();
-    } else {
-      webviewView.webview.html = this._getProdHtml(webviewView.webview);
-    }
-    this._hasHtml = true;
-    this._lastMode = mode;
-    this._lastApiUrl = backendServer.apiUrl;
-    this._lastWsUrl = backendServer.wsUrl;
+    this._refreshWebview();
   }
 
   /**
-   * Development HTML - loads from Vite dev server.
-   */
-  private _getDevHtml(): string {
-    const viteDevServer = 'http://localhost:5173';
-    const apiUrl = backendServer.apiUrl;
-    const wsUrl = backendServer.wsUrl;
-    const wsOrigin = getWsOrigin(wsUrl);
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    frame-src ${viteDevServer};
-    style-src 'unsafe-inline';
-    script-src 'unsafe-inline';
-    img-src https: http: data:;
-    connect-src ${viteDevServer} ${apiUrl} ${wsOrigin};
-  ">
-  <title>atopile Logs</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .dev-banner {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ff6b35;
-      color: white;
-      padding: 2px 8px;
-      font-size: 10px;
-      text-align: center;
-      z-index: 1000;
-    }
-  </style>
-</head>
-<body>
-  <div class="dev-banner">DEV MODE - Loading from Vite</div>
-  <iframe src="${viteDevServer}/logViewer.html"></iframe>
-</body>
-</html>`;
-  }
-
-  /**
-   * Production HTML - loads from compiled assets.
+   * Get the webview HTML - loads from compiled assets.
    */
   private _getProdHtml(webview: vscode.Webview): string {
     const extensionPath = this._extensionUri.fsPath;

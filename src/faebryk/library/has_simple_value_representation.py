@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -261,6 +263,17 @@ class has_simple_value_representation(fabll.Node):
         )
 
 
+# TODO: move to global fixtures
+@pytest.fixture()
+def setup_project_config(tmp_path):
+    from atopile.config import ProjectConfig, ProjectPaths, config
+
+    config.project = ProjectConfig.skeleton(
+        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+    )
+    yield
+
+
 class TestHasSimpleValueRepresentation:
     def test_repr_chain_basic(self):
         import faebryk.library._F as F
@@ -321,6 +334,7 @@ class TestHasSimpleValueRepresentation:
         val = m._simple_repr.get().get_value()
         assert val == "TM {10..20}V 5A P2 10V P3"
 
+    @pytest.mark.usefixtures("setup_project_config")
     def test_repr_with_picked_attributes(self, monkeypatch):
         from unittest.mock import Mock
 

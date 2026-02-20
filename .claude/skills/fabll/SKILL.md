@@ -1,6 +1,6 @@
 ---
-name: FabLL
-description: "How FabLL (faebryk.core.node) maps Python node/trait declarations into the TypeGraph + instance graph, including field/trait invariants and instantiation patterns."
+name: fabll
+description: "How FabLL (faebryk.core.node) maps Python node/trait declarations into the TypeGraph + instance graph, including field/trait invariants and instantiation patterns. Use when defining new components or traits, working with the Node API, or understanding type registration."
 ---
 
 # FabLL (Fabric Low Level) Module
