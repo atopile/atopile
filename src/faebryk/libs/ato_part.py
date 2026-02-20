@@ -23,7 +23,12 @@ from faebryk.libs.kicad.fileformats import (
     kicad,
 )
 from faebryk.libs.picker.picker import PickedPart
-from faebryk.libs.util import ConfigFlag, compare_dataclasses, starts_or_ends_replace
+from faebryk.libs.util import (
+    ConfigFlag,
+    compare_dataclasses,
+    sanitize_filepath_part,
+    starts_or_ends_replace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +80,9 @@ class AtoPart:
     def model_path(self) -> Path:
         if not self.model:
             raise ValueError("Model is not set")
-        return self.path / self.model.filename
+        raw_name = Path(self.model.filename)
+        sanitized_name = sanitize_filepath_part(raw_name.stem) + raw_name.suffix
+        return self.path / sanitized_name
 
     def generate_import_statement(self, src_path: Path) -> str:
         import_path = self.ato_path.relative_to(src_path)
@@ -83,11 +90,14 @@ class AtoPart:
 
     def __post_init__(self):
         self.fp = kicad.copy(self.fp)
-        self.fp.footprint.name = (
-            f"{self.identifier}:{kicad.fp_get_base_name(self.fp.footprint)}"
+        sanitized_fp_name = sanitize_filepath_part(
+            kicad.fp_get_base_name(self.fp.footprint)
         )
+        self.fp.footprint.name = f"{self.identifier}:{sanitized_fp_name}"
 
         self.symbol = kicad.copy(self.symbol)
+        for sym in self.symbol.kicad_sym.symbols:
+            sym.name = sanitize_filepath_part(sym.name)
 
         if self.model:
             rel_path = Gcfg.project.get_relative_to_kicad_project(self.model_path)
@@ -345,3 +355,58 @@ class AtoPart:
         out.verify_checksum(ato.ato)
 
         return out
+
+    @staticmethod
+    def _sanitize_kicad_filename(name: str) -> str:
+        """Sanitize a KiCad filename (e.g. ``SOT-23.kicad_mod``) preserving
+        the extension."""
+        p = Path(name)
+        return sanitize_filepath_part(p.stem) + p.suffix
+
+    @staticmethod
+    def migrate_filenames(part_dir: Path) -> bool:
+        """Rename unsanitized KiCad files inside *part_dir* and update the
+        ``.ato`` manifest so it references the new names.
+
+        Returns ``True`` if anything was changed, ``False`` otherwise.
+        """
+        ato_file = part_dir / (part_dir.name + ".ato")
+        if not ato_file.exists():
+            return False
+
+        ato = AtoCodeParse.ComponentFile(ato_file)
+        atomic_trait = ato.try_get_trait(F.is_atomic_part)
+        if atomic_trait is None:
+            return False
+
+        # Collect (old_name, new_name) pairs for files that need renaming
+        renames: list[tuple[str, str]] = []
+        for old_name in (
+            atomic_trait.get_footprint(),
+            atomic_trait.get_symbol(),
+            atomic_trait.get_model(),
+        ):
+            if old_name is None:
+                continue
+            new_name = AtoPart._sanitize_kicad_filename(old_name)
+            if old_name != new_name:
+                renames.append((old_name, new_name))
+
+        if not renames:
+            return False
+
+        # Rename files on disk
+        for old_name, new_name in renames:
+            old_path = part_dir / old_name
+            new_path = part_dir / new_name
+            if old_path.exists() and not new_path.exists():
+                old_path.rename(new_path)
+
+        # Update the filenames referenced in the .ato manifest
+        content = ato_file.read_text(encoding="utf-8")
+        for old_name, new_name in renames:
+            content = content.replace(old_name, new_name)
+        ato_file.write_text(content, encoding="utf-8")
+
+        logger.info("Migrated filenames in %s: %s", part_dir.name, renames)
+        return True
