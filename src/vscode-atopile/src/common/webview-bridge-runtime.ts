@@ -187,38 +187,6 @@ export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): str
           get: function() { return target._readyState; },
         });
         return target;
-      }
-
-      function resolveFallbackWsUrl(url) {
-        try {
-          var parsed = new URL(url, window.location.href);
-          if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
-            return url;
-          }
-
-          var parentOrigin = '';
-          try {
-            var params = new URLSearchParams(window.location.search);
-            parentOrigin = params.get('parentOrigin') || '';
-            if (parentOrigin) parentOrigin = decodeURIComponent(parentOrigin);
-          } catch {}
-
-          if (!parentOrigin && document.referrer) {
-            try {
-              parentOrigin = new URL(document.referrer).origin;
-            } catch {}
-          }
-
-          if (!parentOrigin) {
-            return url;
-          }
-
-          var parent = new URL(parentOrigin);
-          var wsProtocol = parent.protocol === 'https:' ? 'wss:' : 'ws:';
-          return wsProtocol + '//' + parent.host + parsed.pathname + parsed.search;
-        } catch {
-          return url;
-        }
       }`;
 
   // ── Fetch proxy ──────────────────────────────────────────────────
@@ -272,24 +240,18 @@ export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): str
           if (!api) {
             clearTimeout(timeout);
             pendingFetch.delete(id);
-            originalFetch.apply(window, [input, init]).then(resolve, reject);
+            reject(new TypeError('[atopile] VS Code API not available for fetch proxy'));
             return;
           }
 
-          try {
-            api.postMessage({
-              type: 'fetchProxy',
-              id: id,
-              url: url,
-              method: (init && init.method) || 'GET',
-              headers: normalizeHeaders(init && init.headers),
-              body: (init && init.body) || null,
-            });
-          } catch {
-            clearTimeout(timeout);
-            pendingFetch.delete(id);
-            originalFetch.apply(window, [input, init]).then(resolve, reject);
-          }
+          api.postMessage({
+            type: 'fetchProxy',
+            id: id,
+            url: url,
+            method: (init && init.method) || 'GET',
+            headers: normalizeHeaders(init && init.headers),
+            body: (init && init.body) || null,
+          });
         });
       };`;
   } else {
@@ -351,7 +313,6 @@ export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): str
   const wsBlock = `
       var wsProxyId = 0;
       var wsProxyInstances = new Map();
-      var NativeWebSocket = window.WebSocket;
 
       window.addEventListener('message', function(event) {
         var msg = event.data;
@@ -391,29 +352,13 @@ export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): str
 
       function ProxyWebSocket(url, protocols) {
         var api = getVsCodeApi();
-        if (!api && typeof NativeWebSocket === 'function') {
-          var fallbackUrl = resolveFallbackWsUrl(url);
-          return protocols !== undefined
-            ? new NativeWebSocket(fallbackUrl, protocols)
-            : new NativeWebSocket(fallbackUrl);
+        if (!api) {
+          throw new Error('[atopile] VS Code API not available for WebSocket proxy');
         }
-
         var id = ++wsProxyId;
         var target = createProxySocket(url, id);
         wsProxyInstances.set(id, target);
-        if (api) {
-          try {
-            api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
-          } catch {
-            wsProxyInstances.delete(id);
-            if (typeof NativeWebSocket === 'function') {
-              var fallbackUrl = resolveFallbackWsUrl(url);
-              return protocols !== undefined
-                ? new NativeWebSocket(fallbackUrl, protocols)
-                : new NativeWebSocket(fallbackUrl);
-            }
-          }
-        }
+        api.postMessage({ type: 'wsProxyConnect', id: id, url: url });
         return target;
       }
       ProxyWebSocket.CONNECTING = 0;
