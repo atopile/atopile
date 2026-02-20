@@ -281,6 +281,12 @@ export interface AtopileSettingsResponseMessage {
   };
 }
 
+export interface BackendStatusMessage {
+  type: 'backendStatus';
+  serverState: string;
+  isConnected: boolean;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -293,7 +299,8 @@ export type ExtensionToWebviewMessage =
   | ServerReadyMessage
   | FilesListedMessage
   | DirectoryLoadedMessage
-  | AtopileSettingsResponseMessage;
+  | AtopileSettingsResponseMessage
+  | BackendStatusMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;

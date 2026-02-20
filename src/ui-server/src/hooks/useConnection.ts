@@ -4,7 +4,7 @@
 
 import { useEffect } from 'react';
 import { useStore } from '../store';
-import { connect, disconnect, isConnected, sendAction } from '../api/websocket';
+import { connect, disconnect, isConnected, sendAction, notifyBackendStatus } from '../api/websocket';
 import { initExtensionMessageListener, onExtensionMessage, postMessage } from '../api/vscodeApi';
 
 // Track pending glb-only builds to report success/failure to extension
@@ -160,6 +160,13 @@ export function useConnection() {
             installProgress: null,
             error: message.error || 'Failed to switch atopile version',
           });
+          break;
+        case 'backendStatus':
+          // Forward backend state to WebSocket module for reconnection coordination
+          notifyBackendStatus(
+            typeof message.serverState === 'string' ? message.serverState : 'running',
+            message.isConnected === true
+          );
           break;
         case 'activeFile': {
           const filePath = message.filePath ?? null;

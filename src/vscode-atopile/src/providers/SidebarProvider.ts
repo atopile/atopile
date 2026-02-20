@@ -3,6 +3,13 @@
  *
  * This provider is minimal - it just opens the webview and loads the UI.
  * All state management and backend communication happens in the React app.
+ *
+ * Heavy logic is delegated to focused modules in ./sidebar/:
+ * - types.ts: Message interfaces
+ * - file-watcher.ts: File system watching
+ * - file-operations.ts: File CRUD + listing
+ * - action-handlers.ts: Open signals, KiCad, 3D, selection
+ * - settings-handlers.ts: Atopile settings sync + browse dialogs
  */
 
 import * as vscode from 'vscode';
@@ -10,212 +17,16 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
-import { getWorkspaceSettings } from '../common/settings';
-import { getProjectRoot } from '../common/utilities';
-import { openPcb } from '../common/kicad';
-import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
-import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
-import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
-import { type Build, loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
-import { openLayoutEditor } from '../ui/layout-editor';
-import { openMigratePreview } from '../ui/migrate';
-import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 import { WebviewProxyBridge } from '../common/webview-bridge';
-import type { FetchProxyRequest, WsProxyConnect, WsProxySend, WsProxyClose } from '../common/webview-bridge';
 import { generateBridgeRuntime } from '../common/webview-bridge-runtime';
-
-// Message types from the webview
-interface OpenSignalsMessage {
-  type: 'openSignals';
-  openFile?: string | null;
-  openFileLine?: number | null;
-  openFileColumn?: number | null;
-  openLayout?: string | null;
-  openKicad?: string | null;
-  open3d?: string | null;
-}
-
-interface ConnectionStatusMessage {
-  type: 'connectionStatus';
-  isConnected: boolean;
-}
-
-interface AtopileSettingsMessage {
-  type: 'atopileSettings';
-  atopile: {
-    source?: string;
-    localPath?: string | null;
-  };
-}
-
-interface SelectionChangedMessage {
-  type: 'selectionChanged';
-  projectRoot: string | null;
-  targetNames: string[];
-}
-
-interface BrowseAtopilePathMessage {
-  type: 'browseAtopilePath';
-}
-
-interface BrowseProjectPathMessage {
-  type: 'browseProjectPath';
-}
-
-interface BrowseExportDirectoryMessage {
-  type: 'browseExportDirectory';
-}
-
-interface OpenSourceControlMessage {
-  type: 'openSourceControl';
-}
-
-interface ShowProblemsMessage {
-  type: 'showProblems';
-}
-
-interface ShowInfoMessage {
-  type: 'showInfo';
-  message: string;
-}
-
-interface ShowErrorMessage {
-  type: 'showError';
-  message: string;
-}
-
-interface ReloadWindowMessage {
-  type: 'reloadWindow';
-}
-
-interface ShowLogsMessage {
-  type: 'showLogs';
-}
-
-interface ShowBuildLogsMessage {
-  type: 'showBuildLogs';
-}
-
-interface ShowBackendMenuMessage {
-  type: 'showBackendMenu';
-}
-
-interface OpenInSimpleBrowserMessage {
-  type: 'openInSimpleBrowser';
-  url: string;
-}
-
-interface RevealInFinderMessage {
-  type: 'revealInFinder';
-  path: string;
-}
-
-interface RenameFileMessage {
-  type: 'renameFile';
-  oldPath: string;
-  newPath: string;
-}
-
-interface DeleteFileMessage {
-  type: 'deleteFile';
-  path: string;
-}
-
-interface CreateFileMessage {
-  type: 'createFile';
-  path: string;
-}
-
-interface CreateFolderMessage {
-  type: 'createFolder';
-  path: string;
-}
-
-interface DuplicateFileMessage {
-  type: 'duplicateFile';
-  sourcePath: string;
-  destPath: string;
-  newRelativePath: string;
-}
-
-interface OpenInTerminalMessage {
-  type: 'openInTerminal';
-  path: string;
-}
-
-interface ListFilesMessage {
-  type: 'listFiles';
-  projectRoot: string;
-  includeAll?: boolean;
-}
-
-interface LoadDirectoryMessage {
-  type: 'loadDirectory';
-  projectRoot: string;
-  directoryPath: string;  // Relative path to directory
-}
-
-interface GetAtopileSettingsMessage {
-  type: 'getAtopileSettings';
-}
-
-interface ThreeDModelBuildResultMessage {
-  type: 'threeDModelBuildResult';
-  success: boolean;
-  error?: string | null;
-}
-
-interface WebviewReadyMessage {
-  type: 'webviewReady';
-}
-
-interface WebviewDiagnosticMessage {
-  type: 'webviewDiagnostic';
-  phase: string;
-  detail?: string;
-}
-
-interface OpenMigrateTabMessage {
-  type: 'openMigrateTab';
-  projectRoot: string;
-}
-
-type WebviewMessage =
-  | OpenSignalsMessage
-  | ConnectionStatusMessage
-  | AtopileSettingsMessage
-  | SelectionChangedMessage
-  | BrowseAtopilePathMessage
-  | BrowseProjectPathMessage
-  | BrowseExportDirectoryMessage
-  | OpenSourceControlMessage
-  | ShowProblemsMessage
-  | ShowInfoMessage
-  | ShowErrorMessage
-  | ReloadWindowMessage
-  | ShowLogsMessage
-  | ShowBuildLogsMessage
-  | ShowBackendMenuMessage
-  | OpenInSimpleBrowserMessage
-  | RevealInFinderMessage
-  | RenameFileMessage
-  | DeleteFileMessage
-  | CreateFileMessage
-  | CreateFolderMessage
-  | DuplicateFileMessage
-  | OpenInTerminalMessage
-  | ListFilesMessage
-  | LoadDirectoryMessage
-  | GetAtopileSettingsMessage
-  | FetchProxyRequest
-  | ThreeDModelBuildResultMessage
-  | WebviewReadyMessage
-  | WebviewDiagnosticMessage
-  | OpenMigrateTabMessage
-  | WsProxyConnect
-  | WsProxySend
-  | WsProxyClose;
+import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
+import { openMigratePreview } from '../ui/migrate';
+import type { WebviewMessage } from './sidebar/types';
+import { SidebarFileWatcher } from './sidebar/file-watcher';
+import { SidebarFileOperations } from './sidebar/file-operations';
+import { SidebarActionHandlers } from './sidebar/action-handlers';
+import { SidebarSettingsHandlers } from './sidebar/settings-handlers';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -233,21 +44,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
-  private _lastAtopileSettingsKey: string | null = null;
-  private _bridge: WebviewProxyBridge;
-  private _fileWatcher?: vscode.FileSystemWatcher;
-  private _watchedProjectRoot: string | null = null;
-  private _fileChangeDebounce: NodeJS.Timeout | null = null;
+
+  // Delegated modules
+  private readonly _bridge: WebviewProxyBridge;
+  private readonly _fileWatcher: SidebarFileWatcher;
+  private readonly _fileOps: SidebarFileOperations;
+  private readonly _actions: SidebarActionHandlers;
+  private readonly _settings: SidebarSettingsHandlers;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _extensionVersion: string,
     private readonly _activationTime: number = Date.now()
   ) {
+    const postToWebview = (msg: Record<string, unknown>) => this._postToWebview(msg);
+
     this._bridge = new WebviewProxyBridge({
-      postToWebview: (msg) => this._postToWebview(msg),
+      postToWebview,
       logTag: 'SidebarProvider',
     });
+    this._fileWatcher = new SidebarFileWatcher({ postToWebview });
+    this._fileOps = new SidebarFileOperations({
+      postToWebview,
+      notifyFilesChanged: () => this._fileWatcher.notifyFilesChanged(),
+    });
+    this._actions = new SidebarActionHandlers({
+      onProjectSelected: (root) => root ? this._fileWatcher.watch(root) : this._fileWatcher.unwatch(),
+    });
+    this._settings = new SidebarSettingsHandlers({ postToWebview });
+
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
         if (connected) {
@@ -277,7 +102,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
           traceInfo('[SidebarProvider] Atopile settings changed, notifying webview');
-          this._sendAtopileSettings();
+          this._settings.sendAtopileSettings();
         }
       })
     );
@@ -288,88 +113,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       d.dispose();
     }
     this._disposables = [];
-    this._disposeFileWatcher();
+    this._fileWatcher.dispose();
     this._bridge.dispose();
-  }
-
-  private _disposeFileWatcher(): void {
-    if (this._fileWatcher) {
-      this._fileWatcher.dispose();
-      this._fileWatcher = undefined;
-    }
-    if (this._fileChangeDebounce) {
-      clearTimeout(this._fileChangeDebounce);
-      this._fileChangeDebounce = null;
-    }
-  }
-
-  /**
-   * Set up a file watcher for the given project root.
-   * Notifies the webview when files change so it can refresh.
-   */
-  private _setupFileWatcher(projectRoot: string): void {
-    // Skip if already watching this project
-    if (this._watchedProjectRoot === projectRoot && this._fileWatcher) {
-      return;
-    }
-
-    // Dispose existing watcher
-    this._disposeFileWatcher();
-    this._watchedProjectRoot = projectRoot;
-
-    // Watch all files in the project
-    const pattern = new vscode.RelativePattern(projectRoot, '**/*');
-    this._fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-
-    // Debounced notification to avoid flooding on bulk operations
-    const notifyChange = (uri: vscode.Uri) => {
-      // Ignore changes in .git directory
-      const relativePath = uri.fsPath.substring(projectRoot.length);
-      if (relativePath.includes('/.git/') || relativePath.includes('\\.git\\')) {
-        return;
-      }
-
-      if (this._fileChangeDebounce) {
-        clearTimeout(this._fileChangeDebounce);
-      }
-      this._fileChangeDebounce = setTimeout(() => {
-        traceInfo(`[SidebarProvider] Files changed in ${projectRoot}`);
-        this._view?.webview.postMessage({
-          type: 'filesChanged',
-          projectRoot,
-        });
-      }, 300); // 300ms debounce
-    };
-
-    this._fileWatcher.onDidCreate(notifyChange);
-    this._fileWatcher.onDidDelete(notifyChange);
-    this._fileWatcher.onDidChange(() => {
-      // Don't notify on content changes, only create/delete/rename
-      // Renames appear as delete + create, so they're covered
-    });
-
-    traceInfo(`[SidebarProvider] File watcher set up for ${projectRoot}`);
-  }
-
-  /**
-   * Notify the webview that files have changed so it refreshes the file explorer.
-   * Called after file operations to avoid relying solely on FileSystemWatcher
-   * (which can silently fail in Docker/containerized environments due to inotify limits).
-   */
-  private _notifyFilesChanged(): void {
-    if (this._watchedProjectRoot && this._view) {
-      // Debounce to coalesce rapid operations (e.g. bulk delete)
-      if (this._fileChangeDebounce) {
-        clearTimeout(this._fileChangeDebounce);
-      }
-      this._fileChangeDebounce = setTimeout(() => {
-        traceInfo(`[SidebarProvider] Notifying webview of file changes in ${this._watchedProjectRoot}`);
-        this._view?.webview.postMessage({
-          type: 'filesChanged',
-          projectRoot: this._watchedProjectRoot,
-        });
-      }, 300);
-    }
   }
 
   private _refreshWebview(): void {
@@ -415,40 +160,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     // Listen to VS Code workspace file events as a fallback for file system
     // watcher failures in containerized environments (Docker, Fly.io).
-    // These fire for operations through VS Code's native UI and workspace API.
     this._disposables.push(
-      vscode.workspace.onDidCreateFiles(() => this._notifyFilesChanged()),
-      vscode.workspace.onDidDeleteFiles(() => this._notifyFilesChanged()),
-      vscode.workspace.onDidRenameFiles(() => this._notifyFilesChanged()),
+      vscode.workspace.onDidCreateFiles(() => this._fileWatcher.notifyFilesChanged()),
+      vscode.workspace.onDidDeleteFiles(() => this._fileWatcher.notifyFilesChanged()),
+      vscode.workspace.onDidRenameFiles(() => this._fileWatcher.notifyFilesChanged()),
     );
 
     this._refreshWebview();
     this._postWorkspaceRoot();
     this._postActiveFile(vscode.window.activeTextEditor);
-    this._sendAtopileSettings();
+    this._settings.sendAtopileSettings();
   }
 
-  /**
-   * Get workspace folder path synchronously (for HTML generation).
-   * Just returns the first workspace folder.
-   */
+  // ── Workspace helpers ──────────────────────────────────────────────
+
   private _getWorkspaceRootSync(): string | null {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return null;
     return folders[0].uri.fsPath;
   }
 
-  /**
-   * Get workspace folder path, preferring folders with atopile projects.
-   */
   private async _getWorkspaceRoot(): Promise<string | null> {
-    // Prefer workspace folders that contain atopile projects (ato.yaml)
     const atopileWorkspaces = await getAtopileWorkspaceFolders();
     if (atopileWorkspaces.length > 0) {
       return atopileWorkspaces[0].uri.fsPath;
     }
-
-    // Fall back to first workspace folder
     return this._getWorkspaceRootSync();
   }
 
@@ -464,9 +200,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view.webview.postMessage({ type: 'workspace-root', root });
   }
 
-  /**
-   * Post the active file to the webview so the Structure panel can track it.
-   */
   private _postActiveFile(editor?: vscode.TextEditor): void {
     if (!this._view) {
       return;
@@ -476,9 +209,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view.webview.postMessage({ type: 'activeFile', filePath });
   }
 
-  /**
-   * Post a message to the webview.
-   */
   private _postToWebview(message: Record<string, unknown>): void {
     if (!this._view) {
       traceVerbose('[SidebarProvider] Cannot post message - no view');
@@ -487,66 +217,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view.webview.postMessage(message);
   }
 
-  /**
-   * Send current atopile settings to the webview.
-   * Used to initialize the toggle state correctly.
-   */
-  private async _sendAtopileSettings(): Promise<void> {
-    try {
-      const projectRoot = await getProjectRoot();
-      const settings = await getWorkspaceSettings(projectRoot);
-      traceInfo(`[SidebarProvider] Sending atopile settings: ato=${settings.ato}, from=${settings.from}`);
-      this._postToWebview({
-        type: 'atopileSettingsResponse',
-        settings: {
-          atoPath: settings.ato || null,
-          fromSpec: settings.from || null,
-        },
-      });
-    } catch (error) {
-      traceError(`[SidebarProvider] Error getting atopile settings: ${error}`);
-      this._postToWebview({
-        type: 'atopileSettingsResponse',
-        settings: {
-          atoPath: null,
-          fromSpec: null,
-        },
-      });
-    }
-  }
+  // ── Message routing ────────────────────────────────────────────────
 
-  /**
-   * Handle messages from the webview (forwarded from ui-server via postMessage).
-   */
   private _handleWebviewMessage(message: WebviewMessage): void {
     // Proxy messages (fetch, WebSocket) are handled by the shared bridge
     if (this._bridge.handleMessage(message)) return;
 
     switch (message.type) {
       case 'openSignals':
-        this._handleOpenSignals(message);
+        this._actions.handleOpenSignals(message);
         break;
       case 'connectionStatus':
         backendServer.setConnected(message.isConnected);
         break;
       case 'atopileSettings':
-        // Handle async - fire and forget but log errors
-        this._handleAtopileSettings(message.atopile).catch((error) => {
+        this._settings.handleAtopileSettings(message.atopile).catch((error) => {
           traceError(`[SidebarProvider] Error handling atopile settings: ${error}`);
         });
         break;
       case 'browseAtopilePath':
-        this._handleBrowseAtopilePath().catch((error) => {
+        this._settings.browseAtopilePath().catch((error) => {
           traceError(`[SidebarProvider] Error browsing atopile path: ${error}`);
         });
         break;
       case 'browseProjectPath':
-        this._handleBrowseProjectPath().catch((error) => {
+        this._settings.browseProjectPath().catch((error) => {
           traceError(`[SidebarProvider] Error browsing project path: ${error}`);
         });
         break;
       case 'browseExportDirectory':
-        this._handleBrowseExportDirectory().catch((error) => {
+        this._settings.browseExportDirectory().catch((error) => {
           traceError(`[SidebarProvider] Error browsing export directory: ${error}`);
         });
         break;
@@ -559,10 +259,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'showInfo':
         void vscode.window.showInformationMessage(message.message);
         break;
-      case 'webviewReady': {
+      case 'webviewReady':
         traceMilestone('sidebar webview ready');
         break;
-      }
       case 'webviewDiagnostic': {
         const detail = message.detail ? `: ${message.detail}` : '';
         traceInfo(`[SidebarProvider][webview] ${message.phase}${detail}`);
@@ -572,15 +271,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.window.showErrorMessage(message.message);
         break;
       case 'selectionChanged':
-        void this._handleSelectionChanged(message);
+        void this._actions.handleSelectionChanged(message);
         break;
       case 'reloadWindow':
-        // Reload the VS Code window to apply new atopile settings
         vscode.commands.executeCommand('workbench.action.reloadWindow');
         break;
       case 'getAtopileSettings':
-        // Send current atopile settings to the webview
-        this._sendAtopileSettings();
+        this._settings.sendAtopileSettings();
         break;
       case 'showLogs':
         backendServer.showLogs();
@@ -595,166 +292,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);
         break;
       case 'revealInFinder':
-        // Reveal file in OS file explorer (Finder on Mac, Explorer on Windows)
-        void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
+        this._fileOps.revealInFinder(message.path);
         break;
       case 'renameFile':
-        // Rename file using workspace.fs
-        {
-          const oldUri = vscode.Uri.file(message.oldPath);
-          const newUri = vscode.Uri.file(message.newPath);
-          vscode.workspace.fs.rename(oldUri, newUri).then(
-            () => {
-              traceInfo(`[SidebarProvider] Renamed ${message.oldPath} to ${message.newPath}`);
-              this._notifyFilesChanged();
-            },
-            (err) => {
-              traceError(`[SidebarProvider] Failed to rename file: ${err}`);
-              vscode.window.showErrorMessage(`Failed to rename: ${err.message || err}`);
-            }
-          );
-        }
+        this._fileOps.renameFile(message.oldPath, message.newPath);
         break;
       case 'deleteFile':
-        // Delete file with confirmation
-        {
-          const deleteUri = vscode.Uri.file(message.path);
-          const fileName = path.basename(message.path);
-          vscode.window.showWarningMessage(
-            `Are you sure you want to delete "${fileName}"?`,
-            { modal: true },
-            'Delete'
-          ).then((choice) => {
-            if (choice === 'Delete') {
-              vscode.workspace.fs.delete(deleteUri, { recursive: true, useTrash: true }).then(
-                () => {
-                  traceInfo(`[SidebarProvider] Deleted ${message.path}`);
-                  this._notifyFilesChanged();
-                },
-                (err) => {
-                  traceError(`[SidebarProvider] Failed to delete file: ${err}`);
-                  vscode.window.showErrorMessage(`Failed to delete: ${err.message || err}`);
-                }
-              );
-            }
-          });
-        }
+        this._fileOps.deleteFile(message.path);
         break;
       case 'createFile':
-        // Create new file - open input box for name
-        {
-          vscode.window.showInputBox({
-            prompt: 'Enter the file name',
-            placeHolder: 'filename.ato',
-            validateInput: (value) => {
-              if (!value || !value.trim()) {
-                return 'File name cannot be empty';
-              }
-              if (value.includes('/') || value.includes('\\')) {
-                return 'File name cannot contain path separators';
-              }
-              return null;
-            }
-          }).then((fileName) => {
-            if (fileName) {
-              const newFilePath = path.join(message.path, fileName);
-              const newUri = vscode.Uri.file(newFilePath);
-              vscode.workspace.fs.writeFile(newUri, new Uint8Array()).then(
-                () => {
-                  traceInfo(`[SidebarProvider] Created file ${newFilePath}`);
-                  this._notifyFilesChanged();
-                  // Open the new file
-                  vscode.workspace.openTextDocument(newUri).then((doc) => {
-                    vscode.window.showTextDocument(doc);
-                  });
-                },
-                (err) => {
-                  traceError(`[SidebarProvider] Failed to create file: ${err}`);
-                  vscode.window.showErrorMessage(`Failed to create file: ${err.message || err}`);
-                }
-              );
-            }
-          });
-        }
+        this._fileOps.createFile(message.path);
         break;
       case 'createFolder':
-        // Create new folder - open input box for name
-        {
-          vscode.window.showInputBox({
-            prompt: 'Enter the folder name',
-            placeHolder: 'new-folder',
-            validateInput: (value) => {
-              if (!value || !value.trim()) {
-                return 'Folder name cannot be empty';
-              }
-              if (value.includes('/') || value.includes('\\')) {
-                return 'Folder name cannot contain path separators';
-              }
-              return null;
-            }
-          }).then((folderName) => {
-            if (folderName) {
-              const newFolderPath = path.join(message.path, folderName);
-              const newUri = vscode.Uri.file(newFolderPath);
-              vscode.workspace.fs.createDirectory(newUri).then(
-                () => {
-                  traceInfo(`[SidebarProvider] Created folder ${newFolderPath}`);
-                  this._notifyFilesChanged();
-                },
-                (err) => {
-                  traceError(`[SidebarProvider] Failed to create folder: ${err}`);
-                  vscode.window.showErrorMessage(`Failed to create folder: ${err.message || err}`);
-                }
-              );
-            }
-          });
-        }
+        this._fileOps.createFolder(message.path);
         break;
       case 'duplicateFile':
-        // Duplicate a file or folder
-        {
-          const sourceUri = vscode.Uri.file(message.sourcePath);
-          const destUri = vscode.Uri.file(message.destPath);
-          vscode.workspace.fs.copy(sourceUri, destUri, { overwrite: false }).then(
-            () => {
-              traceInfo(`[SidebarProvider] Duplicated ${message.sourcePath} to ${message.destPath}`);
-              this._notifyFilesChanged();
-              // Notify webview to start rename mode on the new file
-              this._view?.webview.postMessage({
-                type: 'fileDuplicated',
-                newRelativePath: message.newRelativePath,
-              });
-            },
-            (err) => {
-              traceError(`[SidebarProvider] Failed to duplicate: ${err}`);
-              vscode.window.showErrorMessage(`Failed to duplicate: ${err.message || err}`);
-            }
-          );
-        }
+        this._fileOps.duplicateFile(message.sourcePath, message.destPath, message.newRelativePath);
         break;
       case 'openInTerminal':
-        // Open terminal at the specified path
-        {
-          const terminal = vscode.window.createTerminal({
-            cwd: message.path,
-            name: `Terminal: ${path.basename(message.path)}`,
-          });
-          terminal.show();
-          traceInfo(`[SidebarProvider] Opened terminal at ${message.path}`);
-        }
+        this._fileOps.openInTerminal(message.path);
         break;
       case 'listFiles':
-        // List files in a project directory
-        this._handleListFiles(message.projectRoot, message.includeAll ?? true);
+        this._fileOps.listFiles(message.projectRoot, message.includeAll ?? true);
         break;
       case 'loadDirectory':
-        // Load contents of a lazy-loaded directory
-        this._handleLoadDirectory(message.projectRoot, message.directoryPath);
+        this._fileOps.loadDirectory(message.projectRoot, message.directoryPath);
         break;
       case 'threeDModelBuildResult':
-        // Handle 3D model build result from webview
-        traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
-        handleThreeDModelBuildResult(message.success, message.error);
+        this._actions.handleThreeDModelBuildResult(message.success, message.error);
         break;
       case 'openMigrateTab':
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
@@ -765,601 +330,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
-    const projectRoot = message.projectRoot ?? null;
-    setProjectRoot(projectRoot ?? undefined);
+  // ── HTML generation ────────────────────────────────────────────────
 
-    // Set up file watcher for the selected project
-    if (projectRoot) {
-      this._setupFileWatcher(projectRoot);
-    } else {
-      this._disposeFileWatcher();
-      this._watchedProjectRoot = null;
-    }
-
-    await loadBuilds();
-    const builds = getBuilds();
-    const projectBuilds = projectRoot ? builds.filter((build) => build.root === projectRoot) : [];
-    const selectedBuilds = message.targetNames.length
-      ? projectBuilds.filter((build) => message.targetNames.includes(build.name))
-      : [];
-    setSelectedTargets(selectedBuilds);
-
-    // If the 3D model viewer is open, prepare viewer for the new target
-    if (isModelViewerOpen() && selectedBuilds.length > 0) {
-      const build = selectedBuilds[0];
-      if (build?.root && build?.name && build?.model_path) {
-        traceInfo(`[SidebarProvider] 3D viewer open, preparing viewer for new target: ${build.name}`);
-
-        prepareThreeDViewer(build.model_path, () => {
-          backendServer.sendToWebview({
-            type: 'triggerBuild',
-            projectRoot: build.root,
-            targets: [build.name],
-            includeTargets: ['glb-only'],
-            excludeTargets: ['default'],
-          });
-        });
-
-        await openModelViewerPreview();
-      }
-    }
-  }
-
-  /**
-   * Handle open signals from the backend.
-   */
-  private _handleOpenSignals(msg: OpenSignalsMessage): void {
-    if (msg.openFile) {
-      this._openFile(msg.openFile, msg.openFileLine ?? undefined, msg.openFileColumn ?? undefined);
-    }
-    if (msg.openLayout) {
-      this._openLayoutPreview(msg.openLayout);
-    }
-    if (msg.openKicad) {
-      this._openWithKicad(msg.openKicad);
-    }
-    if (msg.open3d) {
-      void this._open3dPreview(msg.open3d);
-    }
-  }
-
-  /**
-   * Open a file in VS Code at a specific line and column.
-   */
-  private _openFile(filePath: string, line?: number, column?: number): void {
-    traceInfo(`[SidebarProvider] Opening file: ${filePath}${line ? `:${line}` : ''}`);
-    const uri = vscode.Uri.file(filePath);
-    vscode.workspace.openTextDocument(uri).then(
-      (doc) => {
-        const options: vscode.TextDocumentShowOptions = {};
-        if (line != null) {
-          const position = new vscode.Position(Math.max(0, line - 1), column ?? 0);
-          options.selection = new vscode.Range(position, position);
-        }
-        vscode.window.showTextDocument(doc, options);
-      },
-      (err) => {
-        traceError(`[SidebarProvider] Failed to open file ${filePath}: ${err}`);
-      }
-    );
-  }
-
-  private _findFirstFileByExt(dirPath: string, ext: string): string | null {
-    try {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.toLowerCase().endsWith(ext)) {
-          return path.join(dirPath, entry.name);
-        }
-      }
-    } catch (error) {
-      traceError(`[SidebarProvider] Failed to read directory ${dirPath}: ${error}`);
-    }
-    return null;
-  }
-
-  private _resolveFilePath(filePath: string, ext: string): string | null {
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-    try {
-      const stat = fs.statSync(filePath);
-      if (stat.isFile()) {
-        return filePath.toLowerCase().endsWith(ext) ? filePath : null;
-      }
-      if (stat.isDirectory()) {
-        return this._findFirstFileByExt(filePath, ext);
-      }
-    } catch (error) {
-      traceError(`[SidebarProvider] Failed to stat ${filePath}: ${error}`);
-    }
-    return null;
-  }
-
-  private _openLayoutPreview(_filePath: string): void {
-    // The server already loaded the PCB via the openLayout action.
-    // Just open the editor webview.
-    void openLayoutEditor();
-  }
-
-  private _openWithKicad(filePath: string): void {
-    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
-    if (!pcbPath) {
-      traceError(`[SidebarProvider] KiCad layout file not found: ${filePath}`);
-      vscode.window.showErrorMessage('KiCad layout file not found. Run a build to generate it.');
-      return;
-    }
-
-    const isWebIde =
-      vscode.env.uiKind === vscode.UIKind.Web ||
-      process.env.WEB_IDE_MODE === '1' ||
-      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
-
-    if (isWebIde) {
-      // Browser web-ide cannot launch native KiCad.
-      vscode.window.showInformationMessage('KiCad is unavailable in web-ide. Use the Layout action instead.');
-    } else {
-      // Desktop VS Code: spawn pcbnew directly
-      void openPcb(pcbPath).catch((error) => {
-        traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
-        vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
-      });
-    }
-  }
-
-  private async _open3dPreview(filePath: string): Promise<void> {
-    await loadBuilds();
-
-    const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
-    const build = this._resolveBuildFor3dModel(modelPath);
-    if (!build?.root || !build.name) {
-      traceError('[SidebarProvider] No build target selected for 3D export.');
-      await openModelViewerPreview();
-      return;
-    }
-
-    // Keep extension target selection aligned with actions triggered from the web UI.
-    setSelectedTargets([build]);
-
-    const glbPath = modelPath.toLowerCase().endsWith('.glb') ? modelPath : build.model_path;
-
-    prepareThreeDViewer(glbPath, () => {
-      backendServer.sendToWebview({
-        type: 'triggerBuild',
-        projectRoot: build.root,
-        targets: [build.name],
-        includeTargets: ['glb-only'],
-        excludeTargets: ['default'],
-      });
-    });
-
-    await openModelViewerPreview();
-  }
-
-  private _resolveBuildFor3dModel(modelPath: string): Build | undefined {
-    const selected = getBuildTarget();
-    if (selected?.root && selected.name) {
-      return selected;
-    }
-
-    const resolvedModelPath = path.resolve(modelPath);
-    const builds = getBuilds();
-
-    const byExactModelPath = builds.find(
-      (build) => path.resolve(build.model_path) === resolvedModelPath
-    );
-    if (byExactModelPath) {
-      return byExactModelPath;
-    }
-
-    for (const build of builds) {
-      const buildDir = path.resolve(build.root, 'build', 'builds', build.name) + path.sep;
-      if (resolvedModelPath.startsWith(buildDir)) {
-        return build;
-      }
-    }
-
-    const marker = `${path.sep}build${path.sep}builds${path.sep}`;
-    const markerIndex = resolvedModelPath.lastIndexOf(marker);
-    if (markerIndex !== -1) {
-      const inferredRoot = resolvedModelPath.slice(0, markerIndex);
-      const remaining = resolvedModelPath.slice(markerIndex + marker.length);
-      const [targetName] = remaining.split(path.sep);
-
-      if (targetName) {
-        const fromManifest = builds.find(
-          (build) =>
-            build.name === targetName &&
-            path.resolve(build.root) === path.resolve(inferredRoot)
-        );
-        if (fromManifest) {
-          return fromManifest;
-        }
-
-        traceInfo(`[SidebarProvider] Inferred 3D target from path: ${targetName}`);
-        return {
-          name: targetName,
-          entry: '',
-          pcb_path: '',
-          model_path: path.join(
-            inferredRoot,
-            'build',
-            'builds',
-            targetName,
-            `${targetName}.pcba.glb`
-          ),
-          root: inferredRoot,
-        };
-      }
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Handle listFiles request - enumerate files in a project directory.
-   * File enumeration is handled entirely by the VS Code extension.
-   * Hidden directories (starting with .) are shown but not recursed into (lazy loaded).
-   */
-  private async _handleListFiles(projectRoot: string, includeAll: boolean): Promise<void> {
-    traceInfo(`[SidebarProvider] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
-
-    // Directories to completely exclude (not even show)
-    const excludedDirs = new Set([
-      '__pycache__',
-      'node_modules',
-      '.pytest_cache',
-      '.mypy_cache',
-      'dist',
-      'egg-info',
-    ]);
-
-    // Hidden directories to show but lazy load (don't recurse into by default)
-    const lazyLoadDirs = new Set([
-      '.git',
-      '.venv',
-      '.ato',
-      'build',
-      'venv',
-    ]);
-
-    interface FileNode {
-      name: string;
-      path: string;
-      type: 'file' | 'folder';
-      extension?: string;
-      children?: FileNode[];
-      lazyLoad?: boolean;  // True if directory contents not yet loaded
-    }
-
-    const buildFileTree = async (dirUri: vscode.Uri, basePath: string): Promise<FileNode[]> => {
-      const nodes: FileNode[] = [];
-
-      try {
-        const entries = await vscode.workspace.fs.readDirectory(dirUri);
-
-        // Sort: directories first, then alphabetically
-        entries.sort((a, b) => {
-          const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
-          const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
-          if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-          return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
-        });
-
-        for (const [name, fileType] of entries) {
-          // Skip completely excluded directories
-          if (excludedDirs.has(name)) continue;
-          if (name.endsWith('.egg-info')) continue;
-
-          const relativePath = basePath ? `${basePath}/${name}` : name;
-          const itemUri = vscode.Uri.joinPath(dirUri, name);
-          const isHidden = name.startsWith('.');
-
-          if ((fileType & vscode.FileType.Directory) !== 0) {
-            // Check if this directory should be lazy loaded
-            const shouldLazyLoad = lazyLoadDirs.has(name) || (isHidden && !includeAll);
-
-            if (shouldLazyLoad) {
-              // Show the directory but mark it for lazy loading
-              nodes.push({
-                name,
-                path: relativePath,
-                type: 'folder',
-                children: [],  // Empty - will be loaded on demand
-                lazyLoad: true,
-              });
-            } else {
-              const children = await buildFileTree(itemUri, relativePath);
-              // Skip empty directories unless includeAll
-              if (children.length > 0 || includeAll) {
-                nodes.push({
-                  name,
-                  path: relativePath,
-                  type: 'folder',
-                  children,
-                });
-              }
-            }
-          } else if ((fileType & vscode.FileType.File) !== 0) {
-            // Skip hidden files unless includeAll
-            if (isHidden && !includeAll) continue;
-
-            // If not includeAll, only include .ato and .py files
-            if (!includeAll) {
-              const ext = name.split('.').pop()?.toLowerCase();
-              if (ext !== 'ato' && ext !== 'py') continue;
-            }
-
-            const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
-            nodes.push({
-              name,
-              path: relativePath,
-              type: 'file',
-              extension: ext,
-            });
-          }
-        }
-      } catch (err) {
-        traceError(`[SidebarProvider] Error reading directory ${dirUri.fsPath}: ${err}`);
-      }
-
-      return nodes;
-    };
-
-    try {
-      const rootUri = vscode.Uri.file(projectRoot);
-      const files = await buildFileTree(rootUri, '');
-
-      // Count total files (excluding lazy-loaded directories)
-      const countFiles = (nodes: FileNode[]): number => {
-        let count = 0;
-        for (const node of nodes) {
-          if (node.type === 'file') {
-            count++;
-          } else if (node.children && !node.lazyLoad) {
-            count += countFiles(node.children);
-          }
-        }
-        return count;
-      };
-
-      const total = countFiles(files);
-
-      // Send result back to webview
-      this._view?.webview.postMessage({
-        type: 'filesListed',
-        projectRoot,
-        files,
-        total,
-      });
-
-      traceInfo(`[SidebarProvider] Listed ${total} files for ${projectRoot}`);
-    } catch (err) {
-      traceError(`[SidebarProvider] Failed to list files: ${err}`);
-      this._view?.webview.postMessage({
-        type: 'filesListed',
-        projectRoot,
-        files: [],
-        total: 0,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  /**
-   * Handle loadDirectory request - load contents of a lazy-loaded directory.
-   */
-  private async _handleLoadDirectory(projectRoot: string, directoryPath: string): Promise<void> {
-    traceInfo(`[SidebarProvider] Loading directory: ${directoryPath} in ${projectRoot}`);
-
-    interface FileNode {
-      name: string;
-      path: string;
-      type: 'file' | 'folder';
-      extension?: string;
-      children?: FileNode[];
-      lazyLoad?: boolean;
-    }
-
-    try {
-      const dirUri = vscode.Uri.file(path.join(projectRoot, directoryPath));
-      const entries = await vscode.workspace.fs.readDirectory(dirUri);
-      const nodes: FileNode[] = [];
-
-      // Sort: directories first, then alphabetically
-      entries.sort((a, b) => {
-        const aIsDir = (a[1] & vscode.FileType.Directory) !== 0;
-        const bIsDir = (b[1] & vscode.FileType.Directory) !== 0;
-        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-        return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
-      });
-
-      for (const [name, fileType] of entries) {
-        const relativePath = `${directoryPath}/${name}`;
-
-        if ((fileType & vscode.FileType.Directory) !== 0) {
-          // All directories inside a lazy-loaded parent are also lazy-loaded
-          // This allows them to be expanded on demand
-          nodes.push({
-            name,
-            path: relativePath,
-            type: 'folder',
-            children: [],
-            lazyLoad: true,  // All nested dirs are lazy-loaded
-          });
-        } else if ((fileType & vscode.FileType.File) !== 0) {
-          const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
-          nodes.push({
-            name,
-            path: relativePath,
-            type: 'file',
-            extension: ext,
-          });
-        }
-      }
-
-      // Send result back to webview
-      this._view?.webview.postMessage({
-        type: 'directoryLoaded',
-        projectRoot,
-        directoryPath,
-        children: nodes,
-      });
-
-      traceInfo(`[SidebarProvider] Loaded ${nodes.length} items in ${directoryPath}`);
-    } catch (err) {
-      traceError(`[SidebarProvider] Failed to load directory: ${err}`);
-      this._view?.webview.postMessage({
-        type: 'directoryLoaded',
-        projectRoot,
-        directoryPath,
-        children: [],
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  /**
-   * Handle request to browse for a local atopile binary.
-   * Shows a native file picker dialog and sends the selected path back to the webview.
-   */
-  private async _handleBrowseAtopilePath(): Promise<void> {
-    traceInfo('[SidebarProvider] Browsing for local atopile path');
-
-    const result = await vscode.window.showOpenDialog({
-      canSelectFiles: true,
-      canSelectFolders: false,
-      canSelectMany: false,
-      openLabel: 'Select atopile binary',
-      title: 'Select atopile binary',
-      filters: process.platform === 'win32'
-        ? { 'Executables': ['exe', 'cmd'], 'All files': ['*'] }
-        : undefined,
-    });
-
-    const selectedPath = result?.[0]?.fsPath ?? null;
-    traceInfo(`[SidebarProvider] Browse result: ${selectedPath}`);
-
-    // Send the result back to the webview
-    this._view?.webview.postMessage({
-      type: 'browseAtopilePathResult',
-      path: selectedPath,
-    });
-  }
-
-  /**
-   * Handle request to browse for a project directory.
-   * Shows a native folder picker dialog and sends the selected path back to the webview.
-   */
-  private async _handleBrowseProjectPath(): Promise<void> {
-    traceInfo('[SidebarProvider] Browsing for project directory');
-
-    const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
-
-    const result = await vscode.window.showOpenDialog({
-      canSelectFiles: false,
-      canSelectFolders: true,
-      canSelectMany: false,
-      defaultUri,
-      openLabel: 'Select folder',
-      title: 'Select project directory',
-    });
-
-    const selectedPath = result?.[0]?.fsPath ?? null;
-    traceInfo(`[SidebarProvider] Browse project path result: ${selectedPath}`);
-
-    // Send the result back to the webview
-    this._view?.webview.postMessage({
-      type: 'browseProjectPathResult',
-      path: selectedPath,
-    });
-  }
-
-  /**
-   * Handle request to browse for an export directory.
-   * Shows a native folder picker dialog and sends the selected path back to the webview.
-   */
-  private async _handleBrowseExportDirectory(): Promise<void> {
-    traceInfo('[SidebarProvider] Browsing for export directory');
-
-    const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
-
-    const result = await vscode.window.showOpenDialog({
-      canSelectFiles: false,
-      canSelectFolders: true,
-      canSelectMany: false,
-      defaultUri,
-      openLabel: 'Select export folder',
-      title: 'Select export directory for manufacturing files',
-    });
-
-    const selectedPath = result?.[0]?.fsPath ?? null;
-    traceInfo(`[SidebarProvider] Browse export directory result: ${selectedPath}`);
-
-    // Send the result back to the webview
-    this._view?.webview.postMessage({
-      type: 'browseExportDirectoryResult',
-      path: selectedPath,
-    });
-  }
-
-  /**
-   * Handle atopile settings changes from the UI.
-   * Syncs atopile settings to VS Code configuration.
-   * Note: Does NOT restart the server - user must click the restart button.
-   */
-  private async _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): Promise<void> {
-    if (!atopile) return;
-
-    traceInfo(`[SidebarProvider] _handleAtopileSettings received: ${JSON.stringify(atopile)}`);
-
-    // Build a key for comparison to avoid unnecessary updates
-    const settingsKey = JSON.stringify({
-      source: atopile.source,
-      localPath: atopile.localPath,
-    });
-
-    // Skip if nothing changed - this is called on every state update
-    if (settingsKey === this._lastAtopileSettingsKey) {
-      traceInfo(`[SidebarProvider] Skipping - settings unchanged: ${settingsKey}`);
-      return;
-    }
-
-    traceInfo(`[SidebarProvider] Processing new settings: ${settingsKey}`);
-    this._lastAtopileSettingsKey = settingsKey;
-
-    const config = vscode.workspace.getConfiguration('atopile');
-    const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
-    const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-
-    try {
-      // Only manage atopile.ato setting - atopile.from is only set manually in settings
-      if (atopile.source === 'local' && atopile.localPath) {
-        // Local mode: set ato path
-        traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
-        await config.update('ato', atopile.localPath, target);
-      } else {
-        // Release mode: clear ato setting so the default is used
-        traceInfo(`[SidebarProvider] Clearing atopile.ato (using default)`);
-        await config.update('ato', undefined, target);
-      }
-      traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
-    } catch (error) {
-      traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
-
-      // Notify UI of the error
-      backendServer.sendToWebview({
-        type: 'atopileInstallError',
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  /**
-   * Get the webview HTML - loads from compiled assets.
-   * The React app connects directly to the Python backend.
-   */
   private _getProdHtml(webview: vscode.Webview): string {
     const extensionPath = this._extensionUri.fsPath;
     const nonce = getNonce();
@@ -1533,9 +505,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 </html>`;
   }
 
-  /**
-   * HTML shown when webviews haven't been built.
-   */
   private _getNotBuiltHtml(): string {
     return `<!DOCTYPE html>
 <html>

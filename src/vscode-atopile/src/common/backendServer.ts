@@ -300,8 +300,16 @@ class BackendServerManager implements vscode.Disposable {
 
     /**
      * Update the status bar item to reflect current connection state.
+     * Also notifies the webview so the UI can coordinate reconnection.
      */
     private _updateStatusBar(): void {
+        // Notify webview of backend state for reconnection coordination
+        this._onWebviewMessage.fire({
+            type: 'backendStatus',
+            serverState: this._serverState,
+            isConnected: this._isConnected,
+        });
+
         if (!this._statusBarItem) return;
 
         if (this._serverState === 'starting') {

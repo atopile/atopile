@@ -228,24 +228,47 @@ export class WebviewProxyBridge {
     });
 
     ws.on('error', (err: Error) => {
-      if (this._wsRetry) {
-        const backendNotReady = backendServer.serverState !== 'running' || !backendServer.isConnected;
-        const shouldRetry =
-          this._isTransientWsProxyError(err) &&
-          backendNotReady &&
-          attempt < this._wsMaxRetries;
+      if (this._wsRetry && this._isTransientWsProxyError(err)) {
+        const state = backendServer.serverState;
+        const connected = backendServer.isConnected;
 
-        if (shouldRetry) {
+        // Backend stopped/error: don't retry — the recovery loop will restart it
+        if (state === 'stopped' || state === 'error') {
+          traceInfo(`[${this._tag}][WsProxy] Backend ${state}, not retrying id=${id}`);
+          // fall through to error reporting
+        }
+        // Backend starting: use longer delay and more attempts
+        else if (state === 'starting') {
+          const maxStartingAttempts = 15;
+          const startingDelayMs = 2000;
+          if (attempt < maxStartingAttempts) {
+            suppressClose = true;
+            this._wsProxies.delete(id);
+            traceInfo(`[${this._tag}][WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
+            this._scheduleWsProxyRetry(id, targetUrl, attempt + 1, startingDelayMs);
+            try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
+            return;
+          }
+        }
+        // Backend running but WS not connected yet: fail fast after 3 attempts
+        else if (state === 'running' && connected) {
+          const maxRunningAttempts = 3;
+          if (attempt < maxRunningAttempts) {
+            suppressClose = true;
+            this._wsProxies.delete(id);
+            traceInfo(`[${this._tag}][WsProxy] Backend running, quick retry id=${id}: ${err.message}`);
+            this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
+            try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
+            return;
+          }
+        }
+        // Backend running but not connected: moderate retry
+        else if (state === 'running' && !connected && attempt < this._wsMaxRetries) {
           suppressClose = true;
           this._wsProxies.delete(id);
-          traceInfo(`[${this._tag}][WsProxy] Backend starting, delaying id=${id}: ${err.message}`);
+          traceInfo(`[${this._tag}][WsProxy] Backend not connected, retrying id=${id}: ${err.message}`);
           this._scheduleWsProxyRetry(id, targetUrl, attempt + 1);
-          try {
-            ws.removeAllListeners();
-            ws.close();
-          } catch {
-            // Ignore close failures during transient reconnect handling.
-          }
+          try { ws.removeAllListeners(); ws.close(); } catch { /* ignore */ }
           return;
         }
       }
@@ -281,10 +304,11 @@ export class WebviewProxyBridge {
     }
   }
 
-  private _scheduleWsProxyRetry(id: number, targetUrl: string, attempt: number): void {
+  private _scheduleWsProxyRetry(id: number, targetUrl: string, attempt: number, delayOverrideMs?: number): void {
     this._clearWsProxyRetry(id);
 
-    traceInfo(`[${this._tag}][WsProxy] Retrying id=${id} in ${this._wsRetryDelayMs}ms (attempt ${attempt})`);
+    const delay = delayOverrideMs ?? this._wsRetryDelayMs;
+    traceInfo(`[${this._tag}][WsProxy] Retrying id=${id} in ${delay}ms (attempt ${attempt})`);
 
     const timer = setTimeout(() => {
       this._wsProxyRetryTimers.delete(id);
@@ -293,7 +317,7 @@ export class WebviewProxyBridge {
         return;
       }
       this._connectWsProxy(id, targetUrl, attempt);
-    }, this._wsRetryDelayMs);
+    }, delay);
 
     this._wsProxyRetryTimers.set(id, timer);
   }
