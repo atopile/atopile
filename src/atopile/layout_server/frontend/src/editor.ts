@@ -7,17 +7,10 @@ import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
 import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
+import { buildGroupIndex, type UiFootprintGroup } from "./footprint_groups";
 import type { ActionCommand, LayerModel, RenderModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
-
-interface UiFootprintGroup {
-    id: string;
-    uuid: string | null;
-    name: string | null;
-    memberUuids: string[];
-    memberIndices: number[];
-}
 
 export class Editor {
     private canvas: HTMLCanvasElement;
@@ -180,53 +173,10 @@ export class Editor {
     }
 
     private rebuildGroupIndex() {
-        this.groupsById.clear();
-        this.groupIdByFpIndex.clear();
         if (!this.model) return;
-
-        const indexByUuid = new Map<string, number>();
-        for (let i = 0; i < this.model.footprints.length; i++) {
-            const uuid = this.model.footprints[i]!.uuid;
-            if (uuid) indexByUuid.set(uuid, i);
-        }
-
-        const rawGroups = this.model.footprint_groups;
-        const usedIds = new Set<string>();
-        for (let i = 0; i < rawGroups.length; i++) {
-            const group = rawGroups[i]!;
-            const memberIndices: number[] = [];
-            const memberUuids: string[] = [];
-            for (const memberUuid of group.member_uuids) {
-                if (!memberUuid) continue;
-                const fpIndex = indexByUuid.get(memberUuid);
-                if (fpIndex === undefined) continue;
-                memberIndices.push(fpIndex);
-                memberUuids.push(memberUuid);
-            }
-            if (memberIndices.length < 2) continue;
-
-            let idBase = group.uuid || group.name || `group-${i + 1}`;
-            if (usedIds.has(idBase)) {
-                let suffix = 2;
-                while (usedIds.has(`${idBase}:${suffix}`)) suffix++;
-                idBase = `${idBase}:${suffix}`;
-            }
-            usedIds.add(idBase);
-
-            const uiGroup: UiFootprintGroup = {
-                id: idBase,
-                uuid: group.uuid,
-                name: group.name,
-                memberUuids,
-                memberIndices,
-            };
-            this.groupsById.set(idBase, uiGroup);
-            for (const fpIndex of memberIndices) {
-                if (!this.groupIdByFpIndex.has(fpIndex)) {
-                    this.groupIdByFpIndex.set(fpIndex, idBase);
-                }
-            }
-        }
+        const index = buildGroupIndex(this.model);
+        this.groupsById = index.groupsById;
+        this.groupIdByFpIndex = index.groupIdByFpIndex;
     }
 
     private getSelectedSingleUuid(): string | null {

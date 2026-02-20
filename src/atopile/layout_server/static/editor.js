@@ -22616,6 +22616,57 @@ var RenderLoop = class {
   }
 };
 
+// src/footprint_groups.ts
+function buildGroupIndex(model) {
+  const groupsById = /* @__PURE__ */ new Map();
+  const groupIdByFpIndex = /* @__PURE__ */ new Map();
+  const indexByUuid = /* @__PURE__ */ new Map();
+  for (let i = 0; i < model.footprints.length; i++) {
+    const uuid = model.footprints[i].uuid;
+    if (uuid)
+      indexByUuid.set(uuid, i);
+  }
+  const usedIds = /* @__PURE__ */ new Set();
+  for (let i = 0; i < model.footprint_groups.length; i++) {
+    const group = model.footprint_groups[i];
+    const memberIndices = [];
+    const memberUuids = [];
+    for (const memberUuid of group.member_uuids) {
+      if (!memberUuid)
+        continue;
+      const fpIndex = indexByUuid.get(memberUuid);
+      if (fpIndex === void 0)
+        continue;
+      memberIndices.push(fpIndex);
+      memberUuids.push(memberUuid);
+    }
+    if (memberIndices.length < 2)
+      continue;
+    let id = group.uuid || group.name || `group-${i + 1}`;
+    if (usedIds.has(id)) {
+      let suffix = 2;
+      while (usedIds.has(`${id}:${suffix}`))
+        suffix++;
+      id = `${id}:${suffix}`;
+    }
+    usedIds.add(id);
+    const uiGroup = {
+      id,
+      uuid: group.uuid,
+      name: group.name,
+      memberUuids,
+      memberIndices
+    };
+    groupsById.set(id, uiGroup);
+    for (const fpIndex of memberIndices) {
+      if (!groupIdByFpIndex.has(fpIndex)) {
+        groupIdByFpIndex.set(fpIndex, id);
+      }
+    }
+  }
+  return { groupsById, groupIdByFpIndex };
+}
+
 // src/editor.ts
 var Editor = class {
   canvas;
@@ -22755,55 +22806,11 @@ var Editor = class {
     this.paintBoxSelectionOverlay();
   }
   rebuildGroupIndex() {
-    this.groupsById.clear();
-    this.groupIdByFpIndex.clear();
     if (!this.model)
       return;
-    const indexByUuid = /* @__PURE__ */ new Map();
-    for (let i = 0; i < this.model.footprints.length; i++) {
-      const uuid = this.model.footprints[i].uuid;
-      if (uuid)
-        indexByUuid.set(uuid, i);
-    }
-    const rawGroups = this.model.footprint_groups;
-    const usedIds = /* @__PURE__ */ new Set();
-    for (let i = 0; i < rawGroups.length; i++) {
-      const group = rawGroups[i];
-      const memberIndices = [];
-      const memberUuids = [];
-      for (const memberUuid of group.member_uuids) {
-        if (!memberUuid)
-          continue;
-        const fpIndex = indexByUuid.get(memberUuid);
-        if (fpIndex === void 0)
-          continue;
-        memberIndices.push(fpIndex);
-        memberUuids.push(memberUuid);
-      }
-      if (memberIndices.length < 2)
-        continue;
-      let idBase = group.uuid || group.name || `group-${i + 1}`;
-      if (usedIds.has(idBase)) {
-        let suffix = 2;
-        while (usedIds.has(`${idBase}:${suffix}`))
-          suffix++;
-        idBase = `${idBase}:${suffix}`;
-      }
-      usedIds.add(idBase);
-      const uiGroup = {
-        id: idBase,
-        uuid: group.uuid,
-        name: group.name,
-        memberUuids,
-        memberIndices
-      };
-      this.groupsById.set(idBase, uiGroup);
-      for (const fpIndex of memberIndices) {
-        if (!this.groupIdByFpIndex.has(fpIndex)) {
-          this.groupIdByFpIndex.set(fpIndex, idBase);
-        }
-      }
-    }
+    const index = buildGroupIndex(this.model);
+    this.groupsById = index.groupsById;
+    this.groupIdByFpIndex = index.groupIdByFpIndex;
   }
   getSelectedSingleUuid() {
     if (!this.model || this.selectedFpIndex < 0)
