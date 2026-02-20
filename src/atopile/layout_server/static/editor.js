@@ -22415,8 +22415,185 @@ function computeBBox(model) {
   return BBox.from_points(points).grow(5);
 }
 
-// src/editor.ts
+// src/layout_client.ts
+var LayoutClient = class {
+  baseUrl;
+  apiPrefix;
+  wsPath;
+  ws = null;
+  reconnectTimer = null;
+  constructor(baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
+    this.baseUrl = baseUrl2;
+    this.apiPrefix = apiPrefix2;
+    this.wsPath = wsPath2;
+  }
+  async fetchRenderModel() {
+    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
+    return await resp.json();
+  }
+  async executeAction(action) {
+    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(action)
+    });
+    return await resp.json();
+  }
+  async post(path) {
+    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
+    return await resp.json();
+  }
+  connect(onUpdate) {
+    const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
+    this.ws = new WebSocket(wsUrl);
+    this.ws.onopen = () => console.log("WS connected");
+    this.ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "layout_updated" && msg.model) {
+        onUpdate(msg.model);
+      }
+    };
+    this.ws.onerror = (err) => console.error("WS error:", err);
+    this.ws.onclose = () => {
+      if (this.reconnectTimer !== null) {
+        window.clearTimeout(this.reconnectTimer);
+      }
+      this.reconnectTimer = window.setTimeout(() => {
+        this.reconnectTimer = null;
+        this.connect(onUpdate);
+      }, 2e3);
+    };
+  }
+  disconnect() {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+};
+
+// src/text_overlay.ts
 var DEG_TO_RAD3 = Math.PI / 180;
+function drawStrokeText(ctx, camera, layerById, viewportWidth, viewportHeight, spec) {
+  const screenPos = camera.world_to_screen(new Vec2(spec.worldX, spec.worldY));
+  if (screenPos.x < -100 || screenPos.x > viewportWidth + 100 || screenPos.y < -100 || screenPos.y > viewportHeight + 100) {
+    return;
+  }
+  const lines = spec.text.split("\n");
+  if (lines.length === 0)
+    return;
+  const justifySet = new Set(spec.justify ?? []);
+  const [r, g, b, a] = getLayerColor(spec.layerName, layerById);
+  const rotation = -(spec.rotationDeg || 0) * DEG_TO_RAD3;
+  const linePitch = spec.textHeight * 1.62;
+  const totalHeight = spec.textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
+  let baseOffsetY = spec.textHeight;
+  if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
+    baseOffsetY -= totalHeight / 2;
+  } else if (justifySet.has("bottom")) {
+    baseOffsetY -= totalHeight;
+  }
+  const minWorldStroke = 0.8 / Math.max(camera.zoom, 1e-6);
+  const worldStroke = Math.max(minWorldStroke, spec.thickness ?? spec.textHeight * 0.15);
+  ctx.save();
+  ctx.translate(screenPos.x, screenPos.y);
+  ctx.rotate(rotation);
+  ctx.scale(camera.zoom, camera.zoom);
+  const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = worldStroke;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+    const layout = layoutKicadStrokeLine(line, spec.textWidth, spec.textHeight);
+    if (layout.strokes.length === 0) {
+      continue;
+    }
+    let lineOffsetX = 0;
+    if (justifySet.has("right")) {
+      lineOffsetX = -layout.advance;
+    } else if (justifySet.has("center") || !justifySet.has("left") && !justifySet.has("right")) {
+      lineOffsetX = -layout.advance / 2;
+    }
+    const lineOffsetY = baseOffsetY + lineIdx * linePitch;
+    for (const stroke of layout.strokes) {
+      if (stroke.length < 2)
+        continue;
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x + lineOffsetX, stroke[0].y + lineOffsetY);
+      for (let i = 1; i < stroke.length; i++) {
+        ctx.lineTo(stroke[i].x + lineOffsetX, stroke[i].y + lineOffsetY);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function renderTextOverlay(ctx, model, camera, hiddenLayers, layerById) {
+  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  ctx.canvas.width = Math.floor(width * dpr);
+  ctx.canvas.height = Math.floor(height * dpr);
+  ctx.canvas.style.width = `${width}px`;
+  ctx.canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  if (!model || camera.zoom < 0.2)
+    return;
+  for (const text of model.texts) {
+    if (!text.text.trim())
+      continue;
+    const layerName = text.layer;
+    if (!layerName)
+      continue;
+    if (hiddenLayers.has(layerName))
+      continue;
+    drawStrokeText(ctx, camera, layerById, width, height, {
+      text: text.text,
+      worldX: text.at.x,
+      worldY: text.at.y,
+      rotationDeg: text.at.r || 0,
+      textWidth: text.size?.w ?? 1,
+      textHeight: text.size?.h ?? 1,
+      thickness: text.thickness ?? null,
+      layerName,
+      justify: text.justify
+    });
+  }
+  for (const fp of model.footprints) {
+    for (const text of fp.texts) {
+      if (!text.text.trim())
+        continue;
+      const layerName = text.layer;
+      if (!layerName)
+        continue;
+      if (hiddenLayers.has(layerName))
+        continue;
+      const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
+      const textRotation = (fp.at.r || 0) + (text.at.r || 0);
+      drawStrokeText(ctx, camera, layerById, width, height, {
+        text: text.text,
+        worldX: worldPos.x,
+        worldY: worldPos.y,
+        rotationDeg: textRotation,
+        textWidth: text.size?.w ?? 1,
+        textHeight: text.size?.h ?? 1,
+        thickness: text.thickness ?? null,
+        layerName,
+        justify: text.justify
+      });
+    }
+  }
+}
+
+// src/editor.ts
 var Editor = class {
   canvas;
   textOverlay;
@@ -22424,11 +22601,8 @@ var Editor = class {
   renderer;
   camera;
   panAndZoom;
+  client;
   model = null;
-  baseUrl;
-  apiPrefix;
-  wsPath;
-  ws = null;
   // Selection & interaction state
   selectionMode = "none";
   selectedFpIndex = -1;
@@ -22459,15 +22633,14 @@ var Editor = class {
     this.canvas = canvas2;
     this.textOverlay = this.createTextOverlay();
     this.textCtx = this.textOverlay.getContext("2d");
-    this.baseUrl = baseUrl2;
-    this.apiPrefix = apiPrefix2;
-    this.wsPath = wsPath2;
     this.renderer = new Renderer(canvas2);
     this.camera = new Camera2();
     this.panAndZoom = new PanAndZoom(canvas2, this.camera, () => this.requestRedraw());
+    this.client = new LayoutClient(baseUrl2, apiPrefix2, wsPath2);
     this.setupMouseHandlers();
     this.setupKeyboardHandlers();
     this.setupResizeHandler();
+    window.addEventListener("beforeunload", () => this.client.disconnect());
     this.renderer.setup();
     this.startRenderLoop();
   }
@@ -22493,8 +22666,8 @@ var Editor = class {
     this.connectWebSocket();
   }
   async fetchAndPaint() {
-    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-    this.applyModel(await resp.json(), true);
+    const model = await this.client.fetchRenderModel();
+    this.applyModel(model, true);
   }
   applyModel(model, fitToView = false) {
     const prevSelectedUuid = this.getSelectedSingleUuid();
@@ -22819,19 +22992,7 @@ var Editor = class {
     this.repaintWithSelection();
   }
   connectWebSocket() {
-    const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
-    this.ws = new WebSocket(wsUrl);
-    this.ws.onopen = () => console.log("WS connected");
-    this.ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "layout_updated" && msg.model) {
-        this.applyModel(msg.model);
-      }
-    };
-    this.ws.onerror = (err) => console.error("WS error:", err);
-    this.ws.onclose = () => {
-      setTimeout(() => this.connectWebSocket(), 2e3);
-    };
+    this.client.connect((model) => this.applyModel(model));
   }
   setupMouseHandlers() {
     this.canvas.addEventListener("mousedown", (e) => {
@@ -23061,12 +23222,7 @@ var Editor = class {
   }
   async executeAction(action) {
     try {
-      const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(action)
-      });
-      const data = await resp.json();
+      const data = await this.client.executeAction(action);
       if (data.status === "error") {
         console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
       }
@@ -23078,8 +23234,7 @@ var Editor = class {
   }
   async serverAction(path) {
     try {
-      const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
-      const data = await resp.json();
+      const data = await this.client.post(path);
       if (data.status === "error") {
         console.warn(`${path} failed (${data.code}): ${data.message ?? "unknown error"}`);
       }
@@ -23151,131 +23306,13 @@ var Editor = class {
   drawTextOverlay() {
     if (!this.textCtx)
       return;
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
-    const dpr = window.devicePixelRatio || 1;
-    const pixelWidth = Math.max(1, Math.round(width * dpr));
-    const pixelHeight = Math.max(1, Math.round(height * dpr));
-    if (this.textOverlay.width !== pixelWidth || this.textOverlay.height !== pixelHeight) {
-      this.textOverlay.width = pixelWidth;
-      this.textOverlay.height = pixelHeight;
-    }
-    this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.textCtx.clearRect(0, 0, width, height);
-    if (!this.model || this.camera.zoom < 0.2)
-      return;
-    const layerById = this.getLayerMap();
-    for (const text of this.model.texts) {
-      if (!text.text.trim())
-        continue;
-      const layerName = text.layer;
-      if (!layerName)
-        continue;
-      if (this.hiddenLayers.has(layerName))
-        continue;
-      this.drawOverlayText(
-        text.text,
-        layerName,
-        text.at.x,
-        text.at.y,
-        text.at.r || 0,
-        text.size?.w ?? text.size?.h ?? 1,
-        text.size?.h ?? text.size?.w ?? 1,
-        text.thickness,
-        text.justify,
-        width,
-        height,
-        layerById
-      );
-    }
-    for (const fp of this.model.footprints) {
-      for (const text of fp.texts) {
-        if (!text.text.trim())
-          continue;
-        const layerName = text.layer;
-        if (!layerName)
-          continue;
-        if (this.hiddenLayers.has(layerName))
-          continue;
-        const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
-        const textRotation = (fp.at.r || 0) + (text.at.r || 0);
-        this.drawOverlayText(
-          text.text,
-          layerName,
-          worldPos.x,
-          worldPos.y,
-          textRotation,
-          text.size?.w ?? text.size?.h ?? 1,
-          text.size?.h ?? text.size?.w ?? 1,
-          text.thickness,
-          text.justify,
-          width,
-          height,
-          layerById
-        );
-      }
-    }
-  }
-  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, width, height, layerById) {
-    if (!this.textCtx)
-      return;
-    const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
-    if (screenPos.x < -200 || screenPos.x > width + 200 || screenPos.y < -50 || screenPos.y > height + 50) {
-      return;
-    }
-    const screenFontSize = textHeight * this.camera.zoom;
-    if (screenFontSize < 2)
-      return;
-    const lines = text.split("\n");
-    if (lines.length === 0)
-      return;
-    const justifySet = new Set(justify ?? []);
-    const [r, g, b, a] = getLayerColor(layerName, layerById);
-    const rotation = -(rotationDeg || 0) * DEG_TO_RAD3;
-    const linePitch = textHeight * 1.62;
-    const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
-    let baseOffsetY = textHeight;
-    if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
-      baseOffsetY -= totalHeight / 2;
-    } else if (justifySet.has("bottom")) {
-      baseOffsetY -= totalHeight;
-    }
-    const minWorldStroke = 0.8 / Math.max(this.camera.zoom, 1e-6);
-    const worldStroke = Math.max(minWorldStroke, thickness ?? textHeight * 0.15);
-    this.textCtx.save();
-    this.textCtx.translate(screenPos.x, screenPos.y);
-    this.textCtx.rotate(rotation);
-    this.textCtx.scale(this.camera.zoom, this.camera.zoom);
-    const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
-    this.textCtx.strokeStyle = color;
-    this.textCtx.lineWidth = worldStroke;
-    this.textCtx.lineCap = "round";
-    this.textCtx.lineJoin = "round";
-    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-      const line = lines[lineIdx];
-      const layout = layoutKicadStrokeLine(line, textWidth, textHeight);
-      if (layout.strokes.length === 0) {
-        continue;
-      }
-      let lineOffsetX = 0;
-      if (justifySet.has("right")) {
-        lineOffsetX = -layout.advance;
-      } else if (justifySet.has("center") || !justifySet.has("left") && !justifySet.has("right")) {
-        lineOffsetX = -layout.advance / 2;
-      }
-      const lineOffsetY = baseOffsetY + lineIdx * linePitch;
-      for (const stroke of layout.strokes) {
-        if (stroke.length < 2)
-          continue;
-        this.textCtx.beginPath();
-        this.textCtx.moveTo(stroke[0].x + lineOffsetX, stroke[0].y + lineOffsetY);
-        for (let i = 1; i < stroke.length; i++) {
-          this.textCtx.lineTo(stroke[i].x + lineOffsetX, stroke[i].y + lineOffsetY);
-        }
-        this.textCtx.stroke();
-      }
-    }
-    this.textCtx.restore();
+    renderTextOverlay(
+      this.textCtx,
+      this.model,
+      this.camera,
+      this.hiddenLayers,
+      this.getLayerMap()
+    );
   }
   startRenderLoop() {
     const loop = () => {
