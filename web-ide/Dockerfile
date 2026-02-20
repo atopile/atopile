@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # OpenVSCode Server with atopile pre-configured
 # Based on: https://github.com/gitpod-io/openvscode-server
 #
@@ -25,9 +26,10 @@ FROM ubuntu:24.04 AS wheel-builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git ca-certificates
 
 ARG ATOPILE_VERSION
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${ATOPILE_VERSION}
@@ -42,7 +44,8 @@ COPY src/faebryk /src/src/faebryk
 COPY src/atopile /src/src/atopile
 
 WORKDIR /src
-RUN uv build --wheel --out-dir /wheels
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv build --wheel --out-dir /wheels
 
 # ──────────────────────────────────────────────────────────────────
 # Stage 3: Build VS Code extension (VSIX)
@@ -51,16 +54,20 @@ FROM node:20-slim AS vsix-builder
 
 WORKDIR /src
 
-# Copy both vscode-atopile and ui-server (webviews build needs ui-server)
+# Dep layer (cached unless lock files change)
+COPY src/vscode-atopile/package.json src/vscode-atopile/package-lock.json \
+     /src/src/vscode-atopile/
+COPY src/ui-server/package.json src/ui-server/package-lock.json \
+     /src/src/ui-server/
+WORKDIR /src/src/vscode-atopile
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# Source layer (only invalidates on source changes)
 COPY src/vscode-atopile /src/src/vscode-atopile
 COPY src/ui-server /src/src/ui-server
-
-# Install deps and build webviews + extension
-WORKDIR /src/src/vscode-atopile
-RUN npm ci && \
+RUN --mount=type=cache,target=/root/.npm \
     npm run vscode:prepublish && \
-    mkdir -p /vsix && \
-    npx vsce package --out /vsix/
+    mkdir -p /vsix && npx vsce package --out /vsix/
 
 # ──────────────────────────────────────────────────────────────────
 # Stage 4: Final image on KiCad base
@@ -82,7 +89,9 @@ ENV ATOPILE_BACKEND_PORT=8501
 
 # Install runtime + build dependencies
 # Note: build-essential/cmake are needed because pynng (transitive dep) compiles from source
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     build-essential \
     cmake \
@@ -90,15 +99,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
     fonts-liberation2 \
     fonts-hack \
-    && npm install -g @gltf-transform/cli@4.1.0 \
-    && rm -rf /var/lib/apt/lists/*
+    && npm install -g @gltf-transform/cli@4.1.0
 
-# Install restricted shell (disables terminal access for the user)
+# Install restricted shell, create non-root user with restricted shell
 COPY web-ide/scripts/restricted-shell.sh /usr/local/bin/restricted-shell.sh
-RUN chmod +x /usr/local/bin/restricted-shell.sh
-
-# Create non-root user with restricted shell (extension commands use /bin/bash explicitly)
-RUN useradd -m -s /usr/local/bin/restricted-shell.sh -d ${HOME} openvscode-server && \
+RUN chmod +x /usr/local/bin/restricted-shell.sh && \
+    useradd -m -s /usr/local/bin/restricted-shell.sh -d ${HOME} openvscode-server && \
     mkdir -p ${OPENVSCODE_SERVER_ROOT} && \
     chown -R openvscode-server:openvscode-server ${HOME} ${OPENVSCODE_SERVER_ROOT}
 
@@ -126,57 +132,41 @@ COPY --chown=openvscode-server:openvscode-server \
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/workspace/ /tmp/default-workspace/
 
-# ---------- Switch to non-root user for all remaining operations ----------
+# ---------- Switch to non-root user for tool install + extensions ----------
 USER openvscode-server
 WORKDIR ${HOME}
 
-# Install atopile from wheel (installs to ~/.local/bin, which is in PATH)
+# Install atopile from wheel, VS Code extensions, apply branding, copy configs, and clean up
 # Must match requires-python in pyproject.toml (>=3.14,<3.15)
-RUN uv tool install --python 3.14 /tmp/artifacts/atopile-*.whl
-
-# Install VS Code extensions
-RUN /tmp/scripts/install-extensions.sh
-
-# Lock down extensions: make dirs root-owned so user can't install new ones.
-# "Install from VSIX" and drag-and-drop both fail with permission denied.
-USER root
-RUN chown -R root:root ${OPENVSCODE_SERVER_ROOT}/extensions && \
-    chmod -R 755 ${OPENVSCODE_SERVER_ROOT}/extensions
-# Pre-create user extensions dir as root-owned read-only (VS Code tries to write here)
-RUN mkdir -p ${HOME}/.openvscode-server/extensions && \
-    echo '[]' > ${HOME}/.openvscode-server/extensions/extensions.json && \
-    chown -R root:root ${HOME}/.openvscode-server/extensions && \
-    chmod -R 555 ${HOME}/.openvscode-server/extensions
-USER openvscode-server
-
-# Apply atopile branding (favicon, title, manifest)
-RUN /tmp/branding/apply-branding.sh
-
-# Copy default VS Code settings (runtime data dir is $HOME/.openvscode-server/data/,
-# NOT $OPENVSCODE_SERVER_ROOT/data/ — the install-extensions.sh step already creates this tree)
-RUN cp /tmp/scripts/settings.json ${HOME}/.openvscode-server/data/Machine/settings.json
-
-# Copy keybindings that unbind dangerous shortcuts (terminal, debug, tasks)
-RUN mkdir -p ${HOME}/.openvscode-server/data/User && \
-    cp /tmp/scripts/keybindings.json ${HOME}/.openvscode-server/data/User/keybindings.json
+RUN uv tool install --python 3.14 /tmp/artifacts/atopile-*.whl && \
+    /tmp/scripts/install-extensions.sh && \
+    /tmp/branding/apply-branding.sh && \
+    cp /tmp/scripts/settings.json ${HOME}/.openvscode-server/data/Machine/settings.json && \
+    mkdir -p ${HOME}/.openvscode-server/data/User && \
+    cp /tmp/scripts/keybindings.json ${HOME}/.openvscode-server/data/User/keybindings.json && \
+    mkdir -p ${HOME}/.local/etc && \
+    cp /tmp/scripts/keybindings.json ${HOME}/.local/etc/keybindings.json && \
+    cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
+    cp /tmp/scripts/Caddyfile ${HOME}/.local/etc/Caddyfile && \
+    chmod +x ${HOME}/.local/bin/entrypoint.sh && \
+    mkdir -p ${HOME}/workspace && \
+    rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
 
 # Note: uv symlink is created by entrypoint.sh on each startup because the
 # User data volume mount shadows this directory on subsequent container starts
 
-# Set up entrypoint
-# Also stash keybindings in .local/etc so entrypoint can restore them
-# (the User data volume mount shadows the data/User/ directory)
-RUN mkdir -p ${HOME}/.local/etc && \
-    cp /tmp/scripts/keybindings.json ${HOME}/.local/etc/keybindings.json && \
-    cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
-    cp /tmp/scripts/Caddyfile ${HOME}/.local/etc/Caddyfile && \
-    chmod +x ${HOME}/.local/bin/entrypoint.sh
+# Lock down extensions: make dirs root-owned so user can't install new ones.
+# "Install from VSIX" and drag-and-drop both fail with permission denied.
+# Pre-create user extensions dir as root-owned read-only (VS Code tries to write here)
+USER root
+RUN chown -R root:root ${OPENVSCODE_SERVER_ROOT}/extensions && \
+    chmod -R 755 ${OPENVSCODE_SERVER_ROOT}/extensions && \
+    mkdir -p ${HOME}/.openvscode-server/extensions && \
+    echo '[]' > ${HOME}/.openvscode-server/extensions/extensions.json && \
+    chown -R root:root ${HOME}/.openvscode-server/extensions && \
+    chmod -R 555 ${HOME}/.openvscode-server/extensions
 
-# Create workspace directory
-RUN mkdir -p ${HOME}/workspace
-
-# Clean up build artifacts (keep default-workspace for entrypoint seeding)
-RUN rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
+USER openvscode-server
 
 # Expose Caddy HTTPS port (OpenVSCode on 3001 and backend on 8501 are internal only)
 EXPOSE 3443
