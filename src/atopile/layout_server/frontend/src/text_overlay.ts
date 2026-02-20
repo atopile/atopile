@@ -2,10 +2,15 @@ import { Vec2 } from "./math";
 import { fpTransform } from "./geometry";
 import { getLayerColor } from "./colors";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
+import { buildPadAnnotationGeometry } from "./pad_annotations";
 import type { Camera2 } from "./camera";
 import type { LayerModel, RenderModel } from "./types";
 
 const DEG_TO_RAD = Math.PI / 180;
+const PAD_ANNOTATION_FONT_STACK = "\"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif";
+const PAD_ANNOTATION_NAME_WEIGHT = 600;
+const PAD_ANNOTATION_NUMBER_WEIGHT = 700;
+const PAD_ANNOTATION_NUMBER_COLOR = "rgba(13, 20, 31, 0.98)";
 
 type OverlayText = {
     text: string;
@@ -18,6 +23,40 @@ type OverlayText = {
     layerName: string;
     justify: string[] | null;
 };
+
+function drawPadAnnotationText(
+    ctx: CanvasRenderingContext2D,
+    camera: Camera2,
+    viewportWidth: number,
+    viewportHeight: number,
+    text: string,
+    worldX: number,
+    worldY: number,
+    rotationDeg: number,
+    charH: number,
+    color: string,
+    fontWeight: number,
+) {
+    const screenPos = camera.world_to_screen(new Vec2(worldX, worldY));
+    if (
+        screenPos.x < -100
+        || screenPos.x > viewportWidth + 100
+        || screenPos.y < -100
+        || screenPos.y > viewportHeight + 100
+    ) {
+        return;
+    }
+    ctx.save();
+    ctx.translate(screenPos.x, screenPos.y);
+    ctx.rotate(-(rotationDeg || 0) * DEG_TO_RAD);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.font = `${fontWeight} ${Math.max(charH, 0.02)}px ${PAD_ANNOTATION_FONT_STACK}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = color;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+}
 
 function drawStrokeText(
     ctx: CanvasRenderingContext2D,
@@ -143,6 +182,54 @@ export function renderTextOverlay(
                 layerName,
                 justify: text.justify,
             });
+        }
+
+        const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers);
+        const orderedLayers = [...annotationsByLayer.keys()].sort((a, b) => {
+            const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+            const orderB = layerById.get(b)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.localeCompare(b);
+        });
+        for (const layerName of orderedLayers) {
+            const geometry = annotationsByLayer.get(layerName);
+            if (!geometry) continue;
+            const [r, g, b, a] = getLayerColor(layerName, layerById);
+            const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.7)})`;
+
+            for (const name of geometry.names) {
+                drawPadAnnotationText(
+                    ctx,
+                    camera,
+                    width,
+                    height,
+                    name.text,
+                    name.x,
+                    name.y,
+                    name.rotation,
+                    name.charH,
+                    color,
+                    PAD_ANNOTATION_NAME_WEIGHT,
+                );
+            }
+
+            for (const number of geometry.numbers) {
+                if (!number.labelFit) continue;
+                const [, charH] = number.labelFit;
+                drawPadAnnotationText(
+                    ctx,
+                    camera,
+                    width,
+                    height,
+                    number.text,
+                    number.badgeCenterX,
+                    number.badgeCenterY,
+                    0,
+                    charH,
+                    PAD_ANNOTATION_NUMBER_COLOR,
+                    PAD_ANNOTATION_NUMBER_WEIGHT,
+                );
+            }
         }
     }
 }

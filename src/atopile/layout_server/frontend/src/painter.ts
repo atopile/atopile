@@ -1,6 +1,6 @@
 import { Vec2, BBox } from "./math";
 import { Renderer, RenderLayer } from "./webgl/renderer";
-import { fpTransform, padTransform, rotatedRectExtents } from "./geometry";
+import { fpTransform, padTransform } from "./geometry";
 import {
     getLayerColor,
     getPadColor,
@@ -16,28 +16,11 @@ import type {
     Point3,
     LayerModel,
 } from "./types";
-import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 import { footprintBBox } from "./hit-test";
+import { buildPadAnnotationGeometry } from "./pad_annotations";
 
 const DEG_TO_RAD = Math.PI / 180;
 const HOLE_SEGMENTS = 36;
-const PAD_ANNOTATION_BOX_RATIO = 0.78;
-const PAD_ANNOTATION_MAJOR_FIT = 0.96;
-const PAD_ANNOTATION_MINOR_FIT = 0.88;
-const PAD_ANNOTATION_CHAR_SCALE = 0.60;
-const PAD_ANNOTATION_MIN_CHAR_H = 0.08;
-const PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
-const PAD_ANNOTATION_STROKE_SCALE = 0.22;
-const PAD_ANNOTATION_STROKE_MIN = 0.02;
-const PAD_ANNOTATION_STROKE_MAX = 0.16;
-const PAD_NAME_GENERIC_TOKENS = new Set(["input", "output", "line", "net"]);
-const PAD_NAME_PREFIXES = ["power_in-", "power_vbus-", "power-"];
-const PAD_NAME_TRUNCATE_LENGTHS = [16, 12, 10, 8, 6, 5, 4, 3, 2];
-const PAD_NAME_TARGET_CHAR_H = 0.14;
-const PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
-const PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
-const PAD_NUMBER_CHAR_SCALE = 0.80;
-const PAD_NUMBER_MIN_CHAR_H = 0.04;
 const SELECTION_STROKE_WIDTH = 0.12;
 const GROUP_SELECTION_STROKE_WIDTH = 0.1;
 const HOVER_SELECTION_STROKE_WIDTH = 0.08;
@@ -120,156 +103,6 @@ function drawFootprintSelectionBox(
         layer.geometry.add_polygon(corners.slice(0, 4), 1.0, 1.0, 1.0, fillAlpha);
     }
     layer.geometry.add_polyline(corners, strokeWidth, 1.0, 1.0, 1.0, strokeAlpha);
-}
-
-function estimateStrokeTextAdvance(text: string): number {
-    if (!text) return 0.6;
-    const narrow = new Set(["1", "I", "i", "l", "|", "!", ".", ",", ":", ";", "'", "`"]);
-    const wide = new Set(["M", "W", "@", "%", "#"]);
-    let advance = 0;
-    for (const ch of text) {
-        if (ch === " ") advance += 0.6;
-        else if (narrow.has(ch)) advance += 0.45;
-        else if (wide.has(ch)) advance += 0.95;
-        else advance += 0.72;
-    }
-    return Math.max(advance, 0.6);
-}
-
-function fitTextInsideBox(
-    text: string,
-    boxW: number,
-    boxH: number,
-    minCharH = PAD_ANNOTATION_MIN_CHAR_H,
-    charScale = PAD_ANNOTATION_CHAR_SCALE,
-): [number, number, number] | null {
-    if (boxW <= 0 || boxH <= 0) return null;
-    const usableW = Math.max(0, boxW * PAD_ANNOTATION_BOX_RATIO);
-    const usableH = Math.max(0, boxH * PAD_ANNOTATION_BOX_RATIO);
-    if (usableW <= 0 || usableH <= 0) return null;
-    const vertical = usableH > usableW;
-    const major = vertical ? usableH : usableW;
-    const minor = vertical ? usableW : usableH;
-    const advance = estimateStrokeTextAdvance(text);
-    const maxHByWidth = major / Math.max(advance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
-    let charH = Math.min(minor * PAD_ANNOTATION_MINOR_FIT, maxHByWidth * PAD_ANNOTATION_MAJOR_FIT);
-    charH *= charScale;
-    if (charH < minCharH) return null;
-    const charW = charH * PAD_ANNOTATION_CHAR_W_RATIO;
-    const thickness = Math.min(
-        PAD_ANNOTATION_STROKE_MAX,
-        Math.max(PAD_ANNOTATION_STROKE_MIN, charH * PAD_ANNOTATION_STROKE_SCALE),
-    );
-    return [charW, charH, thickness];
-}
-
-function padNameCandidates(text: string): string[] {
-    const base = text.trim();
-    if (!base) return [];
-    const out: string[] = [];
-    const seen = new Set<string>();
-    const add = (v: string) => {
-        const t = v.trim();
-        if (!t || seen.has(t)) return;
-        seen.add(t);
-        out.push(t);
-    };
-
-    add(base);
-    let normalized = base;
-    for (const prefix of PAD_NAME_PREFIXES) {
-        if (normalized.startsWith(prefix)) normalized = normalized.slice(prefix.length);
-    }
-    add(normalized);
-
-    const tokens = normalized.replaceAll("/", "-").split("-").map(t => t.trim()).filter(Boolean);
-    for (let idx = tokens.length - 1; idx >= 0; idx--) {
-        const token = tokens[idx]!;
-        if (PAD_NAME_GENERIC_TOKENS.has(token.toLowerCase())) continue;
-        add(token);
-        add(token.replaceAll("[", "").replaceAll("]", ""));
-    }
-
-    for (const maxLen of PAD_NAME_TRUNCATE_LENGTHS) {
-        if (normalized.length > maxLen) add(normalized.slice(0, maxLen));
-    }
-
-    return out;
-}
-
-function fitPadNameLabel(text: string, boxW: number, boxH: number): [string, [number, number, number]] | null {
-    let fallback: [string, [number, number, number]] | null = null;
-    for (const candidate of padNameCandidates(text)) {
-        const fit = fitTextInsideBox(candidate, boxW, boxH);
-        if (!fit) continue;
-        if (!fallback || fit[1] > fallback[1][1]) {
-            fallback = [candidate, fit];
-        }
-        if (fit[1] >= PAD_NAME_TARGET_CHAR_H) {
-            return [candidate, fit];
-        }
-    }
-    return fallback;
-}
-
-function padLabelWorldRotation(totalPadRotationDeg: number, padW: number, padH: number): number {
-    if (padW <= 0 || padH <= 0) return 0;
-    if (Math.abs(padW - padH) <= 1e-6) return 0;
-    const longAxisDeg = padW > padH ? totalPadRotationDeg : totalPadRotationDeg + 90;
-    const axisX = Math.abs(Math.cos(longAxisDeg * DEG_TO_RAD));
-    const axisY = Math.abs(Math.sin(longAxisDeg * DEG_TO_RAD));
-    return axisY > axisX ? 90 : 0;
-}
-
-function drawStrokeTextGeometry(
-    layer: RenderLayer,
-    text: string,
-    x: number,
-    y: number,
-    rotationDeg: number,
-    charW: number,
-    charH: number,
-    thickness: number,
-    color: [number, number, number, number],
-) {
-    const layout = layoutKicadStrokeLine(text, charW, charH);
-    if (layout.strokes.length === 0) return;
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const stroke of layout.strokes) {
-        for (const pt of stroke) {
-            if (pt.x < minX) minX = pt.x;
-            if (pt.y < minY) minY = pt.y;
-            if (pt.x > maxX) maxX = pt.x;
-            if (pt.y > maxY) maxY = pt.y;
-        }
-    }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return;
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    const theta = -(rotationDeg || 0) * DEG_TO_RAD;
-    const cos = Math.cos(theta);
-    const sin = Math.sin(theta);
-
-    const [r, g, b, a] = color;
-    for (const stroke of layout.strokes) {
-        if (stroke.length < 2) continue;
-        const points: Vec2[] = [];
-        for (const pt of stroke) {
-            const lx = pt.x - cx;
-            const ly = pt.y - cy;
-            points.push(
-                new Vec2(
-                    x + lx * cos - ly * sin,
-                    y + lx * sin + ly * cos,
-                ),
-            );
-        }
-        layer.geometry.add_polyline(points, thickness, r, g, b, a);
-    }
 }
 
 function buildLayerMap(model: RenderModel): Map<string, LayerModel> {
@@ -615,101 +448,7 @@ function paintPadAnnotations(
 ) {
     if (fp.pads.length === 0) return;
     if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0) return;
-
-    const resolvePad = (padIndex: number, padName: string): PadModel | null => {
-        const byIndex = fp.pads[padIndex];
-        if (byIndex && byIndex.name === padName) {
-            return byIndex;
-        }
-        return null;
-    };
-
-    type NameGeometry = {
-        text: string;
-        x: number;
-        y: number;
-        rotation: number;
-        charW: number;
-        charH: number;
-        thickness: number;
-    };
-    type NumberGeometry = {
-        text: string;
-        badgeCenterX: number;
-        badgeCenterY: number;
-        badgeRadius: number;
-        labelFit: [number, number, number] | null;
-    };
-    type LayerAnnotationGeometry = {
-        names: NameGeometry[];
-        numbers: NumberGeometry[];
-    };
-
-    const layerGeometry = new Map<string, LayerAnnotationGeometry>();
-    const ensureLayerGeometry = (layerName: string): LayerAnnotationGeometry => {
-        let entry = layerGeometry.get(layerName);
-        if (!entry) {
-            entry = { names: [], numbers: [] };
-            layerGeometry.set(layerName, entry);
-        }
-        return entry;
-    };
-
-    for (const annotation of fp.pad_names) {
-        if (!annotation.text.trim()) continue;
-        const pad = resolvePad(annotation.pad_index, annotation.pad);
-        if (!pad) continue;
-        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
-        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
-        const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
-        if (!fitted) continue;
-        const [displayText, [charW, charH, thickness]] = fitted;
-        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
-        const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
-        for (const layerName of annotation.layer_ids) {
-            if (hidden.has(layerName)) continue;
-            ensureLayerGeometry(layerName).names.push({
-                text: displayText,
-                x: worldCenter.x,
-                y: worldCenter.y,
-                rotation: textRotation,
-                charW,
-                charH,
-                thickness,
-            });
-        }
-    }
-
-    for (const annotation of fp.pad_numbers) {
-        if (!annotation.text.trim()) continue;
-        const pad = resolvePad(annotation.pad_index, annotation.pad);
-        if (!pad) continue;
-        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
-        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
-        const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
-        const badgeRadius = badgeDiameter / 2;
-        const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
-        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
-        const badgeCenterX = worldCenter.x - (bboxW / 2) + margin + badgeRadius;
-        const badgeCenterY = worldCenter.y - (bboxH / 2) + margin + badgeRadius;
-        const labelFit = fitTextInsideBox(
-            annotation.text,
-            badgeDiameter * 0.92,
-            badgeDiameter * 0.92,
-            PAD_NUMBER_MIN_CHAR_H,
-            PAD_NUMBER_CHAR_SCALE,
-        );
-        for (const layerName of annotation.layer_ids) {
-            if (hidden.has(layerName)) continue;
-            ensureLayerGeometry(layerName).numbers.push({
-                text: annotation.text,
-                badgeCenterX,
-                badgeCenterY,
-                badgeRadius,
-                labelFit,
-            });
-        }
-    }
+    const layerGeometry = buildPadAnnotationGeometry(fp, hidden);
 
     const orderedAnnotationLayers = [...layerGeometry.keys()].sort(
         (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById),
@@ -717,42 +456,15 @@ function paintPadAnnotations(
     for (const layerName of orderedAnnotationLayers) {
         const geometry = layerGeometry.get(layerName);
         if (!geometry) continue;
+        if (geometry.numbers.length === 0) continue;
         const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
         const [r, g, b, a] = getLayerColor(layerName, layerById);
-
-        for (const name of geometry.names) {
-            drawStrokeTextGeometry(
-                layer,
-                name.text,
-                name.x,
-                name.y,
-                name.rotation,
-                name.charW,
-                name.charH,
-                name.thickness,
-                [r, g, b, a],
-            );
-        }
 
         for (const number of geometry.numbers) {
             layer.geometry.add_circle(number.badgeCenterX, number.badgeCenterY, number.badgeRadius, r, g, b, Math.max(a, 0.98));
             const outlinePoints = circleToPoints(number.badgeCenterX, number.badgeCenterY, number.badgeRadius);
             if (outlinePoints.length > 1) {
                 layer.geometry.add_polyline(outlinePoints, Math.max(number.badgeRadius * 0.18, 0.04), 0.05, 0.08, 0.12, 0.8);
-            }
-            if (number.labelFit) {
-                const [charW, charH, thickness] = number.labelFit;
-                drawStrokeTextGeometry(
-                    layer,
-                    number.text,
-                    number.badgeCenterX,
-                    number.badgeCenterY,
-                    0,
-                    charW,
-                    charH,
-                    thickness,
-                    [0.05, 0.08, 0.12, 0.98],
-                );
             }
         }
 

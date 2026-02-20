@@ -1,0 +1,227 @@
+import { fpTransform, rotatedRectExtents } from "./geometry";
+import type { FootprintModel, PadModel } from "./types";
+
+const PAD_ANNOTATION_BOX_RATIO = 0.78;
+const PAD_ANNOTATION_MAJOR_FIT = 0.96;
+const PAD_ANNOTATION_MINOR_FIT = 0.88;
+const PAD_ANNOTATION_CHAR_SCALE = 0.60;
+const PAD_ANNOTATION_MIN_CHAR_H = 0.08;
+const PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
+const PAD_ANNOTATION_STROKE_SCALE = 0.22;
+const PAD_ANNOTATION_STROKE_MIN = 0.02;
+const PAD_ANNOTATION_STROKE_MAX = 0.16;
+const PAD_NAME_GENERIC_TOKENS = new Set(["input", "output", "line", "net"]);
+const PAD_NAME_PREFIXES = ["power_in-", "power_vbus-", "power-"];
+const PAD_NAME_TRUNCATE_LENGTHS = [16, 12, 10, 8, 6, 5, 4, 3, 2];
+const PAD_NAME_TARGET_CHAR_H = 0.14;
+const PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
+const PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
+const PAD_NUMBER_CHAR_SCALE = 0.80;
+const PAD_NUMBER_MIN_CHAR_H = 0.04;
+
+export type NameGeometry = {
+    text: string;
+    x: number;
+    y: number;
+    rotation: number;
+    charW: number;
+    charH: number;
+    thickness: number;
+};
+
+export type NumberGeometry = {
+    text: string;
+    badgeCenterX: number;
+    badgeCenterY: number;
+    badgeRadius: number;
+    labelFit: [number, number, number] | null;
+};
+
+export type LayerAnnotationGeometry = {
+    names: NameGeometry[];
+    numbers: NumberGeometry[];
+};
+
+function estimateStrokeTextAdvance(text: string): number {
+    if (!text) return 0.6;
+    const narrow = new Set(["1", "I", "i", "l", "|", "!", ".", ",", ":", ";", "'", "`"]);
+    const wide = new Set(["M", "W", "@", "%", "#"]);
+    let advance = 0;
+    for (const ch of text) {
+        if (ch === " ") advance += 0.6;
+        else if (narrow.has(ch)) advance += 0.45;
+        else if (wide.has(ch)) advance += 0.95;
+        else advance += 0.72;
+    }
+    return Math.max(advance, 0.6);
+}
+
+function fitTextInsideBox(
+    text: string,
+    boxW: number,
+    boxH: number,
+    minCharH = PAD_ANNOTATION_MIN_CHAR_H,
+    charScale = PAD_ANNOTATION_CHAR_SCALE,
+): [number, number, number] | null {
+    if (boxW <= 0 || boxH <= 0) return null;
+    const usableW = Math.max(0, boxW * PAD_ANNOTATION_BOX_RATIO);
+    const usableH = Math.max(0, boxH * PAD_ANNOTATION_BOX_RATIO);
+    if (usableW <= 0 || usableH <= 0) return null;
+    const vertical = usableH > usableW;
+    const major = vertical ? usableH : usableW;
+    const minor = vertical ? usableW : usableH;
+    const advance = estimateStrokeTextAdvance(text);
+    const maxHByWidth = major / Math.max(advance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
+    let charH = Math.min(minor * PAD_ANNOTATION_MINOR_FIT, maxHByWidth * PAD_ANNOTATION_MAJOR_FIT);
+    charH *= charScale;
+    if (charH < minCharH) return null;
+    const charW = charH * PAD_ANNOTATION_CHAR_W_RATIO;
+    const thickness = Math.min(
+        PAD_ANNOTATION_STROKE_MAX,
+        Math.max(PAD_ANNOTATION_STROKE_MIN, charH * PAD_ANNOTATION_STROKE_SCALE),
+    );
+    return [charW, charH, thickness];
+}
+
+function padNameCandidates(text: string): string[] {
+    const base = text.trim();
+    if (!base) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const add = (v: string) => {
+        const t = v.trim();
+        if (!t || seen.has(t)) return;
+        seen.add(t);
+        out.push(t);
+    };
+
+    add(base);
+    let normalized = base;
+    for (const prefix of PAD_NAME_PREFIXES) {
+        if (normalized.startsWith(prefix)) normalized = normalized.slice(prefix.length);
+    }
+    add(normalized);
+
+    const tokens = normalized.replaceAll("/", "-").split("-").map(t => t.trim()).filter(Boolean);
+    for (let idx = tokens.length - 1; idx >= 0; idx--) {
+        const token = tokens[idx]!;
+        if (PAD_NAME_GENERIC_TOKENS.has(token.toLowerCase())) continue;
+        add(token);
+        add(token.replaceAll("[", "").replaceAll("]", ""));
+    }
+
+    for (const maxLen of PAD_NAME_TRUNCATE_LENGTHS) {
+        if (normalized.length > maxLen) add(normalized.slice(0, maxLen));
+    }
+
+    return out;
+}
+
+function fitPadNameLabel(text: string, boxW: number, boxH: number): [string, [number, number, number]] | null {
+    let fallback: [string, [number, number, number]] | null = null;
+    for (const candidate of padNameCandidates(text)) {
+        const fit = fitTextInsideBox(candidate, boxW, boxH);
+        if (!fit) continue;
+        if (!fallback || fit[1] > fallback[1][1]) {
+            fallback = [candidate, fit];
+        }
+        if (fit[1] >= PAD_NAME_TARGET_CHAR_H) {
+            return [candidate, fit];
+        }
+    }
+    return fallback;
+}
+
+function padLabelWorldRotation(totalPadRotationDeg: number, padW: number, padH: number): number {
+    if (padW <= 0 || padH <= 0) return 0;
+    if (Math.abs(padW - padH) <= 1e-6) return 0;
+    const longAxisDeg = padW > padH ? totalPadRotationDeg : totalPadRotationDeg + 90;
+    const axisX = Math.abs(Math.cos(longAxisDeg * Math.PI / 180));
+    const axisY = Math.abs(Math.sin(longAxisDeg * Math.PI / 180));
+    return axisY > axisX ? 90 : 0;
+}
+
+function resolvePad(fp: FootprintModel, padIndex: number, padName: string): PadModel | null {
+    const byIndex = fp.pads[padIndex];
+    if (byIndex && byIndex.name === padName) {
+        return byIndex;
+    }
+    for (const pad of fp.pads) {
+        if (pad.name === padName) return pad;
+    }
+    return null;
+}
+
+export function buildPadAnnotationGeometry(
+    fp: FootprintModel,
+    hiddenLayers?: Set<string>,
+): Map<string, LayerAnnotationGeometry> {
+    const hidden = hiddenLayers ?? new Set<string>();
+    const layerGeometry = new Map<string, LayerAnnotationGeometry>();
+    const ensureLayerGeometry = (layerName: string): LayerAnnotationGeometry => {
+        let entry = layerGeometry.get(layerName);
+        if (!entry) {
+            entry = { names: [], numbers: [] };
+            layerGeometry.set(layerName, entry);
+        }
+        return entry;
+    };
+
+    for (const annotation of fp.pad_names) {
+        if (!annotation.text.trim()) continue;
+        const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
+        if (!pad) continue;
+        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+        const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
+        if (!fitted) continue;
+        const [displayText, [charW, charH, thickness]] = fitted;
+        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+        const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
+        for (const layerName of annotation.layer_ids) {
+            if (hidden.has(layerName)) continue;
+            ensureLayerGeometry(layerName).names.push({
+                text: displayText,
+                x: worldCenter.x,
+                y: worldCenter.y,
+                rotation: textRotation,
+                charW,
+                charH,
+                thickness,
+            });
+        }
+    }
+
+    for (const annotation of fp.pad_numbers) {
+        if (!annotation.text.trim()) continue;
+        const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
+        if (!pad) continue;
+        const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+        const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+        const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
+        const badgeRadius = badgeDiameter / 2;
+        const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
+        const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+        const badgeCenterX = worldCenter.x - (bboxW / 2) + margin + badgeRadius;
+        const badgeCenterY = worldCenter.y - (bboxH / 2) + margin + badgeRadius;
+        const labelFit = fitTextInsideBox(
+            annotation.text,
+            badgeDiameter * 0.92,
+            badgeDiameter * 0.92,
+            PAD_NUMBER_MIN_CHAR_H,
+            PAD_NUMBER_CHAR_SCALE,
+        );
+        for (const layerName of annotation.layer_ids) {
+            if (hidden.has(layerName)) continue;
+            ensureLayerGeometry(layerName).numbers.push({
+                text: annotation.text,
+                badgeCenterX,
+                badgeCenterY,
+                badgeRadius,
+                labelFit,
+            });
+        }
+    }
+
+    return layerGeometry;
+}
