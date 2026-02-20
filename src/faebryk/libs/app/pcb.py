@@ -15,7 +15,7 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
     kicad,
 )
-from faebryk.libs.kicad.paths import find_pcbnew
+from faebryk.libs.kicad.paths import find_pcbnew, is_wsl
 from faebryk.libs.util import (
     duplicates,
     groupby,
@@ -31,6 +31,17 @@ def open_pcb(pcb_path: os.PathLike):
     import subprocess
 
     pcbnew = find_pcbnew()
+    
+    # adjust filepath if using wsl 
+    if is_wsl():
+        try:
+            out = subprocess.check_output(
+                ["wslpath", "-w", pcb_path],
+                text=True
+            )
+            pcb_path = out.strip()
+        except subprocess.CalledProcessError:
+            pass
 
     # Check if pcbnew is already running with this pcb
     for process in psutil.process_iter(["name", "cmdline"]):
