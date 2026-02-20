@@ -7,7 +7,7 @@ import type { Camera2 } from "./camera";
 import type { LayerModel, RenderModel } from "./types";
 
 const DEG_TO_RAD = Math.PI / 180;
-const PAD_ANNOTATION_FONT_STACK = "\"Liberation Sans\", \"Noto Sans\", \"DejaVu Sans\", \"Helvetica Neue\", Arial, sans-serif";
+const PAD_ANNOTATION_FONT_STACK = "\"IBM Plex Mono\", \"Roboto Mono\", \"Menlo\", \"Consolas\", \"Liberation Mono\", \"DejaVu Sans Mono\", \"Courier New\", monospace";
 const PAD_ANNOTATION_NAME_WEIGHT = 550;
 const PAD_ANNOTATION_NUMBER_WEIGHT = 650;
 const PAD_ANNOTATION_NUMBER_COLOR = "rgba(13, 20, 31, 0.98)";
@@ -46,11 +46,11 @@ function drawPadAnnotationText(
     ) {
         return;
     }
+    const fontPx = Math.max(charH * Math.max(camera.zoom, 1e-6), 0.8);
     ctx.save();
     ctx.translate(screenPos.x, screenPos.y);
     ctx.rotate(-(rotationDeg || 0) * DEG_TO_RAD);
-    ctx.scale(camera.zoom, camera.zoom);
-    ctx.font = `${fontWeight} ${Math.max(charH, 0.02)}px ${PAD_ANNOTATION_FONT_STACK}`;
+    ctx.font = `${fontWeight} ${fontPx}px ${PAD_ANNOTATION_FONT_STACK}`;
     (ctx as CanvasRenderingContext2D & { fontKerning?: CanvasFontKerning }).fontKerning = "normal";
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
@@ -58,8 +58,8 @@ function drawPadAnnotationText(
     const metrics = ctx.measureText(text);
     const left = metrics.actualBoundingBoxLeft ?? 0;
     const right = metrics.actualBoundingBoxRight ?? metrics.width;
-    const ascent = metrics.actualBoundingBoxAscent ?? charH * 0.78;
-    const descent = metrics.actualBoundingBoxDescent ?? charH * 0.22;
+    const ascent = metrics.actualBoundingBoxAscent ?? fontPx * 0.78;
+    const descent = metrics.actualBoundingBoxDescent ?? fontPx * 0.22;
     const x = -((left + right) / 2);
     const y = (ascent - descent) / 2;
     ctx.fillText(text, x, y);

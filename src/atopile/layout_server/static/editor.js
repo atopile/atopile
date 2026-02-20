@@ -22420,7 +22420,7 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
 
 // src/text_overlay.ts
 var DEG_TO_RAD3 = Math.PI / 180;
-var PAD_ANNOTATION_FONT_STACK = '"Liberation Sans", "Noto Sans", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif';
+var PAD_ANNOTATION_FONT_STACK = '"IBM Plex Mono", "Roboto Mono", "Menlo", "Consolas", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace';
 var PAD_ANNOTATION_NAME_WEIGHT = 550;
 var PAD_ANNOTATION_NUMBER_WEIGHT = 650;
 var PAD_ANNOTATION_NUMBER_COLOR = "rgba(13, 20, 31, 0.98)";
@@ -22429,11 +22429,11 @@ function drawPadAnnotationText(ctx, camera, viewportWidth, viewportHeight, text,
   if (screenPos.x < -100 || screenPos.x > viewportWidth + 100 || screenPos.y < -100 || screenPos.y > viewportHeight + 100) {
     return;
   }
+  const fontPx = Math.max(charH * Math.max(camera.zoom, 1e-6), 0.8);
   ctx.save();
   ctx.translate(screenPos.x, screenPos.y);
   ctx.rotate(-(rotationDeg || 0) * DEG_TO_RAD3);
-  ctx.scale(camera.zoom, camera.zoom);
-  ctx.font = `${fontWeight} ${Math.max(charH, 0.02)}px ${PAD_ANNOTATION_FONT_STACK}`;
+  ctx.font = `${fontWeight} ${fontPx}px ${PAD_ANNOTATION_FONT_STACK}`;
   ctx.fontKerning = "normal";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -22441,8 +22441,8 @@ function drawPadAnnotationText(ctx, camera, viewportWidth, viewportHeight, text,
   const metrics = ctx.measureText(text);
   const left = metrics.actualBoundingBoxLeft ?? 0;
   const right = metrics.actualBoundingBoxRight ?? metrics.width;
-  const ascent = metrics.actualBoundingBoxAscent ?? charH * 0.78;
-  const descent = metrics.actualBoundingBoxDescent ?? charH * 0.22;
+  const ascent = metrics.actualBoundingBoxAscent ?? fontPx * 0.78;
+  const descent = metrics.actualBoundingBoxDescent ?? fontPx * 0.22;
   const x = -((left + right) / 2);
   const y = (ascent - descent) / 2;
   ctx.fillText(text, x, y);
