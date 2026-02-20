@@ -116,6 +116,9 @@ class TestState:
     outcome: Outcome | None = None
     finish_time: datetime.datetime | None = None
     claim_time: float | None = None
+    claim_to_start_s: float | None = None
+    claim_to_finish_s: float | None = None
+    worker_runtime_s: float | None = None
     claim_attempts: int = 0
     requeues: int = 0
     output: dict | None = None
@@ -173,9 +176,10 @@ class TestAggregator:
         # Tracks tests that have been handed out via /claim but for which we
         # haven't yet received START/FINISH. If a worker dies in that window,
         # the test is otherwise "lost" (not in the queue and never started).
-        self._claimed_by_pid: dict[int, str] = {}
+        self._claimed_by_pid: dict[int, set[str]] = {}
         # Maps worker PID to worker ID (for log file access)
         self._pid_to_worker_id: dict[int, int] = {}
+        self._scheduler_stats: dict[str, int] = {}
         self.start_time = datetime.datetime.now()
 
     def set_orchestrator_url(self, url: str) -> None:
@@ -186,6 +190,14 @@ class TestAggregator:
 
     def set_test_run_id(self, test_run_id: str) -> None:
         self._test_run_id = test_run_id
+
+    def set_scheduler_stats(self, stats: dict[str, int]) -> None:
+        with self._lock:
+            self._scheduler_stats = dict(stats)
+
+    def get_claimed_nodeids(self, pid: int) -> list[str]:
+        with self._lock:
+            return list(self._claimed_by_pid.get(pid, set()))
 
     def register_worker(self, worker_id: int, pid: int) -> None:
         """Register a worker's PID to worker_id mapping for log file access."""
@@ -207,29 +219,18 @@ class TestAggregator:
         return None
 
     def handle_claim(self, pid: int, nodeid: str) -> None:
+        claim_time = time.time()
         with self._lock:
             self._active_pids.add(pid)
-
-            # Defensive: if the worker somehow claims twice without finishing,
-            # treat the previous claim as orphaned and requeue if unstarted.
-            prev = self._claimed_by_pid.get(pid)
-            if prev and prev != nodeid:
-                prev_state = self._tests.get(prev)
-                if (
-                    prev_state
-                    and prev_state.outcome is None
-                    and prev_state.start_time is None
-                ):
-                    prev_state.pid = None
-                    prev_state.claim_time = None
-                    prev_state.requeues += 1
-                    test_queue.put(prev)
-
-            self._claimed_by_pid[pid] = nodeid
+            claims = self._claimed_by_pid.setdefault(pid, set())
+            claims.add(nodeid)
             state = self._tests.get(nodeid)
             if state:
                 state.pid = pid
-                state.claim_time = time.time()
+                state.claim_time = claim_time
+                state.claim_to_start_s = None
+                state.claim_to_finish_s = None
+                state.worker_runtime_s = None
                 state.claim_attempts += 1
 
     def set_baseline(self, baseline: RemoteBaseline) -> None:
@@ -297,27 +298,36 @@ class TestAggregator:
             if event_type == EventType.EXIT:
                 # If the worker exits while still holding a claim, requeue the
                 # test (it was dequeued but never started/finished).
-                claimed = self._claimed_by_pid.pop(pid, None)
-                if claimed:
+                claimed_nodeids = self._claimed_by_pid.pop(pid, set())
+                for claimed in claimed_nodeids:
                     test = self._tests.get(claimed)
                     if test and test.outcome is None and test.start_time is None:
                         test.pid = None
                         test.claim_time = None
                         test.requeues += 1
                         test_queue.put(claimed)
-                self._active_pids.remove(pid)
+                self._active_pids.discard(pid)
                 self._exited_pids.add(pid)
                 return
 
             elif event_type == EventType.START:
                 nodeid = data.nodeid
                 if nodeid and nodeid in self._tests:
-                    self._tests[nodeid].pid = pid
-                    self._tests[nodeid].start_time = datetime.datetime.now()
-                    self._tests[nodeid].claim_time = None
+                    test = self._tests[nodeid]
+                    start_time = datetime.datetime.now()
+                    test.pid = pid
+                    test.start_time = start_time
+                    if test.claim_time is not None:
+                        test.claim_to_start_s = max(time.time() - test.claim_time, 0.0)
+                    # Keep START semantics from main: once started, this is no longer
+                    # a claim-stage test.
+                    test.claim_time = None
                 # START implies the claim is no longer "in limbo"
-                if self._claimed_by_pid.get(pid) == nodeid:
-                    self._claimed_by_pid.pop(pid, None)
+                claims = self._claimed_by_pid.get(pid)
+                if nodeid and claims and nodeid in claims:
+                    claims.discard(nodeid)
+                    if not claims:
+                        self._claimed_by_pid.pop(pid, None)
 
             elif event_type == EventType.FINISH:
                 nodeid = data.nodeid
@@ -329,12 +339,22 @@ class TestAggregator:
                 if nodeid and nodeid in self._tests and outcome_str:
                     try:
                         test = self._tests[nodeid]
+                        finish_time = datetime.datetime.now()
                         test.outcome = outcome_str
-                        test.claim_time = None
-                        test.finish_time = datetime.datetime.now()
+                        test.finish_time = finish_time
                         # If START was missed (e.g. transient HTTP issue), ensure
                         if test.start_time is None:
                             test.start_time = test.finish_time
+                        runtime_s = max(
+                            (test.finish_time - test.start_time).total_seconds(), 0.0
+                        )
+                        if test.claim_to_start_s is not None:
+                            test.claim_to_finish_s = test.claim_to_start_s + runtime_s
+                        elif test.claim_time is not None:
+                            claim_to_finish = max(time.time() - test.claim_time, 0.0)
+                            test.claim_to_finish_s = claim_to_finish
+                            test.claim_to_start_s = claim_to_finish
+                        test.claim_time = None
                         if output:
                             test.output = output
                         if error_message:
@@ -347,16 +367,30 @@ class TestAggregator:
                         self._compute_compare_status(test)
                     except ValueError:
                         pass
-                if self._claimed_by_pid.get(pid) == nodeid:
-                    self._claimed_by_pid.pop(pid, None)
+                claims = self._claimed_by_pid.get(pid)
+                if nodeid and claims and nodeid in claims:
+                    claims.discard(nodeid)
+                    if not claims:
+                        self._claimed_by_pid.pop(pid, None)
+
+            elif event_type == EventType.WORKER_FINISH:
+                nodeid = data.nodeid
+                worker_runtime_s = data.worker_runtime_s
+                if (
+                    nodeid
+                    and nodeid in self._tests
+                    and worker_runtime_s is not None
+                    and worker_runtime_s >= 0
+                ):
+                    self._tests[nodeid].worker_runtime_s = worker_runtime_s
 
     def handle_worker_crash(self, pid: int):
         with self._lock:
             # If this worker had a claimed test that never started, put it back
             # into the queue. This avoids the rare "finished with queued tests"
             # state when a worker dies between /claim and START.
-            claimed = self._claimed_by_pid.pop(pid, None)
-            if claimed:
+            claimed_nodeids = self._claimed_by_pid.pop(pid, set())
+            for claimed in claimed_nodeids:
                 test = self._tests.get(claimed)
                 if test and test.outcome is None and test.start_time is None:
                     test.pid = None
@@ -379,12 +413,19 @@ class TestAggregator:
                         pass
                     t.outcome = Outcome.CRASHED
                     t.finish_time = datetime.datetime.now()
+                    runtime_s = max((t.finish_time - t.start_time).total_seconds(), 0.0)
+                    if t.claim_to_start_s is not None:
+                        t.claim_to_finish_s = t.claim_to_start_s + runtime_s
+                    elif t.claim_time is not None:
+                        claim_to_finish = max(time.time() - t.claim_time, 0.0)
+                        t.claim_to_finish_s = claim_to_finish
+                        t.claim_to_start_s = claim_to_finish
                     t.output = {
                         "error": f"Worker process {pid} crashed while running this test.\n\n{output}"  # noqa: E501
                     }
-                    self._exited_pids.add(pid)
-                    if pid in self._active_pids:
-                        self._active_pids.remove(pid)
+            # Worker exited regardless of whether it had an active running test.
+            self._exited_pids.add(pid)
+            self._active_pids.discard(pid)
 
     def get_timed_out_workers(self, timeout_seconds: float) -> list[tuple[int, str]]:
         """Return list of (pid, nodeid) for running tests that exceeded the timeout."""
@@ -428,6 +469,15 @@ class TestAggregator:
 
             test.outcome = Outcome.TIMEOUT
             test.finish_time = datetime.datetime.now()
+            if test.start_time is None:
+                test.start_time = test.finish_time
+            runtime_s = max((test.finish_time - test.start_time).total_seconds(), 0.0)
+            if test.claim_to_start_s is not None:
+                test.claim_to_finish_s = test.claim_to_start_s + runtime_s
+            elif test.claim_time is not None:
+                claim_to_finish = max(time.time() - test.claim_time, 0.0)
+                test.claim_to_finish_s = claim_to_finish
+                test.claim_to_start_s = claim_to_finish
             test.error_message = (
                 f"Test exceeded orchestrator timeout "
                 f"({(test.finish_time - test.start_time).total_seconds():.0f}s)"
@@ -442,7 +492,11 @@ class TestAggregator:
             }
 
             # Clean up tracking state
-            self._claimed_by_pid.pop(pid, None)
+            claims = self._claimed_by_pid.get(pid)
+            if claims:
+                claims.discard(nodeid)
+                if not claims:
+                    self._claimed_by_pid.pop(pid, None)
             self._exited_pids.add(pid)
             if pid in self._active_pids:
                 self._active_pids.remove(pid)
@@ -455,10 +509,15 @@ class TestAggregator:
 
     def unstarted_pending_nodeids(self) -> list[str]:
         with self._lock:
+            claimed = {
+                nodeid for claims in self._claimed_by_pid.values() for nodeid in claims
+            }
             return [
                 t.nodeid
                 for t in self._tests.values()
-                if t.outcome is None and t.start_time is None
+                if t.outcome is None
+                and t.start_time is None
+                and t.nodeid not in claimed
             ]
 
     def recover_stale_claims(self, timeout_s: float) -> list[str]:
@@ -467,6 +526,14 @@ class TestAggregator:
         now = time.time()
         stale: list[str] = []
         with self._lock:
+            # In batch mode, a worker can legitimately hold multiple claims while
+            # only one test has started. Don't stale-recover those queued claims
+            # while the worker is actively running another test.
+            running_pids = {
+                t.pid
+                for t in self._tests.values()
+                if t.pid is not None and t.outcome is None and t.start_time is not None
+            }
             for t in self._tests.values():
                 if (
                     t.claim_time is not None
@@ -474,11 +541,16 @@ class TestAggregator:
                     and t.start_time is None
                     and (now - t.claim_time) > timeout_s
                 ):
+                    if t.pid is not None and t.pid in running_pids:
+                        continue
                     # Clean up _claimed_by_pid so handle_claim doesn't
                     # double-requeue this test when the same PID claims again.
                     if t.pid is not None:
-                        if self._claimed_by_pid.get(t.pid) == t.nodeid:
-                            del self._claimed_by_pid[t.pid]
+                        claims = self._claimed_by_pid.get(t.pid)
+                        if claims and t.nodeid in claims:
+                            claims.discard(t.nodeid)
+                            if not claims:
+                                del self._claimed_by_pid[t.pid]
                     t.pid = None
                     t.claim_time = None
                     t.requeues += 1
@@ -490,7 +562,7 @@ class TestAggregator:
 
         with self._lock:
             tests = list(self._tests.values())
-            workers = len(self._active_pids)
+            workers_active = self._live_workers_count()
             exited_workers = len(self._exited_pids)
 
         def _count(outcome: Outcome | None) -> int:
@@ -516,7 +588,7 @@ class TestAggregator:
         mem_pct = sys_res.get("memory_percent", 0)
 
         out = (
-            f"WA:{workers:2} WE:{exited_workers:2}|"
+            f"WA:{workers_active:2} WE:{exited_workers:2}|"
             f" ✓{passed:4} ✗{failed:4} E{errored:4} C{crashed:4} T{timed_out:4} S{skipped:4} R{running:4} Q{remaining:4}"  # noqa: E501
             f" | CPU:{cpu_pct:5.1f}% MEM:{mem_pct:5.1f}%"
         )
@@ -548,6 +620,15 @@ class TestAggregator:
                 for t in self._tests.values()
             )
 
+    @staticmethod
+    def _live_workers_count() -> int:
+        try:
+            if workers is None:
+                return 0
+            return sum(1 for p in workers.values() if p.poll() is None)
+        except Exception:
+            return 0
+
     def build_report_data(self) -> dict[str, Any]:
         now = datetime.datetime.now()
         with self._lock:
@@ -557,6 +638,9 @@ class TestAggregator:
                     "pid": t.pid,
                     "start_time": t.start_time,
                     "finish_time": t.finish_time,
+                    "claim_to_start_s": t.claim_to_start_s,
+                    "claim_to_finish_s": t.claim_to_finish_s,
+                    "worker_runtime_s": t.worker_runtime_s,
                     "outcome": t.outcome,
                     "output": t.output,
                     "error_message": t.error_message,
@@ -570,13 +654,14 @@ class TestAggregator:
                 }
                 for t in self._tests.values()
             ]
-            workers_active = len(self._active_pids)
+            workers_active = self._live_workers_count()
             workers_exited = len(self._exited_pids)
             pid_to_worker_id = dict(self._pid_to_worker_id)
             baseline = self._baseline
             pytest_args = list(self._pytest_args)
             baseline_requested = self._baseline_requested
             collection_errors = dict(self._collection_errors)
+            scheduler_stats = dict(self._scheduler_stats)
             start_time = self.start_time
 
         passed = failed = errors = crashed = timeout = skipped = 0
@@ -586,7 +671,12 @@ class TestAggregator:
         perf_improvements = 0
         memory_regressions = 0
         sum_test_durations = 0.0
+        sum_claim_to_finish = 0.0
+        sum_worker_runtime = 0.0
         durations: list[float] = []
+        claim_to_start_values: list[float] = []
+        claim_to_finish_values: list[float] = []
+        worker_runtime_values: list[float] = []
         memory_usage_values: list[float] = []
         memory_peak_values: list[float] = []
         truncated_tests = 0
@@ -635,6 +725,16 @@ class TestAggregator:
                 memory_usage_values.append(t["memory_usage_mb"])
             if t["memory_peak_mb"] > 0:
                 memory_peak_values.append(t["memory_peak_mb"])
+            if t["claim_to_start_s"] is not None:
+                claim_to_start_values.append(float(t["claim_to_start_s"]))
+            if t["claim_to_finish_s"] is not None:
+                claim_finish_val = float(t["claim_to_finish_s"])
+                claim_to_finish_values.append(claim_finish_val)
+                sum_claim_to_finish += claim_finish_val
+            if t["worker_runtime_s"] is not None:
+                worker_runtime_val = float(t["worker_runtime_s"])
+                worker_runtime_values.append(worker_runtime_val)
+                sum_worker_runtime += worker_runtime_val
 
             output_full = cast(dict[str, str] | None, t["output"])
             output, output_meta = apply_output_limits(output_full)
@@ -746,6 +846,9 @@ class TestAggregator:
                     else ("-" if state == "queued" else "0ms"),
                     "start_time": safe_iso(t["start_time"]),
                     "finish_time": safe_iso(t["finish_time"]),
+                    "claim_to_start_s": t["claim_to_start_s"],
+                    "claim_to_finish_s": t["claim_to_finish_s"],
+                    "worker_runtime_s": t["worker_runtime_s"],
                     "error_message": t["error_message"],
                     "error_type": error_type,
                     "error_summary": error_summary,
@@ -806,8 +909,29 @@ class TestAggregator:
             removed_tests = 0 if selection_applied else removed_total
 
         duration_percentiles = percentiles(durations, [50, 90, 95, 99])
+        claim_to_start_percentiles = percentiles(
+            claim_to_start_values, [50, 90, 95, 99]
+        )
+        claim_to_finish_percentiles = percentiles(
+            claim_to_finish_values, [50, 90, 95, 99]
+        )
+        worker_runtime_percentiles = percentiles(
+            worker_runtime_values, [50, 90, 95, 99]
+        )
         memory_usage_percentiles = percentiles(memory_usage_values, [50, 90, 95, 99])
         memory_peak_percentiles = percentiles(memory_peak_values, [50, 90, 95, 99])
+
+        avg_parallelism_test_runtime = (
+            sum_test_durations / total_duration if total_duration > 0 else 0.0
+        )
+        avg_parallelism_claim_runtime = (
+            sum_claim_to_finish / total_duration if total_duration > 0 else 0.0
+        )
+        avg_parallelism_worker_runtime = (
+            sum_worker_runtime / total_duration if total_duration > 0 else 0.0
+        )
+        claim_runtime_overhead_s = max(sum_claim_to_finish - sum_test_durations, 0.0)
+        worker_runtime_overhead_s = max(sum_worker_runtime - sum_claim_to_finish, 0.0)
 
         collection_error_entries = [
             {
@@ -968,6 +1092,7 @@ class TestAggregator:
                 "orchestrator_bind": ORCHESTRATOR_BIND_HOST,
                 "orchestrator_url": self._orchestrator_url,
                 "orchestrator_report_url": self._orchestrator_report_url,
+                "scheduler": scheduler_stats,
                 "output_limits": {
                     "max_bytes": OUTPUT_MAX_BYTES,
                     "truncate_mode": OUTPUT_TRUNCATE_MODE,
@@ -1003,6 +1128,19 @@ class TestAggregator:
                 "progress_percent": progress_percent,
                 "total_duration_s": total_duration,
                 "total_summed_duration_s": sum_test_durations,
+                "total_claim_to_finish_s": sum_claim_to_finish,
+                "claim_runtime_overhead_s": claim_runtime_overhead_s,
+                "avg_parallelism_test_runtime": avg_parallelism_test_runtime,
+                "avg_parallelism_claim_runtime": avg_parallelism_claim_runtime,
+                "avg_parallelism_worker_runtime": avg_parallelism_worker_runtime,
+                "claim_to_start_samples": len(claim_to_start_values),
+                "claim_to_finish_samples": len(claim_to_finish_values),
+                "worker_runtime_samples": len(worker_runtime_values),
+                "claim_to_start_percentiles_s": claim_to_start_percentiles,
+                "claim_to_finish_percentiles_s": claim_to_finish_percentiles,
+                "worker_runtime_percentiles_s": worker_runtime_percentiles,
+                "total_worker_runtime_s": sum_worker_runtime,
+                "worker_runtime_overhead_s": worker_runtime_overhead_s,
                 "total_memory_mb": total_memory_mb,
                 "workers_used": workers_used,
                 "duration_percentiles_s": duration_percentiles,
@@ -1409,6 +1547,155 @@ class TestAggregator:
             elif baseline.get("error"):
                 current_baseline_info = "-- Baseline error --"
 
+            run_data = report.get("run", {})
+            scheduler = run_data.get("scheduler") or {}
+            claim_empty_with_pending = int(
+                scheduler.get("claims_empty_with_pending", 0) or 0
+            )
+            claim_empty_with_queue = int(
+                scheduler.get("claims_empty_with_queue", 0) or 0
+            )
+            claim_requests = int(scheduler.get("claim_requests", 0) or 0)
+            claims_granted = int(scheduler.get("claims_granted", 0) or 0)
+            claims_empty = int(scheduler.get("claims_empty", 0) or 0)
+            scan_candidates = int(scheduler.get("scan_candidates", 0) or 0)
+            scan_max_depth = int(scheduler.get("scan_max_depth", 0) or 0)
+            skipped_affinity = int(scheduler.get("skipped_affinity", 0) or 0)
+            skipped_max_parallel = int(scheduler.get("skipped_max_parallel", 0) or 0)
+
+            avg_pending_when_empty = (
+                float(scheduler.get("claims_empty_pending_sum", 0) or 0)
+                / claim_empty_with_pending
+                if claim_empty_with_pending > 0
+                else 0.0
+            )
+            avg_queue_when_empty = (
+                float(scheduler.get("claims_empty_queue_sum", 0) or 0)
+                / claim_empty_with_queue
+                if claim_empty_with_queue > 0
+                else 0.0
+            )
+            avg_scan_depth = (
+                float(scan_candidates) / claim_requests if claim_requests > 0 else 0.0
+            )
+            claim_grant_rate = (
+                (float(claims_granted) / claim_requests) * 100.0
+                if claim_requests > 0
+                else 0.0
+            )
+
+            claim_to_start_pct = summary.get("claim_to_start_percentiles_s", {}) or {}
+            claim_to_finish_pct = summary.get("claim_to_finish_percentiles_s", {}) or {}
+            worker_runtime_pct = summary.get("worker_runtime_percentiles_s", {}) or {}
+
+            def _p(metric: dict[str, Any], key: str) -> float:
+                return float(metric.get(key, 0.0) or 0.0)
+
+            def _s(key: str) -> float:
+                return float(summary.get(key, 0.0) or 0.0)
+
+            def _n(key: str) -> int:
+                return int(summary.get(key, 0) or 0)
+
+            def _card(title: str, rows: list[str]) -> str:
+                inner = "".join(f"<div>{row}</div>" for row in rows)
+                return f'<div class="util-card"><h3>{title}</h3>{inner}</div>'
+
+            latency_claim_start = (
+                "<strong>Claim->Start:</strong> "
+                f"p50 {_p(claim_to_start_pct, 'p50'):.3f} | "
+                f"p95 {_p(claim_to_start_pct, 'p95'):.3f} | "
+                f"p99 {_p(claim_to_start_pct, 'p99'):.3f} "
+                f"(n={_n('claim_to_start_samples')})"
+            )
+            latency_claim_finish = (
+                "<strong>Claim->Finish:</strong> "
+                f"p50 {_p(claim_to_finish_pct, 'p50'):.3f} | "
+                f"p95 {_p(claim_to_finish_pct, 'p95'):.3f} | "
+                f"p99 {_p(claim_to_finish_pct, 'p99'):.3f} "
+                f"(n={_n('claim_to_finish_samples')})"
+            )
+            latency_worker_runtime = (
+                "<strong>Worker runtime:</strong> "
+                f"p50 {_p(worker_runtime_pct, 'p50'):.3f} | "
+                f"p95 {_p(worker_runtime_pct, 'p95'):.3f} | "
+                f"p99 {_p(worker_runtime_pct, 'p99'):.3f} "
+                f"(n={_n('worker_runtime_samples')})"
+            )
+            scheduler_empty_pending_max = int(
+                scheduler.get("claims_empty_pending_max", 0) or 0
+            )
+            scheduler_empty_queue_max = int(
+                scheduler.get("claims_empty_queue_max", 0) or 0
+            )
+
+            cards = [
+                _card(
+                    "Worker Parallelism",
+                    [
+                        "<strong>Requested workers:</strong> "
+                        f"{run_data.get('workers_requested', 0)}",
+                        "<strong>Avg busy (test):</strong> "
+                        f"{_s('avg_parallelism_test_runtime'):.1f}",
+                        "<strong>Avg busy (claim window):</strong> "
+                        f"{_s('avg_parallelism_claim_runtime'):.1f}",
+                        "<strong>Avg busy (worker runtime):</strong> "
+                        f"{_s('avg_parallelism_worker_runtime'):.1f}",
+                    ],
+                ),
+                _card(
+                    "Overhead Buckets",
+                    [
+                        "<strong>Claim pre-start:</strong> "
+                        f"{format_duration(_s('claim_runtime_overhead_s'))}",
+                        "<strong>Worker post-finish:</strong> "
+                        f"{format_duration(_s('worker_runtime_overhead_s'))}",
+                        "<strong>Total test runtime:</strong> "
+                        f"{format_duration(_s('total_summed_duration_s'))}",
+                        "<strong>Total claim->finish:</strong> "
+                        f"{format_duration(_s('total_claim_to_finish_s'))}",
+                        "<strong>Total worker runtime:</strong> "
+                        f"{format_duration(_s('total_worker_runtime_s'))}",
+                    ],
+                ),
+                _card(
+                    "Latency Percentiles (s)",
+                    [
+                        latency_claim_start,
+                        latency_claim_finish,
+                        latency_worker_runtime,
+                    ],
+                ),
+                _card(
+                    "Scheduler",
+                    [
+                        "<strong>Claim requests:</strong> "
+                        f"{claim_requests} | "
+                        f"<strong>granted:</strong> {claims_granted} "
+                        f"({claim_grant_rate:.1f}%) | "
+                        f"<strong>empty:</strong> {claims_empty}",
+                        "<strong>Empty while pending:</strong> "
+                        f"{claim_empty_with_pending} "
+                        f"(avg pending {avg_pending_when_empty:.1f}, "
+                        f"max pending {scheduler_empty_pending_max})",
+                        "<strong>Empty with queue:</strong> "
+                        f"{claim_empty_with_queue} "
+                        f"(avg queue {avg_queue_when_empty:.1f}, "
+                        f"max queue {scheduler_empty_queue_max})",
+                        "<strong>Queue scan depth:</strong> "
+                        f"avg {avg_scan_depth:.2f}, max {scan_max_depth} "
+                        f"(candidates scanned {scan_candidates})",
+                        "<strong>Skips:</strong> "
+                        f"affinity {skipped_affinity}, "
+                        f"max_parallel {skipped_max_parallel}",
+                    ],
+                ),
+            ]
+
+            utilization_html = '<h2>Utilization</h2><div class="util-grid">'
+            utilization_html += "".join(cards)
+            utilization_html += "</div>"
+
             html_ = HTML_TEMPLATE.render(
                 status="Running"
                 if summary["running"] > 0 or summary["queued"] > 0
@@ -1444,6 +1731,7 @@ class TestAggregator:
                 current_baseline=current_baseline,
                 current_baseline_info=current_baseline_info,
                 test_run_id=self._test_run_id or "",
+                utilization_html=utilization_html,
             )
         except Exception as e:
             print(f"Failed to format HTML report: {e}")
@@ -1649,6 +1937,29 @@ def _rebuild_report_with_baseline(
         "progress_percent": progress_percent,
         "total_duration_s": total_duration,
         "total_summed_duration_s": sum_test_durations,
+        "total_claim_to_finish_s": summary.get(
+            "total_claim_to_finish_s", sum_test_durations
+        ),
+        "claim_runtime_overhead_s": summary.get("claim_runtime_overhead_s", 0.0),
+        "avg_parallelism_test_runtime": summary.get(
+            "avg_parallelism_test_runtime", 0.0
+        ),
+        "avg_parallelism_claim_runtime": summary.get(
+            "avg_parallelism_claim_runtime", 0.0
+        ),
+        "avg_parallelism_worker_runtime": summary.get(
+            "avg_parallelism_worker_runtime", 0.0
+        ),
+        "claim_to_start_samples": summary.get("claim_to_start_samples", 0),
+        "claim_to_finish_samples": summary.get("claim_to_finish_samples", 0),
+        "worker_runtime_samples": summary.get("worker_runtime_samples", 0),
+        "claim_to_start_percentiles_s": summary.get("claim_to_start_percentiles_s", {}),
+        "claim_to_finish_percentiles_s": summary.get(
+            "claim_to_finish_percentiles_s", {}
+        ),
+        "worker_runtime_percentiles_s": summary.get("worker_runtime_percentiles_s", {}),
+        "total_worker_runtime_s": summary.get("total_worker_runtime_s", 0.0),
+        "worker_runtime_overhead_s": summary.get("worker_runtime_overhead_s", 0.0),
         "total_memory_mb": total_memory_mb,
         "workers_used": summary.get("workers_used", 0),
         "duration_percentiles_s": duration_percentiles,
@@ -1669,6 +1980,7 @@ def _rebuild_report_with_baseline(
     }
 
     run["baseline_requested"] = baseline_commit
+    run["scheduler"] = run.get("scheduler", {})
     run["perf"] = {
         "threshold_percent": PERF_THRESHOLD_PERCENT,
         "min_time_diff_s": PERF_MIN_TIME_DIFF_S,

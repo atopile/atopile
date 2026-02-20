@@ -99,6 +99,42 @@
         line-height: 135%;
       }
 
+      .utilization {
+        margin-bottom: 10px;
+        padding: 8px;
+        background: var(--ctp-mantle);
+        border-radius: 5px;
+        border: 1px solid var(--ctp-surface0);
+      }
+
+      .utilization h2 {
+        margin: 0 0 6px 0;
+        font-size: 1rem;
+        color: var(--ctp-subtext1);
+      }
+
+      .util-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .util-card {
+        flex: 1 1 240px;
+        min-width: 240px;
+        background: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 4px;
+        padding: 6px;
+        line-height: 1.35;
+      }
+
+      .util-card h3 {
+        margin: 0 0 4px 0;
+        font-size: 12px;
+        color: var(--ctp-subtext1);
+      }
+
       .progress-bar {
         width: 100%;
         background-color: var(--ctp-surface0);
@@ -973,6 +1009,14 @@
           var newSummary = doc.querySelector(".summary");
           if (newSummary)
             document.querySelector(".summary").innerHTML = newSummary.innerHTML;
+
+          var newUtilization = doc.getElementById("utilization-section");
+          if (newUtilization) {
+            var currentUtilization = document.getElementById("utilization-section");
+            if (currentUtilization) {
+              currentUtilization.innerHTML = newUtilization.innerHTML;
+            }
+          }
 
           // Update Progress
           var newProgress = doc.querySelector(".progress-bar");
@@ -1944,6 +1988,8 @@
         [[progress_percent]]%
       </div>
     </div>
+
+    <div class="utilization" id="utilization-section">[[utilization_html]]</div>
 
     <div class="controls">
       <label
