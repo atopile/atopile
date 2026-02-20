@@ -310,6 +310,14 @@ class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
         super().__init__(msg, [faulting_EP], *args)
 
 
+class ERCFaultElectricPowerVoltageIncompatible(ERCFault):
+    """Connected ElectricPower interfaces have non-overlapping voltage ranges."""
+
+    def __init__(self, msg: str, faulting_eps: list, *args: object) -> None:
+        super().__init__(msg, faulting_eps, *args, markdown=False)
+        self.faulting_eps = faulting_eps
+
+
 class ERCPowerSourcesShortedError(ERCFault):
     """
     Multiple power sources shorted together
@@ -736,3 +744,157 @@ class Test:
 
         with pytest.raises(ERCFaultIncompatibleInterfaceConnection):
             self._run_checks(tg)
+
+    def _run_checks_with_solver(self, tg: fbrk.TypeGraph) -> None:
+        """Like _run_checks but mirrors the real build flow:
+        attach solver, resolve bus params, then run checks."""
+        from faebryk.core.solver.solver import Solver
+
+        g = tg.get_graph_view()
+        app_type = self._App.bind_typegraph(tg)
+        app = app_type.create_instance(g=g)
+        fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
+
+        # Mirror prepare_build: attach solver (without running simplify)
+        solver = Solver()
+        fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
+
+        check_design(
+            app, F.implements_design_check.CheckStage.POST_INSTANTIATION_GRAPH_CHECK
+        )
+        # Mirror post_instantiation_setup: resolve bus params creates Is constraints
+        F.is_alias_bus_parameter.resolve_bus_parameters(g, tg)
+        check_design(
+            app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
+        )
+
+    def test_erc_voltage_incompatible(self):
+        """3.3V±10% and 5V±5% on the same bus should raise."""
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        ep_type = F.ElectricPower.bind_typegraph(tg)
+        ep1 = ep_type.create_instance(g=g)
+        ep2 = ep_type.create_instance(g=g)
+
+        # 3.3V ± 10% → [2.97, 3.63]
+        ep1.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=2.97, max=3.63, unit=ep1.voltage.get().try_get_units()
+            ),
+        )
+        # 5V ± 5% → [4.75, 5.25]
+        ep2.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=4.75, max=5.25, unit=ep2.voltage.get().try_get_units()
+            ),
+        )
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        print(f"ep1.voltage: {ep1.voltage.get().try_extract_superset()}")
+        print(f"ep2.voltage: {ep2.voltage.get().try_extract_superset()}")
+
+        with pytest.raises(ERCFaultElectricPowerVoltageIncompatible):
+            self._run_checks_with_solver(tg)
+
+    def test_erc_voltage_compatible(self):
+        """[3.0, 3.6]V and [3.1, 3.5]V on the same bus should pass."""
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        ep_type = F.ElectricPower.bind_typegraph(tg)
+        ep1 = ep_type.create_instance(g=g)
+        ep2 = ep_type.create_instance(g=g)
+
+        ep1.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=3.0, max=3.6, unit=ep1.voltage.get().try_get_units()
+            ),
+        )
+        ep2.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=3.1, max=3.5, unit=ep2.voltage.get().try_get_units()
+            ),
+        )
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        print(f"ep1.voltage: {ep1.voltage.get().try_extract_superset()}")
+        print(f"ep2.voltage: {ep2.voltage.get().try_extract_superset()}")
+
+        # Should not raise — ranges overlap
+        self._run_checks_with_solver(tg)
+
+    def test_erc_voltage_unconstrained(self):
+        """One EP constrained, one not — should pass."""
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        ep_type = F.ElectricPower.bind_typegraph(tg)
+        ep1 = ep_type.create_instance(g=g)
+        ep2 = ep_type.create_instance(g=g)
+
+        ep1.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=3.0, max=3.6, unit=ep1.voltage.get().try_get_units()
+            ),
+        )
+        # ep2 has no voltage constraint
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        print(f"ep1.voltage: {ep1.voltage.get().try_extract_superset()}")
+        print(f"ep2.voltage: {ep2.voltage.get().try_extract_superset()}")
+
+        # Should not raise — unconstrained EP is compatible with anything
+        self._run_checks_with_solver(tg)
+
+    def test_erc_voltage_touching(self):
+        """[3.0, 3.5]V and [3.5, 4.0]V — touching at 3.5V should pass."""
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        ep_type = F.ElectricPower.bind_typegraph(tg)
+        ep1 = ep_type.create_instance(g=g)
+        ep2 = ep_type.create_instance(g=g)
+
+        ep1.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=3.0, max=3.5, unit=ep1.voltage.get().try_get_units()
+            ),
+        )
+        ep2.voltage.get().set_superset(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=3.5, max=4.0, unit=ep2.voltage.get().try_get_units()
+            ),
+        )
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        print(f"ep1.voltage: {ep1.voltage.get().try_extract_superset()}")
+        print(f"ep2.voltage: {ep2.voltage.get().try_extract_superset()}")
+
+        # Should not raise — ranges touch at 3.5V
+        self._run_checks_with_solver(tg)
