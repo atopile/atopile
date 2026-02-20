@@ -2,14 +2,13 @@
 
 import json
 import logging
-import subprocess
 from dataclasses import asdict
 from datetime import datetime, timezone
-from importlib.metadata import version as get_package_version
 from pathlib import Path
 
+from atopile.buildutil import get_ato_version, get_git_describe
 from atopile.layout_server.pcb_manager import PcbManager
-from faebryk.exporters.bom.json_bom import JSONBOMOutput, make_json_bom
+from faebryk.exporters.bom.json_bom import build_ref_to_bom_id, make_json_bom
 from faebryk.library._F import Pickable
 
 logger = logging.getLogger(__name__)
@@ -26,41 +25,6 @@ def _round_floats(obj: object, decimals: int = 3) -> object:
     if isinstance(obj, list):
         return [_round_floats(v, decimals) for v in obj]
     return obj
-
-
-def _get_git_describe(pcb_path: Path) -> str:
-    """Get git describe --tags --always for the repo containing pcb_path."""
-    try:
-        result = subprocess.run(
-            ["git", "describe", "--tags", "--always", "--dirty"],
-            cwd=pcb_path.parent,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return ""
-
-
-def _get_ato_version() -> str:
-    """Get the installed atopile version."""
-    try:
-        return get_package_version("atopile")
-    except Exception:
-        return ""
-
-
-def _build_ref_to_bom_id(bom: JSONBOMOutput) -> dict[str, str]:
-    """Build a cross-reference map from designator to BOM component ID."""
-    ref_to_bom_id: dict[str, str] = {}
-    for component in bom.components:
-        for usage in component.usages:
-            if usage.designator:
-                ref_to_bom_id[usage.designator] = component.id
-    return ref_to_bom_id
 
 
 def generate_ibom_html(
@@ -99,14 +63,14 @@ def generate_ibom_html(
     bom_data = asdict(bom)
 
     # Build cross-reference
-    ref_to_bom_id = _build_ref_to_bom_id(bom)
+    ref_to_bom_id = build_ref_to_bom_id(bom)
 
     # Combined data blob
     ibom_data = {
         "projectName": project_name or pcb_path.stem,
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "gitDescribe": _get_git_describe(pcb_path),
-        "atoVersion": _get_ato_version(),
+        "gitDescribe": get_git_describe(pcb_path),
+        "atoVersion": get_ato_version(),
         "pcb": pcb_data,
         "bom": bom_data,
         "refToBomId": ref_to_bom_id,

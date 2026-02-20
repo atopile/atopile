@@ -75,6 +75,16 @@ class JSONBOMOutput:
         return json.dumps(self.to_dict(), indent=indent)
 
 
+def build_ref_to_bom_id(bom: JSONBOMOutput) -> dict[str, str]:
+    """Build a cross-reference map from designator to BOM component ID."""
+    ref_to_bom_id: dict[str, str] = {}
+    for component in bom.components:
+        for usage in component.usages:
+            if usage.designator:
+                ref_to_bom_id[usage.designator] = component.id
+    return ref_to_bom_id
+
+
 def _get_component_type_from_prefix(prefix: str) -> str:
     """Map designator prefix to component type."""
     prefix_map = {

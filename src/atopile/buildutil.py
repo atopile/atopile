@@ -1,7 +1,10 @@
 import contextlib
 import hashlib
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
+from importlib.metadata import version as get_package_version
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
@@ -43,6 +46,31 @@ def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
 def generate_build_timestamp() -> str:
     """Generate a build timestamp in the standard format."""
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def get_git_describe(repo_path: Path) -> str:
+    """Get git describe --tags --always for the repo containing repo_path."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            cwd=repo_path.parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def get_ato_version() -> str:
+    """Get the installed atopile version."""
+    try:
+        return get_package_version("atopile")
+    except Exception:
+        return ""
 
 
 @dataclass
@@ -123,12 +151,15 @@ def run_build_targets(ctx: BuildStepContext) -> None:
     # Count targets from DAG without materializing the generator
     # (the generator yields based on succeeded status which we can't check upfront)
     subgraph = build_steps.muster.dependency_dag.get_subgraph(
-        selector_func=lambda name: name in targets
-        or any(
-            alias in targets
-            for alias in build_steps.muster.targets.get(
-                name, build_steps.MusterTarget(name="", aliases=[], func=lambda _: None)
-            ).aliases
+        selector_func=lambda name: (
+            name in targets
+            or any(
+                alias in targets
+                for alias in build_steps.muster.targets.get(
+                    name,
+                    build_steps.MusterTarget(name="", aliases=[], func=lambda _: None),
+                ).aliases
+            )
         )
     )
     all_target_names = set(subgraph.topologically_sorted())
