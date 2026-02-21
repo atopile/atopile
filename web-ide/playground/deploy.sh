@@ -91,12 +91,18 @@ if [ "$DEPLOY_WORKSPACE" = true ]; then
   echo "    Build context: repo root"
   echo ""
 
-  # fly deploy builds the image, pushes to registry.fly.io/atopile-ws:latest,
-  # and creates/updates an "app" process group machine. We destroy that machine
+  # fly deploy builds the image, pushes to registry.fly.io/atopile-ws:latest
+  # (via --image-label), and creates an "app" machine. We destroy that machine
   # afterwards since workspace machines are managed by the spawner.
+  # SOURCE_HASH ensures the remote builder busts its cache when source changes.
+  SOURCE_HASH=$(git -C "${REPO_ROOT}" rev-parse --short HEAD)
+  echo "    Source hash: ${SOURCE_HASH}"
+
   $FLY deploy \
     --app "${WORKSPACE_APP}" \
     --dockerfile "${REPO_ROOT}/web-ide/Dockerfile" \
+    --build-arg "SOURCE_HASH=${SOURCE_HASH}" \
+    --image-label latest \
     --remote-only \
     --strategy immediate \
     --ha=false

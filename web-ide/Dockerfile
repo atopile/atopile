@@ -36,6 +36,10 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${ATOPILE_VERSION}
 # Build pyzig for baseline x86_64 (no AVX-512) so the image runs on any x86_64 host
 ENV ATOPILE_ZIG_CPU=baseline
 
+# SOURCE_HASH busts the remote-builder cache when source changes.
+# deploy.sh passes --build-arg SOURCE_HASH=$(git rev-parse --short HEAD).
+ARG SOURCE_HASH=dev
+
 # Copy only what's needed for the wheel build
 COPY pyproject.toml /src/pyproject.toml
 COPY LICENSE /src/LICENSE
