@@ -326,6 +326,96 @@ def install(
 
 
 @dev_app.command()
+@capture("cli:dev_ui_start", "cli:dev_ui_end")
+def ui(
+    open_browser: bool = typer.Option(
+        True, help="Open the showcase in the default browser."
+    ),
+    port: int = typer.Option(5173, "--port", help="Vite dev server port."),
+    skip_install: bool = typer.Option(
+        False, "--skip-install", help="Skip npm install check."
+    ),
+):
+    """
+    Launch the shared component showcase in a browser.
+
+    Starts the Vite dev server for ui-server and opens the showcase page.
+    """
+    import socket
+    import time
+
+    repo_root = Path(__file__).resolve().parents[3]
+    ui_server_dir = repo_root / "src" / "ui-server"
+
+    if not ui_server_dir.exists():
+        raise FileNotFoundError(f"ui-server directory not found: {ui_server_dir}")
+
+    if not skip_install and not (ui_server_dir / "node_modules").exists():
+        print("Installing ui-server dependencies...")
+        subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
+
+    showcase_url = f"http://localhost:{port}/showcase.html"
+
+    # Check if the dev server is already running on the port.
+    # Vite may bind IPv4 or IPv6 depending on the platform, so try both.
+    def _port_open() -> bool:
+        for af, addr in [(socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")]:
+            try:
+                with socket.socket(af, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.3)
+                    if s.connect_ex((addr, port)) == 0:
+                        return True
+            except OSError:
+                continue
+        return False
+
+    server_proc = None
+    if not _port_open():
+        print(f"Starting Vite dev server on port {port}...")
+        env = os.environ.copy()
+        env["BROWSER"] = "none"  # prevent Vite's own auto-open
+        server_proc = subprocess.Popen(
+            [_npm, "run", "dev", "--", "--port", str(port)],
+            cwd=ui_server_dir,
+            env=env,
+        )
+        # Wait for the server to be ready
+        for _ in range(30):
+            if _port_open():
+                break
+            time.sleep(0.5)
+        else:
+            typer.secho("Vite dev server did not start in time.", fg=typer.colors.RED)
+            if server_proc.poll() is None:
+                server_proc.terminate()
+            raise typer.Exit(1)
+    else:
+        print(f"Vite dev server already running on port {port}.")
+
+    # Open the showcase
+    if open_browser:
+        webbrowser.open(showcase_url)
+
+    if server_proc is not None:
+        print(f"\nShowcase running at {showcase_url}")
+        print("Press Ctrl+C to stop the dev server.")
+        try:
+            server_proc.wait()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait()
+    else:
+        print(f"Opened {showcase_url}")
+
+
+@dev_app.command()
 @capture("cli:dev_worktree_start", "cli:dev_worktree_end")
 def worktree(
     name_suffix: str = typer.Argument(

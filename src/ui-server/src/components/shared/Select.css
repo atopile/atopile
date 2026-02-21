@@ -1,0 +1,189 @@
+/* ============================================
+   Select — dropdown select primitive
+   Matches VS Code dropdown styling
+   ============================================ */
+
+.select-root {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+}
+
+/* ---- Trigger ---- */
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  height: 28px;
+  padding: 0 var(--spacing-md);
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+  white-space: nowrap;
+  width: 100%;
+}
+
+.select-trigger:hover {
+  border-color: var(--vscode-focusBorder, var(--border-color));
+}
+
+.select-trigger:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
+}
+
+.select-trigger[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.select-trigger[aria-invalid="true"]:focus-visible {
+  outline-color: var(--error);
+}
+
+.select-trigger .select-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ---- Value (placeholder styling) ---- */
+
+.select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-value-placeholder {
+  color: var(--text-muted);
+}
+
+/* ---- Content (dropdown panel) ---- */
+
+.select-content {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background, var(--bg-secondary)));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-color));
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  z-index: var(--z-dropdown);
+  padding: var(--spacing-xs) 0;
+
+  /* enter animation */
+  opacity: 0;
+  animation: select-in 0.1s ease-out forwards;
+}
+
+@keyframes select-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar */
+.select-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.select-content::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.select-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- Group ---- */
+
+.select-group {
+  padding: 0;
+}
+
+.select-group-label {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---- Item ---- */
+
+.select-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: none;
+  background: transparent;
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.select-item:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}
+
+.select-item[data-selected="true"] {
+  background: var(--vscode-list-activeSelectionBackground, var(--bg-active));
+}
+
+.select-item[data-disabled="true"] {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.select-item[data-disabled="true"]:hover {
+  background: transparent;
+}
+
+.select-item .select-item-check {
+  color: var(--info);
+  flex-shrink: 0;
+  width: 14px;
+}
+
+/* ---- Disabled trigger ---- */
+
+.select-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.select-trigger:disabled:hover {
+  border-color: var(--vscode-dropdown-border, var(--border-subtle));
+}
+
+/* ---- Label (standalone inside content) ---- */
+
+.select-label {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ---- Separator ---- */
+
+.select-separator {
+  height: 1px;
+  margin: var(--spacing-xs) 0;
+  background: var(--border-subtle);
+}
