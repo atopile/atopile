@@ -453,6 +453,222 @@ Practical budgets (set per feature):
 - rerender count target for key interactions
 - max main-thread compute before worker offload
 
+## Implementation Playbooks (Use These by Default)
+
+Use these as concrete build patterns when starting a new feature.
+
+### Playbook A: New Sidebar/Panel Feature (`ui-server`)
+
+1. Contract
+- Add/extend backend Pydantic models for panel data and actions.
+- Regenerate frontend schema/types.
+
+2. Transport
+- Add one module in `src/ui-server/src/api/` for panel actions/data.
+- Keep HTTP calls and WS events in this module only.
+
+3. State
+- Add state fields and explicit actions in `src/ui-server/src/store/index.ts` (or a split slice if introduced).
+- Add selectors for component consumption; avoid exposing raw complex objects to UI.
+
+4. UI
+- Reuse `components/shared/` primitives before adding new ones.
+- Keep panel container logic in feature module; keep leaf controls presentational.
+
+5. Styling
+- Use existing tokens from `styles/_variables.css`.
+- Add module styles only if existing style modules cannot express the feature.
+
+6. Validation
+- Browser flow via `npm run dev:all`.
+- Capture at least one screenshot per critical panel state.
+- Ensure no unapproved `ui-logs` errors.
+
+### Playbook B: New Graph/Visualizer Capability (`visualizer/web`)
+
+1. Data model
+- Add/update graph types in `src/atopile/visualizer/web/src/types/`.
+
+2. Core logic
+- Implement filters/transforms/layout math in `src/atopile/visualizer/web/src/lib/`.
+- Keep these functions pure and unit-testable.
+
+3. State integration
+- Add state to the appropriate store under `stores/` (graph, filter, view, navigation, selection).
+- Expose small selectors to UI components.
+
+4. Rendering
+- Keep scene primitives in `three/`.
+- Memoize expensive geometry/material/data transforms.
+
+5. Performance
+- Offload heavy iterative work to `workers/`.
+- Ensure UI input remains responsive during layout recompute.
+
+### Playbook C: New Long-Running Workflow (Build/Migrate/Export)
+
+1. Canonical sequence
+- Define one linear flow: trigger -> progress -> completion/error.
+- Do not introduce alternate fallback branch UX.
+
+2. Event protocol
+- Emit typed events/states for progress updates and completion.
+- Include correlation IDs for action-result mapping where applicable.
+
+3. UI behavior
+- Show explicit phase state with clear progress messaging.
+- Disable conflicting controls during active execution.
+
+4. Completion handling
+- On success: update canonical state and surface result artifact/action.
+- On failure: surface actionable error in same flow context.
+
+### Playbook D: Shared Primitive Extraction
+
+Promote to shared when at least one is true:
+- used by 2+ feature areas
+- same interaction/state semantics repeated
+- design consistency risk if duplicated
+
+Extraction steps:
+1. move primitive to `components/shared/`
+2. keep API minimal and typed
+3. colocate small style module if needed
+4. update existing call sites
+5. add or update focused component test
+
+## Contract and Protocol Conventions
+
+### Naming Conventions
+
+Backend (Pydantic):
+- `FeatureActionRequest`
+- `FeatureActionResult`
+- `FeatureState`
+- `FeatureEvent`
+
+Frontend (generated/usage):
+- keep generated names when possible
+- avoid local aliases that hide meaning
+- use explicit event unions for WS handlers
+
+### Message Shape Conventions
+
+Prefer:
+- stable top-level discriminator (`type`)
+- typed payload object (`data` or `result`)
+- optional correlation (`requestId`)
+- no polymorphic anonymous payloads
+
+Avoid:
+- overloading one field with multiple payload types
+- encoded “status” strings that duplicate `type`
+- implicit null/undefined semantics for required states
+
+### Versioning and Migration
+
+For incompatible contract changes:
+1. update Pydantic schema
+2. regenerate TS
+3. update backend emitters and frontend consumers in same change
+4. add regression tests for old/new boundary expectations (if needed)
+5. keep PR notes explicit about contract impact
+
+## Detailed Testing Notes
+
+### What to Validate for WS Features
+
+At minimum:
+- initial connect success path
+- disconnect transition visible in UI state
+- reconnect/backoff path
+- resync on reconnect
+- pending request timeout cleanup
+
+Recommended:
+- late event arrival handling
+- duplicate event idempotency (if protocol can replay)
+- malformed message guard behavior (drop + log)
+
+### UI Automation Scenario Set
+
+For each major feature, automate at least these scenarios:
+
+1. Initial render
+- page loads and primary container appears
+- no runtime error in `ui-logs`
+
+2. Primary action path
+- perform canonical user action
+- assert expected UI state transition
+
+3. Progress/working state
+- verify loading/progress visual state while in-flight
+
+4. Completion path
+- verify final expected state and visible confirmation/result
+
+5. Error path (same flow)
+- force backend/action failure
+- verify error rendering in same UI context (no flow fork)
+
+6. Reload/reconnect stability
+- simulate websocket drop/reconnect
+- verify canonical state recovers correctly
+
+### Screenshot Strategy
+
+Use screenshot captures as regression anchors for:
+- baseline/default view
+- active/selected state
+- loading/progress state
+- error state
+- completed/ready state
+
+Keep captures stable by:
+- fixed viewport
+- deterministic setup actions
+- waiting for specific DOM/state conditions
+- avoiding transient animation frames when asserting image diffs
+
+### Test Naming and Placement
+
+Recommended naming:
+- `FeatureName.store.test.ts`
+- `FeatureName.api.test.ts`
+- `FeatureName.test.tsx` (interaction rendering)
+
+Placement:
+- close to feature module for local reasoning
+- keep global test setup centralized in `__tests__/setup.ts`
+
+## Review and Quality Heuristics
+
+### Code Review Focus Order
+
+1. Contract correctness
+- Are types/schema and runtime behavior aligned?
+
+2. Flow correctness
+- Does UI implement one canonical sequence without fallback branches?
+
+3. State correctness
+- Are transitions explicit and recoverable for reconnect/reload?
+
+4. UI quality
+- Are interaction states and accessibility complete?
+
+5. Maintainability
+- Is feature organized per module boundaries and reuse rules?
+
+### Red Flags (Block Merge)
+
+- ad-hoc payload typings where generated types already exist
+- untyped WS parsing directly in components
+- duplicate shared primitives with near-identical behavior
+- fallback branch introduced for a core user path
+- browser-first validation skipped before asking extension testing
+
 ## Definition of Done
 
 A feature is done only when all are true:
