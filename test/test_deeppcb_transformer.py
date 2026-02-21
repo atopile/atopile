@@ -74,6 +74,6 @@ def test_deeppcb_fileformat_load_dump_smoke(tmp_path: Path) -> None:
     loaded = DeepPCB_Transformer.loads(out)
 
     assert loaded.resolution.get("unit") == "mm"
-    assert loaded.resolution.get("value") == 1000
+    assert loaded.resolution.get("value") == 1_000_000
     assert isinstance(loaded.layers, list)
     assert isinstance(loaded.wires, list)

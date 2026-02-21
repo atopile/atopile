@@ -14,7 +14,7 @@ class DeepPCB_Transformer:
     on parsed fileformat objects instead of ad-hoc dicts.
     """
 
-    RESOLUTION_VALUE = 1000
+    RESOLUTION_VALUE = 1_000_000
     _BLANK_PCB_TEMPLATE = """(kicad_pcb
 \t(version 20241229)
 \t(generator "atopile")
@@ -106,8 +106,14 @@ class DeepPCB_Transformer:
                 "clearance": 0,
             },
             layers=[
-                {"id": layer.name, "type": str(getattr(layer, "type", "signal")).lower(), "keepouts": []}
-                for layer in copper_layers
+                {
+                    "id": layer.name,
+                    "number": int(layer.number),
+                    "type": str(getattr(layer, "type", "signal")).lower(),
+                    "alias": layer.alias,
+                    "keepouts": [],
+                }
+                for layer in pcb.layers
             ],
         )
 
@@ -127,10 +133,13 @@ class DeepPCB_Transformer:
 
         # net id mapping
         net_id_by_number: dict[int, str] = {}
+        net_name_by_number: dict[int, str] = {}
         for net in pcb.nets:
-            name = str(net.name or "").strip()
+            name = str(net.name) if net.name is not None else ""
             net_id = name if name else str(net.number)
-            net_id_by_number[int(net.number)] = net_id
+            number = int(net.number)
+            net_id_by_number[number] = net_id
+            net_name_by_number[number] = name
 
         pins_by_net: dict[str, list[str]] = {}
 
@@ -146,7 +155,11 @@ class DeepPCB_Transformer:
                             "id": str(pad.name),
                             "padstack": padstack_id,
                             "position": cls._xy_to_point(pad.at),
-                            "rotation": int(round(float(getattr(pad.at, "r", 0.0) or 0.0))),
+                            "rotation": (
+                                float(getattr(pad.at, "r"))
+                                if getattr(pad.at, "r", None) is not None
+                                else None
+                            ),
                         }
                     )
 
@@ -158,15 +171,38 @@ class DeepPCB_Transformer:
                 }
 
             component_id = cls._component_id(fp)
+            reference_property = None
+            for prop in getattr(fp, "propertys", []):
+                if str(getattr(prop, "name", "")) != "Reference":
+                    continue
+                reference_property = {
+                    "value": str(getattr(prop, "value", component_id)),
+                    "at": cls._xy_to_point(getattr(prop, "at", kicad.pcb.Xyr(x=0.0, y=0.0, r=0.0))),
+                    "rotation": (
+                        float(getattr(getattr(prop, "at", None), "r"))
+                        if getattr(getattr(prop, "at", None), "r", None) is not None
+                        else None
+                    ),
+                    "layer": str(getattr(prop, "layer", "F.SilkS")),
+                    "hide": getattr(prop, "hide", None),
+                    "unlocked": getattr(prop, "unlocked", None),
+                }
+                break
             components.append(
                 {
                     "id": component_id,
                     "definition": definition_id,
                     "position": cls._xy_to_point(fp.at),
-                    "rotation": int(round(float(getattr(fp.at, "r", 0.0) or 0.0))),
+                    "rotation": (
+                        float(getattr(fp.at, "r"))
+                        if getattr(fp.at, "r", None) is not None
+                        else None
+                    ),
                     "side": "BACK" if str(fp.layer).startswith("B.") else "FRONT",
                     "partNumber": str(fp.name),
                     "protected": bool(getattr(fp, "locked", False)),
+                    "embeddedFonts": getattr(fp, "embedded_fonts", None),
+                    "referenceProperty": reference_property,
                 }
             )
 
@@ -201,9 +237,11 @@ class DeepPCB_Transformer:
         board.nets = [
             {
                 "id": net_id,
+                "number": number,
+                "name": net_name_by_number.get(number, ""),
                 "pins": sorted(set(pins_by_net.get(net_id, []))),
             }
-            for net_id in sorted(net_id_by_number.values())
+            for number, net_id in sorted(net_id_by_number.items(), key=lambda item: item[0])
         ]
 
         board.wires = [
@@ -270,18 +308,36 @@ class DeepPCB_Transformer:
         # Layers
         copper_layers = board_file.layers or []
         index_to_layer: dict[int, str] = {}
+        reconstructed_layers = []
         if copper_layers:
             for idx, layer in enumerate(copper_layers):
                 layer_id = str(layer.get("id", f"L{idx}"))
                 index_to_layer[idx] = layer_id
+                reconstructed_layers.append(
+                    kicad.pcb.Layer(
+                        number=int(layer.get("number", idx)),
+                        name=layer_id,
+                        type=str(layer.get("type", "signal")),
+                        alias=layer.get("alias"),
+                    )
+                )
+        if reconstructed_layers:
+            pcb.layers = reconstructed_layers
 
         # Nets
         net_number_by_id: dict[str, int] = {}
+        net_name_by_id: dict[str, str] = {}
         nets = []
         for idx, net in enumerate(board_file.nets, start=1):
             net_id = str(net.get("id", f"NET-{idx}"))
-            net_number_by_id[net_id] = idx
-            nets.append(kicad.pcb.Net(number=idx, name=net_id))
+            number = int(net.get("number", idx))
+            name = net.get("name")
+            if name is None:
+                name = net_id if net_id != str(number) else None
+            if isinstance(name, str):
+                net_name_by_id[net_id] = name
+            net_number_by_id[net_id] = number
+            nets.append(kicad.pcb.Net(number=number, name=name))
         pcb.nets = nets
 
         # Boundary -> Edge.Cuts lines
@@ -425,7 +481,8 @@ class DeepPCB_Transformer:
             definition_id = str(component.get("definition", ""))
             definition = definition_by_id.get(definition_id, {})
             position = component.get("position", [0, 0])
-            rotation = float(component.get("rotation", 0.0) or 0.0)
+            component_rotation = component.get("rotation")
+            rotation = float(component_rotation) if component_rotation is not None else None
             side = str(component.get("side", "FRONT")).upper()
             layer = "B.Cu" if side == "BACK" else "F.Cu"
 
@@ -440,25 +497,73 @@ class DeepPCB_Transformer:
                     if isinstance(layer_idx, int)
                 ]
                 pad_layers = [index_to_layer.get(idx, "F.Cu") for idx in layers_idx]
+                stored_layers = padstack.get("kicadLayers")
+                if isinstance(stored_layers, list) and stored_layers:
+                    pad_layers = [str(layer) for layer in stored_layers]
                 if not pad_layers:
                     pad_layers = ["F.Cu", "B.Cu"]
 
                 net_ref = None
                 for net_id, pins in pins_by_net.items():
                     if f"{component_id}-{pin_id}" in pins:
+                        net_name = net_name_by_id.get(net_id, net_id)
                         net_ref = kicad.pcb.Net(
                             number=net_number_by_id.get(net_id, 0),
-                            name=net_id,
+                            name=net_name,
                         )
                         break
 
                 size_w, size_h = cls._shape_size(padstack.get("shape"), default=850)
-                pad_shape = cls._pad_shape(padstack.get("shape"))
-                pad_type = (
-                    "thru_hole"
-                    if "F.Cu" in pad_layers and "B.Cu" in pad_layers
-                    else "smd"
+                stored_size = padstack.get("kicadSize")
+                if (
+                    isinstance(stored_size, list)
+                    and len(stored_size) >= 2
+                    and all(isinstance(v, (int, float)) for v in stored_size[:2])
+                ):
+                    size_w = float(stored_size[0])
+                    size_h = float(stored_size[1])
+                pad_shape = str(padstack.get("kicadShape") or cls._pad_shape(padstack.get("shape")))
+                pad_type = str(
+                    padstack.get("kicadPadType")
+                    or (
+                        "thru_hole"
+                        if "F.Cu" in pad_layers and "B.Cu" in pad_layers
+                        else "smd"
+                    )
                 )
+
+                drill_payload = padstack.get("kicadDrill")
+                pad_drill = None
+                if isinstance(drill_payload, dict):
+                    drill_offset = drill_payload.get("offset")
+                    pad_drill = kicad.pcb.PadDrill(
+                        shape=drill_payload.get("shape"),
+                        size_x=cls._from_unit(float(drill_payload.get("sizeX", 0.0) or 0.0), resolution),
+                        size_y=(
+                            cls._from_unit(float(drill_payload.get("sizeY")), resolution)
+                            if drill_payload.get("sizeY") is not None
+                            else None
+                        ),
+                        offset=(
+                            kicad.pcb.Xy(
+                                x=cls._from_unit(float(drill_offset[0]), resolution),
+                                y=cls._from_unit(float(drill_offset[1]), resolution),
+                            )
+                            if isinstance(drill_offset, list) and len(drill_offset) >= 2
+                            else None
+                        ),
+                    )
+
+                options_payload = padstack.get("kicadOptions")
+                pad_options = None
+                if isinstance(options_payload, dict):
+                    clearance = options_payload.get("clearance")
+                    anchor = options_payload.get("anchor")
+                    if clearance is not None or anchor is not None:
+                        pad_options = kicad.pcb.PadOptions(
+                            clearance=clearance,
+                            anchor=anchor,
+                        )
 
                 pads.append(
                     kicad.pcb.Pad(
@@ -468,15 +573,19 @@ class DeepPCB_Transformer:
                         at=kicad.pcb.Xyr(
                             x=cls._from_unit(float(pin.get("position", [0, 0])[0]), resolution),
                             y=cls._from_unit(float(pin.get("position", [0, 0])[1]), resolution),
-                            r=float(pin.get("rotation", 0.0) or 0.0),
+                            r=(
+                                float(pin.get("rotation"))
+                                if pin.get("rotation") is not None
+                                else None
+                            ),
                         ),
                         size=kicad.pcb.Wh(
                             w=cls._from_unit(size_w, resolution),
                             h=cls._from_unit(size_h, resolution),
                         ),
-                        drill=None,
+                        drill=pad_drill,
                         layers=pad_layers,
-                        remove_unused_layers=None,
+                        remove_unused_layers=padstack.get("kicadRemoveUnusedLayers"),
                         net=net_ref,
                         solder_mask_margin=None,
                         solder_paste_margin=None,
@@ -489,7 +598,7 @@ class DeepPCB_Transformer:
                         chamfer_ratio=None,
                         chamfer=None,
                         properties=None,
-                        options=None,
+                        options=pad_options,
                         tenting=None,
                         uuid=kicad.gen_uuid(),
                         primitives=None,
@@ -499,6 +608,40 @@ class DeepPCB_Transformer:
             fp_lines, fp_arcs, fp_circles, fp_polys = cls._outline_to_fp_shapes(
                 definition.get("outline"),
                 resolution,
+            )
+
+            reference_prop = component.get("referenceProperty")
+            if isinstance(reference_prop, dict):
+                ref_value = str(reference_prop.get("value", component_id))
+                ref_point = reference_prop.get("at", [0, 0])
+                if not isinstance(ref_point, list) or len(ref_point) < 2:
+                    ref_point = [0, 0]
+                ref_rotation = (
+                    float(reference_prop.get("rotation"))
+                    if reference_prop.get("rotation") is not None
+                    else None
+                )
+                ref_layer = str(reference_prop.get("layer", "F.SilkS"))
+                ref_hide = reference_prop.get("hide")
+                ref_unlocked = reference_prop.get("unlocked")
+            else:
+                ref_value = component_id
+                ref_point = [0, 0]
+                ref_rotation = None
+                ref_layer = "F.SilkS"
+                ref_hide = None
+                ref_unlocked = None
+            embedded_fonts = component.get("embeddedFonts")
+
+            default_effects = kicad.pcb.Effects(
+                font=kicad.pcb.Font(
+                    size=kicad.pcb.Wh(w=1.0, h=1.0),
+                    thickness=0.15,
+                    bold=None,
+                    italic=None,
+                ),
+                hide=None,
+                justify=None,
             )
 
             pcb.footprints.append(
@@ -515,13 +658,17 @@ class DeepPCB_Transformer:
                     propertys=[
                         kicad.pcb.Property(
                             name="Reference",
-                            value=component_id,
-                            at=kicad.pcb.Xyr(x=0.0, y=0.0, r=None),
-                            unlocked=None,
-                            layer="F.SilkS",
-                            hide=None,
+                            value=ref_value,
+                            at=kicad.pcb.Xyr(
+                                x=cls._from_unit(float(ref_point[0]), resolution),
+                                y=cls._from_unit(float(ref_point[1]), resolution),
+                                r=ref_rotation,
+                            ),
+                            unlocked=ref_unlocked,
+                            layer=ref_layer,
+                            hide=ref_hide,
                             uuid=kicad.gen_uuid(),
-                            effects=None,
+                            effects=default_effects,
                         )
                     ],
                     attr=[],
@@ -532,7 +679,7 @@ class DeepPCB_Transformer:
                     fp_poly=fp_polys,
                     fp_texts=[],
                     pads=pads,
-                    embedded_fonts=None,
+                    embedded_fonts=embedded_fonts,
                     models=[],
                 )
             )
@@ -673,6 +820,12 @@ class DeepPCB_Transformer:
 
         for shape in shapes:
             shape_type = str(shape.get("type", "")).lower()
+            layer = str(shape.get("layer") or "F.Fab")
+            stroke_width = float(shape.get("strokeWidth", 0.12))
+            stroke_type = str(shape.get("strokeType") or "solid")
+            stroke = kicad.pcb.Stroke(width=stroke_width, type=stroke_type)
+            fill = shape.get("fill")
+            locked = shape.get("locked")
             if shape_type == "circle":
                 center = shape.get("center", [0, 0])
                 radius = float(shape.get("radius", 0.0))
@@ -688,11 +841,11 @@ class DeepPCB_Transformer:
                         center=center_xy,
                         end=end_xy,
                         solder_mask_margin=None,
-                        stroke=kicad.pcb.Stroke(width=0.12, type="solid"),
-                        fill=None,
-                        layer="F.Fab",
+                        stroke=stroke,
+                        fill=fill,
+                        layer=layer,
                         layers=[],
-                        locked=None,
+                        locked=locked,
                         uuid=kicad.gen_uuid(),
                     )
                 )
@@ -710,11 +863,11 @@ class DeepPCB_Transformer:
                     kicad.pcb.Polygon(
                         pts=kicad.pcb.Pts(xys=xy_points),
                         solder_mask_margin=None,
-                        stroke=kicad.pcb.Stroke(width=0.12, type="solid"),
-                        fill=None,
-                        layer="F.Fab",
+                        stroke=stroke,
+                        fill=fill,
+                        layer=layer,
                         layers=[],
-                        locked=None,
+                        locked=locked,
                         uuid=kicad.gen_uuid(),
                     )
                 )
@@ -724,11 +877,11 @@ class DeepPCB_Transformer:
                         start=xy_points[0],
                         end=xy_points[1],
                         solder_mask_margin=None,
-                        stroke=kicad.pcb.Stroke(width=0.12, type="solid"),
-                        fill=None,
-                        layer="F.Fab",
+                        stroke=stroke,
+                        fill=fill,
+                        layer=layer,
                         layers=[],
-                        locked=None,
+                        locked=locked,
                         uuid=kicad.gen_uuid(),
                     )
                 )
@@ -762,9 +915,42 @@ class DeepPCB_Transformer:
         copper_layer_index: dict[str, int],
     ) -> tuple[str, dict[str, Any]]:
         shape = str(getattr(pad, "shape", "circle")).lower()
+        pad_type = str(getattr(pad, "type", "smd"))
         size_w = float(getattr(pad.size, "w", 0.0) or 0.0)
         size_h = float(getattr(pad.size, "h", size_w) or size_w)
-        layers = cls._layer_indices(getattr(pad, "layers", []), copper_layer_index)
+        raw_layers = [str(layer) for layer in getattr(pad, "layers", [])]
+        layers = cls._layer_indices(raw_layers, copper_layer_index)
+        remove_unused_layers = getattr(pad, "remove_unused_layers", None)
+
+        drill = getattr(pad, "drill", None)
+        drill_payload = None
+        if drill is not None:
+            drill_offset = getattr(drill, "offset", None)
+            drill_payload = {
+                "shape": getattr(drill, "shape", None),
+                "sizeX": cls._to_unit(float(getattr(drill, "size_x", 0.0) or 0.0)),
+                "sizeY": (
+                    cls._to_unit(float(getattr(drill, "size_y")))
+                    if getattr(drill, "size_y", None) is not None
+                    else None
+                ),
+                "offset": (
+                    [
+                        cls._to_unit(float(getattr(drill_offset, "x", 0.0) or 0.0)),
+                        cls._to_unit(float(getattr(drill_offset, "y", 0.0) or 0.0)),
+                    ]
+                    if drill_offset is not None
+                    else None
+                ),
+            }
+
+        pad_options = getattr(pad, "options", None)
+        options_payload = None
+        if pad_options is not None:
+            options_payload = {
+                "clearance": getattr(pad_options, "clearance", None),
+                "anchor": getattr(pad_options, "anchor", None),
+            }
 
         if shape in {"circle", "oval"}:
             radius = max(size_w, size_h) / 2.0
@@ -787,12 +973,23 @@ class DeepPCB_Transformer:
                 ],
             }
 
-        padstack_id = f"Padstack_{shape}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}_L{','.join(map(str,layers))}"
+        raw_layers_id = ",".join(raw_layers)
+        padstack_id = (
+            f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
+            f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}"
+        )
         return padstack_id, {
             "id": padstack_id,
             "shape": geom,
             "layers": layers,
             "allowVia": False,
+            "kicadShape": shape,
+            "kicadPadType": pad_type,
+            "kicadSize": [cls._to_unit(size_w), cls._to_unit(size_h)],
+            "kicadLayers": raw_layers,
+            "kicadRemoveUnusedLayers": remove_unused_layers,
+            "kicadDrill": drill_payload,
+            "kicadOptions": options_payload,
         }
 
     @classmethod
@@ -825,7 +1022,7 @@ class DeepPCB_Transformer:
 
     @staticmethod
     def _definition_id(fp: Any) -> str:
-        return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}"
+        return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}__{fp.uuid}"
 
     @staticmethod
     def _component_id(fp: Any) -> str:
@@ -842,6 +1039,11 @@ class DeepPCB_Transformer:
             shapes.append(
                 {
                     "type": "polyline",
+                    "layer": line.layer,
+                    "strokeWidth": float(line.stroke.width) if line.stroke else None,
+                    "strokeType": str(line.stroke.type) if line.stroke else None,
+                    "fill": line.fill,
+                    "locked": line.locked,
                     "points": [
                         cls._xy_to_point(line.start),
                         cls._xy_to_point(line.end),
@@ -854,6 +1056,11 @@ class DeepPCB_Transformer:
             shapes.append(
                 {
                     "type": "circle",
+                    "layer": circle.layer,
+                    "strokeWidth": float(circle.stroke.width) if circle.stroke else None,
+                    "strokeType": str(circle.stroke.type) if circle.stroke else None,
+                    "fill": circle.fill,
+                    "locked": circle.locked,
                     "center": cls._xy_to_point(circle.center),
                     "radius": cls._to_unit(radius),
                 }
@@ -863,6 +1070,11 @@ class DeepPCB_Transformer:
             shapes.append(
                 {
                     "type": "polyline",
+                    "layer": arc.layer,
+                    "strokeWidth": float(arc.stroke.width) if arc.stroke else None,
+                    "strokeType": str(arc.stroke.type) if arc.stroke else None,
+                    "fill": arc.fill,
+                    "locked": arc.locked,
                     "points": [
                         cls._xy_to_point(arc.start),
                         cls._xy_to_point(arc.mid),
@@ -873,7 +1085,17 @@ class DeepPCB_Transformer:
 
         for poly in getattr(fp, "fp_poly", []):
             points = [cls._xy_to_point(xy) for xy in poly.pts.xys]
-            shapes.append({"type": "polyline", "points": points})
+            shapes.append(
+                {
+                    "type": "polyline",
+                    "layer": poly.layer,
+                    "strokeWidth": float(poly.stroke.width) if poly.stroke else None,
+                    "strokeType": str(poly.stroke.type) if poly.stroke else None,
+                    "fill": poly.fill,
+                    "locked": poly.locked,
+                    "points": points,
+                }
+            )
 
         return {"type": "multi", "shapes": shapes}
 
