@@ -25,7 +25,7 @@ npm run test
 npm run build
 ```
 
-Graph/worker-heavy UI loop:
+Optional standalone/canvas app loop (specialized):
 
 ```bash
 cd src/atopile/visualizer/web
@@ -53,7 +53,7 @@ Use this as the quick orientation map:
 - `src/vscode-atopile/`:
   VS Code/Cursor extension host layer (commands, webview wiring, IDE integration).
 - `src/atopile/visualizer/web/`:
-  standalone graph visualizer React app (3D rendering + graph interaction).
+  standalone web app example (currently graph visualizer; useful for canvas/3D patterns).
 - `src/atopile/layout_server/frontend/`:
   specialized layout editor frontend for the layout server.
 
@@ -92,7 +92,7 @@ Shared utilities:
 - `src/ui-server/src/utils/packageUtils.ts` (package formatting/comparison helpers)
 - `src/ui-server/src/utils/searchUtils.ts` (search matching/filter helpers)
 
-### `visualizer/web` (graph visualization app)
+### `visualizer/web` (specialized standalone web app example)
 
 Root:
 - `src/atopile/visualizer/web/src/`
@@ -101,10 +101,10 @@ Main structure:
 - `components/` UI shell/controls
 - `components/Sidebar/` graph-specific sidebar panels
 - `three/` 3D rendering layer
-- `stores/` state slices for graph/view/filter/navigation
-- `lib/` pure graph/filter/layout/export logic
+- `stores/` state slices for app/view/filter/navigation
+- `lib/` pure app/filter/layout/export logic
 - `workers/` background compute (layout)
-- `types/` graph contracts
+- `types/` app contracts
 
 Core UI components:
 - `src/atopile/visualizer/web/src/components/AtopileLogo.tsx`
@@ -147,7 +147,7 @@ Do not copy as default architecture for new product webviews:
 When adding a new feature:
 1. First check `components/shared/` for an existing primitive.
 2. If similar logic exists in `utils/`, extend it instead of duplicating.
-3. If feature is graph-specific, prefer patterns from `visualizer/web/src/lib` + `stores`.
+3. If feature is compute/canvas-heavy, prefer patterns from `visualizer/web/src/lib` + `stores`.
 4. If behavior is IDE-host specific, keep it in `vscode-atopile` bridge modules.
 5. If a new primitive is needed, place it where cross-feature reuse is likely.
 
@@ -445,7 +445,7 @@ Example:
 Required:
 - memoize expensive derived data and callback props in hot paths
 - use `requestAnimationFrame` for resize/drag animation loops
-- move heavy graph/layout/geometry work to Web Workers
+- move heavy layout/geometry/compute work to Web Workers when needed
 - avoid broad store subscriptions
 
 Practical budgets (set per feature):
@@ -484,17 +484,17 @@ Use these as concrete build patterns when starting a new feature.
 - Capture at least one screenshot per critical panel state.
 - Ensure no unapproved `ui-logs` errors.
 
-### Playbook B: New Graph/Visualizer Capability (`visualizer/web`)
+### Playbook B: New Standalone/Canvas Capability (specialized app pattern)
 
 1. Data model
-- Add/update graph types in `src/atopile/visualizer/web/src/types/`.
+- Add/update feature types in `src/atopile/visualizer/web/src/types/`.
 
 2. Core logic
 - Implement filters/transforms/layout math in `src/atopile/visualizer/web/src/lib/`.
 - Keep these functions pure and unit-testable.
 
 3. State integration
-- Add state to the appropriate store under `stores/` (graph, filter, view, navigation, selection).
+- Add state to the appropriate store under `stores/` (feature, filter, view, navigation, selection).
 - Expose small selectors to UI components.
 
 4. Rendering
