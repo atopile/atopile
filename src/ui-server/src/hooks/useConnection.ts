@@ -161,6 +161,12 @@ export function useConnection() {
             error: message.error || 'Failed to switch atopile version',
           });
           break;
+        case 'switchLayout':
+          sendAction('openLayout', {
+            projectId: message.projectRoot,
+            targetName: message.targetName,
+          });
+          break;
         case 'activeFile': {
           const filePath = message.filePath ?? null;
           const store = useStore.getState();

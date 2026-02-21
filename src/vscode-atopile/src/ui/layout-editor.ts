@@ -56,6 +56,10 @@ export async function openLayoutEditor() {
     await layoutEditor.open();
 }
 
+export function isLayoutEditorOpen(): boolean {
+    return layoutEditor?.isOpen() ?? false;
+}
+
 export function closeLayoutEditor() {
     layoutEditor?.dispose();
     layoutEditor = undefined;

@@ -20,7 +20,7 @@ import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/ta
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
-import { openLayoutEditor } from '../ui/layout-editor';
+import { isLayoutEditorOpen, openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
@@ -738,6 +738,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         });
 
         await openModelViewerPreview();
+      }
+    }
+
+    // If the layout editor is open, switch to the new target's PCB
+    if (isLayoutEditorOpen() && selectedBuilds.length > 0) {
+      const build = selectedBuilds[0];
+      if (build?.root && build?.name) {
+        traceInfo(`[SidebarProvider] Layout editor open, switching to: ${build.name}`);
+        backendServer.sendToWebview({
+          type: 'switchLayout',
+          projectRoot: build.root,
+          targetName: build.name,
+        });
       }
     }
   }

@@ -15,6 +15,7 @@ from pathlib import Path
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import AppContext, Build, BuildStatus, Log
+from atopile.layout_server.models import WsMessage
 from atopile.logging import BuildLogger
 from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
@@ -1552,6 +1553,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             await asyncio.to_thread(layout_service.load, target)
             await layout_service.start_watcher()
+            model = await asyncio.to_thread(layout_service.manager.get_render_model)
+            await layout_service.broadcast(
+                WsMessage(type="layout_updated", model=model)
+            )
             await server_state.emit_event("open_layout", {"path": str(target)})
             return {"success": True}
 
