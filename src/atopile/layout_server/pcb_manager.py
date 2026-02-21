@@ -1104,7 +1104,7 @@ class PcbManager:
         )
 
     def _synthesize_via_drawings(
-        self, vias, copper_layers: list[str]
+        self, vias: list, copper_layers: list[str]
     ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for via in vias:
@@ -1126,15 +1126,6 @@ class PcbManager:
                     plated=True,
                 )
 
-            if hole is None and drill > 0:
-                hole = HoleModel(
-                    shape="circle",
-                    size_x=drill,
-                    size_y=drill,
-                    offset=None,
-                    plated=True,
-                )
-
             outer_diameter = _safe_float(getattr(via, "size", None)) or 0.0
             drill_diameter = 0.0
             if hole is not None:
@@ -1144,11 +1135,13 @@ class PcbManager:
             if drill_diameter <= 0:
                 drill_diameter = drill
 
-            for copper_layer in _expand_copper_layers(
-                list(getattr(via, "layers", []) or []),
+            via_layers = list(getattr(via, "layers", []) or [])
+            expanded_copper_layers = _expand_copper_layers(
+                via_layers,
                 all_copper_layers=copper_layers,
                 include_between=True,
-            ):
+            )
+            for copper_layer in expanded_copper_layers:
                 if outer_diameter <= 0:
                     continue
                 if drill_diameter > 0 and outer_diameter > drill_diameter:
@@ -1178,9 +1171,9 @@ class PcbManager:
             if hole is None:
                 continue
             for drill_layer in _drill_layers_from_copper_layers(
-                list(getattr(via, "layers", []) or []),
+                expanded_copper_layers,
                 all_copper_layers=copper_layers,
-                include_between=True,
+                include_between=False,
             ):
                 drawings.extend(
                     _drill_hole_drawings(
