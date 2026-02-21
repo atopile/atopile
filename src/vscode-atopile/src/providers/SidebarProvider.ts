@@ -265,7 +265,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
-          traceInfo('[SidebarProvider] Atopile settings changed, notifying webview');
+          traceInfo('[SidebarProvider] atopile settings changed, notifying webview');
           this._sendAtopileSettings();
         }
       })
@@ -1247,7 +1247,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Clearing atopile.ato (using default)`);
         await config.update('ato', undefined, target);
       }
-      traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
+      traceInfo(`[SidebarProvider] atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
 

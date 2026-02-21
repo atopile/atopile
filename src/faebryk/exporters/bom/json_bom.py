@@ -34,7 +34,7 @@ class BOMParameter:
 class BOMUsage:
     """Where a component is used in the design."""
 
-    address: str  # Atopile address e.g., "App.power_supply.decoupling[0]"
+    address: str  # atopile address e.g., "App.power_supply.decoupling[0]"
     designator: str  # e.g., "C3"
 
 

@@ -65,7 +65,7 @@ export async function example_flow() {
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: 'Setting up Atopile Example Project',
+            title: 'Setting up atopile Example Project',
             cancellable: false,
         },
         async (progress) => {

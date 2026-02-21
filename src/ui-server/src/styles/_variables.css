@@ -3,13 +3,13 @@
    CSS Custom Properties and Root Variables
    - VS Code Theme Integration (primary)
    - Catppuccin Mocha/Latte (fallbacks)
-   - Atopile Brand Colors
+   - atopile Brand Colors
    - Semantic Colors
    - Spacing, Border Radius, Fonts, Transitions
    ============================================ */
 
 :root {
-  /* Atopile Brand Colors - shared across themes */
+  /* atopile Brand Colors - shared across themes */
   --ato-orange: #f95015;
   --ato-orange-light: #ff6b35;
   --ato-orange-dark: #d94410;

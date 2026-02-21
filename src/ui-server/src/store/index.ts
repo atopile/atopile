@@ -121,7 +121,7 @@ const initialState: AppState = {
   activeEditorFile: null,
   lastAtoFile: null,
 
-  // Atopile configuration
+  // atopile configuration
   atopile: {
     // Actual running atopile info
     actualVersion: null as string | null,
@@ -258,7 +258,7 @@ interface StoreActions {
   setLoadingVariables: (loading: boolean) => void;
   setVariablesError: (error: string | null) => void;
 
-  // Atopile config
+  // atopile config
   setAtopileConfig: (update: Partial<AppState['atopile']>) => void;
 
   // Project data
@@ -721,7 +721,7 @@ export const useStore = create<Store>()(
         }
       },
 
-      // Atopile config
+      // atopile config
       setAtopileConfig: (update) => {
         console.log('[Store] setAtopileConfig update:', update);
         set((state) => {
