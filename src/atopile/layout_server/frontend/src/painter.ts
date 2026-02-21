@@ -508,11 +508,6 @@ function paintGlobalDrawings(
     }
 }
 
-function isPadCategoryHidden(pad: PadModel, categories: Set<string>, layerById: Map<string, LayerModel>): boolean {
-    const copperLayers = pad.layers.filter(ln => isCopperLayer(ln, layerById));
-    if (copperLayers.length === 0) return false;
-    return copperLayers.every(ln => categories.has(ln + ":pads"));
-}
 
 function paintFootprint(
     renderer: Renderer,
@@ -566,6 +561,7 @@ function paintFootprint(
             if (!layerName || hidden.has(layerName) || isDrillLayer(layerName, layerById)) continue;
             if (padType === "np_thru_hole") continue;
             if (hasHole && !isCopperLayer(layerName, layerById)) continue;
+            if (isCopperLayer(layerName, layerById) && categories.has(layerName + ":pads")) continue;
             let layerPads = padsByLayer.get(layerName);
             if (!layerPads) {
                 layerPads = [];
