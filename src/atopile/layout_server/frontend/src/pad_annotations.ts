@@ -1,5 +1,5 @@
 import { fpTransform, rotatedRectExtents } from "./geometry";
-import type { FootprintModel, PadModel } from "./types";
+import type { FootprintModel, LayerModel, PadModel } from "./types";
 
 const PAD_ANNOTATION_BOX_RATIO = 0.78;
 const PAD_ANNOTATION_MAJOR_FIT = 0.96;
@@ -152,11 +152,24 @@ function resolvePad(fp: FootprintModel, padIndex: number, padName: string): PadM
     return null;
 }
 
+function isAnnotationCopperLayerHidden(
+    layerName: string,
+    categories: Set<string>,
+    layerById: Map<string, LayerModel> | undefined,
+): boolean {
+    if (!layerById) return false;
+    const kind = (layerById.get(layerName)?.kind ?? "").toLowerCase();
+    return kind === "cu" && categories.has(layerName + ":pads");
+}
+
 export function buildPadAnnotationGeometry(
     fp: FootprintModel,
     hiddenLayers?: Set<string>,
+    hiddenCategories?: Set<string>,
+    layerById?: Map<string, LayerModel>,
 ): Map<string, LayerAnnotationGeometry> {
     const hidden = hiddenLayers ?? new Set<string>();
+    const categories = hiddenCategories ?? new Set<string>();
     const layerGeometry = new Map<string, LayerAnnotationGeometry>();
     const ensureLayerGeometry = (layerName: string): LayerAnnotationGeometry => {
         let entry = layerGeometry.get(layerName);
@@ -180,6 +193,7 @@ export function buildPadAnnotationGeometry(
         const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
         for (const layerName of annotation.layer_ids) {
             if (hidden.has(layerName)) continue;
+            if (isAnnotationCopperLayerHidden(layerName, categories, layerById)) continue;
             ensureLayerGeometry(layerName).names.push({
                 text: displayText,
                 x: worldCenter.x,
@@ -213,6 +227,7 @@ export function buildPadAnnotationGeometry(
         );
         for (const layerName of annotation.layer_ids) {
             if (hidden.has(layerName)) continue;
+            if (isAnnotationCopperLayerHidden(layerName, categories, layerById)) continue;
             ensureLayerGeometry(layerName).numbers.push({
                 text: annotation.text,
                 badgeCenterX,

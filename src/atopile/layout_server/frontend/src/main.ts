@@ -16,6 +16,13 @@ const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 // Persistent UI state across rebuilds
 let panelCollapsed = false;
 const collapsedGroups = new Set<string>();
+const collapsedSubToggles = new Set<string>();
+
+const COPPER_SUBCATEGORIES = [
+    { key: "zones", label: "Zones" },
+    { key: "tracks", label: "Tracks" },
+    { key: "pads", label: "Pads" },
+];
 
 interface LayerGroup {
     group: string;
@@ -201,6 +208,9 @@ function buildLayerPanel() {
         }
 
         for (const child of group.layers) {
+            const isCopperLayer = child.kind?.toLowerCase() === "cu";
+            const isSubCollapsed = !collapsedSubToggles.has(child.id);
+
             const row = document.createElement("div");
             row.className = "layer-row";
 
@@ -210,6 +220,13 @@ function buildLayerPanel() {
 
             row.appendChild(childSwatch);
             row.appendChild(childLabel);
+
+            if (isCopperLayer) {
+                const subChevron = document.createElement("span");
+                subChevron.className = "layer-sub-chevron";
+                subChevron.textContent = isSubCollapsed ? "\u25B8" : "\u25BE";
+                row.appendChild(subChevron);
+            }
 
             updateRowVisual(row, editor.isLayerVisible(child.id));
 
@@ -221,6 +238,56 @@ function buildLayerPanel() {
             });
 
             childContainer.appendChild(row);
+
+            if (isCopperLayer) {
+                const subContainer = document.createElement("div");
+                subContainer.className = isSubCollapsed ? "layer-sub-children collapsed" : "layer-sub-children";
+
+                for (const sub of COPPER_SUBCATEGORIES) {
+                    const catKey = child.id + ":" + sub.key;
+                    const subRow = document.createElement("div");
+                    subRow.className = "layer-sub-row";
+
+                    const subSwatch = createSwatch(colorToCSS(child.id, layerById));
+                    const subLabel = document.createElement("span");
+                    subLabel.textContent = sub.label;
+
+                    subRow.appendChild(subSwatch);
+                    subRow.appendChild(subLabel);
+
+                    subRow.style.opacity = editor.isCategoryVisible(catKey) ? "1" : "0.3";
+
+                    subRow.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        const vis = !editor.isCategoryVisible(catKey);
+                        editor.setCategoryVisible(catKey, vis);
+                        subRow.style.opacity = vis ? "1" : "0.3";
+                    });
+
+                    subContainer.appendChild(subRow);
+                }
+
+                // Sub-chevron click: toggle sub-container collapse
+                const subChevron = row.querySelector(".layer-sub-chevron");
+                if (subChevron) {
+                    subChevron.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        if (collapsedSubToggles.has(child.id)) {
+                            // Currently expanded → collapse
+                            collapsedSubToggles.delete(child.id);
+                            (subChevron as HTMLElement).textContent = "\u25B8";
+                            subContainer.classList.add("collapsed");
+                        } else {
+                            // Currently collapsed → expand
+                            collapsedSubToggles.add(child.id);
+                            (subChevron as HTMLElement).textContent = "\u25BE";
+                            subContainer.classList.remove("collapsed");
+                        }
+                    });
+                }
+
+                childContainer.appendChild(subContainer);
+            }
         }
 
         content.appendChild(childContainer);

@@ -234,6 +234,37 @@
             border-radius: 2px;
             flex-shrink: 0;
         }
+
+        .layer-sub-chevron {
+            font-size: 8px;
+            width: 10px;
+            text-align: center;
+            flex-shrink: 0;
+            margin-left: auto;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .layer-sub-children {
+            padding-left: 10px;
+        }
+        .layer-sub-children.collapsed {
+            display: none;
+        }
+
+        .layer-sub-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 12px 2px 12px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: background 0.15s;
+            border-left: 2px solid transparent;
+        }
+        .layer-sub-row:hover {
+            background: rgba(224,160,56,0.06);
+        }
     </style>
 </head>
 <body>

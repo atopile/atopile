@@ -45,6 +45,7 @@ export class Editor {
 
     // Layer visibility
     private hiddenLayers: Set<string> = new Set();
+    private hiddenCategories: Set<string> = new Set();
     private defaultLayerVisibilityApplied = new Set<string>();
     private onLayersChanged: (() => void) | null = null;
 
@@ -137,7 +138,7 @@ export class Editor {
 
     private paint() {
         if (!this.model) return;
-        paintAll(this.renderer, this.model, this.hiddenLayers);
+        paintAll(this.renderer, this.model, this.hiddenLayers, this.hiddenCategories);
 
         if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
             const hovered = this.groupsById.get(this.hoveredGroupId);
@@ -717,6 +718,20 @@ export class Editor {
         return !this.hiddenLayers.has(layer);
     }
 
+    setCategoryVisible(key: string, visible: boolean) {
+        if (visible) {
+            this.hiddenCategories.delete(key);
+        } else {
+            this.hiddenCategories.add(key);
+        }
+        this.paint();
+        this.requestRedraw();
+    }
+
+    isCategoryVisible(key: string): boolean {
+        return !this.hiddenCategories.has(key);
+    }
+
     private getLayerMap(): Map<string, LayerModel> {
         const layerById = new Map<string, LayerModel>();
         if (!this.model) return layerById;
@@ -764,6 +779,7 @@ export class Editor {
             this.camera,
             this.hiddenLayers,
             this.getLayerMap(),
+            this.hiddenCategories,
         );
     }
 

@@ -122,7 +122,11 @@ class LayoutEditorWebview extends BaseWebview {
                         flex-shrink: 0;
                     }
                     .layer-group-name { flex: 1; }
-                    .layer-group-children { padding-left: 22px; }
+                    .layer-group-children {
+                        padding-left: 22px;
+                        overflow: hidden;
+                        transition: max-height 0.2s ease;
+                    }
                     .layer-row {
                         display: flex;
                         align-items: center;
@@ -139,6 +143,31 @@ class LayoutEditorWebview extends BaseWebview {
                         border-radius: 50%;
                         flex-shrink: 0;
                     }
+                    .layer-sub-chevron {
+                        font-size: 8px;
+                        width: 10px;
+                        text-align: center;
+                        flex-shrink: 0;
+                        margin-left: auto;
+                        color: var(--vscode-descriptionForeground, #888);
+                        cursor: pointer;
+                    }
+                    .layer-sub-children {
+                        padding-left: 10px;
+                    }
+                    .layer-sub-children.collapsed {
+                        display: none;
+                    }
+                    .layer-sub-row {
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                        padding: 1px 8px 1px 12px;
+                        cursor: pointer;
+                        font-size: 10px;
+                        transition: opacity 0.15s;
+                    }
+                    .layer-sub-row:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
                 </style>
             </head>
             <body>
