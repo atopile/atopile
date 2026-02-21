@@ -19,10 +19,11 @@ declare module '@layout-editor/editor' {
 
 declare module '@layout-editor/colors' {
   export type Color = [number, number, number, number];
-  export const INTERFACE_COLORS: Record<string, Color>;
+  export type SignalType = "digital" | "analog" | "power" | "ground" | "nc";
+  export const SIGNAL_TYPE_COLORS: Record<SignalType, { pad: Color; badgeBg: string; badgeFg: string }>;
   export const UNCONNECTED_PAD_COLOR: Color;
   export const PAD_HIGHLIGHT_COLOR: Color;
-  export function getInterfaceColor(name: string): Color;
+  export function getSignalColors(signalType: string | null | undefined): { pad: Color; badgeBg: string; badgeFg: string };
 }
 
 declare module '@layout-editor/types' {

@@ -2,7 +2,7 @@ import { useRef, useEffect, useMemo } from 'react'
 import type { FootprintPadGeometry, FootprintDrawing, PinInfo } from '../types/build'
 import { Editor } from '@layout-editor/editor'
 import type { RenderModel, PadModel, DrawingModel, FootprintModel } from '@layout-editor/types'
-import type { Color } from '@layout-editor/colors'
+import { getSignalColors } from '@layout-editor/colors'
 
 interface FootprintViewerCanvasProps {
   pads: FootprintPadGeometry[]
@@ -10,15 +10,6 @@ interface FootprintViewerCanvasProps {
   pins: PinInfo[]
   selectedPinNumber: string | null
   onPadClick: (padNumber: string) => void
-}
-
-/** Pad colors matching the signal type badge hues in PinoutPanel */
-const SIGNAL_PAD_COLORS: Record<string, Color> = {
-  digital: [0.30, 0.55, 0.85, 0.9],   // blue  (matches #264f78)
-  analog:  [0.30, 0.60, 0.30, 0.9],   // green (matches #2d4a2d)
-  power:   [0.80, 0.30, 0.30, 0.9],   // red   (matches #5c2020)
-  ground:  [0.45, 0.45, 0.45, 0.9],   // gray  (matches #3c3c3c)
-  nc:      [0.35, 0.35, 0.35, 0.7],   // dim   (matches #444)
 }
 
 function buildRenderModel(pads: FootprintPadGeometry[], drawings: FootprintDrawing[]): RenderModel {
@@ -67,24 +58,19 @@ function buildRenderModel(pads: FootprintPadGeometry[], drawings: FootprintDrawi
 }
 
 interface PadStyles {
-  colorOverrides: Map<string, Color>
+  colorOverrides: Map<string, ReturnType<typeof getSignalColors>['pad']>
   outlinePads: Set<string>
 }
 
 /** Build color overrides (by signal type) and outline set (unconnected) */
 function buildPadStyles(pins: PinInfo[]): PadStyles {
-  const colorOverrides = new Map<string, Color>()
+  const colorOverrides = new Map<string, ReturnType<typeof getSignalColors>['pad']>()
   const outlinePads = new Set<string>()
 
   for (const pin of pins) {
     if (!pin.pin_number) continue
 
-    // Default to digital color for pins with no signal type
-    const signalType = pin.signal_type || 'digital'
-    const color = SIGNAL_PAD_COLORS[signalType]
-    if (color) {
-      colorOverrides.set(pin.pin_number, color)
-    }
+    colorOverrides.set(pin.pin_number, getSignalColors(pin.signal_type).pad)
 
     if (!pin.is_connected) {
       outlinePads.add(pin.pin_number)

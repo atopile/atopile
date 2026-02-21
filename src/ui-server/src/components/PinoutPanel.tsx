@@ -2,21 +2,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { api } from '../api/client'
 import type { PinoutData, PinInfo } from '../types/build'
 import { FootprintViewerCanvas } from './FootprintViewerCanvas'
-
-// ---------------------------------------------------------------------------
-//  Signal type color badges
-// ---------------------------------------------------------------------------
-
-const SIGNAL_COLORS: Record<string, { bg: string; fg: string }> = {
-  digital: { bg: '#264f78', fg: '#9cdcfe' },
-  analog: { bg: '#2d4a2d', fg: '#a3d9a5' },
-  power: { bg: '#5c2020', fg: '#f5a8a8' },
-  ground: { bg: '#3c3c3c', fg: '#aaa' },
-  nc: { bg: '#444', fg: '#888' },
-}
+import { getSignalColors } from '@layout-editor/colors'
 
 function SignalBadge({ type }: { type: string }) {
-  const colors = SIGNAL_COLORS[type] || SIGNAL_COLORS.digital
+  const colors = getSignalColors(type)
   return (
     <span style={{
       display: 'inline-block',
@@ -24,8 +13,8 @@ function SignalBadge({ type }: { type: string }) {
       borderRadius: 3,
       fontSize: '0.85em',
       fontWeight: 600,
-      background: colors.bg,
-      color: colors.fg,
+      background: colors.badgeBg,
+      color: colors.badgeFg,
     }}>
       {type}
     </span>
