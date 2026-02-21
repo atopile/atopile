@@ -234,11 +234,233 @@
             border-radius: 2px;
             flex-shrink: 0;
         }
+
+        /* ── BOM panel ── */
+        #bom-panel {
+            position: fixed; top: 0; left: 0; bottom: 32px;
+            width: 240px;
+            background: var(--surface);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-right: 1px solid var(--border);
+            border-radius: 0 4px 0 0;
+            z-index: 20;
+            font: 11px/1.4 'IBM Plex Mono', monospace;
+            color: var(--text-primary);
+            transform: translateX(0);
+            transition: transform 0.2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        #bom-panel.collapsed {
+            transform: translateX(-100%);
+        }
+        .bom-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            font-family: 'Oxanium', sans-serif;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            position: relative;
+        }
+        .bom-panel-header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px; left: 12px; right: 12px;
+            height: 1px;
+            background: var(--border-accent);
+        }
+        .bom-collapse-btn {
+            cursor: pointer;
+            opacity: 0.5;
+            font-size: 10px;
+            transition: opacity 0.15s;
+            color: var(--text-secondary);
+        }
+        .bom-collapse-btn:hover { opacity: 1; color: var(--accent); }
+        .bom-expand-tab {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-left: none;
+            border-radius: 0 4px 4px 0;
+            padding: 10px 5px;
+            cursor: pointer;
+            font: 11px 'Oxanium', sans-serif;
+            font-weight: 600;
+            color: var(--accent);
+            z-index: 21;
+            transition: background 0.15s;
+        }
+        .bom-expand-tab:hover { background: var(--accent-glow); }
+        .bom-expand-tab.visible { display: block; }
+
+        .bom-search {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .bom-search input {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-primary);
+            font: 11px 'IBM Plex Mono', monospace;
+            padding: 3px 6px;
+            outline: none;
+            min-width: 0;
+        }
+        .bom-search input:focus {
+            border-color: var(--accent);
+        }
+        .bom-search input.bom-search-error {
+            border-color: #e05050;
+        }
+        .bom-search-toggle {
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-secondary);
+            font: 10px 'IBM Plex Mono', monospace;
+            padding: 2px 5px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            flex-shrink: 0;
+        }
+        .bom-search-toggle:hover { color: var(--text-primary); }
+        .bom-search-toggle.active {
+            background: var(--accent-glow);
+            color: var(--accent);
+            border-color: var(--border-accent);
+        }
+
+        .bom-table-header {
+            display: flex;
+            align-items: center;
+            padding: 4px 8px;
+            font-family: 'Oxanium', sans-serif;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .bom-table-body {
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+        }
+        .bom-table-body::-webkit-scrollbar { width: 4px; }
+        .bom-table-body::-webkit-scrollbar-track { background: transparent; }
+        .bom-table-body::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+        }
+        .bom-table-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.14);
+        }
+
+        .bom-row {
+            display: flex;
+            align-items: center;
+            padding: 3px 8px;
+            cursor: pointer;
+            transition: background 0.1s;
+            border-left: 2px solid transparent;
+        }
+        .bom-row:hover { background: rgba(224,160,56,0.06); }
+        .bom-row.selected {
+            background: rgba(224,160,56,0.10);
+            border-left-color: var(--accent);
+        }
+
+        .bom-qty {
+            width: 28px;
+            flex-shrink: 0;
+            text-align: right;
+            padding-right: 8px;
+            font-variant-numeric: tabular-nums;
+        }
+        .bom-designators {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .bom-value {
+            width: 70px;
+            flex-shrink: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: right;
+            color: var(--text-secondary);
+        }
+
+        .bom-detail {
+            border-top: 1px solid var(--border);
+            padding: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .bom-detail::-webkit-scrollbar { width: 4px; }
+        .bom-detail::-webkit-scrollbar-track { background: transparent; }
+        .bom-detail::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+        }
+        .bom-detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 1px 0;
+            gap: 8px;
+        }
+        .bom-detail-label {
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            font-size: 10px;
+        }
+        .bom-detail-value {
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+            font-size: 10px;
+        }
+        .bom-detail-loading {
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-align: center;
+            padding: 8px;
+        }
     </style>
 </head>
 <body>
     <canvas id="editor-canvas"></canvas>
     <div id="vignette"></div>
+    <div id="bom-panel"></div>
     <div id="layer-panel"></div>
     <div id="status">
         <span id="status-coords"></span>

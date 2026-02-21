@@ -22717,10 +22717,13 @@ var Editor = class {
   hiddenLayers = /* @__PURE__ */ new Set();
   defaultLayerVisibilityApplied = /* @__PURE__ */ new Set();
   onLayersChanged = null;
+  onModelChanged = null;
   // Track current mouse position
   lastMouseScreen = new Vec2(0, 0);
   // Mouse coordinate callback
   onMouseMoveCallback = null;
+  // Selection change callback (for BOM panel sync)
+  onSelectionChangedCallback = null;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
     this.textOverlay = this.createTextOverlay();
@@ -22782,6 +22785,8 @@ var Editor = class {
     this.requestRedraw();
     if (this.onLayersChanged)
       this.onLayersChanged();
+    if (this.onModelChanged)
+      this.onModelChanged();
   }
   applyDefaultLayerVisibility() {
     if (!this.model)
@@ -22890,6 +22895,21 @@ var Editor = class {
     }
     this.singleOverrideMode = false;
   }
+  fireSelectionChanged() {
+    if (!this.onSelectionChangedCallback)
+      return;
+    let uuids = [];
+    if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+      const uuid = this.model?.footprints[this.selectedFpIndex]?.uuid;
+      if (uuid)
+        uuids = [uuid];
+    } else if (this.selectionMode === "multi") {
+      uuids = this.getSelectedMultiUuids();
+    } else if (this.selectionMode === "group" && this.selectedGroupId) {
+      uuids = this.selectedGroupMemberUuids();
+    }
+    this.onSelectionChangedCallback(uuids, this.selectionMode);
+  }
   setSingleSelection(index, enterOverride) {
     this.selectionMode = "single";
     this.selectedFpIndex = index;
@@ -22900,6 +22920,7 @@ var Editor = class {
     } else if (!this.groupIdByFpIndex.has(index)) {
       this.singleOverrideMode = false;
     }
+    this.fireSelectionChanged();
   }
   setMultiSelection(indices) {
     const normalized = [...new Set(indices)].filter((i) => i >= 0).sort((a, b) => a - b);
@@ -22916,6 +22937,7 @@ var Editor = class {
     this.selectedGroupId = null;
     this.selectedFpIndex = -1;
     this.singleOverrideMode = false;
+    this.fireSelectionChanged();
   }
   setGroupSelection(groupId) {
     this.selectionMode = "group";
@@ -22923,6 +22945,7 @@ var Editor = class {
     this.selectedFpIndex = -1;
     this.selectedMultiIndices = [];
     this.singleOverrideMode = false;
+    this.fireSelectionChanged();
   }
   clearSelection(exitSingleOverride = false) {
     this.selectionMode = "none";
@@ -22936,6 +22959,7 @@ var Editor = class {
     if (exitSingleOverride) {
       this.singleOverrideMode = false;
     }
+    this.fireSelectionChanged();
   }
   selectedGroup() {
     if (!this.selectedGroupId)
@@ -23345,6 +23369,9 @@ var Editor = class {
   setOnLayersChanged(cb) {
     this.onLayersChanged = cb;
   }
+  setOnModelChanged(cb) {
+    this.onModelChanged = cb;
+  }
   setOnMouseMove(cb) {
     this.onMouseMoveCallback = cb;
   }
@@ -23375,7 +23402,470 @@ var Editor = class {
     this.renderer.draw(this.camera.matrix);
     this.drawTextOverlay();
   }
+  // --- Selection change callback (for BOM panel) ---
+  setOnSelectionChanged(cb) {
+    this.onSelectionChangedCallback = cb;
+  }
+  // --- Select footprints by UUID (BOM → canvas sync) ---
+  selectFootprintsByUuids(uuids) {
+    if (!this.model)
+      return;
+    const uuidSet = new Set(uuids);
+    const indices = [];
+    for (let i = 0; i < this.model.footprints.length; i++) {
+      const uuid = this.model.footprints[i]?.uuid;
+      if (uuid && uuidSet.has(uuid))
+        indices.push(i);
+    }
+    if (indices.length === 0) {
+      this.clearSelection(true);
+    } else {
+      this.setMultiSelection(indices);
+    }
+    this.repaintWithSelection();
+  }
+  // --- Model access (for BOM panel) ---
+  getFootprints() {
+    return this.model?.footprints ?? [];
+  }
 };
+
+// src/bom_panel.ts
+var bomPanelCollapsed = false;
+var selectedRowKey = null;
+var searchPattern = "";
+var isRegex = false;
+var isCaseSensitive = false;
+var bomData = null;
+var currentRows = [];
+var filteredRows = [];
+var syncingFromBom = false;
+function naturalSort(a, b) {
+  return a.localeCompare(b, void 0, { numeric: true });
+}
+function buildRows(footprints) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const fp of footprints) {
+    const value = fp.value ?? "";
+    const name = fp.name;
+    const key = `${value}\0${name}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { designators: [], uuids: [] };
+      groups.set(key, group);
+    }
+    if (fp.reference)
+      group.designators.push(fp.reference);
+    if (fp.uuid)
+      group.uuids.push(fp.uuid);
+  }
+  const rows = [];
+  for (const [key, group] of groups) {
+    group.designators.sort(naturalSort);
+    const value = key.split("\0")[0];
+    const name = key.split("\0")[1];
+    rows.push({
+      key,
+      displayValue: value || name,
+      designators: group.designators,
+      uuids: group.uuids,
+      quantity: group.designators.length || group.uuids.length,
+      bomDetail: null
+    });
+  }
+  rows.sort((a, b) => {
+    const aFirst = a.designators[0] ?? "";
+    const bFirst = b.designators[0] ?? "";
+    return naturalSort(aFirst, bFirst);
+  });
+  return rows;
+}
+function matchBomDetails(rows, data) {
+  const designatorMap = /* @__PURE__ */ new Map();
+  for (const comp of data.components) {
+    for (const usage of comp.usages) {
+      designatorMap.set(usage.designator, comp);
+    }
+  }
+  for (const row of rows) {
+    for (const des of row.designators) {
+      const comp = designatorMap.get(des);
+      if (comp) {
+        row.bomDetail = comp;
+        if (!row.key.split("\0")[0] && comp.mpn) {
+          row.displayValue = comp.mpn;
+        }
+        break;
+      }
+    }
+  }
+}
+function filterRows(rows, pattern, regex, caseSensitive) {
+  if (!pattern)
+    return rows;
+  if (regex) {
+    let re;
+    try {
+      re = new RegExp(pattern, caseSensitive ? "" : "i");
+    } catch {
+      return rows;
+    }
+    return rows.filter((row) => {
+      const designators = row.designators.join(", ");
+      const address = row.bomDetail?.usages[0]?.address ?? "";
+      return re.test(designators) || re.test(row.displayValue) || re.test(address);
+    });
+  }
+  const needle = caseSensitive ? pattern : pattern.toLowerCase();
+  return rows.filter((row) => {
+    const designators = row.designators.join(", ");
+    const address = row.bomDetail?.usages[0]?.address ?? "";
+    const haystack = caseSensitive ? `${designators} ${row.displayValue} ${address}` : `${designators} ${row.displayValue} ${address}`.toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+function renderDetailPanel(container, row) {
+  container.innerHTML = "";
+  if (!row) {
+    container.style.display = "none";
+    return;
+  }
+  container.style.display = "block";
+  const detail = row.bomDetail;
+  if (!detail) {
+    const loading = document.createElement("div");
+    loading.className = "bom-detail-loading";
+    loading.textContent = "Loading...";
+    container.appendChild(loading);
+    return;
+  }
+  const fields = [
+    ["MPN", detail.mpn],
+    ["Manufacturer", detail.manufacturer],
+    ["LCSC", detail.lcsc],
+    ["Package", detail.package],
+    ["Description", detail.description],
+    ["Type", detail.type],
+    ["Source", detail.source],
+    ["Unit Cost", detail.unitCost != null ? `$${detail.unitCost.toFixed(4)}` : null],
+    ["Stock", detail.stock != null ? detail.stock.toLocaleString() : null]
+  ];
+  for (const [label, value] of fields) {
+    if (!value)
+      continue;
+    const row2 = document.createElement("div");
+    row2.className = "bom-detail-row";
+    const labelEl = document.createElement("span");
+    labelEl.className = "bom-detail-label";
+    labelEl.textContent = label;
+    const valueEl = document.createElement("span");
+    valueEl.className = "bom-detail-value";
+    valueEl.textContent = value;
+    row2.appendChild(labelEl);
+    row2.appendChild(valueEl);
+    container.appendChild(row2);
+  }
+  if (detail.parameters.length > 0) {
+    for (const param of detail.parameters) {
+      const row2 = document.createElement("div");
+      row2.className = "bom-detail-row";
+      const labelEl = document.createElement("span");
+      labelEl.className = "bom-detail-label";
+      labelEl.textContent = param.name;
+      const valueEl = document.createElement("span");
+      valueEl.className = "bom-detail-value";
+      valueEl.textContent = param.unit ? `${param.value} ${param.unit}` : param.value;
+      row2.appendChild(labelEl);
+      row2.appendChild(valueEl);
+      container.appendChild(row2);
+    }
+  }
+}
+function buildBomPanel(editor2, baseUrl2, apiPrefix2) {
+  const panel = document.getElementById("bom-panel");
+  if (!panel)
+    return;
+  panel.innerHTML = "";
+  currentRows = buildRows(editor2.getFootprints());
+  if (bomData)
+    matchBomDetails(currentRows, bomData);
+  filteredRows = filterRows(currentRows, searchPattern, isRegex, isCaseSensitive);
+  const header = document.createElement("div");
+  header.className = "bom-panel-header";
+  const headerTitle = document.createElement("span");
+  headerTitle.textContent = "BOM";
+  let expandTab = document.getElementById("bom-expand-tab");
+  if (!expandTab) {
+    expandTab = document.createElement("div");
+    expandTab.id = "bom-expand-tab";
+    expandTab.className = "bom-expand-tab";
+    expandTab.textContent = "BOM";
+    expandTab.addEventListener("click", () => {
+      bomPanelCollapsed = false;
+      panel.classList.remove("collapsed");
+      expandTab.classList.remove("visible");
+    });
+    document.body.appendChild(expandTab);
+  }
+  const collapseBtn = document.createElement("span");
+  collapseBtn.className = "bom-collapse-btn";
+  collapseBtn.textContent = "\u25B6";
+  collapseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    bomPanelCollapsed = true;
+    panel.classList.add("collapsed");
+    expandTab.classList.add("visible");
+  });
+  header.appendChild(headerTitle);
+  header.appendChild(collapseBtn);
+  panel.appendChild(header);
+  const searchBar = document.createElement("div");
+  searchBar.className = "bom-search";
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.placeholder = "Search... (/)";
+  searchInput.value = searchPattern;
+  searchInput.addEventListener("input", () => {
+    searchPattern = searchInput.value;
+    updateFilteredRows();
+    renderTableBody();
+    if (isRegex && searchPattern) {
+      try {
+        new RegExp(searchPattern);
+        searchInput.classList.remove("bom-search-error");
+      } catch {
+        searchInput.classList.add("bom-search-error");
+      }
+    } else {
+      searchInput.classList.remove("bom-search-error");
+    }
+  });
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      searchInput.blur();
+      return;
+    }
+    if (e.key !== "Escape") {
+      e.stopPropagation();
+    }
+  });
+  const regexToggle = document.createElement("button");
+  regexToggle.className = "bom-search-toggle" + (isRegex ? " active" : "");
+  regexToggle.textContent = ".*";
+  regexToggle.title = "Regex search";
+  regexToggle.addEventListener("click", () => {
+    isRegex = !isRegex;
+    regexToggle.classList.toggle("active", isRegex);
+    updateFilteredRows();
+    renderTableBody();
+  });
+  const caseToggle = document.createElement("button");
+  caseToggle.className = "bom-search-toggle" + (isCaseSensitive ? " active" : "");
+  caseToggle.textContent = "Aa";
+  caseToggle.title = "Case sensitive";
+  caseToggle.addEventListener("click", () => {
+    isCaseSensitive = !isCaseSensitive;
+    caseToggle.classList.toggle("active", isCaseSensitive);
+    updateFilteredRows();
+    renderTableBody();
+  });
+  searchBar.appendChild(searchInput);
+  searchBar.appendChild(regexToggle);
+  searchBar.appendChild(caseToggle);
+  panel.appendChild(searchBar);
+  const tableHeader = document.createElement("div");
+  tableHeader.className = "bom-table-header";
+  const qtyH = document.createElement("span");
+  qtyH.className = "bom-qty";
+  qtyH.textContent = "Qty";
+  const desH = document.createElement("span");
+  desH.className = "bom-designators";
+  desH.textContent = "Designators";
+  const valH = document.createElement("span");
+  valH.className = "bom-value";
+  valH.textContent = "Value";
+  tableHeader.appendChild(qtyH);
+  tableHeader.appendChild(desH);
+  tableHeader.appendChild(valH);
+  panel.appendChild(tableHeader);
+  const tableBody = document.createElement("div");
+  tableBody.className = "bom-table-body";
+  panel.appendChild(tableBody);
+  const detailPanel = document.createElement("div");
+  detailPanel.className = "bom-detail";
+  detailPanel.style.display = "none";
+  panel.appendChild(detailPanel);
+  function updateFilteredRows() {
+    filteredRows = filterRows(currentRows, searchPattern, isRegex, isCaseSensitive);
+  }
+  function renderTableBody() {
+    tableBody.innerHTML = "";
+    for (const row of filteredRows) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "bom-row";
+      if (row.key === selectedRowKey)
+        rowEl.classList.add("selected");
+      const qty = document.createElement("span");
+      qty.className = "bom-qty";
+      qty.textContent = String(row.quantity);
+      const des = document.createElement("span");
+      des.className = "bom-designators";
+      des.textContent = row.designators.join(", ");
+      des.title = row.designators.join(", ");
+      const val = document.createElement("span");
+      val.className = "bom-value";
+      val.textContent = row.displayValue;
+      val.title = row.displayValue;
+      rowEl.appendChild(qty);
+      rowEl.appendChild(des);
+      rowEl.appendChild(val);
+      rowEl.addEventListener("click", () => {
+        selectRow(row, rowEl);
+      });
+      tableBody.appendChild(rowEl);
+    }
+  }
+  function selectRow(row, rowEl) {
+    selectedRowKey = row.key;
+    const allRows = tableBody.querySelectorAll(".bom-row");
+    allRows.forEach((r) => r.classList.remove("selected"));
+    if (rowEl) {
+      rowEl.classList.add("selected");
+    } else {
+      const rows = tableBody.querySelectorAll(".bom-row");
+      for (let i = 0; i < filteredRows.length && i < rows.length; i++) {
+        if (filteredRows[i].key === row.key) {
+          rows[i].classList.add("selected");
+          rows[i].scrollIntoView({ block: "nearest" });
+          break;
+        }
+      }
+    }
+    syncingFromBom = true;
+    editor2.selectFootprintsByUuids(row.uuids);
+    syncingFromBom = false;
+    renderDetailPanel(detailPanel, row);
+    if (!row.bomDetail && !bomData) {
+      fetchBomData();
+    }
+  }
+  async function fetchBomData() {
+    try {
+      const resp = await fetch(`${baseUrl2}${apiPrefix2}/bom`);
+      if (!resp.ok) {
+        bomData = null;
+        if (selectedRowKey) {
+          const row = currentRows.find((r) => r.key === selectedRowKey);
+          if (row && !row.bomDetail) {
+            const msg = document.createElement("div");
+            msg.className = "bom-detail-loading";
+            msg.textContent = "No detail available";
+            detailPanel.innerHTML = "";
+            detailPanel.appendChild(msg);
+          }
+        }
+        return;
+      }
+      bomData = await resp.json();
+      matchBomDetails(currentRows, bomData);
+      if (selectedRowKey) {
+        const row = currentRows.find((r) => r.key === selectedRowKey);
+        renderDetailPanel(detailPanel, row ?? null);
+      }
+      filteredRows = filterRows(currentRows, searchPattern, isRegex, isCaseSensitive);
+      renderTableBody();
+      if (selectedRowKey) {
+        const allTableRows = tableBody.querySelectorAll(".bom-row");
+        for (let i = 0; i < filteredRows.length && i < allTableRows.length; i++) {
+          if (filteredRows[i].key === selectedRowKey) {
+            allTableRows[i].classList.add("selected");
+            break;
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  renderTableBody();
+  if (selectedRowKey) {
+    const row = currentRows.find((r) => r.key === selectedRowKey);
+    if (row) {
+      renderDetailPanel(detailPanel, row);
+      requestAnimationFrame(() => {
+        const rows = tableBody.querySelectorAll(".bom-row");
+        for (let i = 0; i < filteredRows.length && i < rows.length; i++) {
+          if (filteredRows[i].key === selectedRowKey) {
+            rows[i].scrollIntoView({ block: "nearest" });
+            break;
+          }
+        }
+      });
+    }
+  }
+  if (bomPanelCollapsed) {
+    panel.classList.add("collapsed");
+    expandTab.classList.add("visible");
+  }
+  editor2.setOnSelectionChanged((uuids) => {
+    if (syncingFromBom)
+      return;
+    if (uuids.length === 0) {
+      selectedRowKey = null;
+      const allTableRows = tableBody.querySelectorAll(".bom-row");
+      allTableRows.forEach((r) => r.classList.remove("selected"));
+      renderDetailPanel(detailPanel, null);
+      return;
+    }
+    const uuidSet = new Set(uuids);
+    let matchedRow = null;
+    for (const row of filteredRows) {
+      if (row.uuids.some((u) => uuidSet.has(u))) {
+        matchedRow = row;
+        break;
+      }
+    }
+    if (matchedRow) {
+      selectedRowKey = matchedRow.key;
+      const allTableRows = tableBody.querySelectorAll(".bom-row");
+      allTableRows.forEach((r) => r.classList.remove("selected"));
+      for (let i = 0; i < filteredRows.length && i < allTableRows.length; i++) {
+        if (filteredRows[i].key === matchedRow.key) {
+          allTableRows[i].classList.add("selected");
+          allTableRows[i].scrollIntoView({ block: "nearest" });
+          break;
+        }
+      }
+      renderDetailPanel(detailPanel, matchedRow);
+      if (!matchedRow.bomDetail && !bomData) {
+        fetchBomData();
+      }
+    }
+  });
+  const prevHandler = window.__bomKeyHandler;
+  if (prevHandler)
+    window.removeEventListener("keydown", prevHandler);
+  const keyHandler = (e) => {
+    if (e.key === "/" && document.activeElement !== searchInput && !(document.activeElement instanceof HTMLInputElement)) {
+      e.preventDefault();
+      searchInput.focus();
+      return;
+    }
+    if (e.key === "Enter") {
+      if (filteredRows.length === 0)
+        return;
+      let nextIdx = 0;
+      if (selectedRowKey) {
+        const currentIdx = filteredRows.findIndex((r) => r.key === selectedRowKey);
+        nextIdx = currentIdx >= 0 ? (currentIdx + 1) % filteredRows.length : 0;
+      }
+      const nextRow = filteredRows[nextIdx];
+      selectRow(nextRow);
+      return;
+    }
+  };
+  window.addEventListener("keydown", keyHandler);
+  window.__bomKeyHandler = keyHandler;
+}
 
 // src/main.ts
 var canvas = document.getElementById("editor-canvas");
@@ -23575,7 +24065,7 @@ function buildLayerPanel() {
 }
 var coordsEl = document.getElementById("status-coords");
 var helpEl = document.getElementById("status-help");
-var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Shift+drag box-select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
+var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Shift+drag box-select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 / search BOM \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
 if (helpEl)
   helpEl.textContent = helpText;
 canvas.addEventListener("mouseenter", () => {
@@ -23595,7 +24085,11 @@ editor.setOnMouseMove((x, y) => {
 });
 editor.init().then(() => {
   buildLayerPanel();
-  editor.setOnLayersChanged(buildLayerPanel);
+  buildBomPanel(editor, baseUrl, apiPrefix);
+  editor.setOnModelChanged(() => {
+    buildLayerPanel();
+    buildBomPanel(editor, baseUrl, apiPrefix);
+  });
 }).catch((err) => {
   console.error("Failed to initialize editor:", err);
 });

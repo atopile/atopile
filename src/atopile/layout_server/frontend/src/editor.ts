@@ -8,7 +8,7 @@ import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
 import { buildGroupIndex, type UiFootprintGroup } from "./footprint_groups";
-import type { ActionCommand, LayerModel, RenderModel } from "./types";
+import type { ActionCommand, FootprintModel, LayerModel, RenderModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
 
@@ -47,12 +47,16 @@ export class Editor {
     private hiddenLayers: Set<string> = new Set();
     private defaultLayerVisibilityApplied = new Set<string>();
     private onLayersChanged: (() => void) | null = null;
+    private onModelChanged: (() => void) | null = null;
 
     // Track current mouse position
     private lastMouseScreen: Vec2 = new Vec2(0, 0);
 
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
+
+    // Selection change callback (for BOM panel sync)
+    private onSelectionChangedCallback: ((uuids: string[], mode: string) => void) | null = null;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -122,6 +126,7 @@ export class Editor {
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
+        if (this.onModelChanged) this.onModelChanged();
     }
 
     private applyDefaultLayerVisibility() {
@@ -249,6 +254,20 @@ export class Editor {
         this.singleOverrideMode = false;
     }
 
+    private fireSelectionChanged() {
+        if (!this.onSelectionChangedCallback) return;
+        let uuids: string[] = [];
+        if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+            const uuid = this.model?.footprints[this.selectedFpIndex]?.uuid;
+            if (uuid) uuids = [uuid];
+        } else if (this.selectionMode === "multi") {
+            uuids = this.getSelectedMultiUuids();
+        } else if (this.selectionMode === "group" && this.selectedGroupId) {
+            uuids = this.selectedGroupMemberUuids();
+        }
+        this.onSelectionChangedCallback(uuids, this.selectionMode);
+    }
+
     private setSingleSelection(index: number, enterOverride: boolean) {
         this.selectionMode = "single";
         this.selectedFpIndex = index;
@@ -259,6 +278,7 @@ export class Editor {
         } else if (!this.groupIdByFpIndex.has(index)) {
             this.singleOverrideMode = false;
         }
+        this.fireSelectionChanged();
     }
 
     private setMultiSelection(indices: number[]) {
@@ -276,6 +296,7 @@ export class Editor {
         this.selectedGroupId = null;
         this.selectedFpIndex = -1;
         this.singleOverrideMode = false;
+        this.fireSelectionChanged();
     }
 
     private setGroupSelection(groupId: string) {
@@ -284,6 +305,7 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedMultiIndices = [];
         this.singleOverrideMode = false;
+        this.fireSelectionChanged();
     }
 
     private clearSelection(exitSingleOverride = false) {
@@ -298,6 +320,7 @@ export class Editor {
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
+        this.fireSelectionChanged();
     }
 
     private selectedGroup(): UiFootprintGroup | null {
@@ -743,6 +766,10 @@ export class Editor {
         this.onLayersChanged = cb;
     }
 
+    setOnModelChanged(cb: () => void) {
+        this.onModelChanged = cb;
+    }
+
     setOnMouseMove(cb: (x: number, y: number) => void) {
         this.onMouseMoveCallback = cb;
     }
@@ -774,5 +801,35 @@ export class Editor {
         this.renderer.updateGrid(this.camera.bbox, 1.0);
         this.renderer.draw(this.camera.matrix);
         this.drawTextOverlay();
+    }
+
+    // --- Selection change callback (for BOM panel) ---
+
+    setOnSelectionChanged(cb: (uuids: string[], mode: string) => void) {
+        this.onSelectionChangedCallback = cb;
+    }
+
+    // --- Select footprints by UUID (BOM → canvas sync) ---
+
+    selectFootprintsByUuids(uuids: string[]) {
+        if (!this.model) return;
+        const uuidSet = new Set(uuids);
+        const indices: number[] = [];
+        for (let i = 0; i < this.model.footprints.length; i++) {
+            const uuid = this.model.footprints[i]?.uuid;
+            if (uuid && uuidSet.has(uuid)) indices.push(i);
+        }
+        if (indices.length === 0) {
+            this.clearSelection(true);
+        } else {
+            this.setMultiSelection(indices);
+        }
+        this.repaintWithSelection();
+    }
+
+    // --- Model access (for BOM panel) ---
+
+    getFootprints(): FootprintModel[] {
+        return this.model?.footprints ?? [];
     }
 }

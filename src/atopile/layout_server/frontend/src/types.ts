@@ -214,3 +214,41 @@ export type ActionCommand =
     | MoveFootprintsCommand
     | RotateFootprintsCommand
     | FlipFootprintsCommand;
+
+// BOM types (matches Python dataclasses in json_bom.py)
+
+export interface BOMParameter {
+    name: string;
+    value: string;
+    unit?: string | null;
+}
+
+export interface BOMUsage {
+    address: string;
+    designator: string;
+}
+
+export interface BOMComponent {
+    id: string;
+    lcsc: string | null;
+    manufacturer: string | null;
+    mpn: string | null;
+    type: string;
+    value: string;
+    package: string;
+    description: string | null;
+    quantity: number;
+    unitCost: number | null;
+    stock: number | null;
+    isBasic: boolean | null;
+    isPreferred: boolean | null;
+    source: string;
+    parameters: BOMParameter[];
+    usages: BOMUsage[];
+}
+
+export interface BOMData {
+    version: string;
+    build_id?: string | null;
+    components: BOMComponent[];
+}

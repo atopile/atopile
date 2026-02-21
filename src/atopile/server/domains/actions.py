@@ -21,7 +21,6 @@ from atopile.model.build_queue import (
     _build_queue,
 )
 from atopile.model.model_state import model_state
-from atopile.server import path_utils
 from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
 from atopile.server.domains import artifacts as artifacts_domain
@@ -29,6 +28,12 @@ from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
+from atopile.server.path_utils import (
+    resolve_3d_path,
+    resolve_entry_path,
+    resolve_layout_path,
+    resolve_workspace_file,
+)
 from faebryk.libs.package.meta import PackageModifiedError
 
 log = logging.getLogger(__name__)
@@ -1496,7 +1501,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": False, "error": "Missing file path"}
 
             workspace_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
-            resolved = path_utils.resolve_workspace_file(file_path, workspace_path)
+            resolved = resolve_workspace_file(file_path, workspace_path)
             if not resolved:
                 return {
                     "success": False,
@@ -1517,7 +1522,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": False, "error": "Missing projectId or entry"}
 
             project_path = Path(project_root)
-            entry_path = path_utils.resolve_entry_path(project_path, entry)
+            entry_path = resolve_entry_path(project_path, entry)
             if not entry_path or not entry_path.exists():
                 return {
                     "success": False,
@@ -1541,7 +1546,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             project_path = Path(resolved_project_root)
-            target = path_utils.resolve_layout_path(project_path, target_name)
+            target = resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
@@ -1550,7 +1555,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             from atopile.server.domains.layout import layout_service
 
-            await asyncio.to_thread(layout_service.load, target)
+            await asyncio.to_thread(
+                layout_service.load, target, project_path, target_name
+            )
             await layout_service.start_watcher()
             await server_state.emit_event("open_layout", {"path": str(target)})
             return {"success": True}
@@ -1569,7 +1576,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             project_path = Path(resolved_project_root)
-            target = path_utils.resolve_layout_path(project_path, target_name)
+            target = resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
@@ -1593,7 +1600,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             project_path = Path(resolved_project_root)
-            target = path_utils.resolve_3d_path(project_path, target_name)
+            target = resolve_3d_path(project_path, target_name)
             if target is None:
                 target = (
                     project_path
