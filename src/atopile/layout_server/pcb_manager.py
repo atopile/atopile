@@ -40,7 +40,6 @@ from atopile.layout_server.models import (
     Size2,
     TextModel,
     TrackModel,
-    ViaModel,
     ZoneModel,
 )
 from faebryk.libs.kicad.fileformats import kicad
@@ -416,8 +415,7 @@ class PcbManager:
         all_layers = _board_all_layers(pcb)
         copper_layers = _board_copper_layers(pcb)
         global_texts = self._extract_global_texts(pcb)
-        vias = [self._extract_via(via) for via in pcb.vias]
-        via_drawings = self._synthesize_via_drawings(vias, copper_layers)
+        via_drawings = self._synthesize_via_drawings(pcb.vias, copper_layers)
         net_names_by_number = {
             int(net.number): net.name for net in pcb.nets if getattr(net, "name", None)
         }
@@ -1105,55 +1103,49 @@ class PcbManager:
             uuid=arc.uuid,
         )
 
-    def _extract_via(self, via) -> ViaModel:
-        drill = _safe_float(getattr(via, "drill", None)) or 0.0
-        return ViaModel(
-            at=Point2(x=via.at.x, y=via.at.y),
-            size=via.size,
-            drill=drill,
-            hole=self._extract_via_hole(via, drill),
-            layers=list(via.layers),
-            net=via.net,
-            uuid=via.uuid,
-        )
-
-    def _extract_via_hole(self, via, drill: float) -> HoleModel | None:
-        if drill <= 0:
-            return None
-        return HoleModel(
-            shape=_normalize_hole_shape(getattr(via, "drillshape", None), drill, drill),
-            size_x=drill,
-            size_y=drill,
-            offset=None,
-            plated=True,
-        )
-
     def _synthesize_via_drawings(
-        self, vias: list[ViaModel], copper_layers: list[str]
+        self, vias, copper_layers: list[str]
     ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for via in vias:
-            hole = via.hole
-            if hole is None and via.drill > 0:
+            cx = _safe_float(getattr(getattr(via, "at", None), "x", None))
+            cy = _safe_float(getattr(getattr(via, "at", None), "y", None))
+            if cx is None or cy is None:
+                continue
+
+            drill = _safe_float(getattr(via, "drill", None)) or 0.0
+            hole: HoleModel | None = None
+            if drill > 0:
                 hole = HoleModel(
-                    shape="circle",
-                    size_x=via.drill,
-                    size_y=via.drill,
+                    shape=_normalize_hole_shape(
+                        getattr(via, "drillshape", None), drill, drill
+                    ),
+                    size_x=drill,
+                    size_y=drill,
                     offset=None,
                     plated=True,
                 )
 
-            outer_diameter = _safe_float(via.size) or 0.0
+            if hole is None and drill > 0:
+                hole = HoleModel(
+                    shape="circle",
+                    size_x=drill,
+                    size_y=drill,
+                    offset=None,
+                    plated=True,
+                )
+
+            outer_diameter = _safe_float(getattr(via, "size", None)) or 0.0
             drill_diameter = 0.0
             if hole is not None:
                 hx = _safe_float(hole.size_x) or 0.0
                 hy = _safe_float(hole.size_y) or hx
                 drill_diameter = max(hx, hy)
             if drill_diameter <= 0:
-                drill_diameter = _safe_float(via.drill) or 0.0
+                drill_diameter = drill
 
             for copper_layer in _expand_copper_layers(
-                via.layers,
+                list(getattr(via, "layers", []) or []),
                 all_copper_layers=copper_layers,
                 include_between=True,
             ):
@@ -1165,8 +1157,8 @@ class PcbManager:
                     if annulus_thickness > 0 and centerline_radius > 0:
                         drawings.append(
                             _circle_drawing(
-                                center=Point2(x=via.at.x, y=via.at.y),
-                                end=Point2(x=via.at.x + centerline_radius, y=via.at.y),
+                                center=Point2(x=cx, y=cy),
+                                end=Point2(x=cx + centerline_radius, y=cy),
                                 width=annulus_thickness,
                                 layer=copper_layer,
                                 filled=False,
@@ -1175,8 +1167,8 @@ class PcbManager:
                         continue
                 drawings.append(
                     _circle_drawing(
-                        center=Point2(x=via.at.x, y=via.at.y),
-                        end=Point2(x=via.at.x + outer_diameter / 2.0, y=via.at.y),
+                        center=Point2(x=cx, y=cy),
+                        end=Point2(x=cx + outer_diameter / 2.0, y=cy),
                         width=0.0,
                         layer=copper_layer,
                         filled=True,
@@ -1186,14 +1178,14 @@ class PcbManager:
             if hole is None:
                 continue
             for drill_layer in _drill_layers_from_copper_layers(
-                via.layers,
+                list(getattr(via, "layers", []) or []),
                 all_copper_layers=copper_layers,
                 include_between=True,
             ):
                 drawings.extend(
                     _drill_hole_drawings(
-                        cx=via.at.x,
-                        cy=via.at.y,
+                        cx=cx,
+                        cy=cy,
                         rotation_deg=0.0,
                         hole=hole,
                         layer=drill_layer,

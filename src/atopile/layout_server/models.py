@@ -46,14 +46,6 @@ class BoardModel(BaseModel):
 # --- Footprint internals ---
 
 
-class DrillModel(BaseModel):
-    shape: str | None = None
-    size_x: float | None = None
-    size_y: float | None = None
-    offset_x: float | None = None
-    offset_y: float | None = None
-
-
 class HoleModel(BaseModel):
     shape: str | None = None
     size_x: float
@@ -169,7 +161,7 @@ class FootprintGroupModel(BaseModel):
     member_uuids: list[str]
 
 
-# --- Tracks / Vias ---
+# --- Tracks ---
 
 
 class TrackModel(BaseModel):
@@ -187,16 +179,6 @@ class ArcTrackModel(BaseModel):
     end: Point2
     width: float
     layer: str | None = None
-    net: int = 0
-    uuid: str | None = None
-
-
-class ViaModel(BaseModel):
-    at: Point2
-    size: float
-    drill: float
-    hole: HoleModel | None = None
-    layers: list[str]
     net: int = 0
     uuid: str | None = None
 
