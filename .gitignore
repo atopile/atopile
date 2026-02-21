@@ -227,3 +227,7 @@ examples/**/parts/
 # layout server frontend build artifacts
 src/atopile/layout_server/static/editor.js
 src/atopile/layout_server/static/editor.js.map
+
+# vscode layout editor webview bundle artifacts
+src/vscode-atopile/resources/layout-editor/editor.js
+src/vscode-atopile/resources/layout-editor/editor.js.map
