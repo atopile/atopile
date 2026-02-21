@@ -109,8 +109,9 @@ def _write_test_project(tmp_path: Path) -> Path:
     layout_dir = project_root / "layout"
     layout_dir.mkdir(parents=True)
 
+    example_layout = Path("examples/layout_reuse/layout/sub/sub.kicad_pcb")
     (layout_dir / "default.kicad_pcb").write_text(
-        "(kicad_pcb (version 20231010) (generator atopile-test))",
+        example_layout.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     (layout_dir / "default.kicad_pro").write_text("{}", encoding="utf-8")

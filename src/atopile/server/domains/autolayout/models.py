@@ -61,6 +61,7 @@ class SubmitRequest(_AutolayoutModel):
     project_root: Path
     build_target: str
     layout_path: Path
+    provider_input_path: Path | None = None
     input_zip_path: Path
     work_dir: Path
     constraints: dict[str, Any] = Field(default_factory=dict)
@@ -133,6 +134,7 @@ class ResolvedAutolayoutTargetFiles(_AutolayoutModel):
     project_root: Path
     build_target: str
     layout_path: Path
+    deeppcb_path: Path | None = None
     kicad_project_path: Path | None = None
     schematic_path: Path | None = None
     work_root: Path

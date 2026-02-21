@@ -299,11 +299,16 @@ class DeepPCBAutolayout:
         return self._api.upload_board_file(board_path)
 
     def _create_board(self, request: SubmitRequest) -> str:
-        if request.layout_path.suffix.lower() == ".kicad_pcb":
-            return self._create_board_kicad(request)
+        provider_input = request.provider_input_path or request.layout_path
+        suffix = provider_input.suffix.lower()
+        if suffix not in {".json", ".deeppcb"}:
+            raise RuntimeError(
+                "DeepPCB provider input must be .deeppcb or .json. "
+                f"Got: {provider_input}"
+            )
 
-        board_file_url = self._upload_board_file(request.layout_path)
-        return self._create_board_from_file_url(request, board_file_url)
+        board_file_url = self._upload_board_file(provider_input)
+        return self._create_board_from_file_url(request, provider_input, board_file_url)
 
     def _create_board_kicad(self, request: SubmitRequest) -> str:
         webhook_url = self._webhook_url(request)
@@ -352,6 +357,7 @@ class DeepPCBAutolayout:
     def _create_board_from_file_url(
         self,
         request: SubmitRequest,
+        provider_input_path: Path,
         board_file_url: str,
     ) -> str:
         webhook_url = self._webhook_url(request)
@@ -381,21 +387,25 @@ class DeepPCBAutolayout:
             # Some deployments reject jsonFileUrl for non-json inputs.
             if "jsonfileurl" not in message and "jsonfile" not in message:
                 raise
-            return self._create_board_with_json_file(request)
+            return self._create_board_with_json_file(request, provider_input_path)
 
-    def _create_board_with_json_file(self, request: SubmitRequest) -> str:
+    def _create_board_with_json_file(
+        self,
+        request: SubmitRequest,
+        provider_input_path: Path,
+    ) -> str:
         webhook_url = self._webhook_url(request)
         webhook_token = self._webhook_token(request)
-        with request.layout_path.open("rb") as file_obj:
+        with provider_input_path.open("rb") as file_obj:
             multipart_fields = {
                 "requestId": (None, request.job_id),
                 "boardName": (None, f"{request.build_target}-{request.job_id}"),
                 "routingType": (None, self._routing_type(request)),
                 "webhookUrl": (None, webhook_url),
                 "jsonFile": (
-                    request.layout_path.name,
+                    provider_input_path.name,
                     file_obj,
-                    _guess_content_type(request.layout_path),
+                    _guess_content_type(provider_input_path),
                 ),
             }
             if webhook_token:

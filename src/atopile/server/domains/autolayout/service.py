@@ -26,7 +26,9 @@ from atopile.server.domains.autolayout.models import (
     utc_now_iso,
 )
 from atopile.server.events import event_bus
+from faebryk.exporters.pcb.deeppcb.transformer import DeepPCB_Transformer
 from faebryk.exporters.pcb.autolayout.deeppcb import DeepPCBAutolayout
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.paths import get_log_dir
 
 log = logging.getLogger(__name__)
@@ -107,6 +109,11 @@ class AutolayoutService:
             schematic_path=target_files.schematic_path,
             constraints=merged_constraints,
         )
+        provider_input_path = self._prepare_provider_input(
+            work_dir=work_dir,
+            layout_path=target_files.layout_path,
+            deeppcb_path=target_files.deeppcb_path,
+        )
 
         job = AutolayoutJob(
             job_id=job_id,
@@ -135,6 +142,7 @@ class AutolayoutService:
                     project_root=Path(job.project_root),
                     build_target=build_target,
                     layout_path=Path(job.layout_path),
+                    provider_input_path=provider_input_path,
                     input_zip_path=zip_path,
                     work_dir=work_dir,
                     constraints=merged_constraints,
@@ -474,6 +482,10 @@ class AutolayoutService:
                 f"Layout file not found for target '{build_target}': {layout_path}"
             )
 
+        deeppcb_path = build_cfg.paths.output_base.with_suffix(".deeppcb")
+        if not deeppcb_path.exists():
+            deeppcb_path = None
+
         kicad_project_path = build_cfg.paths.kicad_project
         if not kicad_project_path.exists():
             kicad_project_path = None
@@ -497,12 +509,29 @@ class AutolayoutService:
             project_root=project_path,
             build_target=build_target,
             layout_path=layout_path,
+            deeppcb_path=deeppcb_path,
             kicad_project_path=kicad_project_path,
             schematic_path=schematic_path,
             work_root=build_cfg.paths.output_base.parent / "autolayout",
             default_constraints=default_constraints,
             default_options=default_options,
         )
+
+    def _prepare_provider_input(
+        self,
+        work_dir: Path,
+        layout_path: Path,
+        deeppcb_path: Path | None,
+    ) -> Path:
+        if deeppcb_path is not None and deeppcb_path.exists():
+            return deeppcb_path
+
+        generated_path = work_dir / "input" / f"{layout_path.stem}.deeppcb"
+        generated_path.parent.mkdir(parents=True, exist_ok=True)
+        parsed = kicad.loads(kicad.pcb.PcbFile, layout_path)
+        board = DeepPCB_Transformer.from_kicad_file(parsed)
+        DeepPCB_Transformer.dumps(board, generated_path)
+        return generated_path
 
     def _prepare_input_package(
         self,

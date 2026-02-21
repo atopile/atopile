@@ -142,26 +142,26 @@ def test_redact_sensitive_values():
     assert "***REDACTED***" in redacted
 
 
-def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
+def test_create_board_uses_json_input_fields(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
     monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
     deeppcb_module = _reload_deeppcb_module()
 
-    board = tmp_path / "demo.kicad_pcb"
-    board.write_text("pcb", encoding="utf-8")
-    project = tmp_path / "demo.kicad_pro"
-    project.write_text("{}", encoding="utf-8")
+    board = tmp_path / "demo.deeppcb"
+    board.write_text("{}", encoding="utf-8")
+    layout = tmp_path / "demo.kicad_pcb"
+    layout.write_text("pcb", encoding="utf-8")
 
     request = deeppcb_module.SubmitRequest(
         job_id="al-test",
         project_root=tmp_path,
         build_target="default",
-        layout_path=board,
+        layout_path=layout,
+        provider_input_path=board,
         input_zip_path=tmp_path / "input_bundle.zip",
         work_dir=tmp_path,
         constraints={},
         options={},
-        kicad_project_path=project,
         schematic_path=None,
     )
 
@@ -174,6 +174,7 @@ def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
         captured["kwargs"] = kwargs
         return "board-uuid"
 
+    monkeypatch.setattr(provider, "_upload_board_file", lambda _: "https://tmp/board.deeppcb")
     monkeypatch.setattr(provider, "_request_payload", fake_request_payload)
     board_id = provider._create_board(request)
 
@@ -181,13 +182,13 @@ def test_create_board_kicad_uses_kicad_fields(tmp_path: Path, monkeypatch):
     assert captured["method"] == "POST"
     assert captured["path"] == provider.config.layout_path
     files = captured["kwargs"]["files"]
-    assert "boardInputType" in files
-    assert files["boardInputType"] == (None, "Kicad")
-    assert "kicadBoardFile" in files
-    assert "kicadProjectFile" in files
+    assert "jsonFileUrl" in files
+    assert files["jsonFileUrl"] == (None, "https://tmp/board.deeppcb")
+    assert "kicadBoardFile" not in files
+    assert "kicadProjectFile" not in files
 
 
-def test_create_board_kicad_requires_project_file(tmp_path: Path, monkeypatch):
+def test_create_board_rejects_non_json_provider_input(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
     monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")
     deeppcb_module = _reload_deeppcb_module()
@@ -204,12 +205,11 @@ def test_create_board_kicad_requires_project_file(tmp_path: Path, monkeypatch):
         work_dir=tmp_path,
         constraints={},
         options={},
-        kicad_project_path=None,
         schematic_path=None,
     )
 
     provider = deeppcb_module.DeepPCBProvider()
-    with pytest.raises(RuntimeError, match="requires a .kicad_pro file"):
+    with pytest.raises(RuntimeError, match="must be .deeppcb or .json"):
         provider._create_board(request)
 
 

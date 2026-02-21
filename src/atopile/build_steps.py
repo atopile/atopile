@@ -47,6 +47,9 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_svg,
     githash_layout,
 )
+from faebryk.exporters.pcb.deeppcb.artifacts import (
+    export_deeppcb,
+)
 from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -1113,6 +1116,14 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
             logger.info(f"Copied KiCad PCB to {kicad_pcb_dest}")
         except Exception as e:
             logger.warning(f"Failed to copy KiCad PCB: {e}")
+
+        # Export native DeepPCB JSON artifact for provider-native autolayout.
+        deeppcb_dest = config.build.paths.output_base.with_suffix(".deeppcb")
+        try:
+            export_deeppcb(tmp_layout, deeppcb_dest)
+            logger.info(f"Exported DeepPCB artifact to {deeppcb_dest}")
+        except Exception as e:
+            logger.warning(f"Failed to export DeepPCB artifact: {e}")
 
 
 @muster.register(
