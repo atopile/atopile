@@ -351,6 +351,25 @@ function orderedCopperLayers(layerById: Map<string, LayerModel>): string[] {
         .map(layer => layer.id);
 }
 
+function orderedDrillLayers(layerById: Map<string, LayerModel>): string[] {
+    return [...layerById.values()]
+        .filter(layer => layer.kind === "Drill")
+        .sort((a, b) => a.panel_order - b.panel_order)
+        .map(layer => layer.id);
+}
+
+function drillLayerByRoot(layerById: Map<string, LayerModel>): Map<string, string> {
+    const byRoot = new Map<string, string>();
+    for (const drillLayerId of orderedDrillLayers(layerById)) {
+        const root = layerById.get(drillLayerId)?.root;
+        if (!root) continue;
+        if (!byRoot.has(root)) {
+            byRoot.set(root, drillLayerId);
+        }
+    }
+    return byRoot;
+}
+
 function expandCopperLayerSpan(
     layers: string[],
     layerById: Map<string, LayerModel>,
@@ -384,16 +403,25 @@ function padDrillLayerIds(
     layerById: Map<string, LayerModel>,
 ): string[] {
     const copperLayers = expandCopperLayerSpan(pad.layers, layerById, true);
+    const allDrillLayers = orderedDrillLayers(layerById);
     if (copperLayers.length > 0) {
-        return copperLayers
-            .filter(layer => layer.endsWith(".Cu"))
-            .map(layer => `${layer.slice(0, -3)}.Drill`);
+        const drillByRoot = drillLayerByRoot(layerById);
+        const resolved: string[] = [];
+        const seen = new Set<string>();
+        for (const copperLayer of copperLayers) {
+            const root = layerById.get(copperLayer)?.root;
+            let drillLayer = root ? drillByRoot.get(root) : undefined;
+            // Fallback for older layer metadata that only exposes id naming.
+            if (!drillLayer && copperLayer.endsWith(".Cu")) {
+                drillLayer = `${copperLayer.slice(0, -3)}.Drill`;
+            }
+            if (!drillLayer || seen.has(drillLayer)) continue;
+            seen.add(drillLayer);
+            resolved.push(drillLayer);
+        }
+        if (resolved.length > 0) return resolved;
     }
-    const drillLayers = [...layerById.values()]
-        .filter(layer => layer.kind === "Drill")
-        .sort((a, b) => a.panel_order - b.panel_order)
-        .map(layer => layer.id);
-    return drillLayers;
+    return allDrillLayers;
 }
 
 function paintPadHole(
