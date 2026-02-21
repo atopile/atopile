@@ -24,6 +24,30 @@ from atopile.layout_server.pcb_manager import PcbManager
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+TEMPLATE_PATH = STATIC_DIR / "layout-editor.hbs"
+
+
+def _render_layout_template(
+    *,
+    api_url: str,
+    api_prefix: str,
+    ws_path: str,
+    editor_uri: str,
+    nonce: str = "",
+    csp: str,
+) -> str:
+    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    values = {
+        "apiUrl": api_url,
+        "apiPrefix": api_prefix,
+        "wsPath": ws_path,
+        "editorUri": editor_uri,
+        "nonce": nonce,
+        "csp": csp,
+    }
+    for key, value in values.items():
+        template = template.replace(f"{{{{{key}}}}}", value)
+    return template
 
 
 class ConnectionManager:
@@ -169,8 +193,19 @@ def create_app(pcb_path: Path) -> FastAPI:
 
     @app.get("/")
     async def index():
-        index_path = STATIC_DIR / "index.html"
-        return HTMLResponse(index_path.read_text())
+        html = _render_layout_template(
+            api_url="",
+            api_prefix="/api",
+            ws_path="/ws",
+            editor_uri="/static/editor.js",
+            csp=(
+                "default-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "connect-src 'self' ws: wss:;"
+            ),
+        )
+        return HTMLResponse(html)
 
     app.mount(
         "/static",
