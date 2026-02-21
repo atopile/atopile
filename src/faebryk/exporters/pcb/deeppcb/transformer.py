@@ -81,10 +81,12 @@ class DeepPCB_Transformer:
         pcb_file: Any,
         *,
         include_lossless_source: bool = False,
+        provider_strict: bool = False,
     ) -> C_deeppcb_board_file:
         return cls.from_kicad_pcb(
             pcb_file.kicad_pcb,
             include_lossless_source=include_lossless_source,
+            provider_strict=provider_strict,
         )
 
     @classmethod
@@ -93,6 +95,7 @@ class DeepPCB_Transformer:
         pcb: Any,
         *,
         include_lossless_source: bool = False,
+        provider_strict: bool = False,
     ) -> C_deeppcb_board_file:
         copper_layers = [layer for layer in pcb.layers if str(layer.name).endswith(".Cu")]
         copper_layer_index = {layer.name: idx for idx, layer in enumerate(copper_layers)}
@@ -123,10 +126,14 @@ class DeepPCB_Transformer:
 
         via_definitions: list[str] = []
         for via in pcb.vias:
-            via_id = cls._via_definition_id(via)
+            via_id = cls._via_definition_id(via, provider_strict=provider_strict)
             if via_id not in via_definitions:
                 via_definitions.append(via_id)
-            padstack_id, padstack = cls._padstack_from_via(via, copper_layer_index)
+            padstack_id, padstack = cls._padstack_from_via(
+                via,
+                copper_layer_index,
+                provider_strict=provider_strict,
+            )
             padstacks.setdefault(padstack_id, padstack)
 
         component_definitions: dict[str, dict[str, Any]] = {}
@@ -145,21 +152,24 @@ class DeepPCB_Transformer:
         pins_by_net: dict[str, list[str]] = {}
 
         for fp in pcb.footprints:
-            definition_id = cls._definition_id(fp)
+            definition_id = cls._definition_id(fp, provider_strict=provider_strict)
             if definition_id not in component_definitions:
                 definition_pins = []
                 for pad in fp.pads:
-                    padstack_id, padstack = cls._padstack_from_pad(pad, copper_layer_index)
+                    padstack_id, padstack = cls._padstack_from_pad(
+                        pad,
+                        copper_layer_index,
+                        provider_strict=provider_strict,
+                    )
                     padstacks.setdefault(padstack_id, padstack)
                     definition_pins.append(
                         {
                             "id": str(pad.name),
                             "padstack": padstack_id,
                             "position": cls._xy_to_point(pad.at),
-                            "rotation": (
-                                float(getattr(pad.at, "r"))
-                                if getattr(pad.at, "r", None) is not None
-                                else None
+                            "rotation": cls._export_rotation(
+                                getattr(pad.at, "r", None),
+                                provider_strict=provider_strict,
                             ),
                         }
                     )
@@ -179,10 +189,9 @@ class DeepPCB_Transformer:
                 reference_property = {
                     "value": str(getattr(prop, "value", component_id)),
                     "at": cls._xy_to_point(getattr(prop, "at", kicad.pcb.Xyr(x=0.0, y=0.0, r=0.0))),
-                    "rotation": (
-                        float(getattr(getattr(prop, "at", None), "r"))
-                        if getattr(getattr(prop, "at", None), "r", None) is not None
-                        else None
+                    "rotation": cls._export_rotation(
+                        getattr(getattr(prop, "at", None), "r", None),
+                        provider_strict=provider_strict,
                     ),
                     "layer": str(getattr(prop, "layer", "F.SilkS")),
                     "hide": getattr(prop, "hide", None),
@@ -223,10 +232,9 @@ class DeepPCB_Transformer:
                     "id": component_id,
                     "definition": definition_id,
                     "position": cls._xy_to_point(fp.at),
-                    "rotation": (
-                        float(getattr(fp.at, "r"))
-                        if getattr(fp.at, "r", None) is not None
-                        else None
+                    "rotation": cls._export_rotation(
+                        getattr(fp.at, "r", None),
+                        provider_strict=provider_strict,
                     ),
                     "side": "BACK" if str(fp.layer).startswith("B.") else "FRONT",
                     "partNumber": str(fp.name),
@@ -290,7 +298,7 @@ class DeepPCB_Transformer:
             {
                 "position": cls._xy_to_point(via.at),
                 "netId": net_id_by_number.get(int(via.net), str(int(via.net))),
-                "padstack": cls._via_definition_id(via),
+                "padstack": cls._via_definition_id(via, provider_strict=provider_strict),
                 "free": getattr(via, "free", None),
             }
             for via in pcb.vias
@@ -300,6 +308,10 @@ class DeepPCB_Transformer:
         for zone in pcb.zones:
             poly = getattr(zone, "polygon", None)
             pts = getattr(getattr(poly, "pts", None), "xys", None)
+            if pts is None:
+                filled = list(getattr(zone, "filled_polygon", []) or [])
+                if filled:
+                    pts = getattr(getattr(filled[0], "pts", None), "xys", None)
             if pts is None:
                 continue
             points = [cls._xy_to_point(xy) for xy in pts]
@@ -364,6 +376,8 @@ class DeepPCB_Transformer:
             board.metadata["kicad_pcb_sexp"] = kicad.dumps(kicad.pcb.PcbFile(kicad_pcb=pcb))
         if getattr(pcb, "embedded_fonts", None) is not None:
             board.metadata["kicad_embedded_fonts"] = getattr(pcb, "embedded_fonts", None)
+        if provider_strict:
+            cls._normalize_provider_board(board)
 
         return board
 
@@ -899,6 +913,15 @@ class DeepPCB_Transformer:
         return int(round(mm * cls.RESOLUTION_VALUE))
 
     @staticmethod
+    def _export_rotation(value: Any, *, provider_strict: bool) -> int | float | None:
+        if value is None:
+            return 0 if provider_strict else None
+        as_float = float(value)
+        if provider_strict:
+            return int(round(as_float))
+        return as_float
+
+    @staticmethod
     def _from_unit(value: float, resolution: int) -> float:
         return float(value) / float(resolution)
 
@@ -1098,6 +1121,8 @@ class DeepPCB_Transformer:
         cls,
         pad: Any,
         copper_layer_index: dict[str, int],
+        *,
+        provider_strict: bool = False,
     ) -> tuple[str, dict[str, Any]]:
         shape = str(getattr(pad, "shape", "circle")).lower()
         pad_type = str(getattr(pad, "type", "smd"))
@@ -1164,10 +1189,22 @@ class DeepPCB_Transformer:
             drill_id = (
                 f"_D{drill_payload.get('shape')}:{drill_payload.get('sizeX')}:{drill_payload.get('sizeY')}"
             )
-        padstack_id = (
-            f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
-            f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
-        )
+        if provider_strict and shape == "custom":
+            layer_suffix = "0_1" if len(layers) > 1 else "0"
+            padstack_id = f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
+        elif provider_strict and shape in {"rect", "rectangle"}:
+            half_w = cls._to_unit(size_w / 2.0) // 1000
+            half_h = cls._to_unit(size_h / 2.0) // 1000
+            layer_suffix = "0_1" if len(layers) > 1 else "0"
+            padstack_id = f"Padstack_Rectangle_{-half_w}_{-half_h}_{half_w}_{half_h}_L{layer_suffix}"
+        elif provider_strict and shape in {"circle", "oval"} and drill_payload is not None and len(layers) > 1:
+            radius = int(round(max(size_w, size_h) * 500))
+            padstack_id = f"Padstack_Circle_0_0_{radius}_L0_1"
+        else:
+            padstack_id = (
+                f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
+                f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
+            )
         return padstack_id, {
             "id": padstack_id,
             "shape": geom,
@@ -1187,11 +1224,13 @@ class DeepPCB_Transformer:
         cls,
         via: Any,
         copper_layer_index: dict[str, int],
+        *,
+        provider_strict: bool = False,
     ) -> tuple[str, dict[str, Any]]:
         size = float(getattr(via, "size", 0.0) or 0.0)
         drill = float(getattr(via, "drill", 0.0) or 0.0)
         layers = cls._layer_indices(getattr(via, "layers", []), copper_layer_index)
-        via_id = cls._via_definition_id(via)
+        via_id = cls._via_definition_id(via, provider_strict=provider_strict)
         return via_id, {
             "id": via_id,
             "shape": {
@@ -1205,13 +1244,19 @@ class DeepPCB_Transformer:
         }
 
     @classmethod
-    def _via_definition_id(cls, via: Any) -> str:
+    def _via_definition_id(cls, via: Any, *, provider_strict: bool = False) -> str:
         size = cls._to_unit(float(getattr(via, "size", 0.0) or 0.0))
         drill = cls._to_unit(float(getattr(via, "drill", 0.0) or 0.0))
+        if provider_strict:
+            layers = list(getattr(via, "layers", []) or ["F.Cu", "B.Cu"])
+            layer_suffix = "0-1" if len(layers) > 1 else "0"
+            return f"Via[{layer_suffix}]_{size//1000}:{drill//1000}mm"
         return f"Via_{size}:{drill}"
 
     @staticmethod
-    def _definition_id(fp: Any) -> str:
+    def _definition_id(fp: Any, *, provider_strict: bool = False) -> str:
+        if provider_strict:
+            return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}"
         return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}__{fp.uuid}"
 
     @staticmethod
@@ -1335,3 +1380,133 @@ class DeepPCB_Transformer:
                 }
             )
         return segments
+
+    @classmethod
+    def _normalize_provider_board(cls, board: C_deeppcb_board_file) -> None:
+        # Match converter defaults/shape used by DeepPCB convert-to-json.
+        board.rules = [
+            {"subjects": [], "type": "rotateFirst", "value": False},
+            {"subjects": [], "type": "allowViaAtSmd", "value": False},
+            {"subjects": [], "type": "pinConnectionPoint", "value": "centroid"},
+        ]
+        board.resolution = {"unit": "mm", "value": 1000}
+        board.unknown["metaData"] = {}
+        board.unknown["ratsnest"] = []
+        board.metadata = {}
+        if isinstance(board.boundary, dict):
+            board.boundary["clearance"] = 200
+            board.boundary.pop("segments", None)
+
+        board.layers = [
+            {
+                "id": str(layer.get("id", "")),
+                "type": str(layer.get("type", "signal")),
+                "keepouts": list(layer.get("keepouts", [])),
+            }
+            for layer in board.layers
+            if str(layer.get("id", "")).endswith(".Cu")
+        ]
+
+        board.nets = [
+            {"id": str(net.get("id", "")), "pins": list(net.get("pins", []))}
+            for net in board.nets
+            if str(net.get("id", "")) != "0"
+        ]
+        board.netClasses = [
+            {
+                "id": "__default__",
+                "trackWidth": 200,
+                "clearance": 200,
+                "viaDefinition": (board.viaDefinitions[0] if board.viaDefinitions else ""),
+                "nets": [str(net.get("id", "")) for net in board.nets],
+                "viaPriority": [[board.viaDefinitions[0]]] if board.viaDefinitions else [],
+            }
+        ]
+
+        for comp in board.components:
+            comp.pop("embeddedFonts", None)
+            rp = comp.get("referenceProperty")
+            if isinstance(rp, dict):
+                rp.pop("effects", None)
+
+        for padstack in board.padstacks:
+            padstack["allowVia"] = False
+
+        cls._provider_scale_flip_coordinates(board)
+
+    @classmethod
+    def _provider_scale_flip_coordinates(cls, board: C_deeppcb_board_file) -> None:
+        # Internal export uses 1e6 units; provider converter uses 1e3 and Y-down.
+        def pxy(point: Any) -> Any:
+            if not (isinstance(point, list) and len(point) >= 2):
+                return point
+            x = int(round(float(point[0]) / 1000.0))
+            y = -int(round(float(point[1]) / 1000.0))
+            return [x, y]
+
+        def points_in_shape(shape: Any) -> None:
+            if not isinstance(shape, dict):
+                return
+            pts = shape.get("points")
+            if isinstance(pts, list):
+                shape["points"] = [pxy(p) for p in pts]
+            center = shape.get("center")
+            if isinstance(center, list):
+                shape["center"] = pxy(center)
+            if isinstance(shape.get("radius"), (int, float)):
+                shape["radius"] = int(round(float(shape["radius"]) / 1000.0))
+
+        boundary = board.boundary if isinstance(board.boundary, dict) else {}
+        bshape = boundary.get("shape")
+        if isinstance(bshape, dict):
+            points_in_shape(bshape)
+        segs = boundary.get("segments")
+        if isinstance(segs, list):
+            for seg in segs:
+                if not isinstance(seg, dict):
+                    continue
+                if isinstance(seg.get("start"), list):
+                    seg["start"] = pxy(seg["start"])
+                if isinstance(seg.get("end"), list):
+                    seg["end"] = pxy(seg["end"])
+
+        for padstack in board.padstacks:
+            points_in_shape(padstack.get("shape"))
+            if isinstance(padstack.get("drill"), (int, float)):
+                padstack["drill"] = int(round(float(padstack["drill"]) / 1000.0))
+
+        for definition in board.componentDefinitions:
+            for pin in definition.get("pins", []):
+                if isinstance(pin, dict) and isinstance(pin.get("position"), list):
+                    pin["position"] = pxy(pin["position"])
+            outline = definition.get("outline")
+            if isinstance(outline, dict):
+                if outline.get("type") == "multi":
+                    for shape in outline.get("shapes", []):
+                        points_in_shape(shape)
+                else:
+                    points_in_shape(outline)
+
+        for comp in board.components:
+            if isinstance(comp.get("position"), list):
+                comp["position"] = pxy(comp["position"])
+            rp = comp.get("referenceProperty")
+            if isinstance(rp, dict) and isinstance(rp.get("at"), list):
+                rp["at"] = pxy(rp["at"])
+
+        for wire in board.wires:
+            if isinstance(wire.get("start"), list):
+                wire["start"] = pxy(wire["start"])
+            if isinstance(wire.get("end"), list):
+                wire["end"] = pxy(wire["end"])
+            if isinstance(wire.get("width"), (int, float)):
+                wire["width"] = int(round(float(wire["width"]) / 1000.0))
+
+        for via in board.vias:
+            if isinstance(via.get("position"), list):
+                via["position"] = pxy(via["position"])
+
+        for plane in board.planes:
+            shape = plane.get("shape")
+            if isinstance(shape, dict):
+                points_in_shape(shape)

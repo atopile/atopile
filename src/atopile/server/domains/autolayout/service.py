@@ -529,7 +529,7 @@ class AutolayoutService:
         generated_path = work_dir / "input" / f"{layout_path.stem}.deeppcb"
         generated_path.parent.mkdir(parents=True, exist_ok=True)
         parsed = kicad.loads(kicad.pcb.PcbFile, layout_path)
-        board = DeepPCB_Transformer.from_kicad_file(parsed)
+        board = DeepPCB_Transformer.from_kicad_file(parsed, provider_strict=True)
         DeepPCB_Transformer.dumps(board, generated_path)
         return generated_path
 

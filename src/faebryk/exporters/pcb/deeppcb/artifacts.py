@@ -18,6 +18,7 @@ def export_deeppcb(
     board = DeepPCB_Transformer.from_kicad_file(
         parsed,
         include_lossless_source=include_lossless_source,
+        provider_strict=True,
     )
     DeepPCB_Transformer.dumps(board, deeppcb_file)
 
@@ -32,5 +33,6 @@ def export_deeppcb_from_kicad_pcb(
     board = DeepPCB_Transformer.from_kicad_pcb(
         pcb,
         include_lossless_source=include_lossless_source,
+        provider_strict=True,
     )
     DeepPCB_Transformer.dumps(board, deeppcb_file)
