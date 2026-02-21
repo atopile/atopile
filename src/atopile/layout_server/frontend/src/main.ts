@@ -1,5 +1,6 @@
 import { Editor } from "./editor";
 import { getLayerColor } from "./colors";
+import { buildBomPanel } from "./bom_panel";
 import type { LayerModel } from "./types";
 
 const canvas = document.getElementById("editor-canvas") as HTMLCanvasElement;
@@ -260,7 +261,7 @@ function buildLayerPanel() {
 
 const coordsEl = document.getElementById("status-coords");
 const helpEl = document.getElementById("status-help");
-const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click group/select \u00b7 Shift+drag box-select \u00b7 Double-click single \u00b7 Esc clear \u00b7 R rotate \u00b7 F flip \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
+const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click group/select \u00b7 Shift+drag box-select \u00b7 Double-click single \u00b7 Esc clear \u00b7 R rotate \u00b7 F flip \u00b7 / search BOM \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
 if (helpEl) helpEl.textContent = helpText;
 
 canvas.addEventListener("mouseenter", () => {
@@ -281,7 +282,11 @@ editor.setOnMouseMove((x, y) => {
 
 editor.init().then(() => {
     buildLayerPanel();
-    editor.setOnLayersChanged(buildLayerPanel);
+    buildBomPanel(editor, baseUrl, apiPrefix);
+    editor.setOnModelChanged(() => {
+        buildLayerPanel();
+        buildBomPanel(editor, baseUrl, apiPrefix);
+    });
 }).catch((err) => {
     console.error("Failed to initialize editor:", err);
 });

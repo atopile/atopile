@@ -95,6 +95,24 @@ async def reload() -> StatusResponse:
     return StatusResponse(status="ok", code="ok", model=model)
 
 
+@router.get("/api/layout/bom")
+async def get_bom():
+    _require_loaded()
+    project_root = layout_service.project_root
+    target_name = layout_service.target_name
+    if not project_root or not target_name:
+        raise HTTPException(status_code=404, detail="No project context for BOM lookup")
+
+    from atopile.server.domains import artifacts as artifacts_domain
+
+    result = await asyncio.to_thread(
+        artifacts_domain.handle_get_bom, str(project_root), target_name
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="BOM not found. Run a build first.")
+    return result
+
+
 @router.websocket("/ws/layout")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await layout_service.add_ws_client(websocket)

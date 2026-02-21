@@ -21,11 +21,18 @@ class LayoutService:
     def __init__(self) -> None:
         self._manager: PcbManager | None = None
         self._current_path: Path | None = None
+        self._project_root: Path | None = None
+        self._target_name: str | None = None
         self._ws_clients: list[WebSocket] = []
         self._watcher: FileWatcher | None = None
         self._watcher_task: asyncio.Task | None = None
 
-    def load(self, path: Path) -> None:
+    def load(
+        self,
+        path: Path,
+        project_root: Path | None = None,
+        target_name: str | None = None,
+    ) -> None:
         """Load (or replace) the active PCB file.  Sync-only — call
         ``start_watcher()`` afterwards from an async context."""
         resolved = path.resolve()
@@ -34,6 +41,8 @@ class LayoutService:
         mgr.load(resolved)
         self._manager = mgr
         self._current_path = resolved
+        self._project_root = project_root.resolve() if project_root else None
+        self._target_name = target_name
 
     @property
     def manager(self) -> PcbManager:
@@ -45,6 +54,14 @@ class LayoutService:
     @property
     def current_path(self) -> Path | None:
         return self._current_path
+
+    @property
+    def project_root(self) -> Path | None:
+        return self._project_root
+
+    @property
+    def target_name(self) -> str | None:
+        return self._target_name
 
     @property
     def is_loaded(self) -> bool:

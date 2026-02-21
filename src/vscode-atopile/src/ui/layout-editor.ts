@@ -139,6 +139,187 @@ class LayoutEditorWebview extends BaseWebview {
                         border-radius: 50%;
                         flex-shrink: 0;
                     }
+
+                    /* ── BOM panel ── */
+                    #bom-panel {
+                        position: fixed; top: 0; left: 0; bottom: 0;
+                        width: 240px;
+                        background: var(--vscode-sideBar-background, rgba(30,30,30,0.95));
+                        border-right: 1px solid var(--vscode-panel-border, #444);
+                        border-radius: 0 4px 0 0;
+                        z-index: 20;
+                        font: 11px/1.4 monospace;
+                        color: var(--vscode-foreground, #ccc);
+                        transform: translateX(0);
+                        transition: transform 0.2s ease;
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    #bom-panel.collapsed {
+                        transform: translateX(-100%);
+                    }
+                    .bom-panel-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 6px 8px;
+                        font-weight: bold;
+                        font-size: 12px;
+                        border-bottom: 1px solid var(--vscode-panel-border, #444);
+                        flex-shrink: 0;
+                    }
+                    .bom-collapse-btn {
+                        cursor: pointer;
+                        opacity: 0.6;
+                        font-size: 10px;
+                    }
+                    .bom-collapse-btn:hover { opacity: 1; }
+                    .bom-expand-tab {
+                        display: none;
+                        position: fixed;
+                        top: 50%;
+                        left: 0;
+                        transform: translateY(-50%);
+                        writing-mode: vertical-rl;
+                        text-orientation: mixed;
+                        background: var(--vscode-sideBar-background, rgba(30,30,30,0.95));
+                        border: 1px solid var(--vscode-panel-border, #444);
+                        border-left: none;
+                        border-radius: 0 4px 4px 0;
+                        padding: 8px 4px;
+                        cursor: pointer;
+                        font: 11px monospace;
+                        color: var(--vscode-foreground, #ccc);
+                        z-index: 21;
+                    }
+                    .bom-expand-tab.visible { display: block; }
+
+                    .bom-search {
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                        padding: 6px 6px;
+                        border-bottom: 1px solid var(--vscode-panel-border, #444);
+                        flex-shrink: 0;
+                    }
+                    .bom-search input {
+                        flex: 1;
+                        background: var(--vscode-input-background, #3c3c3c);
+                        border: 1px solid var(--vscode-input-border, #555);
+                        border-radius: 3px;
+                        color: var(--vscode-input-foreground, #ccc);
+                        font: 11px monospace;
+                        padding: 3px 6px;
+                        outline: none;
+                        min-width: 0;
+                    }
+                    .bom-search input:focus {
+                        border-color: var(--vscode-focusBorder, #007acc);
+                    }
+                    .bom-search input.bom-search-error {
+                        border-color: var(--vscode-inputValidation-errorBorder, #e05050);
+                    }
+                    .bom-search-toggle {
+                        background: transparent;
+                        border: 1px solid var(--vscode-input-border, #555);
+                        border-radius: 3px;
+                        color: var(--vscode-descriptionForeground, #aaa);
+                        font: 10px monospace;
+                        padding: 2px 5px;
+                        cursor: pointer;
+                        flex-shrink: 0;
+                    }
+                    .bom-search-toggle:hover { color: var(--vscode-foreground, #ccc); }
+                    .bom-search-toggle.active {
+                        background: var(--vscode-button-secondaryBackground, #444);
+                        color: var(--vscode-button-secondaryForeground, #fff);
+                    }
+
+                    .bom-table-header {
+                        display: flex;
+                        align-items: center;
+                        padding: 4px 6px;
+                        font-weight: 600;
+                        font-size: 10px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.05em;
+                        color: var(--vscode-descriptionForeground, #aaa);
+                        border-bottom: 1px solid var(--vscode-panel-border, #444);
+                        flex-shrink: 0;
+                    }
+                    .bom-table-body {
+                        overflow-y: auto;
+                        flex: 1;
+                        min-height: 0;
+                    }
+                    .bom-row {
+                        display: flex;
+                        align-items: center;
+                        padding: 2px 6px;
+                        cursor: pointer;
+                        transition: background 0.1s;
+                        border-left: 2px solid transparent;
+                    }
+                    .bom-row:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
+                    .bom-row.selected {
+                        background: var(--vscode-list-activeSelectionBackground, rgba(0,122,204,0.3));
+                        border-left-color: var(--vscode-focusBorder, #007acc);
+                    }
+                    .bom-qty {
+                        width: 28px;
+                        flex-shrink: 0;
+                        text-align: right;
+                        padding-right: 8px;
+                        font-variant-numeric: tabular-nums;
+                    }
+                    .bom-designators {
+                        flex: 1;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        min-width: 0;
+                    }
+                    .bom-value {
+                        width: 70px;
+                        flex-shrink: 0;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        text-align: right;
+                        color: var(--vscode-descriptionForeground, #aaa);
+                    }
+                    .bom-detail {
+                        border-top: 1px solid var(--vscode-panel-border, #444);
+                        padding: 6px;
+                        max-height: 200px;
+                        overflow-y: auto;
+                        flex-shrink: 0;
+                    }
+                    .bom-detail-row {
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 1px 0;
+                        gap: 8px;
+                    }
+                    .bom-detail-label {
+                        color: var(--vscode-descriptionForeground, #aaa);
+                        flex-shrink: 0;
+                        font-size: 10px;
+                    }
+                    .bom-detail-value {
+                        text-align: right;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        min-width: 0;
+                        font-size: 10px;
+                    }
+                    .bom-detail-loading {
+                        color: var(--vscode-descriptionForeground, #aaa);
+                        font-size: 10px;
+                        text-align: center;
+                        padding: 6px;
+                    }
                 </style>
             </head>
             <body>
@@ -148,6 +329,7 @@ class LayoutEditorWebview extends BaseWebview {
                     window.__LAYOUT_WS_PATH__ = '/ws/layout';
                 </script>
                 <canvas id="editor-canvas"></canvas>
+                <div id="bom-panel"></div>
                 <div id="layer-panel"></div>
                 <div id="status">scroll to zoom, middle-click to pan, left-click to select/drag, R rotate, F flip</div>
                 <script nonce="${nonce}" type="module" src="${editorUri}"></script>

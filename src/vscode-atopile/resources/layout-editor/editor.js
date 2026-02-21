@@ -1316,44 +1316,61 @@ var Renderer = class _Renderer {
   }
 };
 
+// src/geometry.ts
+var DEG_TO_RAD = Math.PI / 180;
+function fpTransform(fpAt, localX, localY) {
+  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return new Vec2(
+    fpAt.x + localX * cos - localY * sin,
+    fpAt.y + localX * sin + localY * cos
+  );
+}
+function padTransform(fpAt, padAt, localX, localY) {
+  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
+  const cos = Math.cos(padRad);
+  const sin = Math.sin(padRad);
+  const px = localX * cos - localY * sin;
+  const py = localX * sin + localY * cos;
+  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
+}
+function rotatedRectExtents(width, height, rotationDeg) {
+  const theta = -(rotationDeg || 0) * DEG_TO_RAD;
+  const absCos = Math.abs(Math.cos(theta));
+  const absSin = Math.abs(Math.sin(theta));
+  return [
+    width * absCos + height * absSin,
+    width * absSin + height * absCos
+  ];
+}
+
 // src/colors.ts
-var LAYER_COLORS = {
-  "F.Cu": [0.86, 0.23, 0.22, 0.88],
-  "B.Cu": [0.16, 0.28, 0.47, 0.88],
-  "In1.Cu": [0.7, 0.58, 0.24, 0.78],
-  "In2.Cu": [0.53, 0.4, 0.7, 0.78],
-  "F.SilkS": [0.92, 0.9, 0.62, 0.95],
-  "B.SilkS": [0.78, 0.86, 0.87, 0.92],
-  "F.Mask": [0.7, 0.35, 0.48, 0.42],
-  "B.Mask": [0.12, 0.19, 0.34, 0.38],
-  "F.Paste": [0.9, 0.8, 0.6, 0.48],
-  "B.Paste": [0.66, 0.74, 0.86, 0.48],
-  "F.Fab": [0.95, 0.62, 0.45, 0.9],
-  "B.Fab": [0.62, 0.73, 0.9, 0.9],
-  "F.CrtYd": [0.91, 0.91, 0.91, 0.62],
-  "B.CrtYd": [0.8, 0.85, 0.93, 0.62],
-  "Edge.Cuts": [0.93, 0.95, 0.95, 1],
-  "Dwgs.User": [0.7, 0.7, 0.72, 0.65],
-  "Cmts.User": [0.74, 0.66, 0.84, 0.65]
-};
+var UNKNOWN_LAYER_COLOR = [0.5, 0.5, 0.5, 0.5];
 var PAD_COLOR = [0.57, 0.57, 0.3, 0.9];
 var PAD_FRONT_COLOR = [0.86, 0.23, 0.22, 0.78];
 var PAD_BACK_COLOR = [0.16, 0.28, 0.47, 0.78];
 var ZONE_COLOR_ALPHA = 0.25;
-function getLayerColor(layer) {
+function getLayerColor(layer, layerById) {
   if (!layer)
-    return [0.5, 0.5, 0.5, 0.5];
-  if (layer.endsWith(".PadNumbers"))
-    return [1, 1, 1, 1];
-  if (layer.endsWith(".Nets"))
-    return [1, 1, 1, 1];
-  if (layer.endsWith(".Drill"))
-    return [0.89, 0.82, 0.15, 1];
-  return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];
+    return UNKNOWN_LAYER_COLOR;
+  const fromModel = layerById?.get(layer)?.color;
+  if (fromModel)
+    return fromModel;
+  return UNKNOWN_LAYER_COLOR;
 }
-function getPadColor(layers) {
-  const hasFront = layers.some((l) => l === "F.Cu" || l === "*.Cu");
-  const hasBack = layers.some((l) => l === "B.Cu" || l === "*.Cu");
+function withPadAlpha(color) {
+  return [color[0], color[1], color[2], Math.max(0.78, color[3])];
+}
+function getPadColor(layers, layerById) {
+  const infos = layers.map((layer) => layerById?.get(layer)).filter((info) => Boolean(info));
+  const copperInfos = infos.filter((info) => info.kind === "Cu");
+  const roots = new Set(copperInfos.map((info) => info.root).filter((root) => Boolean(root)));
+  if (roots.size === 1 && copperInfos[0]) {
+    return withPadAlpha(copperInfos[0].color);
+  }
+  const hasFront = copperInfos.some((info) => info.root === "F");
+  const hasBack = copperInfos.some((info) => info.root === "B");
   if (hasFront && hasBack)
     return PAD_COLOR;
   if (hasFront)
@@ -1362,6 +1379,896 @@ function getPadColor(layers) {
     return PAD_BACK_COLOR;
   return PAD_COLOR;
 }
+
+// src/hit-test.ts
+function footprintBBox(fp) {
+  const points = [];
+  for (const pad of fp.pads) {
+    const hw = pad.size.w / 2;
+    const hh = pad.size.h / 2;
+    points.push(padTransform(fp.at, pad.at, -hw, -hh));
+    points.push(padTransform(fp.at, pad.at, hw, -hh));
+    points.push(padTransform(fp.at, pad.at, hw, hh));
+    points.push(padTransform(fp.at, pad.at, -hw, hh));
+  }
+  for (const drawing of fp.drawings) {
+    if (drawing.start)
+      points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+    if (drawing.end)
+      points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+    if (drawing.center)
+      points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
+    if (drawing.points) {
+      for (const p of drawing.points) {
+        points.push(fpTransform(fp.at, p.x, p.y));
+      }
+    }
+  }
+  if (points.length === 0) {
+    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
+  }
+  return BBox.from_points(points).grow(0.2);
+}
+function hitTestFootprints(worldPos, footprints) {
+  for (let i = footprints.length - 1; i >= 0; i--) {
+    const bbox = footprintBBox(footprints[i]);
+    if (bbox.contains_point(worldPos)) {
+      return i;
+    }
+  }
+  return -1;
+}
+function bboxIntersects(a, b) {
+  return !(a.x2 < b.x || b.x2 < a.x || a.y2 < b.y || b.y2 < a.y);
+}
+function hitTestFootprintsInBox(selectionBox, footprints) {
+  const hits = [];
+  for (let i = 0; i < footprints.length; i++) {
+    const bbox = footprintBBox(footprints[i]);
+    if (bboxIntersects(selectionBox, bbox)) {
+      hits.push(i);
+    }
+  }
+  return hits;
+}
+
+// src/pad_annotations.ts
+var PAD_ANNOTATION_BOX_RATIO = 0.78;
+var PAD_ANNOTATION_MAJOR_FIT = 0.96;
+var PAD_ANNOTATION_MINOR_FIT = 0.88;
+var PAD_ANNOTATION_CHAR_SCALE = 0.6;
+var PAD_ANNOTATION_MIN_CHAR_H = 0.08;
+var PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
+var PAD_ANNOTATION_STROKE_SCALE = 0.22;
+var PAD_ANNOTATION_STROKE_MIN = 0.02;
+var PAD_ANNOTATION_STROKE_MAX = 0.16;
+var PAD_NAME_GENERIC_TOKENS = /* @__PURE__ */ new Set(["input", "output", "line", "net"]);
+var PAD_NAME_PREFIXES = ["power_in-", "power_vbus-", "power-"];
+var PAD_NAME_TRUNCATE_LENGTHS = [16, 12, 10, 8, 6, 5, 4, 3, 2];
+var PAD_NAME_TARGET_CHAR_H = 0.14;
+var PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
+var PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
+var PAD_NUMBER_CHAR_SCALE = 0.8;
+var PAD_NUMBER_MIN_CHAR_H = 0.04;
+function estimateStrokeTextAdvance(text) {
+  if (!text)
+    return 0.6;
+  const narrow = /* @__PURE__ */ new Set(["1", "I", "i", "l", "|", "!", ".", ",", ":", ";", "'", "`"]);
+  const wide = /* @__PURE__ */ new Set(["M", "W", "@", "%", "#"]);
+  let advance = 0;
+  for (const ch of text) {
+    if (ch === " ")
+      advance += 0.6;
+    else if (narrow.has(ch))
+      advance += 0.45;
+    else if (wide.has(ch))
+      advance += 0.95;
+    else
+      advance += 0.72;
+  }
+  return Math.max(advance, 0.6);
+}
+function fitTextInsideBox(text, boxW, boxH, minCharH = PAD_ANNOTATION_MIN_CHAR_H, charScale = PAD_ANNOTATION_CHAR_SCALE) {
+  if (boxW <= 0 || boxH <= 0)
+    return null;
+  const usableW = Math.max(0, boxW * PAD_ANNOTATION_BOX_RATIO);
+  const usableH = Math.max(0, boxH * PAD_ANNOTATION_BOX_RATIO);
+  if (usableW <= 0 || usableH <= 0)
+    return null;
+  const vertical = usableH > usableW;
+  const major = vertical ? usableH : usableW;
+  const minor = vertical ? usableW : usableH;
+  const advance = estimateStrokeTextAdvance(text);
+  const maxHByWidth = major / Math.max(advance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
+  let charH = Math.min(minor * PAD_ANNOTATION_MINOR_FIT, maxHByWidth * PAD_ANNOTATION_MAJOR_FIT);
+  charH *= charScale;
+  if (charH < minCharH)
+    return null;
+  const charW = charH * PAD_ANNOTATION_CHAR_W_RATIO;
+  const thickness = Math.min(
+    PAD_ANNOTATION_STROKE_MAX,
+    Math.max(PAD_ANNOTATION_STROKE_MIN, charH * PAD_ANNOTATION_STROKE_SCALE)
+  );
+  return [charW, charH, thickness];
+}
+function padNameCandidates(text) {
+  const base = text.trim();
+  if (!base)
+    return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (v) => {
+    const t = v.trim();
+    if (!t || seen.has(t))
+      return;
+    seen.add(t);
+    out.push(t);
+  };
+  add(base);
+  let normalized = base;
+  for (const prefix of PAD_NAME_PREFIXES) {
+    if (normalized.startsWith(prefix))
+      normalized = normalized.slice(prefix.length);
+  }
+  add(normalized);
+  const tokens = normalized.replaceAll("/", "-").split("-").map((t) => t.trim()).filter(Boolean);
+  for (let idx = tokens.length - 1; idx >= 0; idx--) {
+    const token = tokens[idx];
+    if (PAD_NAME_GENERIC_TOKENS.has(token.toLowerCase()))
+      continue;
+    add(token);
+    add(token.replaceAll("[", "").replaceAll("]", ""));
+  }
+  for (const maxLen of PAD_NAME_TRUNCATE_LENGTHS) {
+    if (normalized.length > maxLen)
+      add(normalized.slice(0, maxLen));
+  }
+  return out;
+}
+function fitPadNameLabel(text, boxW, boxH) {
+  let fallback = null;
+  for (const candidate of padNameCandidates(text)) {
+    const fit = fitTextInsideBox(candidate, boxW, boxH);
+    if (!fit)
+      continue;
+    if (!fallback || fit[1] > fallback[1][1]) {
+      fallback = [candidate, fit];
+    }
+    if (fit[1] >= PAD_NAME_TARGET_CHAR_H) {
+      return [candidate, fit];
+    }
+  }
+  return fallback;
+}
+function padLabelWorldRotation(totalPadRotationDeg, padW, padH) {
+  if (padW <= 0 || padH <= 0)
+    return 0;
+  if (Math.abs(padW - padH) <= 1e-6)
+    return 0;
+  const longAxisDeg = padW > padH ? totalPadRotationDeg : totalPadRotationDeg + 90;
+  const axisX = Math.abs(Math.cos(longAxisDeg * Math.PI / 180));
+  const axisY = Math.abs(Math.sin(longAxisDeg * Math.PI / 180));
+  return axisY > axisX ? 90 : 0;
+}
+function resolvePad(fp, padIndex, padName) {
+  const byIndex = fp.pads[padIndex];
+  if (byIndex && byIndex.name === padName) {
+    return byIndex;
+  }
+  for (const pad of fp.pads) {
+    if (pad.name === padName)
+      return pad;
+  }
+  return null;
+}
+function buildPadAnnotationGeometry(fp, hiddenLayers) {
+  const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
+  const layerGeometry = /* @__PURE__ */ new Map();
+  const ensureLayerGeometry = (layerName) => {
+    let entry = layerGeometry.get(layerName);
+    if (!entry) {
+      entry = { names: [], numbers: [] };
+      layerGeometry.set(layerName, entry);
+    }
+    return entry;
+  };
+  for (const annotation of fp.pad_names) {
+    if (!annotation.text.trim())
+      continue;
+    const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
+    if (!pad)
+      continue;
+    const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+    const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+    const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
+    if (!fitted)
+      continue;
+    const [displayText, [charW, charH, thickness]] = fitted;
+    const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+    const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
+    for (const layerName of annotation.layer_ids) {
+      if (hidden.has(layerName))
+        continue;
+      ensureLayerGeometry(layerName).names.push({
+        text: displayText,
+        x: worldCenter.x,
+        y: worldCenter.y,
+        rotation: textRotation,
+        charW,
+        charH,
+        thickness
+      });
+    }
+  }
+  for (const annotation of fp.pad_numbers) {
+    if (!annotation.text.trim())
+      continue;
+    const pad = resolvePad(fp, annotation.pad_index, annotation.pad);
+    if (!pad)
+      continue;
+    const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
+    const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
+    const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
+    const badgeRadius = badgeDiameter / 2;
+    const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
+    const worldCenter = fpTransform(fp.at, pad.at.x, pad.at.y);
+    const badgeCenterX = worldCenter.x - bboxW / 2 + margin + badgeRadius;
+    const badgeCenterY = worldCenter.y - bboxH / 2 + margin + badgeRadius;
+    const labelFit = fitTextInsideBox(
+      annotation.text,
+      badgeDiameter * 0.92,
+      badgeDiameter * 0.92,
+      PAD_NUMBER_MIN_CHAR_H,
+      PAD_NUMBER_CHAR_SCALE
+    );
+    for (const layerName of annotation.layer_ids) {
+      if (hidden.has(layerName))
+        continue;
+      ensureLayerGeometry(layerName).numbers.push({
+        text: annotation.text,
+        badgeCenterX,
+        badgeCenterY,
+        badgeRadius,
+        labelFit
+      });
+    }
+  }
+  return layerGeometry;
+}
+
+// src/painter.ts
+var DEG_TO_RAD2 = Math.PI / 180;
+var HOLE_SEGMENTS = 36;
+var SELECTION_STROKE_WIDTH = 0.12;
+var GROUP_SELECTION_STROKE_WIDTH = 0.1;
+var HOVER_SELECTION_STROKE_WIDTH = 0.08;
+var SELECTION_GROW = 0.2;
+var GROUP_SELECTION_GROW = 0.16;
+var HOVER_SELECTION_GROW = 0.12;
+function p2v(p) {
+  return new Vec2(p.x, p.y);
+}
+function arcToPoints(start, mid, end, segments = 32) {
+  const ax = start.x, ay = start.y;
+  const bx = mid.x, by = mid.y;
+  const cx = end.x, cy = end.y;
+  const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  if (Math.abs(D) < 1e-10) {
+    return [new Vec2(ax, ay), new Vec2(bx, by), new Vec2(cx, cy)];
+  }
+  const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / D;
+  const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / D;
+  const radius = Math.sqrt((ax - ux) ** 2 + (ay - uy) ** 2);
+  const startAngle = Math.atan2(ay - uy, ax - ux);
+  const midAngle = Math.atan2(by - uy, bx - ux);
+  const endAngle = Math.atan2(cy - uy, cx - ux);
+  let da1 = midAngle - startAngle;
+  while (da1 > Math.PI)
+    da1 -= 2 * Math.PI;
+  while (da1 < -Math.PI)
+    da1 += 2 * Math.PI;
+  const clockwise = da1 < 0;
+  let sweep = endAngle - startAngle;
+  if (clockwise) {
+    while (sweep > 0)
+      sweep -= 2 * Math.PI;
+  } else {
+    while (sweep < 0)
+      sweep += 2 * Math.PI;
+  }
+  const points = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const angle = startAngle + sweep * t;
+    points.push(new Vec2(ux + radius * Math.cos(angle), uy + radius * Math.sin(angle)));
+  }
+  return points;
+}
+function circleToPoints(cx, cy, radius, segments = HOLE_SEGMENTS) {
+  const points = [];
+  if (radius <= 0)
+    return points;
+  for (let i = 0; i <= segments; i++) {
+    const angle = i / segments * 2 * Math.PI;
+    points.push(new Vec2(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)));
+  }
+  return points;
+}
+function drawFootprintSelectionBox(layer, fp, strokeWidth, strokeAlpha, grow, fillAlpha = 0) {
+  const bbox = footprintBBox(fp).grow(grow);
+  if (bbox.w <= 0 || bbox.h <= 0)
+    return;
+  const corners = [
+    new Vec2(bbox.x, bbox.y),
+    new Vec2(bbox.x2, bbox.y),
+    new Vec2(bbox.x2, bbox.y2),
+    new Vec2(bbox.x, bbox.y2),
+    new Vec2(bbox.x, bbox.y)
+  ];
+  if (fillAlpha > 0) {
+    layer.geometry.add_polygon(corners.slice(0, 4), 1, 1, 1, fillAlpha);
+  }
+  layer.geometry.add_polyline(corners, strokeWidth, 1, 1, 1, strokeAlpha);
+}
+function buildLayerMap(model) {
+  const layerById = /* @__PURE__ */ new Map();
+  for (const layer of model.layers) {
+    layerById.set(layer.id, layer);
+  }
+  return layerById;
+}
+function layerPaintOrder(layerName, layerById) {
+  return layerById.get(layerName)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+}
+function layerKind(layerName, layerById) {
+  return (layerById.get(layerName)?.kind ?? "").toLowerCase();
+}
+function sortedLayerEntries(layerMap, layerById) {
+  return [...layerMap.entries()].sort(([a], [b]) => {
+    const orderDiff = layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById);
+    if (orderDiff !== 0)
+      return orderDiff;
+    return a.localeCompare(b);
+  });
+}
+function paintAll(renderer, model, hiddenLayers) {
+  const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
+  const layerById = buildLayerMap(model);
+  renderer.dispose_layers();
+  if (!hidden.has("Edge.Cuts"))
+    paintBoardEdges(renderer, model, layerById);
+  paintGlobalDrawings(renderer, model, hidden, "non_copper", layerById);
+  paintZones(renderer, model, hidden, layerById);
+  paintTracks(renderer, model, hidden, layerById);
+  paintGlobalDrawings(renderer, model, hidden, "copper", layerById);
+  const orderedFootprints = [...model.footprints].sort(
+    (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById)
+  );
+  for (const fp of orderedFootprints) {
+    paintFootprint(renderer, fp, hidden, layerById);
+  }
+  paintGlobalDrawings(renderer, model, hidden, "drill", layerById);
+}
+function paintBoardEdges(renderer, model, layerById) {
+  const layer = renderer.start_layer("Edge.Cuts");
+  const [r, g, b, a] = getLayerColor("Edge.Cuts", layerById);
+  for (const edge of model.board.edges) {
+    if (edge.type === "line" && edge.start && edge.end) {
+      layer.geometry.add_polyline([p2v(edge.start), p2v(edge.end)], 0.15, r, g, b, a);
+    } else if (edge.type === "arc" && edge.start && edge.mid && edge.end) {
+      layer.geometry.add_polyline(arcToPoints(edge.start, edge.mid, edge.end), 0.15, r, g, b, a);
+    } else if (edge.type === "circle" && edge.center && edge.end) {
+      const cx = edge.center.x, cy = edge.center.y;
+      const rad = Math.sqrt((edge.end.x - cx) ** 2 + (edge.end.y - cy) ** 2);
+      const pts = [];
+      for (let i = 0; i <= 64; i++) {
+        const angle = i / 64 * 2 * Math.PI;
+        pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
+      }
+      layer.geometry.add_polyline(pts, 0.15, r, g, b, a);
+    } else if (edge.type === "rect" && edge.start && edge.end) {
+      const s = edge.start, e = edge.end;
+      layer.geometry.add_polyline([
+        new Vec2(s.x, s.y),
+        new Vec2(e.x, s.y),
+        new Vec2(e.x, e.y),
+        new Vec2(s.x, e.y),
+        new Vec2(s.x, s.y)
+      ], 0.15, r, g, b, a);
+    }
+  }
+  renderer.end_layer();
+}
+function paintZones(renderer, model, hidden, layerById) {
+  for (const zone of model.zones) {
+    const sortedFilledPolygons = [...zone.filled_polygons].sort(
+      (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById)
+    );
+    for (const filled of sortedFilledPolygons) {
+      if (hidden.has(filled.layer))
+        continue;
+      const [r, g, b] = getLayerColor(filled.layer, layerById);
+      const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
+      const pts = filled.points.map(p2v);
+      if (pts.length >= 3) {
+        layer.geometry.add_polygon(pts, r, g, b, ZONE_COLOR_ALPHA);
+      }
+      renderer.end_layer();
+    }
+    const zoneLayersRaw = zone.layers.length > 0 ? zone.layers : [...new Set(zone.filled_polygons.map((fp) => fp.layer))];
+    const zoneLayers = [...new Set(zoneLayersRaw)].sort(
+      (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById)
+    );
+    const shouldDrawFillFromOutline = !zone.keepout && zone.fill_enabled !== false && zone.filled_polygons.length === 0 && zone.outline.length >= 3;
+    if (shouldDrawFillFromOutline) {
+      const outlinePts2 = zone.outline.map(p2v);
+      for (const layerName of zoneLayers) {
+        if (!layerName || hidden.has(layerName))
+          continue;
+        const [r, g, b] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
+        layer.geometry.add_polygon(outlinePts2, r, g, b, ZONE_COLOR_ALPHA);
+        renderer.end_layer();
+      }
+    }
+    const shouldDrawKeepout = zone.keepout || zone.fill_enabled === false;
+    if (!shouldDrawKeepout || zone.outline.length < 3)
+      continue;
+    const outlinePts = zone.outline.map(p2v);
+    const closedOutline = [...outlinePts, outlinePts[0].copy()];
+    const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;
+    const hatchSegments = hatchSegmentsForPolygon(outlinePts, hatchPitch);
+    for (const layerName of zoneLayers) {
+      if (!layerName || hidden.has(layerName))
+        continue;
+      const [r, g, b, a] = getLayerColor(layerName, layerById);
+      const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
+      layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
+      for (const [start, end] of hatchSegments) {
+        layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45));
+      }
+      renderer.end_layer();
+    }
+  }
+}
+function hatchSegmentsForPolygon(points, pitch) {
+  if (points.length < 3 || pitch <= 0)
+    return [];
+  const eps = 1e-6;
+  const closed = [...points, points[0]];
+  let minV = Infinity;
+  let maxV = -Infinity;
+  for (const p of points) {
+    const v = p.y - p.x;
+    if (v < minV)
+      minV = v;
+    if (v > maxV)
+      maxV = v;
+  }
+  const segments = [];
+  for (let c = minV - pitch; c <= maxV + pitch; c += pitch) {
+    const rawIntersections = [];
+    for (let i = 0; i < closed.length - 1; i++) {
+      const a = closed[i];
+      const b = closed[i + 1];
+      const fa = a.y - a.x - c;
+      const fb = b.y - b.x - c;
+      if (fa > eps && fb > eps || fa < -eps && fb < -eps)
+        continue;
+      const denom = fa - fb;
+      if (Math.abs(denom) < eps)
+        continue;
+      const t = fa / denom;
+      if (t < -eps || t > 1 + eps)
+        continue;
+      rawIntersections.push(
+        new Vec2(
+          a.x + (b.x - a.x) * t,
+          a.y + (b.y - a.y) * t
+        )
+      );
+    }
+    rawIntersections.sort((p, q) => p.x - q.x || p.y - q.y);
+    const intersections = [];
+    for (const p of rawIntersections) {
+      const last = intersections[intersections.length - 1];
+      if (!last || Math.abs(last.x - p.x) > eps || Math.abs(last.y - p.y) > eps) {
+        intersections.push(p);
+      }
+    }
+    for (let i = 0; i + 1 < intersections.length; i += 2) {
+      segments.push([intersections[i], intersections[i + 1]]);
+    }
+  }
+  return segments;
+}
+function paintTracks(renderer, model, hidden, layerById) {
+  const byLayer = /* @__PURE__ */ new Map();
+  for (const track of model.tracks) {
+    const ln = track.layer;
+    if (!ln)
+      continue;
+    if (hidden.has(ln))
+      continue;
+    let arr = byLayer.get(ln);
+    if (!arr) {
+      arr = [];
+      byLayer.set(ln, arr);
+    }
+    arr.push(track);
+  }
+  for (const [layerName, tracks] of sortedLayerEntries(byLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
+    const layer = renderer.start_layer(`tracks:${layerName}`);
+    for (const track of tracks) {
+      layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
+    }
+    renderer.end_layer();
+  }
+  if (model.arcs.length > 0) {
+    const arcByLayer = /* @__PURE__ */ new Map();
+    for (const arc of model.arcs) {
+      const ln = arc.layer;
+      if (!ln)
+        continue;
+      if (hidden.has(ln))
+        continue;
+      let arr = arcByLayer.get(ln);
+      if (!arr) {
+        arr = [];
+        arcByLayer.set(ln, arr);
+      }
+      arr.push(arc);
+    }
+    for (const [layerName, arcs] of sortedLayerEntries(arcByLayer, layerById)) {
+      const [r, g, b, a] = getLayerColor(layerName, layerById);
+      const layer = renderer.start_layer(`arc_tracks:${layerName}`);
+      for (const arc of arcs) {
+        layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
+      }
+      renderer.end_layer();
+    }
+  }
+}
+function isDrillLayer(layerName, layerById) {
+  return layerName !== null && layerName !== void 0 && layerKind(layerName, layerById) === "drill";
+}
+function isCopperLayer(layerName, layerById) {
+  return layerName !== null && layerName !== void 0 && layerKind(layerName, layerById) === "cu";
+}
+function shouldPaintGlobalDrawing(layerName, mode, layerById) {
+  const drill = isDrillLayer(layerName, layerById);
+  const copper = isCopperLayer(layerName, layerById);
+  if (mode === "drill")
+    return drill;
+  if (mode === "copper")
+    return !drill && copper;
+  return !drill && !copper;
+}
+function paintGlobalDrawings(renderer, model, hidden, mode, layerById) {
+  const byLayer = /* @__PURE__ */ new Map();
+  for (const drawing of model.drawings) {
+    const ln = drawing.layer;
+    if (!ln)
+      continue;
+    if (!shouldPaintGlobalDrawing(ln, mode, layerById))
+      continue;
+    if (hidden.has(ln))
+      continue;
+    let arr = byLayer.get(ln);
+    if (!arr) {
+      arr = [];
+      byLayer.set(ln, arr);
+    }
+    arr.push(drawing);
+  }
+  const worldAt = { x: 0, y: 0, r: 0 };
+  for (const [layerName, drawings] of sortedLayerEntries(byLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
+    const layer = renderer.start_layer(`global:${layerName}`);
+    for (const drawing of drawings) {
+      paintDrawing(layer, worldAt, drawing, r, g, b, a);
+    }
+    renderer.end_layer();
+  }
+}
+function paintFootprint(renderer, fp, hidden, layerById) {
+  const drawingsByLayer = /* @__PURE__ */ new Map();
+  const drillDrawingsByLayer = /* @__PURE__ */ new Map();
+  for (const drawing of fp.drawings) {
+    const ln = drawing.layer;
+    if (!ln)
+      continue;
+    if (hidden.has(ln))
+      continue;
+    const map = isDrillLayer(ln, layerById) ? drillDrawingsByLayer : drawingsByLayer;
+    let arr = map.get(ln);
+    if (!arr) {
+      arr = [];
+      map.set(ln, arr);
+    }
+    arr.push(drawing);
+  }
+  for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
+    const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+    for (const drawing of drawings) {
+      paintDrawing(layer, fp.at, drawing, r, g, b, a);
+    }
+    renderer.end_layer();
+  }
+  if (fp.pads.length > 0) {
+    const anyVisible = fp.pads.some(
+      (pad) => pad.layers.some((layerName) => !hidden.has(layerName))
+    );
+    if (anyVisible) {
+      const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
+      const visiblePads = fp.pads.filter(
+        (pad) => pad.layers.some((layerName) => !hidden.has(layerName))
+      );
+      for (const pad of visiblePads) {
+        paintPad(layer, fp.at, pad, layerById);
+      }
+      renderer.end_layer();
+    }
+  }
+  for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
+    const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+    for (const drawing of drawings) {
+      paintDrawing(layer, fp.at, drawing, r, g, b, a);
+    }
+    renderer.end_layer();
+  }
+  paintPadAnnotations(renderer, fp, hidden, layerById);
+}
+function paintPadAnnotations(renderer, fp, hidden, layerById) {
+  if (fp.pads.length === 0)
+    return;
+  if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0)
+    return;
+  const layerGeometry = buildPadAnnotationGeometry(fp, hidden);
+  const orderedAnnotationLayers = [...layerGeometry.keys()].sort(
+    (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById)
+  );
+  for (const layerName of orderedAnnotationLayers) {
+    const geometry = layerGeometry.get(layerName);
+    if (!geometry)
+      continue;
+    if (geometry.numbers.length === 0)
+      continue;
+    const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
+    const [r, g, b, a] = getLayerColor(layerName, layerById);
+    for (const number of geometry.numbers) {
+      layer.geometry.add_circle(number.badgeCenterX, number.badgeCenterY, number.badgeRadius, r, g, b, Math.max(a, 0.98));
+      const outlinePoints = circleToPoints(number.badgeCenterX, number.badgeCenterY, number.badgeRadius);
+      if (outlinePoints.length > 1) {
+        layer.geometry.add_polyline(outlinePoints, Math.max(number.badgeRadius * 0.18, 0.04), 0.05, 0.08, 0.12, 0.8);
+      }
+    }
+    renderer.end_layer();
+  }
+}
+function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
+  const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
+  const strokeWidth = rawWidth > 0 ? rawWidth : drawing.filled ? 0 : 0.12;
+  if (drawing.type === "line" && drawing.start && drawing.end) {
+    const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
+    const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
+    layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
+  } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
+    const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
+    const worldPts = localPts.map((p) => fpTransform(fpAt, p.x, p.y));
+    layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+  } else if (drawing.type === "circle" && drawing.center && drawing.end) {
+    const cx = drawing.center.x, cy = drawing.center.y;
+    const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
+    const pts = [];
+    for (let i = 0; i <= 48; i++) {
+      const angle = i / 48 * 2 * Math.PI;
+      pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
+    }
+    const worldPts = pts.map((p) => fpTransform(fpAt, p.x, p.y));
+    if (drawing.filled && worldPts.length >= 3) {
+      layer.geometry.add_polygon(worldPts, r, g, b, a);
+    }
+    if (strokeWidth > 0) {
+      layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+    }
+  } else if (drawing.type === "rect" && drawing.start && drawing.end) {
+    const s = drawing.start, e = drawing.end;
+    const corners = [
+      fpTransform(fpAt, s.x, s.y),
+      fpTransform(fpAt, e.x, s.y),
+      fpTransform(fpAt, e.x, e.y),
+      fpTransform(fpAt, s.x, e.y)
+    ];
+    if (drawing.filled) {
+      layer.geometry.add_polygon(corners, r, g, b, a);
+    }
+    if (strokeWidth > 0) {
+      layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, r, g, b, a);
+    }
+  } else if (drawing.type === "polygon" && drawing.points) {
+    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
+    if (worldPts.length >= 3) {
+      if (drawing.filled) {
+        layer.geometry.add_polygon(worldPts, r, g, b, a);
+      }
+      if (strokeWidth > 0) {
+        layer.geometry.add_polyline([...worldPts, worldPts[0].copy()], strokeWidth, r, g, b, a);
+      }
+    }
+  } else if (drawing.type === "curve" && drawing.points) {
+    const worldPts = drawing.points.map((p) => fpTransform(fpAt, p.x, p.y));
+    if (worldPts.length >= 2) {
+      layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+    }
+  }
+}
+function paintPad(layer, fpAt, pad, layerById) {
+  if (pad.layers.length === 0) {
+    return;
+  }
+  const [cr, cg, cb, ca] = getPadColor(pad.layers, layerById);
+  const hw = pad.size.w / 2;
+  const hh = pad.size.h / 2;
+  if (pad.shape === "circle") {
+    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+    layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+  } else if (pad.shape === "oval") {
+    const longAxis = Math.max(hw, hh);
+    const shortAxis = Math.min(hw, hh);
+    const focalDist = longAxis - shortAxis;
+    let p1, p2;
+    if (hw >= hh) {
+      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+      p2 = padTransform(fpAt, pad.at, focalDist, 0);
+    } else {
+      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+      p2 = padTransform(fpAt, pad.at, 0, focalDist);
+    }
+    layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+  } else {
+    const corners = [
+      padTransform(fpAt, pad.at, -hw, -hh),
+      padTransform(fpAt, pad.at, hw, -hh),
+      padTransform(fpAt, pad.at, hw, hh),
+      padTransform(fpAt, pad.at, -hw, hh)
+    ];
+    layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+  }
+}
+function paintSelection(renderer, fp) {
+  const layer = renderer.start_layer("selection");
+  drawFootprintSelectionBox(layer, fp, SELECTION_STROKE_WIDTH, 0.85, SELECTION_GROW, 0.12);
+  renderer.end_layer();
+}
+function paintGroupHalos(renderer, footprints, memberIndices, mode) {
+  if (memberIndices.length === 0)
+    return null;
+  const layer = renderer.start_layer(mode === "selected" ? "group-selection" : "group-hover");
+  const strokeWidth = mode === "selected" ? GROUP_SELECTION_STROKE_WIDTH : HOVER_SELECTION_STROKE_WIDTH;
+  const alpha = mode === "selected" ? 0.7 : 0.45;
+  const grow = mode === "selected" ? GROUP_SELECTION_GROW : HOVER_SELECTION_GROW;
+  const fillAlpha = mode === "selected" ? 0.09 : 0.055;
+  for (const index of memberIndices) {
+    const fp = footprints[index];
+    if (!fp)
+      continue;
+    drawFootprintSelectionBox(layer, fp, strokeWidth, alpha, grow, fillAlpha);
+  }
+  renderer.end_layer();
+  return null;
+}
+function computeBBox(model) {
+  const points = [];
+  for (const edge of model.board.edges) {
+    if (edge.start)
+      points.push(p2v(edge.start));
+    if (edge.end)
+      points.push(p2v(edge.end));
+    if (edge.mid)
+      points.push(p2v(edge.mid));
+    if (edge.center)
+      points.push(p2v(edge.center));
+  }
+  for (const drawing of model.drawings) {
+    if (drawing.start)
+      points.push(p2v(drawing.start));
+    if (drawing.end)
+      points.push(p2v(drawing.end));
+    if (drawing.mid)
+      points.push(p2v(drawing.mid));
+    if (drawing.center)
+      points.push(p2v(drawing.center));
+    if (drawing.points) {
+      for (const p of drawing.points)
+        points.push(p2v(p));
+    }
+  }
+  for (const text of model.texts) {
+    points.push(new Vec2(text.at.x, text.at.y));
+  }
+  for (const fp of model.footprints) {
+    points.push(new Vec2(fp.at.x, fp.at.y));
+    for (const pad of fp.pads) {
+      points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
+    }
+    for (const text of fp.texts) {
+      points.push(fpTransform(fp.at, text.at.x, text.at.y));
+    }
+  }
+  for (const track of model.tracks) {
+    points.push(p2v(track.start));
+    points.push(p2v(track.end));
+  }
+  if (points.length === 0)
+    return new BBox(0, 0, 100, 100);
+  return BBox.from_points(points).grow(5);
+}
+
+// src/layout_client.ts
+var LayoutClient = class {
+  baseUrl;
+  apiPrefix;
+  wsPath;
+  ws = null;
+  reconnectTimer = null;
+  constructor(baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
+    this.baseUrl = baseUrl2;
+    this.apiPrefix = apiPrefix2;
+    this.wsPath = wsPath2;
+  }
+  async fetchRenderModel() {
+    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
+    return await resp.json();
+  }
+  async executeAction(action) {
+    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(action)
+    });
+    return await resp.json();
+  }
+  async post(path) {
+    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
+    return await resp.json();
+  }
+  connect(onUpdate) {
+    const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
+    this.ws = new WebSocket(wsUrl);
+    this.ws.onopen = () => console.log("WS connected");
+    this.ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "layout_updated" && msg.model) {
+        onUpdate(msg.model);
+      }
+    };
+    this.ws.onerror = (err) => console.error("WS error:", err);
+    this.ws.onclose = () => {
+      if (this.reconnectTimer !== null) {
+        window.clearTimeout(this.reconnectTimer);
+      }
+      this.reconnectTimer = window.setTimeout(() => {
+        this.reconnectTimer = null;
+        this.connect(onUpdate);
+      }, 2e3);
+    };
+  }
+  disconnect() {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+};
 
 // src/kicad_newstroke_glyphs.ts
 var shared_glyphs = ["E_JSZS", "G][EI`", "H\\KFXFQNTNVOWPXRXWWYVZT[N[LZKY", "I[MUWU RK[RFY[", "G\\SPVQWRXTXWWYVZT[L[LFSFUGVHWJWLVNUOSPLP", "F[WYVZS[Q[NZLXKVJRJOKKLINGQFSFVGWH", "H[MPTP RW[M[MFWF", "G]L[LF RLPXP RX[XF", "MWR[RF", "G\\L[LF RX[OO RXFLR", "F^K[KFRUYFY[", "G]PFTFVGXIYMYTXXVZT[P[NZLXKTKMLINGPF", "G\\L[LFTFVGWHXJXMWOVPTQLQ", "JZLFXF RR[RF", "H\\KFY[ RYFK[", "I[RQR[ RKFRQYF", "NVPESH", "HZVZT[P[NZMYLWLQMONNPMTMVN", "MWRMR_QaObNb RRFQGRHSGRFRH", "H[P[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[", "JZMMR[WM", "G]JMN[RQV[ZM", "H\\RbRD", "F^K[KFYFY[K[", "RR", "NVTEQH", "JZRRQSRTSSRRRT", "MWR[RF RN?O@NAM@N?NA RV?W@VAU@V?VA", "G\\L[LFQFTGVIWKXOXRWVVXTZQ[L[ RIPQP", "H[P[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[ RTEQH", "I[MUWU RK[RFY[ RN>O@QASAU@V>", "IZNMN[ RPSV[ RVMNU", "G]KPYP RPFTFVGXIYMYTXXVZT[P[NZLXKTKMLINGPF", "I[NNPMTMVNWPWXVZT[P[NZMXMVWT", "H]YMVWUYTZR[P[NZMYLVLRMONNPMRMTNUOVQWXXZZ[", "IZPTNUMWMXNZP[T[VZ RRTPTNSMQMPNNPMTMVN", "MXRMRXSZU[", "H[LTWT RP[NZMYLWLQMONNPMSMUNVOWQWWVYUZS[P[", "G]RFRb RPMTMVNXPYRYVXXVZT[P[NZLXKVKRLPNNPM", "H]YMVWUYTZR[P[NZMYLVLRMONNPMRMTNUOVQWXXZZ[ RTEQH", "IZPTNUMWMXNZP[T[VZ RRTPTNSMQMPNNPMTMVN RTEQH", "I\\NMN[ RNOONQMTMVNWPWb RTEQH", "MXRMRXSZU[ RTEQH", "G]RTRX RMMLNKPKXLZN[O[QZRXSZU[V[XZYXYPXNWM", "H[MMMXNZP[S[UZVYWWWPVNUM RTEQH", "G]RTRX RMMLNKPKXLZN[O[QZRXSZU[V[XZYXYPXNWM RTEQH", "LXOTUT", "E_PKTKXMZQZUXYT[P[LYJUJQLMPK RPQRPTQUSTURVPUOSPQ", "Pf"];
@@ -21511,1142 +22418,273 @@ function layoutKicadStrokeLine(text, charWidth, charHeight) {
   return layoutKicadStrokeText(text, charWidth, charHeight);
 }
 
-// src/hit-test.ts
-var DEG_TO_RAD = Math.PI / 180;
-function fpTransform(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return new Vec2(
-    fpAt.x + localX * cos - localY * sin,
-    fpAt.y + localX * sin + localY * cos
-  );
-}
-function padTransform(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD;
-  const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = lx * pc - ly * ps;
-  const py = lx * ps + ly * pc;
-  return fpTransform(fpAt, padAt.x + px, padAt.y + py);
-}
-function footprintBBox(fp) {
-  const points = [];
-  for (const pad of fp.pads) {
-    const hw = pad.size.w / 2;
-    const hh = pad.size.h / 2;
-    points.push(padTransform(fp.at, pad.at, -hw, -hh));
-    points.push(padTransform(fp.at, pad.at, hw, -hh));
-    points.push(padTransform(fp.at, pad.at, hw, hh));
-    points.push(padTransform(fp.at, pad.at, -hw, hh));
+// src/text_overlay.ts
+var DEG_TO_RAD3 = Math.PI / 180;
+var PAD_ANNOTATION_FONT_STACK = '"IBM Plex Mono", "Roboto Mono", "Menlo", "Consolas", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace';
+var PAD_ANNOTATION_NAME_WEIGHT = 550;
+var PAD_ANNOTATION_NUMBER_WEIGHT = 650;
+var PAD_ANNOTATION_NUMBER_COLOR = "rgba(13, 20, 31, 0.98)";
+function drawPadAnnotationText(ctx, camera, viewportWidth, viewportHeight, text, worldX, worldY, rotationDeg, charH, color, fontWeight) {
+  const screenPos = camera.world_to_screen(new Vec2(worldX, worldY));
+  if (screenPos.x < -100 || screenPos.x > viewportWidth + 100 || screenPos.y < -100 || screenPos.y > viewportHeight + 100) {
+    return;
   }
-  for (const drawing of fp.drawings) {
-    if (drawing.start)
-      points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
-    if (drawing.end)
-      points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
-    if (drawing.center)
-      points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
-    if (drawing.points) {
-      for (const p of drawing.points) {
-        points.push(fpTransform(fp.at, p.x, p.y));
+  const fontPx = Math.max(charH * Math.max(camera.zoom, 1e-6), 0.8);
+  ctx.save();
+  ctx.translate(screenPos.x, screenPos.y);
+  ctx.rotate(-(rotationDeg || 0) * DEG_TO_RAD3);
+  ctx.font = `${fontWeight} ${fontPx}px ${PAD_ANNOTATION_FONT_STACK}`;
+  ctx.fontKerning = "normal";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = color;
+  const metrics = ctx.measureText(text);
+  const left = metrics.actualBoundingBoxLeft ?? 0;
+  const right = metrics.actualBoundingBoxRight ?? metrics.width;
+  const ascent = metrics.actualBoundingBoxAscent ?? fontPx * 0.78;
+  const descent = metrics.actualBoundingBoxDescent ?? fontPx * 0.22;
+  const x = -((left + right) / 2);
+  const y = (ascent - descent) / 2;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+function drawStrokeText(ctx, camera, layerById, viewportWidth, viewportHeight, spec) {
+  const screenPos = camera.world_to_screen(new Vec2(spec.worldX, spec.worldY));
+  if (screenPos.x < -100 || screenPos.x > viewportWidth + 100 || screenPos.y < -100 || screenPos.y > viewportHeight + 100) {
+    return;
+  }
+  const lines = spec.text.split("\n");
+  if (lines.length === 0)
+    return;
+  const justifySet = new Set(spec.justify ?? []);
+  const [r, g, b, a] = getLayerColor(spec.layerName, layerById);
+  const rotation = -(spec.rotationDeg || 0) * DEG_TO_RAD3;
+  const linePitch = spec.textHeight * 1.62;
+  const totalHeight = spec.textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
+  let baseOffsetY = spec.textHeight;
+  if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
+    baseOffsetY -= totalHeight / 2;
+  } else if (justifySet.has("bottom")) {
+    baseOffsetY -= totalHeight;
+  }
+  const minWorldStroke = 0.8 / Math.max(camera.zoom, 1e-6);
+  const worldStroke = Math.max(minWorldStroke, spec.thickness ?? spec.textHeight * 0.15);
+  ctx.save();
+  ctx.translate(screenPos.x, screenPos.y);
+  ctx.rotate(rotation);
+  ctx.scale(camera.zoom, camera.zoom);
+  const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = worldStroke;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+    const layout = layoutKicadStrokeLine(line, spec.textWidth, spec.textHeight);
+    if (layout.strokes.length === 0) {
+      continue;
+    }
+    let lineOffsetX = 0;
+    if (justifySet.has("right")) {
+      lineOffsetX = -layout.advance;
+    } else if (justifySet.has("center") || !justifySet.has("left") && !justifySet.has("right")) {
+      lineOffsetX = -layout.advance / 2;
+    }
+    const lineOffsetY = baseOffsetY + lineIdx * linePitch;
+    for (const stroke of layout.strokes) {
+      if (stroke.length < 2)
+        continue;
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x + lineOffsetX, stroke[0].y + lineOffsetY);
+      for (let i = 1; i < stroke.length; i++) {
+        ctx.lineTo(stroke[i].x + lineOffsetX, stroke[i].y + lineOffsetY);
       }
+      ctx.stroke();
     }
   }
-  if (points.length === 0) {
-    return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
-  }
-  return BBox.from_points(points).grow(0.2);
+  ctx.restore();
 }
-function hitTestFootprints(worldPos, footprints) {
-  for (let i = footprints.length - 1; i >= 0; i--) {
-    const bbox = footprintBBox(footprints[i]);
-    if (bbox.contains_point(worldPos)) {
-      return i;
-    }
-  }
-  return -1;
-}
-function bboxIntersects(a, b) {
-  return !(a.x2 < b.x || b.x2 < a.x || a.y2 < b.y || b.y2 < a.y);
-}
-function hitTestFootprintsInBox(selectionBox, footprints) {
-  const hits = [];
-  for (let i = 0; i < footprints.length; i++) {
-    const bbox = footprintBBox(footprints[i]);
-    if (bboxIntersects(selectionBox, bbox)) {
-      hits.push(i);
-    }
-  }
-  return hits;
-}
-
-// src/layer_order.ts
-var IN_ROOT_RE = /^In(\d+)$/i;
-var SUFFIX_PRIORITY = /* @__PURE__ */ new Map([
-  ["Cu", 0],
-  ["Drill", 1],
-  ["Fab", 2],
-  ["Mask", 3],
-  ["Nets", 4],
-  ["PadNumbers", 5],
-  ["Paste", 6],
-  ["SilkS", 7],
-  ["User", 8]
-]);
-function naturalCompare(a, b) {
-  return a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" });
-}
-function rootKey(root) {
-  if (root === "F")
-    return [0, 0, root];
-  const inMatch = root.match(IN_ROOT_RE);
-  if (inMatch)
-    return [1, Number.parseInt(inMatch[1], 10), root];
-  if (root === "B")
-    return [2, 0, root];
-  return [3, 0, root];
-}
-function paintRootKey(root) {
-  if (root === "B")
-    return [0, 0, root];
-  const inMatch = root.match(IN_ROOT_RE);
-  if (inMatch)
-    return [1, -Number.parseInt(inMatch[1], 10), root];
-  if (root === "F")
-    return [2, 0, root];
-  return [3, 0, root];
-}
-function splitLayerName(layerName) {
-  const dotIdx = layerName.indexOf(".");
-  if (dotIdx < 0) {
-    return { root: layerName, suffix: "" };
-  }
-  return {
-    root: layerName.substring(0, dotIdx),
-    suffix: layerName.substring(dotIdx + 1)
-  };
-}
-function compareLayerNames(a, b) {
-  const aSplit = splitLayerName(a);
-  const bSplit = splitLayerName(b);
-  const aRoot = rootKey(aSplit.root);
-  const bRoot = rootKey(bSplit.root);
-  if (aRoot[0] !== bRoot[0])
-    return aRoot[0] - bRoot[0];
-  if (aRoot[1] !== bRoot[1])
-    return aRoot[1] - bRoot[1];
-  const rootNameCmp = naturalCompare(aRoot[2], bRoot[2]);
-  if (rootNameCmp !== 0)
-    return rootNameCmp;
-  const aSuffixPriority = SUFFIX_PRIORITY.get(aSplit.suffix) ?? 99;
-  const bSuffixPriority = SUFFIX_PRIORITY.get(bSplit.suffix) ?? 99;
-  if (aSuffixPriority !== bSuffixPriority)
-    return aSuffixPriority - bSuffixPriority;
-  const suffixCmp = naturalCompare(aSplit.suffix, bSplit.suffix);
-  if (suffixCmp !== 0)
-    return suffixCmp;
-  return naturalCompare(a, b);
-}
-function compareLayerNamesForPaint(a, b) {
-  const aSplit = splitLayerName(a);
-  const bSplit = splitLayerName(b);
-  const aRoot = paintRootKey(aSplit.root);
-  const bRoot = paintRootKey(bSplit.root);
-  if (aRoot[0] !== bRoot[0])
-    return aRoot[0] - bRoot[0];
-  if (aRoot[1] !== bRoot[1])
-    return aRoot[1] - bRoot[1];
-  const rootNameCmp = naturalCompare(aRoot[2], bRoot[2]);
-  if (rootNameCmp !== 0)
-    return rootNameCmp;
-  const aSuffixPriority = SUFFIX_PRIORITY.get(aSplit.suffix) ?? 99;
-  const bSuffixPriority = SUFFIX_PRIORITY.get(bSplit.suffix) ?? 99;
-  if (aSuffixPriority !== bSuffixPriority)
-    return aSuffixPriority - bSuffixPriority;
-  const suffixCmp = naturalCompare(aSplit.suffix, bSplit.suffix);
-  if (suffixCmp !== 0)
-    return suffixCmp;
-  return naturalCompare(a, b);
-}
-function sortLayerNames(layerNames) {
-  return [...layerNames].sort(compareLayerNames);
-}
-function sortLayerNamesForPaint(layerNames) {
-  return [...layerNames].sort(compareLayerNamesForPaint);
-}
-
-// src/painter.ts
-var DEG_TO_RAD2 = Math.PI / 180;
-var HOLE_SEGMENTS = 36;
-var PAD_ANNOTATION_BOX_RATIO = 0.78;
-var PAD_ANNOTATION_MAJOR_FIT = 0.96;
-var PAD_ANNOTATION_MINOR_FIT = 0.88;
-var PAD_ANNOTATION_CHAR_SCALE = 0.6;
-var PAD_ANNOTATION_MIN_CHAR_H = 0.08;
-var PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
-var PAD_ANNOTATION_STROKE_SCALE = 0.22;
-var PAD_ANNOTATION_STROKE_MIN = 0.02;
-var PAD_ANNOTATION_STROKE_MAX = 0.16;
-var PAD_NAME_GENERIC_TOKENS = /* @__PURE__ */ new Set(["input", "output", "line", "net"]);
-var PAD_NAME_PREFIXES = ["power_in-", "power_vbus-", "power-"];
-var PAD_NAME_TRUNCATE_LENGTHS = [16, 12, 10, 8, 6, 5, 4, 3, 2];
-var PAD_NAME_TARGET_CHAR_H = 0.14;
-var PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
-var PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
-var PAD_NUMBER_CHAR_SCALE = 0.8;
-var PAD_NUMBER_MIN_CHAR_H = 0.04;
-var SELECTION_STROKE_WIDTH = 0.12;
-var GROUP_SELECTION_STROKE_WIDTH = 0.1;
-var HOVER_SELECTION_STROKE_WIDTH = 0.08;
-var SELECTION_GROW = 0.2;
-var GROUP_SELECTION_GROW = 0.16;
-var HOVER_SELECTION_GROW = 0.12;
-function p2v(p) {
-  return new Vec2(p.x, p.y);
-}
-function fpTransform2(fpAt, localX, localY) {
-  const rad = -(fpAt.r || 0) * DEG_TO_RAD2;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return new Vec2(
-    fpAt.x + localX * cos - localY * sin,
-    fpAt.y + localX * sin + localY * cos
-  );
-}
-function padTransform2(fpAt, padAt, lx, ly) {
-  const padRad = -(padAt.r || 0) * DEG_TO_RAD2;
-  const pc = Math.cos(padRad), ps = Math.sin(padRad);
-  const px = lx * pc - ly * ps;
-  const py = lx * ps + ly * pc;
-  return fpTransform2(fpAt, padAt.x + px, padAt.y + py);
-}
-function arcToPoints(start, mid, end, segments = 32) {
-  const ax = start.x, ay = start.y;
-  const bx = mid.x, by = mid.y;
-  const cx = end.x, cy = end.y;
-  const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-  if (Math.abs(D) < 1e-10) {
-    return [new Vec2(ax, ay), new Vec2(bx, by), new Vec2(cx, cy)];
-  }
-  const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / D;
-  const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / D;
-  const radius = Math.sqrt((ax - ux) ** 2 + (ay - uy) ** 2);
-  const startAngle = Math.atan2(ay - uy, ax - ux);
-  const midAngle = Math.atan2(by - uy, bx - ux);
-  const endAngle = Math.atan2(cy - uy, cx - ux);
-  let da1 = midAngle - startAngle;
-  while (da1 > Math.PI)
-    da1 -= 2 * Math.PI;
-  while (da1 < -Math.PI)
-    da1 += 2 * Math.PI;
-  const clockwise = da1 < 0;
-  let sweep = endAngle - startAngle;
-  if (clockwise) {
-    while (sweep > 0)
-      sweep -= 2 * Math.PI;
-  } else {
-    while (sweep < 0)
-      sweep += 2 * Math.PI;
-  }
-  const points = [];
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const angle = startAngle + sweep * t;
-    points.push(new Vec2(ux + radius * Math.cos(angle), uy + radius * Math.sin(angle)));
-  }
-  return points;
-}
-function circleToPoints(cx, cy, radius, segments = HOLE_SEGMENTS) {
-  const points = [];
-  if (radius <= 0)
-    return points;
-  for (let i = 0; i <= segments; i++) {
-    const angle = i / segments * 2 * Math.PI;
-    points.push(new Vec2(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)));
-  }
-  return points;
-}
-function drawFootprintSelectionBox(layer, fp, strokeWidth, strokeAlpha, grow, fillAlpha = 0) {
-  const bbox = footprintBBox(fp).grow(grow);
-  if (bbox.w <= 0 || bbox.h <= 0)
+function renderTextOverlay(ctx, model, camera, hiddenLayers, layerById) {
+  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  ctx.canvas.width = Math.floor(width * dpr);
+  ctx.canvas.height = Math.floor(height * dpr);
+  ctx.canvas.style.width = `${width}px`;
+  ctx.canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  if (!model || camera.zoom < 0.2)
     return;
-  const corners = [
-    new Vec2(bbox.x, bbox.y),
-    new Vec2(bbox.x2, bbox.y),
-    new Vec2(bbox.x2, bbox.y2),
-    new Vec2(bbox.x, bbox.y2),
-    new Vec2(bbox.x, bbox.y)
-  ];
-  if (fillAlpha > 0) {
-    layer.geometry.add_polygon(corners.slice(0, 4), 1, 1, 1, fillAlpha);
-  }
-  layer.geometry.add_polyline(corners, strokeWidth, 1, 1, 1, strokeAlpha);
-}
-function estimateStrokeTextAdvance(text) {
-  if (!text)
-    return 0.6;
-  const narrow = /* @__PURE__ */ new Set(["1", "I", "i", "l", "|", "!", ".", ",", ":", ";", "'", "`"]);
-  const wide = /* @__PURE__ */ new Set(["M", "W", "@", "%", "#"]);
-  let advance = 0;
-  for (const ch of text) {
-    if (ch === " ")
-      advance += 0.6;
-    else if (narrow.has(ch))
-      advance += 0.45;
-    else if (wide.has(ch))
-      advance += 0.95;
-    else
-      advance += 0.72;
-  }
-  return Math.max(advance, 0.6);
-}
-function fitTextInsideBox(text, boxW, boxH, minCharH = PAD_ANNOTATION_MIN_CHAR_H, charScale = PAD_ANNOTATION_CHAR_SCALE) {
-  if (boxW <= 0 || boxH <= 0)
-    return null;
-  const usableW = Math.max(0, boxW * PAD_ANNOTATION_BOX_RATIO);
-  const usableH = Math.max(0, boxH * PAD_ANNOTATION_BOX_RATIO);
-  if (usableW <= 0 || usableH <= 0)
-    return null;
-  const vertical = usableH > usableW;
-  const major = vertical ? usableH : usableW;
-  const minor = vertical ? usableW : usableH;
-  const advance = estimateStrokeTextAdvance(text);
-  const maxHByWidth = major / Math.max(advance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
-  let charH = Math.min(minor * PAD_ANNOTATION_MINOR_FIT, maxHByWidth * PAD_ANNOTATION_MAJOR_FIT);
-  charH *= charScale;
-  if (charH < minCharH)
-    return null;
-  const charW = charH * PAD_ANNOTATION_CHAR_W_RATIO;
-  const thickness = Math.min(
-    PAD_ANNOTATION_STROKE_MAX,
-    Math.max(PAD_ANNOTATION_STROKE_MIN, charH * PAD_ANNOTATION_STROKE_SCALE)
-  );
-  return [charW, charH, thickness];
-}
-function padNameCandidates(text) {
-  const base = text.trim();
-  if (!base)
-    return [];
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  const add = (v) => {
-    const t = v.trim();
-    if (!t || seen.has(t))
-      return;
-    seen.add(t);
-    out.push(t);
-  };
-  add(base);
-  let normalized = base;
-  for (const prefix of PAD_NAME_PREFIXES) {
-    if (normalized.startsWith(prefix))
-      normalized = normalized.slice(prefix.length);
-  }
-  add(normalized);
-  const tokens = normalized.replaceAll("/", "-").split("-").map((t) => t.trim()).filter(Boolean);
-  for (let idx = tokens.length - 1; idx >= 0; idx--) {
-    const token = tokens[idx];
-    if (PAD_NAME_GENERIC_TOKENS.has(token.toLowerCase()))
+  for (const text of model.texts) {
+    if (!text.text.trim())
       continue;
-    add(token);
-    add(token.replaceAll("[", "").replaceAll("]", ""));
-  }
-  for (const maxLen of PAD_NAME_TRUNCATE_LENGTHS) {
-    if (normalized.length > maxLen)
-      add(normalized.slice(0, maxLen));
-  }
-  return out;
-}
-function fitPadNameLabel(text, boxW, boxH) {
-  let fallback = null;
-  for (const candidate of padNameCandidates(text)) {
-    const fit = fitTextInsideBox(candidate, boxW, boxH);
-    if (!fit)
+    const layerName = text.layer;
+    if (!layerName)
       continue;
-    if (!fallback || fit[1] > fallback[1][1]) {
-      fallback = [candidate, fit];
-    }
-    if (fit[1] >= PAD_NAME_TARGET_CHAR_H) {
-      return [candidate, fit];
-    }
-  }
-  return fallback;
-}
-function rotatedRectExtents(width, height, rotationDeg) {
-  const halfW = Math.max(width, 0) / 2;
-  const halfH = Math.max(height, 0) / 2;
-  const theta = rotationDeg * DEG_TO_RAD2;
-  const c = Math.abs(Math.cos(theta));
-  const s = Math.abs(Math.sin(theta));
-  const extentX = c * halfW + s * halfH;
-  const extentY = s * halfW + c * halfH;
-  return [extentX * 2, extentY * 2];
-}
-function padLabelWorldRotation(totalPadRotationDeg, padW, padH) {
-  if (padW <= 0 || padH <= 0)
-    return 0;
-  if (Math.abs(padW - padH) <= 1e-6)
-    return 0;
-  const longAxisDeg = padW > padH ? totalPadRotationDeg : totalPadRotationDeg + 90;
-  const axisX = Math.abs(Math.cos(longAxisDeg * DEG_TO_RAD2));
-  const axisY = Math.abs(Math.sin(longAxisDeg * DEG_TO_RAD2));
-  return axisY > axisX ? 90 : 0;
-}
-function drawStrokeTextGeometry(layer, text, x, y, rotationDeg, charW, charH, thickness, color) {
-  const layout = layoutKicadStrokeLine(text, charW, charH);
-  if (layout.strokes.length === 0)
-    return;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const stroke of layout.strokes) {
-    for (const pt of stroke) {
-      if (pt.x < minX)
-        minX = pt.x;
-      if (pt.y < minY)
-        minY = pt.y;
-      if (pt.x > maxX)
-        maxX = pt.x;
-      if (pt.y > maxY)
-        maxY = pt.y;
-    }
-  }
-  if (!Number.isFinite(minX) || !Number.isFinite(minY))
-    return;
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const theta = -(rotationDeg || 0) * DEG_TO_RAD2;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  const [r, g, b, a] = color;
-  for (const stroke of layout.strokes) {
-    if (stroke.length < 2)
+    if (hiddenLayers.has(layerName))
       continue;
-    const points = [];
-    for (const pt of stroke) {
-      const lx = pt.x - cx;
-      const ly = pt.y - cy;
-      points.push(
-        new Vec2(
-          x + lx * cos - ly * sin,
-          y + lx * sin + ly * cos
-        )
-      );
-    }
-    layer.geometry.add_polyline(points, thickness, r, g, b, a);
+    drawStrokeText(ctx, camera, layerById, width, height, {
+      text: text.text,
+      worldX: text.at.x,
+      worldY: text.at.y,
+      rotationDeg: text.at.r || 0,
+      textWidth: text.size?.w ?? 1,
+      textHeight: text.size?.h ?? 1,
+      thickness: text.thickness ?? null,
+      layerName,
+      justify: text.justify
+    });
   }
-}
-function expandAnnotationLayerName(layerName, concreteLayers) {
-  const expanded = expandLayerName(layerName, concreteLayers);
-  if (expanded.length > 0)
-    return expanded;
-  if (!layerName.includes("*"))
-    return [];
-  const suffixIdx = layerName.indexOf(".");
-  const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-  if (suffix === ".Nets" || suffix === ".PadNumbers") {
-    return [`F${suffix}`, `B${suffix}`];
-  }
-  return [];
-}
-function isPadLayerVisible(padLayer, hidden, concreteLayers) {
-  if (padLayer.includes("*")) {
-    const suffix = padLayer.substring(padLayer.indexOf("."));
-    for (const l of concreteLayers) {
-      if (l.endsWith(suffix) && !hidden.has(l))
-        return true;
-    }
-    return false;
-  }
-  if (padLayer.includes("&")) {
-    const dotIdx = padLayer.indexOf(".");
-    if (dotIdx >= 0) {
-      const prefixes = padLayer.substring(0, dotIdx).split("&");
-      const suffix = padLayer.substring(dotIdx);
-      return prefixes.some((p) => !hidden.has(p + suffix));
-    }
-  }
-  return !hidden.has(padLayer);
-}
-function collectConcreteLayers(model) {
-  const layers = /* @__PURE__ */ new Set();
-  for (const d of model.drawings)
-    if (d.layer)
-      layers.add(d.layer);
-  for (const t of model.texts)
-    if (t.layer)
-      layers.add(t.layer);
   for (const fp of model.footprints) {
-    layers.add(fp.layer);
-    for (const pad of fp.pads) {
-      for (const l of pad.layers)
-        layers.add(l);
-    }
-    for (const d of fp.drawings)
-      if (d.layer)
-        layers.add(d.layer);
-    for (const t of fp.texts)
-      if (t.layer)
-        layers.add(t.layer);
-    for (const a of fp.pad_names)
-      if (a.layer)
-        layers.add(a.layer);
-    for (const a of fp.pad_numbers)
-      if (a.layer)
-        layers.add(a.layer);
-  }
-  for (const t of model.tracks)
-    if (t.layer)
-      layers.add(t.layer);
-  for (const a of model.arcs)
-    if (a.layer)
-      layers.add(a.layer);
-  for (const z of model.zones) {
-    for (const f of z.filled_polygons)
-      layers.add(f.layer);
-  }
-  for (const l of layers) {
-    if (l.includes("*") || l.includes("&"))
-      layers.delete(l);
-  }
-  return layers;
-}
-function expandLayerName(layerName, concreteLayers) {
-  if (!layerName)
-    return [];
-  if (layerName.includes("*")) {
-    const suffixIdx = layerName.indexOf(".");
-    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-    const expanded = [...concreteLayers].filter((l) => l.endsWith(suffix));
-    if (expanded.length > 0)
-      return expanded;
-    if (suffix === ".Cu")
-      return ["F.Cu", "B.Cu"];
-    if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
-      return [`F${suffix}`, `B${suffix}`];
-    }
-    return [];
-  }
-  if (layerName.includes("&")) {
-    const dotIdx = layerName.indexOf(".");
-    if (dotIdx < 0)
-      return [];
-    const prefixes = layerName.substring(0, dotIdx).split("&");
-    const suffix = layerName.substring(dotIdx);
-    return prefixes.map((p) => `${p}${suffix}`);
-  }
-  return [layerName];
-}
-function expandLayerNames(layerNames, concreteLayers) {
-  const out = /* @__PURE__ */ new Set();
-  for (const layerName of layerNames) {
-    for (const expanded of expandLayerName(layerName, concreteLayers)) {
-      out.add(expanded);
-    }
-  }
-  return [...out];
-}
-function sortedLayerEntries(layerMap) {
-  return [...layerMap.entries()].sort(([a], [b]) => compareLayerNamesForPaint(a, b));
-}
-function paintAll(renderer, model, hiddenLayers) {
-  const hidden = hiddenLayers ?? /* @__PURE__ */ new Set();
-  const concreteLayers = collectConcreteLayers(model);
-  renderer.dispose_layers();
-  if (!hidden.has("Edge.Cuts"))
-    paintBoardEdges(renderer, model);
-  paintGlobalDrawings(renderer, model, hidden, "non_copper");
-  paintZones(renderer, model, hidden, concreteLayers);
-  paintTracks(renderer, model, hidden);
-  paintGlobalDrawings(renderer, model, hidden, "copper");
-  const orderedFootprints = [...model.footprints].sort(
-    (a, b) => compareLayerNamesForPaint(a.layer ?? "F.Cu", b.layer ?? "F.Cu")
-  );
-  for (const fp of orderedFootprints) {
-    paintFootprint(renderer, fp, hidden, concreteLayers);
-  }
-  paintGlobalDrawings(renderer, model, hidden, "drill");
-}
-function paintBoardEdges(renderer, model) {
-  const layer = renderer.start_layer("Edge.Cuts");
-  const [r, g, b, a] = getLayerColor("Edge.Cuts");
-  for (const edge of model.board.edges) {
-    if (edge.type === "line" && edge.start && edge.end) {
-      layer.geometry.add_polyline([p2v(edge.start), p2v(edge.end)], 0.15, r, g, b, a);
-    } else if (edge.type === "arc" && edge.start && edge.mid && edge.end) {
-      layer.geometry.add_polyline(arcToPoints(edge.start, edge.mid, edge.end), 0.15, r, g, b, a);
-    } else if (edge.type === "circle" && edge.center && edge.end) {
-      const cx = edge.center.x, cy = edge.center.y;
-      const rad = Math.sqrt((edge.end.x - cx) ** 2 + (edge.end.y - cy) ** 2);
-      const pts = [];
-      for (let i = 0; i <= 64; i++) {
-        const angle = i / 64 * 2 * Math.PI;
-        pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
-      }
-      layer.geometry.add_polyline(pts, 0.15, r, g, b, a);
-    } else if (edge.type === "rect" && edge.start && edge.end) {
-      const s = edge.start, e = edge.end;
-      layer.geometry.add_polyline([
-        new Vec2(s.x, s.y),
-        new Vec2(e.x, s.y),
-        new Vec2(e.x, e.y),
-        new Vec2(s.x, e.y),
-        new Vec2(s.x, s.y)
-      ], 0.15, r, g, b, a);
-    }
-  }
-  renderer.end_layer();
-}
-function paintZones(renderer, model, hidden, concreteLayers) {
-  for (const zone of model.zones) {
-    const sortedFilledPolygons = [...zone.filled_polygons].sort(
-      (a, b) => compareLayerNamesForPaint(a.layer, b.layer)
-    );
-    for (const filled of sortedFilledPolygons) {
-      if (hidden.has(filled.layer))
+    for (const text of fp.texts) {
+      if (!text.text.trim())
         continue;
-      const [r, g, b] = getLayerColor(filled.layer);
-      const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
-      const pts = filled.points.map(p2v);
-      if (pts.length >= 3) {
-        layer.geometry.add_polygon(pts, r, g, b, ZONE_COLOR_ALPHA);
-      }
-      renderer.end_layer();
+      const layerName = text.layer;
+      if (!layerName)
+        continue;
+      if (hiddenLayers.has(layerName))
+        continue;
+      const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
+      const textRotation = (fp.at.r || 0) + (text.at.r || 0);
+      drawStrokeText(ctx, camera, layerById, width, height, {
+        text: text.text,
+        worldX: worldPos.x,
+        worldY: worldPos.y,
+        rotationDeg: textRotation,
+        textWidth: text.size?.w ?? 1,
+        textHeight: text.size?.h ?? 1,
+        thickness: text.thickness ?? null,
+        layerName,
+        justify: text.justify
+      });
     }
-    const zoneLayersRaw = zone.layers.length > 0 ? zone.layers : [...new Set(zone.filled_polygons.map((fp) => fp.layer))];
-    const zoneLayers = sortLayerNamesForPaint(expandLayerNames(zoneLayersRaw, concreteLayers));
-    const shouldDrawFillFromOutline = !zone.keepout && zone.fill_enabled !== false && zone.filled_polygons.length === 0 && zone.outline.length >= 3;
-    if (shouldDrawFillFromOutline) {
-      const outlinePts2 = zone.outline.map(p2v);
-      for (const layerName of zoneLayers) {
-        if (!layerName || hidden.has(layerName))
+    const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers);
+    const orderedLayers = [...annotationsByLayer.keys()].sort((a, b) => {
+      const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+      const orderB = layerById.get(b)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB)
+        return orderA - orderB;
+      return a.localeCompare(b);
+    });
+    for (const layerName of orderedLayers) {
+      const geometry = annotationsByLayer.get(layerName);
+      if (!geometry)
+        continue;
+      const [r, g, b, a] = getLayerColor(layerName, layerById);
+      const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.7)})`;
+      for (const name of geometry.names) {
+        drawPadAnnotationText(
+          ctx,
+          camera,
+          width,
+          height,
+          name.text,
+          name.x,
+          name.y,
+          name.rotation,
+          name.charH,
+          color,
+          PAD_ANNOTATION_NAME_WEIGHT
+        );
+      }
+      for (const number of geometry.numbers) {
+        if (!number.labelFit)
           continue;
-        const [r, g, b] = getLayerColor(layerName);
-        const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
-        layer.geometry.add_polygon(outlinePts2, r, g, b, ZONE_COLOR_ALPHA);
-        renderer.end_layer();
-      }
-    }
-    const shouldDrawKeepout = zone.keepout || zone.fill_enabled === false;
-    if (!shouldDrawKeepout || zone.outline.length < 3)
-      continue;
-    const outlinePts = zone.outline.map(p2v);
-    const closedOutline = [...outlinePts, outlinePts[0].copy()];
-    const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;
-    const hatchSegments = hatchSegmentsForPolygon(outlinePts, hatchPitch);
-    for (const layerName of zoneLayers) {
-      if (!layerName || hidden.has(layerName))
-        continue;
-      const [r, g, b, a] = getLayerColor(layerName);
-      const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
-      layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
-      for (const [start, end] of hatchSegments) {
-        layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45));
-      }
-      renderer.end_layer();
-    }
-  }
-}
-function hatchSegmentsForPolygon(points, pitch) {
-  if (points.length < 3 || pitch <= 0)
-    return [];
-  const eps = 1e-6;
-  const closed = [...points, points[0]];
-  let minV = Infinity;
-  let maxV = -Infinity;
-  for (const p of points) {
-    const v = p.y - p.x;
-    if (v < minV)
-      minV = v;
-    if (v > maxV)
-      maxV = v;
-  }
-  const segments = [];
-  for (let c = minV - pitch; c <= maxV + pitch; c += pitch) {
-    const rawIntersections = [];
-    for (let i = 0; i < closed.length - 1; i++) {
-      const a = closed[i];
-      const b = closed[i + 1];
-      const fa = a.y - a.x - c;
-      const fb = b.y - b.x - c;
-      if (fa > eps && fb > eps || fa < -eps && fb < -eps)
-        continue;
-      const denom = fa - fb;
-      if (Math.abs(denom) < eps)
-        continue;
-      const t = fa / denom;
-      if (t < -eps || t > 1 + eps)
-        continue;
-      rawIntersections.push(
-        new Vec2(
-          a.x + (b.x - a.x) * t,
-          a.y + (b.y - a.y) * t
-        )
-      );
-    }
-    rawIntersections.sort((p, q) => p.x - q.x || p.y - q.y);
-    const intersections = [];
-    for (const p of rawIntersections) {
-      const last = intersections[intersections.length - 1];
-      if (!last || Math.abs(last.x - p.x) > eps || Math.abs(last.y - p.y) > eps) {
-        intersections.push(p);
-      }
-    }
-    for (let i = 0; i + 1 < intersections.length; i += 2) {
-      segments.push([intersections[i], intersections[i + 1]]);
-    }
-  }
-  return segments;
-}
-function paintTracks(renderer, model, hidden) {
-  const byLayer = /* @__PURE__ */ new Map();
-  for (const track of model.tracks) {
-    const ln = track.layer ?? "F.Cu";
-    if (hidden.has(ln))
-      continue;
-    let arr = byLayer.get(ln);
-    if (!arr) {
-      arr = [];
-      byLayer.set(ln, arr);
-    }
-    arr.push(track);
-  }
-  for (const [layerName, tracks] of sortedLayerEntries(byLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
-    const layer = renderer.start_layer(`tracks:${layerName}`);
-    for (const track of tracks) {
-      layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
-    }
-    renderer.end_layer();
-  }
-  if (model.arcs.length > 0) {
-    const arcByLayer = /* @__PURE__ */ new Map();
-    for (const arc of model.arcs) {
-      const ln = arc.layer ?? "F.Cu";
-      if (hidden.has(ln))
-        continue;
-      let arr = arcByLayer.get(ln);
-      if (!arr) {
-        arr = [];
-        arcByLayer.set(ln, arr);
-      }
-      arr.push(arc);
-    }
-    for (const [layerName, arcs] of sortedLayerEntries(arcByLayer)) {
-      const [r, g, b, a] = getLayerColor(layerName);
-      const layer = renderer.start_layer(`arc_tracks:${layerName}`);
-      for (const arc of arcs) {
-        layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
-      }
-      renderer.end_layer();
-    }
-  }
-}
-function isDrillLayer(layerName) {
-  return (layerName ?? "").endsWith(".Drill");
-}
-function isCopperLayer(layerName) {
-  return (layerName ?? "").endsWith(".Cu");
-}
-function shouldPaintGlobalDrawing(layerName, mode) {
-  const drill = isDrillLayer(layerName);
-  const copper = isCopperLayer(layerName);
-  if (mode === "drill")
-    return drill;
-  if (mode === "copper")
-    return !drill && copper;
-  return !drill && !copper;
-}
-function paintGlobalDrawings(renderer, model, hidden, mode) {
-  const byLayer = /* @__PURE__ */ new Map();
-  for (const drawing of model.drawings) {
-    const ln = drawing.layer ?? "Dwgs.User";
-    if (!shouldPaintGlobalDrawing(ln, mode))
-      continue;
-    if (hidden.has(ln))
-      continue;
-    let arr = byLayer.get(ln);
-    if (!arr) {
-      arr = [];
-      byLayer.set(ln, arr);
-    }
-    arr.push(drawing);
-  }
-  const worldAt = { x: 0, y: 0, r: 0 };
-  for (const [layerName, drawings] of sortedLayerEntries(byLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
-    const layer = renderer.start_layer(`global:${layerName}`);
-    for (const drawing of drawings) {
-      paintDrawing(layer, worldAt, drawing, r, g, b, a);
-    }
-    renderer.end_layer();
-  }
-}
-function paintFootprint(renderer, fp, hidden, concreteLayers) {
-  const drawingsByLayer = /* @__PURE__ */ new Map();
-  const drillDrawingsByLayer = /* @__PURE__ */ new Map();
-  for (const drawing of fp.drawings) {
-    const ln = drawing.layer ?? "F.SilkS";
-    if (hidden.has(ln))
-      continue;
-    const map = isDrillLayer(ln) ? drillDrawingsByLayer : drawingsByLayer;
-    let arr = map.get(ln);
-    if (!arr) {
-      arr = [];
-      map.set(ln, arr);
-    }
-    arr.push(drawing);
-  }
-  for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
-    const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
-    for (const drawing of drawings) {
-      paintDrawing(layer, fp.at, drawing, r, g, b, a);
-    }
-    renderer.end_layer();
-  }
-  if (fp.pads.length > 0) {
-    const anyVisible = fp.pads.some(
-      (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
-    );
-    if (anyVisible) {
-      const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-      const visiblePads = fp.pads.filter(
-        (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
-      );
-      for (const pad of visiblePads) {
-        paintPad(layer, fp.at, pad);
-      }
-      renderer.end_layer();
-    }
-  }
-  for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer)) {
-    const [r, g, b, a] = getLayerColor(layerName);
-    const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
-    for (const drawing of drawings) {
-      paintDrawing(layer, fp.at, drawing, r, g, b, a);
-    }
-    renderer.end_layer();
-  }
-  paintPadAnnotations(renderer, fp, hidden, concreteLayers);
-}
-function paintPadAnnotations(renderer, fp, hidden, concreteLayers) {
-  if (fp.pads.length === 0)
-    return;
-  if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0)
-    return;
-  const resolvePad = (padIndex, padName) => {
-    const byIndex = fp.pads[padIndex];
-    if (byIndex && byIndex.name === padName) {
-      return byIndex;
-    }
-    for (const candidate of fp.pads) {
-      if (candidate.name === padName)
-        return candidate;
-    }
-    return null;
-  };
-  const layerGeometry = /* @__PURE__ */ new Map();
-  const ensureLayerGeometry = (layerName) => {
-    let entry = layerGeometry.get(layerName);
-    if (!entry) {
-      entry = { names: [], numbers: [] };
-      layerGeometry.set(layerName, entry);
-    }
-    return entry;
-  };
-  for (const annotation of fp.pad_names) {
-    if (!annotation.text.trim())
-      continue;
-    const pad = resolvePad(annotation.pad_index, annotation.pad);
-    if (!pad)
-      continue;
-    const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
-    const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
-    const fitted = fitPadNameLabel(annotation.text, bboxW, bboxH);
-    if (!fitted)
-      continue;
-    const [displayText, [charW, charH, thickness]] = fitted;
-    const worldCenter = fpTransform2(fp.at, pad.at.x, pad.at.y);
-    const textRotation = padLabelWorldRotation(totalRotation, pad.size.w, pad.size.h);
-    for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
-      if (hidden.has(layerName))
-        continue;
-      ensureLayerGeometry(layerName).names.push({
-        text: displayText,
-        x: worldCenter.x,
-        y: worldCenter.y,
-        rotation: textRotation,
-        charW,
-        charH,
-        thickness
-      });
-    }
-  }
-  for (const annotation of fp.pad_numbers) {
-    if (!annotation.text.trim())
-      continue;
-    const pad = resolvePad(annotation.pad_index, annotation.pad);
-    if (!pad)
-      continue;
-    const totalRotation = (fp.at.r || 0) + (pad.at.r || 0);
-    const [bboxW, bboxH] = rotatedRectExtents(pad.size.w, pad.size.h, totalRotation);
-    const badgeDiameter = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_SIZE_RATIO, 0.18);
-    const badgeRadius = badgeDiameter / 2;
-    const margin = Math.max(Math.min(bboxW, bboxH) * PAD_NUMBER_BADGE_MARGIN_RATIO, 0.03);
-    const worldCenter = fpTransform2(fp.at, pad.at.x, pad.at.y);
-    const badgeCenterX = worldCenter.x - bboxW / 2 + margin + badgeRadius;
-    const badgeCenterY = worldCenter.y - bboxH / 2 + margin + badgeRadius;
-    const labelFit = fitTextInsideBox(
-      annotation.text,
-      badgeDiameter * 0.92,
-      badgeDiameter * 0.92,
-      PAD_NUMBER_MIN_CHAR_H,
-      PAD_NUMBER_CHAR_SCALE
-    );
-    for (const layerName of expandAnnotationLayerName(annotation.layer, concreteLayers)) {
-      if (hidden.has(layerName))
-        continue;
-      ensureLayerGeometry(layerName).numbers.push({
-        text: annotation.text,
-        badgeCenterX,
-        badgeCenterY,
-        badgeRadius,
-        labelFit
-      });
-    }
-  }
-  for (const layerName of sortLayerNamesForPaint(layerGeometry.keys())) {
-    const geometry = layerGeometry.get(layerName);
-    if (!geometry)
-      continue;
-    const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
-    const [r, g, b, a] = getLayerColor(layerName);
-    for (const name of geometry.names) {
-      drawStrokeTextGeometry(
-        layer,
-        name.text,
-        name.x,
-        name.y,
-        name.rotation,
-        name.charW,
-        name.charH,
-        name.thickness,
-        [r, g, b, a]
-      );
-    }
-    for (const number of geometry.numbers) {
-      layer.geometry.add_circle(number.badgeCenterX, number.badgeCenterY, number.badgeRadius, r, g, b, Math.max(a, 0.98));
-      const outlinePoints = circleToPoints(number.badgeCenterX, number.badgeCenterY, number.badgeRadius);
-      if (outlinePoints.length > 1) {
-        layer.geometry.add_polyline(outlinePoints, Math.max(number.badgeRadius * 0.18, 0.04), 0.05, 0.08, 0.12, 0.8);
-      }
-      if (number.labelFit) {
-        const [charW, charH, thickness] = number.labelFit;
-        drawStrokeTextGeometry(
-          layer,
+        const [, charH] = number.labelFit;
+        drawPadAnnotationText(
+          ctx,
+          camera,
+          width,
+          height,
           number.text,
           number.badgeCenterX,
           number.badgeCenterY,
           0,
-          charW,
           charH,
-          thickness,
-          [0.05, 0.08, 0.12, 0.98]
+          PAD_ANNOTATION_NUMBER_COLOR,
+          PAD_ANNOTATION_NUMBER_WEIGHT
         );
       }
     }
-    renderer.end_layer();
   }
 }
-function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
-  const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
-  const strokeWidth = rawWidth > 0 ? rawWidth : drawing.filled ? 0 : 0.12;
-  if (drawing.type === "line" && drawing.start && drawing.end) {
-    const p1 = fpTransform2(fpAt, drawing.start.x, drawing.start.y);
-    const p2 = fpTransform2(fpAt, drawing.end.x, drawing.end.y);
-    layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
-  } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
-    const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
-    const worldPts = localPts.map((p) => fpTransform2(fpAt, p.x, p.y));
-    layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
-  } else if (drawing.type === "circle" && drawing.center && drawing.end) {
-    const cx = drawing.center.x, cy = drawing.center.y;
-    const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
-    const pts = [];
-    for (let i = 0; i <= 48; i++) {
-      const angle = i / 48 * 2 * Math.PI;
-      pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
-    }
-    const worldPts = pts.map((p) => fpTransform2(fpAt, p.x, p.y));
-    if (drawing.filled && worldPts.length >= 3) {
-      layer.geometry.add_polygon(worldPts, r, g, b, a);
-    }
-    if (strokeWidth > 0) {
-      layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
-    }
-  } else if (drawing.type === "rect" && drawing.start && drawing.end) {
-    const s = drawing.start, e = drawing.end;
-    const corners = [
-      fpTransform2(fpAt, s.x, s.y),
-      fpTransform2(fpAt, e.x, s.y),
-      fpTransform2(fpAt, e.x, e.y),
-      fpTransform2(fpAt, s.x, e.y)
-    ];
-    if (drawing.filled) {
-      layer.geometry.add_polygon(corners, r, g, b, a);
-    }
-    if (strokeWidth > 0) {
-      layer.geometry.add_polyline([...corners, corners[0].copy()], strokeWidth, r, g, b, a);
-    }
-  } else if (drawing.type === "polygon" && drawing.points) {
-    const worldPts = drawing.points.map((p) => fpTransform2(fpAt, p.x, p.y));
-    if (worldPts.length >= 3) {
-      if (drawing.filled) {
-        layer.geometry.add_polygon(worldPts, r, g, b, a);
-      }
-      if (strokeWidth > 0) {
-        layer.geometry.add_polyline([...worldPts, worldPts[0].copy()], strokeWidth, r, g, b, a);
-      }
-    }
-  } else if (drawing.type === "curve" && drawing.points) {
-    const worldPts = drawing.points.map((p) => fpTransform2(fpAt, p.x, p.y));
-    if (worldPts.length >= 2) {
-      layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
-    }
+
+// src/render_loop.ts
+var RenderLoop = class {
+  constructor(tick) {
+    this.tick = tick;
   }
-}
-function paintPad(layer, fpAt, pad) {
-  if (pad.layers.length === 0) {
-    return;
+  rafHandle = null;
+  start() {
+    if (this.rafHandle !== null)
+      return;
+    const loop = () => {
+      this.tick();
+      this.rafHandle = window.requestAnimationFrame(loop);
+    };
+    this.rafHandle = window.requestAnimationFrame(loop);
   }
-  const [cr, cg, cb, ca] = getPadColor(pad.layers);
-  const hw = pad.size.w / 2;
-  const hh = pad.size.h / 2;
-  if (pad.shape === "circle") {
-    const center = fpTransform2(fpAt, pad.at.x, pad.at.y);
-    layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
-  } else if (pad.shape === "oval") {
-    const longAxis = Math.max(hw, hh);
-    const shortAxis = Math.min(hw, hh);
-    const focalDist = longAxis - shortAxis;
-    let p1, p2;
-    if (hw >= hh) {
-      p1 = padTransform2(fpAt, pad.at, -focalDist, 0);
-      p2 = padTransform2(fpAt, pad.at, focalDist, 0);
-    } else {
-      p1 = padTransform2(fpAt, pad.at, 0, -focalDist);
-      p2 = padTransform2(fpAt, pad.at, 0, focalDist);
+  stop() {
+    if (this.rafHandle === null)
+      return;
+    window.cancelAnimationFrame(this.rafHandle);
+    this.rafHandle = null;
+  }
+};
+
+// src/footprint_groups.ts
+function buildGroupIndex(model) {
+  const groupsById = /* @__PURE__ */ new Map();
+  const groupIdByFpIndex = /* @__PURE__ */ new Map();
+  const indexByUuid = /* @__PURE__ */ new Map();
+  for (let i = 0; i < model.footprints.length; i++) {
+    const uuid = model.footprints[i].uuid;
+    if (uuid)
+      indexByUuid.set(uuid, i);
+  }
+  const usedIds = /* @__PURE__ */ new Set();
+  for (let i = 0; i < model.footprint_groups.length; i++) {
+    const group = model.footprint_groups[i];
+    const memberIndices = [];
+    const memberUuids = [];
+    for (const memberUuid of group.member_uuids) {
+      if (!memberUuid)
+        continue;
+      const fpIndex = indexByUuid.get(memberUuid);
+      if (fpIndex === void 0)
+        continue;
+      memberIndices.push(fpIndex);
+      memberUuids.push(memberUuid);
     }
-    layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
-  } else {
-    const corners = [
-      padTransform2(fpAt, pad.at, -hw, -hh),
-      padTransform2(fpAt, pad.at, hw, -hh),
-      padTransform2(fpAt, pad.at, hw, hh),
-      padTransform2(fpAt, pad.at, -hw, hh)
-    ];
-    layer.geometry.add_polygon(corners, cr, cg, cb, ca);
-  }
-}
-function paintSelection(renderer, fp) {
-  const layer = renderer.start_layer("selection");
-  drawFootprintSelectionBox(layer, fp, SELECTION_STROKE_WIDTH, 0.85, SELECTION_GROW, 0.12);
-  renderer.end_layer();
-}
-function paintGroupHalos(renderer, footprints, memberIndices, mode) {
-  if (memberIndices.length === 0)
-    return null;
-  const layer = renderer.start_layer(mode === "selected" ? "group-selection" : "group-hover");
-  const strokeWidth = mode === "selected" ? GROUP_SELECTION_STROKE_WIDTH : HOVER_SELECTION_STROKE_WIDTH;
-  const alpha = mode === "selected" ? 0.7 : 0.45;
-  const grow = mode === "selected" ? GROUP_SELECTION_GROW : HOVER_SELECTION_GROW;
-  const fillAlpha = mode === "selected" ? 0.09 : 0.055;
-  for (const index of memberIndices) {
-    const fp = footprints[index];
-    if (!fp)
+    if (memberIndices.length < 2)
       continue;
-    drawFootprintSelectionBox(layer, fp, strokeWidth, alpha, grow, fillAlpha);
-  }
-  renderer.end_layer();
-  return null;
-}
-function computeBBox(model) {
-  const points = [];
-  for (const edge of model.board.edges) {
-    if (edge.start)
-      points.push(p2v(edge.start));
-    if (edge.end)
-      points.push(p2v(edge.end));
-    if (edge.mid)
-      points.push(p2v(edge.mid));
-    if (edge.center)
-      points.push(p2v(edge.center));
-  }
-  for (const drawing of model.drawings) {
-    if (drawing.start)
-      points.push(p2v(drawing.start));
-    if (drawing.end)
-      points.push(p2v(drawing.end));
-    if (drawing.mid)
-      points.push(p2v(drawing.mid));
-    if (drawing.center)
-      points.push(p2v(drawing.center));
-    if (drawing.points) {
-      for (const p of drawing.points)
-        points.push(p2v(p));
+    let id = group.uuid || group.name || `group-${i + 1}`;
+    if (usedIds.has(id)) {
+      let suffix = 2;
+      while (usedIds.has(`${id}:${suffix}`))
+        suffix++;
+      id = `${id}:${suffix}`;
+    }
+    usedIds.add(id);
+    const uiGroup = {
+      id,
+      uuid: group.uuid,
+      name: group.name,
+      memberUuids,
+      memberIndices
+    };
+    groupsById.set(id, uiGroup);
+    for (const fpIndex of memberIndices) {
+      if (!groupIdByFpIndex.has(fpIndex)) {
+        groupIdByFpIndex.set(fpIndex, id);
+      }
     }
   }
-  for (const text of model.texts) {
-    points.push(new Vec2(text.at.x, text.at.y));
-  }
-  for (const fp of model.footprints) {
-    points.push(new Vec2(fp.at.x, fp.at.y));
-    for (const pad of fp.pads) {
-      points.push(fpTransform2(fp.at, pad.at.x, pad.at.y));
-    }
-    for (const text of fp.texts) {
-      points.push(fpTransform2(fp.at, text.at.x, text.at.y));
-    }
-  }
-  for (const track of model.tracks) {
-    points.push(p2v(track.start));
-    points.push(p2v(track.end));
-  }
-  if (points.length === 0)
-    return new BBox(0, 0, 100, 100);
-  return BBox.from_points(points).grow(5);
+  return { groupsById, groupIdByFpIndex };
 }
 
 // src/editor.ts
-var DEG_TO_RAD3 = Math.PI / 180;
-function expandLayerName2(layerName, concreteLayers) {
-  if (!layerName)
-    return [];
-  if (layerName.includes("*")) {
-    const suffixIdx = layerName.indexOf(".");
-    const suffix = suffixIdx >= 0 ? layerName.substring(suffixIdx) : "";
-    const expanded = [...concreteLayers].filter((l) => l.endsWith(suffix));
-    if (expanded.length > 0)
-      return expanded;
-    if (suffix === ".Cu")
-      return ["F.Cu", "B.Cu"];
-    if (suffix === ".Nets" || suffix === ".PadNumbers" || suffix === ".Drill") {
-      return [`F${suffix}`, `B${suffix}`];
-    }
-    return [];
-  }
-  if (layerName.includes("&")) {
-    const dotIdx = layerName.indexOf(".");
-    if (dotIdx < 0)
-      return [];
-    const prefixes = layerName.substring(0, dotIdx).split("&");
-    const suffix = layerName.substring(dotIdx);
-    return prefixes.map((p) => `${p}${suffix}`);
-  }
-  return [layerName];
-}
 var Editor = class {
   canvas;
   textOverlay;
@@ -22654,11 +22692,9 @@ var Editor = class {
   renderer;
   camera;
   panAndZoom;
+  client;
+  renderLoop;
   model = null;
-  baseUrl;
-  apiPrefix;
-  wsPath;
-  ws = null;
   // Selection & interaction state
   selectionMode = "none";
   selectedFpIndex = -1;
@@ -22679,27 +22715,33 @@ var Editor = class {
   needsRedraw = true;
   // Layer visibility
   hiddenLayers = /* @__PURE__ */ new Set();
-  defaultLayerVisibilityInitialized = false;
+  defaultLayerVisibilityApplied = /* @__PURE__ */ new Set();
   onLayersChanged = null;
+  onModelChanged = null;
   // Track current mouse position
   lastMouseScreen = new Vec2(0, 0);
   // Mouse coordinate callback
   onMouseMoveCallback = null;
+  // Selection change callback (for BOM panel sync)
+  onSelectionChangedCallback = null;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
     this.textOverlay = this.createTextOverlay();
     this.textCtx = this.textOverlay.getContext("2d");
-    this.baseUrl = baseUrl2;
-    this.apiPrefix = apiPrefix2;
-    this.wsPath = wsPath2;
     this.renderer = new Renderer(canvas2);
     this.camera = new Camera2();
     this.panAndZoom = new PanAndZoom(canvas2, this.camera, () => this.requestRedraw());
+    this.client = new LayoutClient(baseUrl2, apiPrefix2, wsPath2);
+    this.renderLoop = new RenderLoop(() => this.onRenderFrame());
     this.setupMouseHandlers();
     this.setupKeyboardHandlers();
     this.setupResizeHandler();
+    window.addEventListener("beforeunload", () => {
+      this.renderLoop.stop();
+      this.client.disconnect();
+    });
     this.renderer.setup();
-    this.startRenderLoop();
+    this.renderLoop.start();
   }
   createTextOverlay() {
     const existing = document.getElementById("editor-text-overlay");
@@ -22723,8 +22765,8 @@ var Editor = class {
     this.connectWebSocket();
   }
   async fetchAndPaint() {
-    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-    this.applyModel(await resp.json(), true);
+    const model = await this.client.fetchRenderModel();
+    this.applyModel(model, true);
   }
   applyModel(model, fitToView = false) {
     const prevSelectedUuid = this.getSelectedSingleUuid();
@@ -22743,14 +22785,18 @@ var Editor = class {
     this.requestRedraw();
     if (this.onLayersChanged)
       this.onLayersChanged();
+    if (this.onModelChanged)
+      this.onModelChanged();
   }
   applyDefaultLayerVisibility() {
-    if (!this.model || this.defaultLayerVisibilityInitialized)
+    if (!this.model)
       return;
-    this.defaultLayerVisibilityInitialized = true;
-    for (const layerName of this.getLayers()) {
-      if (layerName.endsWith(".Fab")) {
-        this.hiddenLayers.add(layerName);
+    for (const layer of this.model.layers) {
+      if (this.defaultLayerVisibilityApplied.has(layer.id))
+        continue;
+      this.defaultLayerVisibilityApplied.add(layer.id);
+      if (!layer.default_visible) {
+        this.hiddenLayers.add(layer.id);
       }
     }
   }
@@ -22782,55 +22828,11 @@ var Editor = class {
     this.paintBoxSelectionOverlay();
   }
   rebuildGroupIndex() {
-    this.groupsById.clear();
-    this.groupIdByFpIndex.clear();
     if (!this.model)
       return;
-    const indexByUuid = /* @__PURE__ */ new Map();
-    for (let i = 0; i < this.model.footprints.length; i++) {
-      const uuid = this.model.footprints[i].uuid;
-      if (uuid)
-        indexByUuid.set(uuid, i);
-    }
-    const rawGroups = this.model.footprint_groups ?? [];
-    const usedIds = /* @__PURE__ */ new Set();
-    for (let i = 0; i < rawGroups.length; i++) {
-      const group = rawGroups[i];
-      const memberIndices = [];
-      const memberUuids = [];
-      for (const memberUuid of group.member_uuids) {
-        if (!memberUuid)
-          continue;
-        const fpIndex = indexByUuid.get(memberUuid);
-        if (fpIndex === void 0)
-          continue;
-        memberIndices.push(fpIndex);
-        memberUuids.push(memberUuid);
-      }
-      if (memberIndices.length < 2)
-        continue;
-      let idBase = group.uuid || group.name || `group-${i + 1}`;
-      if (usedIds.has(idBase)) {
-        let suffix = 2;
-        while (usedIds.has(`${idBase}:${suffix}`))
-          suffix++;
-        idBase = `${idBase}:${suffix}`;
-      }
-      usedIds.add(idBase);
-      const uiGroup = {
-        id: idBase,
-        uuid: group.uuid,
-        name: group.name,
-        memberUuids,
-        memberIndices
-      };
-      this.groupsById.set(idBase, uiGroup);
-      for (const fpIndex of memberIndices) {
-        if (!this.groupIdByFpIndex.has(fpIndex)) {
-          this.groupIdByFpIndex.set(fpIndex, idBase);
-        }
-      }
-    }
+    const index = buildGroupIndex(this.model);
+    this.groupsById = index.groupsById;
+    this.groupIdByFpIndex = index.groupIdByFpIndex;
   }
   getSelectedSingleUuid() {
     if (!this.model || this.selectedFpIndex < 0)
@@ -22893,6 +22895,21 @@ var Editor = class {
     }
     this.singleOverrideMode = false;
   }
+  fireSelectionChanged() {
+    if (!this.onSelectionChangedCallback)
+      return;
+    let uuids = [];
+    if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+      const uuid = this.model?.footprints[this.selectedFpIndex]?.uuid;
+      if (uuid)
+        uuids = [uuid];
+    } else if (this.selectionMode === "multi") {
+      uuids = this.getSelectedMultiUuids();
+    } else if (this.selectionMode === "group" && this.selectedGroupId) {
+      uuids = this.selectedGroupMemberUuids();
+    }
+    this.onSelectionChangedCallback(uuids, this.selectionMode);
+  }
   setSingleSelection(index, enterOverride) {
     this.selectionMode = "single";
     this.selectedFpIndex = index;
@@ -22903,6 +22920,7 @@ var Editor = class {
     } else if (!this.groupIdByFpIndex.has(index)) {
       this.singleOverrideMode = false;
     }
+    this.fireSelectionChanged();
   }
   setMultiSelection(indices) {
     const normalized = [...new Set(indices)].filter((i) => i >= 0).sort((a, b) => a - b);
@@ -22919,6 +22937,7 @@ var Editor = class {
     this.selectedGroupId = null;
     this.selectedFpIndex = -1;
     this.singleOverrideMode = false;
+    this.fireSelectionChanged();
   }
   setGroupSelection(groupId) {
     this.selectionMode = "group";
@@ -22926,6 +22945,7 @@ var Editor = class {
     this.selectedFpIndex = -1;
     this.selectedMultiIndices = [];
     this.singleOverrideMode = false;
+    this.fireSelectionChanged();
   }
   clearSelection(exitSingleOverride = false) {
     this.selectionMode = "none";
@@ -22939,6 +22959,7 @@ var Editor = class {
     if (exitSingleOverride) {
       this.singleOverrideMode = false;
     }
+    this.fireSelectionChanged();
   }
   selectedGroup() {
     if (!this.selectedGroupId)
@@ -23047,19 +23068,7 @@ var Editor = class {
     this.repaintWithSelection();
   }
   connectWebSocket() {
-    const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
-    this.ws = new WebSocket(wsUrl);
-    this.ws.onopen = () => console.log("WS connected");
-    this.ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "layout_updated" && msg.model) {
-        this.applyModel(msg.model);
-      }
-    };
-    this.ws.onerror = (err) => console.error("WS error:", err);
-    this.ws.onclose = () => {
-      setTimeout(() => this.connectWebSocket(), 2e3);
-    };
+    this.client.connect((model) => this.applyModel(model));
   }
   setupMouseHandlers() {
     this.canvas.addEventListener("mousedown", (e) => {
@@ -23289,12 +23298,7 @@ var Editor = class {
   }
   async executeAction(action) {
     try {
-      const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(action)
-      });
-      const data = await resp.json();
+      const data = await this.client.executeAction(action);
       if (data.status === "error") {
         console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
       }
@@ -23306,8 +23310,7 @@ var Editor = class {
   }
   async serverAction(path) {
     try {
-      const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
-      const data = await resp.json();
+      const data = await this.client.post(path);
       if (data.status === "error") {
         console.warn(`${path} failed (${data.code}): ${data.message ?? "unknown error"}`);
       }
@@ -23341,77 +23344,33 @@ var Editor = class {
   isLayerVisible(layer) {
     return !this.hiddenLayers.has(layer);
   }
-  getLayers() {
+  getLayerMap() {
+    const layerById = /* @__PURE__ */ new Map();
+    if (!this.model)
+      return layerById;
+    for (const layer of this.model.layers) {
+      layerById.set(layer.id, layer);
+    }
+    return layerById;
+  }
+  getLayerModels() {
     if (!this.model)
       return [];
-    const layers = /* @__PURE__ */ new Set();
-    for (const d of this.model.drawings) {
-      if (d.layer)
-        layers.add(d.layer);
-    }
-    for (const t of this.model.texts) {
-      if (t.layer)
-        layers.add(t.layer);
-    }
-    for (const fp of this.model.footprints) {
-      layers.add(fp.layer);
-      for (const pad of fp.pads) {
-        for (const l of pad.layers)
-          layers.add(l);
-      }
-      for (const d of fp.drawings) {
-        if (d.layer)
-          layers.add(d.layer);
-      }
-      for (const t of fp.texts) {
-        if (t.layer)
-          layers.add(t.layer);
-      }
-      for (const a of fp.pad_names) {
-        if (a.layer)
-          layers.add(a.layer);
-      }
-      for (const a of fp.pad_numbers) {
-        if (a.layer)
-          layers.add(a.layer);
-      }
-    }
-    for (const t of this.model.tracks) {
-      if (t.layer)
-        layers.add(t.layer);
-    }
-    for (const a of this.model.arcs) {
-      if (a.layer)
-        layers.add(a.layer);
-    }
-    for (const z of this.model.zones) {
-      for (const fp of z.filled_polygons)
-        layers.add(fp.layer);
-    }
-    const concreteLayers = new Set(
-      [...layers].filter((l) => !l.includes("*") && !l.includes("&"))
-    );
-    for (const layerName of [...layers]) {
-      for (const expanded of expandLayerName2(layerName, concreteLayers)) {
-        layers.add(expanded);
-      }
-    }
-    for (const z of this.model.zones) {
-      for (const layerName of z.layers) {
-        for (const expanded of expandLayerName2(layerName, concreteLayers)) {
-          layers.add(expanded);
-        }
-      }
-    }
-    layers.add("Edge.Cuts");
-    for (const l of layers) {
-      if (l.includes("*") || l.includes("&"))
-        layers.delete(l);
-    }
-    return sortLayerNames(layers);
+    return [...this.model.layers].sort((a, b) => {
+      const orderDiff = a.panel_order - b.panel_order;
+      if (orderDiff !== 0)
+        return orderDiff;
+      return a.id.localeCompare(b.id);
+    });
+  }
+  getLayers() {
+    return this.getLayerModels().map((layer) => layer.id);
   }
   setOnLayersChanged(cb) {
     this.onLayersChanged = cb;
+  }
+  setOnModelChanged(cb) {
+    this.onModelChanged = cb;
   }
   setOnMouseMove(cb) {
     this.onMouseMoveCallback = cb;
@@ -23426,148 +23385,487 @@ var Editor = class {
   drawTextOverlay() {
     if (!this.textCtx)
       return;
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
-    const dpr = window.devicePixelRatio || 1;
-    const pixelWidth = Math.max(1, Math.round(width * dpr));
-    const pixelHeight = Math.max(1, Math.round(height * dpr));
-    if (this.textOverlay.width !== pixelWidth || this.textOverlay.height !== pixelHeight) {
-      this.textOverlay.width = pixelWidth;
-      this.textOverlay.height = pixelHeight;
-    }
-    this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.textCtx.clearRect(0, 0, width, height);
-    if (!this.model || this.camera.zoom < 0.2)
-      return;
-    for (const text of this.model.texts) {
-      if (!text.text.trim())
-        continue;
-      const layerName = text.layer ?? "Dwgs.User";
-      if (this.hiddenLayers.has(layerName))
-        continue;
-      this.drawOverlayText(
-        text.text,
-        layerName,
-        text.at.x,
-        text.at.y,
-        text.at.r || 0,
-        text.size?.w ?? text.size?.h ?? 1,
-        text.size?.h ?? text.size?.w ?? 1,
-        text.thickness,
-        text.justify,
-        width,
-        height
-      );
-    }
-    for (const fp of this.model.footprints) {
-      for (const text of fp.texts) {
-        if (!text.text.trim())
-          continue;
-        const layerName = text.layer ?? fp.layer;
-        if (this.hiddenLayers.has(layerName))
-          continue;
-        const worldPos = this.transformFootprintPoint(fp.at, text.at.x, text.at.y);
-        const textRotation = (fp.at.r || 0) + (text.at.r || 0);
-        this.drawOverlayText(
-          text.text,
-          layerName,
-          worldPos.x,
-          worldPos.y,
-          textRotation,
-          text.size?.w ?? text.size?.h ?? 1,
-          text.size?.h ?? text.size?.w ?? 1,
-          text.thickness,
-          text.justify,
-          width,
-          height
-        );
-      }
-    }
-  }
-  drawOverlayText(text, layerName, worldX, worldY, rotationDeg, textWidth, textHeight, thickness, justify, width, height) {
-    if (!this.textCtx)
-      return;
-    const screenPos = this.camera.world_to_screen(new Vec2(worldX, worldY));
-    if (screenPos.x < -200 || screenPos.x > width + 200 || screenPos.y < -50 || screenPos.y > height + 50) {
-      return;
-    }
-    const screenFontSize = textHeight * this.camera.zoom;
-    if (screenFontSize < 2)
-      return;
-    const lines = text.split("\n");
-    if (lines.length === 0)
-      return;
-    const justifySet = new Set(justify ?? []);
-    const [r, g, b, a] = getLayerColor(layerName);
-    const rotation = -(rotationDeg || 0) * DEG_TO_RAD3;
-    const linePitch = textHeight * 1.62;
-    const totalHeight = textHeight * 1.17 + Math.max(0, lines.length - 1) * linePitch;
-    let baseOffsetY = textHeight;
-    if (justifySet.has("center") || !justifySet.has("top") && !justifySet.has("bottom")) {
-      baseOffsetY -= totalHeight / 2;
-    } else if (justifySet.has("bottom")) {
-      baseOffsetY -= totalHeight;
-    }
-    const minWorldStroke = 0.8 / Math.max(this.camera.zoom, 1e-6);
-    const worldStroke = Math.max(minWorldStroke, thickness ?? textHeight * 0.15);
-    this.textCtx.save();
-    this.textCtx.translate(screenPos.x, screenPos.y);
-    this.textCtx.rotate(rotation);
-    this.textCtx.scale(this.camera.zoom, this.camera.zoom);
-    const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.55)})`;
-    this.textCtx.strokeStyle = color;
-    this.textCtx.lineWidth = worldStroke;
-    this.textCtx.lineCap = "round";
-    this.textCtx.lineJoin = "round";
-    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-      const line = lines[lineIdx];
-      const layout = layoutKicadStrokeLine(line, textWidth, textHeight);
-      if (layout.strokes.length === 0) {
-        continue;
-      }
-      let lineOffsetX = 0;
-      if (justifySet.has("right")) {
-        lineOffsetX = -layout.advance;
-      } else if (justifySet.has("center") || !justifySet.has("left") && !justifySet.has("right")) {
-        lineOffsetX = -layout.advance / 2;
-      }
-      const lineOffsetY = baseOffsetY + lineIdx * linePitch;
-      for (const stroke of layout.strokes) {
-        if (stroke.length < 2)
-          continue;
-        this.textCtx.beginPath();
-        this.textCtx.moveTo(stroke[0].x + lineOffsetX, stroke[0].y + lineOffsetY);
-        for (let i = 1; i < stroke.length; i++) {
-          this.textCtx.lineTo(stroke[i].x + lineOffsetX, stroke[i].y + lineOffsetY);
-        }
-        this.textCtx.stroke();
-      }
-    }
-    this.textCtx.restore();
-  }
-  transformFootprintPoint(fpAt, localX, localY) {
-    const rad = -(fpAt.r || 0) * DEG_TO_RAD3;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return new Vec2(
-      fpAt.x + localX * cos - localY * sin,
-      fpAt.y + localX * sin + localY * cos
+    renderTextOverlay(
+      this.textCtx,
+      this.model,
+      this.camera,
+      this.hiddenLayers,
+      this.getLayerMap()
     );
   }
-  startRenderLoop() {
-    const loop = () => {
-      if (this.needsRedraw) {
-        this.needsRedraw = false;
-        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
-        this.renderer.updateGrid(this.camera.bbox, 1);
-        this.renderer.draw(this.camera.matrix);
-        this.drawTextOverlay();
-      }
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
+  onRenderFrame() {
+    if (!this.needsRedraw)
+      return;
+    this.needsRedraw = false;
+    this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+    this.renderer.updateGrid(this.camera.bbox, 1);
+    this.renderer.draw(this.camera.matrix);
+    this.drawTextOverlay();
+  }
+  // --- Selection change callback (for BOM panel) ---
+  setOnSelectionChanged(cb) {
+    this.onSelectionChangedCallback = cb;
+  }
+  // --- Select footprints by UUID (BOM → canvas sync) ---
+  selectFootprintsByUuids(uuids) {
+    if (!this.model)
+      return;
+    const uuidSet = new Set(uuids);
+    const indices = [];
+    for (let i = 0; i < this.model.footprints.length; i++) {
+      const uuid = this.model.footprints[i]?.uuid;
+      if (uuid && uuidSet.has(uuid))
+        indices.push(i);
+    }
+    if (indices.length === 0) {
+      this.clearSelection(true);
+    } else {
+      this.setMultiSelection(indices);
+    }
+    this.repaintWithSelection();
+  }
+  // --- Model access (for BOM panel) ---
+  getFootprints() {
+    return this.model?.footprints ?? [];
   }
 };
+
+// src/bom_panel.ts
+var bomPanelCollapsed = false;
+var selectedRowKey = null;
+var searchPattern = "";
+var isRegex = false;
+var isCaseSensitive = false;
+var bomData = null;
+var currentRows = [];
+var filteredRows = [];
+var syncingFromBom = false;
+function naturalSort(a, b) {
+  return a.localeCompare(b, void 0, { numeric: true });
+}
+function buildRows(footprints) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const fp of footprints) {
+    const value = fp.value ?? "";
+    const name = fp.name;
+    const key = `${value}\0${name}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { designators: [], uuids: [] };
+      groups.set(key, group);
+    }
+    if (fp.reference)
+      group.designators.push(fp.reference);
+    if (fp.uuid)
+      group.uuids.push(fp.uuid);
+  }
+  const rows = [];
+  for (const [key, group] of groups) {
+    group.designators.sort(naturalSort);
+    const value = key.split("\0")[0];
+    const name = key.split("\0")[1];
+    rows.push({
+      key,
+      displayValue: value || name,
+      designators: group.designators,
+      uuids: group.uuids,
+      quantity: group.designators.length || group.uuids.length,
+      bomDetail: null
+    });
+  }
+  rows.sort((a, b) => {
+    const aFirst = a.designators[0] ?? "";
+    const bFirst = b.designators[0] ?? "";
+    return naturalSort(aFirst, bFirst);
+  });
+  return rows;
+}
+function matchBomDetails(rows, data) {
+  const designatorMap = /* @__PURE__ */ new Map();
+  for (const comp of data.components) {
+    for (const usage of comp.usages) {
+      designatorMap.set(usage.designator, comp);
+    }
+  }
+  for (const row of rows) {
+    for (const des of row.designators) {
+      const comp = designatorMap.get(des);
+      if (comp) {
+        row.bomDetail = comp;
+        if (!row.key.split("\0")[0] && comp.mpn) {
+          row.displayValue = comp.mpn;
+        }
+        break;
+      }
+    }
+  }
+}
+function filterRows(rows, pattern, regex, caseSensitive) {
+  if (!pattern)
+    return rows;
+  if (regex) {
+    let re;
+    try {
+      re = new RegExp(pattern, caseSensitive ? "" : "i");
+    } catch {
+      return rows;
+    }
+    return rows.filter((row) => {
+      const designators = row.designators.join(", ");
+      const address = row.bomDetail?.usages[0]?.address ?? "";
+      return re.test(designators) || re.test(row.displayValue) || re.test(address);
+    });
+  }
+  const needle = caseSensitive ? pattern : pattern.toLowerCase();
+  return rows.filter((row) => {
+    const designators = row.designators.join(", ");
+    const address = row.bomDetail?.usages[0]?.address ?? "";
+    const haystack = caseSensitive ? `${designators} ${row.displayValue} ${address}` : `${designators} ${row.displayValue} ${address}`.toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+function renderDetailPanel(container, row) {
+  container.innerHTML = "";
+  if (!row) {
+    container.style.display = "none";
+    return;
+  }
+  container.style.display = "block";
+  const detail = row.bomDetail;
+  if (!detail) {
+    const loading = document.createElement("div");
+    loading.className = "bom-detail-loading";
+    loading.textContent = "Loading...";
+    container.appendChild(loading);
+    return;
+  }
+  const fields = [
+    ["MPN", detail.mpn],
+    ["Manufacturer", detail.manufacturer],
+    ["LCSC", detail.lcsc],
+    ["Package", detail.package],
+    ["Description", detail.description],
+    ["Type", detail.type],
+    ["Source", detail.source],
+    ["Unit Cost", detail.unitCost != null ? `$${detail.unitCost.toFixed(4)}` : null],
+    ["Stock", detail.stock != null ? detail.stock.toLocaleString() : null]
+  ];
+  for (const [label, value] of fields) {
+    if (!value)
+      continue;
+    const row2 = document.createElement("div");
+    row2.className = "bom-detail-row";
+    const labelEl = document.createElement("span");
+    labelEl.className = "bom-detail-label";
+    labelEl.textContent = label;
+    const valueEl = document.createElement("span");
+    valueEl.className = "bom-detail-value";
+    valueEl.textContent = value;
+    row2.appendChild(labelEl);
+    row2.appendChild(valueEl);
+    container.appendChild(row2);
+  }
+  if (detail.parameters.length > 0) {
+    for (const param of detail.parameters) {
+      const row2 = document.createElement("div");
+      row2.className = "bom-detail-row";
+      const labelEl = document.createElement("span");
+      labelEl.className = "bom-detail-label";
+      labelEl.textContent = param.name;
+      const valueEl = document.createElement("span");
+      valueEl.className = "bom-detail-value";
+      valueEl.textContent = param.unit ? `${param.value} ${param.unit}` : param.value;
+      row2.appendChild(labelEl);
+      row2.appendChild(valueEl);
+      container.appendChild(row2);
+    }
+  }
+}
+function buildBomPanel(editor2, baseUrl2, apiPrefix2) {
+  const panel = document.getElementById("bom-panel");
+  if (!panel)
+    return;
+  panel.innerHTML = "";
+  currentRows = buildRows(editor2.getFootprints());
+  if (bomData)
+    matchBomDetails(currentRows, bomData);
+  filteredRows = filterRows(currentRows, searchPattern, isRegex, isCaseSensitive);
+  const header = document.createElement("div");
+  header.className = "bom-panel-header";
+  const headerTitle = document.createElement("span");
+  headerTitle.textContent = "BOM";
+  let expandTab = document.getElementById("bom-expand-tab");
+  if (!expandTab) {
+    expandTab = document.createElement("div");
+    expandTab.id = "bom-expand-tab";
+    expandTab.className = "bom-expand-tab";
+    expandTab.textContent = "BOM";
+    expandTab.addEventListener("click", () => {
+      bomPanelCollapsed = false;
+      panel.classList.remove("collapsed");
+      expandTab.classList.remove("visible");
+    });
+    document.body.appendChild(expandTab);
+  }
+  const collapseBtn = document.createElement("span");
+  collapseBtn.className = "bom-collapse-btn";
+  collapseBtn.textContent = "\u25B6";
+  collapseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    bomPanelCollapsed = true;
+    panel.classList.add("collapsed");
+    expandTab.classList.add("visible");
+  });
+  header.appendChild(headerTitle);
+  header.appendChild(collapseBtn);
+  panel.appendChild(header);
+  const searchBar = document.createElement("div");
+  searchBar.className = "bom-search";
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.placeholder = "Search... (/)";
+  searchInput.value = searchPattern;
+  searchInput.addEventListener("input", () => {
+    searchPattern = searchInput.value;
+    updateFilteredRows();
+    renderTableBody();
+    if (isRegex && searchPattern) {
+      try {
+        new RegExp(searchPattern);
+        searchInput.classList.remove("bom-search-error");
+      } catch {
+        searchInput.classList.add("bom-search-error");
+      }
+    } else {
+      searchInput.classList.remove("bom-search-error");
+    }
+  });
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      searchInput.blur();
+      return;
+    }
+    if (e.key !== "Escape") {
+      e.stopPropagation();
+    }
+  });
+  const regexToggle = document.createElement("button");
+  regexToggle.className = "bom-search-toggle" + (isRegex ? " active" : "");
+  regexToggle.textContent = ".*";
+  regexToggle.title = "Regex search";
+  regexToggle.addEventListener("click", () => {
+    isRegex = !isRegex;
+    regexToggle.classList.toggle("active", isRegex);
+    updateFilteredRows();
+    renderTableBody();
+  });
+  const caseToggle = document.createElement("button");
+  caseToggle.className = "bom-search-toggle" + (isCaseSensitive ? " active" : "");
+  caseToggle.textContent = "Aa";
+  caseToggle.title = "Case sensitive";
+  caseToggle.addEventListener("click", () => {
+    isCaseSensitive = !isCaseSensitive;
+    caseToggle.classList.toggle("active", isCaseSensitive);
+    updateFilteredRows();
+    renderTableBody();
+  });
+  searchBar.appendChild(searchInput);
+  searchBar.appendChild(regexToggle);
+  searchBar.appendChild(caseToggle);
+  panel.appendChild(searchBar);
+  const tableHeader = document.createElement("div");
+  tableHeader.className = "bom-table-header";
+  const qtyH = document.createElement("span");
+  qtyH.className = "bom-qty";
+  qtyH.textContent = "Qty";
+  const desH = document.createElement("span");
+  desH.className = "bom-designators";
+  desH.textContent = "Designators";
+  const valH = document.createElement("span");
+  valH.className = "bom-value";
+  valH.textContent = "Value";
+  tableHeader.appendChild(qtyH);
+  tableHeader.appendChild(desH);
+  tableHeader.appendChild(valH);
+  panel.appendChild(tableHeader);
+  const tableBody = document.createElement("div");
+  tableBody.className = "bom-table-body";
+  panel.appendChild(tableBody);
+  const detailPanel = document.createElement("div");
+  detailPanel.className = "bom-detail";
+  detailPanel.style.display = "none";
+  panel.appendChild(detailPanel);
+  function updateFilteredRows() {
+    filteredRows = filterRows(currentRows, searchPattern, isRegex, isCaseSensitive);
+  }
+  function renderTableBody() {
+    tableBody.innerHTML = "";
+    for (const row of filteredRows) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "bom-row";
+      if (row.key === selectedRowKey)
+        rowEl.classList.add("selected");
+      const qty = document.createElement("span");
+      qty.className = "bom-qty";
+      qty.textContent = String(row.quantity);
+      const des = document.createElement("span");
+      des.className = "bom-designators";
+      des.textContent = row.designators.join(", ");
+      des.title = row.designators.join(", ");
+      const val = document.createElement("span");
+      val.className = "bom-value";
+      val.textContent = row.displayValue;
+      val.title = row.displayValue;
+      rowEl.appendChild(qty);
+      rowEl.appendChild(des);
+      rowEl.appendChild(val);
+      rowEl.addEventListener("click", () => {
+        selectRow(row, rowEl);
+      });
+      tableBody.appendChild(rowEl);
+    }
+  }
+  function selectRow(row, rowEl) {
+    selectedRowKey = row.key;
+    const allRows = tableBody.querySelectorAll(".bom-row");
+    allRows.forEach((r) => r.classList.remove("selected"));
+    if (rowEl) {
+      rowEl.classList.add("selected");
+    } else {
+      const rows = tableBody.querySelectorAll(".bom-row");
+      for (let i = 0; i < filteredRows.length && i < rows.length; i++) {
+        if (filteredRows[i].key === row.key) {
+          rows[i].classList.add("selected");
+          rows[i].scrollIntoView({ block: "nearest" });
+          break;
+        }
+      }
+    }
+    syncingFromBom = true;
+    editor2.selectFootprintsByUuids(row.uuids);
+    syncingFromBom = false;
+    renderDetailPanel(detailPanel, row);
+    if (!row.bomDetail && !bomData) {
+      fetchBomData();
+    }
+  }
+  async function fetchBomData() {
+    try {
+      const resp = await fetch(`${baseUrl2}${apiPrefix2}/bom`);
+      if (!resp.ok) {
+        bomData = null;
+        if (selectedRowKey) {
+          const row = currentRows.find((r) => r.key === selectedRowKey);
+          if (row && !row.bomDetail) {
+            const msg = document.createElement("div");
+            msg.className = "bom-detail-loading";
+            msg.textContent = "No detail available";
+            detailPanel.innerHTML = "";
+            detailPanel.appendChild(msg);
+          }
+        }
+        return;
+      }
+      bomData = await resp.json();
+      matchBomDetails(currentRows, bomData);
+      if (selectedRowKey) {
+        const row = currentRows.find((r) => r.key === selectedRowKey);
+        renderDetailPanel(detailPanel, row ?? null);
+      }
+      filteredRows = filterRows(currentRows, searchPattern, isRegex, isCaseSensitive);
+      renderTableBody();
+      if (selectedRowKey) {
+        const allTableRows = tableBody.querySelectorAll(".bom-row");
+        for (let i = 0; i < filteredRows.length && i < allTableRows.length; i++) {
+          if (filteredRows[i].key === selectedRowKey) {
+            allTableRows[i].classList.add("selected");
+            break;
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  renderTableBody();
+  if (selectedRowKey) {
+    const row = currentRows.find((r) => r.key === selectedRowKey);
+    if (row) {
+      renderDetailPanel(detailPanel, row);
+      requestAnimationFrame(() => {
+        const rows = tableBody.querySelectorAll(".bom-row");
+        for (let i = 0; i < filteredRows.length && i < rows.length; i++) {
+          if (filteredRows[i].key === selectedRowKey) {
+            rows[i].scrollIntoView({ block: "nearest" });
+            break;
+          }
+        }
+      });
+    }
+  }
+  if (bomPanelCollapsed) {
+    panel.classList.add("collapsed");
+    expandTab.classList.add("visible");
+  }
+  editor2.setOnSelectionChanged((uuids) => {
+    if (syncingFromBom)
+      return;
+    if (uuids.length === 0) {
+      selectedRowKey = null;
+      const allTableRows = tableBody.querySelectorAll(".bom-row");
+      allTableRows.forEach((r) => r.classList.remove("selected"));
+      renderDetailPanel(detailPanel, null);
+      return;
+    }
+    const uuidSet = new Set(uuids);
+    let matchedRow = null;
+    for (const row of filteredRows) {
+      if (row.uuids.some((u) => uuidSet.has(u))) {
+        matchedRow = row;
+        break;
+      }
+    }
+    if (matchedRow) {
+      selectedRowKey = matchedRow.key;
+      const allTableRows = tableBody.querySelectorAll(".bom-row");
+      allTableRows.forEach((r) => r.classList.remove("selected"));
+      for (let i = 0; i < filteredRows.length && i < allTableRows.length; i++) {
+        if (filteredRows[i].key === matchedRow.key) {
+          allTableRows[i].classList.add("selected");
+          allTableRows[i].scrollIntoView({ block: "nearest" });
+          break;
+        }
+      }
+      renderDetailPanel(detailPanel, matchedRow);
+      if (!matchedRow.bomDetail && !bomData) {
+        fetchBomData();
+      }
+    }
+  });
+  const prevHandler = window.__bomKeyHandler;
+  if (prevHandler)
+    window.removeEventListener("keydown", prevHandler);
+  const keyHandler = (e) => {
+    if (e.key === "/" && document.activeElement !== searchInput && !(document.activeElement instanceof HTMLInputElement)) {
+      e.preventDefault();
+      searchInput.focus();
+      return;
+    }
+    if (e.key === "Enter") {
+      if (filteredRows.length === 0)
+        return;
+      let nextIdx = 0;
+      if (selectedRowKey) {
+        const currentIdx = filteredRows.findIndex((r) => r.key === selectedRowKey);
+        nextIdx = currentIdx >= 0 ? (currentIdx + 1) % filteredRows.length : 0;
+      }
+      const nextRow = filteredRows[nextIdx];
+      selectRow(nextRow);
+      return;
+    }
+  };
+  window.addEventListener("keydown", keyHandler);
+  window.__bomKeyHandler = keyHandler;
+}
 
 // src/main.ts
 var canvas = document.getElementById("editor-canvas");
@@ -23581,29 +23879,30 @@ var wsPath = w.__LAYOUT_WS_PATH__ || "/ws";
 var editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 var panelCollapsed = false;
 var collapsedGroups = /* @__PURE__ */ new Set();
-function groupLayers(layerNames) {
+function groupLayers(layers) {
   const groupMap = /* @__PURE__ */ new Map();
   const topLevel = [];
-  for (const name of layerNames) {
-    const dotIdx = name.indexOf(".");
-    if (dotIdx >= 0) {
-      const prefix = name.substring(0, dotIdx);
-      const suffix = name.substring(dotIdx + 1);
-      if (!groupMap.has(prefix))
-        groupMap.set(prefix, []);
-      groupMap.get(prefix).push({ name, suffix });
-    } else {
-      topLevel.push(name);
+  for (const layer of layers) {
+    const group = layer.group?.trim() ?? "";
+    if (!group) {
+      topLevel.push(layer);
+      continue;
     }
+    if (!groupMap.has(group))
+      groupMap.set(group, []);
+    groupMap.get(group).push(layer);
   }
-  const groups = [];
-  for (const [prefix, layers] of groupMap) {
-    groups.push({ prefix, layers });
-  }
+  const groups = [...groupMap.entries()].map(([group, groupedLayers]) => ({ group, layers: groupedLayers })).sort((a, b) => {
+    const aOrder = a.layers[0]?.panel_order ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = b.layers[0]?.panel_order ?? Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder)
+      return aOrder - bOrder;
+    return a.group.localeCompare(b.group);
+  });
   return { groups, topLevel };
 }
-function colorToCSS(layerName) {
-  const [r, g, b] = getLayerColor(layerName);
+function colorToCSS(layerName, layerById) {
+  const [r, g, b] = getLayerColor(layerName, layerById);
   return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
 }
 function createSwatch(color) {
@@ -23662,21 +23961,22 @@ function buildLayerPanel() {
   panel.appendChild(header);
   const content = document.createElement("div");
   content.className = "layer-panel-content";
-  const layers = editor.getLayers();
+  const layers = editor.getLayerModels();
+  const layerById = new Map(layers.map((layer) => [layer.id, layer]));
   const { groups, topLevel } = groupLayers(layers);
   for (const group of groups) {
-    const childNames = group.layers.map((l) => l.name);
-    const isCollapsed = collapsedGroups.has(group.prefix);
+    const childNames = group.layers.map((l) => l.id);
+    const isCollapsed = collapsedGroups.has(group.group);
     const groupRow = document.createElement("div");
     groupRow.className = "layer-group-header";
     const chevron = document.createElement("span");
     chevron.className = "layer-chevron";
     chevron.textContent = isCollapsed ? "\u25B8" : "\u25BE";
-    const primaryColor = colorToCSS(childNames[0]);
+    const primaryColor = colorToCSS(childNames[0], layerById);
     const swatch = createSwatch(primaryColor);
     const label = document.createElement("span");
     label.className = "layer-group-name";
-    label.textContent = group.prefix;
+    label.textContent = group.group;
     groupRow.appendChild(chevron);
     groupRow.appendChild(swatch);
     groupRow.appendChild(label);
@@ -23698,8 +23998,8 @@ function buildLayerPanel() {
       const childContainer2 = groupRow.nextElementSibling;
       if (!childContainer2)
         return;
-      if (collapsedGroups.has(group.prefix)) {
-        collapsedGroups.delete(group.prefix);
+      if (collapsedGroups.has(group.group)) {
+        collapsedGroups.delete(group.group);
         chevron.textContent = "\u25BE";
         childContainer2.style.maxHeight = childContainer2.scrollHeight + "px";
         const onEnd = () => {
@@ -23708,7 +24008,7 @@ function buildLayerPanel() {
         };
         childContainer2.addEventListener("transitionend", onEnd);
       } else {
-        collapsedGroups.add(group.prefix);
+        collapsedGroups.add(group.group);
         chevron.textContent = "\u25B8";
         childContainer2.style.maxHeight = childContainer2.scrollHeight + "px";
         requestAnimationFrame(() => {
@@ -23725,15 +24025,15 @@ function buildLayerPanel() {
     for (const child of group.layers) {
       const row = document.createElement("div");
       row.className = "layer-row";
-      const childSwatch = createSwatch(colorToCSS(child.name));
+      const childSwatch = createSwatch(colorToCSS(child.id, layerById));
       const childLabel = document.createElement("span");
-      childLabel.textContent = child.suffix;
+      childLabel.textContent = child.label ?? child.id;
       row.appendChild(childSwatch);
       row.appendChild(childLabel);
-      updateRowVisual(row, editor.isLayerVisible(child.name));
+      updateRowVisual(row, editor.isLayerVisible(child.id));
       row.addEventListener("click", () => {
-        const vis = !editor.isLayerVisible(child.name);
-        editor.setLayerVisible(child.name, vis);
+        const vis = !editor.isLayerVisible(child.id);
+        editor.setLayerVisible(child.id, vis);
         updateRowVisual(row, vis);
         updateGroupVisual(groupRow, childNames);
       });
@@ -23741,18 +24041,18 @@ function buildLayerPanel() {
     }
     content.appendChild(childContainer);
   }
-  for (const name of topLevel) {
+  for (const layer of topLevel) {
     const row = document.createElement("div");
     row.className = "layer-row layer-top-level";
-    const swatch = createSwatch(colorToCSS(name));
+    const swatch = createSwatch(colorToCSS(layer.id, layerById));
     const label = document.createElement("span");
-    label.textContent = name;
+    label.textContent = layer.label ?? layer.id;
     row.appendChild(swatch);
     row.appendChild(label);
-    updateRowVisual(row, editor.isLayerVisible(name));
+    updateRowVisual(row, editor.isLayerVisible(layer.id));
     row.addEventListener("click", () => {
-      const vis = !editor.isLayerVisible(name);
-      editor.setLayerVisible(name, vis);
+      const vis = !editor.isLayerVisible(layer.id);
+      editor.setLayerVisible(layer.id, vis);
       updateRowVisual(row, vis);
     });
     content.appendChild(row);
@@ -23765,7 +24065,7 @@ function buildLayerPanel() {
 }
 var coordsEl = document.getElementById("status-coords");
 var helpEl = document.getElementById("status-help");
-var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Shift+drag box-select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
+var helpText = "Scroll zoom \xB7 Middle-click pan \xB7 Click group/select \xB7 Shift+drag box-select \xB7 Double-click single \xB7 Esc clear \xB7 R rotate \xB7 F flip \xB7 / search BOM \xB7 Ctrl+Z undo \xB7 Ctrl+Shift+Z redo";
 if (helpEl)
   helpEl.textContent = helpText;
 canvas.addEventListener("mouseenter", () => {
@@ -23785,7 +24085,11 @@ editor.setOnMouseMove((x, y) => {
 });
 editor.init().then(() => {
   buildLayerPanel();
-  editor.setOnLayersChanged(buildLayerPanel);
+  buildBomPanel(editor, baseUrl, apiPrefix);
+  editor.setOnModelChanged(() => {
+    buildLayerPanel();
+    buildBomPanel(editor, baseUrl, apiPrefix);
+  });
 }).catch((err) => {
   console.error("Failed to initialize editor:", err);
 });

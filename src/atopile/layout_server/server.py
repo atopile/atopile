@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from atopile.layout_server.models import (
@@ -73,6 +74,27 @@ async def _watch_file(
             await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
         except Exception:
             log.exception("Error reloading PCB after file change")
+
+
+def _find_bom_path(pcb_path: Path) -> Path | None:
+    """Find the .bom.json for the given PCB file.
+
+    Walk up from the PCB path to find ato.yaml (project root),
+    then look in build/builds/<stem>/<stem>.bom.json.
+    """
+    stem = pcb_path.stem
+    candidate = pcb_path.parent
+    for _ in range(10):
+        if (candidate / "ato.yaml").exists():
+            bom = candidate / "build" / "builds" / stem / f"{stem}.bom.json"
+            if bom.exists():
+                return bom
+            break
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+    return None
 
 
 def create_app(pcb_path: Path) -> FastAPI:
@@ -148,6 +170,14 @@ def create_app(pcb_path: Path) -> FastAPI:
             code="nothing_to_redo",
             message="No action available to redo.",
         )
+
+    @app.get("/api/bom")
+    async def get_bom() -> JSONResponse:
+        bom = _find_bom_path(pcb_path)
+        if not bom or not bom.exists():
+            raise HTTPException(status_code=404, detail="BOM file not found")
+        data = await asyncio.to_thread(bom.read_text, encoding="utf-8")
+        return JSONResponse(content=json.loads(data))
 
     @app.post("/api/reload", response_model=StatusResponse)
     async def reload() -> StatusResponse:
