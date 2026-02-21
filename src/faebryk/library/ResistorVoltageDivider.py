@@ -223,6 +223,7 @@ class ResistorVoltageDivider(fabll.Node):
 
 
 class TestVdivSolver:
+    @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_pick_adc_vdiv():
@@ -365,6 +366,7 @@ class TestVdivSolver:
         assert r_top_node.has_trait(F.Pickable.has_part_picked)
         assert r_bottom_node.has_trait(F.Pickable.has_part_picked)
 
+    @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_pick_dependency_advanced_1():
@@ -391,6 +393,7 @@ class TestVdivSolver:
         solver = Solver()
         pick_parts_recursively(rdiv, solver)
 
+    @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_pick_dependency_advanced_2():
@@ -454,6 +457,7 @@ class TestVdivSolver:
         solver = Solver()
         pick_parts_recursively(rdiv, solver)
 
+    @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_ato_pick_resistor_voltage_divider_ato(tmp_path: Path):
@@ -512,6 +516,7 @@ class TestVdivSolver:
         assert r_top.has_trait(F.Pickable.has_part_picked)
         assert r_bottom.has_trait(F.Pickable.has_part_picked)
 
+    @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_ato_pick_resistor_voltage_divider_fab():
