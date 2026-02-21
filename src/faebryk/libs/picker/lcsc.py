@@ -702,17 +702,6 @@ class PickedPartLCSC(PickedPart):
         return self.supplier_partno
 
 
-# TODO: move to global fixtures, or put into the specific test
-@pytest.fixture()
-def setup_project_config(tmp_path):
-    from atopile.config import ProjectConfig, ProjectPaths, config
-
-    config.project = ProjectConfig.skeleton(
-        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
-    )
-    yield
-
-
 class TestLCSCattach:
     @pytest.mark.usefixtures("setup_project_config")
     def test_attach_resistor(self):
