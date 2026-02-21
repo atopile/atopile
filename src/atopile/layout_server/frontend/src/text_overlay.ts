@@ -141,6 +141,7 @@ export function renderTextOverlay(
     camera: Camera2,
     hiddenLayers: Set<string>,
     layerById: Map<string, LayerModel>,
+    hiddenCategories?: Set<string>,
 ) {
     const dpr = Math.max(window.devicePixelRatio || 1, 1);
     const width = window.innerWidth;
@@ -192,7 +193,7 @@ export function renderTextOverlay(
             });
         }
 
-        const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers);
+        const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers, hiddenCategories, layerById);
         const orderedLayers = [...annotationsByLayer.keys()].sort((a, b) => {
             const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;
             const orderB = layerById.get(b)?.paint_order ?? Number.MAX_SAFE_INTEGER;

@@ -133,20 +133,21 @@ function sortedLayerEntries<T>(
 }
 
 /** Paint the entire render model into renderer layers */
-export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>): void {
+export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>, hiddenCategories?: Set<string>): void {
     const hidden = hiddenLayers ?? new Set<string>();
+    const categories = hiddenCategories ?? new Set<string>();
     const layerById = buildLayerMap(model);
     renderer.dispose_layers();
     if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model, layerById);
     paintGlobalDrawings(renderer, model, hidden, "non_copper", layerById);
-    paintZones(renderer, model, hidden, layerById);
-    paintTracks(renderer, model, hidden, layerById);
+    paintZones(renderer, model, hidden, categories, layerById);
+    paintTracks(renderer, model, hidden, categories, layerById);
     paintGlobalDrawings(renderer, model, hidden, "copper", layerById);
     const orderedFootprints = [...model.footprints].sort(
         (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById),
     );
     for (const fp of orderedFootprints) {
-        paintFootprint(renderer, fp, hidden, layerById);
+        paintFootprint(renderer, fp, hidden, categories, layerById);
     }
     paintGlobalDrawings(renderer, model, hidden, "drill", layerById);
 }
@@ -183,6 +184,7 @@ function paintZones(
     renderer: Renderer,
     model: RenderModel,
     hidden: Set<string>,
+    categories: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
     for (const zone of model.zones) {
@@ -191,6 +193,7 @@ function paintZones(
         );
         for (const filled of sortedFilledPolygons) {
             if (hidden.has(filled.layer)) continue;
+            if (categories.has(filled.layer + ":zones")) continue;
             const [r, g, b] = getLayerColor(filled.layer, layerById);
             const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
             const pts = filled.points.map(p2v);
@@ -217,6 +220,7 @@ function paintZones(
             const outlinePts = zone.outline.map(p2v);
             for (const layerName of zoneLayers) {
                 if (!layerName || hidden.has(layerName)) continue;
+                if (categories.has(layerName + ":zones")) continue;
                 const [r, g, b] = getLayerColor(layerName, layerById);
                 const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
                 layer.geometry.add_polygon(outlinePts, r, g, b, ZONE_COLOR_ALPHA);
@@ -233,6 +237,7 @@ function paintZones(
         const hatchSegments = hatchSegmentsForPolygon(outlinePts, hatchPitch);
         for (const layerName of zoneLayers) {
             if (!layerName || hidden.has(layerName)) continue;
+            if (categories.has(layerName + ":zones")) continue;
             const [r, g, b, a] = getLayerColor(layerName, layerById);
             const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
             layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
@@ -296,6 +301,7 @@ function paintTracks(
     renderer: Renderer,
     model: RenderModel,
     hidden: Set<string>,
+    categories: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
     const byLayer = new Map<string, TrackModel[]>();
@@ -303,6 +309,7 @@ function paintTracks(
         const ln = track.layer;
         if (!ln) continue;
         if (hidden.has(ln)) continue;
+        if (categories.has(ln + ":tracks")) continue;
         let arr = byLayer.get(ln);
         if (!arr) { arr = []; byLayer.set(ln, arr); }
         arr.push(track);
@@ -321,6 +328,7 @@ function paintTracks(
             const ln = arc.layer;
             if (!ln) continue;
             if (hidden.has(ln)) continue;
+            if (categories.has(ln + ":tracks")) continue;
             let arr = arcByLayer.get(ln);
             if (!arr) { arr = []; arcByLayer.set(ln, arr); }
             arr.push(arc);
@@ -500,10 +508,12 @@ function paintGlobalDrawings(
     }
 }
 
+
 function paintFootprint(
     renderer: Renderer,
     fp: FootprintModel,
     hidden: Set<string>,
+    categories: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
@@ -551,6 +561,7 @@ function paintFootprint(
             if (!layerName || hidden.has(layerName) || isDrillLayer(layerName, layerById)) continue;
             if (padType === "np_thru_hole") continue;
             if (hasHole && !isCopperLayer(layerName, layerById)) continue;
+            if (isCopperLayer(layerName, layerById) && categories.has(layerName + ":pads")) continue;
             let layerPads = padsByLayer.get(layerName);
             if (!layerPads) {
                 layerPads = [];
@@ -582,18 +593,19 @@ function paintFootprint(
         }
         renderer.end_layer();
     }
-    paintPadAnnotations(renderer, fp, hidden, layerById);
+    paintPadAnnotations(renderer, fp, hidden, categories, layerById);
 }
 
 function paintPadAnnotations(
     renderer: Renderer,
     fp: FootprintModel,
     hidden: Set<string>,
+    categories: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
     if (fp.pads.length === 0) return;
     if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0) return;
-    const layerGeometry = buildPadAnnotationGeometry(fp, hidden);
+    const layerGeometry = buildPadAnnotationGeometry(fp, hidden, categories, layerById);
 
     const orderedAnnotationLayers = [...layerGeometry.keys()].sort(
         (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById),
