@@ -113,7 +113,7 @@ class TestRealBuilds:
             print(f"  Status: {status_data['status']} (elapsed: {elapsed:.1f}s)")
             last_status = status_data
 
-            if status_data["status"] in ["success", "failed"]:
+            if status_data["status"] not in ("queued", "building"):
                 break
 
             time.sleep(poll_interval)
@@ -127,6 +127,7 @@ class TestRealBuilds:
         assert last_status.get("returnCode") == 0
         print(f"Build completed successfully in {elapsed:.1f}s")
 
+    @pytest.mark.not_in_ci  # requires kicad-cli
     def test_build_appears_in_summary_while_building(
         self, dashboard_server: str, quickstart_project: Path
     ):
@@ -186,7 +187,7 @@ class TestRealBuilds:
             status = requests.get(
                 f"{dashboard_server}/api/build/{build_id}/status"
             ).json()
-            if status["status"] in ["success", "failed"]:
+            if status["status"] not in ("queued", "building"):
                 break
             time.sleep(1)
             elapsed += 1

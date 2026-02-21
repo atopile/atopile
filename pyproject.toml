@@ -152,7 +152,6 @@ local_scheme = "node-and-timestamp"
 addopts = [
     "--import-mode=importlib",
     "--ignore=test/runtest.py",
-    "--ignore=test/conftest.py",
     # Ensure co-located tests in `src/` are imported by package name, not by path.
     "-p",
     "atopile.pytest_import_by_name",
