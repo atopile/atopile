@@ -47,21 +47,6 @@ class ElectricPower(fabll.Node):
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
-    net_names = [
-        fabll.Traits.MakeEdge(
-            F.has_net_name_suggestion.MakeChild(
-                name="hv", level=F.has_net_name_suggestion.Level.SUGGESTED
-            ),
-            owner=[hv],
-        ),
-        fabll.Traits.MakeEdge(
-            F.has_net_name_suggestion.MakeChild(
-                name="lv", level=F.has_net_name_suggestion.Level.SUGGESTED
-            ),
-            owner=[lv],
-        ),
-    ]
-
     bus_parameters = [
         fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[voltage]),
         fabll.Traits.MakeEdge(F.is_sum_bus_parameter.MakeChild(), owner=[max_current]),

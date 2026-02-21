@@ -246,6 +246,8 @@ class ActionsFactory:
         Pins are Electrical interfaces that also act as leads for footprint pads.
         The pin label is used to match against pad names in the footprint.
         """
+        from atopile.compiler.ast_visitor import is_ato_pin
+
         regex = f"^{re.escape(str(pin_label))}$"
 
         pin = fabll._ChildField(nodetype=F.Electrical, identifier=identifier)
@@ -253,6 +255,10 @@ class ActionsFactory:
         # Add is_lead trait to the pin
         lead = is_lead.MakeChild()
         pin.add_dependant(fabll.Traits.MakeEdge(lead, [pin]))
+
+        # Add a marker trait to indicate the electrical is an ato pin definition
+        _is_ato_pin = is_ato_pin.MakeChild()
+        pin.add_dependant(fabll.Traits.MakeEdge(_is_ato_pin, [pin]))
 
         # Add can_attach_to_pad_by_name trait to the lead (to match pin label to pad)
         pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
