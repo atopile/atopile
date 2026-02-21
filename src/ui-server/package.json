@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
     "@tracespace/core": "^5.0.0-alpha.0",
     "@tracespace/parser": "^5.0.0-next.0",
     "@tracespace/plotter": "^5.0.0-alpha.0",

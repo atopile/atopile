@@ -1,0 +1,174 @@
+/* ============================================
+   Button — multi-variant button primitive
+   Uses project CSS variables from _variables.css
+   ============================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast),
+              border-color var(--transition-fast),
+              opacity var(--transition-fast);
+  line-height: 1;
+}
+
+/* ---- Sizes ---- */
+
+.btn-sm {
+  height: 26px;
+  padding: 0 var(--spacing-md);
+  font-size: var(--font-size-xs);
+}
+
+.btn-md {
+  height: 30px;
+  padding: 0 var(--spacing-lg);
+  font-size: var(--font-size-sm);
+}
+
+.btn-lg {
+  height: 36px;
+  padding: 0 var(--spacing-xl);
+  font-size: var(--font-size-md);
+}
+
+/* ---- Variant: default (filled accent) ---- */
+
+.btn-default {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border-color: var(--accent);
+}
+
+.btn-default:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-default:active:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* ---- Variant: outline ---- */
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--text-muted);
+}
+
+.btn-outline:active:not(:disabled) {
+  background: var(--active);
+}
+
+/* ---- Variant: secondary ---- */
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: var(--active);
+}
+
+/* ---- Variant: ghost ---- */
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.btn-ghost:active:not(:disabled) {
+  background: var(--active);
+}
+
+/* ---- Variant: destructive ---- */
+
+.btn-destructive {
+  background: var(--error);
+  color: var(--text-on-accent);
+  border-color: var(--error);
+}
+
+.btn-destructive:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-destructive:active:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-destructive:focus-visible {
+  outline-color: var(--error);
+}
+
+/* ---- Variant: link ---- */
+
+.btn-link {
+  background: transparent;
+  color: var(--accent);
+  border-color: transparent;
+  text-decoration: none;
+  padding: 0;
+  height: auto;
+}
+
+.btn-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/* ---- Size: icon (square) ---- */
+
+.btn-icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+/* ---- Disabled ---- */
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Focus ---- */
+
+.btn:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
+}
+
+/* ---- Inline icon alignment ---- */
+
+.btn > [data-icon="inline-start"] {
+  margin-right: calc(var(--spacing-xs) * -1);
+}
+
+.btn > [data-icon="inline-end"] {
+  margin-left: calc(var(--spacing-xs) * -1);
+}

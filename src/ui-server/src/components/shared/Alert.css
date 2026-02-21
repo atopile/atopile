@@ -1,0 +1,95 @@
+/* ============================================
+   Alert — callout banners with variants
+   ============================================ */
+
+.alert {
+  display: flex;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.alert-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.alert-title {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.alert-description {
+  color: inherit;
+  opacity: 0.9;
+}
+
+/* ---- Variant: default ---- */
+
+.alert-default {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.alert-default .alert-icon {
+  color: var(--text-secondary);
+}
+
+/* ---- Variant: info ---- */
+
+.alert-info {
+  background: var(--info-bg);
+  border-color: var(--info);
+  color: var(--text-primary);
+}
+
+.alert-info .alert-icon {
+  color: var(--info);
+}
+
+/* ---- Variant: success ---- */
+
+.alert-success {
+  background: var(--success-bg);
+  border-color: var(--success);
+  color: var(--text-primary);
+}
+
+.alert-success .alert-icon {
+  color: var(--success);
+}
+
+/* ---- Variant: warning ---- */
+
+.alert-warning {
+  background: var(--warning-bg);
+  border-color: var(--warning);
+  color: var(--text-primary);
+}
+
+.alert-warning .alert-icon {
+  color: var(--warning);
+}
+
+/* ---- Variant: destructive ---- */
+
+.alert-destructive {
+  background: var(--error-bg);
+  border-color: var(--error);
+  color: var(--text-primary);
+}
+
+.alert-destructive .alert-icon {
+  color: var(--error);
+}

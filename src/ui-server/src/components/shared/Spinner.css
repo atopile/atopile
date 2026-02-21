@@ -1,0 +1,13 @@
+/* ============================================
+   Spinner — inline loading indicator
+   ============================================ */
+
+.spinner {
+  animation: spinner-rotate 1s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
