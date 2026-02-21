@@ -1085,35 +1085,32 @@ export function ActiveProjectPanel({
 
           <div className="action-divider" />
 
-          <button
-            className="action-btn"
-            onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpen3D(activeProject.root, activeTargetName)
-            }}
-            disabled={!activeProject || !activeTargetName}
-            title={getOutputTooltip('3D board viewer')}
-          >
-            <Cuboid size={12} />
-            <span className="action-label">3D</span>
-          </button>
-
-          {onOpenMultiboard && activeTarget?.hasMultiboardManifest && (
-            <>
-              <div className="action-divider" />
-              <button
-                className="action-btn"
-                onClick={() => {
-                  if (!activeProject || !activeTargetName) return
-                  onOpenMultiboard(activeProject.root, activeTargetName)
-                }}
-                disabled={!activeProject || !activeTargetName}
-                title={getOutputTooltip('multi-board 3D viewer')}
-              >
-                <Boxes size={12} />
-                <span className="action-label">Multiboard</span>
-              </button>
-            </>
+          {onOpenMultiboard && activeTarget?.hasMultiboardManifest ? (
+            <button
+              className="action-btn"
+              onClick={() => {
+                if (!activeProject || !activeTargetName) return
+                onOpenMultiboard(activeProject.root, activeTargetName)
+              }}
+              disabled={!activeProject || !activeTargetName}
+              title={getOutputTooltip('multi-board 3D viewer')}
+            >
+              <Boxes size={12} />
+              <span className="action-label">3D</span>
+            </button>
+          ) : (
+            <button
+              className="action-btn"
+              onClick={() => {
+                if (!activeProject || !activeTargetName) return
+                onOpen3D(activeProject.root, activeTargetName)
+              }}
+              disabled={!activeProject || !activeTargetName}
+              title={getOutputTooltip('3D board viewer')}
+            >
+              <Cuboid size={12} />
+              <span className="action-label">3D</span>
+            </button>
           )}
 
           <div className="action-divider" />
