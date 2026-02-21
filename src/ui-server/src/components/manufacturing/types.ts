@@ -119,7 +119,13 @@ export type FileExportType =
   | 'step'
   | 'glb'
   | 'kicad_pcb'
-  | 'kicad_sch';
+  | 'kicad_sch'
+  | 'svg'
+  | 'dxf'
+  | 'png'
+  | 'testpoints'
+  | 'variables_report'
+  | 'datasheets';
 
 export interface FileExportOption {
   type: FileExportType;
@@ -139,6 +145,14 @@ export interface BuildOutputs {
   kicadPcb: string | null;
   kicadSch: string | null;
   pcbSummary: string | null;
+  svg: string | null;
+  dxf: string | null;
+  png: string | null;
+  testpoints: string | null;
+  variablesReport: string | null;
+  powerTree: string | null;
+  datasheets: string[];
+  fileSizes?: Record<string, number>;
 }
 
 export interface GitStatus {
@@ -226,4 +240,141 @@ export const FILE_EXPORT_OPTIONS: FileExportOption[] = [
     extension: '.kicad_sch',
     available: true,
   },
+  {
+    type: 'svg',
+    label: 'PCB Render (SVG)',
+    description: 'Vector PCB render',
+    extension: '.svg',
+    available: true,
+  },
+  {
+    type: 'dxf',
+    label: 'DXF Drawing',
+    description: 'CAD drawing exchange format',
+    extension: '.dxf',
+    available: true,
+  },
+  {
+    type: 'png',
+    label: 'PCB Render (PNG)',
+    description: 'Raster PCB render',
+    extension: '.png',
+    available: true,
+  },
+  {
+    type: 'testpoints',
+    label: 'Test Points',
+    description: 'Test point locations',
+    extension: '.json',
+    available: true,
+  },
+  {
+    type: 'variables_report',
+    label: 'Variables Report',
+    description: 'Solved parameter values',
+    extension: '.json',
+    available: true,
+  },
+  {
+    type: 'datasheets',
+    label: 'Datasheets',
+    description: 'Component datasheets',
+    extension: '.pdf',
+    available: true,
+  },
 ];
+
+// =============================================================================
+// Muster Target Types (fetched from backend)
+// =============================================================================
+
+export interface MusterTargetInfo {
+  name: string;
+  description: string | null;
+  category: string | null;
+  virtual: boolean;
+  producesArtifact: boolean;
+  tags: string[];
+  aliases: string[];
+  dependencies: string[];
+}
+
+export const DEFAULT_BUILD_TARGETS = ['bom', 'manifest', 'variable-report', 'datasheets'];
+
+export const CATEGORY_CONFIG: Record<string, { label: string; order: number; alwaysIncluded: boolean }> = {
+  required: { label: 'Required', order: 0, alwaysIncluded: true },
+  visuals: { label: 'Visuals', order: 1, alwaysIncluded: false },
+  manufacturing: { label: 'Manufacturing', order: 2, alwaysIncluded: false },
+  documentation: { label: 'Documentation', order: 3, alwaysIncluded: false },
+};
+
+// =============================================================================
+// Manufacturing Dashboard Types
+// =============================================================================
+
+export type DashboardStep = 'build' | 'review' | 'export';
+
+export interface ReviewComment {
+  pageId: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface ReviewPageDefinition {
+  id: string;
+  label: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: React.ComponentType<any>;
+  order: number;
+  isAvailable: (outputs: BuildOutputs) => boolean;
+}
+
+export interface ReviewPageProps {
+  outputs: BuildOutputs;
+  bomData: unknown;
+  boardSummary: BoardSummary | null;
+  projectRoot: string;
+  targetName: string;
+  isReviewed: boolean;
+  onMarkReviewed: (reviewed: boolean) => void;
+  comments: ReviewComment[];
+  onAddComment: (text: string) => void;
+}
+
+export interface FabHouse {
+  id: string;
+  name: string;
+  orderUrl: string;
+  supported: boolean;
+}
+
+export interface ManufacturingDashboardState {
+  projectRoot: string;
+  targetName: string;
+  activeStep: DashboardStep;
+  activeReviewPage: string | null;
+  reviewedPages: Record<string, boolean>;
+  reviewComments: ReviewComment[];
+  outputs: BuildOutputs | null;
+  buildStatus: ManufacturingBuildStatus;
+  buildStages: string[];
+  bomData: unknown;
+  boardSummary: BoardSummary | null;
+  gitStatus: GitStatus | null;
+  selectedBuildTargets: string[];
+  availableBuildTargets: MusterTargetInfo[];
+  exportConfig: {
+    directory: string;
+    selectedFileTypes: FileExportType[];
+    fabHouse: string;
+    pcbQuantity: number;
+    pcbaQuantity: number;
+  };
+  costEstimate: CostEstimate | null;
+  isExporting: boolean;
+  exportResult: { success: boolean; files: string[]; errors: string[] | null } | null;
+  artifactVerification: Record<string, boolean>;
+}
+
+// BOMData is imported from '../../types/build' — dashboard components should
+// import it from there directly.

@@ -96,6 +96,18 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": false
+                },
+                "atopile.review.hideBars": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Hide sidebar and bottom panel when opening the Review Dashboard"
+                },
+                "atopile.review.restoreBars": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Restore sidebar and bottom panel when closing the Review Dashboard"
                 }
             }
         },

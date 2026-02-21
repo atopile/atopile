@@ -7,10 +7,12 @@ and file export for manufacturing.
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -41,6 +43,13 @@ class BuildOutputs:
     kicad_pcb: Optional[str] = None
     kicad_sch: Optional[str] = None
     pcb_summary: Optional[str] = None
+    svg: Optional[str] = None
+    dxf: Optional[str] = None
+    png: Optional[str] = None
+    testpoints: Optional[str] = None
+    variables_report: Optional[str] = None
+    power_tree: Optional[str] = None
+    datasheets: Optional[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -202,7 +211,82 @@ def get_build_outputs(project_root: str, target: str) -> BuildOutputs:
     if pcb_summary_path.exists():
         outputs.pcb_summary = str(pcb_summary_path)
 
+    # SVG render
+    svg_path = build_dir / f"{target}.pcba.svg"
+    if svg_path.exists():
+        outputs.svg = str(svg_path)
+
+    # DXF
+    dxf_path = build_dir / f"{target}.pcba.dxf"
+    if dxf_path.exists():
+        outputs.dxf = str(dxf_path)
+
+    # PNG render
+    png_path = build_dir / f"{target}.pcba.png"
+    if png_path.exists():
+        outputs.png = str(png_path)
+
+    # Testpoints
+    testpoints_path = build_dir / f"{target}.testpoints.json"
+    if testpoints_path.exists():
+        outputs.testpoints = str(testpoints_path)
+
+    # Variables report
+    variables_path = build_dir / f"{target}.variables.json"
+    if variables_path.exists():
+        outputs.variables_report = str(variables_path)
+
+    # Power tree
+    power_tree_path = build_dir / "power_tree.md"
+    if power_tree_path.exists():
+        outputs.power_tree = str(power_tree_path)
+
+    # Datasheets
+    datasheets_dir = build_dir / "documentation" / "datasheets"
+    if datasheets_dir.exists() and datasheets_dir.is_dir():
+        outputs.datasheets = [
+            str(p) for p in sorted(datasheets_dir.iterdir()) if p.is_file()
+        ]
+
     return outputs
+
+
+def get_file_sizes(outputs: BuildOutputs) -> dict[str, int]:
+    """Return a map of output field name → file size in bytes for available outputs."""
+    sizes: dict[str, int] = {}
+    fields = [
+        "gerbers",
+        "bom_json",
+        "bom_csv",
+        "pick_and_place",
+        "step",
+        "glb",
+        "kicad_pcb",
+        "kicad_sch",
+        "pcb_summary",
+        "svg",
+        "dxf",
+        "png",
+        "testpoints",
+        "variables_report",
+        "power_tree",
+    ]
+    for field_name in fields:
+        path_str = getattr(outputs, field_name, None)
+        if path_str:
+            p = Path(path_str)
+            if p.exists():
+                sizes[field_name] = p.stat().st_size
+    # Datasheets: sum all files
+    if outputs.datasheets:
+        total = 0
+        for ds in outputs.datasheets:
+            p = Path(ds)
+            if p.exists():
+                total += p.stat().st_size
+        if total > 0:
+            sizes["datasheets"] = total
+    return sizes
 
 
 def estimate_cost(
@@ -433,6 +517,39 @@ def export_files(
                 source_path = Path(outputs.kicad_sch)
                 dest_name = f"{target}.kicad_sch"
 
+            elif file_type == "svg" and outputs.svg:
+                source_path = Path(outputs.svg)
+                dest_name = f"{target}.pcba.svg"
+
+            elif file_type == "dxf" and outputs.dxf:
+                source_path = Path(outputs.dxf)
+                dest_name = f"{target}.pcba.dxf"
+
+            elif file_type == "png" and outputs.png:
+                source_path = Path(outputs.png)
+                dest_name = f"{target}.pcba.png"
+
+            elif file_type == "testpoints" and outputs.testpoints:
+                source_path = Path(outputs.testpoints)
+                dest_name = f"{target}.testpoints.json"
+
+            elif file_type == "variables_report" and outputs.variables_report:
+                source_path = Path(outputs.variables_report)
+                dest_name = f"{target}.variables.json"
+
+            elif file_type == "datasheets" and outputs.datasheets:
+                # Copy all datasheets into a subdirectory
+                ds_dest = target_dir / "datasheets"
+                ds_dest.mkdir(exist_ok=True)
+                for ds_path_str in outputs.datasheets:
+                    ds_source = Path(ds_path_str)
+                    try:
+                        shutil.copy2(ds_source, ds_dest / ds_source.name)
+                        exported_files.append(str(ds_dest / ds_source.name))
+                    except Exception as e:
+                        errors.append(f"Failed to copy datasheet {ds_source.name}: {e}")
+                continue
+
             if source_path and dest_name:
                 try:
                     dest_file = target_dir / dest_name
@@ -446,3 +563,54 @@ def export_files(
         "files": exported_files,
         "errors": errors if errors else None,
     }
+
+
+def _review_comments_path(project_root: str, target: str) -> Path:
+    """Return the path to the review comments file for a target."""
+    return Path(project_root) / "build" / "builds" / target / "review_comments.json"
+
+
+def get_review_comments(project_root: str, target: str) -> list[dict]:
+    """
+    Get review comments for a build target.
+
+    Returns a list of comment dicts with keys: pageId, text, timestamp.
+    """
+    comments_path = _review_comments_path(project_root, target)
+    if not comments_path.exists():
+        return []
+
+    try:
+        data = json.loads(comments_path.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except Exception as e:
+        log.warning(f"Failed to read review comments: {e}")
+
+    return []
+
+
+def add_review_comment(project_root: str, target: str, page_id: str, text: str) -> dict:
+    """
+    Set the review comment for a page (one comment per page, replaces existing).
+
+    Returns the comment dict.  If text is empty, removes the comment for that page.
+    """
+    comments_path = _review_comments_path(project_root, target)
+    comments_path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = get_review_comments(project_root, target)
+    # Remove any existing comment for this page
+    existing = [c for c in existing if c.get("pageId") != page_id]
+
+    comment = {
+        "pageId": page_id,
+        "text": text,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    # Only persist if text is non-empty
+    if text.strip():
+        existing.append(comment)
+
+    comments_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    return comment

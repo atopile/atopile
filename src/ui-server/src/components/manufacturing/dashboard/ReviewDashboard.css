@@ -1,0 +1,783 @@
+/**
+ * Manufacturing Dashboard — full-screen two-column layout.
+ * Uses VS Code theme variables for consistent theming.
+ */
+
+.mfg-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--vscode-editor-background, var(--bg-primary, #1e1e1e));
+  color: var(--vscode-foreground, var(--text-primary, #ccc));
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+}
+
+/* ── Top header bar ─────────────────────────────────────────────── */
+.mfg-dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.mfg-header-target {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground, var(--text-primary, #ccc));
+  white-space: nowrap;
+}
+
+.mfg-header-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--vscode-panel-border, var(--border-color, #444));
+  flex-shrink: 0;
+}
+
+.mfg-header-page-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mfg-header-spacer {
+  flex: 1;
+}
+
+.mfg-header-reviewed-btn {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #fff);
+}
+
+.mfg-header-reviewed-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.mfg-header-reviewed-btn.reviewed {
+  background: var(--vscode-testing-iconPassed, #73c991);
+  color: #000;
+}
+
+.mfg-header-comment-btn {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+/* ── Body: sidebar + content ────────────────────────────────────── */
+.mfg-dashboard-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+.mfg-dashboard-sidebar {
+  width: 250px;
+  min-width: 250px;
+  border-right: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.mfg-sidebar-section {
+  padding: 12px 0;
+}
+
+.mfg-sidebar-section:not(:last-child) {
+  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+}
+
+.mfg-sidebar-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  padding: 0 16px 8px;
+  margin: 0;
+}
+
+.mfg-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--vscode-foreground, var(--text-primary, #ccc));
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.mfg-sidebar-item:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover, #2a2d2e));
+}
+
+.mfg-sidebar-item.active {
+  background: var(--vscode-list-activeSelectionBackground, var(--accent-bg, #094771));
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+}
+
+.mfg-sidebar-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.mfg-sidebar-item-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mfg-sidebar-item-status {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.mfg-sidebar-item-status.pending {
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+}
+
+.mfg-sidebar-item-status.complete {
+  color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.mfg-sidebar-item-status.warning {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.mfg-sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin-top: auto;
+}
+
+/* ── Content area ───────────────────────────────────────────────── */
+.mfg-dashboard-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+/* ── Build step — 3-panel grid ──────────────────────────────────── */
+.mfg-build-step {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.mfg-build-grid {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  min-height: 0;
+}
+
+.mfg-build-grid-left {
+  width: 60%;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.mfg-build-stages-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.mfg-build-grid-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.mfg-build-grid-cell {
+  flex: 1;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 8px;
+  padding: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.mfg-build-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin: 0 0 8px;
+}
+
+/* Tips panel (right-top) */
+.mfg-build-tips-text {
+  background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
+}
+
+.mfg-tips-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+}
+
+.mfg-tips-body {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mfg-tips-body p {
+  margin: 0 0 8px;
+}
+
+.mfg-tips-link {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.mfg-tips-link:hover {
+  opacity: 1;
+}
+
+.mfg-tips-next-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #888);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm, 3px);
+  transition: color 0.15s, background 0.15s;
+}
+
+.mfg-tips-next-btn:hover {
+  color: var(--text-primary, #ccc);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.mfg-tips-markdown {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mfg-tips-markdown .markdown-paragraph {
+  margin: 0 0 8px;
+}
+
+.mfg-tips-markdown .markdown-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.mfg-tips-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Tips image (right-bottom) */
+.mfg-build-tips-image {
+  background: var(--vscode-sideBar-background, var(--bg-secondary, #252526));
+}
+
+.mfg-tips-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+}
+
+/* ── Build target selector (in left column) ───────────────────── */
+.mfg-target-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mfg-btn-tiny {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #444));
+  background: transparent;
+  color: var(--vscode-foreground, var(--text-primary, #ccc));
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.mfg-btn-tiny:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.mfg-target-category {
+  margin-bottom: 10px;
+}
+
+.mfg-target-category:last-child {
+  margin-bottom: 0;
+}
+
+.mfg-target-category-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin-bottom: 2px;
+  padding-left: 2px;
+}
+
+.mfg-target-checkbox-input {
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.mfg-build-stage-item.disabled {
+  opacity: 0.5;
+}
+
+.mfg-target-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.mfg-stage-status-icon {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.mfg-stage-elapsed {
+  font-size: 11px;
+  opacity: 0.5;
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* Git warning */
+.mfg-git-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.1));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.mfg-git-warning svg {
+  flex-shrink: 0;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  margin-top: 2px;
+}
+
+/* Build actions */
+.mfg-build-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  flex-shrink: 0;
+}
+
+/* ── Build stages list ──────────────────────────────────────────── */
+.mfg-build-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.mfg-build-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #2a2a2a));
+}
+
+.mfg-build-stage-item:last-child {
+  border-bottom: none;
+}
+
+.mfg-build-stage-item svg {
+  flex-shrink: 0;
+}
+
+.mfg-build-stage-item.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 7px 8px;
+  margin: 0 -8px;
+}
+
+.mfg-build-stage-item.clickable:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+/* ── Build targets 2-column flow ──────────────────────────────── */
+.mfg-target-categories-grid {
+  columns: 2;
+  column-gap: 20px;
+}
+
+.mfg-target-categories-grid .mfg-target-category {
+  break-inside: avoid;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.mfg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.mfg-btn-primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.mfg-btn-primary:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.mfg-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mfg-btn-secondary {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #fff);
+}
+
+.mfg-btn-secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+/* ── Review shell ───────────────────────────────────────────────── */
+.mfg-review-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mfg-review-content {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ── Comment dialog ─────────────────────────────────────────────── */
+.mfg-comment-dialog {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+.mfg-comment-dialog-inner {
+  background: var(--vscode-editor-background, var(--bg-primary, #1e1e1e));
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 8px;
+  padding: 20px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.mfg-comment-dialog-inner h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.mfg-comment-dialog textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.mfg-comment-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.mfg-comment-list {
+  margin-top: 16px;
+}
+
+.mfg-comment-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  font-size: 13px;
+}
+
+.mfg-comment-item-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin-bottom: 4px;
+}
+
+/* ── Export step ─────────────────────────────────────────────────── */
+.mfg-export-step {
+  max-width: 800px;
+}
+
+.mfg-export-step h2 {
+  font-size: 16px;
+  margin: 0 0 16px;
+}
+
+.mfg-export-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 700px) {
+  .mfg-export-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mfg-export-section {
+  margin-bottom: 20px;
+}
+
+.mfg-export-section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.mfg-export-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mfg-export-checkbox input[type="checkbox"] {
+  accent-color: var(--vscode-button-background, #0e639c);
+}
+
+.mfg-export-field {
+  margin-bottom: 12px;
+}
+
+.mfg-export-field label {
+  display: block;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  margin-bottom: 4px;
+}
+
+.mfg-export-field input,
+.mfg-export-field select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.mfg-export-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* ── Review page placeholders ───────────────────────────────────── */
+.mfg-review-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+}
+
+.mfg-review-placeholder svg {
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.mfg-review-placeholder p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.mfg-review-placeholder .coming-soon {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 10px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  margin-top: 8px;
+}
+
+/* 2D render view */
+.mfg-2d-render {
+  width: 100%;
+  height: 400px;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.mfg-2d-render img,
+.mfg-2d-render svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Gerber view wrapper */
+.mfg-gerber-view {
+  width: 100%;
+  height: 500px;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* 3D view wrapper */
+.mfg-3d-view {
+  width: 100%;
+  height: 500px;
+  border: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* ── Documents summary ──────────────────────────────────────────── */
+.mfg-documents-summary {
+  margin-top: 16px;
+}
+
+.mfg-documents-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mfg-documents-table th,
+.mfg-documents-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
+}
+
+.mfg-documents-table th {
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.mfg-documents-table td.file-size {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mfg-documents-table td.comment-cell {
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-width: 300px;
+  color: var(--vscode-descriptionForeground, var(--text-secondary, #888));
+  font-size: 12px;
+}
+
+.mfg-header-comment-btn.has-comment {
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* ── Animations ─────────────────────────────────────────────────── */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

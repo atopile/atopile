@@ -30,8 +30,15 @@ import type {
   ManufacturingBuild,
   FileExportType,
   CostEstimate,
+  ManufacturingDashboardState,
+  DashboardStep,
+  ReviewComment,
+  BuildOutputs as MfgBuildOutputs,
+  ManufacturingBuildStatus,
+  GitStatus as MfgGitStatus,
+  MusterTargetInfo,
 } from '../components/manufacturing/types';
-import { DEFAULT_FILE_TYPES } from '../components/manufacturing/types';
+import { DEFAULT_FILE_TYPES, DEFAULT_BUILD_TARGETS } from '../components/manufacturing/types';
 
 const ERROR_TIMEOUT_MS = 8000;
 
@@ -186,6 +193,9 @@ const initialState: AppState = {
 
   // Manufacturing Wizard
   manufacturingWizard: null as ManufacturingWizardState | null,
+
+  // Manufacturing Dashboard
+  manufacturingDashboard: null as ManufacturingDashboardState | null,
 };
 
 // Store actions interface
@@ -298,6 +308,30 @@ interface StoreActions {
   setManufacturingQuantity: (quantity: number) => void;
   setManufacturingLoading: (key: 'gitStatus' | 'cost' | 'exporting', loading: boolean) => void;
   setManufacturingExportError: (error: string | null) => void;
+
+  // Manufacturing Dashboard
+  openDashboard: (projectRoot: string, targetName: string) => void;
+  closeDashboard: () => void;
+  setDashboardStep: (step: DashboardStep) => void;
+  setDashboardReviewPage: (pageId: string | null) => void;
+  markReviewed: (pageId: string, reviewed: boolean) => void;
+  addReviewComment: (comment: ReviewComment) => void;
+  setReviewComment: (comment: ReviewComment) => void;
+  setReviewComments: (comments: ReviewComment[]) => void;
+  setDashboardOutputs: (outputs: MfgBuildOutputs | null) => void;
+  setDashboardBuildStatus: (status: ManufacturingBuildStatus) => void;
+  setDashboardBuildStages: (stages: string[]) => void;
+  setDashboardBomData: (data: BOMData | null) => void;
+  setDashboardBoardSummary: (summary: Record<string, unknown> | null) => void;
+  setDashboardGitStatus: (gitStatus: MfgGitStatus | null) => void;
+  setDashboardExportConfig: (config: Partial<ManufacturingDashboardState['exportConfig']>) => void;
+  setDashboardCostEstimate: (estimate: CostEstimate | null) => void;
+  setDashboardExporting: (exporting: boolean) => void;
+  setDashboardExportResult: (result: ManufacturingDashboardState['exportResult']) => void;
+  setDashboardArtifactVerification: (verification: Record<string, boolean>) => void;
+  setDashboardBuildTargets: (targets: string[]) => void;
+  toggleDashboardBuildTarget: (target: string) => void;
+  setAvailableBuildTargets: (targets: MusterTargetInfo[]) => void;
 
   // Reset
   reset: () => void;
@@ -1003,6 +1037,247 @@ export const useStore = create<Store>()(
               exportError: error,
               isExporting: false,
             },
+          };
+        }),
+
+      // Manufacturing Dashboard
+      openDashboard: (projectRoot, targetName) =>
+        set({
+          manufacturingDashboard: {
+            projectRoot,
+            targetName,
+            activeStep: 'build',
+            activeReviewPage: null,
+            reviewedPages: {},
+            reviewComments: [],
+            outputs: null,
+            buildStatus: 'pending',
+            buildStages: [],
+            bomData: null,
+            boardSummary: null,
+            gitStatus: null,
+            selectedBuildTargets: [...DEFAULT_BUILD_TARGETS],
+            availableBuildTargets: [],
+            exportConfig: {
+              directory: '',
+              selectedFileTypes: [...DEFAULT_FILE_TYPES],
+              fabHouse: 'jlcpcb',
+              pcbQuantity: 5,
+              pcbaQuantity: 5,
+            },
+            costEstimate: null,
+            isExporting: false,
+            exportResult: null,
+            artifactVerification: {},
+          },
+        }),
+
+      closeDashboard: () => set({ manufacturingDashboard: null }),
+
+      setDashboardStep: (step) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, activeStep: step },
+          };
+        }),
+
+      setDashboardReviewPage: (pageId) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              activeReviewPage: pageId,
+              activeStep: 'review',
+            },
+          };
+        }),
+
+      markReviewed: (pageId, reviewed) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              reviewedPages: {
+                ...state.manufacturingDashboard.reviewedPages,
+                [pageId]: reviewed,
+              },
+            },
+          };
+        }),
+
+      addReviewComment: (comment) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          // Replace existing comment for the same pageId (1 comment per page)
+          const filtered = state.manufacturingDashboard.reviewComments.filter(
+            (c) => c.pageId !== comment.pageId
+          );
+          // Only add the comment if it has text (empty text = delete)
+          const updated = comment.text.trim() ? [...filtered, comment] : filtered;
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              reviewComments: updated,
+            },
+          };
+        }),
+
+      // setReviewComment is the same as addReviewComment (replaces per page)
+      setReviewComment: (comment) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          const filtered = state.manufacturingDashboard.reviewComments.filter(
+            (c) => c.pageId !== comment.pageId
+          );
+          const updated = comment.text.trim() ? [...filtered, comment] : filtered;
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              reviewComments: updated,
+            },
+          };
+        }),
+
+      setReviewComments: (comments) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              reviewComments: comments,
+            },
+          };
+        }),
+
+      setDashboardOutputs: (outputs) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, outputs },
+          };
+        }),
+
+      setDashboardBuildStatus: (status) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, buildStatus: status },
+          };
+        }),
+
+      setDashboardBuildStages: (stages) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, buildStages: stages },
+          };
+        }),
+
+      setDashboardBomData: (data) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, bomData: data },
+          };
+        }),
+
+      setDashboardBoardSummary: (summary) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              boardSummary: summary as ManufacturingDashboardState['boardSummary'],
+            },
+          };
+        }),
+
+      setDashboardGitStatus: (gitStatus) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, gitStatus },
+          };
+        }),
+
+      setDashboardExportConfig: (config) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              exportConfig: { ...state.manufacturingDashboard.exportConfig, ...config },
+            },
+          };
+        }),
+
+      setDashboardCostEstimate: (estimate) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, costEstimate: estimate },
+          };
+        }),
+
+      setDashboardExporting: (exporting) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, isExporting: exporting },
+          };
+        }),
+
+      setDashboardExportResult: (result) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              exportResult: result,
+              isExporting: false,
+            },
+          };
+        }),
+
+      setDashboardArtifactVerification: (verification) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: {
+              ...state.manufacturingDashboard,
+              artifactVerification: verification,
+            },
+          };
+        }),
+
+      setDashboardBuildTargets: (targets) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, selectedBuildTargets: targets },
+          };
+        }),
+
+      toggleDashboardBuildTarget: (target) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          const current = state.manufacturingDashboard.selectedBuildTargets;
+          const next = current.includes(target)
+            ? current.filter((t) => t !== target)
+            : [...current, target];
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, selectedBuildTargets: next },
+          };
+        }),
+
+      setAvailableBuildTargets: (targets) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingDashboard) return {};
+          return {
+            manufacturingDashboard: { ...state.manufacturingDashboard, availableBuildTargets: targets },
           };
         }),
 

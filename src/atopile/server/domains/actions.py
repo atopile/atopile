@@ -1733,6 +1733,22 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             outputs = await asyncio.to_thread(
                 manufacturing_domain.get_build_outputs, project_root, target
             )
+            file_sizes = manufacturing_domain.get_file_sizes(outputs)
+            # Convert snake_case keys to camelCase for frontend
+            camel_sizes: dict[str, int] = {}
+            key_map = {
+                "bom_json": "bomJson",
+                "bom_csv": "bomCsv",
+                "pick_and_place": "pickAndPlace",
+                "kicad_pcb": "kicadPcb",
+                "kicad_sch": "kicadSch",
+                "pcb_summary": "pcbSummary",
+                "variables_report": "variablesReport",
+                "power_tree": "powerTree",
+            }
+            for k, v in file_sizes.items():
+                camel_sizes[key_map.get(k, k)] = v
+
             return {
                 "success": True,
                 "outputs": {
@@ -1745,6 +1761,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "kicadPcb": outputs.kicad_pcb,
                     "kicadSch": outputs.kicad_sch,
                     "pcbSummary": outputs.pcb_summary,
+                    "svg": outputs.svg,
+                    "dxf": outputs.dxf,
+                    "png": outputs.png,
+                    "testpoints": outputs.testpoints,
+                    "variablesReport": outputs.variables_report,
+                    "powerTree": outputs.power_tree,
+                    "datasheets": outputs.datasheets,
+                    "fileSizes": camel_sizes,
                 },
             }
 
@@ -1864,6 +1888,60 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if summary:
                 return {"success": True, "boardSummary": summary}
             return {"success": False, "error": "Board summary not available"}
+
+        elif action == "getReviewComments":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "")
+            if not project_root or not target:
+                return {"success": False, "error": "Missing projectRoot or target"}
+
+            comments = await asyncio.to_thread(
+                manufacturing_domain.get_review_comments, project_root, target
+            )
+            return {"success": True, "comments": comments}
+
+        elif action == "addReviewComment":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "")
+            page_id = payload.get("pageId", "")
+            text = payload.get("text", "")
+            if not project_root or not target or not page_id or not text:
+                return {
+                    "success": False,
+                    "error": "Missing projectRoot, target, pageId, or text",
+                }
+
+            comment = await asyncio.to_thread(
+                manufacturing_domain.add_review_comment,
+                project_root,
+                target,
+                page_id,
+                text,
+            )
+            return {"success": True, "comment": comment}
+
+        elif action == "getMusterTargets":
+            from atopile.build_steps import muster
+
+            targets = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "category": str(t.category),
+                    "virtual": t.virtual,
+                    "producesArtifact": t.produces_artifact,
+                    "tags": [str(tag) for tag in t.tags],
+                    "aliases": list(t.aliases),
+                    "dependencies": [d.name for d in t.dependencies],
+                }
+                for t in muster.targets.values()
+                if t.category is not None
+            ]
+            return {"success": True, "targets": targets}
 
         return {"success": False, "error": f"Unknown action: {action}"}
 
