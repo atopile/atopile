@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from atopile.layout_server.server import create_app
+from atopile.layout_server.__main__ import create_app
 
 TEST_PCB = Path("test/common/resources/fileformats/kicad/v8/pcb/test.kicad_pcb")
 

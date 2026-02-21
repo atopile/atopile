@@ -1,16 +1,15 @@
-"""FastAPI application for the PCB Layout Editor."""
+"""Shared layout-editor API router factory.
+
+Used by both the standalone server (``__main__``) and the backend
+integration server (``atopile.server.routes.layout``).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from atopile.layout_server.models import (
     ActionRequest,
@@ -19,141 +18,66 @@ from atopile.layout_server.models import (
     StatusResponse,
     WsMessage,
 )
-from atopile.layout_server.pcb_manager import PcbManager
+from atopile.server.domains.layout import LayoutService
 
 log = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "static"
-TEMPLATE_PATH = STATIC_DIR / "layout-editor.hbs"
 
-
-def _render_layout_template(
+def create_layout_router(
+    service: LayoutService,
     *,
-    api_url: str,
-    api_prefix: str,
-    ws_path: str,
-    editor_uri: str,
-    nonce: str = "",
-    csp: str,
-) -> str:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    values = {
-        "apiUrl": api_url,
-        "apiPrefix": api_prefix,
-        "wsPath": ws_path,
-        "editorUri": editor_uri,
-        "nonce": nonce,
-        "csp": csp,
-    }
-    for key, value in values.items():
-        template = template.replace(f"{{{{{key}}}}}", value)
-    return template
+    api_prefix: str = "/api/layout",
+    ws_path: str = "/ws/layout",
+) -> APIRouter:
+    """Build an ``APIRouter`` wired to *service*.
 
+    Parameters
+    ----------
+    service:
+        The ``LayoutService`` instance that owns the ``PcbManager``.
+    api_prefix:
+        URL prefix for the REST endpoints (e.g. ``/api/layout``).
+    ws_path:
+        Full path for the WebSocket endpoint (e.g. ``/ws/layout``).
+    """
+    router = APIRouter(tags=["layout"])
 
-class ConnectionManager:
-    def __init__(self) -> None:
-        self.active_connections: list[WebSocket] = []
+    def _require_loaded() -> None:
+        if not service.is_loaded:
+            raise HTTPException(
+                status_code=404, detail="No PCB loaded in layout editor"
+            )
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket) -> None:
-        try:
-            self.active_connections.remove(websocket)
-        except ValueError:
-            pass
-
-    async def broadcast(self, message: WsMessage) -> None:
-        data = message.model_dump(exclude_none=True)
-        stale: list[WebSocket] = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(data)
-            except Exception:
-                stale.append(connection)
-        for ws in stale:
-            try:
-                self.active_connections.remove(ws)
-            except ValueError:
-                pass
-
-
-async def _watch_file(
-    pcb_path: Path, manager: PcbManager, ws_manager: ConnectionManager
-) -> None:
-    """Watch pcb file for external changes and reload."""
-    import watchfiles
-
-    log.info("File watcher started for %s", pcb_path)
-    async for _changes in watchfiles.awatch(pcb_path):
-        if manager.was_recently_saved():
-            log.debug("Ignoring self-triggered file change")
-            continue
-        try:
-            log.info("PCB file changed on disk, reloading")
-            await asyncio.to_thread(manager.load, pcb_path)
-            model = await asyncio.to_thread(manager.get_render_model)
-            await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
-        except Exception:
-            log.exception("Error reloading PCB after file change")
-
-
-def create_app(pcb_path: Path) -> FastAPI:
-    manager = PcbManager()
-    manager.load(pcb_path)
-    ws_manager = ConnectionManager()
-
-    @asynccontextmanager
-    async def lifespan(_app: FastAPI):
-        task = asyncio.create_task(_watch_file(pcb_path, manager, ws_manager))
-        yield
-        task.cancel()
-
-    app = FastAPI(title="PCB Layout Editor", lifespan=lifespan)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    @app.get("/api/render-model", response_model=RenderModel)
+    @router.get(f"{api_prefix}/render-model", response_model=RenderModel)
     async def get_render_model() -> RenderModel:
-        return await asyncio.to_thread(manager.get_render_model)
+        _require_loaded()
+        return await asyncio.to_thread(service.manager.get_render_model)
 
-    @app.get(
-        "/api/footprints",
-        response_model=list[FootprintSummary],
-    )
+    @router.get(f"{api_prefix}/footprints", response_model=list[FootprintSummary])
     async def get_footprints() -> list[FootprintSummary]:
-        return await asyncio.to_thread(manager.get_footprints)
+        _require_loaded()
+        return await asyncio.to_thread(service.manager.get_footprints)
 
-    async def _save_and_broadcast() -> RenderModel:
-        await asyncio.to_thread(manager.save)
-        model = await asyncio.to_thread(manager.get_render_model)
-        await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
-        return model
-
-    @app.post("/api/execute-action", response_model=StatusResponse)
+    @router.post(f"{api_prefix}/execute-action", response_model=StatusResponse)
     async def execute_action(req: ActionRequest) -> StatusResponse:
+        _require_loaded()
         try:
-            await asyncio.to_thread(manager.dispatch_action, req)
+            await asyncio.to_thread(service.manager.dispatch_action, req)
         except ValueError as e:
             return StatusResponse(
                 status="error",
                 code="invalid_action_target",
                 message=str(e),
             )
-        model = await _save_and_broadcast()
+        model = await service.save_and_broadcast()
         return StatusResponse(status="ok", code="ok", model=model)
 
-    @app.post("/api/undo", response_model=StatusResponse)
+    @router.post(f"{api_prefix}/undo", response_model=StatusResponse)
     async def undo() -> StatusResponse:
-        ok = await asyncio.to_thread(manager.undo)
+        _require_loaded()
+        ok = await asyncio.to_thread(service.manager.undo)
         if ok:
-            model = await _save_and_broadcast()
+            model = await service.save_and_broadcast()
             return StatusResponse(status="ok", code="ok", model=model)
         return StatusResponse(
             status="error",
@@ -161,11 +85,12 @@ def create_app(pcb_path: Path) -> FastAPI:
             message="No action available to undo.",
         )
 
-    @app.post("/api/redo", response_model=StatusResponse)
+    @router.post(f"{api_prefix}/redo", response_model=StatusResponse)
     async def redo() -> StatusResponse:
-        ok = await asyncio.to_thread(manager.redo)
+        _require_loaded()
+        ok = await asyncio.to_thread(service.manager.redo)
         if ok:
-            model = await _save_and_broadcast()
+            model = await service.save_and_broadcast()
             return StatusResponse(status="ok", code="ok", model=model)
         return StatusResponse(
             status="error",
@@ -173,44 +98,22 @@ def create_app(pcb_path: Path) -> FastAPI:
             message="No action available to redo.",
         )
 
-    @app.post("/api/reload", response_model=StatusResponse)
+    @router.post(f"{api_prefix}/reload", response_model=StatusResponse)
     async def reload() -> StatusResponse:
-        await asyncio.to_thread(manager.load, pcb_path)
-        model = await asyncio.to_thread(manager.get_render_model)
-        await ws_manager.broadcast(WsMessage(type="layout_updated", model=model))
+        _require_loaded()
+        path = service.current_path
+        await asyncio.to_thread(service.manager.load, path)
+        model = await asyncio.to_thread(service.manager.get_render_model)
+        await service.broadcast(WsMessage(type="layout_updated", model=model))
         return StatusResponse(status="ok", code="ok", model=model)
 
-    @app.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket):
-        await ws_manager.connect(websocket)
+    @router.websocket(ws_path)
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        await service.add_ws_client(websocket)
         try:
             while True:
                 await websocket.receive_text()
         except WebSocketDisconnect:
-            ws_manager.disconnect(websocket)
+            service.remove_ws_client(websocket)
 
-    # --- Static files ---
-
-    @app.get("/")
-    async def index():
-        html = _render_layout_template(
-            api_url="",
-            api_prefix="/api",
-            ws_path="/ws",
-            editor_uri="/static/editor.js",
-            csp=(
-                "default-src 'self'; "
-                "style-src 'self' 'unsafe-inline'; "
-                "script-src 'self' 'unsafe-inline'; "
-                "connect-src 'self' ws: wss:;"
-            ),
-        )
-        return HTMLResponse(html)
-
-    app.mount(
-        "/static",
-        StaticFiles(directory=str(STATIC_DIR)),
-        name="static",
-    )
-
-    return app
+    return router
