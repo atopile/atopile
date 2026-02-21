@@ -77,6 +77,14 @@ class is_pickable_by_type(fabll.Node):
         RESISTORS = "resistors"
         CAPACITORS = "capacitors"
         INDUCTORS = "inductors"
+        CAPACITORS_POLARIZED = "capacitors_polarized"
+        DIODES = "diodes"
+        LEDS = "leds"
+        BJTS = "bjts"
+        MOSFETS = "mosfets"
+        CRYSTALS = "crystals"
+        FERRITE_BEADS = "ferrite_beads"
+        LDOS = "ldos"
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     endpoint_ = F.Parameters.EnumParameter.MakeChild(enum_t=Endpoint)

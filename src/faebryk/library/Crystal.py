@@ -45,11 +45,25 @@ class Crystal(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.CRYSTALS,
+            params={
+                "frequency": frequency,
+                "frequency_tolerance": frequency_tolerance,
+                "frequency_temperature_tolerance": frequency_temperature_tolerance,
+                "load_capacitance": load_capacitance,
+            },
+        )
+    )
+
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    gnd.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [gnd]))
+    # Package ground/shield pins are not universal across crystal footprints.
+    # Keep `gnd` as an electrical reference point, but do not require a
+    # corresponding pad during footprint pinmap matching.
 
     for e in unnamed:
         lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])

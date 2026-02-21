@@ -7,3 +7,7 @@ paths:
 builds:
   default:
     entry: pick_parts.ato:App
+
+services:
+  components:
+    url: "http://127.0.0.1:8079"

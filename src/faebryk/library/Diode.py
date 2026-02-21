@@ -28,6 +28,18 @@ class Diode(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.DIODES,
+            params={
+                "forward_voltage": forward_voltage,
+                "reverse_working_voltage": reverse_working_voltage,
+                "reverse_leakage_current": reverse_leakage_current,
+                "max_current": max_current,
+            },
+        )
+    )
+
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )

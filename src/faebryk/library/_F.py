@@ -63,8 +63,10 @@ from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.BJT import BJT
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Diode import Diode
+from faebryk.library.FerriteBead import FerriteBead
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
+from faebryk.library.LDO import LDO
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.MountingHole import MountingHole
 from faebryk.library.Net import Net
@@ -166,8 +168,10 @@ __all__ = [
     "BJT",
     "Crystal",
     "Diode",
+    "FerriteBead",
     "Fuse",
     "Inductor",
+    "LDO",
     "MOSFET",
     "MountingHole",
     "Net",

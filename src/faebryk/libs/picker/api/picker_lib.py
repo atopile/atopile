@@ -35,7 +35,6 @@ from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Tree,
-    cast_assert,
     groupby,
 )
 
@@ -75,9 +74,9 @@ BackendPackage = StrEnum(
         if size.name.startswith(("I", "M"))
     }
     | {
-        size.value: size.value
-        for size in SMDSize
-        if not size.name.startswith(("I", "M"))
+        # Keep unprefixed forms available as a generic fallback when pick type
+        # does not imply R/C/L package prefixes.
+        size.value: size.value for size in SMDSize
     },
 )
 
@@ -85,19 +84,34 @@ BackendPackage = StrEnum(
 def _from_smd_size(cls, size: SMDSize, type_node: graph.BoundNode) -> "BackendPackage":  # type: ignore[invalid-type-form]
     type_name = fbrk.TypeGraph.get_type_name(type_node=type_node)
 
+    prefix: str | None = None
     if type_name == F.Resistor._type_identifier():
         prefix = "R"
     elif type_name == F.Capacitor._type_identifier():
         prefix = "C"
     elif type_name == F.Inductor._type_identifier():
         prefix = "L"
-    else:
-        raise NotImplementedError(f"Unsupported pickable trait: {type_node}")
+    elif type_name == F.FerriteBead._type_identifier():
+        prefix = "L"
 
-    try:
-        return cls[f"{prefix}{size.imperial.without_prefix}"]
-    except SMDSize.UnableToConvert:
-        return cls[size.value]
+    candidate_names: list[str] = []
+    if prefix is not None:
+        try:
+            candidate_names.append(f"{prefix}{size.imperial.without_prefix}")
+        except SMDSize.UnableToConvert:
+            pass
+    candidate_names.append(size.value)
+
+    for candidate in candidate_names:
+        try:
+            return cls[candidate]
+        except KeyError:
+            continue
+
+    # Keep the exception explicit but with enough context to diagnose enum/schema drift.
+    raise KeyError(
+        f"{size.value} (resolved from {type_name}, tried {candidate_names})"
+    )
 
 
 BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
@@ -287,8 +301,10 @@ def _find_modules(
         raise UserInfraError("Fetching component data failed: connection error") from e
     except ApiHTTPError as e:
         if e.response.status_code == 400:
-            response = cast_assert(dict, e.response.json())
-            if errors := response.get("detail", {}).get("errors", None):
+            response = e.response.json()
+            detail = response.get("detail") if isinstance(response, dict) else None
+            errors = detail.get("errors") if isinstance(detail, dict) else None
+            if errors:
                 raise ExceptionGroup(
                     "Failed to fetch one or more parts",
                     [

@@ -1178,7 +1178,8 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,
-        generate_datasheets,
+        # Datasheet downloads are an explicit target now.
+        # Picked component data comes from components backend bundles.
     ],
     virtual=True,
 )

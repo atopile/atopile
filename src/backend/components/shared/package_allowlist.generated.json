@@ -1,0 +1,1374 @@
+{
+  "allowlists": {
+    "bjt": [
+      "SOT-23",
+      "TO-92",
+      "SOT-89",
+      "SOT-223",
+      "TO-92-3",
+      "SOT-89-3L",
+      "TO-220",
+      "SOT-323",
+      "TO-126",
+      "SOT-363",
+      "SOT-89-3",
+      "TO-252-2(DPAK)",
+      "SC-70(SOT-323)",
+      "TO-252(DPAK)",
+      "SOT-23-3",
+      "TO-92-3L",
+      "SOT-523",
+      "TO-236-3(SOT-23-3)"
+    ],
+    "capacitor": [
+      "0402",
+      "0603",
+      "0805",
+      "1206",
+      "0201",
+      "\u63d2\u4ef6,P=10mm",
+      "\u63d2\u4ef6,P=15mm",
+      "\u63d2\u4ef6",
+      "\u63d2\u4ef6,P=7.5mm",
+      "1210",
+      "\u63d2\u4ef6,P=22.5mm",
+      "\u63d2\u4ef6,P=5mm",
+      "\u63d2\u4ef6,P=27.5mm",
+      "1812",
+      "\u63d2\u4ef6,P=5.08mm",
+      "C0603",
+      "\u63d2\u4ef6,P=20mm",
+      "1808",
+      "2220",
+      "C0805",
+      "\u63d2\u4ef6,P=2.54mm",
+      "01005",
+      "CAP-TH",
+      "C0402",
+      "\u63d2\u4ef6,P=15.5mm",
+      "\u63d2\u4ef6,P=2.5mm"
+    ],
+    "capacitor_polarized": [
+      "\u63d2\u4ef6,D5xL11mm",
+      "SMD,D6.3xL7.7mm",
+      "\u63d2\u4ef6,D6.3xL11mm",
+      "\u63d2\u4ef6,D10xL16mm",
+      "\u63d2\u4ef6,D8xL11.5mm",
+      "CASE-A-3216-18(mm)",
+      "\u63d2\u4ef6,D10xL20mm",
+      "\u63d2\u4ef6,D8xL12mm",
+      "CASE-B-3528-21(mm)",
+      "SMD,D6.3xL5.4mm",
+      "SMD,D10xL10.2mm",
+      "SMD,D8xL10.2mm",
+      "SMD,D5xL5.4mm",
+      "\u63d2\u4ef6,D12.5xL20mm",
+      "SMD,D4xL5.4mm",
+      "\u63d2\u4ef6,D10xL12.5mm",
+      "CASE-D-7343-31(mm)",
+      "SMD,D8xL10mm",
+      "SMD,D10xL10mm",
+      "\u63d2\u4ef6,D16xL25mm",
+      "CASE-C-6032-28(mm)",
+      "\u63d2\u4ef6,D12.5xL25mm",
+      "SMD,D6.3xL5.8mm",
+      "SMD,D8xL10.5mm",
+      "\u63d2\u4ef6,D8xL16mm",
+      "SMD,D12.5xL13.5mm",
+      "CASE-A-3216-16(mm)",
+      "\u63d2\u4ef6,D6.3xL8mm",
+      "\u63d2\u4ef6,D6.3xL12mm",
+      "SMD,D6.3xL5.3mm",
+      "SMD,D5xL5.8mm",
+      "CASE-B-3528-19(mm)",
+      "\u63d2\u4ef6,D6.3xL9mm",
+      "SMD,D10xL10.5mm",
+      "SMD",
+      "SMD,D4xL5.3mm",
+      "SMD,D6.3xL5.7mm",
+      "\u63d2\u4ef6,D16xL20mm",
+      "SMD,D5xL5.3mm",
+      "SMD,D6.3xL5.9mm",
+      "\u63d2\u4ef6,D6.3xL7mm",
+      "\u63d2\u4ef6,D8xL9mm",
+      "\u63d2\u4ef6,D10xL13mm",
+      "\u63d2\u4ef6,D4xL7mm",
+      "\u63d2\u4ef6,D5xL7mm",
+      "SMD,D8xL6.5mm",
+      "\u63d2\u4ef6,D13xL20mm",
+      "\u63d2\u4ef6,D18xL25mm",
+      "\u63d2\u4ef6,D8xL20mm",
+      "CAP-SMD",
+      "CASE-E-7343-43(mm)",
+      "CASE-D-7343",
+      "\u63d2\u4ef6,D10xL17mm",
+      "SMD,D5xL5.7mm",
+      "SMD,D16xL16.5mm",
+      "\u63d2\u4ef6,D8xL14mm",
+      "\u63d2\u4ef6,D10xL12mm",
+      "\u63d2\u4ef6,D4xL5mm",
+      "CASE-C-6032",
+      "CASE-V-7343-19(mm)",
+      "SMD,D6.3xL5.5mm",
+      "\u63d2\u4ef6,D18xL30mm",
+      "\u63d2\u4ef6,D8xL11mm",
+      "SMD,D4xL5.7mm"
+    ],
+    "crystal": [
+      "SMD3225-4P",
+      "HC-49S",
+      "HC-49S-SMD",
+      "SMD2520-4P",
+      "SMD5032-4P",
+      "SMD2016-4P",
+      "SMD5032-2P"
+    ],
+    "diode": [
+      "SMA(DO-214AC)",
+      "SOT-23",
+      "SMB(DO-214AA)",
+      "DO-201AD",
+      "SOD-323",
+      "SOD-123",
+      "DO-41",
+      "SMAF",
+      "SMC(DO-214AB)",
+      "ITO-220AB-3",
+      "TO-220AB-3",
+      "SOD-123FL",
+      "SMA",
+      "SMB",
+      "SOD-123F",
+      "TO-220",
+      "DO-15",
+      "SOD-523",
+      "SMBF",
+      "TO-263-2",
+      "TO-220AC-2",
+      "SMC",
+      "TO-220AC",
+      "TO-252-2(DPAK)",
+      "SOT-323",
+      "TO-220AB",
+      "TO-220F-3",
+      "MBS",
+      "TO-247AC-3",
+      "GBU",
+      "SOT-323-3",
+      "ABS",
+      "KBP",
+      "DO-214AC(SMA)",
+      "ITO-220AC",
+      "TO-220-2",
+      "DO-27",
+      "MBF",
+      "DO-214AA(SMB)",
+      "PowerDI-123",
+      "D2PAK",
+      "GBJ",
+      "DO-214AB(SMC)",
+      "DO-35",
+      "SOD-323F",
+      "SOT-363",
+      "TO-252-2",
+      "R-6",
+      "SOD-128",
+      "TO-247-2"
+    ],
+    "ferrite_bead": [
+      "0603",
+      "0402",
+      "0805"
+    ],
+    "inductor": [
+      "0402",
+      "0603",
+      "SMD",
+      "0201",
+      "1008",
+      "0805",
+      "SMD,4x4mm",
+      "SMD,6x6mm",
+      "1210",
+      "SMD,3x3mm",
+      "SMD,5x5mm",
+      "0806",
+      "SMD,8x8mm",
+      "SMD,12.5x12.5mm",
+      "SMD,7.8x7mm",
+      "SMD,5.8x5.2mm",
+      "SMD,4.5x4mm",
+      "SMD,7x7mm",
+      "SMD,2.9x2.8mm",
+      "SMD,7x6.6mm",
+      "SMD,3.5x3mm",
+      "SMD,7.3x6.6mm",
+      "\u63d2\u4ef6",
+      "1206",
+      "1812",
+      "1007",
+      "SMD,4.7x4.7mm",
+      "SMD,11.5x10mm"
+    ],
+    "ldo": [
+      "SOT-23-5",
+      "SOT-89-3",
+      "SOT-223",
+      "SOT-23",
+      "TO-252-2(DPAK)",
+      "TO-220",
+      "SOIC-8",
+      "TO-92-3",
+      "SOT-89",
+      "TO-263-2",
+      "TO-263-3",
+      "SOT-223-3",
+      "SOT-223-4",
+      "SOT-25",
+      "TO-263-5",
+      "TSOT-23-5",
+      "SC-70-5",
+      "TO-92",
+      "SOT-23-3L",
+      "SOT-23-3",
+      "DPAK",
+      "SOIC-8-EP",
+      "SOT-23-5L",
+      "TO-220IS-4",
+      "TO-252-3",
+      "TSOP-5",
+      "SO-8",
+      "SOP-8-EP",
+      "WSON-6-EP(2x2)",
+      "DPAK-3",
+      "TSOT-5",
+      "MSOP-8",
+      "MSOP-8-EP",
+      "SOT-25-5",
+      "TO-220-3"
+    ],
+    "led": [
+      "0603",
+      "1206",
+      "0805",
+      "\u63d2\u4ef6,D=5mm",
+      "\u63d2\u4ef6,D=3mm",
+      "SMD2835-2P",
+      "0402",
+      "SMD3528-2P",
+      "1210",
+      "SMD,1.7x1.1mm",
+      "0606",
+      "SMD,3x2mm",
+      "SMD,2.1x1mm",
+      "SMD-4P,1.6x1.5mm",
+      "SMD3528",
+      "SMD-3P,3x2mm",
+      "SMD-4P,1.6x1.6mm",
+      "SMD5050-6P",
+      "SMD,1.8x1mm",
+      "SMD2835",
+      "SMD-4P,3.2x2.7mm",
+      "LED-TH",
+      "SMD,2.5x2mm",
+      "SMD5730-3P",
+      "\u63d2\u4ef6",
+      "SMD,3x1.5mm",
+      "SMD3014-2P",
+      "SMD",
+      "SMD,5.6x3mm",
+      "SMD-3P,3.2x1.5mm"
+    ],
+    "mosfet": [
+      "SOT-23",
+      "TO-220",
+      "SO-8",
+      "TO-220F-3",
+      "TO-252-2(DPAK)",
+      "SOIC-8",
+      "SOP-8",
+      "TO-252",
+      "TO-220AB",
+      "SOT-223",
+      "TO-247AC-3",
+      "TO-263-2",
+      "TO-252(DPAK)",
+      "TO-220F",
+      "TO-251(IPAK)",
+      "PowerPAK1212-8",
+      "SOT-323",
+      "DPAK",
+      "SOT-23-3",
+      "SOT-23-3L",
+      "PowerPAK-SO-8",
+      "TO-220-3",
+      "D2PAK",
+      "DFN-8(3x3)",
+      "TO-220FP",
+      "TO-252-2",
+      "TO-252-2L",
+      "ITO-220AB-3",
+      "SOT-363",
+      "TO-251",
+      "TO-263",
+      "TSOP-6",
+      "TO-247AC",
+      "SOT-723",
+      "SuperSOT-6",
+      "SC-70-6(SOT-363)",
+      "SOT-23-6",
+      "SOT-89",
+      "TDSON-8(5x6)",
+      "TO-247-3",
+      "SOT-523",
+      "PowerPAKSO-8",
+      "TSSOP-8",
+      "DPAK(TO-252AA)",
+      "PowerPAK-SC-70-6",
+      "SOT-563",
+      "TO-3P",
+      "SOT-23-6L",
+      "TO-220F1",
+      "TO-3P-3",
+      "DPAK(TO-252)",
+      "PQFN-8(5x6)",
+      "SOT-223-3",
+      "TO-247",
+      "PowerDI3333-8"
+    ],
+    "resistor": [
+      "0603",
+      "0805",
+      "0402",
+      "1206",
+      "0201",
+      "1210",
+      "2512",
+      "2010",
+      "MELF-0204",
+      "1812",
+      "\u63d2\u4ef6,D4.5xL11.5mm",
+      "\u63d2\u4ef6,D2.3xL6.5mm",
+      "\u63d2\u4ef6,D2.4xL6.3mm",
+      "\u63d2\u4ef6,D5xL15.5mm",
+      "\u63d2\u4ef6,D2.2xL6.5mm",
+      "\u63d2\u4ef6,D2.5xL4.7mm",
+      "\u63d2\u4ef6,D3.3xL9mm",
+      "MELF",
+      "1218",
+      "\u63d2\u4ef6,D1.7xL3.5mm",
+      "\u63d2\u4ef6,D4xL10.5mm",
+      "\u63d2\u4ef6,D1.8xL3.2mm",
+      "\u63d2\u4ef6,D3.2xL9mm",
+      "\u63d2\u4ef6,D2.3xL3.7mm",
+      "\u63d2\u4ef6,D4xL12mm",
+      "01005",
+      "\u63d2\u4ef6,D3.5xL9.5mm",
+      "\u63d2\u4ef6,D4xL11.5mm",
+      "\u63d2\u4ef6,D6xL17.5mm",
+      "\u63d2\u4ef6,D1.9xL3.4mm",
+      "MELF-0207",
+      "\u63d2\u4ef6,D1.9xL3.3mm",
+      "\u63d2\u4ef6,D4.5xL12mm",
+      "\u63d2\u4ef6,D2.7xL6.2mm",
+      "\u63d2\u4ef6,D8xL24.5mm",
+      "\u63d2\u4ef6,D3xL9mm",
+      "0612",
+      "R0603"
+    ]
+  },
+  "component_type_stats": {
+    "bjt": {
+      "coverage": 0.8038444735692443,
+      "selected_packages": 18,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 751,
+          "package": "SOT-23"
+        },
+        {
+          "count": 152,
+          "package": "TO-92"
+        },
+        {
+          "count": 144,
+          "package": "SOT-89"
+        },
+        {
+          "count": 132,
+          "package": "SOT-223"
+        },
+        {
+          "count": 103,
+          "package": "TO-92-3"
+        },
+        {
+          "count": 94,
+          "package": "SOT-89-3L"
+        },
+        {
+          "count": 74,
+          "package": "TO-220"
+        },
+        {
+          "count": 61,
+          "package": "SOT-323"
+        },
+        {
+          "count": 55,
+          "package": "TO-126"
+        },
+        {
+          "count": 51,
+          "package": "SOT-363"
+        },
+        {
+          "count": 43,
+          "package": "SOT-89-3"
+        },
+        {
+          "count": 42,
+          "package": "TO-252-2(DPAK)"
+        },
+        {
+          "count": 34,
+          "package": "SC-70(SOT-323)"
+        },
+        {
+          "count": 27,
+          "package": "TO-252(DPAK)"
+        },
+        {
+          "count": 24,
+          "package": "SOT-23-3"
+        },
+        {
+          "count": 23,
+          "package": "TO-92-3L"
+        },
+        {
+          "count": 15,
+          "package": "SOT-523"
+        },
+        {
+          "count": 15,
+          "package": "TO-236-3(SOT-23-3)"
+        },
+        {
+          "count": 15,
+          "package": "TO-252"
+        },
+        {
+          "count": 14,
+          "package": "TO-225-3"
+        }
+      ],
+      "total_packages": 147,
+      "total_parts": 2289
+    },
+    "capacitor": {
+      "coverage": 0.9903652448103705,
+      "selected_packages": 26,
+      "threshold": 0.99,
+      "top_packages": [
+        {
+          "count": 2127,
+          "package": "0402"
+        },
+        {
+          "count": 1909,
+          "package": "0603"
+        },
+        {
+          "count": 1630,
+          "package": "0805"
+        },
+        {
+          "count": 1234,
+          "package": "1206"
+        },
+        {
+          "count": 994,
+          "package": "0201"
+        },
+        {
+          "count": 675,
+          "package": "\u63d2\u4ef6,P=10mm"
+        },
+        {
+          "count": 589,
+          "package": "\u63d2\u4ef6,P=15mm"
+        },
+        {
+          "count": 363,
+          "package": "\u63d2\u4ef6"
+        },
+        {
+          "count": 324,
+          "package": "\u63d2\u4ef6,P=7.5mm"
+        },
+        {
+          "count": 293,
+          "package": "1210"
+        },
+        {
+          "count": 246,
+          "package": "\u63d2\u4ef6,P=22.5mm"
+        },
+        {
+          "count": 225,
+          "package": "\u63d2\u4ef6,P=5mm"
+        },
+        {
+          "count": 154,
+          "package": "\u63d2\u4ef6,P=27.5mm"
+        },
+        {
+          "count": 145,
+          "package": "1812"
+        },
+        {
+          "count": 131,
+          "package": "\u63d2\u4ef6,P=5.08mm"
+        },
+        {
+          "count": 45,
+          "package": "C0603"
+        },
+        {
+          "count": 41,
+          "package": "\u63d2\u4ef6,P=20mm"
+        },
+        {
+          "count": 37,
+          "package": "1808"
+        },
+        {
+          "count": 33,
+          "package": "2220"
+        },
+        {
+          "count": 26,
+          "package": "C0805"
+        }
+      ],
+      "total_packages": 83,
+      "total_parts": 11417
+    },
+    "capacitor_polarized": {
+      "coverage": 0.8029113924050633,
+      "selected_packages": 64,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 324,
+          "package": "\u63d2\u4ef6,D5xL11mm"
+        },
+        {
+          "count": 296,
+          "package": "SMD,D6.3xL7.7mm"
+        },
+        {
+          "count": 285,
+          "package": "\u63d2\u4ef6,D6.3xL11mm"
+        },
+        {
+          "count": 276,
+          "package": "\u63d2\u4ef6,D10xL16mm"
+        },
+        {
+          "count": 261,
+          "package": "\u63d2\u4ef6,D8xL11.5mm"
+        },
+        {
+          "count": 244,
+          "package": "CASE-A-3216-18(mm)"
+        },
+        {
+          "count": 241,
+          "package": "\u63d2\u4ef6,D10xL20mm"
+        },
+        {
+          "count": 220,
+          "package": "\u63d2\u4ef6,D8xL12mm"
+        },
+        {
+          "count": 216,
+          "package": "CASE-B-3528-21(mm)"
+        },
+        {
+          "count": 199,
+          "package": "SMD,D6.3xL5.4mm"
+        },
+        {
+          "count": 180,
+          "package": "SMD,D10xL10.2mm"
+        },
+        {
+          "count": 173,
+          "package": "SMD,D8xL10.2mm"
+        },
+        {
+          "count": 164,
+          "package": "SMD,D5xL5.4mm"
+        },
+        {
+          "count": 164,
+          "package": "\u63d2\u4ef6,D12.5xL20mm"
+        },
+        {
+          "count": 149,
+          "package": "SMD,D4xL5.4mm"
+        },
+        {
+          "count": 148,
+          "package": "\u63d2\u4ef6,D10xL12.5mm"
+        },
+        {
+          "count": 142,
+          "package": "CASE-D-7343-31(mm)"
+        },
+        {
+          "count": 131,
+          "package": "SMD,D8xL10mm"
+        },
+        {
+          "count": 122,
+          "package": "SMD,D10xL10mm"
+        },
+        {
+          "count": 114,
+          "package": "\u63d2\u4ef6,D16xL25mm"
+        }
+      ],
+      "total_packages": 370,
+      "total_parts": 7900
+    },
+    "crystal": {
+      "coverage": 0.8419452887537994,
+      "selected_packages": 7,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 558,
+          "package": "SMD3225-4P"
+        },
+        {
+          "count": 221,
+          "package": "HC-49S"
+        },
+        {
+          "count": 199,
+          "package": "HC-49S-SMD"
+        },
+        {
+          "count": 150,
+          "package": "SMD2520-4P"
+        },
+        {
+          "count": 91,
+          "package": "SMD5032-4P"
+        },
+        {
+          "count": 90,
+          "package": "SMD2016-4P"
+        },
+        {
+          "count": 76,
+          "package": "SMD5032-2P"
+        },
+        {
+          "count": 36,
+          "package": "SMD3215-2P"
+        },
+        {
+          "count": 33,
+          "package": "DT-26"
+        },
+        {
+          "count": 25,
+          "package": "SMD1612-4P"
+        },
+        {
+          "count": 21,
+          "package": "SMD8045-2P"
+        },
+        {
+          "count": 18,
+          "package": "SMD2012-2P"
+        },
+        {
+          "count": 15,
+          "package": "DT-38"
+        },
+        {
+          "count": 12,
+          "package": "MC-306"
+        },
+        {
+          "count": 12,
+          "package": "OSC-TH"
+        },
+        {
+          "count": 12,
+          "package": "SMD-5032_2P"
+        },
+        {
+          "count": 11,
+          "package": "MC-146"
+        },
+        {
+          "count": 11,
+          "package": "OSC-SMD"
+        },
+        {
+          "count": 6,
+          "package": "SMD1610-2P"
+        },
+        {
+          "count": 6,
+          "package": "SMD3225"
+        }
+      ],
+      "total_packages": 41,
+      "total_parts": 1645
+    },
+    "diode": {
+      "coverage": 0.802455953016551,
+      "selected_packages": 50,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 453,
+          "package": "SMA(DO-214AC)"
+        },
+        {
+          "count": 350,
+          "package": "SOT-23"
+        },
+        {
+          "count": 236,
+          "package": "SMB(DO-214AA)"
+        },
+        {
+          "count": 224,
+          "package": "DO-201AD"
+        },
+        {
+          "count": 220,
+          "package": "SOD-323"
+        },
+        {
+          "count": 218,
+          "package": "SOD-123"
+        },
+        {
+          "count": 212,
+          "package": "DO-41"
+        },
+        {
+          "count": 174,
+          "package": "SMAF"
+        },
+        {
+          "count": 164,
+          "package": "SMC(DO-214AB)"
+        },
+        {
+          "count": 145,
+          "package": "ITO-220AB-3"
+        },
+        {
+          "count": 144,
+          "package": "TO-220AB-3"
+        },
+        {
+          "count": 115,
+          "package": "SOD-123FL"
+        },
+        {
+          "count": 107,
+          "package": "SMA"
+        },
+        {
+          "count": 107,
+          "package": "SMB"
+        },
+        {
+          "count": 107,
+          "package": "SOD-123F"
+        },
+        {
+          "count": 104,
+          "package": "TO-220"
+        },
+        {
+          "count": 101,
+          "package": "DO-15"
+        },
+        {
+          "count": 91,
+          "package": "SOD-523"
+        },
+        {
+          "count": 75,
+          "package": "SMBF"
+        },
+        {
+          "count": 62,
+          "package": "TO-263-2"
+        }
+      ],
+      "total_packages": 321,
+      "total_parts": 5619
+    },
+    "ferrite_bead": {
+      "coverage": 0.8010171646535282,
+      "selected_packages": 3,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 546,
+          "package": "0603"
+        },
+        {
+          "count": 362,
+          "package": "0402"
+        },
+        {
+          "count": 352,
+          "package": "0805"
+        },
+        {
+          "count": 168,
+          "package": "1206"
+        },
+        {
+          "count": 78,
+          "package": "0201"
+        },
+        {
+          "count": 18,
+          "package": "1210"
+        },
+        {
+          "count": 11,
+          "package": "1806"
+        },
+        {
+          "count": 8,
+          "package": "1812"
+        },
+        {
+          "count": 7,
+          "package": "\u63d2\u4ef6"
+        },
+        {
+          "count": 6,
+          "package": "01005"
+        },
+        {
+          "count": 5,
+          "package": "SMD,3.2x2.5mm"
+        },
+        {
+          "count": 3,
+          "package": "L0603"
+        },
+        {
+          "count": 2,
+          "package": "1608"
+        },
+        {
+          "count": 1,
+          "package": "0804"
+        },
+        {
+          "count": 1,
+          "package": "0806"
+        },
+        {
+          "count": 1,
+          "package": "L0402"
+        },
+        {
+          "count": 1,
+          "package": "SMD,2x1.2x0.9mm"
+        },
+        {
+          "count": 1,
+          "package": "SMD,3.05x9.6mm"
+        },
+        {
+          "count": 1,
+          "package": "SMD-8P,3.2x1.6mm"
+        },
+        {
+          "count": 1,
+          "package": "\u63d2\u4ef6,D3.6xL5mm"
+        }
+      ],
+      "total_packages": 20,
+      "total_parts": 1573
+    },
+    "inductor": {
+      "coverage": 0.8048740053050398,
+      "selected_packages": 28,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 1025,
+          "package": "0402"
+        },
+        {
+          "count": 898,
+          "package": "0603"
+        },
+        {
+          "count": 825,
+          "package": "SMD"
+        },
+        {
+          "count": 803,
+          "package": "0201"
+        },
+        {
+          "count": 742,
+          "package": "1008"
+        },
+        {
+          "count": 727,
+          "package": "0805"
+        },
+        {
+          "count": 591,
+          "package": "SMD,4x4mm"
+        },
+        {
+          "count": 567,
+          "package": "SMD,6x6mm"
+        },
+        {
+          "count": 450,
+          "package": "1210"
+        },
+        {
+          "count": 397,
+          "package": "SMD,3x3mm"
+        },
+        {
+          "count": 345,
+          "package": "SMD,5x5mm"
+        },
+        {
+          "count": 334,
+          "package": "0806"
+        },
+        {
+          "count": 294,
+          "package": "SMD,8x8mm"
+        },
+        {
+          "count": 240,
+          "package": "SMD,12.5x12.5mm"
+        },
+        {
+          "count": 181,
+          "package": "SMD,7.8x7mm"
+        },
+        {
+          "count": 147,
+          "package": "SMD,5.8x5.2mm"
+        },
+        {
+          "count": 141,
+          "package": "SMD,4.5x4mm"
+        },
+        {
+          "count": 117,
+          "package": "SMD,7x7mm"
+        },
+        {
+          "count": 115,
+          "package": "SMD,2.9x2.8mm"
+        },
+        {
+          "count": 114,
+          "package": "SMD,7x6.6mm"
+        }
+      ],
+      "total_packages": 300,
+      "total_parts": 12064
+    },
+    "ldo": {
+      "coverage": 0.8011695906432749,
+      "selected_packages": 35,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 564,
+          "package": "SOT-23-5"
+        },
+        {
+          "count": 393,
+          "package": "SOT-89-3"
+        },
+        {
+          "count": 193,
+          "package": "SOT-223"
+        },
+        {
+          "count": 188,
+          "package": "SOT-23"
+        },
+        {
+          "count": 168,
+          "package": "TO-252-2(DPAK)"
+        },
+        {
+          "count": 152,
+          "package": "TO-220"
+        },
+        {
+          "count": 143,
+          "package": "SOIC-8"
+        },
+        {
+          "count": 119,
+          "package": "TO-92-3"
+        },
+        {
+          "count": 94,
+          "package": "SOT-89"
+        },
+        {
+          "count": 65,
+          "package": "TO-263-2"
+        },
+        {
+          "count": 61,
+          "package": "TO-263-3"
+        },
+        {
+          "count": 58,
+          "package": "SOT-223-3"
+        },
+        {
+          "count": 56,
+          "package": "SOT-223-4"
+        },
+        {
+          "count": 48,
+          "package": "SOT-25"
+        },
+        {
+          "count": 47,
+          "package": "TO-263-5"
+        },
+        {
+          "count": 41,
+          "package": "TSOT-23-5"
+        },
+        {
+          "count": 39,
+          "package": "SC-70-5"
+        },
+        {
+          "count": 38,
+          "package": "TO-92"
+        },
+        {
+          "count": 36,
+          "package": "SOT-23-3L"
+        },
+        {
+          "count": 32,
+          "package": "SOT-23-3"
+        }
+      ],
+      "total_packages": 267,
+      "total_parts": 3591
+    },
+    "led": {
+      "coverage": 0.8020689655172414,
+      "selected_packages": 30,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 259,
+          "package": "0603"
+        },
+        {
+          "count": 150,
+          "package": "1206"
+        },
+        {
+          "count": 130,
+          "package": "0805"
+        },
+        {
+          "count": 90,
+          "package": "\u63d2\u4ef6,D=5mm"
+        },
+        {
+          "count": 85,
+          "package": "\u63d2\u4ef6,D=3mm"
+        },
+        {
+          "count": 51,
+          "package": "SMD2835-2P"
+        },
+        {
+          "count": 50,
+          "package": "0402"
+        },
+        {
+          "count": 24,
+          "package": "SMD3528-2P"
+        },
+        {
+          "count": 23,
+          "package": "1210"
+        },
+        {
+          "count": 23,
+          "package": "SMD,1.7x1.1mm"
+        },
+        {
+          "count": 22,
+          "package": "0606"
+        },
+        {
+          "count": 22,
+          "package": "SMD,3x2mm"
+        },
+        {
+          "count": 21,
+          "package": "SMD,2.1x1mm"
+        },
+        {
+          "count": 20,
+          "package": "SMD-4P,1.6x1.5mm"
+        },
+        {
+          "count": 19,
+          "package": "SMD3528"
+        },
+        {
+          "count": 18,
+          "package": "SMD-3P,3x2mm"
+        },
+        {
+          "count": 17,
+          "package": "SMD-4P,1.6x1.6mm"
+        },
+        {
+          "count": 16,
+          "package": "SMD5050-6P"
+        },
+        {
+          "count": 14,
+          "package": "SMD,1.8x1mm"
+        },
+        {
+          "count": 13,
+          "package": "SMD2835"
+        }
+      ],
+      "total_packages": 148,
+      "total_parts": 1450
+    },
+    "mosfet": {
+      "coverage": 0.8012022327179047,
+      "selected_packages": 55,
+      "threshold": 0.8,
+      "top_packages": [
+        {
+          "count": 738,
+          "package": "SOT-23"
+        },
+        {
+          "count": 317,
+          "package": "TO-220"
+        },
+        {
+          "count": 193,
+          "package": "SO-8"
+        },
+        {
+          "count": 187,
+          "package": "TO-220F-3"
+        },
+        {
+          "count": 185,
+          "package": "TO-252-2(DPAK)"
+        },
+        {
+          "count": 167,
+          "package": "SOIC-8"
+        },
+        {
+          "count": 167,
+          "package": "SOP-8"
+        },
+        {
+          "count": 153,
+          "package": "TO-252"
+        },
+        {
+          "count": 103,
+          "package": "TO-220AB"
+        },
+        {
+          "count": 96,
+          "package": "SOT-223"
+        },
+        {
+          "count": 86,
+          "package": "TO-247AC-3"
+        },
+        {
+          "count": 72,
+          "package": "TO-263-2"
+        },
+        {
+          "count": 70,
+          "package": "TO-252(DPAK)"
+        },
+        {
+          "count": 57,
+          "package": "TO-220F"
+        },
+        {
+          "count": 57,
+          "package": "TO-251(IPAK)"
+        },
+        {
+          "count": 52,
+          "package": "PowerPAK1212-8"
+        },
+        {
+          "count": 52,
+          "package": "SOT-323"
+        },
+        {
+          "count": 47,
+          "package": "DPAK"
+        },
+        {
+          "count": 46,
+          "package": "SOT-23-3"
+        },
+        {
+          "count": 44,
+          "package": "SOT-23-3L"
+        }
+      ],
+      "total_packages": 387,
+      "total_parts": 4658
+    },
+    "resistor": {
+      "coverage": 0.9903525513307188,
+      "selected_packages": 38,
+      "threshold": 0.99,
+      "top_packages": [
+        {
+          "count": 10638,
+          "package": "0603"
+        },
+        {
+          "count": 9406,
+          "package": "0805"
+        },
+        {
+          "count": 7965,
+          "package": "0402"
+        },
+        {
+          "count": 6828,
+          "package": "1206"
+        },
+        {
+          "count": 2805,
+          "package": "0201"
+        },
+        {
+          "count": 2049,
+          "package": "1210"
+        },
+        {
+          "count": 2049,
+          "package": "2512"
+        },
+        {
+          "count": 1493,
+          "package": "2010"
+        },
+        {
+          "count": 525,
+          "package": "MELF-0204"
+        },
+        {
+          "count": 404,
+          "package": "1812"
+        },
+        {
+          "count": 337,
+          "package": "\u63d2\u4ef6,D4.5xL11.5mm"
+        },
+        {
+          "count": 271,
+          "package": "\u63d2\u4ef6,D2.3xL6.5mm"
+        },
+        {
+          "count": 267,
+          "package": "\u63d2\u4ef6,D2.4xL6.3mm"
+        },
+        {
+          "count": 246,
+          "package": "\u63d2\u4ef6,D5xL15.5mm"
+        },
+        {
+          "count": 226,
+          "package": "\u63d2\u4ef6,D2.2xL6.5mm"
+        },
+        {
+          "count": 153,
+          "package": "\u63d2\u4ef6,D2.5xL4.7mm"
+        },
+        {
+          "count": 151,
+          "package": "\u63d2\u4ef6,D3.3xL9mm"
+        },
+        {
+          "count": 132,
+          "package": "MELF"
+        },
+        {
+          "count": 116,
+          "package": "1218"
+        },
+        {
+          "count": 111,
+          "package": "\u63d2\u4ef6,D1.7xL3.5mm"
+        }
+      ],
+      "total_packages": 107,
+      "total_parts": 47681
+    }
+  },
+  "generated_at_utc": "2026-02-16T23:38:43+00:00",
+  "policy": {
+    "capacitor_threshold": 0.99,
+    "default_threshold": 0.8,
+    "resistor_threshold": 0.99
+  },
+  "source_db": "/home/jlc/stage1_fetch/snapshots/bootstrap-serve-20260216T223530Z/detail.sqlite",
+  "source_scope": "all",
+  "summary": {
+    "component_types": 11,
+    "selected_package_entries": 354,
+    "selected_unique_packages": 289
+  }
+}

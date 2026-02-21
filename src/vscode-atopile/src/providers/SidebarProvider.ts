@@ -11,7 +11,6 @@ import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
 import { getWorkspaceSettings } from '../common/settings';
-import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
@@ -448,14 +447,48 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   private async _sendAtopileSettings(): Promise<void> {
     try {
-      const projectRoot = await getProjectRoot();
-      const settings = await getWorkspaceSettings(projectRoot);
-      traceInfo(`[SidebarProvider] Sending atopile settings: ato=${settings.ato}, from=${settings.from}`);
+      const workspaces = vscode.workspace.workspaceFolders ?? [];
+      let settings: { atoPath: string | null; fromSpec: string | null; sourceWorkspace: string };
+
+      if (workspaces.length === 0) {
+        const globalConfig = vscode.workspace.getConfiguration('atopile');
+        settings = {
+          atoPath: (globalConfig.get<string>('ato') ?? null),
+          fromSpec: (globalConfig.get<string>('from') ?? null),
+          sourceWorkspace: 'global',
+        };
+      } else {
+        const activeUri = vscode.window.activeTextEditor?.document?.uri;
+        const activeWorkspace = activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : undefined;
+        const ordered = [
+          ...(activeWorkspace ? [activeWorkspace] : []),
+          ...workspaces.filter((w) => !activeWorkspace || w.uri.toString() !== activeWorkspace.uri.toString()),
+        ];
+
+        let picked = await getWorkspaceSettings(ordered[0]);
+        for (const workspace of ordered) {
+          const candidate = await getWorkspaceSettings(workspace);
+          if (candidate.ato || candidate.from) {
+            picked = candidate;
+            break;
+          }
+        }
+
+        settings = {
+          atoPath: picked.ato || null,
+          fromSpec: picked.from || null,
+          sourceWorkspace: picked.cwd,
+        };
+      }
+
+      traceInfo(
+        `[SidebarProvider] Sending atopile settings from ${settings.sourceWorkspace}: ato=${settings.atoPath}, from=${settings.fromSpec}`
+      );
       this._postToWebview({
         type: 'atopileSettingsResponse',
         settings: {
-          atoPath: settings.ato || null,
-          fromSpec: settings.from || null,
+          atoPath: settings.atoPath,
+          fromSpec: settings.fromSpec,
         },
       });
     } catch (error) {
@@ -1217,8 +1250,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     traceInfo(`[SidebarProvider] _handleAtopileSettings received: ${JSON.stringify(atopile)}`);
 
+    const workspaces = vscode.workspace.workspaceFolders ?? [];
+    const hasWorkspace = workspaces.length > 0;
+    const workspaceKey = hasWorkspace
+      ? workspaces.map((w) => w.uri.toString()).sort().join('|')
+      : 'global';
+
     // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
+      workspace: workspaceKey,
       source: atopile.source,
       localPath: atopile.localPath,
     });
@@ -1232,21 +1272,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     traceInfo(`[SidebarProvider] Processing new settings: ${settingsKey}`);
     this._lastAtopileSettingsKey = settingsKey;
 
-    const config = vscode.workspace.getConfiguration('atopile');
-    const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
-    const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-
     try {
-      // Only manage atopile.ato setting - atopile.from is only set manually in settings
-      if (atopile.source === 'local' && atopile.localPath) {
-        // Local mode: set ato path
-        traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
-        await config.update('ato', atopile.localPath, target);
+      const nextAto = atopile.source === 'local' && atopile.localPath ? atopile.localPath : undefined;
+
+      // Keep all workspace folders aligned to one explicit ato path to avoid stale overrides.
+      if (hasWorkspace) {
+        for (const workspace of workspaces) {
+          const config = vscode.workspace.getConfiguration('atopile', workspace.uri);
+          traceInfo(
+            `[SidebarProvider] Setting atopile.ato for ${workspace.uri.fsPath} => ${nextAto ?? '(default)'}`
+          );
+          await config.update('ato', nextAto, vscode.ConfigurationTarget.WorkspaceFolder);
+        }
       } else {
-        // Release mode: clear ato setting so the default is used
-        traceInfo(`[SidebarProvider] Clearing atopile.ato (using default)`);
-        await config.update('ato', undefined, target);
+        const globalConfig = vscode.workspace.getConfiguration('atopile');
+        traceInfo(`[SidebarProvider] Setting global atopile.ato => ${nextAto ?? '(default)'}`);
+        await globalConfig.update('ato', nextAto, vscode.ConfigurationTarget.Global);
       }
+
+      // Only manage atopile.ato setting - atopile.from is only set manually in settings
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);

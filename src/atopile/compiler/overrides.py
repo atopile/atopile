@@ -190,6 +190,9 @@ _ENUM_PARAMETER_OVERRIDES: dict[str, EnumParameterOverrideSpec] = {
     "temperature_coefficient": EnumParameterOverrideSpec(
         enum_type=F.Capacitor.TemperatureCoefficient,
     ),
+    "color": EnumParameterOverrideSpec(
+        enum_type=F.LED.Color,
+    ),
     "channel_type": EnumParameterOverrideSpec(
         enum_type=F.MOSFET.ChannelType,
     ),

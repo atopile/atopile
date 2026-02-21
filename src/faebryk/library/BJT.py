@@ -31,11 +31,32 @@ class BJT(fabll.Node):
 
     doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
     operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
+    max_collector_emitter_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt
+    )
+    max_collector_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    max_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt)
+    dc_current_gain = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless
+    )
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.BJTS,
+            params={
+                "doping_type": doping_type,
+                "max_collector_emitter_voltage": max_collector_emitter_voltage,
+                "max_collector_current": max_collector_current,
+                "max_power": max_power,
+                "dc_current_gain": dc_current_gain,
+            },
+        )
+    )
 
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
