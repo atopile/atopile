@@ -1,24 +1,23 @@
 ---
 name: frontend
-description: "How to build frontend features in atopile at a 10/10 bar for code quality, design, and architecture using proven repo patterns."
+description: "Frontend standard for atopile: FastAPI + Vite + React, WebSocket-first transport, schema-driven contracts, and browser-first validation."
 ---
 
 # Frontend Skill
 
-This skill defines the standard for building frontend features in atopile.
-It is optimized for:
+This skill defines how to build frontend features in atopile at a consistently high bar for:
 
-1. High code quality (correct, maintainable, testable)
-2. High design quality (clear, cohesive, production-ready UI)
-3. High architecture quality (clear boundaries, low coupling, scalable structure)
+1. Frontend code quality
+2. Design quality
+3. Architecture quality
 
 Primary reference implementations:
-- `src/ui-server` (best overall product frontend baseline)
-- `src/atopile/visualizer/web` (best focused architecture for compute-heavy UI)
+- `src/ui-server`
+- `src/atopile/visualizer/web`
 
 ## Quick Start
 
-For new frontend feature work in `ui-server`:
+Core frontend loop:
 
 ```bash
 cd src/ui-server
@@ -26,29 +25,14 @@ npm run test
 npm run build
 ```
 
-For graph/worker-heavy feature work:
+Graph/worker-heavy UI loop:
 
 ```bash
 cd src/atopile/visualizer/web
 npm run build
 ```
 
-For extension/frontend packaging + install workflow (most common atopile CLI flow):
-
-```bash
-# compile dev artifacts (includes VS Code extension packaging in default/all mode)
-ato dev compile
-
-# optional narrower compile target
-ato dev compile vscode
-
-# install latest built .vsix into your IDE
-ato dev install cursor
-# or
-ato dev install vscode
-```
-
-Common one-liner loop:
+Extension compile/install loop:
 
 ```bash
 ato dev compile && ato dev install cursor
@@ -57,240 +41,237 @@ ato dev compile && ato dev install vscode
 ```
 
 Notes:
-- `ato dev compile` uses target `all` by default and includes type generation + extension packaging.
-- `ato dev install <cursor|vscode>` installs the latest generated `.vsix` with `--force`.
+- `ato dev compile` default target is `all` (includes type generation + extension packaging).
+- `ato dev install <cursor|vscode>` installs latest local `.vsix` with `--force`.
+
+## Basic Frontend Repo Structure
+
+Use this as the quick orientation map:
+
+- `src/ui-server/`:
+  main React webview app used in extension UI surfaces (sidebar/log viewer/migrate/test explorer).
+- `src/vscode-atopile/`:
+  VS Code/Cursor extension host layer (commands, webview wiring, IDE integration).
+- `src/atopile/visualizer/web/`:
+  standalone graph visualizer React app (3D rendering + graph interaction).
+- `src/atopile/layout_server/frontend/`:
+  specialized layout editor frontend for the layout server.
+
+## Repository Surface Map (Where Things Live)
+
+This section is intentionally explicit so agents know where to build, reuse, or extend.
+
+### `ui-server` (primary product UI)
+
+Root:
+- `src/ui-server/src/`
+
+Main structure:
+- `components/` feature and panel components
+- `components/shared/` reusable UI primitives for multiple panels
+- `components/sidebar-modules/` sidebar composition and behavior modules
+- `api/` HTTP + WebSocket transport clients
+- `store/` Zustand app state
+- `hooks/` feature/domain hooks
+- `utils/` shared pure helpers
+- `styles/` token and module CSS
+- `types/` generated and hand-authored contracts
+
+Shared components (reuse before creating new):
+- `src/ui-server/src/components/shared/CopyableCodeBlock.tsx`
+- `src/ui-server/src/components/shared/EmptyState.tsx`
+- `src/ui-server/src/components/shared/MetadataBar.tsx`
+- `src/ui-server/src/components/shared/PanelSearchBox.tsx`
+- `src/ui-server/src/components/shared/PublisherBadge.tsx`
+- `src/ui-server/src/components/shared/TreeRowHeader.tsx`
+- `src/ui-server/src/components/shared/VersionSelector.tsx`
+
+Shared utilities:
+- `src/ui-server/src/utils/codeHighlight.tsx` (ATO highlighting/presentation helpers)
+- `src/ui-server/src/utils/nameValidation.ts` (name validity rules)
+- `src/ui-server/src/utils/packageUtils.ts` (package formatting/comparison helpers)
+- `src/ui-server/src/utils/searchUtils.ts` (search matching/filter helpers)
+
+### `visualizer/web` (graph visualization app)
+
+Root:
+- `src/atopile/visualizer/web/src/`
+
+Main structure:
+- `components/` UI shell/controls
+- `components/Sidebar/` graph-specific sidebar panels
+- `three/` 3D rendering layer
+- `stores/` state slices for graph/view/filter/navigation
+- `lib/` pure graph/filter/layout/export logic
+- `workers/` background compute (layout)
+- `types/` graph contracts
+
+Core UI components:
+- `src/atopile/visualizer/web/src/components/AtopileLogo.tsx`
+- `src/atopile/visualizer/web/src/components/Breadcrumbs.tsx`
+- `src/atopile/visualizer/web/src/components/ExportMenu.tsx`
+- `src/atopile/visualizer/web/src/components/Minimap.tsx`
+- `src/atopile/visualizer/web/src/components/Tooltip.tsx`
+- `src/atopile/visualizer/web/src/components/Toolbar.tsx`
+- `src/atopile/visualizer/web/src/components/Sidebar/FilterPanel.tsx`
+- `src/atopile/visualizer/web/src/components/Sidebar/CollapsePanel.tsx`
+
+Key utility area:
+- `src/atopile/visualizer/web/src/lib/exportUtils.ts` (PNG/SVG/JSON export helpers)
+
+### `vscode-atopile` (extension host side)
+
+Root:
+- `src/vscode-atopile/src/`
+
+Use for:
+- extension host integration and webview wiring
+- command registration and IDE bridge behaviors
+
+Avoid using this module for:
+- core UI logic that belongs in React/webview app layers
+
+### `layout_server/frontend` (specialized layout editor UI)
+
+Root:
+- `src/atopile/layout_server/frontend/src/`
+
+Use for:
+- focused canvas/layout-editor frontend concerns
+
+Do not copy as default architecture for new product webviews:
+- it has a different UI model and constraints than the main React webview apps
+
+### Reuse Decision Rules
+
+When adding a new feature:
+1. First check `components/shared/` for an existing primitive.
+2. If similar logic exists in `utils/`, extend it instead of duplicating.
+3. If feature is graph-specific, prefer patterns from `visualizer/web/src/lib` + `stores`.
+4. If behavior is IDE-host specific, keep it in `vscode-atopile` bridge modules.
+5. If a new primitive is needed, place it where cross-feature reuse is likely.
+
+## Non-Negotiable Rules
+
+1. One canonical user flow
+- Design and implement one primary happy-path per feature.
+- Do not introduce alternate fallback UX branches.
+- If a dependency is unavailable, fail clearly and stop; do not fork into a second workflow.
+
+2. Schema-first contracts
+- Backend contracts are Pydantic models.
+- Frontend types are generated from backend schema.
+- Avoid stringly-typed protocols and hand-maintained duplicate interfaces where generated types exist.
+
+3. WebSocket-first interaction model
+- Use WebSocket for interactive state sync, actions, and events.
+- Use HTTP for bootstrap/read/download flows where request-response is natural.
+
+4. Clear module boundaries
+- `api/` handles transport and protocol mapping.
+- `store/` handles app state and actions.
+- `components/` handles rendering and interaction composition.
+- `utils/` or `lib/` handles pure transforms/business helpers.
+
+5. Browser-first self testing
+- Agent validates behavior in browser webview dev flow first.
+- Ask user to test in extension host only after browser flow is verified.
 
 ## Architecture Standard: FastAPI + Vite + React
 
-Use this as the default architecture for new atopile frontend product features.
-
 ### System Topology
 
-1. Backend: FastAPI domain/API server
-- Owns business logic, persistence, long-running jobs, and event generation.
-- Exposes HTTP endpoints for request/response workflows.
-- Exposes WebSocket endpoints for realtime state and event updates.
+1. FastAPI backend
+- Owns domain logic, persistence, job orchestration, and event emission.
+- Exposes HTTP APIs and WebSocket endpoints.
 
-2. Frontend: React app bundled by Vite
-- Owns presentation, local interaction logic, and client-side state.
-- Calls backend through typed API client modules (`api/`).
-- Receives realtime updates through dedicated websocket client modules.
+2. React app on Vite
+- Owns UI rendering, local interactions, and client-side state orchestration.
+- Uses typed API/WS clients under `api/`.
 
 3. Integration boundary
-- Transport contract is explicit: typed payloads for REST and WS messages.
-- UI does not parse ad-hoc backend payloads directly inside components.
+- Typed payload contracts at API and WS boundaries.
+- No ad-hoc payload parsing scattered across components.
 
-### Request/State Flow (Required)
+### Required Request/State Flow
 
-1. User action in React component
-2. Component dispatches typed store action or calls feature handler
-3. Handler calls API/WS transport module
-4. Transport normalizes payload to typed domain shape
+1. User action in component
+2. Component dispatches handler/store action
+3. Handler calls `api/` transport
+4. Transport maps payload to typed domain shape
 5. Store updates through explicit action
-6. UI re-renders via selectors only
-
-### Contract Standard: Pydantic -> Generated TypeScript
-
-This is the default and preferred pattern for atopile frontend/backend integration.
-
-1. Backend contracts
-- Define request/response/event contracts as Pydantic models.
-- Keep schema as source of truth for field names and types.
-
-2. Frontend contracts
-- Generate TypeScript types/API bindings from backend schema.
-- Import generated types in `api/`, `store/`, and feature handlers.
-
-3. Protocol discipline
-- Avoid ad-hoc stringly-typed payloads and free-form `Record<string, unknown>` when a typed contract exists.
-- Prefer generated enums/literal unions for message/action/event kinds.
-
-4. Change workflow
-- Modify Pydantic model first.
-- Regenerate TS types/API.
-- Update frontend usage with compile-time type checks.
+6. UI rerenders from selectors
 
 ### Transport Standard: WebSocket-First
 
-atopile frontend architecture is WebSocket-first.
+Use WebSocket for:
+- state synchronization
+- action dispatch/result events
+- long-running workflow progress
 
-1. Primary transport
-- Use WebSocket for state synchronization, action dispatch, event streams, and long-running workflow updates.
-- Keep a single typed message protocol for events/action results where possible.
+Use HTTP for:
+- initial bootstrap reads
+- idempotent direct queries
+- file or artifact retrieval
 
-2. Secondary transport
-- Use HTTP for initial fetch/bootstrap, idempotent reads, file/blob download, and endpoints that are naturally request/response.
+Required WS client behavior:
+- reconnect with bounded backoff
+- explicit connection status in store
+- pending request timeout/cancellation
+- post-reconnect resync
+- out-of-order tolerance in reducers
 
-3. Client behavior requirements
-- Implement reconnect with bounded backoff.
-- Handle offline/disconnected states explicitly in UI.
-- Re-subscribe or re-initialize required state after reconnect.
-- Treat out-of-order/late events as normal; design reducers/state updates to be resilient.
-
-### Recommended Project Layout
-
-```text
-src/
-  api/          # HTTP + WebSocket clients, protocol mapping
-  components/   # Presentational + container components
-  hooks/        # UI/feature hooks (side-effect aware)
-  store/        # Global state, actions, selectors
-  types/        # Shared contracts and generated types
-  utils/        # Pure helper/domain transform functions
-  styles/       # Tokens and style modules
-```
-
-### Non-Negotiable Architecture Rules
-
-- Components do not own transport protocol details.
-- Transport modules do not own rendering logic.
-- Domain transforms are pure and testable.
-- Realtime and request/response code paths are both resilient to failures/timeouts.
-- Compute-heavy operations run in workers when they can block the UI thread.
-- API/WS contracts must be schema-driven (Pydantic backend, generated TS frontend).
-- Avoid raw string protocol switches when generated typed variants are available.
-- Default to WebSocket transport for interactive product features; use HTTP selectively for bootstrap/read/download flows.
-
-## Color + Style Guide (Production Baseline)
-
-Use this guide for all new UI surfaces unless a subsystem has stricter host requirements.
-
-### Design Principles
-
-1. Token-first styling
-- All colors/spacing/radius/typography come from shared tokens.
-- No one-off hex colors in feature components.
-
-2. Theme-aware defaults
-- Every semantic token has dark and light behavior.
-- Contrast must remain readable in both modes.
-
-3. Semantic color usage
-- Color is meaning, not decoration: success/warning/error/info/selection/accent.
-
-### Core Color Roles
-
-1. Brand
-- `--color-brand-500`: primary brand action color
-- `--color-brand-600`: hover/active brand state
-- `--color-brand-subtle`: low-emphasis brand background
-
-2. Neutrals (surface/text)
-- `--color-bg-primary`
-- `--color-bg-secondary`
-- `--color-bg-tertiary`
-- `--color-text-primary`
-- `--color-text-secondary`
-- `--color-text-muted`
-- `--color-border`
-- `--color-border-subtle`
-
-3. Feedback
-- `--color-success`, `--color-success-bg`
-- `--color-warning`, `--color-warning-bg`
-- `--color-error`, `--color-error-bg`
-- `--color-info`, `--color-info-bg`
-
-### Typography Scale
-
-- `--font-size-xxs`: metadata chips, dense status labels
-- `--font-size-xs`: compact helper text
-- `--font-size-sm`: control labels, section subheaders
-- `--font-size-md`: default body/control text
-- `--font-size-lg`: panel titles
-
-### Spacing and Shape
-
-- `--space-xs`, `--space-sm`, `--space-md`, `--space-lg`, `--space-xl`
-- `--radius-sm`, `--radius-md`, `--radius-lg`
-- Keep density consistent in a panel; do not mix unrelated spacing scales.
-
-### Component State Contract
-
-Every interactive component must define:
-- default
-- hover
-- focus-visible
-- active/pressed
-- disabled
-- loading (if async)
-- error (if user-correctable)
-
-### Style Acceptance Gate
-
-- [ ] No hardcoded feature-local colors for semantic UI states.
-- [ ] Typography uses approved scale.
-- [ ] Interactive states are complete.
-- [ ] Light/dark mode validated.
-- [ ] Spacing/radius consistent with tokens.
-
-### Unified Product Style Guide (Generalized)
-
-Apply these rules across all atopile frontend surfaces (not tied to one panel/view):
-
-1. Host-native + brand-balanced UI
-- Respect host environment tokens (fonts, colors, surface semantics).
-- Keep brand expression focused in accents, not full-surface overrides.
-
-2. Information hierarchy over decoration
-- Keep row heights, typography, and spacing consistent.
-- Use badges/counters/status indicators sparingly and meaningfully.
-- Optimize for scanability in dense technical interfaces.
-
-3. Explicit system-state communication
-- Always expose key runtime states (connected, loading, installing, failed, ready).
-- Every state should have a clear visual treatment and user-understandable message.
-
-4. Consistent layout mechanics
-- Reuse common patterns for collapsible sections, split panes, and resizable regions.
-- Interaction behavior should be predictable across all modules.
-
-5. Complete interaction-state language
-- All interactive controls define default/hover/focus-visible/active/disabled/loading.
-- Keyboard and focus behavior are first-class, not optional.
-
-6. Tokenized scale and rhythm
-- Use shared tokens for color, spacing, radius, typography, and layering.
-- New components should compose existing tokens before introducing new ones.
-
-7. Resilience-first UX
-- Design for failure/recovery as a primary flow, not an exception.
-- Error and disconnected states should include next-step actions.
-
-## Specific Examples (Copyable Patterns)
-
-Note: these examples are structural patterns. In real atopile features, prefer generated types from backend schema instead of hand-written duplicate interfaces.
-
-### Example 1: Typed API boundary + store action
+Example WS envelope:
 
 ```ts
-// api/builds.ts
-export interface BuildSummary {
-  id: string;
-  status: "queued" | "building" | "success" | "failed";
-}
+type WsMessage =
+  | { type: "state"; data: AppState }
+  | { type: "event"; event: EventType; data: EventPayload }
+  | {
+      type: "action_result";
+      action: string;
+      requestId?: string;
+      result: { success: boolean; error?: string };
+    };
+```
 
+### Contract Standard: Pydantic -> Generated TypeScript
+
+Required workflow:
+1. Update backend Pydantic model
+2. Regenerate schema/types
+3. Fix frontend compile errors using generated contracts
+4. Add/update tests for contract behavior changes
+
+Never prefer this:
+- handwritten duplicate interfaces when generated types are available
+- raw string action/event typing where enums/literal types exist
+
+## Code Quality Standard
+
+A feature is high quality when:
+- strict TS typing is preserved
+- state transitions are explicit and testable
+- errors/loading/empty states are implemented
+- side effects are isolated in transport/hooks
+
+### Preferred Patterns
+
+1. Typed API boundary
+
+```ts
 export async function fetchBuilds(projectRoot: string): Promise<BuildSummary[]> {
   const res = await fetch(`/api/builds?project_root=${encodeURIComponent(projectRoot)}`);
-  if (!res.ok) throw new Error(`Failed to fetch builds: HTTP ${res.status}`);
+  if (!res.ok) throw new APIError(res.status, "Failed to fetch builds");
   const data = (await res.json()) as { builds: BuildSummary[] };
   return data.builds;
 }
 ```
 
+2. Typed store action with explicit state transitions
+
 ```ts
-// store/builds.ts
-import { create } from "zustand";
-import { fetchBuilds, type BuildSummary } from "../api/builds";
-
-interface BuildState {
-  items: BuildSummary[];
-  loading: boolean;
-  error: string | null;
-  refresh: (projectRoot: string) => Promise<void>;
-}
-
-export const useBuildStore = create<BuildState>((set) => ({
+const useBuildStore = create<BuildState>((set) => ({
   items: [],
   loading: false,
   error: null,
@@ -306,47 +287,39 @@ export const useBuildStore = create<BuildState>((set) => ({
 }));
 ```
 
-### Example 2: WebSocket event handling without UI coupling
+3. Component-store separation
+- Components call actions/selectors; they do not implement protocol logic.
 
-```ts
-// api/ws.ts
-type EventMessage =
-  | { type: "build_started"; buildId: string }
-  | { type: "build_finished"; buildId: string; success: boolean };
+### Anti-Patterns
 
-export function connectBuildEvents(onEvent: (e: EventMessage) => void): WebSocket {
-  const ws = new WebSocket("/ws/state");
-  ws.onmessage = (evt) => onEvent(JSON.parse(evt.data) as EventMessage);
-  return ws;
-}
-```
+- “God” components/providers mixing UI + transport + domain + file ops
+- full-store subscriptions where selectors are sufficient
+- implicit defaults not represented in types
 
-```ts
-// hooks/useBuildEvents.ts
-import { useEffect } from "react";
-import { connectBuildEvents } from "../api/ws";
-import { useBuildStore } from "../store/builds";
+## Unified Product Style Guide
 
-export function useBuildEvents() {
-  const refresh = useBuildStore((s) => s.refresh);
-  useEffect(() => {
-    const ws = connectBuildEvents((event) => {
-      if (event.type === "build_started" || event.type === "build_finished") {
-        void refresh("current-project-root");
-      }
-    });
-    return () => ws.close();
-  }, [refresh]);
-}
-```
+Apply these rules across all surfaces (sidebar, panels, overlays, inspectors, dialogs).
 
-Recommended production extension for this pattern:
-- reconnect/backoff strategy
-- connection status in store
-- post-reconnect resync action
-- typed action-result correlation IDs
+1. Host-native + brand-balanced
+- Respect host theme and typography variables.
+- Express brand with targeted accents, not full-theme overrides.
 
-### Example 3: Tokenized button styles (no one-off colors)
+2. Hierarchy first
+- Maintain consistent spacing, row heights, and typography scale.
+- Use badges/counts only when they add decision value.
+
+3. Complete interaction states
+- Every control defines default/hover/focus-visible/active/disabled/loading.
+
+4. Tokenized styling
+- Use shared tokens for color, spacing, radius, typography, z-index.
+- Avoid one-off feature-local hardcoded semantic colors.
+
+5. Single-flow UX
+- Interface should guide users through one canonical sequence.
+- Do not add alternate fallback routes; surface clear stop-state errors instead.
+
+Example tokenized control:
 
 ```css
 .btn-primary {
@@ -356,318 +329,56 @@ Recommended production extension for this pattern:
   border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
 }
-
 .btn-primary:hover { background: var(--color-brand-600); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary:focus-visible { outline: 2px solid var(--color-info); outline-offset: 2px; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 ```
 
-## Section 1: Frontend Code Quality (10/10)
+## Testing Standard
 
-### Quality Target
+### Minimum Test Matrix Per Feature
 
-A feature is 10/10 when:
-- Behavior is deterministic and type-safe under strict TypeScript.
-- Logic is test-covered at the right level (unit + integration where needed).
-- State transitions are explicit and observable.
-- Error/loading/empty states are first-class.
+1. Store/action test
+2. API/transport test
+3. UI interaction test
+4. Error/loading/empty-state test
 
-### Required Patterns
+Example matrix (build queue):
+- store: `enqueueBuild` / `completeBuild`
+- API: build start error -> `APIError`
+- UI: cancel click -> `sendAction('cancelBuild', { buildId })`
+- state: disconnected WS shows status banner
 
-1. Strong typing and strict TS
-- Keep strict mode on.
-- Avoid `any`; use narrowed unions and typed payloads.
-- Define payload/data contracts in shared type modules.
-- Prefer generated types from backend schema over hand-maintained duplicate interfaces.
+### Browser-First Dev Viewer Flow (Required)
 
-2. Predictable state updates
-- Use store slices/selectors to prevent accidental broad rerenders.
-- Keep state mutations centralized in explicit actions.
-- Separate view-local UI state from domain state.
+Agents should self-test in browser webview flow first:
 
-3. Test strategy as part of implementation
-- Add tests for new behaviors, not only snapshots.
-- Cover: happy path, failure path, empty state, loading state.
-- For stateful features, include at least one store/action-level test.
+```bash
+cd src/ui-server
+npm run dev:all
+```
 
-4. Runtime safety
-- Handle reconnect/failure/timeout paths for websocket/API flows.
-- Never leave silent failures; surface actionable user-facing errors.
+Then:
+1. Run interaction checks in browser
+2. Run screenshot checks
+3. Inspect UI logs
+4. Fix issues
+5. Ask user to test in extension host only after above passes
 
-### Golden Examples
+### UI Automation: Puppeteer + Vite Screenshot APIs
 
-- Store and typed action layering:
-  - `src/ui-server/src/store/index.ts`
-- Websocket lifecycle + reconnect handling:
-  - `src/ui-server/src/api/websocket.ts`
-- Focused typed store for graph workflows:
-  - `src/atopile/visualizer/web/src/stores/graphStore.ts`
-- Existing test baseline:
-  - `src/ui-server/src/__tests__/store.test.ts`
-  - `src/ui-server/src/__tests__/api-client.test.ts`
+These are correct tools in this repo:
+- Puppeteer is already a dependency
+- Vite dev server exposes screenshot and UI-log endpoints
 
-### Mistakes To Avoid
+Useful calls:
 
-- Large "god component" consuming full app state object.
-- UI behavior with no tests.
-- Mixing transport concerns directly inside presentational components.
-- Hidden implicit defaults that are not encoded in types.
-
-### Frontend Code Quality Checklist
-
-- [ ] Strict TS passes with no new `any`.
-- [ ] New behavior includes tests.
-- [ ] Loading/error/empty states are implemented.
-- [ ] State updates happen through explicit actions/selectors.
-- [ ] Side effects are isolated to hooks/services, not random components.
-- [ ] API/WS payloads use generated types (or documented exception if generation unavailable).
-
-## Section 2: Design Quality (10/10)
-
-### Design Target
-
-A feature is 10/10 when:
-- It is visually consistent with atopile + VS Code environment.
-- It has strong hierarchy, spacing rhythm, and readable interaction states.
-- It works in both light/dark themes and different panel widths.
-- Motion/feedback is purposeful and not noisy.
-
-### Required Patterns
-
-1. Token-driven styling
-- Use CSS variables/tokens for spacing, color, radius, typography, z-index.
-- Reuse existing style modules before creating new one-off CSS.
-
-2. Theme-aware by default
-- Respect VS Code theme variables.
-- Verify contrast and readability in both light and dark modes.
-
-3. Interaction states
-- Define hover/active/selected/disabled/error/loading states for interactive controls.
-- Keep feedback immediate and visible (buttons, status badges, toasts, inline states).
-
-4. Responsive panel behavior
-- Design for narrow sidebars first, then expanded layouts.
-- Ensure truncation, wrapping, and icon-only fallbacks are intentional.
-
-### Golden Examples
-
-- Design tokens and theme plumbing:
-  - `src/ui-server/src/styles/_variables.css`
-  - `src/ui-server/src/styles/_base.css`
-  - `src/ui-server/src/styles/index.css`
-- Cohesive control bar with clear action groups:
-  - `src/atopile/visualizer/web/src/components/Toolbar.tsx`
-
-### Mistakes To Avoid
-
-- Inline ad-hoc styles spread across HTML/TS without tokenization.
-- Hardcoded colors that break in alternate themes.
-- Missing disabled/loading states for actions.
-- Visual density with no hierarchy (everything styled equally).
-
-### Design Checklist
-
-- [ ] Uses existing tokens or adds new tokens in shared variables.
-- [ ] Verified in light + dark mode.
-- [ ] Interactive states are complete.
-- [ ] Works in narrow sidebar and larger panel widths.
-- [ ] Visual hierarchy is obvious at first glance.
-
-## Section 3: Architecture Quality (10/10)
-
-### Architecture Target
-
-A feature is 10/10 when:
-- Boundaries are clear: view, state, transport, domain logic.
-- Complexity is distributed across small composable modules.
-- Heavy compute is offloaded from UI thread when needed.
-- Integration points are explicit and easy to test/replace.
-
-### Required Patterns
-
-1. Clear layering
-- `components/` for presentation/composition.
-- `store/` or `stores/` for app state.
-- `api/` for transport clients and protocol handling.
-- `utils/lib/` for pure domain logic.
-
-2. Controlled side-effect entry points
-- Keep network/websocket/file interactions inside dedicated modules/hooks.
-- Components trigger actions; they do not own protocol logic.
-
-3. Complexity control
-- Prefer many small modules over one giant orchestrator file.
-- Use workers for expensive graph/layout/geometry operations.
-
-4. Feature modularity
-- Organize by feature areas (panel/module domains), not only by primitive type.
-- Keep interfaces narrow and typed between feature boundaries.
-
-### Golden Examples
-
-- Feature modularization approach:
-  - `src/ui-server/src/components/sidebar-modules/`
-- API boundary separation:
-  - `src/ui-server/src/api/`
-- Worker-based compute offload:
-  - `src/atopile/visualizer/web/src/workers/layoutWorker.ts`
-  - `src/atopile/visualizer/web/src/stores/graphStore.ts`
-
-### Mistakes To Avoid
-
-- Overloaded provider/controller files that combine message routing, IO, and business logic.
-- Feature logic trapped in giant top-level UI files.
-- Imperative manual DOM composition for complex UI that should be declarative components.
-- Cross-module hidden coupling via globals.
-
-### Architecture Checklist
-
-- [ ] Feature has explicit boundaries: view/state/api/domain.
-- [ ] Side effects are centralized and testable.
-- [ ] No new high-coupling "god file".
-- [ ] Compute-heavy work moved off main thread where applicable.
-- [ ] Module structure matches feature boundaries.
-
-## 10/10 Feature Blueprint (Apply This For New Work)
-
-Use this structure for new non-trivial frontend features:
-
-1. Contract
-- Define contract in backend Pydantic model first.
-- Generate frontend TS types/API from schema.
-- Use generated contracts in transport and state layers.
-
-2. Domain logic
-- Add pure helpers in `utils/` or `lib/`.
-- Include unit tests for non-trivial transforms.
-
-3. State slice
-- Add store actions/selectors for feature state.
-- Keep transient UI-only state local unless shared.
-
-4. Transport
-- Add API/websocket calls in `api/`.
-- Normalize and map backend payloads once.
-- Avoid free-form string protocol branching when typed event/action models exist.
-
-5. UI composition
-- Build small presentational components first.
-- Compose in panel/container components.
-
-6. Styling
-- Extend shared tokens if needed.
-- Implement complete interaction states.
-
-7. Tests
-- Add tests for store transitions and UI behavior.
-- Include error/loading/empty scenarios.
-
-8. Verification gate
-- Build passes.
-- Tests pass.
-- Manual checks in light/dark + narrow/wide panel widths.
-
-## Definition of Done (Must Pass)
-
-A frontend feature is not done until all are true:
-
-- [ ] Code quality checklist passes.
-- [ ] Design checklist passes.
-- [ ] Architecture checklist passes.
-- [ ] Build succeeds for touched frontend app(s).
-- [ ] Tests added/updated and passing for changed behavior.
-- [ ] No major coupling or file-size hotspot introduced.
-- [ ] Backend contract changes are modeled in Pydantic and reflected in regenerated TS types.
-
-## Review Rubric (Scoring)
-
-Score each category 1-10:
-
-1. Frontend code quality
-- 9-10: strict typing, clear state model, strong tests, resilient failure handling
-- 7-8: good structure but some coverage or maintainability gaps
-- 5-6: works but weak tests/types/boundaries
-- <5: high risk of regression
-
-2. Design
-- 9-10: cohesive tokenized design, strong hierarchy, complete states, theme-safe
-- 7-8: solid but with some inconsistency/gaps
-- 5-6: functional but visually/UX inconsistent
-- <5: fragile or unclear interaction model
-
-3. Architecture
-- 9-10: crisp boundaries, modular, low coupling, scalable
-- 7-8: mostly clean with a few hotspots
-- 5-6: notable coupling and organization debt
-- <5: difficult to extend safely
-
-If any category is <8, create follow-up tasks before closing the feature.
-
-## Best Practices by Category (Extracted from Existing atopile Frontends)
-
-This section translates current proven patterns into reusable defaults for new web apps.
-
-### 1) Feature Scaffold Template
-
-Best practices:
-- Start from a predictable module split: `api/`, `store/`, `hooks/`, `components/`, `types/`, `styles/`, `utils/`.
-- Keep feature entrypoints small; place business logic in hooks/store/actions.
-- Build multi-entry pages with shared provider/bootstrap patterns where needed.
-
-Use:
-- One feature root folder per major UI capability (explorer, logs, builds, wizard).
-- One typed API module per backend domain.
-- One store slice or store action cluster per feature domain.
-
-### 2) Testing Matrix
-
-Best practices:
-- Maintain a dedicated frontend test setup for DOM and host mocks.
-- Test store transitions directly (state/action correctness).
-- Test API clients and error handling independently from UI.
-- Add component behavior tests for interaction-heavy controls.
-
-Use:
-- `setup.ts` equivalent for jsdom and host API mocks.
-- Minimum per feature:
-  - 1 store/action test
-  - 1 API/transport test
-  - 1 component interaction test
-  - 1 error/loading-state test
-
-Example (scoped test matrix for a build queue feature):
-- Store test: `enqueueBuild` + `completeBuild` transitions.
-- API test: `POST /api/build` error -> `APIError` mapping.
-- Component test: clicking "Cancel" calls `sendAction('cancelBuild', { buildId })`.
-- State test: disconnected websocket shows reconnect banner.
-
-### UI Automation Notes (Puppeteer + Vite Dev Server)
-
-For this repo, these are the correct tools:
-- Puppeteer is already a project dependency and used by Vite dev tooling.
-- Vite dev server already exposes screenshot and UI-log endpoints for automation flows.
-
-Recommended test pyramid for UI:
-1. Vitest + RTL for component/store/API logic.
-2. Puppeteer against Vite dev server for interaction and visual regression checks.
-3. Screenshot-based assertions for key states (loading/error/expanded/collapsed/workflow steps).
-
-Dev-server-driven automation workflow:
-1. Start backend + Vite (`npm run dev:all` in `src/ui-server`).
-2. Drive UI via Puppeteer (click/type/scroll/key events).
-3. Capture images through screenshot endpoint.
-4. Inspect `ui-logs` endpoint for runtime errors/warnings.
-5. Fail CI/local check if screenshot diff or UI logs exceed threshold.
-
-Example (capture screenshot via Vite API):
 ```bash
 curl -sS -X POST http://127.0.0.1:5173/api/screenshot \
   -H 'Content-Type: application/json' \
-  -d '{"path":"/","name":"sidebar-default","waitMs":1200}'
+  -d '{"path":"/","name":"default","waitMs":1200}'
 ```
 
-Example (trigger deterministic UI state before screenshot):
 ```bash
 curl -sS -X POST http://127.0.0.1:5173/api/screenshot \
   -H 'Content-Type: application/json' \
@@ -679,86 +390,49 @@ curl -sS -X POST http://127.0.0.1:5173/api/screenshot \
   }'
 ```
 
-Example (read captured UI runtime logs):
 ```bash
 curl -sS http://127.0.0.1:5173/api/ui-logs
 ```
 
 Automation guardrails:
-- Keep selectors stable with `data-testid`/semantic roles for critical flows.
-- Use fixed viewport and deterministic waits for screenshot consistency.
-- Prefer state-triggered waits (element/event ready) over arbitrary sleep when possible.
-- Treat console/runtime errors as test failures unless explicitly allowlisted.
+- stable selectors (`data-testid` or semantic role)
+- fixed viewport for visual comparisons
+- readiness-based waits preferred over arbitrary sleeps
+- runtime errors treated as failures unless explicitly allowlisted
 
-### Dev Viewer Flow (Browser-First Webview Testing)
+### Webview Pages to Validate in Browser Flow
 
-Agents should use the browser dev viewer flow as the default self-testing path.
-Only ask the user to test in the actual extension after this flow is clean.
+For `ui-server`, verify the relevant page for your change:
+- `http://127.0.0.1:5173/` (main sidebar shell)
+- `http://127.0.0.1:5173/log-viewer.html`
+- `http://127.0.0.1:5173/migrate.html`
+- `http://127.0.0.1:5173/test-explorer.html`
 
-Default flow:
-1. Start the local webview dev environment:
-```bash
-cd src/ui-server
-npm run dev:all
-```
-2. Open the Vite-served webview pages in a browser and validate behavior there first.
-3. Run interaction checks + screenshot checks + UI log checks.
-4. Fix all obvious issues found in browser flow.
-5. After browser flow is stable, ask the user to validate in Cursor/VS Code extension host.
+If your feature affects one of these views, include at least one screenshot and one interaction check on that page.
 
-Why this flow:
-- Faster iteration loop than packaging/reinstalling extension on each change.
-- Easier automation with Puppeteer and Vite screenshot endpoints.
-- Catches most UI/state/interaction regressions before involving user manual extension testing.
+### Browser-First Promotion Gate (Before Asking User)
 
-Promotion criteria before asking user to test in extension:
-- No console/runtime errors in `ui-logs`.
-- Key user journeys validated in browser dev viewer.
-- Relevant screenshots captured for expected states.
-- Unit/integration tests for changed behavior are passing.
+All must be true:
+- UI interactions behave correctly in browser flow
+- screenshot captures are stable for key states
+- `api/ui-logs` contains no unapproved runtime errors
+- relevant test matrix items are passing
 
-### 3) Performance Budgets + Profiling Workflow
+Only then ask the user to validate in the extension host.
 
-Best practices:
-- Memoize expensive derived data (`useMemo`) and callback props (`useCallback`) in hot render paths.
-- Use `requestAnimationFrame` for resize/drag/render loops.
-- Offload layout/graph/geometry heavy computation to Web Workers.
-- Avoid broad subscriptions to global store when only slices are needed.
+## Accessibility Baseline
 
-Use:
-- Define budgets per feature:
-  - input-to-paint latency target
-  - max acceptable rerenders per interaction
-  - max compute time on main thread before worker offload
-- Profile before optimizing: capture hot components/selectors/effects first.
+Required:
+- keyboard-operable primary controls
+- deterministic focus order
+- semantic roles/ARIA where native semantics are insufficient
+- focus-visible styles via tokens
+- readable contrast in light/dark modes
 
-### 4) Accessibility Baseline
+Example:
 
-Best practices:
-- Include keyboard handlers for interactive widgets (lists, comboboxes, panels).
-- Add semantic roles and ARIA state where native semantics are insufficient.
-- Keep focus-visible styling explicit and consistent with tokens.
-
-Use:
-- Required checks:
-  - keyboard navigation works without mouse
-  - focus order is deterministic
-  - controls expose state via ARIA where needed
-  - color contrast remains readable in both themes
-
-Example (keyboard-ready collapsible section):
 ```tsx
-<button
-  aria-expanded={!collapsed}
-  aria-controls={`section-${id}`}
-  onClick={toggle}
-  onKeyDown={(e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggle();
-    }
-  }}
->
+<button aria-expanded={!collapsed} aria-controls={`section-${id}`} onClick={toggle}>
   {title}
 </button>
 <div id={`section-${id}`} role="region">
@@ -766,135 +440,58 @@ Example (keyboard-ready collapsible section):
 </div>
 ```
 
-### 5) Error Taxonomy + UX Handling
+## Performance Baseline
 
-Best practices:
-- Use typed error wrappers for HTTP/API failures.
-- Model connection state explicitly (connected, disconnected, reconnecting).
-- Auto-clear transient errors only with clear timeout policy.
-- Provide actionable UI messaging for degraded states.
+Required:
+- memoize expensive derived data and callback props in hot paths
+- use `requestAnimationFrame` for resize/drag animation loops
+- move heavy graph/layout/geometry work to Web Workers
+- avoid broad store subscriptions
 
-Use:
-- Define standard classes:
-  - transport/network
-  - validation/user input
-  - backend action failure
-  - permission/auth (if applicable)
-  - unknown/internal
-- Map each class to a required UI response pattern.
+Practical budgets (set per feature):
+- input-to-paint latency target
+- rerender count target for key interactions
+- max main-thread compute before worker offload
 
-Example (error mapping):
-- `transport/network`: show reconnect status + retry affordance.
-- `validation/user input`: inline field error + preserve user input.
-- `backend action failure`: toast + contextual action row error.
-- `unknown/internal`: generic error panel + diagnostic ID/log pointer.
+## Definition of Done
 
-### 6) State Management Conventions
+A feature is done only when all are true:
 
-Best practices:
-- Centralize app state in typed store actions/selectors.
-- Use selector-based subscriptions to minimize rerenders.
-- Keep persisted selection/context state separate from ephemeral UI state.
-- Use cross-view synchronization mechanisms only where necessary and explicit.
+- [ ] one canonical flow implemented (no fallback path forks)
+- [ ] contract changes modeled in Pydantic and regenerated TS types consumed
+- [ ] websocket behavior validated (connect/reconnect/resync)
+- [ ] tests added/updated (store + API + UI + state handling)
+- [ ] browser-first dev viewer checks complete
+- [ ] extension-host validation requested only after browser flow is clean
+- [ ] build/test commands pass for touched frontend app(s)
+- [ ] component/util placement follows repository surface map and reuse rules
 
-Use:
-- For each feature, document:
-  - source-of-truth state
-  - derived selectors
-  - side-effect entrypoints
-  - reset semantics
+## PR Checklist (Copy/Paste)
 
-### 7) WebSocket Protocol Playbook
-
-Best practices:
-- Implement reconnect with bounded exponential backoff.
-- Track pending action requests with correlation IDs and timeouts.
-- Distinguish full-state sync messages from action-result/event messages.
-- On reconnect, resync critical state via explicit bootstrap actions.
-
-Use:
-- Standard WS envelope:
-  - `type` (state/event/action_result/action)
-  - typed payload
-  - optional `requestId` for request/response correlation
-- Required client behavior:
-  - safe cleanup on disconnect
-  - pending request cancellation on reconnect/disconnect
-  - out-of-order tolerance in reducers
-
-Example (typed WS envelope):
-```ts
-type WsMessage =
-  | { type: 'state'; data: AppState }
-  | { type: 'event'; event: EventType; data: EventPayload }
-  | { type: 'action_result'; action: string; requestId?: string; result: { success: boolean; error?: string } };
-```
-
-Example (request/response correlation):
-```ts
-const requestId = `${Date.now()}-${++counter}`;
-pending.set(requestId, { resolve, reject, timeoutId });
-ws.send(JSON.stringify({ type: 'action', action: 'build', payload: { requestId, ...payload } }));
-```
-
-### 8) Data-Contract Workflow Details
-
-Best practices:
-- Treat backend schema as source-of-truth.
-- Generate frontend TS types from schema and import them in API/store layers.
-- Avoid manual string protocol branching where generated enums/types exist.
-
-Use:
-- Mandatory workflow:
-  1. update backend Pydantic model
-  2. regenerate schema/types
-  3. update frontend compile errors until clean
-  4. add/adjust tests for contract changes
-
-### 9) PR Checklist + Quality Gates
-
-Best practices:
-- Enforce gates on architecture, design, and code quality before merge.
-- Require explicit confirmation of websocket resiliency and typed contracts.
-- Require proof of testing for changed behaviors (not only snapshots).
-
-Use:
-- Include PR checklist items for:
-  - contract generation updated
-  - WS reconnect/resync path verified
-  - accessibility checks completed
-  - performance-sensitive paths reviewed
-  - tests added/updated
-
-Example (copy into PR description):
 ```md
-- [ ] Pydantic contract updated (if API/WS changed)
-- [ ] TS generated types regenerated and committed
-- [ ] WS reconnect + resync verified manually
-- [ ] Keyboard/focus behavior verified
-- [ ] Added/updated: store test, API test, UI interaction test
-- [ ] Loading/error/empty states verified in UI
+- [ ] Single canonical flow preserved (no fallback path added)
+- [ ] Pydantic models updated for API/WS changes
+- [ ] Generated TS schema/types regenerated and committed
+- [ ] WS reconnect/resync behavior verified
+- [ ] Browser dev viewer flow validated (`npm run dev:all`)
+- [ ] Screenshots + UI logs reviewed (no unapproved runtime errors)
+- [ ] Added/updated: store test, transport test, UI interaction test
+- [ ] Asked user to test in extension host only after browser checks passed
 ```
 
-### 10) End-to-End Feature Example Standard
+## Golden Path Reference Implementation
 
-Best practices:
-- Build at least one “reference implementation” per major feature type.
-- Keep reference examples small but complete: contract -> transport -> state -> UI -> tests.
+For each major feature type, keep one small end-to-end reference showing:
+- contract
+- transport
+- state
+- UI
+- tests
 
-Use:
-- For new apps/features, document one exemplar flow including:
-  - Pydantic model definition
-  - generated TS contract usage
-  - API + WS handling
-  - store update path
-  - component rendering and interaction
-  - verification steps and test cases
-
-Example (minimal exemplar flow outline):
-1. Add `BuildActionRequest` and `BuildActionResult` Pydantic models.
-2. Regenerate TS schema and import types in `api/ws.ts`.
-3. Implement `sendActionWithResponse('build', payload)` in transport.
-4. Update store `startBuild` action for pending/success/error states.
-5. Wire button in component to call `startBuild`.
-6. Add tests for store transition + action transport + button interaction.
+Minimal outline:
+1. Add Pydantic request/result models
+2. Regenerate TS contracts and import generated types in `api/`
+3. Implement typed WS/API action path
+4. Update store pending/success/error transitions
+5. Wire UI control to store action
+6. Add tests for transitions + transport + interaction
