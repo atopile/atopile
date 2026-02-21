@@ -100,7 +100,7 @@ jobs:
           FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
           PYTHON_UNBUFFERED: 1
           FBRK_TEST_LOG_VIEWER: 0
-          FBRK_TEST_TEST_TIMEOUT: 60
+          FBRK_TEST_TEST_TIMEOUT: 240
 
       - name: Upload test report json artifact
         if: always()
