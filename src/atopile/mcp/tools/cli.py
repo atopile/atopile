@@ -1,3 +1,5 @@
+import os
+import traceback
 from pathlib import Path
 
 from atopile import buildutil
@@ -9,7 +11,7 @@ from atopile.dataclasses import (
     InstallPackageResult,
     PackageVerifyResult,
 )
-from atopile.logging import BaseLogger, get_logger
+from atopile.logging import AtoLogger, get_logger
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()
@@ -33,21 +35,40 @@ def build_project(
     config.interactive = False
 
     success = True
+    logs = ""
+    prev_build_id = os.environ.get("ATO_BUILD_ID")
 
-    with config.select_build(target_name_from_yaml), BaseLogger.capture_logs() as logs:
-        logger.info("Building target '%s'", config.build.name)
+    with config.select_build(target_name_from_yaml):
+        from atopile.buildutil import generate_build_id, generate_build_timestamp
 
+        build_id = generate_build_id(
+            str(absolute_project_dir.resolve()),
+            target_name_from_yaml,
+            generate_build_timestamp(),
+        )
+        os.environ["ATO_BUILD_ID"] = build_id
         try:
-            with BaseLogger.log_exceptions(logs):
-                buildutil.build()
-        except Exception:
-            success = False
+            from atopile.buildutil import BuildStepContext
+
+            AtoLogger.activate_build(stage=config.build.name)
+            logger.info("Building target '%s'", config.build.name)
+
+            try:
+                buildutil.build(ctx=BuildStepContext(build=None, build_id=build_id))
+            except Exception:
+                success = False
+                logs = traceback.format_exc()
+        finally:
+            if prev_build_id is None:
+                os.environ.pop("ATO_BUILD_ID", None)
+            else:
+                os.environ["ATO_BUILD_ID"] = prev_build_id
 
     return BuildResult(
         success=success,
         project_dir=str(absolute_project_dir),
         target=target_name_from_yaml,
-        logs=logs.getvalue(),
+        logs=logs,
     )
 
 
@@ -139,16 +160,17 @@ def verify_package(absolute_project_dir: Path) -> PackageVerifyResult:
     config.apply_options(entry=str(absolute_project_dir))
 
     success = True
-    with BaseLogger.capture_logs() as logs:
-        logger.info("Verifying package at '%s'", absolute_project_dir)
-        try:
-            with BaseLogger.log_exceptions(logs):
-                _verify_package(config)
-        except Exception:
-            success = False
+    logs = ""
+
+    logger.info("Verifying package at '%s'", absolute_project_dir)
+    try:
+        _verify_package(config)
+    except Exception:
+        success = False
+        logs = traceback.format_exc()
 
     return PackageVerifyResult(
         success=success,
         project_dir=str(absolute_project_dir),
-        logs=logs.getvalue(),
+        logs=logs,
     )

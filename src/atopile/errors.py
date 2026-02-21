@@ -11,12 +11,14 @@ This module provides:
 from __future__ import annotations
 
 import contextlib
+import io
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from enum import Enum
 from functools import wraps
 from pathlib import Path
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -767,3 +769,222 @@ def log_discord_banner() -> None:
     from atopile.logging import logger
 
     logger.info(DISCORD_BANNER_TEXT)
+
+
+# =============================================================================
+# Traceback Serialization
+# =============================================================================
+
+
+def _format_value(val: object) -> str:
+    """Format a value for display, using str() for strings to preserve ANSI codes."""
+    if isinstance(val, str):
+        return val
+    return repr(val)
+
+
+def _get_pretty_repr(value: object, max_len: int = 200) -> str:
+    """Get pretty repr using __rich_repr__ or fallback to repr."""
+    rich_repr = getattr(value, "__rich_repr__", None)
+    if callable(rich_repr) and getattr(rich_repr, "__self__", None) is not None:
+        type_name = type(value).__name__
+        rich_repr_parts = []
+        for item in rich_repr():
+            if isinstance(item, tuple):
+                if len(item) == 2:
+                    key, val = item
+                    if key is None:
+                        rich_repr_parts.append(_format_value(val))
+                    else:
+                        rich_repr_parts.append(f"{key}={_format_value(val)}")
+                elif len(item) == 1:
+                    rich_repr_parts.append(_format_value(item[0]))
+            else:
+                rich_repr_parts.append(_format_value(item))
+        result = f"{type_name}({', '.join(rich_repr_parts)})"
+        return result[:max_len] + "..." if len(result) > max_len else result
+
+    result = repr(value)
+    return result[:max_len] + "..." if len(result) > max_len else result
+
+
+def _serialize_local_var(
+    value: object,
+    max_repr_len: int = 200,
+    max_container_items: int = 50,
+    depth: int = 0,
+) -> dict:
+    """Safely serialize a local variable for JSON storage."""
+    type_name = type(value).__name__
+    max_depth = 5
+
+    if isinstance(value, (bool, int, float, type(None))):
+        return {"type": type_name, "value": value}
+
+    if isinstance(value, str):
+        if len(value) > max_repr_len:
+            return {
+                "type": type_name,
+                "value": value[:max_repr_len] + "...",
+                "truncated": True,
+            }
+        return {"type": type_name, "value": value}
+
+    rich_repr = getattr(value, "__rich_repr__", None)
+    if callable(rich_repr):
+        repr_str = _get_pretty_repr(value, max_repr_len)
+        return {"type": type_name, "repr": repr_str}
+
+    if depth < max_depth:
+        if isinstance(value, dict):
+            items = list(value.items())[:max_container_items]
+            serialized = {}
+            for k, v in items:
+                key_str = str(k) if not isinstance(k, str) else k
+                serialized[key_str] = _serialize_local_var(
+                    v, max_repr_len, max_container_items, depth + 1
+                )
+            result: dict[str, Any] = {
+                "type": "dict",
+                "value": serialized,
+                "length": len(value),
+            }
+            if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        if isinstance(value, tuple) and hasattr(value, "_fields"):
+            serialized = {}
+            for field in value._fields[:max_container_items]:
+                serialized[field] = _serialize_local_var(
+                    getattr(value, field), max_repr_len, max_container_items, depth + 1
+                )
+            result = {
+                "type": type_name,
+                "value": serialized,
+                "length": len(value._fields),
+            }
+            if len(value._fields) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        if isinstance(value, (list, tuple)):
+            items = list(value)[:max_container_items]
+            serialized_items = [
+                _serialize_local_var(item, max_repr_len, max_container_items, depth + 1)
+                for item in items
+            ]
+            result = {
+                "type": type_name,
+                "value": serialized_items,
+                "length": len(value),
+            }
+            if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        if isinstance(value, (set, frozenset)):
+            items = list(value)[:max_container_items]
+            serialized_items = [
+                _serialize_local_var(item, max_repr_len, max_container_items, depth + 1)
+                for item in items
+            ]
+            result = {
+                "type": type_name,
+                "value": serialized_items,
+                "length": len(value),
+            }
+            if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+    repr_str = _get_pretty_repr(value, max_repr_len)
+    return {"type": type_name, "repr": repr_str}
+
+
+def extract_traceback_frames(
+    exc_type: type[BaseException] | None,
+    exc_value: BaseException | None,
+    exc_tb: TracebackType | None,
+    max_frames: int = 50,
+    max_locals: int = 20,
+    max_repr_len: int = 200,
+    suppress_paths: list[str] | None = None,
+) -> dict:
+    """
+    Extract structured traceback with local variables.
+
+    Returns a dict with:
+    - exc_type: Exception type name
+    - exc_message: Exception message
+    - frames: List of stack frame dicts with filename, lineno, function,
+      code_line, and locals
+    """
+    frames = []
+    tb = exc_tb
+    frame_count = 0
+
+    while tb is not None and frame_count < max_frames:
+        frame = tb.tb_frame
+        filename = frame.f_code.co_filename
+
+        if suppress_paths and any(p in filename for p in suppress_paths):
+            tb = tb.tb_next
+            continue
+
+        locals_dict = {}
+        for name, value in list(frame.f_locals.items())[:max_locals]:
+            if name.startswith("__"):
+                continue
+            locals_dict[name] = _serialize_local_var(value, max_repr_len)
+
+        import linecache
+
+        code_line = linecache.getline(filename, tb.tb_lineno).strip()
+
+        frames.append(
+            {
+                "filename": filename,
+                "lineno": tb.tb_lineno,
+                "function": frame.f_code.co_name,
+                "code_line": code_line,
+                "locals": locals_dict,
+            }
+        )
+
+        tb = tb.tb_next
+        frame_count += 1
+
+    return {
+        "exc_type": exc_type.__name__ if exc_type else "Unknown",
+        "exc_message": str(exc_value) if exc_value else "",
+        "frames": frames,
+    }
+
+
+def get_exception_display_message(exc: BaseException) -> str:
+    """Get display message for exception."""
+    if isinstance(exc, UserException):
+        return exc.message or str(exc) or type(exc).__name__
+    return str(exc) or type(exc).__name__
+
+
+def render_ato_traceback(exc: BaseException) -> str | None:
+    """Render exception's rich output to an ANSI-formatted string.
+
+    Uses force_terminal=True to include ANSI escape codes (colors) in the
+    output, which can be rendered by the frontend.
+    """
+    if not hasattr(exc, "__rich_console__"):
+        return None
+    ansi_buffer = io.StringIO()
+    capture_console = Console(
+        file=ansi_buffer,
+        width=120,
+        force_terminal=True,
+    )
+    renderables = exc.__rich_console__(capture_console, capture_console.options)
+    for renderable in list(renderables)[1:]:
+        capture_console.print(renderable)
+    result = ansi_buffer.getvalue().strip()
+    return result or None

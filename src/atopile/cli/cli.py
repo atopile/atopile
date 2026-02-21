@@ -197,12 +197,6 @@ def cli(
     # if ctx.invoked_subcommand:
     #    check_for_update()
 
-    # Set up database logging for all CLI commands (not just builds)
-    # This ensures logs from validate, inspect, etc. are also stored in the database
-    from atopile.logging import BuildLogger
-
-    BuildLogger.setup_logging(enable_database=True, stage="cli")
-
     configure.setup()
 
 

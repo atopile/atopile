@@ -16,7 +16,7 @@ import httpx
 import psutil
 import pytest
 
-from atopile.logging import _extract_traceback_frames
+from atopile.errors import extract_traceback_frames
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
 
 # Use atopile prefix so logs pass through the _atopile_log_filter
@@ -36,7 +36,7 @@ def _format_rich_traceback(
 
     Note: Previously used Rich's Traceback but syntax highlighting was too slow
     (~1-7 seconds). Plain traceback is ~0.001s. Structured data with locals
-    is captured separately via _extract_traceback_frames.
+    is captured separately via extract_traceback_frames.
     """
     import traceback
 
@@ -203,7 +203,7 @@ def pytest_runtest_logreport(report: pytest.TestReport):
                 output["error"] = _format_rich_traceback(exc_type, exc_value, exc_tb)
                 # Extract structured traceback with local vars for inspector.
                 # Serialize to JSON string since output dict expects str values.
-                structured_tb = _extract_traceback_frames(
+                structured_tb = extract_traceback_frames(
                     exc_type,
                     exc_value,
                     exc_tb,
