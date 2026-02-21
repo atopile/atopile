@@ -62,6 +62,29 @@ def test_kicad_deeppcb_roundtrip_native_reconstruction(pcb_path: Path) -> None:
     assert len(roundtrip.gr_lines) >= 0
 
 
+@pytest.mark.parametrize("pcb_path", EXAMPLE_PCBS, ids=lambda p: str(p))
+def test_kicad_deeppcb_roundtrip_parity_on_supported_primitives(pcb_path: Path) -> None:
+    original = kicad.loads(kicad.pcb.PcbFile, pcb_path).kicad_pcb
+    board = DeepPCB_Transformer.from_kicad_file(kicad.loads(kicad.pcb.PcbFile, pcb_path))
+    roundtrip = DeepPCB_Transformer.to_kicad_file(board).kicad_pcb
+
+    diff = kicad.compare_without_uuid(original, roundtrip)
+    assert isinstance(diff, dict)
+    disallowed = [
+        path
+        for path in diff
+        if not path.startswith(
+            (
+                ".generator",
+                ".generator_version",
+                ".paper",
+                ".setup.",
+            )
+        )
+    ]
+    assert disallowed == []
+
+
 def test_deeppcb_fileformat_load_dump_smoke(tmp_path: Path) -> None:
     pcb_path = EXAMPLE_PCBS[0]
     pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)

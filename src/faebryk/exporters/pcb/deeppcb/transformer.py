@@ -104,6 +104,7 @@ class DeepPCB_Transformer:
             boundary={
                 "shape": {"type": "polyline", "points": cls._edge_cuts_points(pcb)},
                 "clearance": 0,
+                "segments": cls._edge_cuts_segments(pcb),
             },
             layers=[
                 {
@@ -186,6 +187,35 @@ class DeepPCB_Transformer:
                     "layer": str(getattr(prop, "layer", "F.SilkS")),
                     "hide": getattr(prop, "hide", None),
                     "unlocked": getattr(prop, "unlocked", None),
+                    "effects": (
+                        {
+                            "font": (
+                                {
+                                    "size": [
+                                        float(getattr(getattr(getattr(prop.effects, "font", None), "size", None), "w", 1.0) or 1.0),
+                                        float(getattr(getattr(getattr(prop.effects, "font", None), "size", None), "h", 1.0) or 1.0),
+                                    ],
+                                    "thickness": float(getattr(getattr(prop.effects, "font", None), "thickness", 0.15) or 0.15),
+                                    "bold": getattr(getattr(prop.effects, "font", None), "bold", None),
+                                    "italic": getattr(getattr(prop.effects, "font", None), "italic", None),
+                                }
+                                if getattr(prop.effects, "font", None) is not None
+                                else None
+                            ),
+                            "hide": getattr(prop.effects, "hide", None),
+                            "justify": (
+                                {
+                                    "justify1": getattr(prop.effects.justify, "justify1", None),
+                                    "justify2": getattr(prop.effects.justify, "justify2", None),
+                                    "justify3": getattr(prop.effects.justify, "justify3", None),
+                                }
+                                if getattr(prop.effects, "justify", None) is not None
+                                else None
+                            ),
+                        }
+                        if getattr(prop, "effects", None) is not None
+                        else None
+                    ),
                 }
                 break
             components.append(
@@ -261,6 +291,7 @@ class DeepPCB_Transformer:
                 "position": cls._xy_to_point(via.at),
                 "netId": net_id_by_number.get(int(via.net), str(int(via.net))),
                 "padstack": cls._via_definition_id(via),
+                "free": getattr(via, "free", None),
             }
             for via in pcb.vias
         ]
@@ -280,13 +311,59 @@ class DeepPCB_Transformer:
             board.planes.append(
                 {
                     "netId": net_id_by_number.get(int(getattr(zone, "net", 0) or 0), str(int(getattr(zone, "net", 0) or 0))),
+                    "netName": getattr(zone, "net_name", None),
+                    "zoneLayer": getattr(zone, "layer", None),
+                    "name": getattr(zone, "name", None),
+                    "priority": getattr(zone, "priority", None),
                     "layer": copper_layer_index.get(layer_name, 0),
                     "shape": {"type": "polygon", "points": points},
+                    "connectPads": (
+                        {
+                            "mode": getattr(zone.connect_pads, "mode", None),
+                            "clearance": getattr(zone.connect_pads, "clearance", None),
+                        }
+                        if getattr(zone, "connect_pads", None) is not None
+                        else None
+                    ),
+                    "minThickness": getattr(zone, "min_thickness", None),
+                    "filledAreasThickness": getattr(zone, "filled_areas_thickness", None),
+                    "keepout": (
+                        {
+                            "tracks": getattr(zone.keepout, "tracks", None),
+                            "vias": getattr(zone.keepout, "vias", None),
+                            "pads": getattr(zone.keepout, "pads", None),
+                            "copperpour": getattr(zone.keepout, "copperpour", None),
+                            "footprints": getattr(zone.keepout, "footprints", None),
+                        }
+                        if getattr(zone, "keepout", None) is not None
+                        else None
+                    ),
+                    "placement": (
+                        {
+                            "sourceType": getattr(zone.placement, "source_type", None),
+                            "source": getattr(zone.placement, "source", None),
+                            "enabled": getattr(zone.placement, "enabled", None),
+                            "sheetname": getattr(zone.placement, "sheetname", None),
+                        }
+                        if getattr(zone, "placement", None) is not None
+                        else None
+                    ),
+                    "fill": (
+                        {
+                            "enable": getattr(zone.fill, "enable", None),
+                            "thermalGap": getattr(zone.fill, "thermal_gap", None),
+                            "thermalBridgeWidth": getattr(zone.fill, "thermal_bridge_width", None),
+                        }
+                        if getattr(zone, "fill", None) is not None
+                        else None
+                    ),
                 }
             )
 
         if include_lossless_source:
             board.metadata["kicad_pcb_sexp"] = kicad.dumps(kicad.pcb.PcbFile(kicad_pcb=pcb))
+        if getattr(pcb, "embedded_fonts", None) is not None:
+            board.metadata["kicad_embedded_fonts"] = getattr(pcb, "embedded_fonts", None)
 
         return board
 
@@ -342,21 +419,48 @@ class DeepPCB_Transformer:
 
         # Boundary -> Edge.Cuts lines
         pcb.gr_lines = []
-        boundary_points = cls._boundary_points(board_file)
-        for start, end in zip(boundary_points, boundary_points[1:]):
-            pcb.gr_lines.append(
-                kicad.pcb.Line(
-                    start=cls._point_to_xy(start, resolution),
-                    end=cls._point_to_xy(end, resolution),
-                    solder_mask_margin=None,
-                    stroke=kicad.pcb.Stroke(width=0.1, type="solid"),
-                    fill=None,
-                    layer="Edge.Cuts",
-                    layers=[],
-                    locked=None,
-                    uuid=kicad.gen_uuid(),
+        boundary = board_file.boundary if isinstance(board_file.boundary, dict) else {}
+        boundary_segments = boundary.get("segments")
+        if isinstance(boundary_segments, list) and boundary_segments:
+            for segment in boundary_segments:
+                if not isinstance(segment, dict) or segment.get("type") != "line":
+                    continue
+                start = segment.get("start")
+                end = segment.get("end")
+                if not (isinstance(start, list) and isinstance(end, list)):
+                    continue
+                pcb.gr_lines.append(
+                    kicad.pcb.Line(
+                        start=cls._point_to_xy(start, resolution),
+                        end=cls._point_to_xy(end, resolution),
+                        solder_mask_margin=None,
+                        stroke=kicad.pcb.Stroke(
+                            width=float(segment.get("strokeWidth", 0.2)),
+                            type=str(segment.get("strokeType", "default")),
+                        ),
+                        fill=segment.get("fill"),
+                        layer="Edge.Cuts",
+                        layers=[],
+                        locked=segment.get("locked"),
+                        uuid=kicad.gen_uuid(),
+                    )
                 )
-            )
+        else:
+            boundary_points = cls._boundary_points(board_file)
+            for start, end in zip(boundary_points, boundary_points[1:]):
+                pcb.gr_lines.append(
+                    kicad.pcb.Line(
+                        start=cls._point_to_xy(start, resolution),
+                        end=cls._point_to_xy(end, resolution),
+                        solder_mask_margin=None,
+                        stroke=kicad.pcb.Stroke(width=0.2, type="default"),
+                        fill=None,
+                        layer="Edge.Cuts",
+                        layers=[],
+                        locked=None,
+                        uuid=kicad.gen_uuid(),
+                    )
+                )
 
         # Segments
         pcb.segments = []
@@ -412,7 +516,7 @@ class DeepPCB_Transformer:
                     padstack=None,
                     teardrops=None,
                     tenting=None,
-                    free=None,
+                    free=via.get("free"),
                     locked=None,
                     uuid=kicad.gen_uuid(),
                 )
@@ -430,23 +534,78 @@ class DeepPCB_Transformer:
             layer_id = index_to_layer.get(int(plane.get("layer", 0)), "F.Cu")
             net_id = str(plane.get("netId", ""))
             net_no = net_number_by_id.get(net_id, 0)
+            connect_pads_payload = plane.get("connectPads")
+            connect_pads = (
+                kicad.pcb.ConnectPads(
+                    mode=connect_pads_payload.get("mode"),
+                    clearance=connect_pads_payload.get("clearance"),
+                )
+                if isinstance(connect_pads_payload, dict)
+                else None
+            )
+            keepout_payload = plane.get("keepout")
+            keepout = (
+                kicad.pcb.ZoneKeepout(
+                    tracks=keepout_payload.get("tracks"),
+                    vias=keepout_payload.get("vias"),
+                    pads=keepout_payload.get("pads"),
+                    copperpour=keepout_payload.get("copperpour"),
+                    footprints=keepout_payload.get("footprints"),
+                )
+                if isinstance(keepout_payload, dict)
+                else None
+            )
+            placement_payload = plane.get("placement")
+            placement = (
+                kicad.pcb.ZonePlacement(
+                    source_type=placement_payload.get("sourceType"),
+                    source=placement_payload.get("source"),
+                    enabled=placement_payload.get("enabled"),
+                    sheetname=placement_payload.get("sheetname"),
+                )
+                if isinstance(placement_payload, dict)
+                else None
+            )
+            fill_payload = plane.get("fill")
+            fill = (
+                kicad.pcb.ZoneFill(
+                    enable=fill_payload.get("enable"),
+                    mode=None,
+                    hatch_thickness=None,
+                    hatch_gap=None,
+                    hatch_orientation=None,
+                    hatch_smoothing_level=None,
+                    hatch_smoothing_value=None,
+                    hatch_border_algorithm=None,
+                    hatch_min_hole_area=None,
+                    arc_segments=None,
+                    thermal_gap=fill_payload.get("thermalGap"),
+                    thermal_bridge_width=fill_payload.get("thermalBridgeWidth"),
+                    smoothing=None,
+                    radius=None,
+                    island_removal_mode=None,
+                    island_area_min=None,
+                )
+                if isinstance(fill_payload, dict)
+                else None
+            )
             pcb.zones.append(
                 kicad.pcb.Zone(
                     net=net_no,
-                    net_name=net_id,
-                    layer=None,
+                    net_name=plane.get("netName", net_id),
+                    layer=plane.get("zoneLayer"),
                     layers=[layer_id],
                     uuid=kicad.gen_uuid(),
-                    name=None,
+                    name=plane.get("name"),
                     hatch=kicad.pcb.Hatch(mode="edge", pitch=0.5),
-                    priority=None,
+                    priority=plane.get("priority"),
                     attr=None,
-                    connect_pads=None,
-                    min_thickness=0.2,
-                    filled_areas_thickness=None,
-                    keepout=None,
-                    placement=None,
-                    fill=None,
+                    connect_pads=connect_pads,
+                    min_thickness=float(plane.get("minThickness", 0.2) or 0.2),
+                    filled_areas_thickness=plane.get("filledAreasThickness"),
+                    keepout=keepout,
+                    placement=placement,
+                    fill=fill,
                     polygon=kicad.pcb.Polygon(
                         pts=kicad.pcb.Pts(
                             xys=[cls._point_to_xy(point, resolution) for point in points]
@@ -538,16 +697,16 @@ class DeepPCB_Transformer:
                     drill_offset = drill_payload.get("offset")
                     pad_drill = kicad.pcb.PadDrill(
                         shape=drill_payload.get("shape"),
-                        size_x=cls._from_unit(float(drill_payload.get("sizeX", 0.0) or 0.0), resolution),
+                        size_x=float(drill_payload.get("sizeX", 0.0) or 0.0),
                         size_y=(
-                            cls._from_unit(float(drill_payload.get("sizeY")), resolution)
+                            float(drill_payload.get("sizeY"))
                             if drill_payload.get("sizeY") is not None
                             else None
                         ),
                         offset=(
                             kicad.pcb.Xy(
-                                x=cls._from_unit(float(drill_offset[0]), resolution),
-                                y=cls._from_unit(float(drill_offset[1]), resolution),
+                                x=float(drill_offset[0]),
+                                y=float(drill_offset[1]),
                             )
                             if isinstance(drill_offset, list) and len(drill_offset) >= 2
                             else None
@@ -624,6 +783,7 @@ class DeepPCB_Transformer:
                 ref_layer = str(reference_prop.get("layer", "F.SilkS"))
                 ref_hide = reference_prop.get("hide")
                 ref_unlocked = reference_prop.get("unlocked")
+                effects_payload = reference_prop.get("effects")
             else:
                 ref_value = component_id
                 ref_point = [0, 0]
@@ -631,18 +791,41 @@ class DeepPCB_Transformer:
                 ref_layer = "F.SilkS"
                 ref_hide = None
                 ref_unlocked = None
+                effects_payload = None
             embedded_fonts = component.get("embeddedFonts")
 
-            default_effects = kicad.pcb.Effects(
-                font=kicad.pcb.Font(
-                    size=kicad.pcb.Wh(w=1.0, h=1.0),
-                    thickness=0.15,
-                    bold=None,
-                    italic=None,
-                ),
-                hide=None,
-                justify=None,
-            )
+            effects = None
+            if isinstance(effects_payload, dict):
+                font_payload = effects_payload.get("font")
+                font = None
+                if isinstance(font_payload, dict):
+                    size_payload = font_payload.get("size", [1.0, 1.0])
+                    if not isinstance(size_payload, list) or len(size_payload) < 2:
+                        size_payload = [1.0, 1.0]
+                    font = kicad.pcb.Font(
+                        size=kicad.pcb.Wh(
+                            w=float(size_payload[0]),
+                            h=float(size_payload[1]),
+                        ),
+                        thickness=float(font_payload.get("thickness", 0.15) or 0.15),
+                        bold=font_payload.get("bold"),
+                        italic=font_payload.get("italic"),
+                    )
+                justify_payload = effects_payload.get("justify")
+                justify = (
+                    kicad.pcb.Justify(
+                        justify1=justify_payload.get("justify1"),
+                        justify2=justify_payload.get("justify2"),
+                        justify3=justify_payload.get("justify3"),
+                    )
+                    if isinstance(justify_payload, dict)
+                    else None
+                )
+                effects = kicad.pcb.Effects(
+                    font=font,
+                    hide=effects_payload.get("hide"),
+                    justify=justify,
+                )
 
             pcb.footprints.append(
                 kicad.pcb.Footprint(
@@ -668,7 +851,7 @@ class DeepPCB_Transformer:
                             layer=ref_layer,
                             hide=ref_hide,
                             uuid=kicad.gen_uuid(),
-                            effects=default_effects,
+                            effects=effects,
                         )
                     ],
                     attr=[],
@@ -699,6 +882,8 @@ class DeepPCB_Transformer:
         pcb.targets = []
         pcb.tables = []
         pcb.generateds = []
+        if isinstance(board_file.metadata, dict) and "kicad_embedded_fonts" in board_file.metadata:
+            pcb.embedded_fonts = board_file.metadata.get("kicad_embedded_fonts")
         return pcb
 
     @staticmethod
@@ -928,16 +1113,16 @@ class DeepPCB_Transformer:
             drill_offset = getattr(drill, "offset", None)
             drill_payload = {
                 "shape": getattr(drill, "shape", None),
-                "sizeX": cls._to_unit(float(getattr(drill, "size_x", 0.0) or 0.0)),
+                "sizeX": float(getattr(drill, "size_x", 0.0) or 0.0),
                 "sizeY": (
-                    cls._to_unit(float(getattr(drill, "size_y")))
+                    float(getattr(drill, "size_y"))
                     if getattr(drill, "size_y", None) is not None
                     else None
                 ),
                 "offset": (
                     [
-                        cls._to_unit(float(getattr(drill_offset, "x", 0.0) or 0.0)),
-                        cls._to_unit(float(getattr(drill_offset, "y", 0.0) or 0.0)),
+                        float(getattr(drill_offset, "x", 0.0) or 0.0),
+                        float(getattr(drill_offset, "y", 0.0) or 0.0),
                     ]
                     if drill_offset is not None
                     else None
@@ -974,9 +1159,14 @@ class DeepPCB_Transformer:
             }
 
         raw_layers_id = ",".join(raw_layers)
+        drill_id = ""
+        if isinstance(drill_payload, dict):
+            drill_id = (
+                f"_D{drill_payload.get('shape')}:{drill_payload.get('sizeX')}:{drill_payload.get('sizeY')}"
+            )
         padstack_id = (
             f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
-            f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}"
+            f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
         )
         return padstack_id, {
             "id": padstack_id,
@@ -1125,3 +1315,23 @@ class DeepPCB_Transformer:
         if points and points[0] != points[-1]:
             points.append(points[0])
         return points
+
+    @classmethod
+    def _edge_cuts_segments(cls, pcb: Any) -> list[dict[str, Any]]:
+        segments: list[dict[str, Any]] = []
+        for line in getattr(pcb, "gr_lines", []):
+            if str(getattr(line, "layer", "")) != "Edge.Cuts":
+                continue
+            stroke = getattr(line, "stroke", None)
+            segments.append(
+                {
+                    "type": "line",
+                    "start": cls._xy_to_point(line.start),
+                    "end": cls._xy_to_point(line.end),
+                    "strokeWidth": float(getattr(stroke, "width", 0.2) or 0.2),
+                    "strokeType": str(getattr(stroke, "type", "default") or "default"),
+                    "fill": getattr(line, "fill", None),
+                    "locked": getattr(line, "locked", None),
+                }
+            )
+        return segments
