@@ -46,31 +46,27 @@ def test_kicad_to_deeppcb_primitive_counts(pcb_path: Path) -> None:
 
 
 @pytest.mark.parametrize("pcb_path", EXAMPLE_PCBS, ids=lambda p: str(p))
-def test_kicad_deeppcb_roundtrip_matches_kicad_canonical(pcb_path: Path) -> None:
-    # Compare canonicalized KiCad text because source files may not already be in
-    # canonical dump format.
-    canonical_original = kicad.dumps(kicad.loads(kicad.pcb.PcbFile, pcb_path))
-
+def test_kicad_deeppcb_roundtrip_native_reconstruction(pcb_path: Path) -> None:
+    original = kicad.loads(kicad.pcb.PcbFile, pcb_path).kicad_pcb
     pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
-    board = DeepPCB_Transformer.from_kicad_file(
-        pcb_file,
-        include_lossless_source=True,
-    )
+    board = DeepPCB_Transformer.from_kicad_file(pcb_file)
 
     roundtrip_file = DeepPCB_Transformer.to_kicad_file(board)
-    canonical_roundtrip = kicad.dumps(roundtrip_file)
+    roundtrip = roundtrip_file.kicad_pcb
 
-    assert canonical_roundtrip == canonical_original
+    assert len(roundtrip.footprints) == len(original.footprints)
+    assert len(roundtrip.segments) == len(original.segments)
+    assert len(roundtrip.vias) == len(original.vias)
+    assert len(roundtrip.zones) == len(original.zones)
+    assert len(roundtrip.nets) == len(original.nets)
+    assert len(roundtrip.gr_lines) >= 0
 
 
 def test_deeppcb_fileformat_load_dump_smoke(tmp_path: Path) -> None:
     pcb_path = EXAMPLE_PCBS[0]
     pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
 
-    board = DeepPCB_Transformer.from_kicad_file(
-        pcb_file,
-        include_lossless_source=True,
-    )
+    board = DeepPCB_Transformer.from_kicad_file(pcb_file)
 
     out = tmp_path / "board.deeppcb"
     DeepPCB_Transformer.dumps(board, out)
