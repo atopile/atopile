@@ -2988,3 +2988,116 @@ def test_is_non_constraining_method():
     is_pred = E.is_(A, B, assert_=True)
     is_pred_expr = is_pred.as_parameter_operatable.force_get().as_expression.force_get()
     assert not is_pred_expr.is_non_constraining(), "Is should NOT be non-constraining"
+
+
+# ── Solver.commit() tests ────────────────────────────────────────────────────
+
+
+def test_commit_basic_superset():
+    """After commit, the original parameter should have a superset constraint."""
+    E = BoundExpressions()
+
+    class _App(fabll.Node):
+        voltage = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    voltage_op = app.voltage.get().can_be_operand.get()
+    voltage_po = voltage_op.as_parameter_operatable.force_get()
+
+    E.is_subset(voltage_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
+
+    solver = Solver()
+    solver.simplify(E.g, E.tg)
+    solver.commit()
+
+    # After commit, the parameter should have a superset extractable from G_in
+    ss = voltage_po.try_extract_superset()
+    assert ss is not None, "Superset should be committed to the original graph"
+    assert ss.op_setic_is_subset_of(
+        E.lit_op_range(((1, E.U.V), (3, E.U.V))).as_literal.force_get()
+    )
+
+
+def test_commit_subset():
+    """After commit, constrained subsets should appear on the original parameter."""
+    E = BoundExpressions()
+
+    class _App(fabll.Node):
+        voltage = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    voltage_op = app.voltage.get().can_be_operand.get()
+    voltage_po = voltage_op.as_parameter_operatable.force_get()
+
+    E.is_superset(voltage_op, E.lit_op_range(((2, E.U.V), (4, E.U.V))), assert_=True)
+
+    solver = Solver()
+    solver.simplify(E.g, E.tg)
+    solver.commit()
+
+    sb = voltage_po.try_extract_subset()
+    assert sb is not None, "Subset should be committed to the original graph"
+    lit_range = E.lit_op_range(((2, E.U.V), (4, E.U.V))).as_literal.force_get()
+    assert lit_range.op_setic_is_subset_of(sb)
+
+
+def test_commit_aliases():
+    """Parameters aliased by the solver should get Is constraints after commit."""
+    E = BoundExpressions()
+
+    class _App(fabll.Node):
+        a = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+        b = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    a_op = app.a.get().can_be_operand.get()
+    b_op = app.b.get().can_be_operand.get()
+
+    E.is_(a_op, b_op, assert_=True)
+    E.is_subset(a_op, E.lit_op_range(((1, E.U.V), (5, E.U.V))), assert_=True)
+
+    solver = Solver()
+    solver.simplify(E.g, E.tg)
+    solver.commit()
+
+    # Both parameters should be constrained after commit
+    a_po = a_op.as_parameter_operatable.force_get()
+    b_po = b_op.as_parameter_operatable.force_get()
+    a_ss = a_po.try_extract_superset()
+    b_ss = b_po.try_extract_superset()
+    assert a_ss is not None
+    assert b_ss is not None
+
+
+def test_commit_idempotent():
+    """Calling commit twice should not break anything."""
+    E = BoundExpressions()
+
+    class _App(fabll.Node):
+        voltage = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    voltage_op = app.voltage.get().can_be_operand.get()
+    voltage_po = voltage_op.as_parameter_operatable.force_get()
+
+    E.is_subset(voltage_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
+
+    solver = Solver()
+    solver.simplify(E.g, E.tg)
+    solver.commit()
+
+    ss1 = voltage_po.try_extract_superset()
+    assert ss1 is not None
+
+    # Second commit should succeed without error
+    solver.commit()
+
+    ss2 = voltage_po.try_extract_superset()
+    assert ss2 is not None
+
+
+def test_commit_raises_without_solve():
+    """Commit should raise if solver hasn't been run."""
+    solver = Solver()
+    with pytest.raises(ValueError, match="Cannot commit"):
+        solver.commit()
