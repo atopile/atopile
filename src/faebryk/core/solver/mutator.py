@@ -1544,10 +1544,9 @@ class ExpressionBuilder[
         same_type = fabll.Traits(other).get_obj_raw().isinstance(self.factory)
         other_obj = fabll.Traits(other).get_obj_raw()
         other_ops = other.get_operands()
-        same_operands = (
-            len(self.operands) == len(other_ops := other.get_operands())
+        same_operands = len(self.operands) == len(other_ops) and (
             # order-sensitive comparison for non-commutative expressions
-            and all(
+            all(
                 _operand_matches(x1, x2)
                 for x1, x2 in zip_equal(self.operands, other_ops)
             )
