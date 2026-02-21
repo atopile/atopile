@@ -1,0 +1,16 @@
+#pragma experiment("TRAITS")
+
+import is_harness
+from "connectors.ato" import JST_SH_4_Plug
+
+module Harness4:
+    """4-conductor harness connecting two boards."""
+    trait is_harness
+
+    side_a = new JST_SH_4_Plug
+    side_b = new JST_SH_4_Plug
+
+    side_a.ch[0] ~ side_b.ch[0]
+    side_a.ch[1] ~ side_b.ch[1]
+    side_a.ch[2] ~ side_b.ch[2]
+    side_a.ch[3] ~ side_b.ch[3]

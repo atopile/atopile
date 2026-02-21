@@ -7,6 +7,7 @@ import Capacitor
 import ElectricPower
 import Electrical
 import is_board
+from "connectors.ato" import JST_SH_4_Receptacle
 
 module LEDPanel:
     """LED panel with 4 LEDs and current-limiting resistors."""
@@ -14,6 +15,11 @@ module LEDPanel:
 
     power = new ElectricPower
     data_in = new Electrical
+
+    # Harness connector
+    harness_in = new JST_SH_4_Receptacle
+    harness_in.ch[0].reference ~ power
+    harness_in.ch[0].line ~ data_in
 
     # Bulk decoupling on power input
     bulk_cap = new Capacitor
