@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os
 import shutil
 import threading
 import time
@@ -29,7 +28,6 @@ from atopile.server.domains.autolayout.models import (
 from atopile.server.events import event_bus
 from faebryk.exporters.pcb.deeppcb.transformer import DeepPCB_Transformer
 from faebryk.exporters.pcb.autolayout.deeppcb import DeepPCBAutolayout
-from faebryk.libs.deeppcb import DeepPCBApiClient
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.paths import get_log_dir
 
@@ -530,59 +528,10 @@ class AutolayoutService:
 
         generated_path = work_dir / "input" / f"{layout_path.stem}.deeppcb"
         generated_path.parent.mkdir(parents=True, exist_ok=True)
-        if self._use_remote_converter(layout_path):
-            try:
-                self._export_with_remote_converter(layout_path, generated_path)
-                return generated_path
-            except Exception as exc:
-                log.warning(
-                    "DeepPCB remote converter failed; falling back to local export: %s",
-                    exc,
-                )
-
         parsed = kicad.loads(kicad.pcb.PcbFile, layout_path)
         board = DeepPCB_Transformer.from_kicad_file(parsed, provider_strict=True)
         DeepPCB_Transformer.dumps(board, generated_path)
         return generated_path
-
-    def _use_remote_converter(self, layout_path: Path) -> bool:
-        flag = os.getenv("ATO_DEEPPCB_USE_CONVERTER", "").strip().lower()
-        if flag not in {"1", "true", "yes", "on"}:
-            return False
-        if not layout_path.with_suffix(".kicad_pro").exists():
-            return False
-        return bool(DeepPCBApiClient().config.api_key)
-
-    def _export_with_remote_converter(self, layout_path: Path, out_path: Path) -> None:
-        project_path = layout_path.with_suffix(".kicad_pro")
-        api = DeepPCBApiClient()
-        with layout_path.open("rb") as board_file, project_path.open("rb") as project_file:
-            payload = api.request_payload(
-                "POST",
-                "/api/v1/boards/convert-to-json",
-                files={
-                    "boardInputType": (None, "Kicad"),
-                    "jobType": (None, "Routing"),
-                    "routingType": (None, "CurrentProtectedWiring"),
-                    "kicadBoardFile": (
-                        layout_path.name,
-                        board_file,
-                        "application/octet-stream",
-                    ),
-                    "kicadProjectFile": (
-                        project_path.name,
-                        project_file,
-                        "application/octet-stream",
-                    ),
-                },
-                headers={"accept": "application/json"},
-            )
-        if not isinstance(payload, dict):
-            raise RuntimeError(
-                "DeepPCB convert-to-json returned non-object payload: "
-                f"{type(payload).__name__}"
-            )
-        out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _prepare_input_package(
         self,

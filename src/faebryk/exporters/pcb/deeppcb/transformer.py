@@ -160,6 +160,7 @@ class DeepPCB_Transformer:
                         pad,
                         copper_layer_index,
                         provider_strict=provider_strict,
+                        strict_scope=definition_id if provider_strict else None,
                     )
                     padstacks.setdefault(padstack_id, padstack)
                     definition_pins.append(
@@ -306,6 +307,8 @@ class DeepPCB_Transformer:
 
         board.planes = []
         for zone in pcb.zones:
+            if provider_strict and getattr(zone, "keepout", None) is not None:
+                continue
             poly = getattr(zone, "polygon", None)
             pts = getattr(getattr(poly, "pts", None), "xys", None)
             if pts is None:
@@ -319,58 +322,74 @@ class DeepPCB_Transformer:
                 continue
 
             zone_layers = list(getattr(zone, "layers", []) or [])
-            layer_name = str(zone_layers[0]) if zone_layers else str(getattr(zone, "layer", "F.Cu"))
-            board.planes.append(
-                {
-                    "netId": net_id_by_number.get(int(getattr(zone, "net", 0) or 0), str(int(getattr(zone, "net", 0) or 0))),
-                    "netName": getattr(zone, "net_name", None),
-                    "zoneLayer": getattr(zone, "layer", None),
-                    "name": getattr(zone, "name", None),
-                    "priority": getattr(zone, "priority", None),
-                    "layer": copper_layer_index.get(layer_name, 0),
-                    "shape": {"type": "polygon", "points": points},
-                    "connectPads": (
-                        {
-                            "mode": getattr(zone.connect_pads, "mode", None),
-                            "clearance": getattr(zone.connect_pads, "clearance", None),
-                        }
-                        if getattr(zone, "connect_pads", None) is not None
-                        else None
-                    ),
-                    "minThickness": getattr(zone, "min_thickness", None),
-                    "filledAreasThickness": getattr(zone, "filled_areas_thickness", None),
-                    "keepout": (
-                        {
-                            "tracks": getattr(zone.keepout, "tracks", None),
-                            "vias": getattr(zone.keepout, "vias", None),
-                            "pads": getattr(zone.keepout, "pads", None),
-                            "copperpour": getattr(zone.keepout, "copperpour", None),
-                            "footprints": getattr(zone.keepout, "footprints", None),
-                        }
-                        if getattr(zone, "keepout", None) is not None
-                        else None
-                    ),
-                    "placement": (
-                        {
-                            "sourceType": getattr(zone.placement, "source_type", None),
-                            "source": getattr(zone.placement, "source", None),
-                            "enabled": getattr(zone.placement, "enabled", None),
-                            "sheetname": getattr(zone.placement, "sheetname", None),
-                        }
-                        if getattr(zone, "placement", None) is not None
-                        else None
-                    ),
-                    "fill": (
-                        {
-                            "enable": getattr(zone.fill, "enable", None),
-                            "thermalGap": getattr(zone.fill, "thermal_gap", None),
-                            "thermalBridgeWidth": getattr(zone.fill, "thermal_bridge_width", None),
-                        }
-                        if getattr(zone, "fill", None) is not None
-                        else None
-                    ),
-                }
-            )
+            if provider_strict:
+                layer_names = (
+                    [str(layer_name) for layer_name in zone_layers]
+                    if zone_layers
+                    else [str(getattr(zone, "layer", "F.Cu"))]
+                )
+            else:
+                layer_names = [
+                    str(zone_layers[0])
+                    if zone_layers
+                    else str(getattr(zone, "layer", "F.Cu"))
+                ]
+            for layer_name in layer_names:
+                board.planes.append(
+                    {
+                        "netId": net_id_by_number.get(int(getattr(zone, "net", 0) or 0), str(int(getattr(zone, "net", 0) or 0))),
+                        "netName": getattr(zone, "net_name", None),
+                        "zoneLayer": (
+                            layer_name
+                            if provider_strict
+                            else getattr(zone, "layer", None)
+                        ),
+                        "name": getattr(zone, "name", None),
+                        "priority": getattr(zone, "priority", None),
+                        "layer": copper_layer_index.get(layer_name, 0),
+                        "shape": {"type": "polygon", "points": points},
+                        "connectPads": (
+                            {
+                                "mode": getattr(zone.connect_pads, "mode", None),
+                                "clearance": getattr(zone.connect_pads, "clearance", None),
+                            }
+                            if getattr(zone, "connect_pads", None) is not None
+                            else None
+                        ),
+                        "minThickness": getattr(zone, "min_thickness", None),
+                        "filledAreasThickness": getattr(zone, "filled_areas_thickness", None),
+                        "keepout": (
+                            {
+                                "tracks": getattr(zone.keepout, "tracks", None),
+                                "vias": getattr(zone.keepout, "vias", None),
+                                "pads": getattr(zone.keepout, "pads", None),
+                                "copperpour": getattr(zone.keepout, "copperpour", None),
+                                "footprints": getattr(zone.keepout, "footprints", None),
+                            }
+                            if getattr(zone, "keepout", None) is not None
+                            else None
+                        ),
+                        "placement": (
+                            {
+                                "sourceType": getattr(zone.placement, "source_type", None),
+                                "source": getattr(zone.placement, "source", None),
+                                "enabled": getattr(zone.placement, "enabled", None),
+                                "sheetname": getattr(zone.placement, "sheetname", None),
+                            }
+                            if getattr(zone, "placement", None) is not None
+                            else None
+                        ),
+                        "fill": (
+                            {
+                                "enable": getattr(zone.fill, "enable", None),
+                                "thermalGap": getattr(zone.fill, "thermal_gap", None),
+                                "thermalBridgeWidth": getattr(zone.fill, "thermal_bridge_width", None),
+                            }
+                            if getattr(zone, "fill", None) is not None
+                            else None
+                        ),
+                    }
+                )
 
         if include_lossless_source:
             board.metadata["kicad_pcb_sexp"] = kicad.dumps(kicad.pcb.PcbFile(kicad_pcb=pcb))
@@ -1123,6 +1142,7 @@ class DeepPCB_Transformer:
         copper_layer_index: dict[str, int],
         *,
         provider_strict: bool = False,
+        strict_scope: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
         shape = str(getattr(pad, "shape", "circle")).lower()
         pad_type = str(getattr(pad, "type", "smd"))
@@ -1191,7 +1211,11 @@ class DeepPCB_Transformer:
             )
         if provider_strict and shape == "custom":
             layer_suffix = "0_1" if len(layers) > 1 else "0"
-            padstack_id = f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
+            size_w_i = cls._to_unit(size_w) // 1000
+            size_h_i = cls._to_unit(size_h) // 1000
+            padstack_id = (
+                f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_{size_w_i}_{size_h_i}_L{layer_suffix}"
+            )
         elif provider_strict and shape in {"rect", "rectangle"}:
             half_w = cls._to_unit(size_w / 2.0) // 1000
             half_h = cls._to_unit(size_h / 2.0) // 1000
@@ -1199,12 +1223,19 @@ class DeepPCB_Transformer:
             padstack_id = f"Padstack_Rectangle_{-half_w}_{-half_h}_{half_w}_{half_h}_L{layer_suffix}"
         elif provider_strict and shape in {"circle", "oval"} and drill_payload is not None and len(layers) > 1:
             radius = int(round(max(size_w, size_h) * 500))
-            padstack_id = f"Padstack_Circle_0_0_{radius}_L0_1"
+            drill_x = drill_payload.get("sizeX")
+            drill_y = drill_payload.get("sizeY")
+            padstack_id = (
+                f"Padstack_Circle_0_0_{radius}_D{drill_x}_{drill_y}"
+                f"_P{str(getattr(pad, 'name', '0'))}_L0_1"
+            )
         else:
             padstack_id = (
                 f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
                 f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
             )
+        if provider_strict and strict_scope:
+            padstack_id = f"{padstack_id}_{strict_scope}"
         return padstack_id, {
             "id": padstack_id,
             "shape": geom,
