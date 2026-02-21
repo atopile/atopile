@@ -168,6 +168,26 @@ class DeepPCB_Transformer:
             for via in pcb.vias
         ]
 
+        board.planes = []
+        for zone in pcb.zones:
+            poly = getattr(zone, "polygon", None)
+            pts = getattr(getattr(poly, "pts", None), "xys", None)
+            if pts is None:
+                continue
+            points = [cls._xy_to_point(xy) for xy in pts]
+            if not points:
+                continue
+
+            zone_layers = list(getattr(zone, "layers", []) or [])
+            layer_name = str(zone_layers[0]) if zone_layers else str(getattr(zone, "layer", "F.Cu"))
+            board.planes.append(
+                {
+                    "netId": net_id_by_number.get(int(getattr(zone, "net", 0) or 0), str(int(getattr(zone, "net", 0) or 0))),
+                    "layer": copper_layer_index.get(layer_name, 0),
+                    "shape": {"type": "polygon", "points": points},
+                }
+            )
+
         if include_lossless_source:
             board.metadata["kicad_pcb_sexp"] = kicad.dumps(kicad.pcb.PcbFile(kicad_pcb=pcb))
 

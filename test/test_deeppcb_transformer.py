@@ -18,6 +18,7 @@ def test_kicad_to_deeppcb_primitive_counts(pcb_path: Path) -> None:
     assert len(board.components) == len(pcb_file.kicad_pcb.footprints)
     assert len(board.wires) == len(pcb_file.kicad_pcb.segments)
     assert len(board.vias) == len(pcb_file.kicad_pcb.vias)
+    assert len(board.planes) == len(pcb_file.kicad_pcb.zones)
     assert len(board.nets) == len(pcb_file.kicad_pcb.nets)
 
     # Native DeepPCB structural sections always exist.
@@ -25,6 +26,23 @@ def test_kicad_to_deeppcb_primitive_counts(pcb_path: Path) -> None:
     assert isinstance(board.componentDefinitions, list)
     assert isinstance(board.layers, list)
     assert isinstance(board.netClasses, list)
+
+    edge_has_geometry = any(
+        str(getattr(obj, "layer", "")) == "Edge.Cuts"
+        for seq in (
+            pcb_file.kicad_pcb.gr_lines,
+            pcb_file.kicad_pcb.gr_arcs,
+            pcb_file.kicad_pcb.gr_polys,
+        )
+        for obj in seq
+    )
+    points = (
+        board.boundary.get("shape", {}).get("points", [])
+        if isinstance(board.boundary, dict)
+        else []
+    )
+    if edge_has_geometry:
+        assert len(points) > 0
 
 
 @pytest.mark.parametrize("pcb_path", EXAMPLE_PCBS, ids=lambda p: str(p))
