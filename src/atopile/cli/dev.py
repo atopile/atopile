@@ -282,6 +282,8 @@ def install(
         cli = shutil.which("code") or "code"
     elif ide == "cursor":
         cli = shutil.which("cursor") or "cursor"
+    elif ide == "antigravity":
+        cli = shutil.which("antigravity") or "antigravity"
     else:
         typer.secho(
             "Usage: ato dev install <cursor|vscode>",
