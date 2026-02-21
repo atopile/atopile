@@ -23643,7 +23643,7 @@ var wsPath = w.__LAYOUT_WS_PATH__ || "/ws";
 var editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 var panelCollapsed = false;
 var collapsedGroups = /* @__PURE__ */ new Set();
-var collapsedSubToggles = /* @__PURE__ */ new Set();
+var expandedSubToggles = /* @__PURE__ */ new Set();
 var COPPER_SUBCATEGORIES = [
   { key: "zones", label: "Zones" },
   { key: "tracks", label: "Tracks" },
@@ -23794,7 +23794,7 @@ function buildLayerPanel() {
     }
     for (const child of group.layers) {
       const isCopperLayer2 = child.kind?.toLowerCase() === "cu";
-      const isSubCollapsed = !collapsedSubToggles.has(child.id);
+      const isSubExpanded = expandedSubToggles.has(child.id);
       const row = document.createElement("div");
       row.className = "layer-row";
       const childSwatch = createSwatch(colorToCSS(child.id, layerById));
@@ -23805,7 +23805,7 @@ function buildLayerPanel() {
       if (isCopperLayer2) {
         const subChevron = document.createElement("span");
         subChevron.className = "layer-sub-chevron";
-        subChevron.textContent = isSubCollapsed ? "\u25B8" : "\u25BE";
+        subChevron.textContent = isSubExpanded ? "\u25BE" : "\u25B8";
         row.appendChild(subChevron);
       }
       updateRowVisual(row, editor.isLayerVisible(child.id));
@@ -23818,7 +23818,7 @@ function buildLayerPanel() {
       childContainer.appendChild(row);
       if (isCopperLayer2) {
         const subContainer = document.createElement("div");
-        subContainer.className = isSubCollapsed ? "layer-sub-children collapsed" : "layer-sub-children";
+        subContainer.className = isSubExpanded ? "layer-sub-children" : "layer-sub-children collapsed";
         for (const sub of COPPER_SUBCATEGORIES) {
           const catKey = child.id + ":" + sub.key;
           const subRow = document.createElement("div");
@@ -23841,12 +23841,12 @@ function buildLayerPanel() {
         if (subChevron) {
           subChevron.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (collapsedSubToggles.has(child.id)) {
-              collapsedSubToggles.delete(child.id);
+            if (expandedSubToggles.has(child.id)) {
+              expandedSubToggles.delete(child.id);
               subChevron.textContent = "\u25B8";
               subContainer.classList.add("collapsed");
             } else {
-              collapsedSubToggles.add(child.id);
+              expandedSubToggles.add(child.id);
               subChevron.textContent = "\u25BE";
               subContainer.classList.remove("collapsed");
             }

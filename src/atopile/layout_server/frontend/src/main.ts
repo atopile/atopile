@@ -16,7 +16,7 @@ const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 // Persistent UI state across rebuilds
 let panelCollapsed = false;
 const collapsedGroups = new Set<string>();
-const collapsedSubToggles = new Set<string>();
+const expandedSubToggles = new Set<string>();
 
 const COPPER_SUBCATEGORIES = [
     { key: "zones", label: "Zones" },
@@ -209,7 +209,7 @@ function buildLayerPanel() {
 
         for (const child of group.layers) {
             const isCopperLayer = child.kind?.toLowerCase() === "cu";
-            const isSubCollapsed = !collapsedSubToggles.has(child.id);
+            const isSubExpanded = expandedSubToggles.has(child.id);
 
             const row = document.createElement("div");
             row.className = "layer-row";
@@ -224,7 +224,7 @@ function buildLayerPanel() {
             if (isCopperLayer) {
                 const subChevron = document.createElement("span");
                 subChevron.className = "layer-sub-chevron";
-                subChevron.textContent = isSubCollapsed ? "\u25B8" : "\u25BE";
+                subChevron.textContent = isSubExpanded ? "\u25BE" : "\u25B8";
                 row.appendChild(subChevron);
             }
 
@@ -241,7 +241,7 @@ function buildLayerPanel() {
 
             if (isCopperLayer) {
                 const subContainer = document.createElement("div");
-                subContainer.className = isSubCollapsed ? "layer-sub-children collapsed" : "layer-sub-children";
+                subContainer.className = isSubExpanded ? "layer-sub-children" : "layer-sub-children collapsed";
 
                 for (const sub of COPPER_SUBCATEGORIES) {
                     const catKey = child.id + ":" + sub.key;
@@ -272,14 +272,14 @@ function buildLayerPanel() {
                 if (subChevron) {
                     subChevron.addEventListener("click", (e) => {
                         e.stopPropagation();
-                        if (collapsedSubToggles.has(child.id)) {
+                        if (expandedSubToggles.has(child.id)) {
                             // Currently expanded → collapse
-                            collapsedSubToggles.delete(child.id);
+                            expandedSubToggles.delete(child.id);
                             (subChevron as HTMLElement).textContent = "\u25B8";
                             subContainer.classList.add("collapsed");
                         } else {
                             // Currently collapsed → expand
-                            collapsedSubToggles.add(child.id);
+                            expandedSubToggles.add(child.id);
                             (subChevron as HTMLElement).textContent = "\u25BE";
                             subContainer.classList.remove("collapsed");
                         }
