@@ -15,7 +15,7 @@ log.info(f"pcbnew: {pcbnew.__file__}")
 class PullGroup(pcbnew.ActionPlugin):
     def defaults(self):
         self.name = "Pull Group"
-        self.category = "Pull Group Layout Atopile"
+        self.category = "Pull Group Layout atopile"
         self.description = (
             "Layout components on PCB in same spatial"
             " relationships as components on schematic."

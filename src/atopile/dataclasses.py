@@ -1133,7 +1133,7 @@ class VariablesData(BaseModel):
 
 
 # =============================================================================
-# Atopile Configuration Pydantic Models
+# atopile Configuration Pydantic Models
 # =============================================================================
 
 
@@ -1153,7 +1153,7 @@ class InstallProgress(BaseModel):
 
 
 class AtopileConfig(BaseModel):
-    """Atopile configuration state."""
+    """atopile configuration state."""
 
     current_version: str = ""
     source: Literal["release", "branch", "local"] = "release"

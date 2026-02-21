@@ -66,7 +66,7 @@ class VariableNode:
 
     name: str
     type: Literal["module", "interface", "component"]
-    path: str  # Atopile address (hierarchical from app root)
+    path: str  # atopile address (hierarchical from app root)
     typeName: str | None = None  # The type name (e.g., "I2C", "SPI", "Resistor")
     variables: list[Variable] = field(default_factory=list)
     children: list["VariableNode"] = field(default_factory=list)

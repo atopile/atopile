@@ -1,5 +1,5 @@
 /**
- * Atopile logo component - the actual logo from the atopile brand.
+ * atopile logo component - the actual logo from the atopile brand.
  */
 
 interface AtopileLogoProps {
@@ -17,7 +17,7 @@ export function AtopileLogo({ size = 24, className = '' }: AtopileLogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Atopile logo - orange circuit pattern */}
+      {/* atopile logo - orange circuit pattern */}
       <g transform="translate(2.5, -3.6) scale(0.203, 0.195)">
         <rect
           fill="currentColor"

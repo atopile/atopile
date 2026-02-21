@@ -890,7 +890,7 @@
   gap: var(--spacing-sm);
 }
 
-/* Atopile Health Status Indicator */
+/* atopile Health Status Indicator */
 .atopile-health-status {
   display: flex;
   align-items: center;

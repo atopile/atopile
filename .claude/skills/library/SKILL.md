@@ -33,7 +33,7 @@ resistor = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
 ## Dependants (Call Sites)
 
-- **User Code**: Atopile projects heavily import from `faebryk.library._F` (aliased as `F`).
+- **User Code**: atopile projects heavily import from `faebryk.library._F` (aliased as `F`).
 - **Compiler**: The compiler maps `ato` built-ins to these classes.
 
 ## How to Work With / Develop / Test

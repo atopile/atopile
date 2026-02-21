@@ -5,7 +5,7 @@ description: "How the atopile Language Server works (pygls), how it builds per-d
 
 # LSP Module
 
-The `lsp` module (located in `src/atopile/lsp/`) implements the Language Server Protocol for Atopile. It provides IDE features like autocomplete, go-to-definition, and diagnostics (error reporting) for `ato` files.
+The `lsp` module (located in `src/atopile/lsp/`) implements the Language Server Protocol for atopile. It provides IDE features like autocomplete, go-to-definition, and diagnostics (error reporting) for `ato` files.
 
 ## Quick Start
 
