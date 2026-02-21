@@ -919,7 +919,7 @@ def cross_board_drc(ctx: BuildStepContext) -> None:
         else:
             logger.warning(v.message)
     if not violations:
-        logger.info("Cross-board DRC passed: all inter-board connections use cables")
+        logger.info("Cross-board DRC passed: all inter-board connections use harnesses")
 
 
 @muster.register(
@@ -953,47 +953,153 @@ def generate_system_3d(ctx: BuildStepContext) -> None:
     if not ctx.is_system_build:
         return
 
-    cables = list(
-        ctx.require_app().get_children(
+    app = ctx.require_app()
+
+    harnesses = list(
+        app.get_children(
             direct_only=False,
             types=fabll.Node,
-            required_trait=F.is_cable,
+            required_trait=F.Harness.is_harness,
         )
     )
 
+    # Build board UUID set for ancestry lookup
+    board_uuids: set[int] = set()
+    board_by_uuid: dict[int, fabll.Node] = {}
+    for board in ctx.boards:
+        uid = board.instance.node().get_uuid()
+        board_uuids.add(uid)
+        board_by_uuid[uid] = board
+
+    def _get_ancestor_board(node: fabll.Node) -> fabll.Node | None:
+        """Walk up from node to find which board it belongs to."""
+        current = node
+        while True:
+            parent_result = current.get_parent()
+            if parent_result is None:
+                return None
+            parent_node = parent_result[0]
+            uid = parent_node.instance.node().get_uuid()
+            if uid in board_uuids:
+                return parent_node
+            current = parent_node
+
+    def _get_direct_peers(node: fabll.Node) -> list[fabll.Node]:
+        """Get only directly ~-connected interfaces (1-hop, no transitivity)."""
+        peers: list[fabll.Node] = []
+        node_ref = node.instance.node()
+        g = node.instance.g()
+
+        def _collect(_ctx: None, bound_edge: graph.BoundEdge) -> None:
+            edge = bound_edge.edge()
+            other = fbrk.EdgeInterfaceConnection.get_other_connected_node(
+                edge=edge, node=node_ref
+            )
+            if other is not None:
+                peers.append(fabll.Node.bind_instance(g.bind(node=other)))
+
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(
+            bound_node=node.instance,
+            ctx=None,
+            f=_collect,
+        )
+        return peers
+
+    def _find_harness_endpoints(
+        harness: fabll.Node,
+    ) -> list[dict[str, str]]:
+        """
+        For each connector on a harness, trace direct ~ edges from its pins
+        to find which board it connects to. Returns list of endpoint dicts.
+
+        Uses visit_connected_edges (1-hop) instead of get_connected (full net)
+        to distinguish which harness connector mates with which board.
+        """
+        connectors = list(
+            harness.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.Harness.is_connector_plug,
+            )
+        ) + list(
+            harness.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.Harness.is_connector_receptacle,
+            )
+        )
+
+        endpoints: list[dict[str, str]] = []
+        for connector in connectors:
+            # Get all interface children of this connector (its pins)
+            pins = list(
+                connector.get_children(
+                    direct_only=False,
+                    types=fabll.Node,
+                    required_trait=fabll.is_interface,
+                )
+            )
+
+            # Check the connector itself first, then its pins.
+            # When interfaces are connected with ~, the EdgeInterfaceConnection
+            # edge exists at the connector level (not at each pin).
+            nodes_to_check = [connector] + pins
+
+            connected_board: fabll.Node | None = None
+            connected_connector_name: str | None = None
+            for node in nodes_to_check:
+                direct_peers = _get_direct_peers(node)
+                for peer in direct_peers:
+                    board = _get_ancestor_board(peer)
+                    if board is not None:
+                        connected_board = board
+                        # Find the connector on the board side
+                        current = peer
+                        while True:
+                            if current.has_trait(
+                                F.Harness.is_connector_plug
+                            ) or current.has_trait(F.Harness.is_connector_receptacle):
+                                connected_connector_name = current.get_name()
+                                break
+                            parent_result = current.get_parent()
+                            if parent_result is None:
+                                break
+                            parent_node = parent_result[0]
+                            parent_uid = parent_node.instance.node().get_uuid()
+                            if parent_uid in board_uuids:
+                                break
+                            current = parent_node
+                        break
+                if connected_board is not None:
+                    break
+
+            if connected_board is not None:
+                endpoint = {
+                    "board": connected_board.get_name(),
+                }
+                if connected_connector_name:
+                    endpoint["connector"] = connected_connector_name
+                endpoints.append(endpoint)
+
+        return endpoints
+
     # Build a mapping from board graph name -> build target name.
-    # config.build.boards has ato.yaml target names
-    # (e.g., ["driver", "led_panel"]).
-    # ctx.boards has graph nodes whose get_name() returns
-    # graph field names (e.g., "panel").
-    # We match by iterating build targets and checking if the
-    # board entry module type matches the board node's type name.
     board_target_names = config.build.boards
     graph_name_to_target: dict[str, str] = {}
 
     if board_target_names:
-        # Build entry->target_name map from project config.
-        # Use config.project.builds (all targets) instead
-        # of config.builds (which only iterates
-        # selected_builds, excluding board targets).
         entry_to_target: dict[str, str] = {}
         for target_name in board_target_names:
             board_cfg = config.project.builds.get(target_name)
             if board_cfg and board_cfg.address:
-                # Extract module name from entry
-                # e.g. "elec/src/led_panel.ato:LEDPanel"
-                # -> "LEDPanel"
                 module_name = (
                     board_cfg.address.split(":")[-1] if ":" in board_cfg.address else ""
                 )
                 if module_name:
                     entry_to_target[module_name] = target_name
 
-        # Match each board node's type name to a build target
         for board in ctx.boards:
             type_name = board.get_type_name()
-            # type_name is fully qualified (e.g., "led_panel.ato::LEDPanel")
-            # Extract the short name after "::" to match entry_to_target keys
             short_type_name = (
                 type_name.split("::")[-1]
                 if type_name and "::" in type_name
@@ -1004,7 +1110,6 @@ def generate_system_3d(ctx: BuildStepContext) -> None:
                     short_type_name
                 ]
             else:
-                # Fallback: check if graph name matches a target name directly
                 if board.get_name() in board_target_names:
                     graph_name_to_target[board.get_name()] = board.get_name()
 
@@ -1012,8 +1117,63 @@ def generate_system_3d(ctx: BuildStepContext) -> None:
         """Get the build target name for a board, falling back to graph name."""
         return graph_name_to_target.get(board.get_name(), board.get_name())
 
+    # Build a map from board target name -> layout Path for connector position lookup
+    board_layout_map: dict[str, Path] = {}
+    if board_target_names:
+        for target_name in board_target_names:
+            board_cfg = config.project.builds.get(target_name)
+            if board_cfg and board_cfg.paths.layout.exists():
+                board_layout_map[target_name] = board_cfg.paths.layout
+
+    _pcb_cache: dict[str, kicad.pcb.PcbFile | None] = {}
+
+    def _find_connector_position(
+        board_name: str, connector_name: str
+    ) -> dict[str, float] | None:
+        """Look up a connector's footprint position in the board's layout file."""
+        target_name = graph_name_to_target.get(board_name, board_name)
+        layout_path = board_layout_map.get(target_name)
+        if not layout_path:
+            return None
+        key = str(layout_path)
+        if key not in _pcb_cache:
+            try:
+                _pcb_cache[key] = kicad.loads(kicad.pcb.PcbFile, layout_path)
+            except Exception:
+                _pcb_cache[key] = None
+        pcb_file = _pcb_cache[key]
+        if pcb_file is None:
+            return None
+        prefix = connector_name + "."
+        for fp in pcb_file.kicad_pcb.footprints:
+            addr = Property.try_get_property(fp.propertys, "atopile_address")
+            if addr and (addr == connector_name or addr.startswith(prefix)):
+                return {"x": fp.at.x, "y": fp.at.y}
+        return None
+
+    # Build harness entries with traced endpoints
+    harness_entries = []
+    for harness in harnesses:
+        endpoints = _find_harness_endpoints(harness)
+        # Enrich endpoints with connector footprint positions
+        for endpoint in endpoints:
+            connector_name = endpoint.get("connector")
+            if connector_name:
+                position = _find_connector_position(endpoint["board"], connector_name)
+                if position:
+                    endpoint["position"] = position
+        entry: dict = {
+            "name": harness.get_name(),
+            "type": harness.get_full_name(include_uuid=False, types=True),
+        }
+        if len(endpoints) >= 1:
+            entry["from"] = endpoints[0]
+        if len(endpoints) >= 2:
+            entry["to"] = endpoints[1]
+        harness_entries.append(entry)
+
     manifest = {
-        "version": "1.0",
+        "version": "1.1",
         "type": "multiboard",
         "boards": [
             {
@@ -1025,15 +1185,7 @@ def generate_system_3d(ctx: BuildStepContext) -> None:
             }
             for board in ctx.boards
         ],
-        "cables": [
-            {
-                "name": cable.get_name(),
-                "type": cable.get_full_name(include_uuid=False, types=True),
-                "from": ctx.boards[0].get_name() if ctx.boards else "",
-                "to": ctx.boards[-1].get_name() if ctx.boards else "",
-            }
-            for cable in cables
-        ],
+        "harnesses": harness_entries,
     }
 
     output_path = config.build.paths.output_base.with_suffix(".multiboard.json")
@@ -1050,6 +1202,8 @@ def generate_system_3d(ctx: BuildStepContext) -> None:
 )
 def generate_bom(ctx: BuildStepContext) -> None:
     """Generate a BOM for the project in both CSV and JSON formats."""
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     pickable_parts = [
         part

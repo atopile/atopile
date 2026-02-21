@@ -10,7 +10,21 @@ interface BoardEntry {
     glb_path: string;
 }
 
-interface CableEntry {
+interface HarnessEndpoint {
+    board: string;
+    connector?: string;
+    position?: { x: number; y: number };
+}
+
+interface HarnessEntry {
+    name: string;
+    type: string;
+    from?: HarnessEndpoint;
+    to?: HarnessEndpoint;
+}
+
+// Legacy v1.0 format
+interface LegacyCableEntry {
     name: string;
     type: string;
     from: string;
@@ -21,7 +35,8 @@ interface MultiboardManifest {
     version: string;
     type: string;
     boards: BoardEntry[];
-    cables: CableEntry[];
+    harnesses?: HarnessEntry[];
+    cables?: LegacyCableEntry[];  // backward compat for v1.0
 }
 
 class MultiboardViewerWebview extends BaseWebview {
@@ -72,7 +87,25 @@ class MultiboardViewerWebview extends BaseWebview {
         });
 
         const boardsJson = JSON.stringify(boardsData);
-        const cablesJson = JSON.stringify(manifest.cables || []);
+
+        // Normalize harnesses: support both v1.1 (harnesses) and v1.0 (cables) format
+        let normalizedHarnesses: { name: string; fromBoard: string; toBoard: string; fromPosition?: {x: number, y: number}; toPosition?: {x: number, y: number} }[] = [];
+        if (manifest.harnesses) {
+            normalizedHarnesses = manifest.harnesses.map(h => ({
+                name: h.name,
+                fromBoard: h.from?.board || '',
+                toBoard: h.to?.board || '',
+                fromPosition: h.from?.position,
+                toPosition: h.to?.position,
+            }));
+        } else if (manifest.cables) {
+            normalizedHarnesses = manifest.cables.map(c => ({
+                name: c.name,
+                fromBoard: c.from || '',
+                toBoard: c.to || '',
+            }));
+        }
+        const harnessesJson = JSON.stringify(normalizedHarnesses);
 
         const viewerScript = `
             <script type="importmap">
@@ -90,7 +123,7 @@ class MultiboardViewerWebview extends BaseWebview {
 
                 const container = document.getElementById('container');
                 const boards = ${boardsJson};
-                const cables = ${cablesJson};
+                const harnesses = ${harnessesJson};
                 const statusEl = document.getElementById('status-info');
 
                 function setStatus(msg) {
@@ -148,7 +181,7 @@ class MultiboardViewerWebview extends BaseWebview {
                 // --- Shared state ---
                 let masterGroup = null;
                 const loadedBoards = [];
-                const cableObjects = [];
+                const harnessObjects = [];
 
                 // --- Drag state ---
                 const raycaster = new THREE.Raycaster();
@@ -165,27 +198,41 @@ class MultiboardViewerWebview extends BaseWebview {
                     return board.group.position.clone();
                 }
 
+                // --- Connector position helper ---
+                // KiCad PCB coords are in mm; GLB from KiCad uses meters (GLTF spec)
+                // PCB X right, Y down → GLB X right, Z = -Y (forward)
+                // boardGroup.position is the GLB origin offset in masterGroup space
+                const MM_TO_M = 0.001;
+                function getConnectorPosition(board, position) {
+                    if (!position) return getBoardCenterLocal(board);
+                    return new THREE.Vector3(
+                        board.group.position.x + position.x * MM_TO_M,
+                        board.group.position.y + board.size.y,
+                        board.group.position.z + position.y * MM_TO_M
+                    );
+                }
+
                 // --- Cable helpers ---
                 function createCableCurve(fromPos, toPos) {
                     return new THREE.LineCurve3(fromPos, toPos);
                 }
 
-                function updateCable(cableObj) {
-                    const fromBoard = loadedBoards.find(b => b.name === cableObj.fromName);
-                    const toBoard = loadedBoards.find(b => b.name === cableObj.toName);
+                function updateHarness(harnessObj) {
+                    const fromBoard = loadedBoards.find(b => b.name === harnessObj.fromName);
+                    const toBoard = loadedBoards.find(b => b.name === harnessObj.toName);
                     if (!fromBoard || !toBoard) return;
 
-                    const fromCenter = getBoardCenterLocal(fromBoard);
-                    const toCenter = getBoardCenterLocal(toBoard);
-                    const curve = createCableCurve(fromCenter, toCenter);
+                    const fromPos = getConnectorPosition(fromBoard, harnessObj.fromPosition);
+                    const toPos = getConnectorPosition(toBoard, harnessObj.toPosition);
+                    const curve = createCableCurve(fromPos, toPos);
 
-                    cableObj.mesh.geometry.dispose();
-                    cableObj.mesh.geometry = new THREE.TubeGeometry(curve, 32, cableObj.radius, 8, false);
+                    harnessObj.mesh.geometry.dispose();
+                    harnessObj.mesh.geometry = new THREE.TubeGeometry(curve, 32, harnessObj.radius, 8, false);
 
-                    if (cableObj.label) {
-                        const mid = new THREE.Vector3().addVectors(fromCenter, toCenter).multiplyScalar(0.5);
-                        mid.y += cableObj.radius * 4;
-                        cableObj.label.position.copy(mid);
+                    if (harnessObj.label) {
+                        const mid = new THREE.Vector3().addVectors(fromPos, toPos).multiplyScalar(0.5);
+                        mid.y += harnessObj.radius * 4;
+                        harnessObj.label.position.copy(mid);
                     }
                 }
 
@@ -274,10 +321,10 @@ class MultiboardViewerWebview extends BaseWebview {
                             draggedBoard.group.position.z = dragStartBoardPos.z + dz;
                             // Y is never touched — stays at original value
 
-                            // Update all cables connected to this board
-                            for (const cable of cableObjects) {
-                                if (cable.fromName === draggedBoard.name || cable.toName === draggedBoard.name) {
-                                    updateCable(cable);
+                            // Update all harnesses connected to this board
+                            for (const harness of harnessObjects) {
+                                if (harness.fromName === draggedBoard.name || harness.toName === draggedBoard.name) {
+                                    updateHarness(harness);
                                 }
                             }
                         }
@@ -338,11 +385,12 @@ class MultiboardViewerWebview extends BaseWebview {
                             loadedBoards.push({ name: board.name, group: boardGroup, size });
                             masterGroup.add(boardGroup);
 
-                            // Board name label — child of boardGroup at GLB origin, below the board
+                            // Board name label — centered on the board, floating above
+                            const bboxCenter = bbox.getCenter(new THREE.Vector3());
                             const labelPos = new THREE.Vector3(
-                                0,
-                                bbox.min.y - boardGroup.position.y - size.y * 0.15,
-                                0
+                                bboxCenter.x,
+                                size.y,
+                                bboxCenter.z
                             );
                             boardGroup.add(createTextSprite(board.name, labelPos));
                         } catch (err) {
@@ -351,17 +399,17 @@ class MultiboardViewerWebview extends BaseWebview {
                         }
                     }
 
-                    // Create cable tubes between boards
-                    for (const cable of cables) {
-                        const fromBoard = loadedBoards.find(b => b.name === cable.from);
-                        const toBoard = loadedBoards.find(b => b.name === cable.to);
+                    // Create harness tubes between boards
+                    for (const harness of harnesses) {
+                        const fromBoard = loadedBoards.find(b => b.name === harness.fromBoard);
+                        const toBoard = loadedBoards.find(b => b.name === harness.toBoard);
                         if (fromBoard && toBoard) {
-                            const fromCenter = getBoardCenterLocal(fromBoard);
-                            const toCenter = getBoardCenterLocal(toBoard);
+                            const fromPos = getConnectorPosition(fromBoard, harness.fromPosition);
+                            const toPos = getConnectorPosition(toBoard, harness.toPosition);
                             const avgSize = (fromBoard.size.x + toBoard.size.x) / 2;
                             const radius = avgSize * 0.015;
 
-                            const curve = createCableCurve(fromCenter, toCenter);
+                            const curve = createCableCurve(fromPos, toPos);
                             const tubeGeo = new THREE.TubeGeometry(curve, 32, radius, 8, false);
                             const tubeMat = new THREE.MeshStandardMaterial({
                                 color: 0x6688bb,
@@ -373,15 +421,17 @@ class MultiboardViewerWebview extends BaseWebview {
                             const mesh = new THREE.Mesh(tubeGeo, tubeMat);
                             masterGroup.add(mesh);
 
-                            // Cable label at midpoint
-                            const mid = new THREE.Vector3().addVectors(fromCenter, toCenter).multiplyScalar(0.5);
+                            // Harness label at midpoint
+                            const mid = new THREE.Vector3().addVectors(fromPos, toPos).multiplyScalar(0.5);
                             mid.y += radius * 4;
-                            const label = createTextSprite(cable.name, mid);
+                            const label = createTextSprite(harness.name, mid);
                             masterGroup.add(label);
 
-                            cableObjects.push({
-                                fromName: cable.from,
-                                toName: cable.to,
+                            harnessObjects.push({
+                                fromName: harness.fromBoard,
+                                toName: harness.toBoard,
+                                fromPosition: harness.fromPosition,
+                                toPosition: harness.toPosition,
                                 mesh,
                                 label,
                                 radius,

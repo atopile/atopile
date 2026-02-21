@@ -1,0 +1,19 @@
+#pragma experiment("TRAITS")
+
+import ElectricSignal
+import is_connector_plug
+import is_connector_receptacle
+from "parts/JST_Sales_America_SM04B_SRSS_TB_LF__SN/JST_Sales_America_SM04B_SRSS_TB_LF__SN.ato" import JST_Sales_America_SM04B_SRSS_TB_LF__SN_package
+
+interface JST_SH_4_Receptacle:
+    trait is_connector_receptacle
+    package = new JST_Sales_America_SM04B_SRSS_TB_LF__SN_package
+    ch = new ElectricSignal[4]
+    ch[0].line ~ package.1
+    ch[1].line ~ package.2
+    ch[2].line ~ package.3
+    ch[3].line ~ package.4
+
+interface JST_SH_4_Plug:
+    trait is_connector_plug
+    ch = new ElectricSignal[4]

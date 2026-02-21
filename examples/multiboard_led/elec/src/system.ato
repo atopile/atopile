@@ -1,26 +1,20 @@
 #pragma experiment("TRAITS")
 
-import ElectricPower
 import is_multiboard
 from "driver_board.ato" import DriverBoard
 from "led_panel.ato" import LEDPanel
-from "ribbon_cable.ato" import RibbonCable4
+from "harness.ato" import Harness4
 
 module LEDSystem:
     trait is_multiboard
     """
-    Multi-board LED system: driver board connected to LED panel via ribbon cable.
+    Multi-board LED system: driver board connected to LED panel via harness.
     """
     driver = new DriverBoard
     panel = new LEDPanel
-    cable = new RibbonCable4
+    harness = new Harness4
 
-    # Power: driver -> cable -> panel
-    driver.power_out.hv ~ cable.side_a[0]
-    driver.power_out.lv ~ cable.side_a[1]
-    # Data: driver -> cable -> panel
-    driver.data_out ~ cable.side_a[2]
+    # Board connectors <-> harness connectors
+    driver.harness_out ~ harness.side_a
+    harness.side_b ~ panel.harness_in
 
-    cable.side_b[0] ~ panel.power.hv
-    cable.side_b[1] ~ panel.power.lv
-    cable.side_b[2] ~ panel.data_in

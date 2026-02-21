@@ -6,6 +6,7 @@ import Capacitor
 import ElectricPower
 import Electrical
 import is_board
+from "connectors.ato" import JST_SH_4_Receptacle
 
 module DriverBoard:
     """Driver board with power regulation, status LED, and data output."""
@@ -39,3 +40,8 @@ module DriverBoard:
     power_out ~ power
 
     data_out = new Electrical
+
+    # Harness connector
+    harness_out = new JST_SH_4_Receptacle
+    harness_out.ch[0].reference ~ power_out
+    harness_out.ch[0].line ~ data_out
