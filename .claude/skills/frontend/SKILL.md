@@ -33,6 +33,33 @@ cd src/atopile/visualizer/web
 npm run build
 ```
 
+For extension/frontend packaging + install workflow (most common atopile CLI flow):
+
+```bash
+# compile dev artifacts (includes VS Code extension packaging in default/all mode)
+ato dev compile
+
+# optional narrower compile target
+ato dev compile vscode
+
+# install latest built .vsix into your IDE
+ato dev install cursor
+# or
+ato dev install vscode
+```
+
+Common one-liner loop:
+
+```bash
+ato dev compile && ato dev install cursor
+# or
+ato dev compile && ato dev install vscode
+```
+
+Notes:
+- `ato dev compile` uses target `all` by default and includes type generation + extension packaging.
+- `ato dev install <cursor|vscode>` installs the latest generated `.vsix` with `--force`.
+
 ## Architecture Standard: FastAPI + Vite + React
 
 Use this as the default architecture for new atopile frontend product features.
@@ -662,6 +689,33 @@ Automation guardrails:
 - Use fixed viewport and deterministic waits for screenshot consistency.
 - Prefer state-triggered waits (element/event ready) over arbitrary sleep when possible.
 - Treat console/runtime errors as test failures unless explicitly allowlisted.
+
+### Dev Viewer Flow (Browser-First Webview Testing)
+
+Agents should use the browser dev viewer flow as the default self-testing path.
+Only ask the user to test in the actual extension after this flow is clean.
+
+Default flow:
+1. Start the local webview dev environment:
+```bash
+cd src/ui-server
+npm run dev:all
+```
+2. Open the Vite-served webview pages in a browser and validate behavior there first.
+3. Run interaction checks + screenshot checks + UI log checks.
+4. Fix all obvious issues found in browser flow.
+5. After browser flow is stable, ask the user to validate in Cursor/VS Code extension host.
+
+Why this flow:
+- Faster iteration loop than packaging/reinstalling extension on each change.
+- Easier automation with Puppeteer and Vite screenshot endpoints.
+- Catches most UI/state/interaction regressions before involving user manual extension testing.
+
+Promotion criteria before asking user to test in extension:
+- No console/runtime errors in `ui-logs`.
+- Key user journeys validated in browser dev viewer.
+- Relevant screenshots captured for expected states.
+- Unit/integration tests for changed behavior are passing.
 
 ### 3) Performance Budgets + Profiling Workflow
 
