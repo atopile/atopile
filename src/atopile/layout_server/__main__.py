@@ -1,27 +1,28 @@
-"""CLI entry point: python -m atopile.layout_server <path.kicad_pcb> [--port 8100]"""
+"""CLI entry point: python -m atopile.layout_server <path.kicad_pcb> [--port 8100]."""
 
-import argparse
+from __future__ import annotations
+
 from pathlib import Path
 
+import typer
 
-def main():
-    parser = argparse.ArgumentParser(description="PCB Layout Viewer/Editor")
-    parser.add_argument("pcb_path", type=Path, help="Path to .kicad_pcb file")
-    parser.add_argument("--port", type=int, default=8100, help="Server port")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
-    args = parser.parse_args()
 
-    if not args.pcb_path.is_file():
-        parser.error(f"File not found: {args.pcb_path}")
+def main(
+    pcb_path: Path = typer.Argument(..., help="Path to .kicad_pcb file"),
+    port: int = typer.Option(8100, help="Server port"),
+    host: str = typer.Option("127.0.0.1", help="Server host"),
+) -> None:
+    if not pcb_path.is_file():
+        raise typer.BadParameter(f"File not found: {pcb_path}", param_hint="pcb_path")
 
     from atopile.layout_server.server import create_app
 
-    app = create_app(args.pcb_path)
+    app = create_app(pcb_path)
 
     import uvicorn
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)

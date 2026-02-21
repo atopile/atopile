@@ -30,8 +30,8 @@ from atopile.layout_server.models import (
     PadModel,
     PadNameAnnotationModel,
     PadNumberAnnotationModel,
-    Point2,
-    Point3,
+    PointXY,
+    PointXYR,
     PolygonDrawingModel,
     RectDrawingModel,
     RenderModel,
@@ -523,8 +523,8 @@ class PcbManager:
                 edges.append(
                     EdgeModel(
                         type="line",
-                        start=Point2(x=line.start.x, y=line.start.y),
-                        end=Point2(x=line.end.x, y=line.end.y),
+                        start=PointXY(x=line.start.x, y=line.start.y),
+                        end=PointXY(x=line.end.x, y=line.end.y),
                     )
                 )
         for arc in pcb.gr_arcs:
@@ -532,9 +532,9 @@ class PcbManager:
                 edges.append(
                     EdgeModel(
                         type="arc",
-                        start=Point2(x=arc.start.x, y=arc.start.y),
-                        mid=Point2(x=arc.mid.x, y=arc.mid.y),
-                        end=Point2(x=arc.end.x, y=arc.end.y),
+                        start=PointXY(x=arc.start.x, y=arc.start.y),
+                        mid=PointXY(x=arc.mid.x, y=arc.mid.y),
+                        end=PointXY(x=arc.end.x, y=arc.end.y),
                     )
                 )
         for circle in pcb.gr_circles:
@@ -542,8 +542,8 @@ class PcbManager:
                 edges.append(
                     EdgeModel(
                         type="circle",
-                        center=Point2(x=circle.center.x, y=circle.center.y),
-                        end=Point2(x=circle.end.x, y=circle.end.y),
+                        center=PointXY(x=circle.center.x, y=circle.center.y),
+                        end=PointXY(x=circle.end.x, y=circle.end.y),
                     )
                 )
         for rect in pcb.gr_rects:
@@ -551,8 +551,8 @@ class PcbManager:
                 edges.append(
                     EdgeModel(
                         type="rect",
-                        start=Point2(x=rect.start.x, y=rect.start.y),
-                        end=Point2(x=rect.end.x, y=rect.end.y),
+                        start=PointXY(x=rect.start.x, y=rect.start.y),
+                        end=PointXY(x=rect.end.x, y=rect.end.y),
                     )
                 )
 
@@ -573,7 +573,7 @@ class PcbManager:
             edges=edges,
             width=width,
             height=height,
-            origin=Point2(x=origin_x, y=origin_y),
+            origin=PointXY(x=origin_x, y=origin_y),
         )
 
     def _extract_footprint(
@@ -593,7 +593,7 @@ class PcbManager:
             pads.append(
                 PadModel(
                     name=pad.name,
-                    at=Point3(x=pad.at.x, y=pad.at.y, r=pad.at.r or 0),
+                    at=PointXYR(x=pad.at.x, y=pad.at.y, r=pad.at.r or 0),
                     size=Size2(w=pad.size.w, h=pad_h),
                     shape=pad.shape,
                     type=pad.type,
@@ -628,7 +628,7 @@ class PcbManager:
             name=fp.name,
             reference=ref,
             value=value,
-            at=Point3(x=fp.at.x, y=fp.at.y, r=fp.at.r or 0),
+            at=PointXYR(x=fp.at.x, y=fp.at.y, r=fp.at.r or 0),
             layer=fp.layer,
             pads=pads,
             drawings=drawings,
@@ -655,8 +655,8 @@ class PcbManager:
             if tb.start is not None and tb.end is not None:
                 drawings.append(
                     _rect_drawing(
-                        start=Point2(x=tb.start.x, y=tb.start.y),
-                        end=Point2(x=tb.end.x, y=tb.end.y),
+                        start=PointXY(x=tb.start.x, y=tb.start.y),
+                        end=PointXY(x=tb.end.x, y=tb.end.y),
                         width=sw,
                         layer=tb.layer,
                     )
@@ -664,7 +664,7 @@ class PcbManager:
             elif tb.pts is not None:
                 drawings.append(
                     _polygon_drawing(
-                        points=[Point2(x=p.x, y=p.y) for p in tb.pts.xys],
+                        points=[PointXY(x=p.x, y=p.y) for p in tb.pts.xys],
                         width=sw,
                         layer=tb.layer,
                     )
@@ -680,7 +680,7 @@ class PcbManager:
             )
             drawings.append(
                 _curve_drawing(
-                    points=[Point2(x=p.x, y=p.y) for p in dimension.pts.xys],
+                    points=[PointXY(x=p.x, y=p.y) for p in dimension.pts.xys],
                     width=thickness,
                     layer=dimension.layer,
                 )
@@ -692,16 +692,16 @@ class PcbManager:
             width = target.width if target.width is not None else 0.12
             drawings.append(
                 _line_drawing(
-                    start=Point2(x=target.at.x - half_x, y=target.at.y),
-                    end=Point2(x=target.at.x + half_x, y=target.at.y),
+                    start=PointXY(x=target.at.x - half_x, y=target.at.y),
+                    end=PointXY(x=target.at.x + half_x, y=target.at.y),
                     width=width,
                     layer=target.layer,
                 )
             )
             drawings.append(
                 _line_drawing(
-                    start=Point2(x=target.at.x, y=target.at.y - half_y),
-                    end=Point2(x=target.at.x, y=target.at.y + half_y),
+                    start=PointXY(x=target.at.x, y=target.at.y - half_y),
+                    end=PointXY(x=target.at.x, y=target.at.y + half_y),
                     width=width,
                     layer=target.layer,
                 )
@@ -725,8 +725,8 @@ class PcbManager:
                 if cell.start is not None and cell.end is not None:
                     drawings.append(
                         _rect_drawing(
-                            start=Point2(x=cell.start.x, y=cell.start.y),
-                            end=Point2(x=cell.end.x, y=cell.end.y),
+                            start=PointXY(x=cell.start.x, y=cell.start.y),
+                            end=PointXY(x=cell.end.x, y=cell.end.y),
                             width=sw,
                             layer=cell.layer,
                         )
@@ -734,7 +734,7 @@ class PcbManager:
                 elif cell.pts is not None:
                     drawings.append(
                         _polygon_drawing(
-                            points=[Point2(x=p.x, y=p.y) for p in cell.pts.xys],
+                            points=[PointXY(x=p.x, y=p.y) for p in cell.pts.xys],
                             width=sw,
                             layer=cell.layer,
                         )
@@ -760,8 +760,8 @@ class PcbManager:
                 continue
             drawings.append(
                 _line_drawing(
-                    start=Point2(x=line.start.x, y=line.start.y),
-                    end=Point2(x=line.end.x, y=line.end.y),
+                    start=PointXY(x=line.start.x, y=line.start.y),
+                    end=PointXY(x=line.end.x, y=line.end.y),
                     width=_stroke_width(line),
                     layer=_get_layer(line),
                 )
@@ -772,9 +772,9 @@ class PcbManager:
                 continue
             drawings.append(
                 _arc_drawing(
-                    start=Point2(x=arc.start.x, y=arc.start.y),
-                    mid=Point2(x=arc.mid.x, y=arc.mid.y),
-                    end=Point2(x=arc.end.x, y=arc.end.y),
+                    start=PointXY(x=arc.start.x, y=arc.start.y),
+                    mid=PointXY(x=arc.mid.x, y=arc.mid.y),
+                    end=PointXY(x=arc.end.x, y=arc.end.y),
                     width=_stroke_width(arc),
                     layer=_get_layer(arc),
                 )
@@ -785,8 +785,8 @@ class PcbManager:
                 continue
             drawings.append(
                 _circle_drawing(
-                    center=Point2(x=circle.center.x, y=circle.center.y),
-                    end=Point2(x=circle.end.x, y=circle.end.y),
+                    center=PointXY(x=circle.center.x, y=circle.center.y),
+                    end=PointXY(x=circle.end.x, y=circle.end.y),
                     width=_stroke_width(circle),
                     layer=_get_layer(circle),
                     filled=_is_filled(circle),
@@ -798,8 +798,8 @@ class PcbManager:
                 continue
             drawings.append(
                 _rect_drawing(
-                    start=Point2(x=rect.start.x, y=rect.start.y),
-                    end=Point2(x=rect.end.x, y=rect.end.y),
+                    start=PointXY(x=rect.start.x, y=rect.start.y),
+                    end=PointXY(x=rect.end.x, y=rect.end.y),
                     width=_stroke_width(rect),
                     layer=_get_layer(rect),
                     filled=_is_filled(rect),
@@ -811,7 +811,7 @@ class PcbManager:
                 continue
             drawings.append(
                 _polygon_drawing(
-                    points=[Point2(x=p.x, y=p.y) for p in poly.pts.xys],
+                    points=[PointXY(x=p.x, y=p.y) for p in poly.pts.xys],
                     width=_stroke_width(poly),
                     layer=_get_layer(poly),
                     filled=_is_filled(poly),
@@ -823,7 +823,7 @@ class PcbManager:
                 continue
             drawings.append(
                 _curve_drawing(
-                    points=[Point2(x=p.x, y=p.y) for p in curve.pts.xys],
+                    points=[PointXY(x=p.x, y=p.y) for p in curve.pts.xys],
                     width=_stroke_width(curve),
                     layer=_get_layer(curve),
                 )
@@ -1032,7 +1032,7 @@ class PcbManager:
 
         return TextModel(
             text=text,
-            at=Point3(
+            at=PointXYR(
                 x=getattr(at, "x", 0.0),
                 y=getattr(at, "y", 0.0),
                 r=(getattr(at, "r", 0.0) or 0.0),
@@ -1063,11 +1063,11 @@ class PcbManager:
             return None
 
         offset_obj = getattr(drill, "offset", None)
-        offset: Point2 | None = None
+        offset: PointXY | None = None
         ox = _safe_float(getattr(offset_obj, "x", None))
         oy = _safe_float(getattr(offset_obj, "y", None))
         if ox is not None or oy is not None:
-            offset = Point2(x=ox or 0.0, y=oy or 0.0)
+            offset = PointXY(x=ox or 0.0, y=oy or 0.0)
 
         plated = None
         pad_type = str(getattr(pad, "type", "") or "")
@@ -1084,8 +1084,8 @@ class PcbManager:
 
     def _extract_segment(self, seg) -> TrackModel:
         return TrackModel(
-            start=Point2(x=seg.start.x, y=seg.start.y),
-            end=Point2(x=seg.end.x, y=seg.end.y),
+            start=PointXY(x=seg.start.x, y=seg.start.y),
+            end=PointXY(x=seg.end.x, y=seg.end.y),
             width=seg.width,
             layer=seg.layer,
             net=seg.net,
@@ -1094,9 +1094,9 @@ class PcbManager:
 
     def _extract_arc_segment(self, arc) -> ArcTrackModel:
         return ArcTrackModel(
-            start=Point2(x=arc.start.x, y=arc.start.y),
-            mid=Point2(x=arc.mid.x, y=arc.mid.y),
-            end=Point2(x=arc.end.x, y=arc.end.y),
+            start=PointXY(x=arc.start.x, y=arc.start.y),
+            mid=PointXY(x=arc.mid.x, y=arc.mid.y),
+            end=PointXY(x=arc.end.x, y=arc.end.y),
             width=arc.width,
             layer=arc.layer,
             net=arc.net,
@@ -1150,8 +1150,8 @@ class PcbManager:
                     if annulus_thickness > 0 and centerline_radius > 0:
                         drawings.append(
                             _circle_drawing(
-                                center=Point2(x=cx, y=cy),
-                                end=Point2(x=cx + centerline_radius, y=cy),
+                                center=PointXY(x=cx, y=cy),
+                                end=PointXY(x=cx + centerline_radius, y=cy),
                                 width=annulus_thickness,
                                 layer=copper_layer,
                                 filled=False,
@@ -1160,8 +1160,8 @@ class PcbManager:
                         continue
                 drawings.append(
                     _circle_drawing(
-                        center=Point2(x=cx, y=cy),
-                        end=Point2(x=cx + outer_diameter / 2.0, y=cy),
+                        center=PointXY(x=cx, y=cy),
+                        end=PointXY(x=cx + outer_diameter / 2.0, y=cy),
                         width=0.0,
                         layer=copper_layer,
                         filled=True,
@@ -1204,7 +1204,7 @@ class PcbManager:
         polygon = getattr(zone, "polygon", None)
         polygon_pts = getattr(getattr(polygon, "pts", None), "xys", None)
         pts = (
-            [Point2(x=p.x, y=p.y) for p in polygon_pts]
+            [PointXY(x=p.x, y=p.y) for p in polygon_pts]
             if polygon_pts is not None
             else []
         )
@@ -1232,7 +1232,7 @@ class PcbManager:
             filled.append(
                 FilledPolygonModel(
                     layer=fp_layer,
-                    points=[Point2(x=p.x, y=p.y) for p in fp_pts],
+                    points=[PointXY(x=p.x, y=p.y) for p in fp_pts],
                 )
             )
 
@@ -1295,7 +1295,12 @@ def _stroke_width(obj, default: float = 0.12) -> float:
 
 
 def _line_drawing(
-    *, start: Point2, end: Point2, width: float, layer: str | None, filled: bool = False
+    *,
+    start: PointXY,
+    end: PointXY,
+    width: float,
+    layer: str | None,
+    filled: bool = False,
 ) -> DrawingModel:
     return LineDrawingModel(
         start=start,
@@ -1308,9 +1313,9 @@ def _line_drawing(
 
 def _arc_drawing(
     *,
-    start: Point2,
-    mid: Point2,
-    end: Point2,
+    start: PointXY,
+    mid: PointXY,
+    end: PointXY,
     width: float,
     layer: str | None,
     filled: bool = False,
@@ -1327,8 +1332,8 @@ def _arc_drawing(
 
 def _circle_drawing(
     *,
-    center: Point2,
-    end: Point2,
+    center: PointXY,
+    end: PointXY,
     width: float,
     layer: str | None,
     filled: bool = False,
@@ -1344,8 +1349,8 @@ def _circle_drawing(
 
 def _rect_drawing(
     *,
-    start: Point2,
-    end: Point2,
+    start: PointXY,
+    end: PointXY,
     width: float,
     layer: str | None,
     filled: bool = False,
@@ -1360,7 +1365,7 @@ def _rect_drawing(
 
 
 def _polygon_drawing(
-    *, points: list[Point2], width: float, layer: str | None, filled: bool = False
+    *, points: list[PointXY], width: float, layer: str | None, filled: bool = False
 ) -> DrawingModel:
     return PolygonDrawingModel(
         points=points,
@@ -1371,7 +1376,7 @@ def _polygon_drawing(
 
 
 def _curve_drawing(
-    *, points: list[Point2], width: float, layer: str | None, filled: bool = False
+    *, points: list[PointXY], width: float, layer: str | None, filled: bool = False
 ) -> DrawingModel:
     return CurveDrawingModel(
         points=points,
@@ -1917,8 +1922,8 @@ def _drill_hole_drawings(
     if not is_oval:
         return [
             _circle_drawing(
-                center=Point2(x=cx, y=cy),
-                end=Point2(x=cx + sx / 2.0, y=cy),
+                center=PointXY(x=cx, y=cy),
+                end=PointXY(x=cx + sx / 2.0, y=cy),
                 width=0.0,
                 layer=layer,
                 filled=True,
@@ -1938,8 +1943,8 @@ def _drill_hole_drawings(
     p2r = _rotate_kicad_xy(p2_local[0], p2_local[1], rotation_deg)
     return [
         _line_drawing(
-            start=Point2(x=cx + p1r[0], y=cy + p1r[1]),
-            end=Point2(x=cx + p2r[0], y=cy + p2r[1]),
+            start=PointXY(x=cx + p1r[0], y=cy + p1r[1]),
+            end=PointXY(x=cx + p2r[0], y=cy + p2r[1]),
             width=minor,
             layer=layer,
         )
@@ -2027,9 +2032,9 @@ def _extract_text_justify(text_obj) -> list[str] | None:
     return out or None
 
 
-def _text_box_position(tb) -> Point3:
+def _text_box_position(tb) -> PointXYR:
     if tb.start is not None and tb.end is not None:
-        return Point3(
+        return PointXYR(
             x=(tb.start.x + tb.end.x) / 2,
             y=(tb.start.y + tb.end.y) / 2,
             r=float(tb.angle or 0),
@@ -2037,17 +2042,17 @@ def _text_box_position(tb) -> Point3:
     if tb.pts is not None and tb.pts.xys:
         xs = [p.x for p in tb.pts.xys]
         ys = [p.y for p in tb.pts.xys]
-        return Point3(
+        return PointXYR(
             x=(min(xs) + max(xs)) / 2,
             y=(min(ys) + max(ys)) / 2,
             r=float(tb.angle or 0),
         )
-    return Point3(x=0, y=0, r=float(tb.angle or 0))
+    return PointXYR(x=0, y=0, r=float(tb.angle or 0))
 
 
-def _table_cell_position(cell) -> Point3:
+def _table_cell_position(cell) -> PointXYR:
     if cell.start is not None and cell.end is not None:
-        return Point3(
+        return PointXYR(
             x=(cell.start.x + cell.end.x) / 2,
             y=(cell.start.y + cell.end.y) / 2,
             r=float(cell.angle or 0),
@@ -2055,9 +2060,9 @@ def _table_cell_position(cell) -> Point3:
     if cell.pts is not None and cell.pts.xys:
         xs = [p.x for p in cell.pts.xys]
         ys = [p.y for p in cell.pts.xys]
-        return Point3(
+        return PointXYR(
             x=(min(xs) + max(xs)) / 2,
             y=(min(ys) + max(ys)) / 2,
             r=float(cell.angle or 0),
         )
-    return Point3(x=0, y=0, r=float(cell.angle or 0))
+    return PointXYR(x=0, y=0, r=float(cell.angle or 0))

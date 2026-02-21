@@ -9,12 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 # --- Geometry primitives ---
 
 
-class Point2(BaseModel):
+class PointXY(BaseModel):
     x: float
     y: float
 
 
-class Point3(BaseModel):
+class PointXYR(BaseModel):
     x: float
     y: float
     r: float = 0
@@ -30,17 +30,17 @@ class Size2(BaseModel):
 
 class EdgeModel(BaseModel):
     type: str  # "line" | "arc" | "circle" | "rect"
-    start: Point2 | None = None
-    end: Point2 | None = None
-    mid: Point2 | None = None
-    center: Point2 | None = None
+    start: PointXY | None = None
+    end: PointXY | None = None
+    mid: PointXY | None = None
+    center: PointXY | None = None
 
 
 class BoardModel(BaseModel):
     edges: list[EdgeModel]
     width: float
     height: float
-    origin: Point2
+    origin: PointXY
 
 
 # --- Footprint internals ---
@@ -50,13 +50,13 @@ class HoleModel(BaseModel):
     shape: str | None = None
     size_x: float
     size_y: float
-    offset: Point2 | None = None
+    offset: PointXY | None = None
     plated: bool | None = None
 
 
 class PadModel(BaseModel):
     name: str
-    at: Point3
+    at: PointXYR
     size: Size2
     shape: str
     type: str
@@ -74,37 +74,37 @@ class _DrawingBase(BaseModel):
 
 class LineDrawingModel(_DrawingBase):
     type: Literal["line"] = "line"
-    start: Point2
-    end: Point2
+    start: PointXY
+    end: PointXY
 
 
 class ArcDrawingModel(_DrawingBase):
     type: Literal["arc"] = "arc"
-    start: Point2
-    mid: Point2
-    end: Point2
+    start: PointXY
+    mid: PointXY
+    end: PointXY
 
 
 class CircleDrawingModel(_DrawingBase):
     type: Literal["circle"] = "circle"
-    center: Point2
-    end: Point2
+    center: PointXY
+    end: PointXY
 
 
 class RectDrawingModel(_DrawingBase):
     type: Literal["rect"] = "rect"
-    start: Point2
-    end: Point2
+    start: PointXY
+    end: PointXY
 
 
 class PolygonDrawingModel(_DrawingBase):
     type: Literal["polygon"] = "polygon"
-    points: list[Point2]
+    points: list[PointXY]
 
 
 class CurveDrawingModel(_DrawingBase):
     type: Literal["curve"] = "curve"
-    points: list[Point2]
+    points: list[PointXY]
 
 
 DrawingModel = Annotated[
@@ -120,7 +120,7 @@ DrawingModel = Annotated[
 
 class TextModel(BaseModel):
     text: str
-    at: Point3
+    at: PointXYR
     layer: str | None = None
     size: Size2 | None = None
     thickness: float | None = None
@@ -146,7 +146,7 @@ class FootprintModel(BaseModel):
     name: str
     reference: str | None
     value: str | None
-    at: Point3
+    at: PointXYR
     layer: str
     pads: list[PadModel]
     drawings: list[DrawingModel]
@@ -165,8 +165,8 @@ class FootprintGroupModel(BaseModel):
 
 
 class TrackModel(BaseModel):
-    start: Point2
-    end: Point2
+    start: PointXY
+    end: PointXY
     width: float
     layer: str | None = None
     net: int = 0
@@ -174,9 +174,9 @@ class TrackModel(BaseModel):
 
 
 class ArcTrackModel(BaseModel):
-    start: Point2
-    mid: Point2
-    end: Point2
+    start: PointXY
+    mid: PointXY
+    end: PointXY
     width: float
     layer: str | None = None
     net: int = 0
@@ -188,7 +188,7 @@ class ArcTrackModel(BaseModel):
 
 class FilledPolygonModel(BaseModel):
     layer: str
-    points: list[Point2]
+    points: list[PointXY]
 
 
 class ZoneModel(BaseModel):
@@ -201,7 +201,7 @@ class ZoneModel(BaseModel):
     hatch_mode: str | None = None
     hatch_pitch: float | None = None
     fill_enabled: bool | None = None
-    outline: list[Point2]
+    outline: list[PointXY]
     filled_polygons: list[FilledPolygonModel]
 
 
