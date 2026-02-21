@@ -1,60 +1,17 @@
 import { useRef, useEffect, useMemo } from 'react'
-import type { FootprintPadGeometry, FootprintDrawing, PinInfo } from '../types/build'
+import type { FootprintPadGeometry, PinInfo } from '../types/build'
 import { Editor } from '@layout-editor/editor'
-import type { RenderModel, PadModel, DrawingModel, FootprintModel } from '@layout-editor/types'
 import { getSignalColors } from '@layout-editor/colors'
+import { API_URL } from '../api/config'
+import { sendActionWithResponse } from '../api/websocket'
 
 interface FootprintViewerCanvasProps {
+  projectRoot: string
+  targetName: string
   pads: FootprintPadGeometry[]
-  drawings: FootprintDrawing[]
   pins: PinInfo[]
   selectedPinNumber: string | null
   onPadClick: (padNumber: string) => void
-}
-
-function buildRenderModel(pads: FootprintPadGeometry[], drawings: FootprintDrawing[]): RenderModel {
-  const fpPads: PadModel[] = pads.map(p => ({
-    name: p.pad_number,
-    at: { x: p.x, y: p.y, r: p.rotation },
-    size: { w: p.width, h: p.height },
-    shape: p.shape,
-    type: p.pad_type,
-    layers: p.layers,
-    net: 0,
-    roundrect_rratio: p.roundrect_ratio ?? null,
-    drill: null,
-  }))
-
-  const fpDrawings: DrawingModel[] = drawings.map(d => ({
-    type: d.type as DrawingModel['type'],
-    layer: d.layer,
-    width: d.width,
-    start: d.start_x != null ? { x: d.start_x, y: d.start_y! } : undefined,
-    end: d.end_x != null ? { x: d.end_x, y: d.end_y! } : undefined,
-    mid: d.mid_x != null ? { x: d.mid_x, y: d.mid_y! } : undefined,
-    center: d.center_x != null ? { x: d.center_x, y: d.center_y! } : undefined,
-  }))
-
-  const fp: FootprintModel = {
-    uuid: null,
-    name: '',
-    reference: null,
-    value: null,
-    at: { x: 0, y: 0, r: 0 },
-    layer: 'F.Cu',
-    pads: fpPads,
-    drawings: fpDrawings,
-  }
-
-  return {
-    board: { edges: [], width: 0, height: 0, origin: { x: 0, y: 0 } },
-    footprints: [fp],
-    tracks: [],
-    arcs: [],
-    vias: [],
-    zones: [],
-    nets: [],
-  }
 }
 
 interface PadStyles {
@@ -81,15 +38,10 @@ function buildPadStyles(pins: PinInfo[]): PadStyles {
 }
 
 export function FootprintViewerCanvas({
-  pads, drawings, pins, selectedPinNumber, onPadClick,
+  projectRoot, targetName, pads, pins, selectedPinNumber, onPadClick,
 }: FootprintViewerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const editorRef = useRef<Editor | null>(null)
-
-  const model = useMemo(
-    () => buildRenderModel(pads, drawings),
-    [pads, drawings],
-  )
 
   const padStyles = useMemo(
     () => buildPadStyles(pins),
@@ -101,19 +53,51 @@ export function FootprintViewerCanvas({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const editor = new Editor(canvas, '', '', '')
+    const editor = new Editor(canvas, API_URL, '/api/layout', '/ws/layout')
+    const initialPadNumbers = new Set(pads.map(p => p.pad_number).filter(Boolean))
     editor.setReadOnly(true)
-    editor.setModel(model, true)
+    editor.setFilteredFootprintPadNames(initialPadNumbers, true)
     editor.setPadColorOverrides(padStyles.colorOverrides)
     editor.setOutlinePads(padStyles.outlinePads)
     editor.setOnPadClick(onPadClick)
+    void editor.init()
     editorRef.current = editor
+    return () => editor.dispose()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update model when pads/drawings change
+  // Update footprint filter when component pad set changes
   useEffect(() => {
-    editorRef.current?.setModel(model, true)
-  }, [model])
+    const padNumbers = new Set(pads.map(p => p.pad_number).filter(Boolean))
+    editorRef.current?.setFilteredFootprintPadNames(padNumbers, true)
+  }, [pads])
+
+  // Ensure the selected target's layout is loaded in backend layout_service
+  useEffect(() => {
+    if (!projectRoot || !targetName) return
+    let cancelled = false
+    const loadViaAction = async () => {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (cancelled) return
+        try {
+          await sendActionWithResponse(
+            'loadLayout',
+            { projectId: projectRoot, targetName },
+            { timeoutMs: 10000 }
+          )
+          return
+        } catch (err) {
+          if (cancelled) return
+          if (attempt === 5) {
+            console.warn('[Pinout] Failed to load layout target for 2D viewer:', err)
+            return
+          }
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+    void loadViaAction()
+    return () => { cancelled = true }
+  }, [projectRoot, targetName])
 
   // Update pad styles when pins change
   useEffect(() => {

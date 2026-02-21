@@ -8,12 +8,13 @@ declare module '@layout-editor/editor' {
   export class Editor {
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix?: string, wsPath?: string);
     init(): Promise<void>;
-    setModel(model: import('@layout-editor/types').RenderModel, fitToView?: boolean): void;
+    setFilteredFootprintPadNames(padNames: Set<string> | null, fitToView?: boolean): void;
     setReadOnly(readOnly: boolean): void;
     setPadColorOverrides(overrides: Map<string, import('@layout-editor/colors').Color>): void;
     setHighlightedPads(padNames: Set<string>): void;
     setOutlinePads(padNames: Set<string>): void;
     setOnPadClick(cb: ((padName: string) => void) | null): void;
+    dispose(): void;
   }
 }
 

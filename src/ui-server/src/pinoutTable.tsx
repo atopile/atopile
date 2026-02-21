@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { PinoutPanel } from './components/PinoutPanel';
+import { AppProvider } from './AppProvider';
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
@@ -11,7 +12,9 @@ if (rootElement) {
   (window as Window & { __ATOPILE_ROOT_PINOUT__?: Root }).__ATOPILE_ROOT_PINOUT__ = root;
   root.render(
     <React.StrictMode>
-      <PinoutPanel />
+      <AppProvider>
+        <PinoutPanel />
+      </AppProvider>
     </React.StrictMode>
   );
 }

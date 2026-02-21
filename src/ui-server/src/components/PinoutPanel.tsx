@@ -478,8 +478,9 @@ export function PinoutPanel() {
         {hasFootprint && comp && (
           <div style={{ flex: '0 0 38%', minHeight: 0 }}>
             <FootprintViewerCanvas
+              projectRoot={selectedProject}
+              targetName={selectedTarget}
               pads={comp.footprint_pads!}
-              drawings={comp.footprint_drawings ?? []}
               pins={comp.pins}
               selectedPinNumber={hoveredPinNumber}
               onPadClick={handlePadHover}

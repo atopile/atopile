@@ -13,10 +13,13 @@ export class Editor {
     private camera: Camera2;
     private panAndZoom: PanAndZoom;
     private model: RenderModel | null = null;
+    private sourceModel: RenderModel | null = null;
     private baseUrl: string;
     private apiPrefix: string;
     private wsPath: string;
     private ws: WebSocket | null = null;
+    private reconnectTimer: number | null = null;
+    private disposed = false;
 
     // Selection & drag state
     private selectedFpIndex = -1;
@@ -41,7 +44,8 @@ export class Editor {
     private highlightedPads: Set<string> | undefined;
     private onPadClickCallback: ((padName: string) => void) | null = null;
     private outlinePads: Set<string> | undefined;
-    private externalModel = false;
+    private filteredFootprintPadNames: Set<string> | null = null;
+    private filteredViewHideRouting = false;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -60,15 +64,19 @@ export class Editor {
     }
 
     async init() {
-        if (this.externalModel) return;
-        await this.fetchAndPaint();
+        try {
+            await this.fetchAndPaint();
+        } catch (err) {
+            console.warn("Initial layout fetch failed:", err);
+        }
         this.connectWebSocket();
     }
 
-    /** Inject a model externally (for pinout viewer use) */
-    setModel(model: RenderModel, fitToView = true) {
-        this.externalModel = true;
-        this.applyModel(model, fitToView);
+    /** Restrict view to the best matching footprint by pad names. Pass null to clear. */
+    setFilteredFootprintPadNames(padNames: Set<string> | null, fitToView = true) {
+        this.filteredFootprintPadNames = padNames && padNames.size > 0 ? new Set(padNames) : null;
+        this.filteredViewHideRouting = this.filteredFootprintPadNames !== null;
+        this.rebuildDisplayModel(fitToView);
     }
 
     /** Set read-only mode (disables drag, keyboard, footprint selection) */
@@ -102,13 +110,92 @@ export class Editor {
         this.onPadClickCallback = cb;
     }
 
+    dispose() {
+        this.disposed = true;
+        if (this.reconnectTimer !== null) {
+            window.clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+    }
+
     private async fetchAndPaint() {
         const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-        this.applyModel(await resp.json(), true);
+        if (!resp.ok) {
+            throw new Error(`render-model request failed: ${resp.status}`);
+        }
+        this.setSourceModel(await resp.json(), true);
+    }
+
+    private setSourceModel(model: RenderModel, fitToView = false) {
+        if (this.disposed) return;
+        this.sourceModel = model;
+        this.rebuildDisplayModel(fitToView);
+    }
+
+    private rebuildDisplayModel(fitToView = false) {
+        if (!this.sourceModel) return;
+        const displayModel = this.projectModel(this.sourceModel);
+        this.applyModel(displayModel, fitToView);
+    }
+
+    private pickBestMatchingFootprint(
+        model: RenderModel,
+        padNames: Set<string>,
+    ): RenderModel["footprints"][number] | null {
+        if (model.footprints.length === 0) return null;
+        if (padNames.size === 0) return model.footprints[0] ?? null;
+
+        let best: RenderModel["footprints"][number] | null = null;
+        let bestScore = -1;
+        for (const fp of model.footprints) {
+            let score = 0;
+            for (const pad of fp.pads) {
+                if (padNames.has(pad.name)) score += 1;
+            }
+            if (score > bestScore) {
+                best = fp;
+                bestScore = score;
+            }
+        }
+        return bestScore > 0 ? best : null;
+    }
+
+    private projectModel(model: RenderModel): RenderModel {
+        if (!this.filteredFootprintPadNames) return model;
+
+        const footprint = this.pickBestMatchingFootprint(model, this.filteredFootprintPadNames);
+        if (!footprint) {
+            return {
+                ...model,
+                footprints: [],
+                tracks: [],
+                arcs: [],
+                vias: [],
+                zones: [],
+                nets: [],
+            };
+        }
+
+        return {
+            ...model,
+            footprints: [footprint],
+            tracks: this.filteredViewHideRouting ? [] : model.tracks,
+            arcs: this.filteredViewHideRouting ? [] : model.arcs,
+            vias: this.filteredViewHideRouting ? [] : model.vias,
+            zones: this.filteredViewHideRouting ? [] : model.zones,
+            nets: this.filteredViewHideRouting ? [] : model.nets,
+        };
     }
 
     private applyModel(model: RenderModel, fitToView = false) {
         this.model = model;
+        if (this.selectedFpIndex >= model.footprints.length) {
+            this.selectedFpIndex = -1;
+        }
         this.paint();
 
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
@@ -156,12 +243,14 @@ export class Editor {
         this.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             if (msg.type === "layout_updated" && msg.model) {
-                this.applyModel(msg.model);
+                this.setSourceModel(msg.model);
             }
         };
         this.ws.onerror = (err) => console.error("WS error:", err);
         this.ws.onclose = () => {
-            setTimeout(() => this.connectWebSocket(), 2000);
+            this.ws = null;
+            if (this.disposed) return;
+            this.reconnectTimer = window.setTimeout(() => this.connectWebSocket(), 2000);
         };
     }
 
@@ -306,7 +395,7 @@ export class Editor {
                 body: JSON.stringify({ type, details }),
             });
             const data = await resp.json();
-            if (data.model) this.applyModel(data.model);
+            if (data.model) this.setSourceModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
         }
@@ -316,7 +405,7 @@ export class Editor {
         try {
             const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
             const data = await resp.json();
-            if (data.model) this.applyModel(data.model);
+            if (data.model) this.setSourceModel(data.model);
         } catch (err) {
             console.error(`Failed ${path}:`, err);
         }
