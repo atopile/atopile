@@ -70,19 +70,60 @@ class PadModel(BaseModel):
     type: str
     layers: list[str]
     net: int = 0
+    hole: HoleModel | None = None
     roundrect_rratio: float | None = None
 
 
-class DrawingModel(BaseModel):
-    type: str  # "line" | "arc" | "circle" | "rect" | "polygon" | "curve"
-    start: Point2 | None = None
-    end: Point2 | None = None
-    mid: Point2 | None = None
-    center: Point2 | None = None
+class _DrawingBase(BaseModel):
     width: float = 0.12
     layer: str | None = None
-    points: list[Point2] | None = None
     filled: bool = False
+
+
+class LineDrawingModel(_DrawingBase):
+    type: Literal["line"] = "line"
+    start: Point2
+    end: Point2
+
+
+class ArcDrawingModel(_DrawingBase):
+    type: Literal["arc"] = "arc"
+    start: Point2
+    mid: Point2
+    end: Point2
+
+
+class CircleDrawingModel(_DrawingBase):
+    type: Literal["circle"] = "circle"
+    center: Point2
+    end: Point2
+
+
+class RectDrawingModel(_DrawingBase):
+    type: Literal["rect"] = "rect"
+    start: Point2
+    end: Point2
+
+
+class PolygonDrawingModel(_DrawingBase):
+    type: Literal["polygon"] = "polygon"
+    points: list[Point2]
+
+
+class CurveDrawingModel(_DrawingBase):
+    type: Literal["curve"] = "curve"
+    points: list[Point2]
+
+
+DrawingModel = Annotated[
+    LineDrawingModel
+    | ArcDrawingModel
+    | CircleDrawingModel
+    | RectDrawingModel
+    | PolygonDrawingModel
+    | CurveDrawingModel,
+    Field(discriminator="type"),
+]
 
 
 class TextModel(BaseModel):

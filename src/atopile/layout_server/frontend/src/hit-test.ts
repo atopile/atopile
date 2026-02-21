@@ -15,13 +15,30 @@ export function footprintBBox(fp: FootprintModel): BBox {
         points.push(padTransform(fp.at, pad.at, -hw, hh));
     }
     for (const drawing of fp.drawings) {
-        if (drawing.start) points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
-        if (drawing.end) points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
-        if (drawing.center) points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
-        if (drawing.points) {
-            for (const p of drawing.points) {
-                points.push(fpTransform(fp.at, p.x, p.y));
-            }
+        switch (drawing.type) {
+            case "line":
+                points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+                points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+                break;
+            case "arc":
+                points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+                points.push(fpTransform(fp.at, drawing.mid.x, drawing.mid.y));
+                points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+                break;
+            case "circle":
+                points.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
+                points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+                break;
+            case "rect":
+                points.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
+                points.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
+                break;
+            case "polygon":
+            case "curve":
+                for (const p of drawing.points) {
+                    points.push(fpTransform(fp.at, p.x, p.y));
+                }
+                break;
         }
     }
     if (points.length === 0) {

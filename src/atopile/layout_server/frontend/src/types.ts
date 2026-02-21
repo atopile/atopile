@@ -93,20 +93,66 @@ export interface PadModel {
     type: string;
     layers: string[];
     net: number;
+    hole: HoleModel | null;
     roundrect_rratio: number | null;
 }
 
-export interface DrawingModel {
-    type: "line" | "arc" | "circle" | "rect" | "polygon" | "curve";
-    start?: Point2;
-    end?: Point2;
-    mid?: Point2;
-    center?: Point2;
+export interface HoleModel {
+    shape: string | null;
+    size_x: number;
+    size_y: number;
+    offset: Point2 | null;
+    plated: boolean | null;
+}
+
+interface DrawingBase {
     width: number;
     layer: string | null;
-    points?: Point2[];
     filled: boolean;
 }
+
+export interface LineDrawingModel extends DrawingBase {
+    type: "line";
+    start: Point2;
+    end: Point2;
+}
+
+export interface ArcDrawingModel extends DrawingBase {
+    type: "arc";
+    start: Point2;
+    mid: Point2;
+    end: Point2;
+}
+
+export interface CircleDrawingModel extends DrawingBase {
+    type: "circle";
+    center: Point2;
+    end: Point2;
+}
+
+export interface RectDrawingModel extends DrawingBase {
+    type: "rect";
+    start: Point2;
+    end: Point2;
+}
+
+export interface PolygonDrawingModel extends DrawingBase {
+    type: "polygon";
+    points: Point2[];
+}
+
+export interface CurveDrawingModel extends DrawingBase {
+    type: "curve";
+    points: Point2[];
+}
+
+export type DrawingModel =
+    | LineDrawingModel
+    | ArcDrawingModel
+    | CircleDrawingModel
+    | RectDrawingModel
+    | PolygonDrawingModel
+    | CurveDrawingModel;
 
 export interface TrackModel {
     start: Point2;

@@ -8,8 +8,11 @@ import time
 from pathlib import Path
 
 from atopile.layout_server.models import (
+    ArcDrawingModel,
     ArcTrackModel,
     BoardModel,
+    CircleDrawingModel,
+    CurveDrawingModel,
     DrawingModel,
     EdgeModel,
     FilledPolygonModel,
@@ -20,6 +23,7 @@ from atopile.layout_server.models import (
     FootprintSummary,
     HoleModel,
     LayerModel,
+    LineDrawingModel,
     MoveFootprintCommand,
     MoveFootprintsCommand,
     NetModel,
@@ -28,6 +32,8 @@ from atopile.layout_server.models import (
     PadNumberAnnotationModel,
     Point2,
     Point3,
+    PolygonDrawingModel,
+    RectDrawingModel,
     RenderModel,
     RotateFootprintCommand,
     RotateFootprintsCommand,
@@ -52,7 +58,65 @@ class Action(abc.ABC):
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None: ...
 
 
-class MoveAction(Action):
+def _find_footprint_by_uuid(pcb: kicad.pcb.KicadPcb, uuid: str):
+    for fp in pcb.footprints:
+        if fp.uuid == uuid:
+            return fp
+    raise ValueError(f"Footprint with uuid {uuid!r} not found")
+
+
+def _flip_point_y(point) -> None:
+    if point is not None and hasattr(point, "y"):
+        point.y = -point.y
+
+
+def _flip_layer_field(obj) -> None:
+    layer = getattr(obj, "layer", None)
+    if not layer:
+        return
+    if hasattr(layer, "layer"):
+        nested = getattr(layer, "layer", None)
+        if nested:
+            layer.layer = _flip_layer(nested)
+        return
+    if isinstance(layer, str):
+        obj.layer = _flip_layer(layer)
+
+
+def _iter_footprint_flip_items(fp):
+    container_names = (
+        "fp_lines",
+        "fp_arcs",
+        "fp_circles",
+        "fp_rects",
+        "fp_poly",
+        "propertys",
+        "fp_texts",
+    )
+    for name in container_names:
+        for item in getattr(fp, name, []) or []:
+            yield item
+
+
+def _flip_footprint_geometry(fp) -> None:
+    for item in _iter_footprint_flip_items(fp):
+        for point_attr in ("start", "mid", "end", "center", "at"):
+            _flip_point_y(getattr(item, point_attr, None))
+        pts = getattr(getattr(item, "pts", None), "xys", None)
+        if pts is not None:
+            for point in pts:
+                _flip_point_y(point)
+        _flip_layer_field(item)
+
+
+class _FootprintAction(Action):
+    uuid: str
+
+    def _find(self, pcb: kicad.pcb.KicadPcb):
+        return _find_footprint_by_uuid(pcb, self.uuid)
+
+
+class MoveAction(_FootprintAction):
     """Move a footprint to a new position."""
 
     def __init__(
@@ -71,12 +135,6 @@ class MoveAction(Action):
         self.old_y: float = 0
         self.old_r: float | None = None
 
-    def _find(self, pcb: kicad.pcb.KicadPcb):
-        for fp in pcb.footprints:
-            if fp.uuid == self.uuid:
-                return fp
-        raise ValueError(f"Footprint with uuid {self.uuid!r} not found")
-
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         fp = self._find(pcb)
         self.old_x = fp.at.x
@@ -94,19 +152,13 @@ class MoveAction(Action):
         fp.at.r = self.old_r
 
 
-class RotateAction(Action):
+class RotateAction(_FootprintAction):
     """Rotate a footprint by a delta angle (degrees)."""
 
     def __init__(self, uuid: str, delta_degrees: float) -> None:
         self.uuid = uuid
         self.delta_degrees = delta_degrees
         self._old_r: float | None = None
-
-    def _find(self, pcb: kicad.pcb.KicadPcb):
-        for fp in pcb.footprints:
-            if fp.uuid == self.uuid:
-                return fp
-        raise ValueError(f"Footprint with uuid {self.uuid!r} not found")
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         fp = self._find(pcb)
@@ -126,17 +178,11 @@ def _flip_layer(layer: str) -> str:
     return layer
 
 
-class FlipAction(Action):
+class FlipAction(_FootprintAction):
     """Flip a footprint between front and back."""
 
     def __init__(self, uuid: str) -> None:
         self.uuid = uuid
-
-    def _find(self, pcb: kicad.pcb.KicadPcb):
-        for fp in pcb.footprints:
-            if fp.uuid == self.uuid:
-                return fp
-        raise ValueError(f"Footprint with uuid {self.uuid!r} not found")
 
     def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
         fp = self._find(pcb)
@@ -149,46 +195,7 @@ class FlipAction(Action):
             pad.at.y = -pad.at.y
             pad.at.r = ((pad.at.r or 0) + 180) % 360
             pad.layers = [_flip_layer(ly) for ly in pad.layers]
-        # Flip drawings
-        for line in fp.fp_lines:
-            line.start.y = -line.start.y
-            line.end.y = -line.end.y
-            if hasattr(line, "layer") and line.layer:
-                line.layer = _flip_layer(line.layer)
-        for arc in fp.fp_arcs:
-            arc.start.y = -arc.start.y
-            arc.mid.y = -arc.mid.y
-            arc.end.y = -arc.end.y
-            if hasattr(arc, "layer") and arc.layer:
-                arc.layer = _flip_layer(arc.layer)
-        for circle in fp.fp_circles:
-            circle.center.y = -circle.center.y
-            circle.end.y = -circle.end.y
-            if hasattr(circle, "layer") and circle.layer:
-                circle.layer = _flip_layer(circle.layer)
-        for rect in fp.fp_rects:
-            rect.start.y = -rect.start.y
-            rect.end.y = -rect.end.y
-            if hasattr(rect, "layer") and rect.layer:
-                rect.layer = _flip_layer(rect.layer)
-        for poly in fp.fp_poly:
-            for pt in poly.pts.xys:
-                pt.y = -pt.y
-            if hasattr(poly, "layer") and poly.layer:
-                poly.layer = _flip_layer(poly.layer)
-        # Flip text/properties
-        for prop in fp.propertys:
-            prop.at.y = -prop.at.y
-            if hasattr(prop, "layer") and prop.layer:
-                prop.layer = _flip_layer(prop.layer)
-        for txt in fp.fp_texts:
-            txt.at.y = -txt.at.y
-            if not hasattr(txt, "layer") or not txt.layer:
-                continue
-            if hasattr(txt.layer, "layer") and txt.layer.layer:
-                txt.layer.layer = _flip_layer(txt.layer.layer)
-            elif isinstance(txt.layer, str):
-                txt.layer = _flip_layer(txt.layer)
+        _flip_footprint_geometry(fp)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         self._flip(pcb)
@@ -222,6 +229,7 @@ class PcbManager:
         self._undo_stack: list[Action] = []
         self._redo_stack: list[Action] = []
         self._last_save_time: float = 0
+        self._render_model_cache: RenderModel | None = None
 
     @property
     def pcb(self) -> kicad.pcb.KicadPcb:
@@ -234,6 +242,7 @@ class PcbManager:
         self._pcb_file = kicad.loads(kicad.pcb.PcbFile, text)
         self._undo_stack.clear()
         self._redo_stack.clear()
+        self._render_model_cache = None
 
     # --- Action execution ---
 
@@ -241,6 +250,7 @@ class PcbManager:
         action.execute(self.pcb)
         self._undo_stack.append(action)
         self._redo_stack.clear()
+        self._render_model_cache = None
 
     def undo(self) -> bool:
         if not self._undo_stack:
@@ -248,6 +258,7 @@ class PcbManager:
         action = self._undo_stack.pop()
         action.undo(self.pcb)
         self._redo_stack.append(action)
+        self._render_model_cache = None
         return True
 
     def redo(self) -> bool:
@@ -256,6 +267,7 @@ class PcbManager:
         action = self._redo_stack.pop()
         action.execute(self.pcb)
         self._undo_stack.append(action)
+        self._render_model_cache = None
         return True
 
     @property
@@ -398,6 +410,8 @@ class PcbManager:
     # --- Extraction ---
 
     def get_render_model(self) -> RenderModel:
+        if self._render_model_cache is not None:
+            return self._render_model_cache
         pcb = self.pcb
         all_layers = _board_all_layers(pcb)
         copper_layers = _board_copper_layers(pcb)
@@ -427,6 +441,7 @@ class PcbManager:
             nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
         )
         model.layers = _build_layer_models(model, all_layers, copper_layers)
+        self._render_model_cache = model
         return model
 
     def get_footprints(self) -> list[FootprintSummary]:
@@ -574,18 +589,9 @@ class PcbManager:
         value = _get_property(fp, "Value")
 
         pads: list[PadModel] = []
-        raw_pads = list(fp.pads)
-        for pad in raw_pads:
+        for pad in fp.pads:
             pad_h = pad.size.h if pad.size.h is not None else pad.size.w
-            pad_layers = list(pad.layers)
-            pad_type = str(getattr(pad, "type", "") or "")
-            if pad_type in {"thru_hole", "np_thru_hole"}:
-                # Through-hole copper/drill are synthesized into normal drawings.
-                # Keep pad metadata (name/position/size/net) but don't draw
-                # pads directly.
-                pad_layers = []
-            else:
-                pad_layers = _expand_layer_rules(pad_layers, known_layers=all_layers)
+            pad_layers = _expand_layer_rules(list(pad.layers), known_layers=all_layers)
             pads.append(
                 PadModel(
                     name=pad.name,
@@ -595,79 +601,19 @@ class PcbManager:
                     type=pad.type,
                     layers=pad_layers,
                     net=pad.net.number if pad.net else 0,
+                    hole=self._extract_pad_hole(pad),
                     roundrect_rratio=pad.roundrect_rratio,
                 )
             )
 
-        drawings: list[DrawingModel] = []
-        for line in fp.fp_lines:
-            layer = _get_layer(line)
-            sw = _stroke_width(line)
-            drawings.append(
-                DrawingModel(
-                    type="line",
-                    start=Point2(x=line.start.x, y=line.start.y),
-                    end=Point2(x=line.end.x, y=line.end.y),
-                    width=sw,
-                    layer=layer,
-                )
-            )
-        for arc in fp.fp_arcs:
-            layer = _get_layer(arc)
-            sw = _stroke_width(arc)
-            drawings.append(
-                DrawingModel(
-                    type="arc",
-                    start=Point2(x=arc.start.x, y=arc.start.y),
-                    mid=Point2(x=arc.mid.x, y=arc.mid.y),
-                    end=Point2(x=arc.end.x, y=arc.end.y),
-                    width=sw,
-                    layer=layer,
-                )
-            )
-        for circle in fp.fp_circles:
-            layer = _get_layer(circle)
-            sw = _stroke_width(circle)
-            drawings.append(
-                DrawingModel(
-                    type="circle",
-                    center=Point2(x=circle.center.x, y=circle.center.y),
-                    end=Point2(x=circle.end.x, y=circle.end.y),
-                    width=sw,
-                    layer=layer,
-                    filled=_is_filled(circle),
-                )
-            )
-        for rect in fp.fp_rects:
-            layer = _get_layer(rect)
-            sw = _stroke_width(rect)
-            drawings.append(
-                DrawingModel(
-                    type="rect",
-                    start=Point2(x=rect.start.x, y=rect.start.y),
-                    end=Point2(x=rect.end.x, y=rect.end.y),
-                    width=sw,
-                    layer=layer,
-                    filled=_is_filled(rect),
-                )
-            )
-        for poly in fp.fp_poly:
-            layer = _get_layer(poly)
-            sw = _stroke_width(poly)
-            pts = [Point2(x=p.x, y=p.y) for p in poly.pts.xys]
-            drawings.append(
-                DrawingModel(
-                    type="polygon",
-                    points=pts,
-                    width=sw,
-                    layer=layer,
-                    filled=_is_filled(poly),
-                )
-            )
-        drawings.extend(
-            self._synthesize_th_pad_copper_drawings(raw_pads, copper_layers)
+        drawings = self._extract_drawing_primitives(
+            lines=getattr(fp, "fp_lines", []),
+            arcs=getattr(fp, "fp_arcs", []),
+            circles=getattr(fp, "fp_circles", []),
+            rects=getattr(fp, "fp_rects", []),
+            polygons=getattr(fp, "fp_poly", []),
+            curves=getattr(fp, "fp_curves", []),
         )
-        drawings.extend(self._synthesize_pad_drill_drawings(raw_pads, copper_layers))
 
         texts = self._extract_text_entries(fp, ref, value)
         pad_names = self._extract_pad_name_annotations_for_footprint(
@@ -694,99 +640,15 @@ class PcbManager:
         )
 
     def _extract_global_drawings(self, pcb: kicad.pcb.KicadPcb) -> list[DrawingModel]:
-        drawings: list[DrawingModel] = []
-
-        for line in pcb.gr_lines:
-            if _on_layer(line, "Edge.Cuts"):
-                continue
-            layer = _get_layer(line)
-            sw = _stroke_width(line)
-            drawings.append(
-                DrawingModel(
-                    type="line",
-                    start=Point2(x=line.start.x, y=line.start.y),
-                    end=Point2(x=line.end.x, y=line.end.y),
-                    width=sw,
-                    layer=layer,
-                )
-            )
-
-        for arc in pcb.gr_arcs:
-            if _on_layer(arc, "Edge.Cuts"):
-                continue
-            layer = _get_layer(arc)
-            sw = _stroke_width(arc)
-            drawings.append(
-                DrawingModel(
-                    type="arc",
-                    start=Point2(x=arc.start.x, y=arc.start.y),
-                    mid=Point2(x=arc.mid.x, y=arc.mid.y),
-                    end=Point2(x=arc.end.x, y=arc.end.y),
-                    width=sw,
-                    layer=layer,
-                )
-            )
-
-        for circle in pcb.gr_circles:
-            if _on_layer(circle, "Edge.Cuts"):
-                continue
-            layer = _get_layer(circle)
-            sw = _stroke_width(circle)
-            drawings.append(
-                DrawingModel(
-                    type="circle",
-                    center=Point2(x=circle.center.x, y=circle.center.y),
-                    end=Point2(x=circle.end.x, y=circle.end.y),
-                    width=sw,
-                    layer=layer,
-                    filled=_is_filled(circle),
-                )
-            )
-
-        for rect in pcb.gr_rects:
-            if _on_layer(rect, "Edge.Cuts"):
-                continue
-            layer = _get_layer(rect)
-            sw = _stroke_width(rect)
-            drawings.append(
-                DrawingModel(
-                    type="rect",
-                    start=Point2(x=rect.start.x, y=rect.start.y),
-                    end=Point2(x=rect.end.x, y=rect.end.y),
-                    width=sw,
-                    layer=layer,
-                    filled=_is_filled(rect),
-                )
-            )
-
-        for poly in pcb.gr_polys:
-            if _on_layer(poly, "Edge.Cuts"):
-                continue
-            layer = _get_layer(poly)
-            sw = _stroke_width(poly)
-            drawings.append(
-                DrawingModel(
-                    type="polygon",
-                    points=[Point2(x=p.x, y=p.y) for p in poly.pts.xys],
-                    width=sw,
-                    layer=layer,
-                    filled=_is_filled(poly),
-                )
-            )
-
-        for curve in pcb.gr_curves:
-            if _on_layer(curve, "Edge.Cuts"):
-                continue
-            layer = _get_layer(curve)
-            sw = _stroke_width(curve)
-            drawings.append(
-                DrawingModel(
-                    type="curve",
-                    points=[Point2(x=p.x, y=p.y) for p in curve.pts.xys],
-                    width=sw,
-                    layer=layer,
-                )
-            )
+        drawings = self._extract_drawing_primitives(
+            lines=pcb.gr_lines,
+            arcs=pcb.gr_arcs,
+            circles=pcb.gr_circles,
+            rects=pcb.gr_rects,
+            polygons=pcb.gr_polys,
+            curves=pcb.gr_curves,
+            skip_edge_cuts=True,
+        )
 
         for tb in pcb.gr_text_boxes:
             if _is_hidden(tb) or not tb.border:
@@ -794,8 +656,7 @@ class PcbManager:
             sw = tb.stroke.width if tb.stroke else 0.12
             if tb.start is not None and tb.end is not None:
                 drawings.append(
-                    DrawingModel(
-                        type="rect",
+                    _rect_drawing(
                         start=Point2(x=tb.start.x, y=tb.start.y),
                         end=Point2(x=tb.end.x, y=tb.end.y),
                         width=sw,
@@ -804,8 +665,7 @@ class PcbManager:
                 )
             elif tb.pts is not None:
                 drawings.append(
-                    DrawingModel(
-                        type="polygon",
+                    _polygon_drawing(
                         points=[Point2(x=p.x, y=p.y) for p in tb.pts.xys],
                         width=sw,
                         layer=tb.layer,
@@ -821,8 +681,7 @@ class PcbManager:
                 else 0.12
             )
             drawings.append(
-                DrawingModel(
-                    type="curve",
+                _curve_drawing(
                     points=[Point2(x=p.x, y=p.y) for p in dimension.pts.xys],
                     width=thickness,
                     layer=dimension.layer,
@@ -834,8 +693,7 @@ class PcbManager:
             half_y = target.size.y / 2
             width = target.width if target.width is not None else 0.12
             drawings.append(
-                DrawingModel(
-                    type="line",
+                _line_drawing(
                     start=Point2(x=target.at.x - half_x, y=target.at.y),
                     end=Point2(x=target.at.x + half_x, y=target.at.y),
                     width=width,
@@ -843,8 +701,7 @@ class PcbManager:
                 )
             )
             drawings.append(
-                DrawingModel(
-                    type="line",
+                _line_drawing(
                     start=Point2(x=target.at.x, y=target.at.y - half_y),
                     end=Point2(x=target.at.x, y=target.at.y + half_y),
                     width=width,
@@ -869,8 +726,7 @@ class PcbManager:
                 )
                 if cell.start is not None and cell.end is not None:
                     drawings.append(
-                        DrawingModel(
-                            type="rect",
+                        _rect_drawing(
                             start=Point2(x=cell.start.x, y=cell.start.y),
                             end=Point2(x=cell.end.x, y=cell.end.y),
                             width=sw,
@@ -879,13 +735,101 @@ class PcbManager:
                     )
                 elif cell.pts is not None:
                     drawings.append(
-                        DrawingModel(
-                            type="polygon",
+                        _polygon_drawing(
                             points=[Point2(x=p.x, y=p.y) for p in cell.pts.xys],
                             width=sw,
                             layer=cell.layer,
                         )
                     )
+
+        return drawings
+
+    def _extract_drawing_primitives(
+        self,
+        *,
+        lines,
+        arcs,
+        circles,
+        rects,
+        polygons,
+        curves,
+        skip_edge_cuts: bool = False,
+    ) -> list[DrawingModel]:
+        drawings: list[DrawingModel] = []
+
+        for line in lines:
+            if skip_edge_cuts and _on_layer(line, "Edge.Cuts"):
+                continue
+            drawings.append(
+                _line_drawing(
+                    start=Point2(x=line.start.x, y=line.start.y),
+                    end=Point2(x=line.end.x, y=line.end.y),
+                    width=_stroke_width(line),
+                    layer=_get_layer(line),
+                )
+            )
+
+        for arc in arcs:
+            if skip_edge_cuts and _on_layer(arc, "Edge.Cuts"):
+                continue
+            drawings.append(
+                _arc_drawing(
+                    start=Point2(x=arc.start.x, y=arc.start.y),
+                    mid=Point2(x=arc.mid.x, y=arc.mid.y),
+                    end=Point2(x=arc.end.x, y=arc.end.y),
+                    width=_stroke_width(arc),
+                    layer=_get_layer(arc),
+                )
+            )
+
+        for circle in circles:
+            if skip_edge_cuts and _on_layer(circle, "Edge.Cuts"):
+                continue
+            drawings.append(
+                _circle_drawing(
+                    center=Point2(x=circle.center.x, y=circle.center.y),
+                    end=Point2(x=circle.end.x, y=circle.end.y),
+                    width=_stroke_width(circle),
+                    layer=_get_layer(circle),
+                    filled=_is_filled(circle),
+                )
+            )
+
+        for rect in rects:
+            if skip_edge_cuts and _on_layer(rect, "Edge.Cuts"):
+                continue
+            drawings.append(
+                _rect_drawing(
+                    start=Point2(x=rect.start.x, y=rect.start.y),
+                    end=Point2(x=rect.end.x, y=rect.end.y),
+                    width=_stroke_width(rect),
+                    layer=_get_layer(rect),
+                    filled=_is_filled(rect),
+                )
+            )
+
+        for poly in polygons:
+            if skip_edge_cuts and _on_layer(poly, "Edge.Cuts"):
+                continue
+            drawings.append(
+                _polygon_drawing(
+                    points=[Point2(x=p.x, y=p.y) for p in poly.pts.xys],
+                    width=_stroke_width(poly),
+                    layer=_get_layer(poly),
+                    filled=_is_filled(poly),
+                )
+            )
+
+        for curve in curves:
+            if skip_edge_cuts and _on_layer(curve, "Edge.Cuts"):
+                continue
+            drawings.append(
+                _curve_drawing(
+                    points=[Point2(x=p.x, y=p.y) for p in curve.pts.xys],
+                    width=_stroke_width(curve),
+                    layer=_get_layer(curve),
+                )
+            )
 
         return drawings
 
@@ -1220,8 +1164,7 @@ class PcbManager:
                     centerline_radius = (outer_diameter + drill_diameter) / 4.0
                     if annulus_thickness > 0 and centerline_radius > 0:
                         drawings.append(
-                            DrawingModel(
-                                type="circle",
+                            _circle_drawing(
                                 center=Point2(x=via.at.x, y=via.at.y),
                                 end=Point2(x=via.at.x + centerline_radius, y=via.at.y),
                                 width=annulus_thickness,
@@ -1231,8 +1174,7 @@ class PcbManager:
                         )
                         continue
                 drawings.append(
-                    DrawingModel(
-                        type="circle",
+                    _circle_drawing(
                         center=Point2(x=via.at.x, y=via.at.y),
                         end=Point2(x=via.at.x + outer_diameter / 2.0, y=via.at.y),
                         width=0.0,
@@ -1253,203 +1195,6 @@ class PcbManager:
                         cx=via.at.x,
                         cy=via.at.y,
                         rotation_deg=0.0,
-                        hole=hole,
-                        layer=drill_layer,
-                    )
-                )
-        return drawings
-
-    def _synthesize_th_pad_copper_drawings(
-        self, pads: list, copper_layer_stack: list[str]
-    ) -> list[DrawingModel]:
-        drawings: list[DrawingModel] = []
-        for pad in pads:
-            pad_type = str(getattr(pad, "type", "") or "")
-            if pad_type != "thru_hole":
-                continue
-
-            pad_at = getattr(pad, "at", None)
-            pad_size = getattr(pad, "size", None)
-            if pad_at is None or pad_size is None:
-                continue
-
-            cx = _safe_float(getattr(pad_at, "x", None))
-            cy = _safe_float(getattr(pad_at, "y", None))
-            if cx is None or cy is None:
-                continue
-
-            pad_w = _safe_float(getattr(pad_size, "w", None))
-            pad_h = _safe_float(getattr(pad_size, "h", None))
-            if pad_w is None:
-                continue
-            if pad_h is None:
-                pad_h = pad_w
-            if pad_w <= 0 or pad_h <= 0:
-                continue
-
-            pad_rotation = _safe_float(getattr(pad_at, "r", None)) or 0.0
-            pad_shape = str(getattr(pad, "shape", "") or "").strip().lower()
-            pad_copper_layers = _expand_copper_layers(
-                list(getattr(pad, "layers", []) or []),
-                all_copper_layers=copper_layer_stack,
-                include_between=True,
-            )
-            if not pad_copper_layers:
-                continue
-
-            hole = self._extract_pad_hole(pad)
-            hole_diameter = 0.0
-            if hole is not None:
-                sx = _safe_float(hole.size_x) or 0.0
-                sy = _safe_float(hole.size_y) or sx
-                hole_diameter = max(sx, sy)
-
-            for copper_layer in pad_copper_layers:
-                if pad_shape == "circle":
-                    outer_diameter = max(pad_w, pad_h)
-                    if hole_diameter > 0 and outer_diameter > hole_diameter:
-                        annulus_thickness = (outer_diameter - hole_diameter) / 2.0
-                        centerline_radius = (outer_diameter + hole_diameter) / 4.0
-                        if annulus_thickness > 0 and centerline_radius > 0:
-                            drawings.append(
-                                DrawingModel(
-                                    type="circle",
-                                    center=Point2(x=cx, y=cy),
-                                    end=Point2(x=cx + centerline_radius, y=cy),
-                                    width=annulus_thickness,
-                                    layer=copper_layer,
-                                    filled=False,
-                                )
-                            )
-                            continue
-                    drawings.append(
-                        DrawingModel(
-                            type="circle",
-                            center=Point2(x=cx, y=cy),
-                            end=Point2(x=cx + outer_diameter / 2.0, y=cy),
-                            width=0.0,
-                            layer=copper_layer,
-                            filled=True,
-                        )
-                    )
-                    continue
-
-                if pad_shape == "oval":
-                    major = max(pad_w, pad_h)
-                    minor = min(pad_w, pad_h)
-                    if hole is not None:
-                        hsx = _safe_float(hole.size_x) or 0.0
-                        hsy = _safe_float(hole.size_y) or hsx
-                        inner_major = max(hsx, hsy)
-                        inner_minor = min(hsx, hsy)
-                        if (
-                            inner_major > 0
-                            and inner_minor > 0
-                            and major > inner_major
-                            and minor > inner_minor
-                        ):
-                            delta_major = major - inner_major
-                            delta_minor = minor - inner_minor
-                            if abs(delta_major - delta_minor) <= 1e-3:
-                                # `delta_*` are diameter deltas and line width is
-                                # full stroke width. Annulus radial thickness is
-                                # delta/2, so stroke width is delta/2.
-                                annulus_thickness = (delta_major + delta_minor) / 4.0
-                                center_major = (major + inner_major) / 2.0
-                                center_minor = (minor + inner_minor) / 2.0
-                                if (
-                                    annulus_thickness > 0
-                                    and center_major > 0
-                                    and center_minor > 0
-                                ):
-                                    ring_points_local = _capsule_outline_points(
-                                        center_major,
-                                        center_minor,
-                                        horizontal=pad_w >= pad_h,
-                                    )
-                                    ring_points = []
-                                    for pt in ring_points_local:
-                                        rx, ry = _rotate_kicad_xy(
-                                            pt[0], pt[1], pad_rotation
-                                        )
-                                        ring_points.append(Point2(x=cx + rx, y=cy + ry))
-                                    drawings.append(
-                                        DrawingModel(
-                                            type="curve",
-                                            points=ring_points,
-                                            width=annulus_thickness,
-                                            layer=copper_layer,
-                                            filled=False,
-                                        )
-                                    )
-                                    continue
-
-                    focal = max(0.0, (major - minor) / 2.0)
-                    if pad_w >= pad_h:
-                        p1_local = (-focal, 0.0)
-                        p2_local = (focal, 0.0)
-                    else:
-                        p1_local = (0.0, -focal)
-                        p2_local = (0.0, focal)
-                    p1r = _rotate_kicad_xy(p1_local[0], p1_local[1], pad_rotation)
-                    p2r = _rotate_kicad_xy(p2_local[0], p2_local[1], pad_rotation)
-                    drawings.append(
-                        DrawingModel(
-                            type="line",
-                            start=Point2(x=cx + p1r[0], y=cy + p1r[1]),
-                            end=Point2(x=cx + p2r[0], y=cy + p2r[1]),
-                            width=minor,
-                            layer=copper_layer,
-                        )
-                    )
-                    continue
-
-                hw = pad_w / 2.0
-                hh = pad_h / 2.0
-                corners_local = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
-                points: list[Point2] = []
-                for lx, ly in corners_local:
-                    rx, ry = _rotate_kicad_xy(lx, ly, pad_rotation)
-                    points.append(Point2(x=cx + rx, y=cy + ry))
-                drawings.append(
-                    DrawingModel(
-                        type="polygon",
-                        points=points,
-                        width=0.0,
-                        layer=copper_layer,
-                        filled=True,
-                    )
-                )
-
-        return drawings
-
-    def _synthesize_pad_drill_drawings(
-        self, pads: list, copper_layers: list[str]
-    ) -> list[DrawingModel]:
-        drawings: list[DrawingModel] = []
-        for pad in pads:
-            hole = self._extract_pad_hole(pad)
-            if hole is None:
-                continue
-
-            pad_at = getattr(pad, "at", None)
-            if pad_at is None:
-                continue
-            offset = hole.offset or Point2(x=0.0, y=0.0)
-            pad_rotation = _safe_float(getattr(pad_at, "r", None)) or 0.0
-            rox, roy = _rotate_kicad_xy(offset.x, offset.y, pad_rotation)
-            cx = (_safe_float(getattr(pad_at, "x", None)) or 0.0) + rox
-            cy = (_safe_float(getattr(pad_at, "y", None)) or 0.0) + roy
-            for drill_layer in _drill_layers_from_copper_layers(
-                list(getattr(pad, "layers", []) or []),
-                all_copper_layers=copper_layers,
-                include_between=True,
-            ):
-                drawings.extend(
-                    _drill_hole_drawings(
-                        cx=cx,
-                        cy=cy,
-                        rotation_deg=pad_rotation,
                         hole=hole,
                         layer=drill_layer,
                     )
@@ -1562,6 +1307,93 @@ def _stroke_width(obj, default: float = 0.12) -> float:
     if width_value < 0:
         return 0.0
     return width_value
+
+
+def _line_drawing(
+    *, start: Point2, end: Point2, width: float, layer: str | None, filled: bool = False
+) -> DrawingModel:
+    return LineDrawingModel(
+        start=start,
+        end=end,
+        width=width,
+        layer=layer,
+        filled=filled,
+    )
+
+
+def _arc_drawing(
+    *,
+    start: Point2,
+    mid: Point2,
+    end: Point2,
+    width: float,
+    layer: str | None,
+    filled: bool = False,
+) -> DrawingModel:
+    return ArcDrawingModel(
+        start=start,
+        mid=mid,
+        end=end,
+        width=width,
+        layer=layer,
+        filled=filled,
+    )
+
+
+def _circle_drawing(
+    *,
+    center: Point2,
+    end: Point2,
+    width: float,
+    layer: str | None,
+    filled: bool = False,
+) -> DrawingModel:
+    return CircleDrawingModel(
+        center=center,
+        end=end,
+        width=width,
+        layer=layer,
+        filled=filled,
+    )
+
+
+def _rect_drawing(
+    *,
+    start: Point2,
+    end: Point2,
+    width: float,
+    layer: str | None,
+    filled: bool = False,
+) -> DrawingModel:
+    return RectDrawingModel(
+        start=start,
+        end=end,
+        width=width,
+        layer=layer,
+        filled=filled,
+    )
+
+
+def _polygon_drawing(
+    *, points: list[Point2], width: float, layer: str | None, filled: bool = False
+) -> DrawingModel:
+    return PolygonDrawingModel(
+        points=points,
+        width=width,
+        layer=layer,
+        filled=filled,
+    )
+
+
+def _curve_drawing(
+    *, points: list[Point2], width: float, layer: str | None, filled: bool = False
+) -> DrawingModel:
+    return CurveDrawingModel(
+        points=points,
+        width=width,
+        layer=layer,
+        filled=filled,
+    )
 
 
 def _estimate_stroke_text_advance(text: str) -> float:
@@ -1957,6 +1789,17 @@ def _build_layer_models(
 ) -> list[LayerModel]:
     # Include all board-defined layers plus any synthesized layers from scene geometry.
     layer_ids = _collect_scene_layers(model)
+    for fp in model.footprints:
+        for pad in fp.pads:
+            if pad.hole is None:
+                continue
+            layer_ids.update(
+                _drill_layers_from_copper_layers(
+                    pad.layers,
+                    all_copper_layers=copper_layers,
+                    include_between=True,
+                )
+            )
     layer_ids.update(all_layers)
     layer_ids = {layer for layer in layer_ids if layer}
 
@@ -2050,42 +1893,6 @@ def _expand_copper_layers(
     return [*ordered_known, *unknown]
 
 
-def _capsule_outline_points(
-    major: float,
-    minor: float,
-    *,
-    horizontal: bool,
-    arc_steps: int = 12,
-) -> list[tuple[float, float]]:
-    major = max(0.0, major)
-    minor = max(0.0, minor)
-    if major <= 0 or minor <= 0:
-        return []
-
-    radius = minor / 2.0
-    half_span = max(0.0, (major - minor) / 2.0)
-
-    points: list[tuple[float, float]] = []
-    for i in range(arc_steps + 1):
-        angle = math.pi / 2.0 - (math.pi * i / arc_steps)
-        x = half_span + radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        points.append((x, y))
-    for i in range(arc_steps + 1):
-        angle = -math.pi / 2.0 + (math.pi * i / arc_steps)
-        # Left cap must bulge to negative X; use mirrored cosine term.
-        x = -half_span - radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        points.append((x, y))
-
-    if not horizontal:
-        points = [(-y, x) for x, y in points]
-
-    if points and points[0] != points[-1]:
-        points.append(points[0])
-    return points
-
-
 def _drill_layers_from_copper_layers(
     layers: list[str] | None,
     *,
@@ -2124,8 +1931,7 @@ def _drill_hole_drawings(
     is_oval = shape in {"oval", "slot", "oblong"} or abs(sx - sy) > 1e-6
     if not is_oval:
         return [
-            DrawingModel(
-                type="circle",
+            _circle_drawing(
                 center=Point2(x=cx, y=cy),
                 end=Point2(x=cx + sx / 2.0, y=cy),
                 width=0.0,
@@ -2146,8 +1952,7 @@ def _drill_hole_drawings(
     p1r = _rotate_kicad_xy(p1_local[0], p1_local[1], rotation_deg)
     p2r = _rotate_kicad_xy(p2_local[0], p2_local[1], rotation_deg)
     return [
-        DrawingModel(
-            type="line",
+        _line_drawing(
             start=Point2(x=cx + p1r[0], y=cy + p1r[1]),
             end=Point2(x=cx + p2r[0], y=cy + p2r[1]),
             width=minor,
