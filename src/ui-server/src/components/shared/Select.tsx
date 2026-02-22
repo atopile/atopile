@@ -1,3 +1,5 @@
+// TODO: Add keyboard navigation (arrow keys, type-ahead) if used in
+//       VS Code extension webviews where keyboard accessibility matters.
 import {
   createContext,
   useContext,
