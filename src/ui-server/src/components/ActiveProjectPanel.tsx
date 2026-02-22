@@ -727,7 +727,7 @@ function NewProjectForm({
     }
   }
 
-  const isValid = name.trim().length > 0
+  const isValid = name.trim().length > 0 && parentDirectory.trim().length > 0
 
   return (
     <form className="new-project-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
@@ -765,7 +765,7 @@ function NewProjectForm({
       </div>
 
       <div className="form-field">
-        <label htmlFor="project-path">Location</label>
+        <label htmlFor="project-path">Location <span className="required">*</span></label>
         <div className="form-path-input">
           <input
             id="project-path"
@@ -775,6 +775,7 @@ function NewProjectForm({
             onChange={(e) => setParentDirectory(e.target.value)}
             disabled={isCreating}
             title={parentDirectory}
+            required
           />
           <button
             type="button"

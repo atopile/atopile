@@ -1,5 +1,5 @@
 """
-Atopile Server - FastAPI backend for the atopile VS Code extension.
+atopile Server - FastAPI backend for the atopile VS Code extension.
 
 This package provides:
 - REST API endpoints for projects, builds, packages

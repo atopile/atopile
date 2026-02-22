@@ -331,7 +331,7 @@ export interface BOMParameter {
 }
 
 export interface BOMUsage {
-  address: string;      // Atopile address e.g., "App.power_supply.r_top"
+  address: string;      // atopile address e.g., "App.power_supply.r_top"
   designator: string;   // e.g., "R1"
 }
 
@@ -433,6 +433,7 @@ export interface InstalledPartsResponse {
 export interface AppState {
   // Connection
   isConnected: boolean;
+  hasEverConnected: boolean;
 
   // Projects (from ato.yaml)
   projects: Project[];
@@ -489,7 +490,7 @@ export interface AppState {
   activeEditorFile: string | null;
   lastAtoFile: string | null;  // Last focused .ato file (persists when switching to non-.ato files)
 
-  // Atopile configuration
+  // atopile configuration
   atopile: {
     // Actual running atopile info
     actualVersion: string | null;
