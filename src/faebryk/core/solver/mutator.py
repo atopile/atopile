@@ -882,30 +882,35 @@ def _seed_superset_bounds(
     Literals are recreated in the target graph rather than copied across graphs,
     because cross-graph copy_into loses unit references.
     """
-    new_input_set = set(forward_mapping.keys())
+    # Only seed parameters that exist in both the old and new relevance sets
+    shared_params = {
+        po
+        for po in (initial_state.input_operables & forward_mapping.keys())
+        if po.as_parameter.try_get()
+    }
+
     seeded = 0
-    for po in initial_state.input_operables:
-        if po not in new_input_set:
+    for po in shared_params:
+        if (
+            ss_lit := initial_state.try_extract_superset(po, domain_default=False)
+        ) is None:
             continue
-        if po.as_parameter.try_get() is None:
-            continue
-        ss_lit = initial_state.try_extract_superset(po, domain_default=False)
-        if ss_lit is None:
+        lit_node = fabll.Traits(ss_lit).get_obj_raw()
+        if (numbers := lit_node.try_cast(F.Literals.Numbers)) is None:
             continue
         new_po = forward_mapping[po]
-        lit_node = fabll.Traits(ss_lit).get_obj_raw()
-        numbers = lit_node.try_cast(F.Literals.Numbers)
-        if numbers is None:
-            continue
-        min_val = numbers.get_min_value()
-        max_val = numbers.get_max_value()
         target_unit_t = new_po.try_get_sibling_trait(F.Units.has_unit)
         target_unit = target_unit_t.get_is_unit() if target_unit_t else None
         new_lit = F.Literals.Numbers.create_instance(
             g=g_out, tg=tg_out
-        ).setup_from_min_max(min=min_val, max=max_val, unit=target_unit)
+        ).setup_from_min_max(
+            min=numbers.get_min_value(),
+            max=numbers.get_max_value(),
+            unit=target_unit,
+        )
         new_po.set_superset(g=g_out, value=new_lit)
         seeded += 1
+
     if seeded:
         logger.debug(f"Seeded {seeded} superset bounds from previous solve")
 
