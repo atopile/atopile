@@ -21,15 +21,15 @@ Core frontend loop:
 
 ```bash
 cd src/ui-server
-npm run test
-npm run build
+bun run test
+bun run build
 ```
 
 Optional standalone/canvas app loop (specialized):
 
 ```bash
 cd src/atopile/visualizer/web
-npm run build
+bun run build
 ```
 
 Extension compile/install loop:
@@ -355,7 +355,7 @@ Agents should self-test in browser webview flow first:
 
 ```bash
 cd src/ui-server
-npm run dev:all
+bun run dev:all
 ```
 
 Then:
@@ -480,7 +480,7 @@ Use these as concrete build patterns when starting a new feature.
 - Add module styles only if existing style modules cannot express the feature.
 
 6. Validation
-- Browser flow via `npm run dev:all`.
+- Browser flow via `bun run dev:all`.
 - Capture at least one screenshot per critical panel state.
 - Ensure no unapproved `ui-logs` errors.
 
@@ -689,7 +689,7 @@ A feature is done only when all are true:
 - [ ] Pydantic models updated for API/WS changes
 - [ ] Generated TS schema/types regenerated and committed
 - [ ] WS reconnect/resync behavior verified
-- [ ] Browser dev viewer flow validated (`npm run dev:all`)
+- [ ] Browser dev viewer flow validated (`bun run dev:all`)
 - [ ] Screenshots + UI logs reviewed (no unapproved runtime errors)
 - [ ] Added/updated: store test, transport test, UI interaction test
 - [ ] Asked user to test in extension host only after browser checks passed
