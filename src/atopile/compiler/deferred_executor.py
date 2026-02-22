@@ -142,10 +142,9 @@ class DeferredExecutor:
                 )
 
             # Apply inheritance
-            self._tg.copy_type_structure(
+            self._tg.merge_types(
                 target=item.derived_type,
                 source=parent_type,
-                skip_identifiers=list(item.auto_generated_ids),
             )
 
     def _execute_retypes(self) -> None:

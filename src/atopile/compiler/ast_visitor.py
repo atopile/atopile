@@ -381,7 +381,7 @@ class _TypeContextStack:
         assert action.child_field is not None
 
         action.child_field._set_locator(action.get_identifier())
-        action.child_field._soft_create = action.soft_create
+
         fabll.Node._exec_field(
             t=bound_tg,
             field=action.child_field,
@@ -867,13 +867,6 @@ class ASTVisitor:
         self._state.type_bound_tgs[type_identifier] = type_node_bound_tg
         self._state.constraining_expr_types[type_identifier] = constraint_expr
 
-        # Capture compiler-internal identifiers before we process statements
-        auto_generated_ids = frozenset(
-            id
-            for id, _ in self._tg.collect_make_children(type_node=type_node)
-            if id is not None
-        )
-
         # Capture inheritance relationship for deferred resolution
         if (super_type_name := node.get_super_type_ref_name()) is not None:
             super_symbol = self._scope_stack.try_resolve_symbol(super_type_name)
@@ -892,7 +885,6 @@ class ASTVisitor:
                     derived_name=module_name,
                     parent_ref=(import_ref if import_ref else super_type_name),
                     source_order=len(self._state.pending_inheritance),
-                    auto_generated_ids=auto_generated_ids,
                     source_node=node,
                 )
             )
@@ -1211,9 +1203,6 @@ class ASTVisitor:
                     param_child=param_spec.param_child,
                     constraint_operand=param_spec.operand,
                     constraint_expr=self._type_stack.constraint_expr,
-                    # parameter assignment implicitly creates the parameter, if it
-                    # doesn't exist already
-                    soft_create=True,
                     source_chunk_node=node.source.get(),
                 )
             case _:
