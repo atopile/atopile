@@ -17,7 +17,7 @@ from faebryk.libs.picker.api.models import (
     LCSCParams,
     ManufacturerPartParams,
 )
-from faebryk.libs.util import ConfigFlag, once
+from faebryk.libs.util import ConfigFlag, groupby, once
 
 logger = logging.getLogger(__name__)
 
@@ -148,17 +148,40 @@ class ApiClient:
         assert params.endpoint
         return self.query_parts(params.endpoint, params)
 
+    _query_cache: dict[str, list["Component"]] = {}
+
     def fetch_parts_multiple(
         self,
         params: list[BaseParams | LCSCParams | ManufacturerPartParams] | list[dict],
     ) -> list[list["Component"]]:
-        # TODO: batch queries
         query = [p.serialize() if not isinstance(p, dict) else p for p in params]
-        response = self._post("/v0/query", {"queries": query})
-        results = [
-            [Component.from_dict(part) for part in result["components"]]  # type: ignore
-            for result in response.json()["results"]
-        ]
+        keys = [json.dumps(q, sort_keys=True) for q in query]
+
+        cached_or_not = groupby(
+            enumerate(query),
+            key=lambda iq: keys[iq[0]] in self._query_cache,
+        )
+        cached = cached_or_not.get(True, [])
+        uncached = cached_or_not.get(False, [])
+
+        results: list[list[Component]] = [[] for _ in query]
+        for i, _ in cached:
+            results[i] = self._query_cache[keys[i]]
+
+        if uncached:
+            uncached_indices, uncached_queries = zip(*uncached)
+            response = self._post("/v0/query", {"queries": list(uncached_queries)})
+            api_results = [
+                [Component.from_dict(part) for part in result["components"]]
+                for result in response.json()["results"]
+            ]
+            if len(api_results) != len(uncached_queries):
+                raise ApiError(
+                    f"Expected {len(uncached_queries)} results, got {len(api_results)}"
+                )
+            for idx, result in zip(uncached_indices, api_results):
+                self._query_cache[keys[idx]] = result
+                results[idx] = result
 
         if len(results) != len(params):
             raise ApiError(f"Expected {len(params)} results, got {len(results)}")
