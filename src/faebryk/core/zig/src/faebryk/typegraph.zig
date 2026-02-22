@@ -844,6 +844,15 @@ pub const TypeGraph = struct {
         return make_link;
     }
 
+    fn pathsEqual(a: []const ChildReferenceNode.EdgeTraversal, b: []const ChildReferenceNode.EdgeTraversal) bool {
+        if (a.len != b.len) return false;
+        for (a, b) |sa, sb| {
+            if (sa.edge_type != sb.edge_type) return false;
+            if (!std.mem.eql(u8, sa.identifier, sb.identifier)) return false;
+        }
+        return true;
+    }
+
     /// Merge MakeChild and MakeLink nodes from source_type into target_type.
     /// When a source child's identifier already exists on the target,
     /// the target's child wins silently (source child is not copied).
@@ -891,7 +900,12 @@ pub const TypeGraph = struct {
             }
         }
 
-        // Copy MakeLink nodes from source
+        // Copy MakeLink nodes from source, dedup by (edge_type, lhs_path, rhs_path)
+        const target_links = self.collect_make_links(allocator, target_type) catch return;
+        defer {
+            for (target_links) |info| { allocator.free(info.lhs_path); allocator.free(info.rhs_path); }
+            allocator.free(target_links);
+        }
         const source_links = self.collect_make_links(allocator, source_type) catch return;
         defer {
             for (source_links) |link_info| {
@@ -902,6 +916,15 @@ pub const TypeGraph = struct {
         }
 
         for (source_links) |link_info| {
+            const src_et = MakeLinkNode.Attributes.of(link_info.make_link).get_edge_type();
+            const dup = for (target_links) |t| {
+                if (src_et != MakeLinkNode.Attributes.of(t.make_link).get_edge_type()) continue;
+                if (!pathsEqual(link_info.lhs_path, t.lhs_path)) continue;
+                if (!pathsEqual(link_info.rhs_path, t.rhs_path)) continue;
+                break true;
+            } else false;
+            if (dup) continue;
+
             const self_ref_path = [_]ChildReferenceNode.EdgeTraversal{EdgeComposition.traverse("")};
             const lhs_path = if (link_info.lhs_path.len == 0) &self_ref_path else link_info.lhs_path;
             const rhs_path = if (link_info.rhs_path.len == 0) &self_ref_path else link_info.rhs_path;
@@ -2955,4 +2978,126 @@ test "resolve path through trait and pointer edges" {
     std.debug.print("  - Trait->Composition->Pointer path works\n", .{});
     std.debug.print("  - Mixed Composition->Trait->Composition->Pointer path works\n", .{});
     std.debug.print("  - Composition-only path works\n", .{});
+}
+
+test "merge_types deduplicates MakeLink nodes" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+    var tg = TypeGraph.init(&g);
+
+    // Create child types
+    const Inner = try tg.add_type("Inner");
+    tg.mark_constructable(Inner);
+
+    // Parent type with children "a" and "b", and a MakeLink a->b
+    const Parent = try tg.add_type("Parent");
+    _ = try tg.add_make_child(Parent, Inner, "a", null);
+    _ = try tg.add_make_child(Parent, Inner, "b", null);
+    const parent_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("a")});
+    const parent_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("b")});
+    const parent_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Parent, parent_lhs, parent_rhs, parent_link_attrs);
+
+    // Child type also has children "a" and "b", and its own MakeLink a->b (same edge_type, same lhs_path)
+    const Child = try tg.add_type("Child");
+    _ = try tg.add_make_child(Child, Inner, "a", null);
+    _ = try tg.add_make_child(Child, Inner, "b", null);
+    const child_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("a")});
+    const child_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("b")});
+    const child_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Child, child_lhs, child_rhs, child_link_attrs);
+
+    // Before merge: Child has 1 MakeLink
+    const before = tg.collect_make_links(a, Child) catch return error.CollectFailed;
+    defer {
+        for (before) |info| {
+            a.free(info.lhs_path);
+            a.free(info.rhs_path);
+        }
+        a.free(before);
+    }
+    try std.testing.expectEqual(@as(usize, 1), before.len);
+
+    // Merge Parent into Child (simulating inheritance)
+    tg.merge_types(Child, Parent);
+
+    // After merge: Child should still have only 1 MakeLink (target wins, parent's duplicate skipped)
+    const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;
+    defer {
+        for (after) |info| {
+            a.free(info.lhs_path);
+            a.free(info.rhs_path);
+        }
+        a.free(after);
+    }
+    try std.testing.expectEqual(@as(usize, 1), after.len);
+
+    // Verify the surviving link's lhs_path is "a"
+    try std.testing.expectEqual(@as(usize, 1), after[0].lhs_path.len);
+    try std.testing.expectEqualStrings("a", after[0].lhs_path[0].identifier);
+}
+
+test "merge_types copies non-duplicate MakeLink nodes" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+    var tg = TypeGraph.init(&g);
+
+    const Inner = try tg.add_type("Inner2");
+    tg.mark_constructable(Inner);
+
+    // Parent type with children "x" and "y", and a MakeLink x->y
+    const Parent = try tg.add_type("Parent2");
+    _ = try tg.add_make_child(Parent, Inner, "x", null);
+    _ = try tg.add_make_child(Parent, Inner, "y", null);
+    const parent_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("x")});
+    const parent_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("y")});
+    const parent_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Parent, parent_lhs, parent_rhs, parent_link_attrs);
+
+    // Child type with children "a" and "b", and a MakeLink a->b (different lhs_path from parent)
+    const Child = try tg.add_type("Child2");
+    _ = try tg.add_make_child(Child, Inner, "a", null);
+    _ = try tg.add_make_child(Child, Inner, "b", null);
+    _ = try tg.add_make_child(Child, Inner, "x", null);
+    _ = try tg.add_make_child(Child, Inner, "y", null);
+    const child_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("a")});
+    const child_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("b")});
+    const child_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Child, child_lhs, child_rhs, child_link_attrs);
+
+    // Merge Parent into Child
+    tg.merge_types(Child, Parent);
+
+    // After merge: Child should have 2 MakeLinks (a->b from child + x->y from parent)
+    const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;
+    defer {
+        for (after) |info| {
+            a.free(info.lhs_path);
+            a.free(info.rhs_path);
+        }
+        a.free(after);
+    }
+    try std.testing.expectEqual(@as(usize, 2), after.len);
 }
