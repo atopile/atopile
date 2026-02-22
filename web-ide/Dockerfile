@@ -131,7 +131,7 @@ COPY --chown=openvscode-server:openvscode-server \
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/setup/ /tmp/setup/
 COPY --chown=openvscode-server:openvscode-server \
-    web-ide/workspace/ /home/openvscode-server/workspace/
+    examples/quickstart/ /home/openvscode-server/workspace/
 
 # Copy built artifacts last — these change on every source commit and invalidate
 # all subsequent layers, so keep them right before the RUN that consumes them.

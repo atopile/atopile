@@ -37,5 +37,12 @@ test-report*.html
 .github
 docs
 test
-examples
+examples/equations
+examples/esp32_minimal
+examples/fabll_minimal
+examples/i2c
+examples/layout_reuse
+examples/led_badge
+examples/passives
+examples/pick_parts
 dockerfiles

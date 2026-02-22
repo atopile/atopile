@@ -66,6 +66,12 @@ rm -rf "${EXT_DIR}"/git
 rm -rf "${EXT_DIR}"/git-base
 rm -rf "${EXT_DIR}"/github*
 
+# Copilot / Chat — built-in AI features not applicable in web-ide
+rm -rf "${EXT_DIR}"/github.copilot*
+rm -rf "${EXT_DIR}"/copilot*
+rm -rf "${EXT_DIR}"/mermaid-chat-features
+rm -rf "${EXT_DIR}"/prompt-basics
+
 # Misc — tunnel forwarding (network escape), config editing (settings bypass)
 rm -rf "${EXT_DIR}"/tunnel-forwarding
 rm -rf "${EXT_DIR}"/configuration-editing
@@ -77,13 +83,20 @@ ${OVSCODE} --list-extensions --extensions-dir "${EXT_DIR}"
 /tmp/branding/apply-branding.sh
 
 # ── 5. Place config files ────────────────────────────────────────
-# Machine settings — editor defaults that the user cannot override
-mkdir -p "${OPENVSCODE_SERVER_ROOT}/data/Machine"
-cp /tmp/scripts/settings.json "${OPENVSCODE_SERVER_ROOT}/data/Machine/settings.json"
+# openvscode-server uses ${HOME}/.openvscode-server/data/ as user-data-dir at runtime.
+# ${OPENVSCODE_SERVER_ROOT}/data/ is the server installation dir — settings written
+# there are NOT read by VS Code. Confirmed by inspecting the running process.
 
+# Machine settings — editor defaults that the user cannot override via the UI
+USER_DATA_DIR="${HOME}/.openvscode-server/data"
+mkdir -p "${USER_DATA_DIR}/Machine"
+cp /tmp/scripts/settings.json "${USER_DATA_DIR}/Machine/settings.json"
+
+# User settings — workbench.colorTheme is window-scoped, must live here (not Machine)
 # User keybindings
-mkdir -p "${OPENVSCODE_SERVER_ROOT}/data/User"
-cp /tmp/scripts/keybindings.json "${OPENVSCODE_SERVER_ROOT}/data/User/keybindings.json"
+mkdir -p "${USER_DATA_DIR}/User"
+echo '{"workbench.colorTheme": "Default Dark Modern"}' > "${USER_DATA_DIR}/User/settings.json"
+cp /tmp/scripts/keybindings.json "${USER_DATA_DIR}/User/keybindings.json"
 
 # Entrypoint + Caddy config
 mkdir -p "${HOME}/.local/etc"

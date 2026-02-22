@@ -905,6 +905,24 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     /**
+     * Ask the backend to load a PCB file into the layout editor.
+     * Uses the internal URL (extension host → backend directly, no Caddy).
+     */
+    async loadLayout(projectRoot: string, target: string = 'default'): Promise<boolean> {
+        try {
+            const response = await axios.post(
+                `${this._internalApiUrl}/api/layout/load`,
+                { project_root: projectRoot, target },
+                { timeout: 5000 },
+            );
+            return response.status === 200;
+        } catch (err) {
+            traceError(`BackendServer: Failed to load layout: ${err}`);
+            return false;
+        }
+    }
+
+    /**
      * Send a message to the webview (for forwarding to backend via WebSocket).
      */
     sendToWebview(message: Record<string, unknown>): void {

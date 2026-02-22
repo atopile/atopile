@@ -210,6 +210,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Auto-focus the atopile sidebar (web-ide: immediate visual context)
     vscode.commands.executeCommand('workbench.view.extension.atopile-explorer');
+
+    // web-ide: open main .ato file and layout on first start
+    if (process.env.ATOPILE_BACKEND_PORT && !context.globalState.get('webIde.initialOpened')) {
+        await context.globalState.update('webIde.initialOpened', true);
+
+        // Open .ato file and close chat sidebar immediately — no backend needed
+        const atoFiles = await vscode.workspace.findFiles('*.ato', undefined, 1);
+        if (atoFiles.length > 0) {
+            await vscode.window.showTextDocument(atoFiles[0], { preview: false });
+        }
+        await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+
+        // Defer layout open until the backend WebSocket is connected.
+        // startBackend() only waits for the HTTP health check; the layout editor
+        // needs /ws/layout to be ready, which is guaranteed once the sidebar's
+        // /ws/state connection (onStatusChange) is established.
+        const openLayout = async () => {
+            // Pre-load the PCB into the backend before opening the layout editor.
+            // Without this the backend has no PCB loaded and the editor shows empty.
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (workspaceRoot) {
+                await backendServer.loadLayout(workspaceRoot);
+            }
+            return vscode.commands.executeCommand('atopile.kicanvas_preview');
+        };
+        if (backendServer.isConnected) {
+            await openLayout();
+        } else {
+            const d = backendServer.onStatusChange(async (connected) => {
+                if (connected) {
+                    d.dispose();
+                    await openLayout();
+                }
+            });
+            context.subscriptions.push(d);
+        }
+    }
 }
 
 export async function deactivate(): Promise<void> {

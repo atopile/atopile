@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from atopile.layout_server.models import (
     ActionRequest,
@@ -19,6 +21,7 @@ from atopile.layout_server.models import (
     WsMessage,
 )
 from atopile.server.domains.layout import layout_service
+from atopile.server.path_utils import resolve_layout_path
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +31,25 @@ router = APIRouter(tags=["layout"])
 def _require_loaded() -> None:
     if not layout_service.is_loaded:
         raise HTTPException(status_code=404, detail="No PCB loaded in layout editor")
+
+
+class LoadRequest(BaseModel):
+    project_root: str
+    target: str = "default"
+
+
+@router.post("/api/layout/load", response_model=StatusResponse)
+async def load_layout(req: LoadRequest) -> StatusResponse:
+    """Load a PCB file into the layout editor by project root and target name."""
+    path = resolve_layout_path(Path(req.project_root), req.target)
+    if not path or not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Layout not found for target: {req.target} in {req.project_root}",
+        )
+    await asyncio.to_thread(layout_service.load, path)
+    await layout_service.start_watcher()
+    return StatusResponse(status="ok")
 
 
 @router.get("/api/layout/render-model", response_model=RenderModel)
