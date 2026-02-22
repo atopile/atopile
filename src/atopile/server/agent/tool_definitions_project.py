@@ -435,64 +435,10 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
-            "name": "project_create_file",
-            "description": (
-                "Create an in-scope file (same policy as project_create_path). "
-                "Allowed file extensions: .ato, .md, and .py (restricted to "
-                "src/faebryk/library for fabll modules)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "content": {"type": "string", "default": ""},
-                    "overwrite": {"type": "boolean", "default": False},
-                    "parents": {"type": "boolean", "default": True},
-                },
-                "required": ["path"],
-                "additionalProperties": False,
-            },
-        },
-        {
-            "type": "function",
-            "name": "project_create_folder",
-            "description": (
-                "Create an in-scope directory/folder (same policy as "
-                "project_create_path with kind='directory')."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "parents": {"type": "boolean", "default": True},
-                },
-                "required": ["path"],
-                "additionalProperties": False,
-            },
-        },
-        {
-            "type": "function",
             "name": "project_move_path",
             "description": (
                 "Rearrange project files/directories by moving or renaming within "
                 "the selected project scope."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "old_path": {"type": "string"},
-                    "new_path": {"type": "string"},
-                    "overwrite": {"type": "boolean", "default": False},
-                },
-                "required": ["old_path", "new_path"],
-                "additionalProperties": False,
-            },
-        },
-        {
-            "type": "function",
-            "name": "project_rename_path",
-            "description": (
-                "Rename or move a file/directory within the selected project scope."
             ),
             "parameters": {
                 "type": "object",

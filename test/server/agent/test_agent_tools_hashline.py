@@ -42,10 +42,7 @@ def _test_tool_definitions_advertise_hashline_editor() -> None:
     assert "datasheet_read" in names
     assert "design_diagnostics" in names
     assert "project_create_path" in names
-    assert "project_create_file" in names
-    assert "project_create_folder" in names
     assert "project_move_path" in names
-    assert "project_rename_path" in names
     assert "project_delete_path" in names
     assert "manufacturing_generate" in names
     assert "autolayout_run" in names
@@ -503,21 +500,21 @@ def _test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nB\nc\n"
 
-def _test_project_rename_and_delete_path_execute(tmp_path: Path) -> None:
+def _test_project_move_and_delete_path_execute(tmp_path: Path) -> None:
     source = tmp_path / "notes.md"
     source.write_text("hello\n", encoding="utf-8")
 
-    renamed = _run(
+    moved = _run(
         tools.execute_tool(
-            name="project_rename_path",
+            name="project_move_path",
             arguments={"old_path": "notes.md", "new_path": "docs/notes.md"},
             project_root=tmp_path,
             ctx=AppContext(workspace_paths=[tmp_path]),
         )
     )
-    assert renamed["old_path"] == "notes.md"
-    assert renamed["new_path"] == "docs/notes.md"
-    assert renamed["kind"] == "file"
+    assert moved["old_path"] == "notes.md"
+    assert moved["new_path"] == "docs/notes.md"
+    assert moved["kind"] == "file"
     assert (tmp_path / "docs" / "notes.md").exists()
     assert not source.exists()
 
@@ -2269,8 +2266,8 @@ class TestAgentToolsHashline:
     test_project_edit_file_executes_atomic_edit = staticmethod(
         _test_project_edit_file_executes_atomic_edit
     )
-    test_project_rename_and_delete_path_execute = staticmethod(
-        _test_project_rename_and_delete_path_execute
+    test_project_move_and_delete_path_execute = staticmethod(
+        _test_project_move_and_delete_path_execute
     )
     test_project_create_and_move_path_execute = staticmethod(
         _test_project_create_and_move_path_execute

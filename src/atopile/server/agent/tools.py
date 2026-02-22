@@ -971,46 +971,6 @@ async def _tool_project_create_path(arguments: dict[str, Any], project_root: Pat
         parents=bool(arguments.get("parents", True)),
     )
 
-@_register_tool("project_create_file")
-async def _tool_project_create_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    content = arguments.get("content", "")
-    if content is None:
-        content = ""
-    if not isinstance(content, str):
-        raise ValueError("content must be a string")
-    return await asyncio.to_thread(
-        policy.create_path,
-        project_root,
-        str(arguments.get("path", "")),
-        kind="file",
-        content=content,
-        overwrite=bool(arguments.get("overwrite", False)),
-        parents=bool(arguments.get("parents", True)),
-    )
-
-@_register_tool("project_create_folder")
-async def _tool_project_create_folder(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    return await asyncio.to_thread(
-        policy.create_path,
-        project_root,
-        str(arguments.get("path", "")),
-        kind="directory",
-        content="",
-        overwrite=False,
-        parents=bool(arguments.get("parents", True)),
-    )
-
-@_register_tool("project_rename_path")
-async def _tool_project_rename_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    return await asyncio.to_thread(
-        policy.rename_path,
-        project_root,
-        str(arguments.get("old_path", "")),
-        str(arguments.get("new_path", "")),
-        overwrite=bool(arguments.get("overwrite", False)),
-    )
-
-
 @_register_tool("project_move_path")
 async def _tool_project_move_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     return await asyncio.to_thread(
