@@ -108,10 +108,6 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                         "maximum": 100000,
                     },
                     "max_age_hours": {"type": "integer", "minimum": -1},
-                    "include_text": {
-                        "type": "boolean",
-                        "description": "Deprecated alias. Prefer content_mode.",
-                    },
                 },
                 "required": ["query"],
                 "additionalProperties": False,

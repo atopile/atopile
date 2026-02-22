@@ -122,7 +122,7 @@ def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> N
                 "search_type": "neural",
                 "include_domains": ["st.com"],
                 "exclude_domains": ["example.com"],
-                "include_text": True,
+                "content_mode": "text",
             },
             project_root=tmp_path,
             ctx=AppContext(workspace_paths=[tmp_path]),

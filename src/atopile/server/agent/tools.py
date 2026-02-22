@@ -193,10 +193,6 @@ def _resolve_web_search_content_mode(arguments: dict[str, Any]) -> str:
         raise ValueError("content_mode must be one of: none, highlights, text")
     if content_mode:
         return content_mode
-
-    include_text = arguments.get("include_text")
-    if isinstance(include_text, bool):
-        return "text" if include_text else "highlights"
     return "highlights"
 
 
