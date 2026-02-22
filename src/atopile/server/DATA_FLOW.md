@@ -79,6 +79,7 @@ These events send complete data and the frontend applies it directly.
 | `open_layout` | `{path}` |
 | `open_kicad` | `{path}` |
 | `open_3d` | `{path}` |
+| `open_pinout` | `{projectRoot, targetName}` |
 
 The `open_*` events are action commands (not state updates) forwarded to the VS Code extension via `postMessage`.
 
@@ -151,6 +152,6 @@ await Promise.all([
 | `server.py` (file watchers) | `stdlib_changed`, `bom_changed`, `variables_changed`, `project_files_changed`, `project_modules_changed`, `project_dependencies_changed`, `projects_changed` |
 | `build_queue.py` | `builds_changed` |
 | `problem_parser.py` | `problems_changed` |
-| `domains/actions.py` | `open_file`, `open_layout`, `open_kicad`, `open_3d` |
+| `domains/actions.py` | `open_file`, `open_layout`, `open_kicad`, `open_3d`, `open_pinout` |
 | `domains/packages.py` | `packages_changed` |
 | `domains/atopile_config.py` | `atopile_config_changed` |

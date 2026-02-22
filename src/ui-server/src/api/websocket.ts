@@ -234,13 +234,22 @@ function handleMessage(event: MessageEvent): void {
           const state = message.data as AppState;
 
           // Extract one-shot open signals before replacing state
-          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, ...stateWithoutSignals } = state;
+          const {
+            openFile,
+            openFileLine,
+            openFileColumn,
+            openLayout,
+            openKicad,
+            open3D,
+            openPinout,
+            ...stateWithoutSignals
+          } = state;
 
           // Update store with state (excluding one-shot signals)
           useStore.getState().replaceState(stateWithoutSignals);
 
           // Forward open signals to VS Code extension (one-shot actions)
-          if (openFile || openLayout || openKicad || open3D) {
+          if (openFile || openLayout || openKicad || open3D || openPinout) {
             postMessage({
               type: 'openSignals',
               openFile: openFile ?? null,
@@ -249,6 +258,7 @@ function handleMessage(event: MessageEvent): void {
               openLayout: openLayout ?? null,
               openKicad: openKicad ?? null,
               open3d: open3D ?? null,
+              openPinout: openPinout ?? null,
             });
           }
 
@@ -657,6 +667,28 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: null,
         openKicad: null,
         open3d: path,
+        openPinout: null,
+      });
+      break;
+    }
+    case EventType.OpenPinout: {
+      const projectRoot =
+        (typeof data.projectRoot === 'string' && data.projectRoot) ||
+        (typeof data.project_root === 'string' && data.project_root) ||
+        null;
+      const targetName =
+        (typeof data.targetName === 'string' && data.targetName) ||
+        (typeof data.target === 'string' && data.target) ||
+        null;
+      if (!projectRoot || !targetName) {
+        break;
+      }
+      postMessage({
+        type: 'openSignals',
+        openLayout: null,
+        openKicad: null,
+        open3d: null,
+        openPinout: { projectRoot, targetName },
       });
       break;
     }

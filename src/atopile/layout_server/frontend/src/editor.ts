@@ -93,8 +93,16 @@ export class Editor {
     async loadRenderModel(
         footprintUuid: string | null = null,
         fitToView = false,
+        projectRoot: string | null = null,
+        target: string | null = null,
     ) {
         const params = new URLSearchParams();
+        if (projectRoot) {
+            params.set("project_root", projectRoot);
+        }
+        if (target) {
+            params.set("target", target);
+        }
         if (footprintUuid) {
             params.set("footprint_uuid", footprintUuid);
         }

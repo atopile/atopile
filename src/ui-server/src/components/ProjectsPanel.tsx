@@ -29,9 +29,9 @@ interface ProjectsPanelProps {
   onCreateProject?: (parentDirectory?: string, name?: string) => void  // Creates a new project
   onProjectExpand?: (projectRoot: string) => void  // Called when a project is expanded (for module fetching)
   onOpenSource?: (projectId: string, entry: string) => void  // Open source file (ato button)
-  onOpenKiCad?: (projectId: string, buildId: string) => void  // Open in KiCad
-  onOpenLayout?: (projectId: string, buildId: string) => void  // Open layout preview
-  onOpen3D?: (projectId: string, buildId: string) => void  // Open 3D viewer
+  onOpenKiCad?: (projectId: string, targetName: string) => void  // Open in KiCad
+  onOpenLayout?: (projectId: string, targetName: string) => void  // Open layout preview
+  onOpen3D?: (projectId: string, targetName: string) => void  // Open 3D viewer
   onFileClick?: (projectId: string, filePath: string) => void  // Open a file in the editor
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void  // Change dependency version
   onRemoveDependency?: (projectId: string, identifier: string) => void  // Remove a dependency

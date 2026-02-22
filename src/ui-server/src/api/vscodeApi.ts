@@ -59,6 +59,7 @@ export interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openPinout?: { projectRoot: string; targetName: string } | null;
 }
 
 export interface ConnectionStatusMessage {
@@ -167,10 +168,6 @@ export interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
-export interface OpenPinoutTableMessage {
-  type: 'openPinoutTable';
-}
-
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -194,8 +191,7 @@ export type ExtensionMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage
-  | OpenPinoutTableMessage;
+  | OpenMigrateTabMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

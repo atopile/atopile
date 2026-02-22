@@ -22,6 +22,7 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
+import { openPinoutTable } from '../ui/pinout-table';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -33,6 +34,7 @@ interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openPinout?: { projectRoot: string; targetName: string } | null;
 }
 
 interface ConnectionStatusMessage {
@@ -179,10 +181,6 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
-interface OpenPinoutTableMessage {
-  type: 'openPinoutTable';
-}
-
 interface RequestSelectionStateMessage {
   type: 'requestSelectionState';
 }
@@ -218,7 +216,6 @@ type WebviewMessage =
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
   | OpenMigrateTabMessage
-  | OpenPinoutTableMessage
   | RequestSelectionStateMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
@@ -737,9 +734,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
         break;
-      case 'openPinoutTable':
-        void vscode.commands.executeCommand('atopile.pinout_table');
-        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -813,6 +807,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     if (msg.open3d) {
       void this._open3dPreview(msg.open3d);
+    }
+    if (msg.openPinout) {
+      setSelectionState({
+        projectRoot: msg.openPinout.projectRoot,
+        targetNames: [msg.openPinout.targetName],
+      });
+      void openPinoutTable();
     }
   }
 

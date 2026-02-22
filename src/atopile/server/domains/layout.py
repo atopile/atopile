@@ -10,9 +10,18 @@ from fastapi import WebSocket
 
 from atopile.layout_server.models import RenderModel, WsMessage
 from atopile.layout_server.pcb_manager import PcbManager
+from atopile.server import path_utils
 from atopile.server.file_watcher import FileWatcher
 
 log = logging.getLogger(__name__)
+
+
+def load_render_model_for_target(
+    project_root: str, target_name: str, footprint_uuid: str | None = None
+) -> RenderModel:
+    manager = PcbManager()
+    manager.load(path_utils.require_layout_path(Path(project_root), target_name))
+    return manager.get_render_model(footprint_uuid)
 
 
 class LayoutService:

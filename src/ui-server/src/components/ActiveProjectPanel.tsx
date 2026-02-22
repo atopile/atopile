@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2, CircuitBoard } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
-import { postMessage } from '../api/vscodeApi'
 import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
@@ -34,7 +33,7 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
-  onOpenPinoutTable?: () => void
+  onOpenPinout?: (projectRoot: string, targetName: string) => void
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
@@ -850,7 +849,7 @@ export function ActiveProjectPanel({
   onOpenKiCad,
   onOpen3D,
   onOpenLayout,
-  onOpenPinoutTable,
+  onOpenPinout,
   onCreateProject,
   onCreateTarget,
   onGenerateManufacturingData,
@@ -1102,12 +1101,15 @@ export function ActiveProjectPanel({
             <span className="action-label">Layout</span>
           </button>
 
-          {onOpenPinoutTable && (
+          {onOpenPinout && (
             <>
               <div className="action-divider" />
               <button
                 className="action-btn"
-                onClick={() => onOpenPinoutTable()}
+                onClick={() => {
+                  if (!activeProject || !activeTargetName) return
+                  onOpenPinout(activeProject.root, activeTargetName)
+                }}
                 disabled={!activeProject || !activeTargetName}
                 title="Open pinout table"
               >

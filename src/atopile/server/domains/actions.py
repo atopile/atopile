@@ -290,28 +290,25 @@ def _handle_build_sync(payload: dict) -> dict:
         }
 
 
-def _resolve_build_target(
-    project_root: str, build_id: str, payload: dict
-) -> tuple[str | None, str | None]:
+def _require_project_target(payload: dict) -> tuple[Path, str]:
+    project_root = payload.get("projectId", "")
     target_name = payload.get("targetName") or payload.get("target")
-    resolved_project_root = project_root
+    if not project_root or not target_name:
+        raise ValueError("Missing projectId or targetName/target")
+    return Path(project_root), target_name
 
-    if build_id:
-        build_info = builds_domain.handle_get_build_info(build_id)
-        if isinstance(build_info, dict):
-            target_name = (
-                target_name
-                or build_info.get("target")
-                or build_info.get("name")
-                or build_info.get("build_name")
-            )
-            resolved_project_root = (
-                resolved_project_root
-                or build_info.get("project_root")
-                or build_info.get("projectRoot")
-            )
 
-    return target_name, resolved_project_root
+def _require_layout_target(payload: dict) -> Path:
+    project_path, target_name = _require_project_target(payload)
+    return path_utils.require_layout_path(project_path, target_name)
+
+
+def _resolve_3d_target(payload: dict) -> Path:
+    project_path, target_name = _require_project_target(payload)
+    resolved = path_utils.resolve_3d_path(project_path, target_name)
+    if resolved is not None:
+        return resolved
+    return project_path / "build" / "builds" / target_name / f"{target_name}.pcba.glb"
 
 
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:
@@ -1524,84 +1521,59 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.emit_event("open_file", {"path": str(entry_path)})
             return {"success": True}
 
-        if action in {"openLayout", "loadLayout"}:
-            project_root = payload.get("projectId", "")
-            build_id = payload.get("buildId", "")
-
-            target_name, resolved_project_root = _resolve_build_target(
-                project_root, build_id, payload
-            )
-            if not resolved_project_root or not target_name:
-                return {
-                    "success": False,
-                    "error": "Missing projectId or buildId/target",
-                }
-
-            project_path = Path(resolved_project_root)
-            target = path_utils.resolve_layout_path(project_path, target_name)
-            if not target or not target.exists():
-                return {
-                    "success": False,
-                    "error": f"Layout not found for target: {target_name}",
-                }
-
+        if action == "openLayout":
             from atopile.server.domains.layout import layout_service
+
+            try:
+                target = await asyncio.to_thread(_require_layout_target, payload)
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "error": str(exc),
+                }
 
             await asyncio.to_thread(layout_service.load, target)
             await layout_service.start_watcher()
-            if action == "openLayout":
-                await server_state.emit_event("open_layout", {"path": str(target)})
+            await server_state.emit_event("open_layout", {"path": str(target)})
             return {"success": True}
 
         if action == "openKiCad":
-            project_root = payload.get("projectId", "")
-            build_id = payload.get("buildId", "")
-
-            target_name, resolved_project_root = _resolve_build_target(
-                project_root, build_id, payload
-            )
-            if not resolved_project_root or not target_name:
+            try:
+                target = await asyncio.to_thread(_require_layout_target, payload)
+            except ValueError as exc:
                 return {
                     "success": False,
-                    "error": "Missing projectId or buildId/target",
-                }
-
-            project_path = Path(resolved_project_root)
-            target = path_utils.resolve_layout_path(project_path, target_name)
-            if not target or not target.exists():
-                return {
-                    "success": False,
-                    "error": f"Layout not found for target: {target_name}",
+                    "error": str(exc),
                 }
 
             await server_state.emit_event("open_kicad", {"path": str(target)})
             return {"success": True}
 
         if action == "open3D":
-            project_root = payload.get("projectId", "")
-            build_id = payload.get("buildId", "")
-
-            target_name, resolved_project_root = _resolve_build_target(
-                project_root, build_id, payload
-            )
-            if not resolved_project_root or not target_name:
+            try:
+                target = _resolve_3d_target(payload)
+            except ValueError as exc:
                 return {
                     "success": False,
-                    "error": "Missing projectId or buildId/target",
+                    "error": str(exc),
                 }
 
-            project_path = Path(resolved_project_root)
-            target = path_utils.resolve_3d_path(project_path, target_name)
-            if target is None:
-                target = (
-                    project_path
-                    / "build"
-                    / "builds"
-                    / target_name
-                    / f"{target_name}.pcba.glb"
-                )
-
             await server_state.emit_event("open_3d", {"path": str(target)})
+            return {"success": True}
+
+        if action == "openPinout":
+            try:
+                project_path, target_name = _require_project_target(payload)
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "error": str(exc),
+                }
+
+            await server_state.emit_event(
+                "open_pinout",
+                {"projectRoot": str(project_path), "targetName": target_name},
+            )
             return {"success": True}
 
         elif action == "setLogViewCurrentId":

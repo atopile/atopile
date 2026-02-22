@@ -6,7 +6,12 @@
 declare module '@layout-editor/editor' {
   export class Editor {
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix?: string, wsPath?: string);
-    loadRenderModel(footprintUuid?: string | null, fitToView?: boolean): Promise<void>;
+    loadRenderModel(
+      footprintUuid?: string | null,
+      fitToView?: boolean,
+      projectRoot?: string | null,
+      target?: string | null
+    ): Promise<void>;
     setReadOnly(readOnly: boolean): void;
     setPadColorOverrides(overrides: Map<string, import('@layout-editor/colors').Color>): void;
     setHighlightedPads(padNames: Set<string>): void;

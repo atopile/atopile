@@ -74,9 +74,9 @@ interface BuildNodeProps {
   onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void;
   onDeleteBuild?: (projectId: string, buildId: string) => void;
   onOpenSource?: (projectId: string, entry: string) => void;
-  onOpenKiCad?: (projectId: string, buildId: string) => void;
-  onOpenLayout?: (projectId: string, buildId: string) => void;
-  onOpen3D?: (projectId: string, buildId: string) => void;
+  onOpenKiCad?: (projectId: string, targetName: string) => void;
+  onOpenLayout?: (projectId: string, targetName: string) => void;
+  onOpen3D?: (projectId: string, targetName: string) => void;
   availableModules?: ModuleDefinition[];
   // All builds in the project (for duplicate entry validation)
   allBuilds?: BuildTarget[];

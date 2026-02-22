@@ -20,9 +20,9 @@ interface BuildsCardProps {
   onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void;
   onDeleteBuild?: (projectId: string, buildId: string) => void;
   onOpenSource?: (projectId: string, entry: string) => void;
-  onOpenKiCad?: (projectId: string, buildId: string) => void;
-  onOpenLayout?: (projectId: string, buildId: string) => void;
-  onOpen3D?: (projectId: string, buildId: string) => void;
+  onOpenKiCad?: (projectId: string, targetName: string) => void;
+  onOpenLayout?: (projectId: string, targetName: string) => void;
+  onOpen3D?: (projectId: string, targetName: string) => void;
   onAddBuild?: (projectId: string) => void;
   availableModules?: ModuleDefinition[];
   // Read-only mode for packages: hides build/delete buttons, status badges, add build

@@ -326,7 +326,6 @@ export interface PinInfo {
   signal_type: string;
   interfaces: string[];
   is_connected: boolean;
-  voltage: string | null;
   net_name: string | null;
   notes: string[];
 }
@@ -582,6 +581,7 @@ export interface AppState {
   openLayout?: string | null;
   openKicad?: string | null;
   open3D?: string | null;
+  openPinout?: { projectRoot: string; targetName: string } | null;
 
   // Test Explorer
   collectedTests: TestItem[];

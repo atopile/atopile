@@ -3,7 +3,6 @@ import type { PinInfo } from '../types/build'
 import { Editor } from '@layout-editor/editor'
 import { getSignalColors } from '@layout-editor/colors'
 import { API_URL } from '../api/config'
-import { sendActionWithResponse } from '../api/websocket'
 
 interface FootprintViewerCanvasProps {
   projectRoot: string
@@ -42,13 +41,7 @@ export function FootprintViewerCanvas({
 
     const loadModel = async () => {
       try {
-        await sendActionWithResponse(
-          'loadLayout',
-          { projectId: projectRoot, targetName },
-          { timeoutMs: 10000 }
-        )
-        if (canceled) return
-        await editor.loadRenderModel(footprintUuid, true)
+        await editor.loadRenderModel(footprintUuid, true, projectRoot, targetName)
       } catch (error) {
         if (canceled) return
         console.warn('Failed to update footprint viewer model', error)

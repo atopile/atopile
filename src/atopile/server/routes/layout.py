@@ -18,7 +18,7 @@ from atopile.layout_server.models import (
     StatusResponse,
     WsMessage,
 )
-from atopile.server.domains.layout import layout_service
+from atopile.server.domains.layout import layout_service, load_render_model_for_target
 
 log = logging.getLogger(__name__)
 
@@ -31,9 +31,24 @@ def _require_loaded() -> None:
 
 
 @router.get("/api/layout/render-model", response_model=RenderModel)
-async def get_render_model(footprint_uuid: str | None = None) -> RenderModel:
-    _require_loaded()
+async def get_render_model(
+    footprint_uuid: str | None = None,
+    project_root: str | None = None,
+    target: str | None = None,
+) -> RenderModel:
+    if bool(project_root) != bool(target):
+        raise HTTPException(
+            status_code=400,
+            detail="project_root and target must be provided together",
+        )
+
     try:
+        if project_root and target:
+            return await asyncio.to_thread(
+                load_render_model_for_target, project_root, target, footprint_uuid
+            )
+
+        _require_loaded()
         return await asyncio.to_thread(
             layout_service.manager.get_render_model,
             footprint_uuid,
