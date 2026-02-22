@@ -40,6 +40,14 @@ export class Editor {
     private highlightedPads: Set<string> | undefined;
     private onPadClickCallback: ((padName: string) => void) | null = null;
     private outlinePads: Set<string> | undefined;
+    private destroyed = false;
+    private rafId: number | null = null;
+    private reconnectTimeoutId: number | null = null;
+    private handleMouseDown: ((e: MouseEvent) => void) | null = null;
+    private handleMouseMove: ((e: MouseEvent) => void) | null = null;
+    private handleMouseUp: ((e: MouseEvent) => Promise<void>) | null = null;
+    private handleKeyDown: ((e: KeyboardEvent) => Promise<void>) | null = null;
+    private handleResize: (() => void) | null = null;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -60,6 +68,45 @@ export class Editor {
     async init() {
         await this.loadRenderModel(null, true);
         this.connectWebSocket();
+    }
+
+    destroy() {
+        if (this.destroyed) return;
+        this.destroyed = true;
+
+        if (this.handleMouseDown) {
+            this.canvas.removeEventListener("mousedown", this.handleMouseDown);
+        }
+        if (this.handleMouseMove) {
+            this.canvas.removeEventListener("mousemove", this.handleMouseMove);
+        }
+        if (this.handleMouseUp) {
+            window.removeEventListener("mouseup", this.handleMouseUp);
+        }
+        if (this.handleKeyDown) {
+            window.removeEventListener("keydown", this.handleKeyDown);
+        }
+        if (this.handleResize) {
+            window.removeEventListener("resize", this.handleResize);
+        }
+
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        if (this.reconnectTimeoutId !== null) {
+            window.clearTimeout(this.reconnectTimeoutId);
+            this.reconnectTimeoutId = null;
+        }
+
+        if (this.ws) {
+            this.ws.onopen = null;
+            this.ws.onmessage = null;
+            this.ws.onerror = null;
+            this.ws.onclose = null;
+            this.ws.close();
+            this.ws = null;
+        }
     }
 
     /** Set read-only mode (disables drag and footprint selection) */
@@ -161,6 +208,7 @@ export class Editor {
     }
 
     private connectWebSocket() {
+        if (this.destroyed) return;
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);
         this.ws.onopen = () => console.log("WS connected");
@@ -172,12 +220,16 @@ export class Editor {
         };
         this.ws.onerror = (err) => console.error("WS error:", err);
         this.ws.onclose = () => {
-            setTimeout(() => this.connectWebSocket(), 2000);
+            if (this.destroyed) return;
+            this.reconnectTimeoutId = window.setTimeout(() => {
+                this.reconnectTimeoutId = null;
+                this.connectWebSocket();
+            }, 2000);
         };
     }
 
     private setupMouseHandlers() {
-        this.canvas.addEventListener("mousedown", (e: MouseEvent) => {
+        this.handleMouseDown = (e: MouseEvent) => {
             if (e.button !== 0) return;
 
             const rect = this.canvas.getBoundingClientRect();
@@ -215,9 +267,10 @@ export class Editor {
                     this.paintAndRequestRedraw();
                 }
             }
-        });
+        };
+        this.canvas.addEventListener("mousedown", this.handleMouseDown);
 
-        this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
+        this.handleMouseMove = (e: MouseEvent) => {
             const rect = this.canvas.getBoundingClientRect();
             this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
 
@@ -235,9 +288,10 @@ export class Editor {
             fp.at.y = this.dragStartFpPos!.y + delta.y;
 
             this.paintAndRequestRedraw();
-        });
+        };
+        this.canvas.addEventListener("mousemove", this.handleMouseMove);
 
-        window.addEventListener("mouseup", async (e: MouseEvent) => {
+        this.handleMouseUp = async (e: MouseEvent) => {
             if (e.button !== 0 || !this.isDragging) return;
             this.isDragging = false;
 
@@ -255,11 +309,12 @@ export class Editor {
                 y: fp.at.y,
                 r: fp.at.r || null,
             });
-        });
+        };
+        window.addEventListener("mouseup", this.handleMouseUp);
     }
 
     private setupKeyboardHandlers() {
-        window.addEventListener("keydown", async (e: KeyboardEvent) => {
+        this.handleKeyDown = async (e: KeyboardEvent) => {
             // R — rotate selected footprint by 90 degrees
             if (e.key === "r" || e.key === "R") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -288,13 +343,15 @@ export class Editor {
                 await this.serverAction("/redo");
                 return;
             }
-        });
+        };
+        window.addEventListener("keydown", this.handleKeyDown);
     }
 
     private setupResizeHandler() {
-        window.addEventListener("resize", () => {
+        this.handleResize = () => {
             this.requestRedraw();
-        });
+        };
+        window.addEventListener("resize", this.handleResize);
     }
 
     private async actionOnSelected(
@@ -396,14 +453,18 @@ export class Editor {
 
     private startRenderLoop() {
         const loop = () => {
+            if (this.destroyed) {
+                this.rafId = null;
+                return;
+            }
             if (this.needsRedraw) {
                 this.needsRedraw = false;
                 this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
                 this.renderer.updateGrid(this.camera.bbox, 1.0);
                 this.renderer.draw(this.camera.matrix);
             }
-            requestAnimationFrame(loop);
+            this.rafId = requestAnimationFrame(loop);
         };
-        requestAnimationFrame(loop);
+        this.rafId = requestAnimationFrame(loop);
     }
 }

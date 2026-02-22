@@ -54,17 +54,19 @@ export function setSelectionState(selection: SelectionState): void {
 }
 
 export function syncSelectedTargets(builds: Build[]) {
-    if (!g_projectRoot) {
+    if (!g_projectRoot || g_selectedTargetNames.length === 0) {
+        setSelectionState({ projectRoot: g_projectRoot, targetNames: [] });
         setSelectedTargets([]);
         return;
     }
-    if (g_selectedTargetNames.length === 0) {
-        setSelectedTargets([]);
-        return;
-    }
+
     const selectedBuilds = builds.filter(
         (build) => build.root === g_projectRoot && g_selectedTargetNames.includes(build.name)
     );
+    setSelectionState({
+        projectRoot: g_projectRoot,
+        targetNames: selectedBuilds.map((build) => build.name),
+    });
     setSelectedTargets(selectedBuilds);
 }
 

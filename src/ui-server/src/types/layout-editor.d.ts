@@ -17,6 +17,7 @@ declare module '@layout-editor/editor' {
     setHighlightedPads(padNames: Set<string>): void;
     setOutlinePads(padNames: Set<string>): void;
     setOnPadClick(cb: ((padName: string) => void) | null): void;
+    destroy(): void;
   }
 }
 

@@ -29,6 +29,7 @@ export function FootprintViewerCanvas({
 
     return () => {
       editor.setOnPadClick(null)
+      editor.destroy()
       editorRef.current = null
     }
   }, [])

@@ -1911,6 +1911,14 @@ var Editor = class {
   highlightedPads;
   onPadClickCallback = null;
   outlinePads;
+  destroyed = false;
+  rafId = null;
+  reconnectTimeoutId = null;
+  handleMouseDown = null;
+  handleMouseMove = null;
+  handleMouseUp = null;
+  handleKeyDown = null;
+  handleResize = null;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
     this.baseUrl = baseUrl2;
@@ -1926,8 +1934,44 @@ var Editor = class {
     this.startRenderLoop();
   }
   async init() {
-    await this.fetchAndPaint(true);
+    await this.loadRenderModel(null, true);
     this.connectWebSocket();
+  }
+  destroy() {
+    if (this.destroyed)
+      return;
+    this.destroyed = true;
+    if (this.handleMouseDown) {
+      this.canvas.removeEventListener("mousedown", this.handleMouseDown);
+    }
+    if (this.handleMouseMove) {
+      this.canvas.removeEventListener("mousemove", this.handleMouseMove);
+    }
+    if (this.handleMouseUp) {
+      window.removeEventListener("mouseup", this.handleMouseUp);
+    }
+    if (this.handleKeyDown) {
+      window.removeEventListener("keydown", this.handleKeyDown);
+    }
+    if (this.handleResize) {
+      window.removeEventListener("resize", this.handleResize);
+    }
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    if (this.reconnectTimeoutId !== null) {
+      window.clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
   }
   /** Set read-only mode (disables drag and footprint selection) */
   setReadOnly(readOnly) {
@@ -1952,8 +1996,21 @@ var Editor = class {
   setOnPadClick(cb) {
     this.onPadClickCallback = cb;
   }
-  async fetchAndPaint(fitToView = false) {
-    const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
+  async loadRenderModel(footprintUuid = null, fitToView = false, projectRoot = null, target = null) {
+    const params = new URLSearchParams();
+    if (projectRoot) {
+      params.set("project_root", projectRoot);
+    }
+    if (target) {
+      params.set("target", target);
+    }
+    if (footprintUuid) {
+      params.set("footprint_uuid", footprintUuid);
+    }
+    const query = params.toString();
+    const resp = await fetch(
+      `${this.baseUrl}${this.apiPrefix}/render-model${query ? `?${query}` : ""}`
+    );
     if (!resp.ok) {
       throw new Error(`render-model request failed: ${resp.status}`);
     }
@@ -2012,6 +2069,8 @@ var Editor = class {
     }
   }
   connectWebSocket() {
+    if (this.destroyed)
+      return;
     const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
     this.ws = new WebSocket(wsUrl);
     this.ws.onopen = () => console.log("WS connected");
@@ -2023,11 +2082,16 @@ var Editor = class {
     };
     this.ws.onerror = (err) => console.error("WS error:", err);
     this.ws.onclose = () => {
-      setTimeout(() => this.connectWebSocket(), 2e3);
+      if (this.destroyed)
+        return;
+      this.reconnectTimeoutId = window.setTimeout(() => {
+        this.reconnectTimeoutId = null;
+        this.connectWebSocket();
+      }, 2e3);
     };
   }
   setupMouseHandlers() {
-    this.canvas.addEventListener("mousedown", (e) => {
+    this.handleMouseDown = (e) => {
       if (e.button !== 0)
         return;
       const rect = this.canvas.getBoundingClientRect();
@@ -2061,8 +2125,9 @@ var Editor = class {
           this.paintAndRequestRedraw();
         }
       }
-    });
-    this.canvas.addEventListener("mousemove", (e) => {
+    };
+    this.canvas.addEventListener("mousedown", this.handleMouseDown);
+    this.handleMouseMove = (e) => {
       const rect = this.canvas.getBoundingClientRect();
       this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
       if (this.onMouseMoveCallback) {
@@ -2077,8 +2142,9 @@ var Editor = class {
       fp.at.x = this.dragStartFpPos.x + delta.x;
       fp.at.y = this.dragStartFpPos.y + delta.y;
       this.paintAndRequestRedraw();
-    });
-    window.addEventListener("mouseup", async (e) => {
+    };
+    this.canvas.addEventListener("mousemove", this.handleMouseMove);
+    this.handleMouseUp = async (e) => {
       if (e.button !== 0 || !this.isDragging)
         return;
       this.isDragging = false;
@@ -2095,10 +2161,11 @@ var Editor = class {
         y: fp.at.y,
         r: fp.at.r || null
       });
-    });
+    };
+    window.addEventListener("mouseup", this.handleMouseUp);
   }
   setupKeyboardHandlers() {
-    window.addEventListener("keydown", async (e) => {
+    this.handleKeyDown = async (e) => {
       if (e.key === "r" || e.key === "R") {
         if (e.ctrlKey || e.metaKey || e.altKey)
           return;
@@ -2121,12 +2188,14 @@ var Editor = class {
         await this.serverAction("/redo");
         return;
       }
-    });
+    };
+    window.addEventListener("keydown", this.handleKeyDown);
   }
   setupResizeHandler() {
-    window.addEventListener("resize", () => {
+    this.handleResize = () => {
       this.requestRedraw();
-    });
+    };
+    window.addEventListener("resize", this.handleResize);
   }
   async actionOnSelected(type, detailsFn) {
     if (!this.model || this.selectedFpIndex < 0)
@@ -2222,15 +2291,19 @@ var Editor = class {
   }
   startRenderLoop() {
     const loop = () => {
+      if (this.destroyed) {
+        this.rafId = null;
+        return;
+      }
       if (this.needsRedraw) {
         this.needsRedraw = false;
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
         this.renderer.updateGrid(this.camera.bbox, 1);
         this.renderer.draw(this.camera.matrix);
       }
-      requestAnimationFrame(loop);
+      this.rafId = requestAnimationFrame(loop);
     };
-    requestAnimationFrame(loop);
+    this.rafId = requestAnimationFrame(loop);
   }
 };
 

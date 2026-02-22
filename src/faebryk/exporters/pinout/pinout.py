@@ -294,7 +294,7 @@ def _find_typed_pin_for_lead(
                         depth = rel_name.count(".")
                         tp = type_priority.get(pt, 99)
                         candidates[dedup] = (
-                            (scope_penalty, depth, tp),
+                            (scope_penalty, tp, depth),
                             parent_node.cast(pt),
                             sub_key,
                         )
@@ -306,7 +306,7 @@ def _find_typed_pin_for_lead(
     if not candidates:
         return None, None
 
-    # Pick the candidate with the lowest score (shallowest, best type)
+    # Pick the candidate with the lowest score (scope, type, then depth)
     best = min(candidates.values(), key=lambda x: x[0])
     return best[1], best[2]
 
