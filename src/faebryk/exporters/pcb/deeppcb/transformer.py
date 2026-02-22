@@ -155,7 +155,8 @@ class DeepPCB_Transformer:
             definition_id = cls._definition_id(fp, provider_strict=provider_strict)
             if definition_id not in component_definitions:
                 definition_pins = []
-                for pad in fp.pads:
+                for pad_index, pad in enumerate(fp.pads):
+                    pin_id = cls._pin_id(pad, pad_index)
                     padstack_id, padstack = cls._padstack_from_pad(
                         pad,
                         copper_layer_index,
@@ -165,7 +166,7 @@ class DeepPCB_Transformer:
                     padstacks.setdefault(padstack_id, padstack)
                     definition_pins.append(
                         {
-                            "id": str(pad.name),
+                            "id": pin_id,
                             "padstack": padstack_id,
                             "position": cls._xy_to_point(pad.at),
                             "rotation": cls._export_rotation(
@@ -245,14 +246,16 @@ class DeepPCB_Transformer:
                 }
             )
 
-            for pad in fp.pads:
+            for pad_index, pad in enumerate(fp.pads):
                 if pad.net is None:
                     continue
                 net_number = int(getattr(pad.net, "number", 0) or 0)
                 net_id = net_id_by_number.get(net_number)
                 if not net_id:
                     continue
-                pins_by_net.setdefault(net_id, []).append(f"{component_id}-{pad.name}")
+                pins_by_net.setdefault(net_id, []).append(
+                    f"{component_id}-{cls._pin_id(pad, pad_index)}"
+                )
 
         board.componentDefinitions = sorted(
             component_definitions.values(),
@@ -1318,6 +1321,13 @@ class DeepPCB_Transformer:
         if isinstance(ref, str) and ref.strip():
             return ref.strip()
         return str(fp.uuid)
+
+    @staticmethod
+    def _pin_id(pad: Any, index: int) -> str:
+        raw = str(getattr(pad, "name", "") or "").strip()
+        if raw:
+            return raw
+        return f"PAD_{index + 1}"
 
     @classmethod
     def _footprint_outline(cls, fp: Any) -> dict[str, Any]:
