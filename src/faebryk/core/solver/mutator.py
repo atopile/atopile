@@ -870,17 +870,13 @@ def _seed_superset_bounds(
         F.Parameters.is_parameter_operatable,
     ],
     g_out: graph.GraphView,
-    tg_out: fbrk.TypeGraph,
 ) -> None:
     """
     Seed superset bounds from a previous solve into a new working graph.
 
     When the solver bootstraps a new relevance set, it starts from scratch.
-    By copying solved numeric bounds from the previous state, the solver
-    converges in fewer iterations.
-
-    Literals are recreated in the target graph rather than copied across graphs,
-    because cross-graph copy_into loses unit references.
+    By copying solved bounds from the previous state, the solver converges
+    in fewer iterations.
     """
     # Only seed parameters that exist in both the old and new relevance sets
     shared_params = {
@@ -895,20 +891,12 @@ def _seed_superset_bounds(
             ss_lit := initial_state.try_extract_superset(po, domain_default=False)
         ) is None:
             continue
-        lit_node = fabll.Traits(ss_lit).get_obj_raw()
-        if (numbers := lit_node.try_cast(F.Literals.Numbers)) is None:
-            continue
+
+        copied = fabll.Traits(ss_lit).get_obj_raw().copy_into(g_out)
         new_po = forward_mapping[po]
-        target_unit_t = new_po.try_get_sibling_trait(F.Units.has_unit)
-        target_unit = target_unit_t.get_is_unit() if target_unit_t else None
-        new_lit = F.Literals.Numbers.create_instance(
-            g=g_out, tg=tg_out
-        ).setup_from_min_max(
-            min=numbers.get_min_value(),
-            max=numbers.get_max_value(),
-            unit=target_unit,
+        new_po.set_superset(
+            g=g_out, value=copied.get_trait(F.Literals.is_literal).switch_cast()
         )
-        new_po.set_superset(g=g_out, value=new_lit)
         seeded += 1
 
     if seeded:
@@ -1207,7 +1195,7 @@ class MutationMap:
             )
 
         if initial_state:
-            _seed_superset_bounds(initial_state, forward_mapping, g_out, tg_out)
+            _seed_superset_bounds(initial_state, forward_mapping, g_out)
 
         if S_LOG:
             expr_count = len(
