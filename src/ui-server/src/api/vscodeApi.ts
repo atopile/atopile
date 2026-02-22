@@ -90,6 +90,11 @@ export interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+export interface ProjectCreatedMessage {
+  type: 'projectCreated';
+  projectRoot: string;
+}
+
 export interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
@@ -184,6 +189,7 @@ export type ExtensionMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | ProjectCreatedMessage
   | ReloadWindowMessage
   | ShowLogsMessage
   | ShowBuildLogsMessage

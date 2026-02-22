@@ -17,7 +17,6 @@ import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/loggi
 import { resolveAtoBinForWorkspace } from './findbin';
 
 const BACKEND_HOST = '127.0.0.1';
-const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
 
 interface BuildResponse {
     success: boolean;
@@ -623,7 +622,7 @@ class BackendServerManager implements vscode.Disposable {
                 // which connects when the webview loads
             } else {
                 if (!this._lastError) {
-                    this._lastError = 'Server startup timeout';
+                    this._lastError = 'Server failed to become ready';
                 }
                 traceError(`BackendServer: Server failed to start: ${this._lastError}`);
                 this._log('error', `server: Failed to start: ${this._lastError}`);
@@ -659,8 +658,8 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     private async _waitForServerReady(child: cp.ChildProcess): Promise<boolean> {
-        const start = Date.now();
-        while (Date.now() - start < SERVER_STARTUP_TIMEOUT_MS) {
+        // Wait indefinitely: initial installation/download can take a long time.
+        while (true) {
             if (this._process !== child) {
                 return false;
             }
@@ -669,7 +668,6 @@ class BackendServerManager implements vscode.Disposable {
             }
             await new Promise(resolve => setTimeout(resolve, 500));
         }
-        return false;
     }
 
     /**

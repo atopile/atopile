@@ -61,6 +61,11 @@ interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+interface ProjectCreatedMessage {
+  type: 'projectCreated';
+  projectRoot: string;
+}
+
 interface BrowseExportDirectoryMessage {
   type: 'browseExportDirectory';
 }
@@ -193,6 +198,7 @@ type WebviewMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | ProjectCreatedMessage
   | BrowseExportDirectoryMessage
   | OpenSourceControlMessage
   | ShowProblemsMessage
@@ -274,7 +280,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
-          traceInfo('[SidebarProvider] Atopile settings changed, notifying webview');
+          traceInfo('[SidebarProvider] atopile settings changed, notifying webview');
           this._sendAtopileSettings();
         }
       })
@@ -558,6 +564,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'browseProjectPath':
         this._handleBrowseProjectPath().catch((error) => {
           traceError(`[SidebarProvider] Error browsing project path: ${error}`);
+        });
+        break;
+      case 'projectCreated':
+        this._handleProjectCreated(message).catch((error) => {
+          traceError(`[SidebarProvider] Error handling project created: ${error}`);
         });
         break;
       case 'browseExportDirectory':
@@ -1343,6 +1354,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  private _isInCurrentWorkspace(folderPath: string): boolean {
+    const workspaces = vscode.workspace.workspaceFolders ?? [];
+    for (const workspaceFolder of workspaces) {
+      const relative = path.relative(workspaceFolder.uri.fsPath, folderPath);
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async _handleProjectCreated(message: ProjectCreatedMessage): Promise<void> {
+    const projectRoot = message.projectRoot;
+    if (!projectRoot) {
+      return;
+    }
+
+    const containingFolder = path.dirname(projectRoot);
+    if (this._isInCurrentWorkspace(containingFolder)) {
+      return;
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+      `Project created at ${projectRoot}. Open the containing folder?`,
+      { modal: true },
+      'Open Folder',
+    );
+
+    if (choice === 'Open Folder') {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(containingFolder), {
+        forceNewWindow: false,
+      });
+    }
+  }
+
   /**
    * Handle request to browse for an export directory.
    * Shows a native folder picker dialog and sends the selected path back to the webview.
@@ -1420,7 +1466,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Setting global atopile.ato => ${nextAto ?? '(default)'}`);
         await globalConfig.update('ato', nextAto, vscode.ConfigurationTarget.Global);
       }
-
       // Only manage atopile.ato setting - atopile.from is only set manually in settings
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {
