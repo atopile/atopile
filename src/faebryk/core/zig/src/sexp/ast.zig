@@ -24,6 +24,37 @@ pub const SExp = struct {
     value: SExpValue,
     location: ?TokenLocation = null,
 
+    inline fn saturatingAdd(lhs: usize, rhs: usize) usize {
+        return std.math.add(usize, lhs, rhs) catch std.math.maxInt(usize);
+    }
+
+    fn isShortFormTokenName(token: []const u8) bool {
+        return std.mem.eql(u8, token, "font") or
+            std.mem.eql(u8, token, "stroke") or
+            std.mem.eql(u8, token, "fill") or
+            std.mem.eql(u8, token, "teardrop") or
+            std.mem.eql(u8, token, "offset") or
+            std.mem.eql(u8, token, "rotate") or
+            std.mem.eql(u8, token, "scale");
+    }
+
+    fn estimatedSerializedLen(self: SExp) usize {
+        return switch (self.value) {
+            .symbol => |s| s.len,
+            .number => |n| n.len,
+            .comment => |c| saturatingAdd(1, c.len),
+            .string => |s| saturatingAdd(2, saturatingAdd(s.len, s.len)),
+            .list => |items| blk: {
+                var total: usize = 2; // Opening and closing parenthesis.
+                for (items, 0..) |item, i| {
+                    if (i > 0) total = saturatingAdd(total, 1);
+                    total = saturatingAdd(total, item.estimatedSerializedLen());
+                }
+                break :blk total;
+            },
+        };
+    }
+
     pub fn deinit(self: *SExp, allocator: std.mem.Allocator) void {
         switch (self.value) {
             .list => |children| {
@@ -75,7 +106,8 @@ pub const SExp = struct {
 
         var formatted = std.array_list.Managed(u8).init(allocator);
         defer formatted.deinit();
-        try formatted.ensureTotalCapacity(source.len);
+        const estimated_out = saturatingAdd(source.len, saturatingAdd(source.len / 3, 64));
+        try formatted.ensureTotalCapacity(estimated_out);
 
         var cursor: usize = 0;
         var list_depth: usize = 0;
@@ -116,22 +148,11 @@ pub const SExp = struct {
         const isShortFormToken = struct {
             fn call(src: []const u8, pos: usize) bool {
                 var seek = pos + 1;
-                var token = std.array_list.Managed(u8).init(std.heap.page_allocator);
-                defer token.deinit();
-
                 while (seek < src.len and std.ascii.isAlphabetic(src[seek])) {
-                    token.append(src[seek]) catch return false;
                     seek += 1;
                 }
-
-                const token_str = token.items;
-                return std.mem.eql(u8, token_str, "font") or
-                    std.mem.eql(u8, token_str, "stroke") or
-                    std.mem.eql(u8, token_str, "fill") or
-                    std.mem.eql(u8, token_str, "teardrop") or
-                    std.mem.eql(u8, token_str, "offset") or
-                    std.mem.eql(u8, token_str, "rotate") or
-                    std.mem.eql(u8, token_str, "scale");
+                if (seek <= pos + 1) return false;
+                return isShortFormTokenName(src[pos + 1 .. seek]);
             }
         }.call;
 
@@ -271,6 +292,7 @@ pub const SExp = struct {
     pub fn pretty(self: SExp, allocator: std.mem.Allocator) ![]const u8 {
         var in = std.array_list.Managed(u8).init(allocator);
         defer in.deinit();
+        try in.ensureTotalCapacity(self.estimatedSerializedLen());
 
         try self.str(in.writer());
         const out = try prettify_sexp_string(allocator, in.items);

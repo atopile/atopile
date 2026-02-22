@@ -20,9 +20,11 @@ pub const TokenLocation = struct {
     end: LocationInfo,
 };
 
+const LocationScalar = u32;
+
 pub const LocationInfo = struct {
-    line: usize,
-    column: usize,
+    line: LocationScalar,
+    column: LocationScalar,
 };
 
 pub const Token = struct {
@@ -30,6 +32,14 @@ pub const Token = struct {
     value: []const u8,
     location: TokenLocation,
 };
+
+inline fn narrowLocation(value: usize) LocationScalar {
+    return std.math.cast(LocationScalar, value) orelse std.math.maxInt(LocationScalar);
+}
+
+inline fn addToLocation(base: LocationScalar, delta: usize) LocationScalar {
+    return std.math.add(LocationScalar, base, narrowLocation(delta)) catch std.math.maxInt(LocationScalar);
+}
 
 pub const Tokenizer = struct {
     input: []const u8,
@@ -163,8 +173,8 @@ pub const Tokenizer = struct {
         const start_location = self.location;
         const start = self.position;
         var pos = self.position + 1; // skip opening quote
-        var column = self.location.column + 1;
-        var line = self.location.line;
+        var column: LocationScalar = self.location.column + 1;
+        var line: LocationScalar = self.location.line;
         const input = self.input;
         const len = input.len;
 
@@ -216,7 +226,7 @@ pub const Tokenizer = struct {
             pos += 1;
         }
 
-        self.location.column += pos - self.position;
+        self.location.column = addToLocation(self.location.column, pos - self.position);
         self.position = pos;
 
         return Token{
@@ -241,7 +251,7 @@ pub const Tokenizer = struct {
             pos += 1;
         }
 
-        self.location.column += pos - self.position;
+        self.location.column = addToLocation(self.location.column, pos - self.position);
         self.position = pos;
 
         return Token{
@@ -267,7 +277,7 @@ pub const Tokenizer = struct {
         }
 
         self.position = pos;
-        self.location.column += pos - start;
+        self.location.column = addToLocation(self.location.column, pos - start);
 
         return Token{
             .type = .comment,
@@ -345,15 +355,20 @@ pub const Tokenizer = struct {
     }
 
     pub fn tokenize(self: *Tokenizer) ![]Token {
-        // Pre-allocate with a reasonable initial capacity
-        var tokens = try std.array_list.Managed(Token).initCapacity(self.allocator, 1024);
-        defer tokens.deinit();
-
-        while (try self.nextToken()) |token| {
-            try tokens.append(token);
+        // First pass: count tokens exactly to avoid ArrayList growth overhead with arenas.
+        var counter = Tokenizer.init(self.allocator, self.input);
+        var token_count: usize = 0;
+        while (try counter.nextToken()) |_| {
+            token_count += 1;
         }
 
-        return tokens.toOwnedSlice();
+        var tokens = try self.allocator.alloc(Token, token_count);
+        var i: usize = 0;
+        while (try self.nextToken()) |token| {
+            tokens[i] = token;
+            i += 1;
+        }
+        return tokens;
     }
 };
 
