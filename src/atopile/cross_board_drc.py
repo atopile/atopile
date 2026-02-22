@@ -4,7 +4,7 @@
 """
 Cross-board DRC: detects electrical connections that span multiple boards
 without passing through a harness/cable module, and validates connector
-gender compatibility.
+gender compatibility, conductor count matching, and unused conductors.
 
 Implemented as a design check trait following the same pattern as
 needs_erc_check — attached to the app during prepare_build and
@@ -15,7 +15,6 @@ from dataclasses import dataclass
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.errors import accumulate
 from atopile.logging import get_logger
 
 logger = get_logger(__name__)
@@ -28,6 +27,17 @@ class CrossBoardViolation:
     signal_path: str
     boards: list[str]
     message: str
+    is_warning: bool = False
+
+
+@dataclass
+class MatingPair:
+    """A matched pair of connectors: one on a harness, one on a board."""
+
+    harness_connector: fabll.Node
+    harness_parent: fabll.Node
+    board_connector: fabll.Node
+    board_parent: fabll.Node
 
 
 def _get_ancestor_board(
@@ -71,20 +81,28 @@ def _get_harness_descendants(app: fabll.Node) -> set[int]:
     return harness_electrical_uuids
 
 
-def _check_connector_gender(
+def _get_ancestor_in(node: fabll.Node, uuid_set: set[int]) -> fabll.Node | None:
+    """Walk up from `node` to find the first ancestor whose UUID is in `uuid_set`."""
+    current = node
+    while True:
+        parent_result = current.get_parent()
+        if parent_result is None:
+            return None
+        parent_node = parent_result[0]
+        uid = parent_node.instance.node().get_uuid()
+        if uid in uuid_set:
+            return parent_node
+        current = parent_node
+
+
+def _find_mating_pairs(
     app: fabll.Node,
     boards: list[fabll.Node],
-) -> list[CrossBoardViolation]:
+) -> list[MatingPair]:
     """
-    For each mating connector pair (one on a board, one on a harness),
-    validate that one has is_connector_plug and the other has is_connector_receptacle.
-
-    Only checks pairs where one connector is on a harness and the other
-    is on a board — these are the physically mating connectors. Connectors
-    on the same harness (internal wiring) or same board are skipped.
+    Discover mating connector pairs: one connector on a harness, one on a board,
+    linked via shared electrical nets.
     """
-    violations: list[CrossBoardViolation] = []
-
     board_uuids: set[int] = set()
     for board in boards:
         board_uuids.add(board.instance.node().get_uuid())
@@ -96,18 +114,6 @@ def _check_connector_gender(
         required_trait=F.Harness.is_harness,
     ):
         harness_uuids.add(harness.instance.node().get_uuid())
-
-    def _get_ancestor_in(node: fabll.Node, uuid_set: set[int]) -> fabll.Node | None:
-        current = node
-        while True:
-            parent_result = current.get_parent()
-            if parent_result is None:
-                return None
-            parent_node = parent_result[0]
-            uid = parent_node.instance.node().get_uuid()
-            if uid in uuid_set:
-                return parent_node
-            current = parent_node
 
     # Classify connectors by their parent context (board or harness)
     all_connectors = list(
@@ -124,8 +130,8 @@ def _check_connector_gender(
         )
     )
 
-    harness_connectors: list[tuple[fabll.Node, fabll.Node]] = []  # (connector, harness)
-    board_connectors: list[tuple[fabll.Node, fabll.Node]] = []  # (connector, board)
+    harness_connectors: list[tuple[fabll.Node, fabll.Node]] = []
+    board_connectors: list[tuple[fabll.Node, fabll.Node]] = []
 
     for connector in all_connectors:
         harness_parent = _get_ancestor_in(connector, harness_uuids)
@@ -148,6 +154,7 @@ def _check_connector_gender(
 
     # For each harness connector, find its mating board connector via shared net
     checked_pairs: set[tuple[int, int]] = set()
+    pairs: list[MatingPair] = []
 
     for hc, harness in harness_connectors:
         pins = list(
@@ -160,7 +167,6 @@ def _check_connector_gender(
         if not pins:
             continue
 
-        # Check the first pin to find the mating board connector
         pin = pins[0]
         is_iface = pin.get_trait(fabll.is_interface)
         connected = is_iface.get_connected(include_self=False)
@@ -177,36 +183,184 @@ def _check_connector_gender(
                     continue
                 checked_pairs.add(pair_key)
 
-                # Validate gender compatibility
-                hc_is_plug = hc.has_trait(F.Harness.is_connector_plug)
-                hc_is_receptacle = hc.has_trait(F.Harness.is_connector_receptacle)
-                bc_is_plug = bc.has_trait(F.Harness.is_connector_plug)
-                bc_is_receptacle = bc.has_trait(F.Harness.is_connector_receptacle)
-
-                if not (hc_is_plug or hc_is_receptacle):
-                    continue
-                if not (bc_is_plug or bc_is_receptacle):
-                    continue
-
-                # Genders must be opposite
-                if hc_is_plug == bc_is_plug:
-                    hc_name = hc.get_full_name(include_uuid=False)
-                    bc_name = bc.get_full_name(include_uuid=False)
-                    hc_gender = "plug" if hc_is_plug else "receptacle"
-                    bc_gender = "plug" if bc_is_plug else "receptacle"
-                    violations.append(
-                        CrossBoardViolation(
-                            signal_path=f"{hc_name} <-> {bc_name}",
-                            boards=[],
-                            message=(
-                                f"Connector gender mismatch: "
-                                f"'{hc_name}' ({hc_gender}) connected to "
-                                f"'{bc_name}' ({bc_gender}). "
-                                f"Connected connectors must have opposite genders."
-                            ),
-                        )
+                pairs.append(
+                    MatingPair(
+                        harness_connector=hc,
+                        harness_parent=harness,
+                        board_connector=bc,
+                        board_parent=board,
                     )
+                )
                 break  # Found the mating board connector for this harness connector
+
+    return pairs
+
+
+def _check_connector_gender(
+    mating_pairs: list[MatingPair],
+) -> list[CrossBoardViolation]:
+    """
+    For each mating connector pair, validate that one has is_connector_plug
+    and the other has is_connector_receptacle.
+    """
+    violations: list[CrossBoardViolation] = []
+
+    for pair in mating_pairs:
+        hc = pair.harness_connector
+        bc = pair.board_connector
+
+        hc_is_plug = hc.has_trait(F.Harness.is_connector_plug)
+        hc_is_receptacle = hc.has_trait(F.Harness.is_connector_receptacle)
+        bc_is_plug = bc.has_trait(F.Harness.is_connector_plug)
+        bc_is_receptacle = bc.has_trait(F.Harness.is_connector_receptacle)
+
+        if not (hc_is_plug or hc_is_receptacle):
+            continue
+        if not (bc_is_plug or bc_is_receptacle):
+            continue
+
+        # Genders must be opposite
+        if hc_is_plug == bc_is_plug:
+            hc_name = hc.get_full_name(include_uuid=False)
+            bc_name = bc.get_full_name(include_uuid=False)
+            hc_gender = "plug" if hc_is_plug else "receptacle"
+            bc_gender = "plug" if bc_is_plug else "receptacle"
+            violations.append(
+                CrossBoardViolation(
+                    signal_path=f"{hc_name} <-> {bc_name}",
+                    boards=[],
+                    message=(
+                        f"Connector gender mismatch: "
+                        f"'{hc_name}' ({hc_gender}) connected to "
+                        f"'{bc_name}' ({bc_gender}). "
+                        f"Connected connectors must have opposite genders."
+                    ),
+                )
+            )
+
+    return violations
+
+
+def _check_conductor_count(
+    mating_pairs: list[MatingPair],
+) -> list[CrossBoardViolation]:
+    """
+    For each mating pair, verify the harness connector and board connector
+    have the same number of conductors (direct interface children).
+    """
+    violations: list[CrossBoardViolation] = []
+
+    for pair in mating_pairs:
+        hc_conductors = list(
+            pair.harness_connector.get_children(
+                direct_only=True,
+                types=fabll.Node,
+                required_trait=fabll.is_interface,
+            )
+        )
+        bc_conductors = list(
+            pair.board_connector.get_children(
+                direct_only=True,
+                types=fabll.Node,
+                required_trait=fabll.is_interface,
+            )
+        )
+
+        hc_count = len(hc_conductors)
+        bc_count = len(bc_conductors)
+
+        if hc_count != bc_count:
+            hc_name = pair.harness_connector.get_full_name(include_uuid=False)
+            bc_name = pair.board_connector.get_full_name(include_uuid=False)
+            violations.append(
+                CrossBoardViolation(
+                    signal_path=f"{hc_name} <-> {bc_name}",
+                    boards=[],
+                    message=(
+                        f"Conductor count mismatch: "
+                        f"'{hc_name}' has {hc_count} conductors but "
+                        f"'{bc_name}' has {bc_count} conductors. "
+                        f"Mating connectors must have the same number of conductors."
+                    ),
+                )
+            )
+
+    return violations
+
+
+def _check_unused_conductors(
+    mating_pairs: list[MatingPair],
+) -> list[CrossBoardViolation]:
+    """
+    For each board connector in a mating pair, check whether each conductor
+    is actually connected to board circuitry (not just the connector itself
+    or the harness). Unused conductors generate warnings.
+    """
+    violations: list[CrossBoardViolation] = []
+
+    for pair in mating_pairs:
+        bc = pair.board_connector
+        board = pair.board_parent
+
+        conductors = list(
+            bc.get_children(
+                direct_only=True,
+                types=fabll.Node,
+                required_trait=fabll.is_interface,
+            )
+        )
+
+        for conductor in conductors:
+            # Get leaf interfaces of this conductor
+            leaves = list(
+                conductor.get_children(
+                    direct_only=False,
+                    types=fabll.Node,
+                    required_trait=fabll.is_interface,
+                    include_root=True,
+                )
+            )
+            # Filter to actual leaves (no interface children)
+            leaf_ifaces = []
+            for leaf in leaves:
+                children = list(
+                    leaf.get_children(
+                        direct_only=True,
+                        types=fabll.Node,
+                        required_trait=fabll.is_interface,
+                    )
+                )
+                if not children:
+                    leaf_ifaces.append(leaf)
+
+            has_board_connection = False
+            for leaf in leaf_ifaces:
+                is_iface = leaf.get_trait(fabll.is_interface)
+                connected = is_iface.get_connected(include_self=False)
+
+                for peer in connected:
+                    # Peer must be on the board but NOT inside this connector
+                    if peer.is_descendant_of(board) and not peer.is_descendant_of(bc):
+                        has_board_connection = True
+                        break
+                if has_board_connection:
+                    break
+
+            if not has_board_connection:
+                conductor_name = conductor.get_full_name(include_uuid=False)
+                bc_name = bc.get_full_name(include_uuid=False)
+                violations.append(
+                    CrossBoardViolation(
+                        signal_path=conductor_name,
+                        boards=[],
+                        message=(
+                            f"Unused conductor: "
+                            f"'{conductor_name}' on connector '{bc_name}' "
+                            f"is not connected to any board circuitry."
+                        ),
+                        is_warning=True,
+                    )
+                )
 
     return violations
 
@@ -218,7 +372,7 @@ def check_cross_board_connections(
     """
     Check for electrical connections spanning multiple boards
     without going through a harness/cable module, and validate
-    connector gender compatibility.
+    connector gender compatibility, conductor counts, and unused conductors.
 
     Algorithm:
     1. Build a set of board node UUIDs for fast ancestry lookup
@@ -226,7 +380,7 @@ def check_cross_board_connections(
     3. For each Electrical with is_interface, find its connected bus
     4. Determine which boards participate in that bus
     5. If 2+ boards and no harness electricals in the bus, record a violation
-    6. Check connector gender compatibility
+    6. Find mating pairs and run connector checks
     """
     if len(boards) < 2:
         return []
@@ -301,49 +455,18 @@ def check_cross_board_connections(
                 )
             )
 
-    # Check connector gender compatibility
-    gender_violations = _check_connector_gender(app, boards)
-    violations.extend(gender_violations)
+    # Find mating pairs once and run all connector checks
+    mating_pairs = _find_mating_pairs(app, boards)
+    violations.extend(_check_connector_gender(mating_pairs))
+    violations.extend(_check_conductor_count(mating_pairs))
+    violations.extend(_check_unused_conductors(mating_pairs))
 
     return violations
 
 
 class CrossBoardDRCFault(F.implements_design_check.UnfulfilledCheckException):
-    """Cross-board DRC violation."""
+    """Cross-board DRC violation (build error)."""
 
 
-class needs_cross_board_drc(fabll.Node):
-    """
-    Cross-board DRC check trait.
-
-    Checks for:
-    - Electrical connections spanning multiple boards without a harness
-    - Connector gender compatibility (plug vs receptacle)
-    """
-
-    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
-    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
-
-    @F.implements_design_check.register_post_instantiation_design_check
-    def __check_post_instantiation_design_check__(self):
-        app = fabll.Traits(self).get_obj_raw()
-
-        boards = list(
-            app.get_children(
-                direct_only=False,
-                types=fabll.Node,
-                required_trait=F.is_board,
-            )
-        )
-
-        violations = check_cross_board_connections(app, boards)
-
-        with accumulate(CrossBoardDRCFault) as acc:
-            for v in violations:
-                with acc.collect():
-                    raise CrossBoardDRCFault(v.message, nodes=[app])
-
-        if not violations:
-            logger.info(
-                "Cross-board DRC passed: all inter-board connections use harnesses"
-            )
+class CrossBoardDRCWarning(F.implements_design_check.MaybeUnfulfilledCheckException):
+    """Cross-board DRC warning (does not fail the build)."""

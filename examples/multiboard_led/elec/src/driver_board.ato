@@ -6,7 +6,7 @@ import Capacitor
 import ElectricPower
 import Electrical
 import is_board
-from "connectors.ato" import JST_SH_4_Receptacle
+from "harness.ato" import JST_SH_4_Receptacle
 
 module DriverBoard:
     """Driver board with power regulation, status LED, and data output."""

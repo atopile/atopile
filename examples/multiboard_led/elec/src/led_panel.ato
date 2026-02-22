@@ -7,7 +7,7 @@ import Capacitor
 import ElectricPower
 import Electrical
 import is_board
-from "connectors.ato" import JST_SH_4_Receptacle
+from "harness.ato" import JST_SH_4_Receptacle
 
 module LEDPanel:
     """LED panel with 4 LEDs and current-limiting resistors."""

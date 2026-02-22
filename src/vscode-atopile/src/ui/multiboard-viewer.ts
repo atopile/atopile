@@ -170,9 +170,11 @@ class MultiboardViewerWebview extends BaseWebview {
                         map: texture,
                         transparent: true,
                         depthTest: false,
+                        depthWrite: false,
                         sizeAttenuation: false,
                     });
                     const sprite = new THREE.Sprite(spriteMaterial);
+                    sprite.renderOrder = 999;
                     sprite.position.copy(position);
                     sprite.scale.set(0.18, 0.045, 1);
                     return sprite;

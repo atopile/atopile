@@ -1,17 +1,10 @@
 """Tests for the cross-board DRC module."""
 
-import pytest
-
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.cross_board_drc import (
-    check_cross_board_connections,
-    needs_cross_board_drc,
-)
-from atopile.errors import UserDesignCheckException
-from faebryk.libs.app.checks import check_design
+from atopile.cross_board_drc import check_cross_board_connections
 
 
 def _make_graph():
@@ -147,29 +140,3 @@ def test_empty_boards_list():
     app = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
     violations = check_cross_board_connections(app, [])
     assert len(violations) == 0
-
-
-def test_trait_no_violation():
-    """Design check passes when harness is used."""
-    g, tg = _make_graph()
-
-    app = _AppWithHarness.bind_typegraph(tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(app, needs_cross_board_drc)
-
-    # Should not raise
-    check_design(
-        app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
-    )
-
-
-def test_trait_violation():
-    """Design check raises when boards are directly connected."""
-    g, tg = _make_graph()
-
-    app = _AppDirectConnect.bind_typegraph(tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(app, needs_cross_board_drc)
-
-    with pytest.raises(UserDesignCheckException):
-        check_design(
-            app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
-        )
