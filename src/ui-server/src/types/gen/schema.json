@@ -39,6 +39,18 @@
               }
             ],
             "default": null
+          },
+          "isSystem": {
+            "default": false,
+            "title": "Issystem",
+            "type": "boolean"
+          },
+          "boards": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Boards",
+            "type": "array"
           }
         },
         "required": [
@@ -269,6 +281,18 @@
           }
         ],
         "default": null
+      },
+      "isSystem": {
+        "default": false,
+        "title": "Issystem",
+        "type": "boolean"
+      },
+      "boards": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Boards",
+        "type": "array"
       }
     },
     "required": [
@@ -3101,7 +3125,8 @@
           "log_view_current_id_changed",
           "open_layout",
           "open_kicad",
-          "open_3d"
+          "open_3d",
+          "open_multiboard"
         ],
         "title": "EventType",
         "type": "string"

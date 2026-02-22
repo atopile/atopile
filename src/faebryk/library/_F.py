@@ -20,9 +20,12 @@ from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
+import faebryk.library.Harness as Harness
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+from faebryk.library.is_board import is_board
+from faebryk.library.is_multiboard import is_multiboard
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
 import faebryk.library.Literals as Literals
@@ -123,9 +126,12 @@ __all__ = [
     "has_part_removed",
     "is_sink",
     "is_source",
+    "Harness",
     "Logic",
     "Mechanical",
     "Signal",
+    "is_board",
+    "is_multiboard",
     "is_app_root",
     "bus_parameter_utils",
     "Literals",

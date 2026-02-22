@@ -84,6 +84,8 @@ export interface BuildTarget {
   entry: string;
   root: string;
   lastBuild?: BuildTargetStatus;  // Persisted status from last build
+  isSystem?: boolean;  // True if this is a system-level target
+  boards?: string[];  // Sub-board target names for system-level builds
 }
 
 export interface QueuedBuild {

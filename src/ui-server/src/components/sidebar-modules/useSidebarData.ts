@@ -107,6 +107,8 @@ export function useSidebarData({ state }: UseSidebarDataParams) {
           id: t.name,
           name: t.name,
           entry: t.entry,
+          isSystem: t.isSystem ?? false,
+          boards: t.boards ?? [],
           status: build?.status === 'failed' ? 'error' : (build?.status || normalizeLastBuildStatus(t.lastBuild?.status)),
           warnings: build?.warnings ?? t.lastBuild?.warnings,
           errors: build?.errors ?? t.lastBuild?.errors,

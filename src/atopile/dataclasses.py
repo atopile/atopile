@@ -88,6 +88,7 @@ class EventType(StrEnum):
     OPEN_LAYOUT = "open_layout"
     OPEN_KICAD = "open_kicad"
     OPEN_3D = "open_3d"
+    OPEN_MULTIBOARD = "open_multiboard"
 
 
 # =============================================================================
@@ -578,6 +579,8 @@ class BuildTarget(CamelModel):
     entry: str
     root: str
     last_build: Optional[BuildTargetStatus] = None
+    is_system: bool = False
+    boards: list[str] = Field(default_factory=list)
 
 
 class BuildsResponse(CamelModel):
