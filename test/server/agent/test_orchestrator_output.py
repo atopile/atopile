@@ -10,15 +10,14 @@ import httpx
 from openai import APIStatusError
 
 from atopile.dataclasses import AppContext
+from atopile.server.agent.orchestrator_helpers import _extract_retry_after_delay_s
 from atopile.server.agent.orchestrator import (
-    _SYSTEM_PROMPT,
     AgentOrchestrator,
     ToolTrace,
     _build_function_call_outputs_for_model,
     _build_prompt_cache_key,
     _build_session_primer,
     _build_worker_loop_guard_message,
-    _extract_retry_after_delay_s,
     _sanitize_tool_output_for_model,
     _tool_call_signature,
     _trim_user_message,

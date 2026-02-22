@@ -6,7 +6,9 @@ import re
 from io import BytesIO
 from pathlib import Path
 
-from atopile.server.agent import policy
+from faebryk.libs.datasheets import lcsc_wmsc_url
+
+from atopile.server.agent import policy, policy_datasheet
 
 def _anchor(line: int, text: str) -> str:
     return f"{line}:{policy.compute_line_hash(line, text)}"
@@ -214,7 +216,7 @@ def _test_read_file_chunk_missing_path_includes_package_suggestions(
         )
 
 def _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
-    detected = policy._detect_datasheet_format(
+    detected = policy_datasheet._detect_datasheet_format(
         source_value="https://example.com/datasheet.pdf",
         content_type="application/pdf",
         raw_bytes=b"<!doctype html><html><body>redirect</body></html>",
@@ -268,7 +270,10 @@ def _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
 ) -> None:
     def fake_read_datasheet_bytes_from_url(
         url: str,
+        *,
+        scope_error_cls: type[Exception],
     ) -> tuple[bytes, str, str | None]:
+        _ = scope_error_cls
         assert url == "https://example.com/datasheet.pdf"
         return (
             b"<html><body>not a pdf</body></html>",
@@ -277,7 +282,7 @@ def _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
         )
 
     monkeypatch.setattr(
-        policy,
+        policy_datasheet,
         "_read_datasheet_bytes_from_url",
         fake_read_datasheet_bytes_from_url,
     )
@@ -293,11 +298,11 @@ def _test_lcsc_wmsc_url_extracts_part_number() -> None:
         "https://www.lcsc.com/datasheet/"
         "lcsc_datasheet_2304140030_STMicroelectronics-STM32G474RET6_C521608.pdf"
     )
-    fallback = policy.lcsc_wmsc_url(url)
+    fallback = lcsc_wmsc_url(url)
     assert fallback == "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/C521608.pdf"
 
 def _test_lcsc_wmsc_url_ignores_non_lcsc_urls() -> None:
-    assert policy.lcsc_wmsc_url("https://www.st.com/resource/doc.pdf") is None
+    assert lcsc_wmsc_url("https://www.st.com/resource/doc.pdf") is None
 
 def _test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
     monkeypatch: pytest.MonkeyPatch,
@@ -336,10 +341,11 @@ def _test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
             payload=b"<!doctype html><html>not-pdf</html>",
         )
 
-    monkeypatch.setattr(policy.urllib_request, "urlopen", _fake_urlopen)
+    monkeypatch.setattr(policy_datasheet.urllib_request, "urlopen", _fake_urlopen)
 
-    raw, source_value, content_type = policy._read_datasheet_bytes_from_url(
-        "https://www.lcsc.com/datasheet/lcsc_datasheet_demo_C521608.pdf"
+    raw, source_value, content_type = policy_datasheet._read_datasheet_bytes_from_url(
+        "https://www.lcsc.com/datasheet/lcsc_datasheet_demo_C521608.pdf",
+        scope_error_cls=policy.ScopeError,
     )
     assert raw.startswith(b"%PDF-")
     assert "wmsc.lcsc.com" in source_value

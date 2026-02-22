@@ -28,7 +28,6 @@ from atopile.model import builds as builds_domain
 from atopile.model.sqlite import BuildHistory
 from atopile.server import module_introspection
 from atopile.server.agent import policy
-from atopile.server.agent import tool_layout as _tool_layout_module
 from atopile.server.agent.tool_autolayout_web_helpers import (
     _apply_component_highlight_overlay,
     _autolayout_recommended_action,
@@ -65,12 +64,10 @@ from atopile.server.agent.tool_layout import (
     _LayoutComponentRecord,
     _footprint_reference,
     _layout_component_payload,
-    _layout_get_component_position as _layout_get_component_position_impl,
-    _layout_set_component_position as _layout_set_component_position_impl,
-    _load_layout_component_index as _load_layout_component_index_impl,
+    _layout_get_component_position,
+    _layout_set_component_position,
     _resolve_highlight_components,
-    _resolve_layout_file_for_tool as _resolve_layout_file_for_tool_impl,
-    _write_layout_component_file as _write_layout_component_file_impl,
+    _resolve_layout_file_for_tool,
 )
 from atopile.server.agent.tool_references import (
     _collect_example_projects,
@@ -125,66 +122,6 @@ _EXPECTED_MANUFACTURING_OUTPUT_KEYS: tuple[str, ...] = (
     "pcb_summary",
 )
 _AUTOLAYOUT_MAX_TIMEOUT_MINUTES = 2
-
-# Backward-compatible aliases and patch points for tests/callers.
-_resolve_layout_file_for_tool = _resolve_layout_file_for_tool_impl
-_load_layout_component_index = _load_layout_component_index_impl
-_write_layout_component_file = _write_layout_component_file_impl
-
-
-def _sync_layout_tool_patchpoints() -> None:
-    # Keep tool_layout internals in sync with module-level monkeypatches.
-    _tool_layout_module._resolve_layout_file_for_tool = _resolve_layout_file_for_tool
-    _tool_layout_module._load_layout_component_index = _load_layout_component_index
-    _tool_layout_module._write_layout_component_file = _write_layout_component_file
-
-
-def _layout_get_component_position(
-    *,
-    project_root: Path,
-    target: str,
-    address: str,
-    fuzzy_limit: int,
-) -> dict[str, Any]:
-    _sync_layout_tool_patchpoints()
-    return _layout_get_component_position_impl(
-        project_root=project_root,
-        target=target,
-        address=address,
-        fuzzy_limit=fuzzy_limit,
-    )
-
-
-def _layout_set_component_position(
-    *,
-    project_root: Path,
-    target: str,
-    address: str,
-    mode: str,
-    x_mm: float | None,
-    y_mm: float | None,
-    rotation_deg: float | None,
-    dx_mm: float | None,
-    dy_mm: float | None,
-    drotation_deg: float | None,
-    layer: str | None,
-    fuzzy_limit: int,
-) -> dict[str, Any]:
-    _sync_layout_tool_patchpoints()
-    return _layout_set_component_position_impl(
-        project_root=project_root,
-        target=target,
-        address=address,
-        mode=mode,
-        x_mm=x_mm,
-        y_mm=y_mm,
-        rotation_deg=rotation_deg,
-        dx_mm=dx_mm,
-        dy_mm=dy_mm,
-        drotation_deg=drotation_deg,
-        layer=layer,
-        fuzzy_limit=fuzzy_limit,
-    )
 
 def _datasheet_cache_key(*, project_root: Path, source_type: str, source: str) -> str:
     root = str(project_root.resolve())
@@ -247,46 +184,6 @@ def _datasheet_cache_keys(
         add(source_kind, source)
 
     return keys
-
-
-def _run_exa_web_search_with_compat(
-    *,
-    query: str,
-    num_results: int,
-    search_type: str,
-    include_domains: list[str],
-    exclude_domains: list[str],
-    content_mode: str,
-    max_characters: int | None,
-    max_age_hours: int | None,
-    timeout_s: float,
-) -> dict[str, Any]:
-    try:
-        return _exa_web_search(
-            query=query,
-            num_results=num_results,
-            search_type=search_type,
-            include_domains=include_domains,
-            exclude_domains=exclude_domains,
-            content_mode=content_mode,
-            max_characters=max_characters,
-            max_age_hours=max_age_hours,
-            timeout_s=timeout_s,
-        )
-    except TypeError as exc:
-        # Compatibility path for older adapters/tests that still use
-        # include_text instead of content_mode/max_* options.
-        if "unexpected keyword argument" not in str(exc):
-            raise
-        return _exa_web_search(
-            query=query,
-            num_results=num_results,
-            search_type=search_type,
-            include_domains=include_domains,
-            exclude_domains=exclude_domains,
-            include_text=(content_mode == "text"),
-            timeout_s=timeout_s,
-        )
 
 
 def _resolve_web_search_content_mode(arguments: dict[str, Any]) -> str:
@@ -701,7 +598,7 @@ async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: A
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(
-                _run_exa_web_search_with_compat,
+                _exa_web_search,
                 query=query,
                 num_results=num_results,
                 search_type=search_type,

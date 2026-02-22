@@ -32,7 +32,6 @@ from atopile.server.agent.orchestrator_helpers import (
     _compute_rate_limit_retry_delay_s,
     _consume_steering_updates,
     _extract_function_calls,
-    _extract_retry_after_delay_s,
     _extract_sdk_error_text,
     _extract_text,
     _emit_progress,
@@ -62,9 +61,6 @@ SteeringMessagesCallback = Callable[[], list[str]]
 MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
-
-# Backward-compatible alias expected by existing tests/callers.
-_SYSTEM_PROMPT = SYSTEM_PROMPT
 
 
 def _remap_hashline_anchor(

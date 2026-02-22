@@ -11,7 +11,7 @@ from atopile.dataclasses import (
     AppContext,
     BuildStatus,
 )
-from atopile.server.agent import policy, tools
+from atopile.server.agent import policy, tool_layout, tools
 from atopile.server.domains.autolayout.models import (
     AutolayoutCandidate,
     AutolayoutJob,
@@ -83,7 +83,9 @@ def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> N
         search_type: str,
         include_domains: list[str],
         exclude_domains: list[str],
-        include_text: bool,
+        content_mode: str,
+        max_characters: int | None,
+        max_age_hours: int | None,
         timeout_s: float,
     ) -> dict[str, object]:
         captured["query"] = query
@@ -91,7 +93,9 @@ def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> N
         captured["search_type"] = search_type
         captured["include_domains"] = include_domains
         captured["exclude_domains"] = exclude_domains
-        captured["include_text"] = include_text
+        captured["content_mode"] = content_mode
+        captured["max_characters"] = max_characters
+        captured["max_age_hours"] = max_age_hours
         captured["timeout_s"] = timeout_s
         return {
             "query": query,
@@ -132,7 +136,9 @@ def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> N
     assert captured["search_type"] == "neural"
     assert captured["include_domains"] == ["st.com"]
     assert captured["exclude_domains"] == ["example.com"]
-    assert captured["include_text"] is True
+    assert captured["content_mode"] == "text"
+    assert captured["max_characters"] == 10_000
+    assert captured["max_age_hours"] is None
 
 def _test_execute_tool_allows_layout_screenshot(
     monkeypatch,
@@ -230,12 +236,12 @@ def _test_layout_get_component_position_returns_exact_match(
     ]
 
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_resolve_layout_file_for_tool",
         lambda *, project_root, target: layout_path,
     )
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_load_layout_component_index",
         lambda _layout_path: (object(), records),
     )
@@ -278,12 +284,12 @@ def _test_layout_get_component_position_returns_fuzzy_suggestions(
     ]
 
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_resolve_layout_file_for_tool",
         lambda *, project_root, target: layout_path,
     )
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_load_layout_component_index",
         lambda _layout_path: (object(), records),
     )
@@ -317,7 +323,7 @@ def _test_layout_set_component_position_supports_absolute_and_relative(
     )
 
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_resolve_layout_file_for_tool",
         lambda *, project_root, target: layout_path,
     )
@@ -336,12 +342,12 @@ def _test_layout_set_component_position_supports_absolute_and_relative(
         return object(), [refreshed]
 
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_load_layout_component_index",
         fake_load_layout_index,
     )
     monkeypatch.setattr(
-        tools,
+        tool_layout,
         "_write_layout_component_file",
         lambda _layout_path, _pcb_file: None,
     )
