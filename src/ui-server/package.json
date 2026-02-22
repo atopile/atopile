@@ -13,12 +13,16 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@react-three/drei": "^9.92.7",
+    "@react-three/fiber": "^8.15.12",
     "@tracespace/core": "^5.0.0-alpha.0",
     "@tracespace/parser": "^5.0.0-next.0",
     "@tracespace/plotter": "^5.0.0-alpha.0",
     "@tracespace/renderer": "^5.0.0-alpha.0",
+    "@types/dagre": "^0.7.53",
     "@types/three": "^0.182.0",
     "ansi-to-html": "^0.7.2",
+    "dagre": "^0.8.5",
     "hast-util-to-html": "^9.0.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",

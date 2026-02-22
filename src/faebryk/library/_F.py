@@ -20,6 +20,8 @@ from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
+from faebryk.library.is_i2c_controller import is_i2c_controller
+from faebryk.library.is_i2c_target import is_i2c_target
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
@@ -56,6 +58,7 @@ from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
+from faebryk.library.PinMuxSelector import PinMuxSelector
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
@@ -123,6 +126,8 @@ __all__ = [
     "has_part_removed",
     "is_sink",
     "is_source",
+    "is_i2c_controller",
+    "is_i2c_target",
     "Logic",
     "Mechanical",
     "Signal",
@@ -159,6 +164,7 @@ __all__ = [
     "is_sum_bus_parameter",
     "Filter",
     "Lead",
+    "PinMuxSelector",
     "has_net_name_affix",
     "requires_external_usage",
     "XtalIF",

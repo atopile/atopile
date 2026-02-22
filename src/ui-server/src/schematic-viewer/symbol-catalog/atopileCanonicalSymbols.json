@@ -1,0 +1,1596 @@
+{
+  "version": 1,
+  "generator": "scripts/import-kicad-canonical-symbols.ts",
+  "generatedAt": "2026-02-10T07:29:00.551Z",
+  "source": {
+    "repo": "https://gitlab.com/kicad/libraries/kicad-symbols.git",
+    "commit": "b32a60838ff65c541531a3d2ea15e170ced7949f"
+  },
+  "families": {
+    "resistor": {
+      "source": {
+        "lib": "Device",
+        "symbolFile": "R.kicad_sym",
+        "symbolName": "R"
+      },
+      "symbol": {
+        "name": "R",
+        "reference": "R",
+        "value": "R",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": 3.81,
+            "angle": 270,
+            "length": 1.27,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.3329521523757077e-16,
+            "bodyY": 5.08
+          },
+          {
+            "name": "",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": -3.81,
+            "angle": 90,
+            "length": 1.27,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": -7.776507174585693e-17,
+            "bodyY": -5.08
+          }
+        ],
+        "rectangles": [
+          {
+            "startX": -1.016,
+            "startY": -2.54,
+            "endX": 1.016,
+            "endY": 2.54,
+            "fillType": "none"
+          }
+        ],
+        "circles": [],
+        "polylines": [],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -1.016,
+          "minY": -2.54,
+          "maxX": 1.016,
+          "maxY": 2.54,
+          "width": 2.032,
+          "height": 5.08
+        },
+        "totalBounds": {
+          "minX": -1.016,
+          "minY": -5.08,
+          "maxX": 1.016,
+          "maxY": 5.08
+        }
+      }
+    },
+    "capacitor": {
+      "source": {
+        "lib": "Device",
+        "symbolFile": "C.kicad_sym",
+        "symbolName": "C"
+      },
+      "symbol": {
+        "name": "C",
+        "reference": "C",
+        "value": "C",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": 3.81,
+            "angle": 270,
+            "length": 2.794,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 5.132494735226557e-16,
+            "bodyY": 6.604
+          },
+          {
+            "name": "",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": -3.81,
+            "angle": 90,
+            "length": 2.794,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": -1.7108315784088525e-16,
+            "bodyY": -6.604
+          }
+        ],
+        "rectangles": [],
+        "circles": [],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -2.032,
+                "y": 0.762
+              },
+              {
+                "x": 2.032,
+                "y": 0.762
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": -2.032,
+                "y": -0.762
+              },
+              {
+                "x": 2.032,
+                "y": -0.762
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.032,
+          "minY": -0.762,
+          "maxX": 2.032,
+          "maxY": 0.762,
+          "width": 4.064,
+          "height": 1.524
+        },
+        "totalBounds": {
+          "minX": -2.032,
+          "minY": -6.604,
+          "maxX": 2.032,
+          "maxY": 6.604
+        }
+      }
+    },
+    "capacitor_polarized": {
+      "source": {
+        "lib": "Device",
+        "symbolFile": "C_Polarized.kicad_sym",
+        "symbolName": "C_Polarized"
+      },
+      "symbol": {
+        "name": "C_Polarized",
+        "reference": "C",
+        "value": "C_Polarized",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": 3.81,
+            "angle": 270,
+            "length": 2.794,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 5.132494735226557e-16,
+            "bodyY": 6.604
+          },
+          {
+            "name": "",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": -3.81,
+            "angle": 90,
+            "length": 2.794,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": -1.7108315784088525e-16,
+            "bodyY": -6.604
+          }
+        ],
+        "rectangles": [
+          {
+            "startX": -2.286,
+            "startY": 0.508,
+            "endX": 2.286,
+            "endY": 1.016,
+            "fillType": "none"
+          },
+          {
+            "startX": 2.286,
+            "startY": -0.508,
+            "endX": -2.286,
+            "endY": -1.016,
+            "fillType": "outline"
+          }
+        ],
+        "circles": [],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -1.778,
+                "y": 2.286
+              },
+              {
+                "x": -0.762,
+                "y": 2.286
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": -1.27,
+                "y": 2.794
+              },
+              {
+                "x": -1.27,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.286,
+          "minY": -1.016,
+          "maxX": 2.286,
+          "maxY": 2.794,
+          "width": 4.572,
+          "height": 3.81
+        },
+        "totalBounds": {
+          "minX": -2.286,
+          "minY": -6.604,
+          "maxX": 2.286,
+          "maxY": 6.604
+        }
+      }
+    },
+    "inductor": {
+      "source": {
+        "lib": "Device",
+        "symbolFile": "L.kicad_sym",
+        "symbolName": "L"
+      },
+      "symbol": {
+        "name": "L",
+        "reference": "L",
+        "value": "L",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "1",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": 3.81,
+            "angle": 270,
+            "length": 1.27,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.3329521523757077e-16,
+            "bodyY": 5.08
+          },
+          {
+            "name": "2",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": -3.81,
+            "angle": 90,
+            "length": 1.27,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": -7.776507174585693e-17,
+            "bodyY": -5.08
+          }
+        ],
+        "rectangles": [],
+        "circles": [],
+        "polylines": [],
+        "arcs": [
+          {
+            "startX": 0,
+            "startY": 2.54,
+            "midX": 0.6323,
+            "midY": 1.905,
+            "endX": 0,
+            "endY": 1.27,
+            "fillType": "none"
+          },
+          {
+            "startX": 0,
+            "startY": 1.27,
+            "midX": 0.6323,
+            "midY": 0.635,
+            "endX": 0,
+            "endY": 0,
+            "fillType": "none"
+          },
+          {
+            "startX": 0,
+            "startY": 0,
+            "midX": 0.6323,
+            "midY": -0.635,
+            "endX": 0,
+            "endY": -1.27,
+            "fillType": "none"
+          },
+          {
+            "startX": 0,
+            "startY": -1.27,
+            "midX": 0.6323,
+            "midY": -1.905,
+            "endX": 0,
+            "endY": -2.54,
+            "fillType": "none"
+          }
+        ],
+        "bodyBounds": {
+          "minX": 0,
+          "minY": -2.54,
+          "maxX": 0.6323,
+          "maxY": 2.54,
+          "width": 0.6323,
+          "height": 5.08
+        },
+        "totalBounds": {
+          "minX": -7.776507174585693e-17,
+          "minY": -5.08,
+          "maxX": 0.6323,
+          "maxY": 5.08
+        }
+      }
+    },
+    "diode": {
+      "source": {
+        "lib": "Device",
+        "symbolFile": "D.kicad_sym",
+        "symbolName": "D"
+      },
+      "symbol": {
+        "name": "D",
+        "reference": "D",
+        "value": "D",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "K",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": -3.81,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "signal",
+            "bodyX": -6.35,
+            "bodyY": 0
+          },
+          {
+            "name": "A",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 3.81,
+            "y": 0,
+            "angle": 180,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "left",
+            "category": "signal",
+            "bodyX": 6.35,
+            "bodyY": -3.110602869834277e-16
+          }
+        ],
+        "rectangles": [],
+        "circles": [],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -1.27,
+                "y": 1.27
+              },
+              {
+                "x": -1.27,
+                "y": -1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.27,
+                "y": 1.27
+              },
+              {
+                "x": 1.27,
+                "y": -1.27
+              },
+              {
+                "x": -1.27,
+                "y": 0
+              },
+              {
+                "x": 1.27,
+                "y": 1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.27,
+                "y": 0
+              },
+              {
+                "x": -1.27,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -1.27,
+          "minY": -1.27,
+          "maxX": 1.27,
+          "maxY": 1.27,
+          "width": 2.54,
+          "height": 2.54
+        },
+        "totalBounds": {
+          "minX": -6.35,
+          "minY": -1.27,
+          "maxX": 6.35,
+          "maxY": 1.27
+        }
+      }
+    },
+    "led": {
+      "source": {
+        "lib": "Device",
+        "symbolFile": "LED.kicad_sym",
+        "symbolName": "LED"
+      },
+      "symbol": {
+        "name": "LED",
+        "reference": "D",
+        "value": "LED",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "K",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": -3.81,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "signal",
+            "bodyX": -6.35,
+            "bodyY": 0
+          },
+          {
+            "name": "A",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 3.81,
+            "y": 0,
+            "angle": 180,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "left",
+            "category": "signal",
+            "bodyX": 6.35,
+            "bodyY": -3.110602869834277e-16
+          }
+        ],
+        "rectangles": [],
+        "circles": [],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -3.048,
+                "y": -0.762
+              },
+              {
+                "x": -4.572,
+                "y": -2.286
+              },
+              {
+                "x": -3.81,
+                "y": -2.286
+              },
+              {
+                "x": -4.572,
+                "y": -2.286
+              },
+              {
+                "x": -4.572,
+                "y": -1.524
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": -1.778,
+                "y": -0.762
+              },
+              {
+                "x": -3.302,
+                "y": -2.286
+              },
+              {
+                "x": -2.54,
+                "y": -2.286
+              },
+              {
+                "x": -3.302,
+                "y": -2.286
+              },
+              {
+                "x": -3.302,
+                "y": -1.524
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": -1.27,
+                "y": 0
+              },
+              {
+                "x": 1.27,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": -1.27,
+                "y": -1.27
+              },
+              {
+                "x": -1.27,
+                "y": 1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.27,
+                "y": -1.27
+              },
+              {
+                "x": 1.27,
+                "y": 1.27
+              },
+              {
+                "x": -1.27,
+                "y": 0
+              },
+              {
+                "x": 1.27,
+                "y": -1.27
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -4.572,
+          "minY": -2.286,
+          "maxX": 1.27,
+          "maxY": 1.27,
+          "width": 5.8420000000000005,
+          "height": 3.556
+        },
+        "totalBounds": {
+          "minX": -6.35,
+          "minY": -2.286,
+          "maxX": 6.35,
+          "maxY": 1.27
+        }
+      }
+    },
+    "transistor_npn": {
+      "source": {
+        "lib": "Transistor_BJT",
+        "symbolFile": "Q_NPN_BCE.kicad_sym",
+        "symbolName": "Q_NPN_BCE"
+      },
+      "symbol": {
+        "name": "Q_NPN_BCE",
+        "reference": "Q",
+        "value": "Q_NPN_BCE",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "B",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "C",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "E",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.27,
+            "centerY": 0,
+            "radius": 2.8194,
+            "fillType": "none"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -2.54,
+                "y": 0
+              },
+              {
+                "x": 0.635,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 1.905
+              },
+              {
+                "x": 0.635,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 0.635
+              },
+              {
+                "x": 2.54,
+                "y": 2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": -0.635
+              },
+              {
+                "x": 2.54,
+                "y": -2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.27,
+                "y": -1.778
+              },
+              {
+                "x": 1.778,
+                "y": -1.27
+              },
+              {
+                "x": 2.286,
+                "y": -2.286
+              },
+              {
+                "x": 1.27,
+                "y": -1.778
+              }
+            ],
+            "fillType": "outline"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.8194,
+          "maxX": 4.0893999999999995,
+          "maxY": 2.8194,
+          "width": 6.6293999999999995,
+          "height": 5.6388
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.0893999999999995,
+          "maxY": 7.62
+        }
+      }
+    },
+    "transistor_pnp": {
+      "source": {
+        "lib": "Transistor_BJT",
+        "symbolFile": "Q_PNP_BCE.kicad_sym",
+        "symbolName": "Q_PNP_BCE"
+      },
+      "symbol": {
+        "name": "Q_PNP_BCE",
+        "reference": "Q",
+        "value": "Q_PNP_BCE",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "B",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "C",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "E",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.27,
+            "centerY": 0,
+            "radius": 2.8194,
+            "fillType": "none"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -2.54,
+                "y": 0
+              },
+              {
+                "x": 0.635,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 1.905
+              },
+              {
+                "x": 0.635,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 0.635
+              },
+              {
+                "x": 2.54,
+                "y": 2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": -0.635
+              },
+              {
+                "x": 2.54,
+                "y": -2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.286,
+                "y": -1.778
+              },
+              {
+                "x": 1.778,
+                "y": -2.286
+              },
+              {
+                "x": 1.27,
+                "y": -1.27
+              },
+              {
+                "x": 2.286,
+                "y": -1.778
+              }
+            ],
+            "fillType": "outline"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.8194,
+          "maxX": 4.0893999999999995,
+          "maxY": 2.8194,
+          "width": 6.6293999999999995,
+          "height": 5.6388
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.0893999999999995,
+          "maxY": 7.62
+        }
+      }
+    },
+    "mosfet_n": {
+      "source": {
+        "lib": "Transistor_FET",
+        "symbolFile": "Q_NMOS_GDS.kicad_sym",
+        "symbolName": "Q_NMOS_GDS"
+      },
+      "symbol": {
+        "name": "Q_NMOS_GDS",
+        "reference": "Q",
+        "value": "Q_NMOS_GDS",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "G",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "D",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "S",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.651,
+            "centerY": 0,
+            "radius": 2.794,
+            "fillType": "none"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": 1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": -1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 1.905
+              },
+              {
+                "x": 0.254,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 0
+              },
+              {
+                "x": -2.54,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 2.286
+              },
+              {
+                "x": 0.762,
+                "y": 1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 0.508
+              },
+              {
+                "x": 0.762,
+                "y": -0.508
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": -1.27
+              },
+              {
+                "x": 0.762,
+                "y": -2.286
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": -1.778
+              },
+              {
+                "x": 3.302,
+                "y": -1.778
+              },
+              {
+                "x": 3.302,
+                "y": 1.778
+              },
+              {
+                "x": 0.762,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.016,
+                "y": 0
+              },
+              {
+                "x": 2.032,
+                "y": 0.381
+              },
+              {
+                "x": 2.032,
+                "y": -0.381
+              },
+              {
+                "x": 1.016,
+                "y": 0
+              }
+            ],
+            "fillType": "outline"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": 2.54
+              },
+              {
+                "x": 2.54,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": -2.54
+              },
+              {
+                "x": 2.54,
+                "y": 0
+              },
+              {
+                "x": 0.762,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.921,
+                "y": 0.381
+              },
+              {
+                "x": 3.683,
+                "y": 0.381
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 3.302,
+                "y": 0.381
+              },
+              {
+                "x": 2.921,
+                "y": -0.254
+              },
+              {
+                "x": 3.683,
+                "y": -0.254
+              },
+              {
+                "x": 3.302,
+                "y": 0.381
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.794,
+          "maxX": 4.445,
+          "maxY": 2.794,
+          "width": 6.985,
+          "height": 5.588
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.445,
+          "maxY": 7.62
+        }
+      }
+    },
+    "mosfet_p": {
+      "source": {
+        "lib": "Transistor_FET",
+        "symbolFile": "Q_PMOS_GDS.kicad_sym",
+        "symbolName": "Q_PMOS_GDS"
+      },
+      "symbol": {
+        "name": "Q_PMOS_GDS",
+        "reference": "Q",
+        "value": "Q_PMOS_GDS",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "G",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "D",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "S",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.651,
+            "centerY": 0,
+            "radius": 2.794,
+            "fillType": "none"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": 1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": -1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 1.905
+              },
+              {
+                "x": 0.254,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 0
+              },
+              {
+                "x": -2.54,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 2.286
+              },
+              {
+                "x": 0.762,
+                "y": 1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 1.778
+              },
+              {
+                "x": 3.302,
+                "y": 1.778
+              },
+              {
+                "x": 3.302,
+                "y": -1.778
+              },
+              {
+                "x": 0.762,
+                "y": -1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 0.508
+              },
+              {
+                "x": 0.762,
+                "y": -0.508
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": -1.27
+              },
+              {
+                "x": 0.762,
+                "y": -2.286
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.286,
+                "y": 0
+              },
+              {
+                "x": 1.27,
+                "y": 0.381
+              },
+              {
+                "x": 1.27,
+                "y": -0.381
+              },
+              {
+                "x": 2.286,
+                "y": 0
+              }
+            ],
+            "fillType": "outline"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": 2.54
+              },
+              {
+                "x": 2.54,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": -2.54
+              },
+              {
+                "x": 2.54,
+                "y": 0
+              },
+              {
+                "x": 0.762,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.921,
+                "y": -0.381
+              },
+              {
+                "x": 3.683,
+                "y": -0.381
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 3.302,
+                "y": -0.381
+              },
+              {
+                "x": 2.921,
+                "y": 0.254
+              },
+              {
+                "x": 3.683,
+                "y": 0.254
+              },
+              {
+                "x": 3.302,
+                "y": -0.381
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.794,
+          "maxX": 4.445,
+          "maxY": 2.794,
+          "width": 6.985,
+          "height": 5.588
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.445,
+          "maxY": 7.62
+        }
+      }
+    },
+    "testpoint": {
+      "source": {
+        "lib": "Connector",
+        "symbolFile": "TestPoint_Small.kicad_sym",
+        "symbolName": "TestPoint_Small"
+      },
+      "symbol": {
+        "name": "TestPoint_Small",
+        "reference": "TP",
+        "value": "TestPoint_Small",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "1",
+            "number": "1",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 0,
+            "y": 0,
+            "angle": 90,
+            "length": 0,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 0,
+            "bodyY": 0
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 0,
+            "centerY": 0,
+            "radius": 0.508,
+            "fillType": "none"
+          }
+        ],
+        "polylines": [],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -0.508,
+          "minY": -0.508,
+          "maxX": 0.508,
+          "maxY": 0.508,
+          "width": 1.016,
+          "height": 1.016
+        },
+        "totalBounds": {
+          "minX": -0.508,
+          "minY": -0.508,
+          "maxX": 0.508,
+          "maxY": 0.508
+        }
+      }
+    }
+  }
+}

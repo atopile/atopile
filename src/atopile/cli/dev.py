@@ -208,8 +208,19 @@ def compile(
             raise FileNotFoundError(f"visualizer web directory not found: {viz_dir}")
 
         node_modules = viz_dir / "node_modules"
-        if not node_modules.exists():
-            subprocess.run([_npm, "install"], cwd=viz_dir, check=True)
+        package_lock = viz_dir / "package-lock.json"
+        tsc_bin = node_modules / ".bin" / ("tsc.cmd" if os.name == "nt" else "tsc")
+        needs_install = (
+            not node_modules.exists()
+            or not tsc_bin.exists()
+            or (
+                package_lock.exists()
+                and node_modules.exists()
+                and package_lock.stat().st_mtime > node_modules.stat().st_mtime
+            )
+        )
+        if needs_install:
+            subprocess.run([_npm, "install", "--include=dev"], cwd=viz_dir, check=True)
 
         subprocess.run([_npm, "run", "build"], cwd=viz_dir, check=True)
 
