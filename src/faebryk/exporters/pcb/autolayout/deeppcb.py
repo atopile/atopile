@@ -7,6 +7,7 @@ public docs/API payload examples are evolving.
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import time
 import zipfile
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 from atopile.server.domains.autolayout.models import (
     AutolayoutCandidate,
@@ -256,7 +259,6 @@ class DeepPCBAutolayout:
             content_type=content_type,
             out_dir=out_dir,
             candidate_id=candidate_id,
-            target_layout_path=target_layout_path,
         )
 
         files: dict[str, str] = {"kicad_pcb": str(output_path)}
@@ -605,6 +607,7 @@ class DeepPCBAutolayout:
                 if candidates:
                     return candidates
             except Exception:
+                log.debug("Board ID resolution attempt failed", exc_info=True)
                 if attempt < 4:
                     time.sleep(0.5)
         return []
@@ -650,6 +653,9 @@ class DeepPCBAutolayout:
                 )
                 return True
             except Exception:
+                log.debug(
+                    "Board existence check failed for %s", endpoint, exc_info=True
+                )
                 continue
         return False
 
@@ -718,9 +724,7 @@ class DeepPCBAutolayout:
         content_type: str,
         out_dir: Path,
         candidate_id: str,
-        target_layout_path: Path | None = None,
     ) -> Path:
-        _ = target_layout_path
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if "zip" in content_type or _is_zip_bytes(content):
@@ -1152,6 +1156,7 @@ class DeepPCBAutolayout:
                     )
                     break
                 except Exception:
+                    log.debug("Board status poll failed", exc_info=True)
                     continue
 
             if payload is None:

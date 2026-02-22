@@ -16,14 +16,14 @@ def _anchor(line: int, text: str) -> str:
 def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
-def _test_format_hashline_content_shape() -> None:
+def test_format_hashline_content_shape() -> None:
     output = policy.format_hashline_content(["alpha", "beta"], start_line=10)
     lines = output.splitlines()
 
     assert re.fullmatch(r"10:[0-9a-f]{4}\|alpha", lines[0])
     assert re.fullmatch(r"11:[0-9a-f]{4}\|beta", lines[1])
 
-def _test_parse_line_anchor_tolerates_copied_suffix() -> None:
+def test_parse_line_anchor_tolerates_copied_suffix() -> None:
     assert policy.parse_line_anchor("7:beef|value") == policy.LineAnchor(
         line=7,
         hash="beef",
@@ -33,7 +33,7 @@ def _test_parse_line_anchor_tolerates_copied_suffix() -> None:
         hash="beef",
     )
 
-def _test_apply_hashline_set_line(tmp_path: Path) -> None:
+def test_apply_hashline_set_line(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\nc\n")
 
@@ -58,7 +58,7 @@ def _test_apply_hashline_set_line(tmp_path: Path) -> None:
     assert result["_ui"]["edit_diff"]["path"] == "main.ato"
     assert file_path.read_text(encoding="utf-8") == "a\nB\nc\n"
 
-def _test_apply_hashline_replace_range(tmp_path: Path) -> None:
+def test_apply_hashline_replace_range(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\nc\nd\n")
 
@@ -80,7 +80,7 @@ def _test_apply_hashline_replace_range(tmp_path: Path) -> None:
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nX\nY\nd\n"
 
-def _test_apply_hashline_insert_after(tmp_path: Path) -> None:
+def test_apply_hashline_insert_after(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\n")
 
@@ -101,7 +101,7 @@ def _test_apply_hashline_insert_after(tmp_path: Path) -> None:
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nx\ny\nb\n"
 
-def _test_apply_hashline_rejects_overlapping_operations(tmp_path: Path) -> None:
+def test_apply_hashline_rejects_overlapping_operations(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\nc\n")
 
@@ -126,7 +126,7 @@ def _test_apply_hashline_rejects_overlapping_operations(tmp_path: Path) -> None:
             ],
         )
 
-def _test_apply_hashline_rejects_noop_edits(tmp_path: Path) -> None:
+def test_apply_hashline_rejects_noop_edits(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\n")
 
@@ -144,7 +144,7 @@ def _test_apply_hashline_rejects_noop_edits(tmp_path: Path) -> None:
             ],
         )
 
-def _test_apply_hashline_mismatch_includes_remap_hints(tmp_path: Path) -> None:
+def test_apply_hashline_mismatch_includes_remap_hints(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\nc\n")
 
@@ -169,7 +169,7 @@ def _test_apply_hashline_mismatch_includes_remap_hints(tmp_path: Path) -> None:
     assert "Quick fix - replace stale refs:" in message
     assert f"2:dead -> 2:{actual}" in message
 
-def _test_read_file_chunk_resolves_legacy_deps_path(tmp_path: Path) -> None:
+def test_read_file_chunk_resolves_legacy_deps_path(tmp_path: Path) -> None:
     package_file = (
         tmp_path
         / ".ato"
@@ -196,7 +196,7 @@ def _test_read_file_chunk_resolves_legacy_deps_path(tmp_path: Path) -> None:
     )
     assert "1:" in result["content"]
 
-def _test_read_file_chunk_missing_path_includes_package_suggestions(
+def test_read_file_chunk_missing_path_includes_package_suggestions(
     tmp_path: Path,
 ) -> None:
     package_dir = tmp_path / ".ato" / "modules" / "atopile" / "foo-sensor"
@@ -215,7 +215,7 @@ def _test_read_file_chunk_missing_path_includes_package_suggestions(
             max_lines=20,
         )
 
-def _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
+def test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
     detected = policy_datasheet._detect_datasheet_format(
         source_value="https://example.com/datasheet.pdf",
         content_type="application/pdf",
@@ -223,7 +223,7 @@ def _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
     )
     assert detected == "html"
 
-def _test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes() -> None:
+def test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes() -> None:
     detected = policy_datasheet._detect_datasheet_format(
         source_value="https://example.com/datasheet.pdf",
         content_type="application/pdf",
@@ -231,7 +231,7 @@ def _test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes() -> Non
     )
     assert detected == "pdf"
 
-def _test_create_path_supports_directories_and_allowed_files(
+def test_create_path_supports_directories_and_allowed_files(
     tmp_path: Path,
 ) -> None:
     created_dir = policy.create_path(tmp_path, "plans", kind="directory")
@@ -252,11 +252,11 @@ def _test_create_path_supports_directories_and_allowed_files(
     roadmap_text = (tmp_path / "plans" / "roadmap.md").read_text(encoding="utf-8")
     assert roadmap_text.startswith("# Roadmap")
 
-def _test_create_path_rejects_disallowed_extensions(tmp_path: Path) -> None:
+def test_create_path_rejects_disallowed_extensions(tmp_path: Path) -> None:
     with pytest.raises(policy.ScopeError, match="Only .ato, .md, .py"):
         policy.create_path(tmp_path, "plans/notes.txt", kind="file", content="")
 
-def _test_create_path_restricts_python_files_to_fabll_modules(
+def test_create_path_restricts_python_files_to_fabll_modules(
     tmp_path: Path,
 ) -> None:
     with pytest.raises(policy.ScopeError, match="fabll modules"):
@@ -272,7 +272,7 @@ def _test_create_path_restricts_python_files_to_fabll_modules(
     assert created["extension"] == ".py"
     assert created["created"] is True
 
-def _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
+def test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -301,7 +301,7 @@ def _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
             url="https://example.com/datasheet.pdf",
         )
 
-def _test_lcsc_wmsc_url_extracts_part_number() -> None:
+def test_lcsc_wmsc_url_extracts_part_number() -> None:
     url = (
         "https://www.lcsc.com/datasheet/"
         "lcsc_datasheet_2304140030_STMicroelectronics-STM32G474RET6_C521608.pdf"
@@ -309,10 +309,10 @@ def _test_lcsc_wmsc_url_extracts_part_number() -> None:
     fallback = lcsc_wmsc_url(url)
     assert fallback == "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/C521608.pdf"
 
-def _test_lcsc_wmsc_url_ignores_non_lcsc_urls() -> None:
+def test_lcsc_wmsc_url_ignores_non_lcsc_urls() -> None:
     assert lcsc_wmsc_url("https://www.st.com/resource/doc.pdf") is None
 
-def _test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
+def test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _FakeResponse:
@@ -358,60 +358,3 @@ def _test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
     assert raw.startswith(b"%PDF-")
     assert "wmsc.lcsc.com" in source_value
     assert content_type == "application/pdf"
-
-class TestHashlinePolicy:
-    test_format_hashline_content_shape = staticmethod(
-        _test_format_hashline_content_shape
-    )
-    test_parse_line_anchor_tolerates_copied_suffix = staticmethod(
-        _test_parse_line_anchor_tolerates_copied_suffix
-    )
-    test_apply_hashline_set_line = staticmethod(_test_apply_hashline_set_line)
-    test_apply_hashline_replace_range = staticmethod(
-        _test_apply_hashline_replace_range
-    )
-    test_apply_hashline_insert_after = staticmethod(
-        _test_apply_hashline_insert_after
-    )
-    test_apply_hashline_rejects_overlapping_operations = staticmethod(
-        _test_apply_hashline_rejects_overlapping_operations
-    )
-    test_apply_hashline_rejects_noop_edits = staticmethod(
-        _test_apply_hashline_rejects_noop_edits
-    )
-    test_apply_hashline_mismatch_includes_remap_hints = staticmethod(
-        _test_apply_hashline_mismatch_includes_remap_hints
-    )
-    test_read_file_chunk_resolves_legacy_deps_path = staticmethod(
-        _test_read_file_chunk_resolves_legacy_deps_path
-    )
-    test_read_file_chunk_missing_path_includes_package_suggestions = staticmethod(
-        _test_read_file_chunk_missing_path_includes_package_suggestions
-    )
-    test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html = staticmethod(
-        _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html
-    )
-    test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes = staticmethod(
-        _test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes
-    )
-    test_create_path_supports_directories_and_allowed_files = staticmethod(
-        _test_create_path_supports_directories_and_allowed_files
-    )
-    test_create_path_rejects_disallowed_extensions = staticmethod(
-        _test_create_path_rejects_disallowed_extensions
-    )
-    test_create_path_restricts_python_files_to_fabll_modules = staticmethod(
-        _test_create_path_restricts_python_files_to_fabll_modules
-    )
-    test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url = staticmethod(
-        _test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url
-    )
-    test_lcsc_wmsc_url_extracts_part_number = staticmethod(
-        _test_lcsc_wmsc_url_extracts_part_number
-    )
-    test_lcsc_wmsc_url_ignores_non_lcsc_urls = staticmethod(
-        _test_lcsc_wmsc_url_ignores_non_lcsc_urls
-    )
-    test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf = staticmethod(
-        _test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf
-    )

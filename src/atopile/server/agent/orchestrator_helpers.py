@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from openai import APIStatusError
 
@@ -20,16 +23,9 @@ _RETRY_AFTER_TEXT_PATTERN = re.compile(
 def _response_model_to_dict(response: Any) -> dict[str, Any]:
     if isinstance(response, dict):
         return response
-    model_dump = getattr(response, "model_dump", None)
-    if callable(model_dump):
-        body = model_dump(mode="python")
-        if isinstance(body, dict):
-            return body
-    to_dict = getattr(response, "to_dict", None)
-    if callable(to_dict):
-        body = to_dict()
-        if isinstance(body, dict):
-            return body
+    body = response.model_dump(mode="python")
+    if isinstance(body, dict):
+        return body
     raise RuntimeError("Model API returned unsupported response object")
 
 
@@ -279,6 +275,7 @@ def _consume_steering_updates(
     try:
         raw_messages = consume_steering_messages()
     except Exception:
+        log.warning("Steering message callback failed", exc_info=True)
         return []
     if not isinstance(raw_messages, list):
         return []
@@ -477,8 +474,6 @@ def _worker_execution_tool_names() -> set[str]:
         "project_create_file",
         "project_create_folder",
         "project_move_path",
-        "project_write_file",
-        "project_replace_text",
         "project_rename_path",
         "project_delete_path",
         "parts_install",

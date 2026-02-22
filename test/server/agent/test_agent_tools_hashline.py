@@ -27,7 +27,7 @@ def _clear_agent_tool_caches() -> None:
     tools._openai_file_cache.clear()
     tools._datasheet_read_cache.clear()
 
-def _test_tool_definitions_advertise_hashline_editor() -> None:
+def test_tool_definitions_advertise_hashline_editor() -> None:
     names = {tool_def["name"] for tool_def in tools.get_tool_definitions()}
 
     assert "project_edit_file" in names
@@ -55,7 +55,7 @@ def _test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
 
-def _test_execute_tool_allows_read_tool(tmp_path: Path) -> None:
+def test_execute_tool_allows_read_tool(tmp_path: Path) -> None:
     (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
 
     result = _run(
@@ -70,7 +70,7 @@ def _test_execute_tool_allows_read_tool(tmp_path: Path) -> None:
     assert result["path"] == "main.ato"
     assert "module App:" in result["content"]
 
-def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> None:
+def test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
     def fake_exa_web_search(
@@ -137,7 +137,7 @@ def _test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> N
     assert captured["max_characters"] == 10_000
     assert captured["max_age_hours"] is None
 
-def _test_execute_tool_allows_layout_screenshot(
+def test_execute_tool_allows_layout_screenshot(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -215,7 +215,7 @@ def _make_layout_record(
         footprint=footprint,
     )
 
-def _test_layout_get_component_position_returns_exact_match(
+def test_layout_get_component_position_returns_exact_match(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -256,7 +256,7 @@ def _test_layout_get_component_position_returns_exact_match(
     assert result["component"]["x_mm"] == pytest.approx(12.5)
     assert result["component"]["rotation_deg"] == pytest.approx(90.0)
 
-def _test_layout_get_component_position_returns_fuzzy_suggestions(
+def test_layout_get_component_position_returns_fuzzy_suggestions(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -303,7 +303,7 @@ def _test_layout_get_component_position_returns_fuzzy_suggestions(
     assert result["suggestions"][0]["reference"] == "U1"
     assert result["suggestions"][0]["score"] >= 0.35
 
-def _test_layout_set_component_position_supports_absolute_and_relative(
+def test_layout_set_component_position_supports_absolute_and_relative(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -402,7 +402,7 @@ def _test_layout_set_component_position_supports_absolute_and_relative(
     assert relative["delta"]["dy_mm"] == pytest.approx(2.0)
     assert relative["delta"]["drotation_deg"] == pytest.approx(10.0)
 
-def _test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> None:
+def test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> None:
     examples_root = tmp_path / "examples"
     quickstart = examples_root / "quickstart"
     quickstart.mkdir(parents=True)
@@ -454,7 +454,7 @@ def _test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> No
     assert read["path"] == "quickstart.ato"
     assert "module App:" in read["content"]
 
-def _test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
+def test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     file_path.write_text("a\nb\n", encoding="utf-8")
 
@@ -472,7 +472,7 @@ def _test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
     assert re.fullmatch(r"1:[0-9a-f]{4}\|a", lines[0])
     assert re.fullmatch(r"2:[0-9a-f]{4}\|b", lines[1])
 
-def _test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
+def test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     file_path.write_text("a\nb\nc\n", encoding="utf-8")
     anchor = f"2:{policy.compute_line_hash(2, 'b')}"
@@ -500,7 +500,7 @@ def _test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nB\nc\n"
 
-def _test_project_move_and_delete_path_execute(tmp_path: Path) -> None:
+def test_project_move_and_delete_path_execute(tmp_path: Path) -> None:
     source = tmp_path / "notes.md"
     source.write_text("hello\n", encoding="utf-8")
 
@@ -530,7 +530,7 @@ def _test_project_move_and_delete_path_execute(tmp_path: Path) -> None:
     assert deleted["deleted"] is True
     assert not (tmp_path / "docs" / "notes.md").exists()
 
-def _test_project_create_and_move_path_execute(tmp_path: Path) -> None:
+def test_project_create_and_move_path_execute(tmp_path: Path) -> None:
     created_dir = _run(
         tools.execute_tool(
             name="project_create_path",
@@ -588,7 +588,7 @@ def _test_project_create_and_move_path_execute(tmp_path: Path) -> None:
     assert moved["new_path"] == "docs/notes.md"
     assert (tmp_path / "docs" / "notes.md").exists()
 
-def _test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
+def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
         assert lcsc_id == "C521608"
         assert project_root == "/tmp/project"
@@ -614,7 +614,7 @@ def _test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     assert result["lcsc_id"] == "C521608"
     assert "datasheet_read" in result["implementation_hint"]
 
-def _test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None:
+def test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
     class FakeService:
@@ -677,7 +677,7 @@ def _test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> Non
     assert options["maxBatchTimeout"] == 45
     assert options["responseBoardFormat"] == 3
 
-def _test_autolayout_fetch_to_layout_archives_iteration(
+def test_autolayout_fetch_to_layout_archives_iteration(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -767,7 +767,7 @@ def _test_autolayout_fetch_to_layout_archives_iteration(
     assert "autolayout_iterations" in archived
     assert Path(archived).exists()
 
-def _test_autolayout_fetch_to_layout_waits_while_running(
+def test_autolayout_fetch_to_layout_waits_while_running(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -832,7 +832,7 @@ def _test_autolayout_fetch_to_layout_waits_while_running(
     assert apply_called is False
     assert select_called is False
 
-def _test_autolayout_status_without_job_id_returns_project_summary(
+def test_autolayout_status_without_job_id_returns_project_summary(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -888,7 +888,7 @@ def _test_autolayout_status_without_job_id_returns_project_summary(
     assert result["jobs"][0]["job_id"] == "al-new"
     assert result["jobs"][0]["recommended_action"] == "fetch_candidate_to_layout"
 
-def _test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
+def test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -987,7 +987,7 @@ def _test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
     assert result["job_id"] == "al-new"
     assert result["selected_candidate_id"] == "cand-1"
 
-def _test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
+def test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1043,7 +1043,7 @@ def _test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
     assert result["latest_job_id"] == "al-recent"
     assert result["jobs"][0]["job_id"] == "al-recent"
 
-def _test_autolayout_status_unknown_job_returns_recent_summary(
+def test_autolayout_status_unknown_job_returns_recent_summary(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1092,7 +1092,7 @@ def _test_autolayout_status_unknown_job_returns_recent_summary(
     assert result["latest_job_id"] == "al-recent"
     assert result["jobs"][0]["job_id"] == "al-recent"
 
-def _test_autolayout_request_screenshot_renders_images(
+def test_autolayout_request_screenshot_renders_images(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1165,7 +1165,7 @@ def _test_autolayout_request_screenshot_renders_images(
     assert Path(result["screenshot_paths"]["2d"]).exists()
     assert Path(result["screenshot_paths"]["3d"]).exists()
 
-def _test_autolayout_request_screenshot_uses_default_bottom_layers(
+def test_autolayout_request_screenshot_uses_default_bottom_layers(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1215,7 +1215,7 @@ def _test_autolayout_request_screenshot_uses_default_bottom_layers(
     assert result["layers"] == ["B.Cu", "B.Paste", "B.Mask", "Edge.Cuts"]
     assert captured["layers"] == "B.Cu,B.Paste,B.Mask,Edge.Cuts"
 
-def _test_autolayout_configure_board_intent_updates_ato_yaml(
+def test_autolayout_configure_board_intent_updates_ato_yaml(
     tmp_path: Path,
 ) -> None:
     ato_yaml = tmp_path / "ato.yaml"
@@ -1258,7 +1258,7 @@ def _test_autolayout_configure_board_intent_updates_ato_yaml(
     assert after["stackup_intent"]["board_thickness_mm"] == 1.6
     assert after["preserve_existing_routing"] is True
 
-def _test_datasheet_read_uploads_pdf_and_returns_file_id(
+def test_datasheet_read_uploads_pdf_and_returns_file_id(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1336,7 +1336,7 @@ def _test_datasheet_read_uploads_pdf_and_returns_file_id(
     assert result["lcsc_id"] == "C521608"
     assert result["resolution"]["mode"] == "install_cache"
 
-def _test_datasheet_read_falls_back_when_graph_resolution_fails(
+def test_datasheet_read_falls_back_when_graph_resolution_fails(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1420,7 +1420,7 @@ def _test_datasheet_read_falls_back_when_graph_resolution_fails(
     assert result["resolution"]["mode"] == "parts_api_fallback"
     assert result["resolution"]["fallback_sources"][0]["source"] == "parts_api"
 
-def _test_datasheet_read_uses_cached_reference_for_repeat_calls(
+def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1516,7 +1516,7 @@ def _test_datasheet_read_uses_cached_reference_for_repeat_calls(
     assert second["query"] == "second query"
     assert counters == {"cache_lookup": 1, "read": 1, "upload": 1}
 
-def _test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
+def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1634,7 +1634,7 @@ def _test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
         "/working.pdf"
     )
 
-def _test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
+def test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeResponse:
@@ -1666,7 +1666,7 @@ def _test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
     assert captured["include_targets"] == ["power-tree"]
     assert captured["exclude_targets"] == ["mfg-data"]
 
-def _test_report_bom_returns_summary_fields(monkeypatch) -> None:
+def test_report_bom_returns_summary_fields(monkeypatch) -> None:
     def fake_get_bom(project_root: str, target: str):
         assert project_root == "/tmp/project"
         assert target == "default"
@@ -1695,7 +1695,7 @@ def _test_report_bom_returns_summary_fields(monkeypatch) -> None:
     assert result["summary"]["records_count"] == 2
     assert "designator" in result["summary"]["sample_fields"]
 
-def _test_report_variables_not_found_returns_actionable_message(
+def test_report_variables_not_found_returns_actionable_message(
     monkeypatch,
 ) -> None:
     def fake_get_variables(project_root: str, target: str):
@@ -1721,7 +1721,7 @@ def _test_report_variables_not_found_returns_actionable_message(
     assert result["found"] is False
     assert "build_run" in result["message"]
 
-def _test_manufacturing_generate_queues_mfg_data_build(monkeypatch) -> None:
+def test_manufacturing_generate_queues_mfg_data_build(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeResponse:
@@ -1794,7 +1794,7 @@ def _test_manufacturing_generate_queues_mfg_data_build(monkeypatch) -> None:
         "exclude_targets": [],
     }
 
-def _test_build_logs_search_defaults_to_non_debug_levels(monkeypatch) -> None:
+def test_build_logs_search_defaults_to_non_debug_levels(monkeypatch) -> None:
     @dataclass
     class FakeBuild:
         build_id: str = "abc123"
@@ -1859,7 +1859,7 @@ def _test_build_logs_search_defaults_to_non_debug_levels(monkeypatch) -> None:
     assert result["filters"]["log_levels"] == ["INFO", "WARNING", "ERROR", "ALERT"]
     assert result["stage_summary"]["counts"]["failed"] == 1
 
-def _test_build_logs_search_honors_explicit_filters(monkeypatch) -> None:
+def test_build_logs_search_honors_explicit_filters(monkeypatch) -> None:
     @dataclass
     class FakeBuild:
         build_id: str = "abc123"
@@ -1918,7 +1918,7 @@ def _test_build_logs_search_honors_explicit_filters(monkeypatch) -> None:
     assert result["filters"]["stage"] == "compile"
     assert result["filters"]["log_levels"] == ["DEBUG"]
 
-def _test_build_logs_search_null_query_does_not_filter_to_literal_none(
+def test_build_logs_search_null_query_does_not_filter_to_literal_none(
     monkeypatch,
 ) -> None:
     @dataclass
@@ -1968,7 +1968,7 @@ def _test_build_logs_search_null_query_does_not_filter_to_literal_none(
     assert result["logs"][0]["message"] == "compile started"
     assert result["filters"]["query"] is None
 
-def _test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
+def test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
     @dataclass
     class FakeItem:
         id: str
@@ -2038,7 +2038,7 @@ def _test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
     assert found["found"] is True
     assert found["item"]["id"] == "USB_C"
 
-def _test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
+def test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
     @dataclass
     class FakeModule:
         name: str
@@ -2132,7 +2132,7 @@ def _test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
     assert children["found"] is True
     assert children["counts"]["interface"] == 1
 
-def _test_build_logs_search_returns_stub_for_silent_failure(monkeypatch) -> None:
+def test_build_logs_search_returns_stub_for_silent_failure(monkeypatch) -> None:
     @dataclass
     class FakeBuild:
         build_id: str
@@ -2184,7 +2184,7 @@ def _test_build_logs_search_returns_stub_for_silent_failure(monkeypatch) -> None
     assert "No log lines were captured" in result["logs"][0]["message"]
     assert result["status"] == "failed"
 
-def _test_build_logs_search_normalizes_interrupted_history(monkeypatch) -> None:
+def test_build_logs_search_normalizes_interrupted_history(monkeypatch) -> None:
     @dataclass
     class FakeBuild:
         build_id: str
@@ -2232,129 +2232,3 @@ def _test_build_logs_search_normalizes_interrupted_history(monkeypatch) -> None:
     assert result["total"] == 1
     assert result["builds"][0]["status"] == "failed"
     assert "interrupted" in result["builds"][0]["error"]
-
-class TestAgentToolsHashline:
-    test_tool_definitions_advertise_hashline_editor = staticmethod(
-        _test_tool_definitions_advertise_hashline_editor
-    )
-    test_execute_tool_allows_read_tool = staticmethod(
-        _test_execute_tool_allows_read_tool
-    )
-    test_web_search_executes_with_exa_adapter = staticmethod(
-        _test_web_search_executes_with_exa_adapter
-    )
-    test_execute_tool_allows_layout_screenshot = staticmethod(
-        _test_execute_tool_allows_layout_screenshot
-    )
-    test_layout_get_component_position_returns_exact_match = staticmethod(
-        _test_layout_get_component_position_returns_exact_match
-    )
-    test_layout_get_component_position_returns_fuzzy_suggestions = staticmethod(
-        _test_layout_get_component_position_returns_fuzzy_suggestions
-    )
-    test_layout_set_component_position_supports_absolute_and_relative = (
-        staticmethod(
-            _test_layout_set_component_position_supports_absolute_and_relative
-        )
-    )
-    test_examples_tools_list_search_and_read = staticmethod(
-        _test_examples_tools_list_search_and_read
-    )
-    test_project_read_file_returns_hashline_content = staticmethod(
-        _test_project_read_file_returns_hashline_content
-    )
-    test_project_edit_file_executes_atomic_edit = staticmethod(
-        _test_project_edit_file_executes_atomic_edit
-    )
-    test_project_move_and_delete_path_execute = staticmethod(
-        _test_project_move_and_delete_path_execute
-    )
-    test_project_create_and_move_path_execute = staticmethod(
-        _test_project_create_and_move_path_execute
-    )
-    test_parts_install_returns_datasheet_followup_hint = staticmethod(
-        _test_parts_install_returns_datasheet_followup_hint
-    )
-    test_autolayout_run_maps_common_options = staticmethod(
-        _test_autolayout_run_maps_common_options
-    )
-    test_autolayout_fetch_to_layout_archives_iteration = staticmethod(
-        _test_autolayout_fetch_to_layout_archives_iteration
-    )
-    test_autolayout_fetch_to_layout_waits_while_running = staticmethod(
-        _test_autolayout_fetch_to_layout_waits_while_running
-    )
-    test_autolayout_status_without_job_id_returns_project_summary = staticmethod(
-        _test_autolayout_status_without_job_id_returns_project_summary
-    )
-    test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable = (
-        staticmethod(
-            _test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable
-        )
-    )
-    test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary = (
-        staticmethod(
-            _test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary
-        )
-    )
-    test_autolayout_status_unknown_job_returns_recent_summary = staticmethod(
-        _test_autolayout_status_unknown_job_returns_recent_summary
-    )
-    test_autolayout_request_screenshot_renders_images = staticmethod(
-        _test_autolayout_request_screenshot_renders_images
-    )
-    test_autolayout_request_screenshot_uses_default_bottom_layers = staticmethod(
-        _test_autolayout_request_screenshot_uses_default_bottom_layers
-    )
-    test_autolayout_configure_board_intent_updates_ato_yaml = staticmethod(
-        _test_autolayout_configure_board_intent_updates_ato_yaml
-    )
-    test_datasheet_read_uploads_pdf_and_returns_file_id = staticmethod(
-        _test_datasheet_read_uploads_pdf_and_returns_file_id
-    )
-    test_datasheet_read_falls_back_when_graph_resolution_fails = staticmethod(
-        _test_datasheet_read_falls_back_when_graph_resolution_fails
-    )
-    test_datasheet_read_uses_cached_reference_for_repeat_calls = staticmethod(
-        _test_datasheet_read_uses_cached_reference_for_repeat_calls
-    )
-    test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails = (
-        staticmethod(
-            _test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails
-        )
-    )
-    test_build_run_forwards_include_and_exclude_targets = staticmethod(
-        _test_build_run_forwards_include_and_exclude_targets
-    )
-    test_report_bom_returns_summary_fields = staticmethod(
-        _test_report_bom_returns_summary_fields
-    )
-    test_report_variables_not_found_returns_actionable_message = staticmethod(
-        _test_report_variables_not_found_returns_actionable_message
-    )
-    test_manufacturing_generate_queues_mfg_data_build = staticmethod(
-        _test_manufacturing_generate_queues_mfg_data_build
-    )
-    test_build_logs_search_defaults_to_non_debug_levels = staticmethod(
-        _test_build_logs_search_defaults_to_non_debug_levels
-    )
-    test_build_logs_search_honors_explicit_filters = staticmethod(
-        _test_build_logs_search_honors_explicit_filters
-    )
-    test_build_logs_search_null_query_does_not_filter_to_literal_none = (
-        staticmethod(
-            _test_build_logs_search_null_query_does_not_filter_to_literal_none
-        )
-    )
-    test_stdlib_tools_execute_with_expected_shape = staticmethod(
-        _test_stdlib_tools_execute_with_expected_shape
-    )
-    test_project_module_tools_execute_with_expected_shape = staticmethod(
-        _test_project_module_tools_execute_with_expected_shape
-    )
-    test_build_logs_search_returns_stub_for_silent_failure = staticmethod(
-        _test_build_logs_search_returns_stub_for_silent_failure
-    )
-    test_build_logs_search_normalizes_interrupted_history = staticmethod(
-        _test_build_logs_search_normalizes_interrupted_history
-    )

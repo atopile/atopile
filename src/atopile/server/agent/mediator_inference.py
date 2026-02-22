@@ -6,16 +6,14 @@ import re
 from typing import Any
 
 from atopile.server.agent.mediator_catalog import _TOOL_DIRECTORY
-
-_BUILD_ID_RE = re.compile(r"\b[a-f0-9]{8,}\b", re.IGNORECASE)
-_AUTOLAYOUT_JOB_ID_RE = re.compile(r"\bal-[a-f0-9]{12}\b", re.IGNORECASE)
-_FILE_RE = re.compile(r"([A-Za-z0-9_./-]+\.(?:ato|py|md|json|yaml|yml|toml|ts|tsx))")
-_PDF_FILE_RE = re.compile(r"([A-Za-z0-9_./-]+\.pdf)\b", re.IGNORECASE)
-_LCSC_RE = re.compile(r"\bC\d{3,}\b", re.IGNORECASE)
-_ENTRY_POINT_RE = re.compile(r"([A-Za-z0-9_./-]+\.ato:[A-Za-z_][A-Za-z0-9_]*)")
-_PACKAGE_RE = re.compile(
-    r"\b([a-z0-9_.-]+/[a-z0-9_.-]+)(?:@([^\s]+))?\b",
-    re.IGNORECASE,
+from atopile.server.agent.mediator_patterns import (
+    _AUTOLAYOUT_JOB_ID_RE,
+    _BUILD_ID_RE,
+    _ENTRY_POINT_RE,
+    _FILE_RE,
+    _LCSC_RE,
+    _PACKAGE_RE,
+    _PDF_FILE_RE,
 )
 
 def _stale_after_seconds(tool_name: str) -> float:
@@ -41,7 +39,6 @@ def _extract_context_id(result: dict[str, Any]) -> str | None:
         "job_id",
         "latest_job_id",
         "resolved_job_id",
-        "fallback_job_id",
         "build_id",
         "provider_job_ref",
         "item_id",

@@ -19,8 +19,8 @@ Rules:
 - Use project_create_file/project_create_folder (or project_create_path) for
   new files/directories, project_move_path/project_rename_path to rearrange
   file/folder paths, and project_delete_path for deletes when requested.
-- Avoid project_write_file and project_replace_text unless explicitly asked for
-  compatibility.
+- Do not use project_write_file or project_replace_text; use project_edit_file
+  or project_create_file instead.
 - Use parts_search/parts_install for physical LCSC/JLC components and
   packages_search/packages_install for atopile registry dependencies.
 - Use stdlib_list and stdlib_get_item when selecting/understanding standard

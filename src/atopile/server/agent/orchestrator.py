@@ -6,11 +6,14 @@ import asyncio
 import hashlib
 import inspect
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
+
+log = logging.getLogger(__name__)
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
@@ -1810,6 +1813,7 @@ class AgentOrchestrator:
         try:
             counted = await client.responses.input_tokens.count(**count_payload)
         except Exception:
+            log.debug("Token count request failed", exc_info=True)
             return None
         body = _response_model_to_dict(counted)
         tokens = body.get("input_tokens")

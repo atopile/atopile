@@ -26,15 +26,10 @@ function parseOptionalBoolean(value: unknown): boolean | null {
  * e.g., http://127.0.0.1:12345 -> ws://127.0.0.1:12345
  */
 function httpToWsUrl(httpUrl: string): string {
-  try {
-    const url = new URL(httpUrl);
-    const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const port = url.port ? `:${url.port}` : '';
-    return `${wsProtocol}//${url.hostname}${port}`;
-  } catch {
-    // Fallback if URL parsing fails
-    return httpUrl.replace(/^http/, 'ws');
-  }
+  const url = new URL(httpUrl);
+  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const port = url.port ? `:${url.port}` : '';
+  return `${wsProtocol}//${url.hostname}${port}`;
 }
 
 /**

@@ -481,5 +481,4 @@ def test_json_artifact_download_is_rejected(tmp_path: Path, monkeypatch):
             content_type="application/json",
             out_dir=tmp_path / "downloads",
             candidate_id="rev-1",
-            target_layout_path=tmp_path / "target.kicad_pcb",
         )

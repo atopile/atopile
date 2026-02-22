@@ -79,27 +79,18 @@ function formatStock(stock: number): string {
 }
 
 function normalizeAutolayoutCandidate(raw: Record<string, unknown>): AutolayoutCandidate {
-  const metadata =
-    typeof raw.metadata === 'object' && raw.metadata !== null
-      ? (raw.metadata as Record<string, unknown>)
-      : {};
-
-  const files =
-    typeof raw.files === 'object' && raw.files !== null
-      ? (raw.files as Record<string, string>)
-      : {};
-
   return {
-    candidate_id: String(raw.candidate_id ?? raw.candidateId ?? raw.id ?? ''),
-    label:
-      typeof raw.label === 'string'
-        ? raw.label
-        : typeof raw.name === 'string'
-          ? raw.name
-          : null,
+    candidate_id: String(raw.candidate_id ?? ''),
+    label: typeof raw.label === 'string' ? raw.label : null,
     score: typeof raw.score === 'number' ? raw.score : null,
-    metadata,
-    files,
+    metadata:
+      typeof raw.metadata === 'object' && raw.metadata !== null
+        ? (raw.metadata as Record<string, unknown>)
+        : {},
+    files:
+      typeof raw.files === 'object' && raw.files !== null
+        ? (raw.files as Record<string, string>)
+        : {},
   };
 }
 
@@ -112,51 +103,34 @@ function normalizeAutolayoutJob(raw: Record<string, unknown>): AutolayoutJob {
     .filter((candidate) => candidate.candidate_id);
 
   return {
-    job_id: String(raw.job_id ?? raw.jobId ?? ''),
-    project_root: String(raw.project_root ?? raw.projectRoot ?? ''),
-    build_target: String(raw.build_target ?? raw.buildTarget ?? ''),
+    job_id: String(raw.job_id ?? ''),
+    project_root: String(raw.project_root ?? ''),
+    build_target: String(raw.build_target ?? ''),
     provider: String(raw.provider ?? ''),
     state: String(raw.state ?? 'running') as AutolayoutJob['state'],
-    created_at: String(raw.created_at ?? raw.createdAt ?? ''),
-    updated_at: String(raw.updated_at ?? raw.updatedAt ?? ''),
+    created_at: String(raw.created_at ?? ''),
+    updated_at: String(raw.updated_at ?? ''),
     provider_job_ref:
-      typeof raw.provider_job_ref === 'string'
-        ? raw.provider_job_ref
-        : typeof raw.providerJobRef === 'string'
-          ? raw.providerJobRef
-          : null,
+      typeof raw.provider_job_ref === 'string' ? raw.provider_job_ref : null,
     progress: typeof raw.progress === 'number' ? raw.progress : null,
-    message:
-      typeof raw.message === 'string'
-        ? raw.message
-        : typeof raw.detail === 'string'
-          ? raw.detail
-          : null,
+    message: typeof raw.message === 'string' ? raw.message : null,
     error: typeof raw.error === 'string' ? raw.error : null,
     selected_candidate_id:
       typeof raw.selected_candidate_id === 'string'
         ? raw.selected_candidate_id
-        : typeof raw.selectedCandidateId === 'string'
-          ? raw.selectedCandidateId
-          : null,
+        : null,
     applied_candidate_id:
       typeof raw.applied_candidate_id === 'string'
         ? raw.applied_candidate_id
-        : typeof raw.appliedCandidateId === 'string'
-          ? raw.appliedCandidateId
-          : null,
+        : null,
     applied_layout_path:
       typeof raw.applied_layout_path === 'string'
         ? raw.applied_layout_path
-        : typeof raw.appliedLayoutPath === 'string'
-          ? raw.appliedLayoutPath
-          : null,
+        : null,
     backup_layout_path:
       typeof raw.backup_layout_path === 'string'
         ? raw.backup_layout_path
-        : typeof raw.backupLayoutPath === 'string'
-          ? raw.backupLayoutPath
-          : null,
+        : null,
     candidates,
   };
 }

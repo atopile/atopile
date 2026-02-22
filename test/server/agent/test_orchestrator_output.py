@@ -23,7 +23,7 @@ from atopile.server.agent.orchestrator import (
     _trim_user_message,
 )
 
-def _test_sanitize_tool_output_removes_internal_keys() -> None:
+def test_sanitize_tool_output_removes_internal_keys() -> None:
     payload = {
         "path": "main.ato",
         "diff": {"added_lines": 2, "removed_lines": 1},
@@ -48,7 +48,7 @@ def _test_sanitize_tool_output_removes_internal_keys() -> None:
     assert "_private" not in sanitized["nested"]
     assert sanitized["nested"]["items"][0] == {"ok": True}
 
-def _test_build_function_call_outputs_attaches_datasheet_file() -> None:
+def test_build_function_call_outputs_attaches_datasheet_file() -> None:
     outputs = _build_function_call_outputs_for_model(
         call_id="call_123",
         tool_name="datasheet_read",
@@ -70,7 +70,7 @@ def _test_build_function_call_outputs_attaches_datasheet_file() -> None:
         "file_id": "file-abc123",
     }
 
-def _test_build_function_call_outputs_nudges_after_parts_install() -> None:
+def test_build_function_call_outputs_nudges_after_parts_install() -> None:
     outputs = _build_function_call_outputs_for_model(
         call_id="call_456",
         tool_name="parts_install",
@@ -109,7 +109,7 @@ def _make_api_status_error(
         body=body,
     )
 
-def _test_extract_retry_after_delay_from_message_text() -> None:
+def test_extract_retry_after_delay_from_message_text() -> None:
     exc = _make_api_status_error(
         status_code=429,
         body={
@@ -126,7 +126,7 @@ def _test_extract_retry_after_delay_from_message_text() -> None:
     assert delay_s is not None
     assert delay_s == 0.578
 
-def _test_responses_create_retries_on_429(monkeypatch) -> None:
+def test_responses_create_retries_on_429(monkeypatch) -> None:
     orchestrator = AgentOrchestrator()
     sleep_calls: list[float] = []
 
@@ -170,7 +170,7 @@ def _test_responses_create_retries_on_429(monkeypatch) -> None:
     assert stub_client.responses.calls == 2
     assert sleep_calls == [0.25]
 
-def _test_responses_create_compacts_and_retries_on_context_overflow() -> None:
+def test_responses_create_compacts_and_retries_on_context_overflow() -> None:
     orchestrator = AgentOrchestrator()
     telemetry: dict[str, object] = {"api_retry_count": 0, "compaction_events": []}
 
@@ -224,7 +224,7 @@ def _test_responses_create_compacts_and_retries_on_context_overflow() -> None:
     assert isinstance(events, list)
     assert len(events) == 1
 
-def _test_prompt_cache_key_is_stable_for_same_inputs() -> None:
+def test_prompt_cache_key_is_stable_for_same_inputs() -> None:
     key_a = _build_prompt_cache_key(
         project_path=Path("/tmp/demo"),
         tool_defs=[{"name": "project_read_file"}, {"name": "build_run"}],
@@ -240,7 +240,7 @@ def _test_prompt_cache_key_is_stable_for_same_inputs() -> None:
     assert key_a == key_b
     assert key_a.startswith("atopile-agent:")
 
-def _test_trim_user_message_preserves_head_and_tail() -> None:
+def test_trim_user_message_preserves_head_and_tail() -> None:
     message = "A" * 120 + "B" * 120
     trimmed = _trim_user_message(message, max_chars=120)
     assert len(trimmed) <= 150
@@ -248,7 +248,7 @@ def _test_trim_user_message_preserves_head_and_tail() -> None:
     assert trimmed.startswith("A")
     assert trimmed.endswith("B")
 
-def _test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
+def test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
     traces = [
         ToolTrace(
             name="project_read_file",
@@ -277,7 +277,7 @@ def _test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None
     assert message is not None
     assert "repetitive" in message.lower()
 
-def _test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
+def test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
     traces = [
         ToolTrace(
             name="project_read_file",
@@ -310,7 +310,7 @@ def _test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
 
     assert message is None
 
-def _test_run_worker_turn_stops_repetitive_discovery_loop(
+def test_run_worker_turn_stops_repetitive_discovery_loop(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -372,7 +372,7 @@ def _test_run_worker_turn_stops_repetitive_discovery_loop(
     assert len(result.tool_traces) >= 4
     assert call_counter["count"] >= 4
 
-def _test_run_worker_turn_stops_on_repeated_tool_failures(
+def test_run_worker_turn_stops_on_repeated_tool_failures(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -442,7 +442,7 @@ def _test_run_worker_turn_stops_on_repeated_tool_failures(
     assert "repeated tool failures" in result.text.lower()
     assert len(result.tool_traces) >= 2
 
-def _test_run_worker_turn_stops_after_no_concrete_progress(
+def test_run_worker_turn_stops_after_no_concrete_progress(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -503,46 +503,3 @@ def _test_run_worker_turn_stops_after_no_concrete_progress(
 
     assert "without concrete progress" in result.text.lower()
     assert len(result.tool_traces) >= 3
-
-class TestOrchestratorOutput:
-    test_sanitize_tool_output_removes_internal_keys = staticmethod(
-        _test_sanitize_tool_output_removes_internal_keys
-    )
-    test_build_function_call_outputs_attaches_datasheet_file = staticmethod(
-        _test_build_function_call_outputs_attaches_datasheet_file
-    )
-    test_build_function_call_outputs_nudges_after_parts_install = staticmethod(
-        _test_build_function_call_outputs_nudges_after_parts_install
-    )
-    test_extract_retry_after_delay_from_message_text = staticmethod(
-        _test_extract_retry_after_delay_from_message_text
-    )
-    test_responses_create_retries_on_429 = staticmethod(
-        _test_responses_create_retries_on_429
-    )
-    test_responses_create_compacts_and_retries_on_context_overflow = staticmethod(
-        _test_responses_create_compacts_and_retries_on_context_overflow
-    )
-    test_prompt_cache_key_is_stable_for_same_inputs = staticmethod(
-        _test_prompt_cache_key_is_stable_for_same_inputs
-    )
-    test_trim_user_message_preserves_head_and_tail = staticmethod(
-        _test_trim_user_message_preserves_head_and_tail
-    )
-    test_build_worker_loop_guard_message_detects_repetitive_discovery = (
-        staticmethod(
-            _test_build_worker_loop_guard_message_detects_repetitive_discovery
-        )
-    )
-    test_build_worker_loop_guard_message_ignores_execution_progress = staticmethod(
-        _test_build_worker_loop_guard_message_ignores_execution_progress
-    )
-    test_run_worker_turn_stops_repetitive_discovery_loop = staticmethod(
-        _test_run_worker_turn_stops_repetitive_discovery_loop
-    )
-    test_run_worker_turn_stops_on_repeated_tool_failures = staticmethod(
-        _test_run_worker_turn_stops_on_repeated_tool_failures
-    )
-    test_run_worker_turn_stops_after_no_concrete_progress = staticmethod(
-        _test_run_worker_turn_stops_after_no_concrete_progress
-    )

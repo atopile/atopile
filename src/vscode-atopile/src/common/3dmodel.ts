@@ -199,7 +199,7 @@ export function showThreeDModel(rawGlbPath: string): void {
     try {
         isFile = fs.existsSync(rawGlbPath) && fs.statSync(rawGlbPath).isFile();
     } catch {
-        isFile = false;
+        // fs operations can throw on invalid paths
     }
 
     modelWatcher.setCurrent({ path: rawGlbPath, exists: isFile });
