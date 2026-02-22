@@ -940,25 +940,6 @@ async def _tool_project_delete_path(arguments: dict[str, Any], project_root: Pat
         recursive=bool(arguments.get("recursive", True)),
     )
 
-# Legacy write/replace helpers intentionally remain unregistered.
-async def _tool_project_write_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    return await asyncio.to_thread(
-        policy.write_file,
-        project_root,
-        str(arguments.get("path", "")),
-        str(arguments.get("content", "")),
-    )
-
-async def _tool_project_replace_text(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    return await asyncio.to_thread(
-        policy.apply_text_replace,
-        project_root,
-        str(arguments.get("path", "")),
-        str(arguments.get("find_text", "")),
-        str(arguments.get("replace_with", "")),
-        max_replacements=int(arguments.get("max_replacements", 1)),
-    )
-
 @_register_tool("parts_search")
 async def _tool_parts_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     parts, error = await asyncio.to_thread(
