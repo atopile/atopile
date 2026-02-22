@@ -161,7 +161,8 @@ export class Renderer {
     private polygonShader!: ShaderProgram;
     private pointShader!: ShaderProgram;
     private activeLayer: RenderLayer | null = null;
-    private nextDepth = 0.01;
+    private static readonly DEPTH_STEP = 0.0001;
+    private nextDepth = Renderer.DEPTH_STEP;
     private gridVao: VertexArray | null = null;
     private gridPosBuf: Buffer | null = null;
     private gridVertexCount = 0;
@@ -179,7 +180,7 @@ export class Renderer {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.GREATER);
-        gl.clearColor(0.12, 0.12, 0.12, 1);
+        gl.clearColor(0.03, 0.05, 0.08, 1);
         gl.clearDepth(0);
 
         this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
@@ -210,12 +211,12 @@ export class Renderer {
     dispose_layers() {
         for (const layer of this.layers) layer.dispose();
         this.layers = [];
-        this.nextDepth = 0.01;
+        this.nextDepth = Renderer.DEPTH_STEP;
     }
 
     start_layer(name: string): RenderLayer {
         const layer = new RenderLayer(this.gl, name, this.nextDepth);
-        this.nextDepth += 0.01;
+        this.nextDepth = Math.min(0.9999, this.nextDepth + Renderer.DEPTH_STEP);
         this.activeLayer = layer;
         return layer;
     }
@@ -273,7 +274,7 @@ export class Renderer {
         if (this.gridVertexCount > 0) {
             this.pointShader.bind();
             this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
-            this.pointShader.uniforms["u_pointSize"]!.f1(1.5 * window.devicePixelRatio);
+            this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
             this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
             this.gridVao!.bind();
             this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);

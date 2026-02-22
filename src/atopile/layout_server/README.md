@@ -1,6 +1,6 @@
 # PCB Layout Editor
 
-Interactive PCB layout viewer/editor with a WebGL2 renderer. Loads `.kicad_pcb` files via faebryk's parser, renders board edges, tracks, vias, zones, and footprints (pads + silkscreen), and supports drag-to-move and rotate editing with undo/redo.
+Interactive PCB layout viewer/editor with a WebGL2 renderer. Loads `.kicad_pcb` files via faebryk's parser, renders board edges, tracks, vias, zones, and footprints (pads + silkscreen + text properties such as Reference/Value), and supports drag-to-move and rotate editing with undo/redo.
 
 ## Build & Run
 

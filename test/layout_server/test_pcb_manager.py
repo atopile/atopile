@@ -10,9 +10,17 @@ from atopile.layout_server.models import (
     FootprintSummary,
     RenderModel,
 )
-from atopile.layout_server.pcb_manager import PcbManager
+from atopile.layout_server.pcb_manager import (
+    PcbManager,
+    _fit_pad_net_text,
+    _fit_text_inside_pad,
+    _pad_net_text_layers,
+    _pad_net_text_rotation,
+    _pad_number_text_layers,
+)
 
 TEST_PCB_V8 = Path("test/common/resources/fileformats/kicad/v8/pcb/test.kicad_pcb")
+TEST_PCB_V9 = Path("test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb")
 ESP32_PCB = Path("examples/esp32_minimal/layouts/esp32_minimal/esp32_minimal.kicad_pcb")
 
 
@@ -27,6 +35,13 @@ def manager_v8():
 def manager_esp32():
     mgr = PcbManager()
     mgr.load(ESP32_PCB)
+    return mgr
+
+
+@pytest.fixture
+def manager_v9():
+    mgr = PcbManager()
+    mgr.load(TEST_PCB_V9)
     return mgr
 
 
@@ -54,14 +69,97 @@ def test_get_render_model_v8(manager_v8: PcbManager):
 def test_get_render_model_esp32(manager_esp32: PcbManager):
     model = manager_esp32.get_render_model()
     assert len(model.footprints) >= 10
+    assert len(model.drawings) > 0
+    assert len(model.texts) > 0
     assert len(model.tracks) > 0
-    assert len(model.vias) > 0
+    assert not hasattr(model, "vias")
     assert len(model.board.edges) > 0
 
     fp = model.footprints[0]
     assert fp.uuid is not None
     assert fp.at is not None
     assert len(fp.pads) >= 0
+
+    assert any(
+        f.reference and any(t.text == f.reference for t in f.texts)
+        for f in model.footprints
+    )
+    all_texts = [t for f in model.footprints for t in f.texts]
+    assert all(t.text not in ("%R", "%V", "${REFERENCE}") for t in all_texts)
+    assert all(t.size is not None for t in all_texts)
+    assert any(t.thickness is not None for t in all_texts)
+    assert any(t.layer == "F.SilkS" for t in model.texts)
+    assert any(d.filled for d in model.drawings)
+    assert all(d.width >= 0 for d in model.drawings)
+    keepout_zone = next((z for z in model.zones if z.keepout), None)
+    assert keepout_zone is not None
+    assert keepout_zone.hatch_pitch is not None
+    assert keepout_zone.hatch_pitch > 0
+    assert len(keepout_zone.outline) >= 3
+    silk_text = next((t for t in model.texts if t.text == "ESP32-S3-WROOM"), None)
+    assert silk_text is not None
+    assert {"left", "bottom"}.issubset(set(silk_text.justify or []))
+    pad_name_annotations = [
+        (footprint, t)
+        for footprint in model.footprints
+        for t in footprint.pad_names
+        if all(layer.endswith(".Nets") for layer in t.layer_ids)
+    ]
+    pad_number_annotations = [
+        (footprint, t)
+        for footprint in model.footprints
+        for t in footprint.pad_numbers
+        if all(layer.endswith(".PadNumbers") for layer in t.layer_ids)
+    ]
+    assert len(pad_name_annotations) > 0
+    assert len(pad_number_annotations) > 0
+    assert all(
+        all(layer != "Annotations.PadNetNames" for layer in t.layer_ids)
+        for fp in model.footprints
+        for t in fp.pad_names
+    )
+    assert all(
+        all(layer != "Annotations.PadNumbers" for layer in t.layer_ids)
+        for fp in model.footprints
+        for t in fp.pad_numbers
+    )
+    assert any(t.text == "GND" for _, t in pad_name_annotations)
+    assert all(t.pad for _, t in pad_name_annotations)
+    assert all(t.pad for _, t in pad_number_annotations)
+    assert all(t.layer_ids for _, t in pad_name_annotations)
+    assert all(t.layer_ids for _, t in pad_number_annotations)
+    for footprint, annotation in pad_name_annotations + pad_number_annotations:
+        assert any(p.name == annotation.pad for p in footprint.pads)
+    assert len(model.layers) > 0
+    assert all(layer.panel_order >= 0 for layer in model.layers)
+    assert all(layer.paint_order >= 0 for layer in model.layers)
+    assert not any(
+        (t.layer or "").endswith(".Nets") or (t.layer or "").endswith(".PadNumbers")
+        for fp in model.footprints
+        for t in fp.texts
+    )
+
+    assert all(
+        not hasattr(pad, "hole") and not hasattr(pad, "drill")
+        for footprint in model.footprints
+        for pad in footprint.pads
+    )
+    assert any((d.layer or "").endswith(".Drill") for d in model.drawings)
+    assert any(
+        (d.layer or "").endswith(".Cu") and (d.filled or d.width > 0)
+        for d in model.drawings
+    )
+    assert any(
+        (d.layer or "").endswith(".Drill")
+        for footprint in model.footprints
+        for d in footprint.drawings
+    )
+
+
+def test_get_render_model_v9_zones(manager_v9: PcbManager):
+    model = manager_v9.get_render_model()
+    assert len(model.zones) > 0
+    assert any(len(z.filled_polygons) > 0 for z in model.zones)
 
 
 def test_move_footprint(manager_v8: PcbManager):
@@ -218,3 +316,96 @@ def test_flip_roundtrip(manager_v8: PcbManager):
 
     after = next(f for f in manager_v8.get_footprints() if f.uuid == uuid)
     assert after.layer == orig_layer
+
+
+def test_fit_text_inside_pad_rejects_non_positive_dimensions():
+    assert _fit_text_inside_pad("GND", 0.0, 1.0) is None
+    assert _fit_text_inside_pad("GND", 1.0, 0.0) is None
+    assert _fit_text_inside_pad("GND", -1.0, 1.0) is None
+
+
+def test_fit_text_inside_pad_stays_bounded_and_orients_with_long_axis():
+    # Horizontal pad: bounded fit and thickness range.
+    fit_h = _fit_text_inside_pad("GND", 1.2, 0.8)
+    assert fit_h is not None
+    char_w_h, char_h_h, thickness_h = fit_h
+    assert 0 < char_w_h < 1.2
+    assert 0 < char_h_h < 0.8
+    assert 0.06 <= thickness_h <= 0.20
+
+    # Vertical pad: still bounded.
+    fit_v = _fit_text_inside_pad("GND", 0.8, 1.2)
+    assert fit_v is not None
+    _, char_h_v, thickness_v = fit_v
+    assert 0 < char_h_v < 0.8
+    assert 0.06 <= thickness_v <= 0.20
+
+
+def test_pad_net_text_rotation_is_snapped_and_uses_total_rotation():
+    # Symmetric pads are always horizontal.
+    assert _pad_net_text_rotation(37.0, 1.0, 1.0) == pytest.approx(0.0)
+
+    # Long axis horizontal at 0 deg => horizontal text.
+    assert _pad_net_text_rotation(0.0, 1.2, 0.8) == pytest.approx(0.0)
+
+    # Same pad at 90 deg => vertical text.
+    assert _pad_net_text_rotation(90.0, 1.2, 0.8) == pytest.approx(90.0)
+
+    # Tall pad with no rotation already has vertical long axis.
+    assert _pad_net_text_rotation(0.0, 0.8, 1.2) == pytest.approx(90.0)
+
+    # Tall pad rotated by 90 deg becomes horizontal.
+    assert _pad_net_text_rotation(90.0, 0.8, 1.2) == pytest.approx(0.0)
+
+    # Allowed outputs are only 0 and +90.
+    for angle in (0, 15, 30, 45, 60, 75, 90, 135, 180, 225, 270, 315):
+        snapped = _pad_net_text_rotation(float(angle), 1.2, 0.8)
+        assert snapped in {0.0, 90.0}
+
+
+def test_fit_pad_net_text_uses_shorter_fallbacks_for_small_pads():
+    fitted = _fit_pad_net_text("power_in-VCC", 0.79, 0.54)
+    assert fitted is not None
+    label, metrics = fitted
+    assert label == "VCC"
+    assert metrics[0] > 0 and metrics[1] > 0
+
+
+def test_pad_net_text_layers_track_pad_copper_layers():
+    copper = ["F.Cu", "In1.Cu", "B.Cu"]
+    assert _pad_net_text_layers(
+        ["F.Cu", "F.Mask", "F.Paste"], all_copper_layers=copper
+    ) == ["F.Nets"]
+    assert _pad_net_text_layers(["B.Cu"], all_copper_layers=copper) == ["B.Nets"]
+    assert _pad_net_text_layers(["*.Cu", "*.Mask"], all_copper_layers=copper) == [
+        "F.Nets",
+        "In1.Nets",
+        "B.Nets",
+    ]
+    assert _pad_net_text_layers(["F&B.Cu"], all_copper_layers=copper) == [
+        "F.Nets",
+        "B.Nets",
+    ]
+    assert _pad_net_text_layers(["F.Mask", "F.Paste"], all_copper_layers=copper) == []
+
+
+def test_pad_number_text_layers_track_pad_copper_layers():
+    copper = ["F.Cu", "In1.Cu", "B.Cu"]
+    assert _pad_number_text_layers(
+        ["F.Cu", "F.Mask", "F.Paste"], all_copper_layers=copper
+    ) == ["F.PadNumbers"]
+    assert _pad_number_text_layers(["B.Cu"], all_copper_layers=copper) == [
+        "B.PadNumbers"
+    ]
+    assert _pad_number_text_layers(["*.Cu", "*.Mask"], all_copper_layers=copper) == [
+        "F.PadNumbers",
+        "In1.PadNumbers",
+        "B.PadNumbers",
+    ]
+    assert _pad_number_text_layers(["F&B.Cu"], all_copper_layers=copper) == [
+        "F.PadNumbers",
+        "B.PadNumbers",
+    ]
+    assert (
+        _pad_number_text_layers(["F.Mask", "F.Paste"], all_copper_layers=copper) == []
+    )

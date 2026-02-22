@@ -48,10 +48,11 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run build:webviews && npm run package",
+        "vscode:prepublish": "npm run build:webviews && npm run build:layout-editor && npm run package",
         "build:webviews": "cd ../ui-server && npm install && npm run build -- --outDir ../vscode-atopile/resources/webviews",
-        "compile": "webpack",
-        "watch": "webpack --watch",
+        "build:layout-editor": "cd ../atopile/layout_server/frontend && npm install && npm run build && mkdir -p ../../../vscode-atopile/resources/layout-editor && cp ../static/editor.js ../../../vscode-atopile/resources/layout-editor/editor.js && cp ../static/editor.js.map ../../../vscode-atopile/resources/layout-editor/editor.js.map",
+        "compile": "npm run build:layout-editor && webpack",
+        "watch": "npm run build:layout-editor && webpack --watch",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",
         "compile-tests": "tsc -p . --outDir out",
         "watch-tests": "tsc -p . -w --outDir out",
@@ -264,6 +265,7 @@
         ]
     },
     "dependencies": {
+        "@gltf-transform/cli": "^4.1.0",
         "@types/decompress": "^4.2.7",
         "@vscode/python-extension": "^1.0.5",
         "axios": "^1.9.0",
@@ -275,8 +277,7 @@
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0",
         "ws": "^8.19.0",
-        "yaml": "^2.8.0",
-        "@gltf-transform/cli": "^4.1.0"
+        "yaml": "^2.8.0"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",

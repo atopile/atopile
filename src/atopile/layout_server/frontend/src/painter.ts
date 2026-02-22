@@ -1,32 +1,36 @@
 import { Vec2, BBox } from "./math";
 import { Renderer, RenderLayer } from "./webgl/renderer";
-import { getLayerColor, getPadColor, VIA_COLOR, VIA_DRILL_COLOR, SELECTION_COLOR, ZONE_COLOR_ALPHA } from "./colors";
-import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
+import { fpTransform, padTransform } from "./geometry";
+import {
+    getLayerColor,
+    ZONE_COLOR_ALPHA,
+} from "./colors";
+import type {
+    RenderModel,
+    FootprintModel,
+    HoleModel,
+    PadModel,
+    TrackModel,
+    DrawingModel,
+    Point2,
+    Point3,
+    LayerModel,
+} from "./types";
+import { footprintBBox } from "./hit-test";
+import { buildPadAnnotationGeometry } from "./pad_annotations";
 
 const DEG_TO_RAD = Math.PI / 180;
+const HOLE_SEGMENTS = 36;
+const SELECTION_STROKE_WIDTH = 0.12;
+const GROUP_SELECTION_STROKE_WIDTH = 0.1;
+const HOVER_SELECTION_STROKE_WIDTH = 0.08;
+const SELECTION_GROW = 0.2;
+const GROUP_SELECTION_GROW = 0.16;
+const HOVER_SELECTION_GROW = 0.12;
+
 
 function p2v(p: Point2): Vec2 {
     return new Vec2(p.x, p.y);
-}
-
-/** Transform a local point by a footprint's position + rotation */
-function fpTransform(fpAt: Point3, localX: number, localY: number): Vec2 {
-    const rad = -(fpAt.r || 0) * DEG_TO_RAD;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return new Vec2(
-        fpAt.x + localX * cos - localY * sin,
-        fpAt.y + localX * sin + localY * cos,
-    );
-}
-
-/** Transform by pad rotation, then footprint rotation */
-function padTransform(fpAt: Point3, padAt: Point3, lx: number, ly: number): Vec2 {
-    const padRad = -(padAt.r || 0) * DEG_TO_RAD;
-    const pc = Math.cos(padRad), ps = Math.sin(padRad);
-    const px = lx * pc - ly * ps;
-    const py = lx * ps + ly * pc;
-    return fpTransform(fpAt, padAt.x + px, padAt.y + py);
 }
 
 /** Approximate a 3-point arc with line segments */
@@ -68,70 +72,88 @@ function arcToPoints(start: Point2, mid: Point2, end: Point2, segments = 32): Ve
     return points;
 }
 
-/**
- * Check if a pad layer (possibly a wildcard) has any visible concrete layer.
- * Wildcards: "*.Cu" matches all layers ending in ".Cu",
- *            "F&B.Cu" matches "F.Cu" and "B.Cu".
- */
-function isPadLayerVisible(padLayer: string, hidden: Set<string>, concreteLayers: Set<string>): boolean {
-    if (padLayer.includes("*")) {
-        // *.Suffix — visible if any concrete layer with that suffix is not hidden
-        const suffix = padLayer.substring(padLayer.indexOf("."));
-        for (const l of concreteLayers) {
-            if (l.endsWith(suffix) && !hidden.has(l)) return true;
-        }
-        return false;
+function circleToPoints(cx: number, cy: number, radius: number, segments = HOLE_SEGMENTS): Vec2[] {
+    const points: Vec2[] = [];
+    if (radius <= 0) return points;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * 2 * Math.PI;
+        points.push(new Vec2(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)));
     }
-    if (padLayer.includes("&")) {
-        // A&B.Suffix — expand to A.Suffix, B.Suffix
-        const dotIdx = padLayer.indexOf(".");
-        if (dotIdx >= 0) {
-            const prefixes = padLayer.substring(0, dotIdx).split("&");
-            const suffix = padLayer.substring(dotIdx);
-            return prefixes.some(p => !hidden.has(p + suffix));
-        }
-    }
-    return !hidden.has(padLayer);
+    return points;
 }
 
-/** Collect all concrete (non-wildcard) layer names from the model */
-function collectConcreteLayers(model: RenderModel): Set<string> {
-    const layers = new Set<string>();
-    for (const fp of model.footprints) {
-        layers.add(fp.layer);
-        for (const pad of fp.pads) {
-            for (const l of pad.layers) layers.add(l);
-        }
-        for (const d of fp.drawings) if (d.layer) layers.add(d.layer);
+function drawFootprintSelectionBox(
+    layer: RenderLayer,
+    fp: FootprintModel,
+    strokeWidth: number,
+    strokeAlpha: number,
+    grow: number,
+    fillAlpha = 0,
+) {
+    const bbox = footprintBBox(fp).grow(grow);
+    if (bbox.w <= 0 || bbox.h <= 0) return;
+    const corners = [
+        new Vec2(bbox.x, bbox.y),
+        new Vec2(bbox.x2, bbox.y),
+        new Vec2(bbox.x2, bbox.y2),
+        new Vec2(bbox.x, bbox.y2),
+        new Vec2(bbox.x, bbox.y),
+    ];
+    if (fillAlpha > 0) {
+        layer.geometry.add_polygon(corners.slice(0, 4), 1.0, 1.0, 1.0, fillAlpha);
     }
-    for (const t of model.tracks) if (t.layer) layers.add(t.layer);
-    for (const a of model.arcs) if (a.layer) layers.add(a.layer);
-    for (const z of model.zones) {
-        for (const f of z.filled_polygons) layers.add(f.layer);
+    layer.geometry.add_polyline(corners, strokeWidth, 1.0, 1.0, 1.0, strokeAlpha);
+}
+
+function buildLayerMap(model: RenderModel): Map<string, LayerModel> {
+    const layerById = new Map<string, LayerModel>();
+    for (const layer of model.layers) {
+        layerById.set(layer.id, layer);
     }
-    for (const l of layers) {
-        if (l.includes("*") || l.includes("&")) layers.delete(l);
-    }
-    return layers;
+    return layerById;
+}
+
+function layerPaintOrder(layerName: string, layerById: Map<string, LayerModel>): number {
+    return layerById.get(layerName)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+}
+
+function layerKind(layerName: string, layerById: Map<string, LayerModel>): string {
+    return (layerById.get(layerName)?.kind ?? "").toLowerCase();
+}
+
+function sortedLayerEntries<T>(
+    layerMap: Map<string, T>,
+    layerById: Map<string, LayerModel>,
+): Array<[string, T]> {
+    return [...layerMap.entries()].sort(([a], [b]) => {
+        const orderDiff = layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById);
+        if (orderDiff !== 0) return orderDiff;
+        return a.localeCompare(b);
+    });
 }
 
 /** Paint the entire render model into renderer layers */
 export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: Set<string>): void {
     const hidden = hiddenLayers ?? new Set<string>();
-    const concreteLayers = collectConcreteLayers(model);
+    const layerById = buildLayerMap(model);
     renderer.dispose_layers();
-    if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model);
-    paintZones(renderer, model, hidden);
-    paintTracks(renderer, model, hidden);
-    if (!hidden.has("Vias")) paintVias(renderer, model);
-    for (const fp of model.footprints) {
-        paintFootprint(renderer, fp, hidden, concreteLayers);
+    if (!hidden.has("Edge.Cuts")) paintBoardEdges(renderer, model, layerById);
+    paintGlobalDrawings(renderer, model, hidden, "non_copper", layerById);
+    paintZones(renderer, model, hidden, layerById);
+    paintTracks(renderer, model, hidden, layerById);
+    paintGlobalDrawings(renderer, model, hidden, "copper", layerById);
+    const orderedFootprints = [...model.footprints].sort(
+        (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById),
+    );
+    for (const fp of orderedFootprints) {
+        paintFootprint(renderer, fp, hidden, layerById);
     }
+    paintGlobalDrawings(renderer, model, hidden, "drill", layerById);
 }
 
-function paintBoardEdges(renderer: Renderer, model: RenderModel) {
+function paintBoardEdges(renderer: Renderer, model: RenderModel, layerById: Map<string, LayerModel>) {
     const layer = renderer.start_layer("Edge.Cuts");
-    const [r, g, b, a] = getLayerColor("Edge.Cuts");
+    const [r, g, b, a] = getLayerColor("Edge.Cuts", layerById);
 
     for (const edge of model.board.edges) {
         if (edge.type === "line" && edge.start && edge.end) {
@@ -157,11 +179,19 @@ function paintBoardEdges(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
-function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
+function paintZones(
+    renderer: Renderer,
+    model: RenderModel,
+    hidden: Set<string>,
+    layerById: Map<string, LayerModel>,
+) {
     for (const zone of model.zones) {
-        for (const filled of zone.filled_polygons) {
+        const sortedFilledPolygons = [...zone.filled_polygons].sort(
+            (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById),
+        );
+        for (const filled of sortedFilledPolygons) {
             if (hidden.has(filled.layer)) continue;
-            const [r, g, b] = getLayerColor(filled.layer);
+            const [r, g, b] = getLayerColor(filled.layer, layerById);
             const layer = renderer.start_layer(`zone_${zone.uuid ?? ""}:${filled.layer}`);
             const pts = filled.points.map(p2v);
             if (pts.length >= 3) {
@@ -169,133 +199,586 @@ function paintZones(renderer: Renderer, model: RenderModel, hidden: Set<string>)
             }
             renderer.end_layer();
         }
-    }
-}
 
-function paintTracks(renderer: Renderer, model: RenderModel, hidden: Set<string>) {
-    const byLayer = new Map<string, TrackModel[]>();
-    for (const track of model.tracks) {
-        const ln = track.layer ?? "F.Cu";
-        if (hidden.has(ln)) continue;
-        let arr = byLayer.get(ln);
-        if (!arr) { arr = []; byLayer.set(ln, arr); }
-        arr.push(track);
-    }
-    for (const [layerName, tracks] of byLayer) {
-        const [r, g, b, a] = getLayerColor(layerName);
-        const layer = renderer.start_layer(`tracks:${layerName}`);
-        for (const track of tracks) {
-            layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
+        const zoneLayersRaw = zone.layers.length > 0
+            ? zone.layers
+            : [...new Set(zone.filled_polygons.map(fp => fp.layer))];
+        const zoneLayers = [...new Set(zoneLayersRaw)].sort(
+            (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById),
+        );
+
+        const shouldDrawFillFromOutline = (
+            !zone.keepout
+            && zone.fill_enabled !== false
+            && zone.filled_polygons.length === 0
+            && zone.outline.length >= 3
+        );
+        if (shouldDrawFillFromOutline) {
+            const outlinePts = zone.outline.map(p2v);
+            for (const layerName of zoneLayers) {
+                if (!layerName || hidden.has(layerName)) continue;
+                const [r, g, b] = getLayerColor(layerName, layerById);
+                const layer = renderer.start_layer(`zone_outline_fill_${zone.uuid ?? ""}:${layerName}`);
+                layer.geometry.add_polygon(outlinePts, r, g, b, ZONE_COLOR_ALPHA);
+                renderer.end_layer();
+            }
         }
-        renderer.end_layer();
-    }
-    if (model.arcs.length > 0) {
-        const arcByLayer = new Map<string, typeof model.arcs>();
-        for (const arc of model.arcs) {
-            const ln = arc.layer ?? "F.Cu";
-            if (hidden.has(ln)) continue;
-            let arr = arcByLayer.get(ln);
-            if (!arr) { arr = []; arcByLayer.set(ln, arr); }
-            arr.push(arc);
-        }
-        for (const [layerName, arcs] of arcByLayer) {
-            const [r, g, b, a] = getLayerColor(layerName);
-            const layer = renderer.start_layer(`arc_tracks:${layerName}`);
-            for (const arc of arcs) {
-                layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
+
+        const shouldDrawKeepout = zone.keepout || zone.fill_enabled === false;
+        if (!shouldDrawKeepout || zone.outline.length < 3) continue;
+
+        const outlinePts = zone.outline.map(p2v);
+        const closedOutline = [...outlinePts, outlinePts[0]!.copy()];
+        const hatchPitch = zone.hatch_pitch && zone.hatch_pitch > 0 ? zone.hatch_pitch : 0.5;
+        const hatchSegments = hatchSegmentsForPolygon(outlinePts, hatchPitch);
+        for (const layerName of zoneLayers) {
+            if (!layerName || hidden.has(layerName)) continue;
+            const [r, g, b, a] = getLayerColor(layerName, layerById);
+            const layer = renderer.start_layer(`zone_keepout_${zone.uuid ?? ""}:${layerName}`);
+            layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
+            for (const [start, end] of hatchSegments) {
+                layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45));
             }
             renderer.end_layer();
         }
     }
 }
 
-function paintVias(renderer: Renderer, model: RenderModel) {
-    if (model.vias.length === 0) return;
-    const layer = renderer.start_layer("vias");
-    for (const via of model.vias) {
-        const [vr, vg, vb, va] = VIA_COLOR;
-        layer.geometry.add_circle(via.at.x, via.at.y, via.size / 2, vr, vg, vb, va);
-        const [dr, dg, db, da] = VIA_DRILL_COLOR;
-        layer.geometry.add_circle(via.at.x, via.at.y, via.drill / 2, dr, dg, db, da);
+function hatchSegmentsForPolygon(points: Vec2[], pitch: number): Array<[Vec2, Vec2]> {
+    if (points.length < 3 || pitch <= 0) return [];
+    const eps = 1e-6;
+    const closed = [...points, points[0]!];
+    let minV = Infinity;
+    let maxV = -Infinity;
+    for (const p of points) {
+        const v = p.y - p.x;
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
     }
-    renderer.end_layer();
+
+    const segments: Array<[Vec2, Vec2]> = [];
+    for (let c = minV - pitch; c <= maxV + pitch; c += pitch) {
+        const rawIntersections: Vec2[] = [];
+        for (let i = 0; i < closed.length - 1; i++) {
+            const a = closed[i]!;
+            const b = closed[i + 1]!;
+            const fa = a.y - a.x - c;
+            const fb = b.y - b.x - c;
+            if ((fa > eps && fb > eps) || (fa < -eps && fb < -eps)) continue;
+            const denom = fa - fb;
+            if (Math.abs(denom) < eps) continue;
+            const t = fa / denom;
+            if (t < -eps || t > 1 + eps) continue;
+            rawIntersections.push(
+                new Vec2(
+                    a.x + (b.x - a.x) * t,
+                    a.y + (b.y - a.y) * t,
+                ),
+            );
+        }
+
+        rawIntersections.sort((p, q) => (p.x - q.x) || (p.y - q.y));
+        const intersections: Vec2[] = [];
+        for (const p of rawIntersections) {
+            const last = intersections[intersections.length - 1];
+            if (!last || Math.abs(last.x - p.x) > eps || Math.abs(last.y - p.y) > eps) {
+                intersections.push(p);
+            }
+        }
+        for (let i = 0; i + 1 < intersections.length; i += 2) {
+            segments.push([intersections[i]!, intersections[i + 1]!]);
+        }
+    }
+    return segments;
 }
 
-function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>) {
-    const drawingsByLayer = new Map<string, DrawingModel[]>();
-    for (const drawing of fp.drawings) {
-        const ln = drawing.layer ?? "F.SilkS";
+function paintTracks(
+    renderer: Renderer,
+    model: RenderModel,
+    hidden: Set<string>,
+    layerById: Map<string, LayerModel>,
+) {
+    const byLayer = new Map<string, TrackModel[]>();
+    for (const track of model.tracks) {
+        const ln = track.layer;
+        if (!ln) continue;
         if (hidden.has(ln)) continue;
-        let arr = drawingsByLayer.get(ln);
-        if (!arr) { arr = []; drawingsByLayer.set(ln, arr); }
+        let arr = byLayer.get(ln);
+        if (!arr) { arr = []; byLayer.set(ln, arr); }
+        arr.push(track);
+    }
+    for (const [layerName, tracks] of sortedLayerEntries(byLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`tracks:${layerName}`);
+        for (const track of tracks) {
+            const pts = track.mid
+                ? arcToPoints(track.start, track.mid, track.end)
+                : [p2v(track.start), p2v(track.end)];
+            layer.geometry.add_polyline(pts, track.width, r, g, b, a);
+        }
+        renderer.end_layer();
+    }
+}
+
+function isDrillLayer(layerName: string | null | undefined, layerById: Map<string, LayerModel>): boolean {
+    return layerName !== null && layerName !== undefined && layerKind(layerName, layerById) === "drill";
+}
+
+function isCopperLayer(layerName: string | null | undefined, layerById: Map<string, LayerModel>): boolean {
+    return layerName !== null && layerName !== undefined && layerKind(layerName, layerById) === "cu";
+}
+
+function orderedCopperLayers(layerById: Map<string, LayerModel>): string[] {
+    return [...layerById.values()]
+        .filter(layer => layer.kind === "Cu")
+        .sort((a, b) => a.panel_order - b.panel_order)
+        .map(layer => layer.id);
+}
+
+function orderedDrillLayers(layerById: Map<string, LayerModel>): string[] {
+    return [...layerById.values()]
+        .filter(layer => layer.kind === "Drill")
+        .sort((a, b) => a.panel_order - b.panel_order)
+        .map(layer => layer.id);
+}
+
+function drillLayerByRoot(layerById: Map<string, LayerModel>): Map<string, string> {
+    const byRoot = new Map<string, string>();
+    for (const drillLayerId of orderedDrillLayers(layerById)) {
+        const root = layerById.get(drillLayerId)?.root;
+        if (!root) continue;
+        if (!byRoot.has(root)) {
+            byRoot.set(root, drillLayerId);
+        }
+    }
+    return byRoot;
+}
+
+function expandCopperLayerSpan(
+    layers: string[],
+    layerById: Map<string, LayerModel>,
+    includeBetween = false,
+): string[] {
+    const copperOrder = orderedCopperLayers(layerById);
+    const selected = new Set(layers.filter(layer => isCopperLayer(layer, layerById)));
+    if (selected.size === 0) return [];
+
+    const expanded = new Set(selected);
+    if (includeBetween) {
+        const selectedIndices = copperOrder
+            .map((layerName, index) => ({ layerName, index }))
+            .filter(({ layerName }) => selected.has(layerName))
+            .map(({ index }) => index)
+            .sort((a, b) => a - b);
+        if (selectedIndices.length >= 2) {
+            const first = selectedIndices[0]!;
+            const last = selectedIndices[selectedIndices.length - 1]!;
+            for (let i = first; i <= last; i++) {
+                expanded.add(copperOrder[i]!);
+            }
+        }
+    }
+
+    return copperOrder.filter(layerName => expanded.has(layerName));
+}
+
+function padDrillLayerIds(
+    pad: PadModel,
+    layerById: Map<string, LayerModel>,
+): string[] {
+    const copperLayers = expandCopperLayerSpan(pad.layers, layerById, true);
+    const allDrillLayers = orderedDrillLayers(layerById);
+    if (copperLayers.length > 0) {
+        const drillByRoot = drillLayerByRoot(layerById);
+        const resolved: string[] = [];
+        const seen = new Set<string>();
+        for (const copperLayer of copperLayers) {
+            const root = layerById.get(copperLayer)?.root;
+            let drillLayer = root ? drillByRoot.get(root) : undefined;
+            // Fallback for older layer metadata that only exposes id naming.
+            if (!drillLayer && copperLayer.endsWith(".Cu")) {
+                drillLayer = `${copperLayer.slice(0, -3)}.Drill`;
+            }
+            if (!drillLayer || seen.has(drillLayer)) continue;
+            seen.add(drillLayer);
+            resolved.push(drillLayer);
+        }
+        if (resolved.length > 0) return resolved;
+    }
+    return allDrillLayers;
+}
+
+function paintPadHole(
+    layer: RenderLayer,
+    fpAt: Point3,
+    pad: PadModel,
+    hole: HoleModel,
+    r: number,
+    g: number,
+    b: number,
+    a: number,
+) {
+    const sx = Math.max(0, hole.size_x || 0);
+    const sy = Math.max(0, hole.size_y || 0);
+    if (sx <= 0 || sy <= 0) return;
+
+    const offset = hole.offset ?? { x: 0, y: 0 };
+    const center = padTransform(fpAt, pad.at, offset.x, offset.y);
+    const isOval = (hole.shape ?? "").toLowerCase() === "oval" || Math.abs(sx - sy) > 1e-6;
+    if (!isOval) {
+        layer.geometry.add_circle(center.x, center.y, sx / 2, r, g, b, a);
+        return;
+    }
+
+    const major = Math.max(sx, sy);
+    const minor = Math.min(sx, sy);
+    const focal = Math.max(0, (major - minor) / 2);
+    const p1 = sx >= sy
+        ? padTransform(fpAt, pad.at, offset.x - focal, offset.y)
+        : padTransform(fpAt, pad.at, offset.x, offset.y - focal);
+    const p2 = sx >= sy
+        ? padTransform(fpAt, pad.at, offset.x + focal, offset.y)
+        : padTransform(fpAt, pad.at, offset.x, offset.y + focal);
+    layer.geometry.add_polyline([p1, p2], minor, r, g, b, a);
+}
+
+type GlobalDrawingPaintMode = "drill" | "copper" | "non_copper";
+
+function shouldPaintGlobalDrawing(
+    layerName: string,
+    mode: GlobalDrawingPaintMode,
+    layerById: Map<string, LayerModel>,
+): boolean {
+    const drill = isDrillLayer(layerName, layerById);
+    const copper = isCopperLayer(layerName, layerById);
+    if (mode === "drill") return drill;
+    if (mode === "copper") return !drill && copper;
+    return !drill && !copper;
+}
+
+function paintGlobalDrawings(
+    renderer: Renderer,
+    model: RenderModel,
+    hidden: Set<string>,
+    mode: GlobalDrawingPaintMode,
+    layerById: Map<string, LayerModel>,
+) {
+    const byLayer = new Map<string, DrawingModel[]>();
+    for (const drawing of model.drawings) {
+        const ln = drawing.layer;
+        if (!ln) continue;
+        if (!shouldPaintGlobalDrawing(ln, mode, layerById)) continue;
+        if (hidden.has(ln)) continue;
+        let arr = byLayer.get(ln);
+        if (!arr) { arr = []; byLayer.set(ln, arr); }
         arr.push(drawing);
     }
-    for (const [layerName, drawings] of drawingsByLayer) {
-        const [r, g, b, a] = getLayerColor(layerName);
+    const worldAt: Point3 = { x: 0, y: 0, r: 0 };
+    for (const [layerName, drawings] of sortedLayerEntries(byLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`global:${layerName}`);
+        for (const drawing of drawings) {
+            paintDrawing(layer, worldAt, drawing, r, g, b, a);
+        }
+        renderer.end_layer();
+    }
+}
+
+function paintFootprint(
+    renderer: Renderer,
+    fp: FootprintModel,
+    hidden: Set<string>,
+    layerById: Map<string, LayerModel>,
+) {
+    const drawingsByLayer = new Map<string, DrawingModel[]>();
+    const drillDrawingsByLayer = new Map<string, DrawingModel[]>();
+    const padHolesByLayer = new Map<string, Array<{ pad: PadModel; hole: HoleModel }>>();
+    for (const drawing of fp.drawings) {
+        const ln = drawing.layer;
+        if (!ln) continue;
+        if (hidden.has(ln)) continue;
+        const map = isDrillLayer(ln, layerById) ? drillDrawingsByLayer : drawingsByLayer;
+        let arr = map.get(ln);
+        if (!arr) {
+            arr = [];
+            map.set(ln, arr);
+        }
+        arr.push(drawing);
+    }
+    for (const pad of fp.pads) {
+        const hole = pad.hole;
+        if (!hole) continue;
+        for (const drillLayer of padDrillLayerIds(pad, layerById)) {
+            if (!drillLayer || hidden.has(drillLayer)) continue;
+            let arr = padHolesByLayer.get(drillLayer);
+            if (!arr) {
+                arr = [];
+                padHolesByLayer.set(drillLayer, arr);
+            }
+            arr.push({ pad, hole });
+        }
+    }
+    for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
         const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
         for (const drawing of drawings) {
             paintDrawing(layer, fp.at, drawing, r, g, b, a);
         }
         renderer.end_layer();
     }
-    if (fp.pads.length > 0) {
-        // Check if any pad layer is visible (expanding wildcards)
-        const anyVisible = fp.pads.some(pad =>
-            pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
-        );
-        if (anyVisible) {
-            const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-            for (const pad of fp.pads) {
-                if (pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))) {
-                    paintPad(layer, fp.at, pad);
-                }
+    const padsByLayer = new Map<string, PadModel[]>();
+    for (const pad of fp.pads) {
+        const hole = pad.hole;
+        const hasHole = !!hole && Math.max(0, hole.size_x || 0) > 0 && Math.max(0, hole.size_y || 0) > 0;
+        const padType = (pad.type || "").toLowerCase();
+        for (const layerName of pad.layers) {
+            if (!layerName || hidden.has(layerName) || isDrillLayer(layerName, layerById)) continue;
+            if (padType === "np_thru_hole") continue;
+            if (hasHole && !isCopperLayer(layerName, layerById)) continue;
+            let layerPads = padsByLayer.get(layerName);
+            if (!layerPads) {
+                layerPads = [];
+                padsByLayer.set(layerName, layerPads);
             }
-            renderer.end_layer();
+            layerPads.push(pad);
         }
+    }
+    for (const [layerName, layerPads] of sortedLayerEntries(padsByLayer, layerById)) {
+        const layer = renderer.start_layer(`fp:${fp.uuid}:pads:${layerName}`);
+        for (const pad of layerPads) {
+            paintPad(layer, fp.at, pad, layerName, layerById);
+        }
+        renderer.end_layer();
+    }
+    for (const [layerName, holeEntries] of sortedLayerEntries(padHolesByLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`fp:${fp.uuid}:pad-drill:${layerName}`);
+        for (const { pad, hole } of holeEntries) {
+            paintPadHole(layer, fp.at, pad, hole, r, g, b, a);
+        }
+        renderer.end_layer();
+    }
+    for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+        for (const drawing of drawings) {
+            paintDrawing(layer, fp.at, drawing, r, g, b, a);
+        }
+        renderer.end_layer();
+    }
+    paintPadAnnotations(renderer, fp, hidden, layerById);
+}
+
+function paintPadAnnotations(
+    renderer: Renderer,
+    fp: FootprintModel,
+    hidden: Set<string>,
+    layerById: Map<string, LayerModel>,
+) {
+    if (fp.pads.length === 0) return;
+    if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0) return;
+    const layerGeometry = buildPadAnnotationGeometry(fp, hidden);
+
+    const orderedAnnotationLayers = [...layerGeometry.keys()].sort(
+        (a, b) => layerPaintOrder(a, layerById) - layerPaintOrder(b, layerById),
+    );
+    for (const layerName of orderedAnnotationLayers) {
+        const geometry = layerGeometry.get(layerName);
+        if (!geometry) continue;
+        if (geometry.numbers.length === 0) continue;
+        const layer = renderer.start_layer(`fp:${fp.uuid}:annotations:${layerName}`);
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+
+        for (const number of geometry.numbers) {
+            layer.geometry.add_circle(number.badgeCenterX, number.badgeCenterY, number.badgeRadius, r, g, b, Math.max(a, 0.98));
+            const outlinePoints = circleToPoints(number.badgeCenterX, number.badgeCenterY, number.badgeRadius);
+            if (outlinePoints.length > 1) {
+                layer.geometry.add_polyline(outlinePoints, Math.max(number.badgeRadius * 0.18, 0.04), 0.05, 0.08, 0.12, 0.8);
+            }
+        }
+
+        renderer.end_layer();
     }
 }
 
 function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r: number, g: number, b: number, a: number) {
-    const w = drawing.width || 0.12;
+    const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
+    const strokeWidth = rawWidth > 0 ? rawWidth : (drawing.filled ? 0 : 0.12);
 
-    if (drawing.type === "line" && drawing.start && drawing.end) {
-        const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
-        const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
-        layer.geometry.add_polyline([p1, p2], w, r, g, b, a);
-    } else if (drawing.type === "arc" && drawing.start && drawing.mid && drawing.end) {
-        const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
-        const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
-        layer.geometry.add_polyline(worldPts, w, r, g, b, a);
-    } else if (drawing.type === "circle" && drawing.center && drawing.end) {
-        const cx = drawing.center.x, cy = drawing.center.y;
-        const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
-        const pts: Vec2[] = [];
-        for (let i = 0; i <= 48; i++) {
-            const angle = (i / 48) * 2 * Math.PI;
-            pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
+    switch (drawing.type) {
+        case "line": {
+            const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
+            const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
+            layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
+            break;
         }
-        layer.geometry.add_polyline(pts.map(p => fpTransform(fpAt, p.x, p.y)), w, r, g, b, a);
-    } else if (drawing.type === "rect" && drawing.start && drawing.end) {
-        const s = drawing.start, e = drawing.end;
-        const corners = [
-            fpTransform(fpAt, s.x, s.y), fpTransform(fpAt, e.x, s.y),
-            fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
-            fpTransform(fpAt, s.x, s.y),
-        ];
-        layer.geometry.add_polyline(corners, w, r, g, b, a);
-    } else if (drawing.type === "polygon" && drawing.points) {
-        const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
-        if (worldPts.length >= 3) {
-            worldPts.push(worldPts[0]!.copy());
-            layer.geometry.add_polyline(worldPts, w, r, g, b, a);
+        case "arc": {
+            const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
+            const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
+            layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+            break;
+        }
+        case "circle": {
+            const cx = drawing.center.x;
+            const cy = drawing.center.y;
+            const rad = Math.sqrt((drawing.end.x - cx) ** 2 + (drawing.end.y - cy) ** 2);
+            const pts: Vec2[] = [];
+            for (let i = 0; i <= 48; i++) {
+                const angle = (i / 48) * 2 * Math.PI;
+                pts.push(new Vec2(cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)));
+            }
+            const worldPts = pts.map(p => fpTransform(fpAt, p.x, p.y));
+            if (drawing.filled && worldPts.length >= 3) {
+                layer.geometry.add_polygon(worldPts, r, g, b, a);
+            }
+            if (strokeWidth > 0) {
+                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+            }
+            break;
+        }
+        case "rect": {
+            const s = drawing.start;
+            const e = drawing.end;
+            const corners = [
+                fpTransform(fpAt, s.x, s.y), fpTransform(fpAt, e.x, s.y),
+                fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
+            ];
+            if (drawing.filled) {
+                layer.geometry.add_polygon(corners, r, g, b, a);
+            }
+            if (strokeWidth > 0) {
+                layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, r, g, b, a);
+            }
+            break;
+        }
+        case "polygon": {
+            const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
+            if (worldPts.length >= 3) {
+                if (drawing.filled) {
+                    layer.geometry.add_polygon(worldPts, r, g, b, a);
+                }
+                if (strokeWidth > 0) {
+                    layer.geometry.add_polyline([...worldPts, worldPts[0]!.copy()], strokeWidth, r, g, b, a);
+                }
+            }
+            break;
+        }
+        case "curve": {
+            const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
+            if (worldPts.length >= 2) {
+                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+            }
+            break;
         }
     }
 }
 
-function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
-    const [cr, cg, cb, ca] = getPadColor(pad.layers);
+function paintPad(
+    layer: RenderLayer,
+    fpAt: Point3,
+    pad: PadModel,
+    layerName: string,
+    layerById: Map<string, LayerModel>,
+) {
+    if (pad.layers.length === 0) {
+        return;
+    }
+    const layerIsCopper = isCopperLayer(layerName, layerById);
+    const [lr, lg, lb, la] = getLayerColor(layerName, layerById);
+    const cr = lr;
+    const cg = lg;
+    const cb = lb;
+    const ca = Math.max(la, 0.78);
     const hw = pad.size.w / 2;
     const hh = pad.size.h / 2;
+
+    const hole = pad.hole;
+    const isThroughHole = (pad.type || "").toLowerCase() === "thru_hole";
+    const isNpThroughHole = (pad.type || "").toLowerCase() === "np_thru_hole";
+    const holeSx = hole ? Math.max(0, hole.size_x || 0) : 0;
+    const holeSy = hole ? Math.max(0, hole.size_y || 0) : 0;
+    const hasPadHole = holeSx > 0 && holeSy > 0;
+    if (hasPadHole && !layerIsCopper) {
+        return;
+    }
+    if (isNpThroughHole) {
+        return;
+    }
+    const renderAsAnnularRing =
+        isThroughHole
+        && hasPadHole
+        && layerIsCopper;
+    if (renderAsAnnularRing) {
+        if (pad.shape === "circle") {
+            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+            const outerDiameter = Math.max(pad.size.w, pad.size.h);
+            const holeDiameter = Math.max(holeSx, holeSy);
+            const annulus = (outerDiameter - holeDiameter) / 2;
+            const centerlineRadius = (outerDiameter + holeDiameter) / 4;
+            if (annulus > 0 && centerlineRadius > 0) {
+                const ringPoints = circleToPoints(center.x, center.y, centerlineRadius);
+                if (ringPoints.length > 1) {
+                    layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca);
+                    return;
+                }
+            }
+        } else if (pad.shape === "oval") {
+            const outerMajor = Math.max(pad.size.w, pad.size.h);
+            const outerMinor = Math.min(pad.size.w, pad.size.h);
+            const holeMajor = Math.max(holeSx, holeSy);
+            const holeMinor = Math.min(holeSx, holeSy);
+            const annulus = Math.min(
+                (outerMajor - holeMajor) / 2,
+                (outerMinor - holeMinor) / 2,
+            );
+            if (annulus > 0) {
+                const centerMajor = outerMajor - annulus;
+                const centerMinor = outerMinor - annulus;
+                if (centerMajor > 0 && centerMinor > 0) {
+                    const horizontal = pad.size.w >= pad.size.h;
+                    const radius = centerMinor / 2;
+                    const halfSpan = Math.max(0, (centerMajor - centerMinor) / 2);
+                    const arcSegments = 18;
+                    const localPoints: Vec2[] = [];
+                    for (let i = 0; i <= arcSegments; i++) {
+                        const angle = Math.PI / 2 - (Math.PI * i / arcSegments);
+                        localPoints.push(
+                            horizontal
+                                ? new Vec2(
+                                    halfSpan + radius * Math.cos(angle),
+                                    radius * Math.sin(angle),
+                                )
+                                : new Vec2(
+                                    -radius * Math.sin(angle),
+                                    halfSpan + radius * Math.cos(angle),
+                                ),
+                        );
+                    }
+                    for (let i = 0; i <= arcSegments; i++) {
+                        const angle = -Math.PI / 2 + (Math.PI * i / arcSegments);
+                        localPoints.push(
+                            horizontal
+                                ? new Vec2(
+                                    -halfSpan - radius * Math.cos(angle),
+                                    radius * Math.sin(angle),
+                                )
+                                : new Vec2(
+                                    -radius * Math.sin(angle),
+                                    -halfSpan - radius * Math.cos(angle),
+                                ),
+                        );
+                    }
+                    if (localPoints.length > 2) {
+                        // Closed centerline loop for oval annulus ring (prevents C/U-shaped artifacts).
+                        localPoints.push(localPoints[0]!.copy());
+                        const ringPoints = localPoints.map(p => padTransform(fpAt, pad.at, p.x, p.y));
+                        layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca);
+                        return;
+                    }
+                }
+            }
+        }
+    }
 
     if (pad.shape === "circle") {
         const center = fpTransform(fpAt, pad.at.x, pad.at.y);
@@ -321,41 +804,36 @@ function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
         layer.geometry.add_polygon(corners, cr, cg, cb, ca);
     }
 
-    if (pad.drill && pad.type === "thru_hole") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
-        layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1.0);
-    }
+    // Pad holes are rendered in dedicated depth layers (see paintFootprint).
 }
 
 /** Paint a selection highlight around a footprint */
-export function paintSelection(renderer: Renderer, fp: FootprintModel): RenderLayer {
+export function paintSelection(renderer: Renderer, fp: FootprintModel): void {
     const layer = renderer.start_layer("selection");
-    const [r, g, b, a] = SELECTION_COLOR;
-
-    const allPoints: Vec2[] = [];
-    for (const pad of fp.pads) {
-        const center = fpTransform(fp.at, pad.at.x, pad.at.y);
-        const hw = pad.size.w / 2, hh = pad.size.h / 2;
-        allPoints.push(center.add(new Vec2(-hw, -hh)));
-        allPoints.push(center.add(new Vec2(hw, hh)));
-    }
-    for (const drawing of fp.drawings) {
-        if (drawing.start) allPoints.push(fpTransform(fp.at, drawing.start.x, drawing.start.y));
-        if (drawing.end) allPoints.push(fpTransform(fp.at, drawing.end.x, drawing.end.y));
-        if (drawing.center) allPoints.push(fpTransform(fp.at, drawing.center.x, drawing.center.y));
-    }
-
-    if (allPoints.length > 0) {
-        const bbox = BBox.from_points(allPoints).grow(0.5);
-        layer.geometry.add_polygon([
-            new Vec2(bbox.x, bbox.y), new Vec2(bbox.x2, bbox.y),
-            new Vec2(bbox.x2, bbox.y2), new Vec2(bbox.x, bbox.y2),
-        ], r, g, b, a);
-    }
-
+    drawFootprintSelectionBox(layer, fp, SELECTION_STROKE_WIDTH, 0.85, SELECTION_GROW, 0.12);
     renderer.end_layer();
-    return layer;
+}
+
+/** Paint per-member halos for a selected/hovered footprint group. */
+export function paintGroupHalos(
+    renderer: Renderer,
+    footprints: FootprintModel[],
+    memberIndices: number[],
+    mode: "selected" | "hover",
+): null {
+    if (memberIndices.length === 0) return null;
+    const layer = renderer.start_layer(mode === "selected" ? "group-selection" : "group-hover");
+    const strokeWidth = mode === "selected" ? GROUP_SELECTION_STROKE_WIDTH : HOVER_SELECTION_STROKE_WIDTH;
+    const alpha = mode === "selected" ? 0.7 : 0.45;
+    const grow = mode === "selected" ? GROUP_SELECTION_GROW : HOVER_SELECTION_GROW;
+    const fillAlpha = mode === "selected" ? 0.09 : 0.055;
+    for (const index of memberIndices) {
+        const fp = footprints[index];
+        if (!fp) continue;
+        drawFootprintSelectionBox(layer, fp, strokeWidth, alpha, grow, fillAlpha);
+    }
+    renderer.end_layer();
+    return null;
 }
 
 /** Compute a bounding box for the full render model */
@@ -367,18 +845,46 @@ export function computeBBox(model: RenderModel): BBox {
         if (edge.mid) points.push(p2v(edge.mid));
         if (edge.center) points.push(p2v(edge.center));
     }
+    for (const drawing of model.drawings) {
+        switch (drawing.type) {
+            case "line":
+                points.push(p2v(drawing.start));
+                points.push(p2v(drawing.end));
+                break;
+            case "arc":
+                points.push(p2v(drawing.start));
+                points.push(p2v(drawing.mid));
+                points.push(p2v(drawing.end));
+                break;
+            case "circle":
+                points.push(p2v(drawing.center));
+                points.push(p2v(drawing.end));
+                break;
+            case "rect":
+                points.push(p2v(drawing.start));
+                points.push(p2v(drawing.end));
+                break;
+            case "polygon":
+            case "curve":
+                for (const p of drawing.points) points.push(p2v(p));
+                break;
+        }
+    }
+    for (const text of model.texts) {
+        points.push(new Vec2(text.at.x, text.at.y));
+    }
     for (const fp of model.footprints) {
         points.push(new Vec2(fp.at.x, fp.at.y));
         for (const pad of fp.pads) {
             points.push(fpTransform(fp.at, pad.at.x, pad.at.y));
         }
+        for (const text of fp.texts) {
+            points.push(fpTransform(fp.at, text.at.x, text.at.y));
+        }
     }
     for (const track of model.tracks) {
         points.push(p2v(track.start));
         points.push(p2v(track.end));
-    }
-    for (const via of model.vias) {
-        points.push(p2v(via.at));
     }
     if (points.length === 0) return new BBox(0, 0, 100, 100);
     return BBox.from_points(points).grow(5);
