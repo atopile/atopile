@@ -143,10 +143,10 @@ fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
     var ctx = base_ctx;
 
     if (sexp.location) |location| {
-        ctx.line = location.start.line;
-        ctx.column = location.start.column;
-        ctx.end_line = location.end.line;
-        ctx.end_column = location.end.column;
+        ctx.line = @as(usize, location.start.line);
+        ctx.column = @as(usize, location.start.column);
+        ctx.end_line = @as(usize, location.end.line);
+        ctx.end_column = @as(usize, location.end.column);
     }
     ctx.sexp = sexp;
 
@@ -1000,14 +1000,58 @@ fn sortFieldIndices(comptime T: type) [std.meta.fields(T).len]usize {
     return indices;
 }
 
+inline fn saturatingAddUsize(lhs: usize, rhs: usize) usize {
+    return std.math.add(usize, lhs, rhs) catch std.math.maxInt(usize);
+}
+
 fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
     _ = metadata;
     const T = @TypeOf(value);
-    var items = std.array_list.Managed(SExp).init(allocator);
-    defer items.deinit();
-
     const fields = std.meta.fields(T);
     const sorted_indices = comptime sortFieldIndices(T);
+    var estimated_items: usize = 8;
+
+    inline for (sorted_indices) |idx| {
+        const f = fields[idx];
+        const fm = comptime getSexpMetadata(T, f.name);
+        const fv = @field(value, f.name);
+
+        if (fm.positional) {
+            if (comptime isOptional(f.type)) {
+                if (fv != null) estimated_items = saturatingAddUsize(estimated_items, 1);
+            } else if (!((comptime isSlice(f.type, false)) and fv.len == 0)) {
+                estimated_items = saturatingAddUsize(estimated_items, 1);
+            }
+            continue;
+        }
+
+        if (fm.multidict) {
+            if (comptime isSlice(@TypeOf(fv), false)) {
+                estimated_items = saturatingAddUsize(estimated_items, fv.len);
+            } else if (comptime isLinkedList(@TypeOf(fv))) {
+                var n = fv.first;
+                while (n) |node| : (n = node.next) {
+                    estimated_items = saturatingAddUsize(estimated_items, 1);
+                }
+            }
+            continue;
+        }
+
+        if (comptime isOptional(@TypeOf(fv))) {
+            if (fv != null) estimated_items = saturatingAddUsize(estimated_items, 1);
+            continue;
+        }
+
+        if (comptime @TypeOf(fv) == bool and fm.boolean_encoding == .parantheses_symbol) {
+            if (fv) estimated_items = saturatingAddUsize(estimated_items, 1);
+            continue;
+        }
+
+        estimated_items = saturatingAddUsize(estimated_items, 1);
+    }
+
+    var items = try std.array_list.Managed(SExp).initCapacity(allocator, estimated_items);
+    defer items.deinit();
 
     // Positional fields
     inline for (sorted_indices) |idx| {
@@ -1111,6 +1155,196 @@ pub const output = union(enum) {
     sexp: *?SExp,
 };
 
+fn writeEncodedValueToWriter(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    value: anytype,
+    metadata: SexpField,
+    name: []const u8,
+) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const encoded = try encode(arena.allocator(), value, metadata, name);
+    try encoded.str(writer);
+}
+
+fn writeEncodedKeyValueToWriter(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    key: []const u8,
+    value: anytype,
+    metadata: SexpField,
+    name: []const u8,
+    prepend_space: bool,
+) !bool {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const encoded = try encode(arena.allocator(), value, metadata, name);
+
+    if (ast.getList(encoded)) |lst| {
+        if (lst.len == 0) return false;
+        if (prepend_space) try writer.writeByte(' ');
+        try writer.writeByte('(');
+        try writer.writeAll(key);
+        for (lst) |item| {
+            try writer.writeByte(' ');
+            try item.str(writer);
+        }
+        try writer.writeByte(')');
+        return true;
+    }
+
+    if (prepend_space) try writer.writeByte(' ');
+    try writer.writeByte('(');
+    try writer.writeAll(key);
+    try writer.writeByte(' ');
+    try encoded.str(writer);
+    try writer.writeByte(')');
+    return true;
+}
+
+fn writeStructBodyStreamed(allocator: std.mem.Allocator, writer: anytype, value: anytype, emit_leading_space: bool) !bool {
+    const T = @TypeOf(value);
+    const fields = std.meta.fields(T);
+    const sorted_indices = comptime sortFieldIndices(T);
+
+    var wrote_any: bool = false;
+
+    inline for (sorted_indices) |idx| {
+        const f = fields[idx];
+        const fm = comptime getSexpMetadata(T, f.name);
+        if (!fm.positional) continue;
+        const fv = @field(value, f.name);
+
+        if (comptime isOptional(f.type)) {
+            if (fv) |vv| {
+                if (wrote_any or emit_leading_space) try writer.writeByte(' ');
+                try writeEncodedValueToWriter(allocator, writer, vv, fm, f.name);
+                wrote_any = true;
+            }
+        } else if (!((comptime isSlice(f.type, false)) and fv.len == 0)) {
+            if (wrote_any or emit_leading_space) try writer.writeByte(' ');
+            try writeEncodedValueToWriter(allocator, writer, fv, fm, f.name);
+            wrote_any = true;
+        }
+    }
+
+    inline for (sorted_indices) |idx| {
+        const f = fields[idx];
+        const fm = comptime getSexpMetadata(T, f.name);
+        if (fm.positional) continue;
+        const fname = fm.sexp_name orelse f.name;
+        const fv = @field(value, f.name);
+
+        if (fm.multidict) {
+            if (comptime isSlice(@TypeOf(fv), false)) {
+                for (fv) |elem| {
+                    const wrote = try writeEncodedKeyValueToWriter(
+                        allocator,
+                        writer,
+                        fname,
+                        elem,
+                        fm,
+                        f.name,
+                        wrote_any or emit_leading_space,
+                    );
+                    if (wrote) wrote_any = true;
+                }
+                continue;
+            } else if (comptime isLinkedList(@TypeOf(fv))) {
+                var n = fv.first;
+                while (n) |node| : (n = node.next) {
+                    const wrote = try writeEncodedKeyValueToWriter(
+                        allocator,
+                        writer,
+                        fname,
+                        node.data,
+                        fm,
+                        f.name,
+                        wrote_any or emit_leading_space,
+                    );
+                    if (wrote) wrote_any = true;
+                }
+                continue;
+            }
+        }
+
+        if (comptime isOptional(@TypeOf(fv))) {
+            if (fv) |vv| {
+                if (try writeEncodedKeyValueToWriter(
+                    allocator,
+                    writer,
+                    fname,
+                    vv,
+                    fm,
+                    f.name,
+                    wrote_any or emit_leading_space,
+                )) {
+                    wrote_any = true;
+                }
+            }
+            continue;
+        }
+
+        if (comptime @TypeOf(fv) == bool and fm.boolean_encoding == .parantheses_symbol) {
+            if (fv) {
+                if (wrote_any or emit_leading_space) try writer.writeByte(' ');
+                try writer.writeAll(fname);
+                wrote_any = true;
+            }
+            continue;
+        }
+
+        const wrote = try writeEncodedKeyValueToWriter(
+            allocator,
+            writer,
+            fname,
+            fv,
+            fm,
+            f.name,
+            wrote_any or emit_leading_space,
+        );
+        if (wrote) wrote_any = true;
+    }
+    return wrote_any;
+}
+
+pub fn encodeWrappedStreamForBenchmark(
+    data: anytype,
+    allocator: std.mem.Allocator,
+    symbol_name: []const u8,
+    writer: anytype,
+) !void {
+    try writer.writeByte('(');
+    try writer.writeAll(symbol_name);
+    if (try writeStructBodyStreamed(allocator, writer, data, true)) {
+        // Body already emitted with separators.
+    }
+    try writer.writeByte(')');
+}
+
+// Encode data into a wrapped S-expression without prettifying.
+//
+// The returned SExp is intended for allocator/lifetime-managed usage (e.g. arena
+// allocators). It may contain symbol slices that are not individually owned.
+pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) !ast.SExp {
+    // Encode the data into the struct body list
+    const encoded = try encode(allocator, data, SexpField{}, symbol_name);
+    const encoded_items = ast.getList(encoded).?;
+
+    // Prepend root symbol
+    var items = try allocator.alloc(ast.SExp, encoded_items.len + 1);
+    items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = null };
+    for (encoded_items, 0..) |item, i| {
+        items[i + 1] = item;
+    }
+
+    // encoded's top-level list container is no longer needed after the copy.
+    allocator.free(encoded_items);
+
+    return ast.SExp{ .value = .{ .list = items }, .location = null };
+}
+
 // Load a struct from an S-expression string with a wrapping symbol
 pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected_symbol: []const u8) !T {
     // Parse S-expression from input
@@ -1209,31 +1443,34 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
 
 // Dump a struct to an S-expression string with a wrapping symbol
 pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8, out: output) !void {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    // Encode the data
-    const encoded = try encode(arena.allocator(), data, SexpField{}, symbol_name);
-
-    // The encoded result is a list of key-value pairs
-    // We need to prepend the symbol name
-    const encoded_items = ast.getList(encoded).?;
-
-    var items = try arena.allocator().alloc(ast.SExp, encoded_items.len + 1);
-    items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = null };
-
-    // Copy the encoded items
-    for (encoded_items, 0..) |item, i| {
-        items[i + 1] = item;
-    }
-
-    const wrapped = ast.SExp{ .value = .{ .list = items }, .location = null };
     switch (out) {
         .sexp => |sexp| {
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+
+            // Encode the data
+            const encoded = try encode(arena.allocator(), data, SexpField{}, symbol_name);
+
+            // The encoded result is a list of key-value pairs
+            // We need to prepend the symbol name
+            const encoded_items = ast.getList(encoded).?;
+
+            var items = try arena.allocator().alloc(ast.SExp, encoded_items.len + 1);
+            items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = null };
+
+            // Copy the encoded items
+            for (encoded_items, 0..) |item, i| {
+                items[i + 1] = item;
+            }
+
+            const wrapped = ast.SExp{ .value = .{ .list = items }, .location = null };
             sexp.* = wrapped;
         },
         .string, .path => {
-            const out_str = try wrapped.pretty(allocator);
+            var raw = std.array_list.Managed(u8).init(allocator);
+            defer raw.deinit();
+            try encodeWrappedStreamForBenchmark(data, allocator, symbol_name, raw.writer());
+            const out_str = try ast.SExp.prettify_sexp_string(allocator, raw.items);
             switch (out) {
                 .string => |s| {
                     s.* = out_str;
