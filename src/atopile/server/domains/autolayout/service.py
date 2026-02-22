@@ -11,7 +11,7 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,6 +32,26 @@ from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.paths import get_log_dir
 
 log = logging.getLogger(__name__)
+
+
+class _AutolayoutProvider(Protocol):
+    name: str
+
+    def submit(self, request: SubmitRequest) -> Any: ...
+
+    def status(self, external_job_id: str) -> Any: ...
+
+    def list_candidates(self, external_job_id: str) -> list[AutolayoutCandidate]: ...
+
+    def download_candidate(
+        self,
+        external_job_id: str,
+        candidate_id: str,
+        out_dir: Path,
+        target_layout_path: Path | None = None,
+    ) -> Any: ...
+
+    def cancel(self, external_job_id: str) -> None: ...
 
 
 class AutolayoutServiceSettings(BaseSettings):
@@ -62,7 +82,10 @@ class AutolayoutService:
         max_persisted_jobs: int = 200,
         settings: AutolayoutServiceSettings | None = None,
     ) -> None:
-        self._autolayout = DeepPCBAutolayout()
+        deeppcb_provider = DeepPCBAutolayout()
+        self._providers: dict[str, _AutolayoutProvider] = {
+            deeppcb_provider.name: deeppcb_provider
+        }
         self._settings = settings or AutolayoutServiceSettings()
         self._jobs: dict[str, AutolayoutJob] = {}
         self._lock = threading.RLock()
@@ -75,6 +98,36 @@ class AutolayoutService:
         self._state_version = 1
         self._state_mtime_ns = 0
         self._load_jobs_from_disk()
+
+    def register_provider(self, provider: _AutolayoutProvider) -> None:
+        provider_name = str(getattr(provider, "name", "")).strip().lower()
+        if not provider_name:
+            raise ValueError("Provider must define a non-empty 'name'")
+        with self._lock:
+            self._providers[provider_name] = provider
+
+    def _resolve_provider_name(
+        self,
+        *,
+        default_provider_name: str,
+        options: dict[str, Any],
+    ) -> str:
+        explicit_provider = options.get("provider")
+        if isinstance(explicit_provider, str) and explicit_provider.strip():
+            return explicit_provider.strip().lower()
+        return default_provider_name
+
+    def _get_provider(self, provider_name: str) -> _AutolayoutProvider:
+        provider_key = str(provider_name).strip().lower()
+        provider = self._providers.get(provider_key)
+        if provider is not None:
+            return provider
+
+        available = ", ".join(sorted(self._providers.keys())) or "<none>"
+        raise ValueError(
+            f"Unsupported autolayout provider '{provider_name}'. "
+            f"Available providers: {available}"
+        )
 
     def start_job(
         self,
@@ -102,12 +155,7 @@ class AutolayoutService:
         if options:
             merged_options.update(options)
 
-        force_new_job = _coerce_bool(
-            merged_options.get("force_new_job")
-            or merged_options.get("forceNewJob")
-            or merged_options.get("new_job")
-            or merged_options.get("newJob")
-        )
+        force_new_job = _coerce_bool(merged_options.get("force_new_job"))
         if not force_new_job:
             with self._lock:
                 reusable_job = self._find_reusable_job_locked(
