@@ -317,20 +317,6 @@ def create_path(
     }
 
 
-def write_file(project_root: Path, path: str, content: str) -> dict:
-    file_path = resolve_scoped_path(project_root, path)
-    if len(content.encode("utf-8")) > _MAX_WRITE_FILE_BYTES:
-        raise ScopeError("Refusing to write very large file content")
-
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(content, encoding="utf-8")
-
-    return {
-        "path": str(file_path.relative_to(project_root)),
-        "bytes": len(content.encode("utf-8")),
-    }
-
-
 def rename_path(
     project_root: Path,
     old_path: str,
@@ -425,38 +411,6 @@ def delete_path(
         "path": str(target_path.relative_to(project_root)),
         "kind": kind,
         "deleted": True,
-    }
-
-
-def apply_text_replace(
-    project_root: Path,
-    path: str,
-    find_text: str,
-    replace_with: str,
-    *,
-    max_replacements: int = 1,
-) -> dict:
-    if not find_text:
-        raise ScopeError("find_text must not be empty")
-    if max_replacements < 1:
-        raise ScopeError("max_replacements must be >= 1")
-
-    file_path = resolve_scoped_path(project_root, path)
-    if not file_path.exists() or not file_path.is_file():
-        raise ScopeError(f"File does not exist: {path}")
-
-    text = file_path.read_text(encoding="utf-8")
-    count = text.count(find_text)
-    if count == 0:
-        raise ScopeError("find_text was not found in file")
-
-    replaced = text.replace(find_text, replace_with, max_replacements)
-    file_path.write_text(replaced, encoding="utf-8")
-
-    return {
-        "path": str(file_path.relative_to(project_root)),
-        "matches": count,
-        "replacements": min(count, max_replacements),
     }
 
 
