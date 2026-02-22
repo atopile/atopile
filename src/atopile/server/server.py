@@ -48,11 +48,17 @@ from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
+from faebryk.libs.util import ConfigFlag
 
 log = logging.getLogger(__name__)
 
 # Fixed port for the dashboard server - extension opens this directly
 UI_DEBOUNCE_S = float(os.getenv("ATOPILE_UI_DEBOUNCE_S", "0.5"))
+UI_ENABLE_CHAT = ConfigFlag(
+    "UI_ENABLE_CHAT",
+    default=False,
+    descr="Enable UI chat panel capability",
+)
 PACKAGES_REFRESH_MIN_INTERVAL_S = float(
     os.getenv("ATOPILE_PACKAGES_REFRESH_MIN_INTERVAL_S", "30")
 )
@@ -551,6 +557,11 @@ def create_app(
     async def health_check():
         """Simple health check endpoint."""
         return {"status": "ok"}
+
+    @app.get("/api/features")
+    async def get_features():
+        """Return backend-controlled UI feature capabilities."""
+        return {"features": {"chat": bool(UI_ENABLE_CHAT)}}
 
     from atopile.server.routes import (
         agent as agent_routes,

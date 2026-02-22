@@ -71,6 +71,9 @@ const initialState: AppState = {
   // Connection - start as true so we don't flash error screen during startup
   // WebSocket will set to false after 5s timeout if backend isn't ready
   isConnected: true,
+  features: {
+    chat: false,
+  },
 
   // Projects
   projects: [],
@@ -192,6 +195,7 @@ const initialState: AppState = {
 interface StoreActions {
   // Connection
   setConnected: (connected: boolean) => void;
+  setFeatures: (features: Partial<AppState['features']>) => void;
 
   // Full state replacement (from WebSocket)
   replaceState: (state: Partial<AppState>) => void;
@@ -314,6 +318,8 @@ export const useStore = create<Store>()(
 
       // Connection
       setConnected: (connected) => set({ isConnected: connected }),
+      setFeatures: (features) =>
+        set((state) => ({ features: { ...state.features, ...features } })),
 
       // Full state replacement (from WebSocket broadcast)
       replaceState: (newState) => {

@@ -10,7 +10,7 @@ import type { AppState, Build, BuildStatus } from '../types/build';
 import type { EventMessage } from '../types/gen/generated';
 import { EventMessageType, EventType } from '../types/gen/generated';
 import { api } from './client';
-import { WS_STATE_URL, getWorkspaceFolders } from './config';
+import { ENABLE_CHAT_OVERRIDE, WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
 
 // Reconnection settings
@@ -217,6 +217,7 @@ function handleOpen(): void {
   // Get atopile config (including actual version) - this clears any "installing" state
   sendAction('getAtopileConfig');
 
+  void refreshFeatures();
   void refreshProjects();
   void refreshBuilds();
   void fetchLogViewCurrentId();
@@ -318,6 +319,22 @@ async function refreshProjects(): Promise<void> {
     useStore.getState().setProjects(response.projects || []);
   } catch (error) {
     console.warn('[WS] Failed to refresh projects:', error);
+  }
+}
+
+async function refreshFeatures(): Promise<void> {
+  const state = useStore.getState();
+  if (ENABLE_CHAT_OVERRIDE !== null) {
+    state.setFeatures({ chat: ENABLE_CHAT_OVERRIDE });
+    return;
+  }
+
+  try {
+    const response = await api.features.get();
+    state.setFeatures({ chat: Boolean(response.features?.chat) });
+  } catch (error) {
+    console.warn('[WS] Failed to refresh features:', error);
+    state.setFeatures({ chat: false });
   }
 }
 

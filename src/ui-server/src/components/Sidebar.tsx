@@ -48,6 +48,7 @@ const action = (name: string, data?: Record<string, unknown>) => {
 export function Sidebar() {
   // Granular selectors - only re-render when specific state changes
   const isConnected = useStore((s) => s.isConnected);
+  const chatEnabled = useStore((s) => s.features.chat);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
@@ -536,10 +537,12 @@ export function Sidebar() {
           </div>
         </div>
 
-        <AgentChatPanel
-          projectRoot={selectedProjectRoot}
-          selectedTargets={selectedTargetNames}
-        />
+        {chatEnabled && (
+          <AgentChatPanel
+            projectRoot={selectedProjectRoot}
+            selectedTargets={selectedTargetNames}
+          />
+        )}
       </div>
 
       {/* Detail Panel (slides in when package/part/manufacturing selected) */}

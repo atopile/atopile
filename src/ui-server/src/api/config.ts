@@ -11,6 +11,16 @@ interface AtopileWindow extends Window {
 
 const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
 
+function parseOptionalBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return null;
+}
+
 /**
  * Derive WebSocket URL from HTTP URL.
  * e.g., http://127.0.0.1:12345 -> ws://127.0.0.1:12345
@@ -59,6 +69,14 @@ export const WS_STATE_URL = `${WS_BASE_URL}/ws/state`;
  * Used by the LogViewer component.
  */
 export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
+
+/**
+ * Optional build-time override for chat feature visibility.
+ * `null` means no override; backend capabilities are used instead.
+ */
+export const ENABLE_CHAT_OVERRIDE = parseOptionalBoolean(
+  import.meta.env.VITE_ENABLE_CHAT
+);
 
 /**
  * Get workspace folders from injected globals or URL query params.
