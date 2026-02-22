@@ -9,7 +9,6 @@ from pathlib import Path
 
 from atopile.layout_server.models import (
     ArcDrawingModel,
-    ArcTrackModel,
     BoardModel,
     CircleDrawingModel,
     CurveDrawingModel,
@@ -26,7 +25,6 @@ from atopile.layout_server.models import (
     LineDrawingModel,
     MoveFootprintCommand,
     MoveFootprintsCommand,
-    NetModel,
     PadModel,
     PadNameAnnotationModel,
     PadNumberAnnotationModel,
@@ -44,6 +42,8 @@ from atopile.layout_server.models import (
 )
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.util import not_none
+
+TextUnion = kicad.pcb.Text | kicad.pcb.FpText | kicad.pcb.Property
 
 # --- Actions for undo/redo ---
 
@@ -378,10 +378,11 @@ class PcbManager:
                 for fp in pcb.footprints
             ],
             footprint_groups=self._extract_footprint_groups(pcb),
-            tracks=[self._extract_segment(seg) for seg in pcb.segments],
-            arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
+            tracks=[
+                *[self._extract_segment(seg) for seg in pcb.segments],
+                *[self._extract_arc_segment(arc) for arc in pcb.arcs],
+            ],
             zones=self._extract_zones(pcb, all_layers),
-            nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
         )
         model.layers = _build_layer_models(model, all_layers, copper_layers)
         self._render_model_cache = model
@@ -407,16 +408,12 @@ class PcbManager:
 
     # --- Private extraction helpers ---
 
-    def _footprints_from_uuids(self, uuids: list[str]) -> list:
+    def _footprints_from_uuids(self, uuids: list[str]) -> list[kicad.pcb.Footprint]:
         wanted = {uuid for uuid in uuids if uuid}
         if not wanted:
             return []
-        by_uuid = {
-            str(fp.uuid): fp
-            for fp in self.pcb.footprints
-            if getattr(fp, "uuid", None) is not None
-        }
-        ordered: list = []
+        by_uuid = {fp.uuid: fp for fp in self.pcb.footprints if fp.uuid is not None}
+        ordered: list[kicad.pcb.Footprint] = []
         seen: set[str] = set()
         for uuid in uuids:
             if uuid in seen:
@@ -431,19 +428,13 @@ class PcbManager:
     def _extract_footprint_groups(
         self, pcb: kicad.pcb.KicadPcb
     ) -> list[FootprintGroupModel]:
-        footprints_by_uuid = {
-            str(fp.uuid)
-            for fp in pcb.footprints
-            if getattr(fp, "uuid", None) is not None
-        }
+        footprints_by_uuid = {fp.uuid for fp in pcb.footprints if fp.uuid is not None}
         groups: list[FootprintGroupModel] = []
-        raw_groups = getattr(pcb, "groups", []) or []
-        for group in raw_groups:
-            raw_members = getattr(group, "members", []) or []
+        for group in pcb.groups:
             member_uuids: list[str] = []
             seen_members: set[str] = set()
-            for member in raw_members:
-                token = str(member).strip()
+            for member in group.members:
+                token = member.strip()
                 if not token or token in seen_members:
                     continue
                 if token not in footprints_by_uuid:
@@ -454,8 +445,8 @@ class PcbManager:
                 continue
             groups.append(
                 FootprintGroupModel(
-                    uuid=(str(getattr(group, "uuid", "") or "").strip() or None),
-                    name=(str(getattr(group, "name", "") or "").strip() or None),
+                    uuid=((group.uuid or "").strip() or None),
+                    name=((group.name or "").strip() or None),
                     member_uuids=member_uuids,
                 )
             )
@@ -663,14 +654,8 @@ class PcbManager:
                     continue
                 sw = (
                     cell.stroke.width
-                    if cell.stroke is not None and cell.stroke.width is not None
-                    else (
-                        table.border.stroke.width
-                        if table.border is not None
-                        and table.border.stroke is not None
-                        and table.border.stroke.width is not None
-                        else 0.12
-                    )
+                    if cell.stroke is not None
+                    else table.border.stroke.width
                 )
                 if cell.start is not None and cell.end is not None:
                     drawings.append(
@@ -695,12 +680,12 @@ class PcbManager:
     def _extract_drawing_primitives(
         self,
         *,
-        lines,
-        arcs,
-        circles,
-        rects,
-        polygons,
-        curves,
+        lines: list[kicad.pcb.Line],
+        arcs: list[kicad.pcb.Arc],
+        circles: list[kicad.pcb.Circle],
+        rects: list[kicad.pcb.Rect],
+        polygons: list[kicad.pcb.Polygon],
+        curves: list[kicad.pcb.Curve],
         skip_edge_cuts: bool = False,
     ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
@@ -786,10 +771,9 @@ class PcbManager:
         for txt in pcb.gr_texts:
             if _is_hidden(txt):
                 continue
-            text_value = getattr(txt, "text", "")
-            if not text_value.strip():
+            if not txt.text.strip():
                 continue
-            texts.append(self._extract_text_entry(text_value, txt))
+            texts.append(self._extract_text_entry(txt.text, txt))
 
         for tb in pcb.gr_text_boxes:
             if _is_hidden(tb):
@@ -801,10 +785,11 @@ class PcbManager:
         for dimension in pcb.dimensions:
             if _is_hidden(dimension.gr_text):
                 continue
-            text_value = getattr(dimension.gr_text, "text", "")
-            if not text_value.strip():
+            if not dimension.gr_text.text.strip():
                 continue
-            texts.append(self._extract_text_entry(text_value, dimension.gr_text))
+            texts.append(
+                self._extract_text_entry(dimension.gr_text.text, dimension.gr_text)
+            )
 
         for table in pcb.tables:
             for cell in table.cells.table_cells:
@@ -816,29 +801,20 @@ class PcbManager:
 
         return texts
 
-    def _extract_text_box_text(self, tb) -> TextModel:
+    def _extract_text_box_text(self, tb: kicad.pcb.TextBox) -> TextModel:
         at = _text_box_position(tb)
-        effects = getattr(tb, "effects", None)
-        font = getattr(effects, "font", None)
-        font_size = getattr(font, "size", None)
+        font = tb.effects.font
+        font_size = font.size
         size: Size2 | None = None
-        if (
-            font_size is not None
-            and getattr(font_size, "w", None) is not None
-            and getattr(font_size, "h", None) is not None
-        ):
+        if font_size.h is not None:
             size = Size2(w=float(font_size.w), h=float(font_size.h))
         return TextModel(
             text=tb.text,
             at=at,
             layer=tb.layer,
             size=size,
-            thickness=(
-                float(font.thickness)
-                if font is not None and getattr(font, "thickness", None) is not None
-                else None
-            ),
-            justify=_extract_text_justify(tb),
+            thickness=(float(font.thickness) if font.thickness is not None else None),
+            justify=_extract_text_justify(tb.effects),
         )
 
     def _extract_pad_name_annotations_for_footprint(
@@ -880,15 +856,15 @@ class PcbManager:
         return out
 
     def _extract_pad_number_annotations_for_footprint(
-        self, fp, copper_layers: list[str]
+        self, fp: kicad.pcb.Footprint, copper_layers: list[str]
     ) -> list[PadNumberAnnotationModel]:
         out: list[PadNumberAnnotationModel] = []
         for pad_index, pad in enumerate(fp.pads):
-            pad_name = (getattr(pad, "name", "") or "").strip()
+            pad_name = pad.name.strip()
             if not pad_name:
                 continue
             text_layer_ids = _pad_number_text_layers(
-                list(getattr(pad, "layers", []) or []),
+                list(pad.layers),
                 all_copper_layers=copper_layers,
             )
             if not text_layer_ids:
@@ -903,106 +879,76 @@ class PcbManager:
             )
         return out
 
-    def _extract_table_cell_text(self, cell) -> TextModel:
+    def _extract_table_cell_text(self, cell: kicad.pcb.TableCell) -> TextModel:
         at = _table_cell_position(cell)
-        effects = getattr(cell, "effects", None)
-        font = getattr(effects, "font", None)
-        font_size = getattr(font, "size", None)
+        font = cell.effects.font
+        font_size = font.size
         size: Size2 | None = None
-        if (
-            font_size is not None
-            and getattr(font_size, "w", None) is not None
-            and getattr(font_size, "h", None) is not None
-        ):
+        if font_size.h is not None:
             size = Size2(w=float(font_size.w), h=float(font_size.h))
         return TextModel(
             text=cell.text,
             at=at,
             layer=cell.layer,
             size=size,
-            thickness=(
-                float(font.thickness)
-                if font is not None and getattr(font, "thickness", None) is not None
-                else None
-            ),
-            justify=_extract_text_justify(cell),
+            thickness=(float(font.thickness) if font.thickness is not None else None),
+            justify=_extract_text_justify(cell.effects),
         )
 
     def _extract_text_entries(
-        self, fp, reference: str | None, footprint_value: str | None
+        self,
+        fp: kicad.pcb.Footprint,
+        reference: str | None,
+        footprint_value: str | None,
     ) -> list[TextModel]:
         texts: list[TextModel] = []
 
         for prop in fp.propertys:
             if _is_hidden(prop):
                 continue
-            prop_value = getattr(prop, "value", None)
-            if prop_value is None:
-                continue
-            resolved = _resolve_text_tokens(prop_value, reference, footprint_value)
+            resolved = _resolve_text_tokens(prop.value, reference, footprint_value)
             if not resolved.strip():
                 continue
-            texts.append(
-                self._extract_text_entry(
-                    text=resolved,
-                    obj=prop,
-                )
-            )
+            texts.append(self._extract_text_entry(text=resolved, obj=prop))
 
         for txt in fp.fp_texts:
             if _is_hidden(txt):
                 continue
-            txt_value = getattr(txt, "text", None)
-            if txt_value is None:
-                continue
-            resolved = _resolve_text_tokens(txt_value, reference, footprint_value)
+            resolved = _resolve_text_tokens(txt.text, reference, footprint_value)
             if not resolved.strip():
                 continue
-            texts.append(
-                self._extract_text_entry(
-                    text=resolved,
-                    obj=txt,
-                )
-            )
+            texts.append(self._extract_text_entry(text=resolved, obj=txt))
 
         return texts
 
-    def _extract_text_entry(self, text: str, obj) -> TextModel:
-        at = getattr(obj, "at", None)
-        effects = getattr(obj, "effects", None)
-        font = getattr(effects, "font", None)
-        font_size = getattr(font, "size", None)
+    def _extract_text_entry(self, text: str, obj: TextUnion) -> TextModel:
+        at = obj.at
+        effects = obj.effects
+        font = effects.font if effects is not None else None
+        font_size = font.size if font is not None else None
         size: Size2 | None = None
-        if (
-            font_size is not None
-            and getattr(font_size, "w", None) is not None
-            and getattr(font_size, "h", None) is not None
-        ):
+        if font_size is not None and font_size.h is not None:
             size = Size2(w=float(font_size.w), h=float(font_size.h))
 
         return TextModel(
             text=text,
-            at=PointXYR(
-                x=getattr(at, "x", 0.0),
-                y=getattr(at, "y", 0.0),
-                r=(getattr(at, "r", 0.0) or 0.0),
-            ),
-            layer=_text_layer_name(getattr(obj, "layer", None)),
+            at=PointXYR(x=at.x, y=at.y, r=(at.r or 0.0)),
+            layer=_text_layer_name(obj.layer),
             size=size,
             thickness=(
                 float(font.thickness)
-                if font is not None and getattr(font, "thickness", None) is not None
+                if font is not None and font.thickness is not None
                 else None
             ),
-            justify=_extract_text_justify(obj),
+            justify=_extract_text_justify(effects),
         )
 
-    def _extract_pad_hole(self, pad) -> HoleModel | None:
-        drill = getattr(pad, "drill", None)
+    def _extract_pad_hole(self, pad: kicad.pcb.Pad) -> HoleModel | None:
+        drill = pad.drill
         if drill is None:
             return None
-        size_x = _safe_float(getattr(drill, "size_x", None))
-        size_y = _safe_float(getattr(drill, "size_y", None))
+        size_x = drill.size_x
+        size_y = drill.size_y
         if size_x is None and size_y is None:
             return None
         if size_x is None:
@@ -1012,27 +958,21 @@ class PcbManager:
         if size_x is None or size_y is None or size_x <= 0 or size_y <= 0:
             return None
 
-        offset_obj = getattr(drill, "offset", None)
         offset: PointXY | None = None
-        ox = _safe_float(getattr(offset_obj, "x", None))
-        oy = _safe_float(getattr(offset_obj, "y", None))
-        if ox is not None or oy is not None:
-            offset = PointXY(x=ox or 0.0, y=oy or 0.0)
+        if drill.offset is not None:
+            offset = PointXY(x=drill.offset.x, y=drill.offset.y)
 
-        plated = None
-        pad_type = str(getattr(pad, "type", "") or "")
-        if pad_type:
-            plated = pad_type != "np_thru_hole"
+        plated = pad.type != "np_thru_hole" if pad.type else None
 
         return HoleModel(
-            shape=_normalize_hole_shape(getattr(drill, "shape", None), size_x, size_y),
+            shape=_normalize_hole_shape(drill.shape, size_x, size_y),
             size_x=size_x,
             size_y=size_y,
             offset=offset,
             plated=plated,
         )
 
-    def _extract_segment(self, seg) -> TrackModel:
+    def _extract_segment(self, seg: kicad.pcb.Segment) -> TrackModel:
         return TrackModel(
             start=PointXY(x=seg.start.x, y=seg.start.y),
             end=PointXY(x=seg.end.x, y=seg.end.y),
@@ -1042,8 +982,8 @@ class PcbManager:
             uuid=seg.uuid,
         )
 
-    def _extract_arc_segment(self, arc) -> ArcTrackModel:
-        return ArcTrackModel(
+    def _extract_arc_segment(self, arc: kicad.pcb.ArcSegment) -> TrackModel:
+        return TrackModel(
             start=PointXY(x=arc.start.x, y=arc.start.y),
             mid=PointXY(x=arc.mid.x, y=arc.mid.y),
             end=PointXY(x=arc.end.x, y=arc.end.y),
@@ -1054,16 +994,14 @@ class PcbManager:
         )
 
     def _synthesize_via_drawings(
-        self, vias: list, copper_layers: list[str]
+        self, vias: list[kicad.pcb.Via], copper_layers: list[str]
     ) -> list[DrawingModel]:
         drawings: list[DrawingModel] = []
         for via in vias:
-            cx = _safe_float(getattr(getattr(via, "at", None), "x", None))
-            cy = _safe_float(getattr(getattr(via, "at", None), "y", None))
-            if cx is None or cy is None:
-                continue
+            cx = via.at.x
+            cy = via.at.y
 
-            drill = _safe_float(getattr(via, "drill", None)) or 0.0
+            drill = via.drill
             hole: HoleModel | None = None
             if drill > 0:
                 hole = HoleModel(
@@ -1076,7 +1014,7 @@ class PcbManager:
                     plated=True,
                 )
 
-            outer_diameter = _safe_float(getattr(via, "size", None)) or 0.0
+            outer_diameter = via.size
             drill_diameter = 0.0
             if hole is not None:
                 hx = _safe_float(hole.size_x) or 0.0
@@ -1085,7 +1023,7 @@ class PcbManager:
             if drill_diameter <= 0:
                 drill_diameter = drill
 
-            via_layers = list(getattr(via, "layers", []) or [])
+            via_layers = list(via.layers)
             expanded_copper_layers = _expand_copper_layers(
                 via_layers,
                 all_copper_layers=copper_layers,
@@ -1139,71 +1077,41 @@ class PcbManager:
     def _extract_zones(
         self, pcb: kicad.pcb.KicadPcb, all_layers: list[str]
     ) -> list[ZoneModel]:
-        raw_zones = getattr(pcb, "zones", None)
-        if raw_zones is None:
-            raw_zones = getattr(pcb, "zone", [])
-        return [self._extract_zone(zone, all_layers) for zone in raw_zones]
+        return [self._extract_zone(zone, all_layers) for zone in pcb.zones]
 
-    def _extract_zone(self, zone, all_layers: list[str]) -> ZoneModel:
-        layers = list(getattr(zone, "layers", []) or [])
-        layer = getattr(zone, "layer", None)
-        if not layers and layer:
-            layers = [layer]
+    def _extract_zone(self, zone: kicad.pcb.Zone, all_layers: list[str]) -> ZoneModel:
+        layers = list(zone.layers)
+        if not layers and zone.layer:
+            layers = [zone.layer]
         layers = _expand_layer_rules(layers, known_layers=all_layers)
 
-        polygon = getattr(zone, "polygon", None)
-        polygon_pts = getattr(getattr(polygon, "pts", None), "xys", None)
-        pts = (
-            [PointXY(x=p.x, y=p.y) for p in polygon_pts]
-            if polygon_pts is not None
-            else []
-        )
+        pts = [PointXY(x=p.x, y=p.y) for p in zone.polygon.pts.xys]
 
         filled: list[FilledPolygonModel] = []
-        raw_filled = getattr(zone, "filled_polygon", None)
-        if raw_filled is None:
-            raw_filled = getattr(zone, "filled_polygons", [])
-
-        for fp in raw_filled:
-            fp_pts = getattr(getattr(fp, "pts", None), "xys", None)
-            if fp_pts is None:
-                fp_polygon = getattr(fp, "polygon", None)
-                fp_pts = getattr(getattr(fp_polygon, "pts", None), "xys", None)
-            if fp_pts is None:
+        for fp in zone.filled_polygon:
+            if not fp.layer:
                 continue
-
-            fp_layer = getattr(fp, "layer", None)
-            if fp_layer is None:
-                fp_layers = getattr(fp, "layers", None)
-                fp_layer = fp_layers[0] if fp_layers else (layers[0] if layers else "")
-            if not fp_layer:
-                continue
-
             filled.append(
                 FilledPolygonModel(
-                    layer=fp_layer,
-                    points=[PointXY(x=p.x, y=p.y) for p in fp_pts],
+                    layer=fp.layer,
+                    points=[PointXY(x=p.x, y=p.y) for p in fp.pts.xys],
                 )
             )
 
-        hatch = getattr(zone, "hatch", None)
-        hatch_mode = getattr(hatch, "mode", None)
-        hatch_pitch = getattr(hatch, "pitch", None)
-        zone_fill = getattr(zone, "fill", None)
+        hatch = zone.hatch
+        zone_fill = zone.fill
 
         return ZoneModel(
-            net=getattr(zone, "net", 0),
-            net_name=getattr(zone, "net_name", ""),
+            net=zone.net,
+            net_name=zone.net_name,
             layers=layers,
-            name=getattr(zone, "name", None),
-            uuid=getattr(zone, "uuid", None),
-            keepout=(getattr(zone, "keepout", None) is not None),
-            hatch_mode=(str(hatch_mode).lower() if hatch_mode is not None else None),
-            hatch_pitch=(float(hatch_pitch) if hatch_pitch is not None else None),
+            name=zone.name,
+            uuid=zone.uuid,
+            keepout=(zone.keepout is not None),
+            hatch_mode=hatch.mode.lower() if hatch.mode else None,
+            hatch_pitch=hatch.pitch,
             fill_enabled=(
-                _to_optional_bool(getattr(zone_fill, "enable", None))
-                if zone_fill is not None
-                else None
+                _to_optional_bool(zone_fill.enable) if zone_fill is not None else None
             ),
             outline=pts,
             filled_polygons=filled,
@@ -1415,8 +1323,8 @@ def _rotate_kicad_xy(x: float, y: float, rotation_deg: float) -> tuple[float, fl
 def _board_copper_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
     copper: list[str] = []
     seen: set[str] = set()
-    for layer in getattr(pcb, "layers", []) or []:
-        name = str(getattr(layer, "name", "") or "")
+    for layer in pcb.layers:
+        name = layer.name
         if not name.endswith(".Cu"):
             continue
         if name in seen:
@@ -1433,8 +1341,8 @@ def _board_copper_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
 def _board_all_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
     layers: list[str] = []
     seen: set[str] = set()
-    for layer in getattr(pcb, "layers", []) or []:
-        name = str(getattr(layer, "name", "") or "").strip()
+    for layer in pcb.layers:
+        name = layer.name.strip()
         if not name or name in seen:
             continue
         seen.add(name)
@@ -1538,9 +1446,6 @@ def _collect_scene_layers(model: RenderModel) -> set[str]:
     for track in model.tracks:
         if track.layer:
             layer_ids.add(track.layer)
-    for arc in model.arcs:
-        if arc.layer:
-            layer_ids.add(arc.layer)
     for zone in model.zones:
         layer_ids.update(zone.layers)
         for filled in zone.filled_polygons:
@@ -1785,21 +1690,22 @@ def _normalize_hole_shape(raw_shape, size_x: float, size_y: float) -> str:
     return "oval" if abs(size_x - size_y) > 1e-6 else "circle"
 
 
-def _text_layer_name(layer_obj) -> str | None:
+def _text_layer_name(layer_obj: kicad.pcb.TextLayer | str | None) -> str | None:
     if layer_obj is None:
         return None
     if isinstance(layer_obj, str):
         return layer_obj
-    if hasattr(layer_obj, "layer") and layer_obj.layer:
-        return layer_obj.layer
-    return None
+    return layer_obj.layer or None
 
 
-def _is_hidden(text_obj) -> bool:
-    if bool(getattr(text_obj, "hide", False)):
+def _is_hidden(text_obj: TextUnion | kicad.pcb.TableCell | kicad.pcb.TextBox) -> bool:
+    # FpText and Property have a direct hide field; other types do not.
+    if isinstance(text_obj, (kicad.pcb.FpText, kicad.pcb.Property)) and bool(
+        text_obj.hide
+    ):
         return True
-    effects = getattr(text_obj, "effects", None)
-    if effects is not None and bool(getattr(effects, "hide", False)):
+    effects = text_obj.effects
+    if effects is not None and bool(effects.hide):
         return True
     return False
 
@@ -1839,24 +1745,24 @@ def _resolve_text_tokens(text: str, reference: str | None, value: str | None) ->
     return "".join(result_parts)
 
 
-def _extract_text_justify(text_obj) -> list[str] | None:
-    effects = getattr(text_obj, "effects", None)
-    justify = getattr(effects, "justify", None)
+def _extract_text_justify(effects: kicad.pcb.Effects | None) -> list[str] | None:
+    if effects is None:
+        return None
+    justify = effects.justify
     if justify is None:
         return None
 
     out: list[str] = []
-    for attr in ("justify1", "justify2", "justify3"):
-        value = getattr(justify, attr, None)
-        if value is None:
+    for val in (justify.justify1, justify.justify2, justify.justify3):
+        if val is None:
             continue
-        token = str(value).strip().lower()
+        token = str(val).strip().lower()
         if token:
             out.append(token)
     return out or None
 
 
-def _text_box_position(tb) -> PointXYR:
+def _text_box_position(tb: kicad.pcb.TextBox) -> PointXYR:
     if tb.start is not None and tb.end is not None:
         return PointXYR(
             x=(tb.start.x + tb.end.x) / 2,
@@ -1874,7 +1780,7 @@ def _text_box_position(tb) -> PointXYR:
     return PointXYR(x=0, y=0, r=float(tb.angle or 0))
 
 
-def _table_cell_position(cell) -> PointXYR:
+def _table_cell_position(cell: kicad.pcb.TableCell) -> PointXYR:
     if cell.start is not None and cell.end is not None:
         return PointXYR(
             x=(cell.start.x + cell.end.x) / 2,

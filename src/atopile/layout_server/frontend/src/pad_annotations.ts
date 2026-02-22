@@ -5,8 +5,9 @@ const PAD_ANNOTATION_BOX_RATIO = 0.78;
 const PAD_ANNOTATION_MAJOR_FIT = 0.96;
 const PAD_ANNOTATION_MINOR_FIT = 0.88;
 const PAD_ANNOTATION_CHAR_SCALE = 0.60;
-const PAD_ANNOTATION_MIN_CHAR_H = 0.08;
+const PAD_ANNOTATION_MIN_CHAR_H = 0.02;
 const PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
+const PAD_ANNOTATION_LINE_SPACING = 1.08;
 const PAD_ANNOTATION_STROKE_SCALE = 0.22;
 const PAD_ANNOTATION_STROKE_MIN = 0.02;
 const PAD_ANNOTATION_STROKE_MAX = 0.16;
@@ -60,15 +61,25 @@ function fitTextInsideBox(
     charScale = PAD_ANNOTATION_CHAR_SCALE,
 ): [number, number, number] | null {
     if (boxW <= 0 || boxH <= 0) return null;
+    const lines = text
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+    if (lines.length === 0) return null;
     const usableW = Math.max(0, boxW * PAD_ANNOTATION_BOX_RATIO);
     const usableH = Math.max(0, boxH * PAD_ANNOTATION_BOX_RATIO);
     if (usableW <= 0 || usableH <= 0) return null;
     const vertical = usableH > usableW;
     const major = vertical ? usableH : usableW;
     const minor = vertical ? usableW : usableH;
-    const advance = estimateStrokeTextAdvance(text);
-    const maxHByWidth = major / Math.max(advance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
-    let charH = Math.min(minor * PAD_ANNOTATION_MINOR_FIT, maxHByWidth * PAD_ANNOTATION_MAJOR_FIT);
+    const maxAdvance = Math.max(...lines.map(estimateStrokeTextAdvance));
+    const lineHeightUnits = 1 + (lines.length - 1) * PAD_ANNOTATION_LINE_SPACING;
+    const maxHByWidth = major / Math.max(maxAdvance * PAD_ANNOTATION_CHAR_W_RATIO, 1e-6);
+    const maxHByHeight = minor / Math.max(lineHeightUnits, 1e-6);
+    let charH = Math.min(
+        maxHByWidth * PAD_ANNOTATION_MAJOR_FIT,
+        maxHByHeight * PAD_ANNOTATION_MINOR_FIT,
+    );
     charH *= charScale;
     if (charH < minCharH) return null;
     const charW = charH * PAD_ANNOTATION_CHAR_W_RATIO;
@@ -82,9 +93,27 @@ function fitTextInsideBox(
 function fitPadNameLabel(text: string, boxW: number, boxH: number): [string, [number, number, number]] | null {
     const displayText = text.trim();
     if (!displayText) return null;
-    const fit = fitTextInsideBox(displayText, boxW, boxH);
-    if (!fit) return null;
-    return [displayText, fit];
+    const candidates: string[] = [displayText];
+    const dashIndexes: number[] = [];
+    for (let i = 0; i < displayText.length; i++) {
+        if (displayText[i] === "-") dashIndexes.push(i);
+    }
+    for (const idx of dashIndexes) {
+        const left = displayText.slice(0, idx).trim();
+        const right = displayText.slice(idx + 1).trim();
+        if (!left || !right) continue;
+        candidates.push(`${left}\n${right}`);
+    }
+
+    let best: [string, [number, number, number]] | null = null;
+    for (const candidate of candidates) {
+        const fit = fitTextInsideBox(candidate, boxW, boxH);
+        if (!fit) continue;
+        if (!best || fit[1] > best[1][1]) {
+            best = [candidate, fit];
+        }
+    }
+    return best;
 }
 
 function padLabelWorldRotation(totalPadRotationDeg: number, padW: number, padH: number): number {

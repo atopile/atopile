@@ -167,16 +167,7 @@ class FootprintGroupModel(BaseModel):
 class TrackModel(BaseModel):
     start: PointXY
     end: PointXY
-    width: float
-    layer: str | None = None
-    net: int = 0
-    uuid: str | None = None
-
-
-class ArcTrackModel(BaseModel):
-    start: PointXY
-    mid: PointXY
-    end: PointXY
+    mid: PointXY | None = None
     width: float
     layer: str | None = None
     net: int = 0
@@ -205,11 +196,6 @@ class ZoneModel(BaseModel):
     filled_polygons: list[FilledPolygonModel]
 
 
-class NetModel(BaseModel):
-    number: int
-    name: str | None = None
-
-
 class LayerModel(BaseModel):
     id: str
     root: str | None = None
@@ -233,9 +219,7 @@ class RenderModel(BaseModel):
     footprints: list[FootprintModel]
     footprint_groups: list[FootprintGroupModel] = Field(default_factory=list)
     tracks: list[TrackModel]
-    arcs: list[ArcTrackModel]
     zones: list[ZoneModel]
-    nets: list[NetModel]
 
 
 # --- Footprint summary (for /api/footprints) ---
@@ -295,13 +279,23 @@ class FlipFootprintsCommand(_StrictCommandModel):
     uuids: list[str] = Field(min_length=1)
 
 
+class UndoCommand(_StrictCommandModel):
+    command: Literal["undo"]
+
+
+class RedoCommand(_StrictCommandModel):
+    command: Literal["redo"]
+
+
 ActionRequest = Annotated[
     MoveFootprintCommand
     | RotateFootprintCommand
     | FlipFootprintCommand
     | MoveFootprintsCommand
     | RotateFootprintsCommand
-    | FlipFootprintsCommand,
+    | FlipFootprintsCommand
+    | UndoCommand
+    | RedoCommand,
     Field(discriminator="command"),
 ]
 

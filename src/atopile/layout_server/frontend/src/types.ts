@@ -22,9 +22,7 @@ export interface RenderModel {
     footprints: FootprintModel[];
     footprint_groups: FootprintGroupModel[];
     tracks: TrackModel[];
-    arcs: ArcTrackModel[];
     zones: ZoneModel[];
-    nets: NetModel[];
 }
 
 export interface BoardModel {
@@ -157,16 +155,7 @@ export type DrawingModel =
 export interface TrackModel {
     start: Point2;
     end: Point2;
-    width: number;
-    layer: string | null;
-    net: number;
-    uuid: string | null;
-}
-
-export interface ArcTrackModel {
-    start: Point2;
-    mid: Point2;
-    end: Point2;
+    mid?: Point2;
     width: number;
     layer: string | null;
     net: number;
@@ -190,11 +179,6 @@ export interface ZoneModel {
 export interface FilledPolygonModel {
     layer: string;
     points: Point2[];
-}
-
-export interface NetModel {
-    number: number;
-    name: string | null;
 }
 
 export interface LayerModel {
@@ -253,10 +237,20 @@ export interface FlipFootprintsCommand {
     uuids: string[];
 }
 
+export interface UndoCommand {
+    command: "undo";
+}
+
+export interface RedoCommand {
+    command: "redo";
+}
+
 export type ActionCommand =
     | MoveFootprintCommand
     | RotateFootprintCommand
     | FlipFootprintCommand
     | MoveFootprintsCommand
     | RotateFootprintsCommand
-    | FlipFootprintsCommand;
+    | FlipFootprintsCommand
+    | UndoCommand
+    | RedoCommand;

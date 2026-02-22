@@ -311,28 +311,12 @@ function paintTracks(
         const [r, g, b, a] = getLayerColor(layerName, layerById);
         const layer = renderer.start_layer(`tracks:${layerName}`);
         for (const track of tracks) {
-            layer.geometry.add_polyline([p2v(track.start), p2v(track.end)], track.width, r, g, b, a);
+            const pts = track.mid
+                ? arcToPoints(track.start, track.mid, track.end)
+                : [p2v(track.start), p2v(track.end)];
+            layer.geometry.add_polyline(pts, track.width, r, g, b, a);
         }
         renderer.end_layer();
-    }
-    if (model.arcs.length > 0) {
-        const arcByLayer = new Map<string, typeof model.arcs>();
-        for (const arc of model.arcs) {
-            const ln = arc.layer;
-            if (!ln) continue;
-            if (hidden.has(ln)) continue;
-            let arr = arcByLayer.get(ln);
-            if (!arr) { arr = []; arcByLayer.set(ln, arr); }
-            arr.push(arc);
-        }
-        for (const [layerName, arcs] of sortedLayerEntries(arcByLayer, layerById)) {
-            const [r, g, b, a] = getLayerColor(layerName, layerById);
-            const layer = renderer.start_layer(`arc_tracks:${layerName}`);
-            for (const arc of arcs) {
-                layer.geometry.add_polyline(arcToPoints(arc.start, arc.mid, arc.end), arc.width, r, g, b, a);
-            }
-            renderer.end_layer();
-        }
     }
 }
 

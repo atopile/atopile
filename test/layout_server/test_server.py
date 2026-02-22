@@ -78,7 +78,6 @@ async def test_render_model(client: AsyncClient):
     used_layers.update(d.get("layer") for d in model["drawings"] if d.get("layer"))
     used_layers.update(t.get("layer") for t in model["texts"] if t.get("layer"))
     used_layers.update(t.get("layer") for t in model["tracks"] if t.get("layer"))
-    used_layers.update(a.get("layer") for a in model["arcs"] if a.get("layer"))
 
     for zone in model["zones"]:
         used_layers.update(layer for layer in zone.get("layers", []) if layer)
@@ -132,17 +131,8 @@ async def test_footprints(client: AsyncClient):
 
 
 @pytest.mark.anyio
-async def test_reload(client: AsyncClient):
-    resp = await client.post("/api/reload")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "ok"
-    assert data["code"] == "ok"
-
-
-@pytest.mark.anyio
 async def test_undo_empty(client: AsyncClient):
-    resp = await client.post("/api/undo")
+    resp = await client.post("/api/execute-action", json={"command": "undo"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "error"
@@ -151,7 +141,7 @@ async def test_undo_empty(client: AsyncClient):
 
 @pytest.mark.anyio
 async def test_redo_empty(client: AsyncClient):
-    resp = await client.post("/api/redo")
+    resp = await client.post("/api/execute-action", json={"command": "redo"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "error"

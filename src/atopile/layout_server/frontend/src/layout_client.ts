@@ -29,11 +29,6 @@ export class LayoutClient {
         return await resp.json() as StatusResponse;
     }
 
-    async post(path: string): Promise<StatusResponse> {
-        const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
-        return await resp.json() as StatusResponse;
-    }
-
     connect(onUpdate: UpdateHandler): void {
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);

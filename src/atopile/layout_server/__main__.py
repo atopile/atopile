@@ -118,14 +118,10 @@ def create_app(pcb_path: Path) -> FastAPI:
 
 
 def _ensure_editor_bundle() -> None:
-    editor_js = STATIC_DIR / "editor.js"
-    if editor_js.is_file():
-        return
-
     npm = shutil.which("npm")
     if not npm:
         raise RuntimeError(
-            "Layout editor bundle is missing and npm is not installed. "
+            "npm is not installed; cannot build layout editor bundle. "
             "Run `npm --prefix src/atopile/layout_server/frontend run build`."
         )
     if not FRONTEND_DIR.is_dir():
@@ -133,13 +129,14 @@ def _ensure_editor_bundle() -> None:
             f"Layout frontend source directory not found: {FRONTEND_DIR}"
         )
 
-    typer.echo("Layout editor bundle missing; building frontend assets...", err=True)
+    typer.echo("Building layout editor frontend assets...", err=True)
     result = subprocess.run([npm, "run", "build"], cwd=str(FRONTEND_DIR), check=False)
     if result.returncode != 0:
         raise RuntimeError(
             "Failed to build layout editor bundle. "
             "Run `npm --prefix src/atopile/layout_server/frontend run build`."
         )
+    editor_js = STATIC_DIR / "editor.js"
     if not editor_js.is_file():
         raise RuntimeError(
             "Layout editor build reported success but `editor.js` is still missing."

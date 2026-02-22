@@ -37,6 +37,12 @@ function drawPadAnnotationText(
     color: string,
     fontWeight: number,
 ) {
+    const lines = text
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+    if (lines.length === 0) return;
+
     const screenPos = camera.world_to_screen(new Vec2(worldX, worldY));
     if (
         screenPos.x < -100
@@ -53,16 +59,32 @@ function drawPadAnnotationText(
     ctx.font = `${fontWeight} ${fontPx}px ${PAD_ANNOTATION_FONT_STACK}`;
     (ctx as CanvasRenderingContext2D & { fontKerning?: CanvasFontKerning }).fontKerning = "normal";
     ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
     ctx.fillStyle = color;
-    const metrics = ctx.measureText(text);
-    const left = metrics.actualBoundingBoxLeft ?? 0;
-    const right = metrics.actualBoundingBoxRight ?? metrics.width;
-    const ascent = metrics.actualBoundingBoxAscent ?? fontPx * 0.78;
-    const descent = metrics.actualBoundingBoxDescent ?? fontPx * 0.22;
-    const x = -((left + right) / 2);
-    const y = (ascent - descent) / 2;
-    ctx.fillText(text, x, y);
+    if (lines.length === 1) {
+        ctx.textBaseline = "alphabetic";
+        const metrics = ctx.measureText(lines[0]!);
+        const left = metrics.actualBoundingBoxLeft ?? 0;
+        const right = metrics.actualBoundingBoxRight ?? metrics.width;
+        const ascent = metrics.actualBoundingBoxAscent ?? fontPx * 0.78;
+        const descent = metrics.actualBoundingBoxDescent ?? fontPx * 0.22;
+        const x = -((left + right) / 2);
+        const y = (ascent - descent) / 2;
+        ctx.fillText(lines[0]!, x, y);
+    } else {
+        // For multiline pad labels, center each line around the same anchor.
+        const lineHeight = fontPx * 1.08;
+        const centerLine = (lines.length - 1) / 2;
+        ctx.textBaseline = "middle";
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i]!;
+            const metrics = ctx.measureText(line);
+            const left = metrics.actualBoundingBoxLeft ?? 0;
+            const right = metrics.actualBoundingBoxRight ?? metrics.width;
+            const x = -((left + right) / 2);
+            const y = (i - centerLine) * lineHeight;
+            ctx.fillText(line, x, y);
+        }
+    }
     ctx.restore();
 }
 

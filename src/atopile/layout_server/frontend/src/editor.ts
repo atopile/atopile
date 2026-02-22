@@ -603,7 +603,7 @@ export class Editor {
             // Ctrl+Z — undo
             if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
                 e.preventDefault();
-                await this.serverAction("/undo");
+                await this.executeAction({ command: "undo" });
                 return;
             }
 
@@ -611,7 +611,7 @@ export class Editor {
             if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && e.shiftKey) ||
                 ((e.ctrlKey || e.metaKey) && e.key === "y")) {
                 e.preventDefault();
-                await this.serverAction("/redo");
+                await this.executeAction({ command: "redo" });
                 return;
             }
         });
@@ -674,18 +674,6 @@ export class Editor {
             if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
-        }
-    }
-
-    private async serverAction(path: string) {
-        try {
-            const data = await this.client.post(path);
-            if (data.status === "error") {
-                console.warn(`${path} failed (${data.code}): ${data.message ?? "unknown error"}`);
-            }
-            if (data.model) this.applyModel(data.model);
-        } catch (err) {
-            console.error(`Failed ${path}:`, err);
         }
     }
 
