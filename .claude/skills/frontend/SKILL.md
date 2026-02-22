@@ -21,9 +21,9 @@ Frontend-only loop (no backend integration):
 
 ```bash
 cd src/ui-server
-bunx vite
-bunx vitest run
-bunx tsc && bunx vite build
+bun run dev
+bun run test
+bun run build
 ```
 
 Webview integration loop (backend + Vite):
@@ -43,9 +43,9 @@ ato dev compile && ato dev install vscode
 
 Command reference:
 - `bun install`: install/sync JS dependencies.
-- `bunx vite`: start Vite dev server (frontend-only iteration).
-- `bunx vitest run`: run frontend tests once.
-- `bunx tsc && bunx vite build`: type-check then production build.
+- `bun run dev`: start local Vite dev server (frontend-only iteration).
+- `bun run test`: run local Vitest suite once.
+- `bun run build`: run local `tsc && vite build`.
 - `./dev.sh`: run backend + Vite for integration testing in browser.
 - `ato dev compile`: build extension artifacts (default target `all`).
 - `ato dev install cursor|vscode`: install latest built extension `.vsix`.
