@@ -207,6 +207,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await Promise.all([ui.activate(context), startBackend()]);
 
     traceMilestone('activated');
+
+    // Auto-focus the atopile sidebar (web-ide: immediate visual context)
+    vscode.commands.executeCommand('workbench.view.extension.atopile-explorer');
 }
 
 export async function deactivate(): Promise<void> {
