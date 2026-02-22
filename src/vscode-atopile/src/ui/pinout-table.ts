@@ -89,8 +89,10 @@ export function closePinoutTable() {
     pinoutTable = undefined;
 }
 
-export async function activate(_context: vscode.ExtensionContext) {
-    // Nothing extra needed — the webview is opened on demand.
+export async function activate(context: vscode.ExtensionContext) {
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.pinout_table', openPinoutTable)
+    );
 }
 
 export function deactivate() {

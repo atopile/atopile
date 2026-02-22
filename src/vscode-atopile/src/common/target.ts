@@ -23,7 +23,9 @@ let g_selectedTargetNames: string[] = [];
 let g_projectRoot: string | undefined;
 
 export function setSelectedTargets(targets: Build[]) {
-    const changed = !arraysEqual(g_selectedTargets, targets);
+    const changed =
+        g_selectedTargets.length !== targets.length ||
+        g_selectedTargets.some((build, i) => !eqBuilds(build, targets[i]));
     g_selectedTargets = [...targets];
     if (changed) {
         onBuildTargetsChangedEvent.fire(g_selectedTargets);
@@ -41,7 +43,8 @@ export function setSelectionState(selection: SelectionState): void {
     const nextTargetNames = selection.targetNames;
     const changed =
         g_projectRoot !== nextProjectRoot ||
-        !stringArraysEqual(g_selectedTargetNames, nextTargetNames);
+        g_selectedTargetNames.length !== nextTargetNames.length ||
+        g_selectedTargetNames.some((value, i) => value !== nextTargetNames[i]);
     if (!changed) {
         return;
     }
@@ -89,16 +92,6 @@ export function getSelectionState(): SelectionState {
         projectRoot: g_projectRoot,
         targetNames: [...g_selectedTargetNames],
     };
-}
-
-function arraysEqual(a: Build[], b: Build[]): boolean {
-    if (a.length !== b.length) return false;
-    return a.every((build, i) => eqBuilds(build, b[i]));
-}
-
-function stringArraysEqual(a: string[], b: string[]): boolean {
-    if (a.length !== b.length) return false;
-    return a.every((value, i) => value === b[i]);
 }
 
 export function getBuildTarget(): Build | undefined {

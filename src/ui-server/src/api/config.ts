@@ -87,4 +87,3 @@ export function getWorkspaceFolders(): string[] {
 
   return [];
 }
-

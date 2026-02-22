@@ -221,11 +221,6 @@ type WebviewMessage =
   | OpenPinoutTableMessage
   | RequestSelectionStateMessage;
 
-const arraysEqual = (a: string[], b: string[]): boolean => {
-  if (a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-};
-
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
   public static readonly viewType = 'atopile.sidebar';
@@ -756,7 +751,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const currentSelection = getSelectionState();
     if (
       currentSelection.projectRoot === (projectRoot ?? undefined) &&
-      arraysEqual(currentSelection.targetNames, targetNames)
+      currentSelection.targetNames.length === targetNames.length &&
+      currentSelection.targetNames.every((value, index) => value === targetNames[index])
     ) {
       return;
     }

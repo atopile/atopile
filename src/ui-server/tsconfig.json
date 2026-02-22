@@ -14,10 +14,7 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "paths": {
-      "@layout-editor/*": ["./src/types/layout-editor.d.ts"]
-    }
+    "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
   "exclude": ["src/__tests__"]

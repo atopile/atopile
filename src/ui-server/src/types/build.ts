@@ -324,51 +324,19 @@ export interface PinInfo {
   pin_name: string;
   pin_number: string | null;
   signal_type: string;
-  direction: string;
   interfaces: string[];
-  connected_to: string[];
   is_connected: boolean;
   voltage: string | null;
   net_name: string | null;
   notes: string[];
 }
 
-export interface FootprintPadGeometry {
-  pad_number: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  shape: string;
-  rotation: number;
-  pad_type: string;
-  layers: string[];
-  roundrect_ratio?: number | null;
-}
-
-export interface FootprintDrawing {
-  type: string;
-  layer: string;
-  width: number;
-  start_x?: number | null;
-  start_y?: number | null;
-  end_x?: number | null;
-  end_y?: number | null;
-  mid_x?: number | null;
-  mid_y?: number | null;
-  center_x?: number | null;
-  center_y?: number | null;
-}
-
 export interface PinoutComponent {
   name: string;
   type_name: string;
   footprint_uuid: string | null;
-  footprint_reference: string | null;
   pins: PinInfo[];
   warnings: string[];
-  footprint_pads?: FootprintPadGeometry[];
-  footprint_drawings?: FootprintDrawing[];
 }
 
 export interface PinoutData {

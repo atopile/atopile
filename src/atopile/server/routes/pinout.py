@@ -31,39 +31,3 @@ async def get_pinout(
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.get("/api/pinout/targets")
-async def get_pinout_targets(
-    project_root: str = Query(
-        ..., description="Path to the project root (containing ato.yaml)"
-    ),
-):
-    """Get available targets that have pinout data."""
-    try:
-        return await asyncio.to_thread(
-            pinout_domain.handle_get_pinout_targets, project_root
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.get("/api/build/{build_id}/pinout")
-async def get_pinout_by_build_id(build_id: str):
-    """
-    Get the pinout for a specific build by build_id.
-
-    Uses build_id -> (project, target) translation to find the artifact.
-    """
-    try:
-        result = await asyncio.to_thread(
-            pinout_domain.handle_get_pinout_by_build_id, build_id
-        )
-        if result is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Pinout not found for build {build_id}",
-            )
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))

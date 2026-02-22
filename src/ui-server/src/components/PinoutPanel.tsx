@@ -22,11 +22,7 @@ function SignalBadge({ type }: { type: string }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-//  Sortable header
-// ---------------------------------------------------------------------------
-
-type SortKey = 'pin_number' | 'pin_name' | 'signal_type' | 'interfaces' | 'connected_to' | 'net_name'
+type SortKey = 'pin_number' | 'pin_name' | 'signal_type' | 'interfaces' | 'net_name'
 type SortDir = 'asc' | 'desc'
 type ConnectionFilter = 'all' | 'connected' | 'unconnected'
 type PinoutState =
@@ -47,7 +43,6 @@ const SORT_COLUMNS: ReadonlyArray<{ label: string; key: SortKey }> = [
   { label: 'Signal Name', key: 'pin_name' },
   { label: 'Signal Type', key: 'signal_type' },
   { label: 'Interfaces', key: 'interfaces' },
-  { label: 'Connected To', key: 'connected_to' },
   { label: 'Net Name', key: 'net_name' },
 ]
 const SORT_VALUE: Record<SortKey, (pin: PinInfo) => string> = {
@@ -55,7 +50,6 @@ const SORT_VALUE: Record<SortKey, (pin: PinInfo) => string> = {
   pin_name: pin => pin.pin_name,
   signal_type: pin => pin.signal_type,
   interfaces: pin => pin.interfaces.join(','),
-  connected_to: pin => pin.connected_to.join(','),
   net_name: pin => pin.net_name ?? '',
 }
 
@@ -76,10 +70,6 @@ function SortHeader({ label, sortKey, currentSort, currentDir, onSort }: {
     </th>
   )
 }
-
-// ---------------------------------------------------------------------------
-//  Main component
-// ---------------------------------------------------------------------------
 
 export function PinoutPanel() {
   const [selection, setSelection] = useState<{ projectRoot: string | null; targetNames: string[] }>({
@@ -130,7 +120,6 @@ export function PinoutPanel() {
     resetPinoutView()
   }, [selectedProjectRoot, selectedTargetName, resetPinoutView])
 
-  // Load pinout data
   const loadPinout = useCallback(async () => {
     if (!selectionKey || !selectedProjectRoot || !selectedTargetName) return
     pinoutRequestSeq.current += 1
@@ -160,7 +149,6 @@ export function PinoutPanel() {
     ? pinoutState.message
     : null
 
-  // Current component
   const comp = report?.components?.[selectedComp] || null
 
   useEffect(() => {
@@ -168,7 +156,6 @@ export function PinoutPanel() {
     setSelectedComp(index => Math.min(index, report.components.length - 1))
   }, [report])
 
-  // Filter and sort pins
   const filteredPins = useMemo<PinInfo[]>(() => {
     if (!comp) return []
 
@@ -185,7 +172,6 @@ export function PinoutPanel() {
         pin.pin_name.toLowerCase().includes(query) ||
         pin.pin_number?.toLowerCase().includes(query) ||
         pin.interfaces.some(iface => iface.toLowerCase().includes(query)) ||
-        pin.connected_to.some(connection => connection.toLowerCase().includes(query)) ||
         pin.net_name?.toLowerCase().includes(query)
       )
 
@@ -206,18 +192,24 @@ export function PinoutPanel() {
     }
   }
 
-  // Unique signal types for filter
   const signalTypes = useMemo(() => {
     if (!comp) return []
     return [...new Set(comp.pins.map(p => p.signal_type))].sort()
   }, [comp])
 
   const totalPins = comp?.pins.length ?? 0
-
-  // Check if footprint data is available
   const hasFootprint = Boolean(comp?.footprint_uuid)
+  const emptyStateTitle = !selectedProjectRoot
+    ? 'No project selected'
+    : !selectedTargetName
+      ? 'No target selected'
+      : 'No pinout data available'
+  const emptyStateDescription = !selectedProjectRoot
+    ? 'Select a project in the sidebar to view pinout data.'
+    : !selectedTargetName
+      ? 'Select a target in the sidebar to view pinout data.'
+      : 'Add the generate_pinout_details trait to a component and run ato build.'
 
-  // Handle pad hover from footprint viewer → scroll to table row
   const handlePadHover = useCallback((padNumber: string) => {
     setHoveredPinNumber(padNumber)
     const row = document.getElementById(getPinRowId(padNumber))
@@ -281,11 +273,9 @@ export function PinoutPanel() {
 
   return (
     <div className="pinout-panel sidebar-panel">
-      {/* Header */}
       <div className="panel-toolbar-row pinout-header">
         <h2 className="pinout-title">Pinout Table</h2>
 
-        {/* Component tabs */}
         {report && report.components.length > 1 && (
           <div className="pinout-tabs">
             {report.components.map((c, i) => (
@@ -307,170 +297,146 @@ export function PinoutPanel() {
 
       {!report || report.components.length === 0 ? (
         <EmptyState
-          title={!selectedProjectRoot ? 'No project selected' : !selectedTargetName ? 'No target selected' : 'No pinout data available'}
-          description={
-            !selectedProjectRoot
-              ? 'Select a project in the sidebar to view pinout data.'
-              : !selectedTargetName
-                ? 'Select a target in the sidebar to view pinout data.'
-                : 'Add the generate_pinout_details trait to a component and run ato build.'
-          }
+          title={emptyStateTitle}
+          description={emptyStateDescription}
         />
       ) : (
         <>
-      {/* Filters bar */}
-      <div className="panel-toolbar-row pinout-filters">
-        <div className="pinout-search-box">
-          <PanelSearchBox
-            value={search}
-            onChange={setSearch}
-            placeholder="Search pins, interfaces, connections..."
-          />
-        </div>
+          <div className="panel-toolbar-row pinout-filters">
+            <div className="pinout-search-box">
+              <PanelSearchBox
+                value={search}
+                onChange={setSearch}
+                placeholder="Search pins, interfaces, connections..."
+              />
+            </div>
 
-        <div className="bom-project-select">
-          <select
-            value={filterSignalType}
-            onChange={e => setFilterSignalType(e.target.value)}
-          >
-            <option value="all">All types</option>
-            {signalTypes.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
+            <div className="bom-project-select">
+              <select
+                value={filterSignalType}
+                onChange={e => setFilterSignalType(e.target.value)}
+              >
+                <option value="all">All types</option>
+                {signalTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
 
-        <div className="bom-project-select">
-          <select
-            value={filterConnection}
-            onChange={e => setFilterConnection(parseConnectionFilter(e.target.value))}
-          >
-            <option value="all">All pins</option>
-            <option value="connected">Connected</option>
-            <option value="unconnected">Unconnected</option>
-          </select>
-        </div>
+            <div className="bom-project-select">
+              <select
+                value={filterConnection}
+                onChange={e => setFilterConnection(parseConnectionFilter(e.target.value))}
+              >
+                <option value="all">All pins</option>
+                <option value="connected">Connected</option>
+                <option value="unconnected">Unconnected</option>
+              </select>
+            </div>
 
-        <span className="pinout-count">
-          {filteredPins.length} of {totalPins} pins
-        </span>
-      </div>
-
-      {/* Side-by-side layout: Table + Footprint Viewer */}
-      <div className="pinout-content">
-        {/* Table */}
-        <div className={`pinout-table-wrap ${hasFootprint ? 'has-footprint' : 'full-width'}`}>
-          <table className="pinout-table">
-            <thead>
-              <tr className="pinout-head-row">
-                {SORT_COLUMNS.map((column) => (
-                  <SortHeader
-                    key={column.key}
-                    label={column.label}
-                    sortKey={column.key}
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                ))}
-                <th className="pinout-notes-header">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPins.map((pin, index) => {
-                const pinNumber = pin.pin_number
-                const isHovered = pinNumber !== null && hoveredPinNumber === pinNumber
-                const hasNotes = pin.notes.length > 0
-                const rowKey = pinNumber ?? `${pin.pin_name}:${pin.net_name ?? ''}:${index}`
-
-                return (
-                  <tr
-                    key={rowKey}
-                    id={pinNumber ? getPinRowId(pinNumber) : undefined}
-                    data-pin-number={pinNumber ?? undefined}
-                    className={`pinout-row ${isHovered ? 'is-hovered' : ''}`}
-                    onMouseEnter={() => {
-                      if (pinNumber) setHoveredPinNumber(pinNumber)
-                    }}
-                    onMouseLeave={() => setHoveredPinNumber(prev => (pinNumber && prev === pinNumber ? null : prev))}
-                  >
-                    <td className="pinout-cell">
-                      <code className="pinout-dim-code">{pin.pin_number || '-'}</code>
-                    </td>
-                    <td className="pinout-cell">
-                      <code className="pinout-pin-name">{pin.pin_name}</code>
-                    </td>
-                    <td className="pinout-cell">
-                      <SignalBadge type={pin.signal_type} />
-                    </td>
-                    <td className="pinout-cell">
-                      {pin.interfaces.length > 0
-                        ? pin.interfaces.map((iface, i) => (
-                            <span key={i} className="pinout-interface-tag">
-                              {iface}
-                            </span>
-                          ))
-                        : <span className="pinout-placeholder">-</span>
-                      }
-                    </td>
-                    <td className="pinout-cell pinout-connected-cell">
-                      {pin.connected_to.length > 0
-                        ? (
-                          <div title={pin.connected_to.join('\n')}>
-                            {pin.connected_to.map((c, i) => (
-                              <div key={`${c}-${i}`} className="pinout-connected-item">
-                                <code className="pinout-connected-code">{c}</code>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                        : <span className="pinout-placeholder">-</span>
-                      }
-                    </td>
-                    <td className="pinout-cell">
-                      {pin.net_name
-                        ? <code>{pin.net_name}</code>
-                        : <span className="pinout-placeholder">-</span>
-                      }
-                    </td>
-                    <td className="pinout-cell">
-                      {hasNotes && pin.notes.map((n, i) => (
-                        <span
-                          key={i}
-                          className={`pinout-note-tag ${n.includes('Unconnected') ? 'is-warning' : ''}`}
-                        >
-                          {n}
-                        </span>
-                      ))}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-
-          {filteredPins.length === 0 && comp && (
-            <EmptyState
-              title="No pins match filters"
-              description="Adjust search, signal type, or connection filters."
-              className="pinout-no-results"
-            />
-          )}
-        </div>
-
-        {/* Footprint Viewer */}
-        {hasFootprint && comp && selectedProjectRoot && selectedTargetName && (
-          <div className="pinout-footprint">
-            <FootprintViewerCanvas
-              projectRoot={selectedProjectRoot}
-              targetName={selectedTargetName}
-              footprintUuid={comp.footprint_uuid}
-              pins={comp.pins}
-              selectedPinNumber={hoveredPinNumber}
-              onPadClick={handlePadHover}
-            />
+            <span className="pinout-count">
+              {filteredPins.length} of {totalPins} pins
+            </span>
           </div>
-        )}
-      </div>
-      </>
+
+          <div className="pinout-content">
+            <div className={`pinout-table-wrap ${hasFootprint ? 'has-footprint' : 'full-width'}`}>
+              <table className="pinout-table">
+                <thead>
+                  <tr className="pinout-head-row">
+                    {SORT_COLUMNS.map((column) => (
+                      <SortHeader
+                        key={column.key}
+                        label={column.label}
+                        sortKey={column.key}
+                        currentSort={sortKey}
+                        currentDir={sortDir}
+                        onSort={handleSort}
+                      />
+                    ))}
+                    <th className="pinout-notes-header">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPins.map((pin, index) => {
+                    const pinNumber = pin.pin_number ?? null
+                    const isHovered = pinNumber !== null && hoveredPinNumber === pinNumber
+                    const hasNotes = pin.notes.length > 0
+                    const rowKey = pinNumber ?? `${pin.pin_name}:${pin.net_name ?? ''}:${index}`
+
+                    return (
+                      <tr
+                        key={rowKey}
+                        id={pinNumber ? getPinRowId(pinNumber) : undefined}
+                        data-pin-number={pinNumber ?? undefined}
+                        className={`pinout-row ${isHovered ? 'is-hovered' : ''}`}
+                        onMouseEnter={() => {
+                          if (pinNumber) setHoveredPinNumber(pinNumber)
+                        }}
+                        onMouseLeave={() => setHoveredPinNumber(prev => (pinNumber && prev === pinNumber ? null : prev))}
+                      >
+                        <td className="pinout-cell">
+                          <code className="pinout-dim-code">{pin.pin_number ?? '-'}</code>
+                        </td>
+                        <td className="pinout-cell">
+                          <code className="pinout-pin-name">{pin.pin_name}</code>
+                        </td>
+                        <td className="pinout-cell">
+                          <SignalBadge type={pin.signal_type} />
+                        </td>
+                        <td className="pinout-cell">
+                          {pin.interfaces.length > 0
+                            ? pin.interfaces.map((iface, i) => (
+                                <span key={i} className="pinout-interface-tag">
+                                  {iface}
+                                </span>
+                              ))
+                            : <span className="pinout-placeholder">-</span>
+                          }
+                        </td>
+                        <td className="pinout-cell">
+                          {pin.net_name
+                            ? <code>{pin.net_name}</code>
+                            : <span className="pinout-placeholder">-</span>
+                          }
+                        </td>
+                        <td className="pinout-cell">
+                          {hasNotes && pin.notes.map((n, i) => (
+                            <span
+                              key={i}
+                              className={`pinout-note-tag ${n.includes('Unconnected') ? 'is-warning' : ''}`}
+                            >
+                              {n}
+                            </span>
+                          ))}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              {filteredPins.length === 0 && comp && (
+                <EmptyState
+                  title="No pins match filters"
+                  description="Adjust search, signal type, or connection filters."
+                  className="pinout-no-results"
+                />
+              )}
+            </div>
+
+            {hasFootprint && comp && selectedProjectRoot && selectedTargetName && (
+              <div className="pinout-footprint">
+                <FootprintViewerCanvas
+                  projectRoot={selectedProjectRoot}
+                  targetName={selectedTargetName}
+                  footprintUuid={comp.footprint_uuid}
+                  pins={comp.pins}
+                  selectedPinNumber={hoveredPinNumber}
+                  onPadClick={handlePadHover}
+                />
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

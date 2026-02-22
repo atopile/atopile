@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { PinInfo } from '../types/build'
 import { Editor } from '@layout-editor/editor'
 import { getSignalColors } from '@layout-editor/colors'
@@ -19,9 +19,7 @@ export function FootprintViewerCanvas({
 }: FootprintViewerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const editorRef = useRef<Editor | null>(null)
-  const loadRequestSeq = useRef(0)
 
-  // Initialize editor on mount
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -29,40 +27,42 @@ export function FootprintViewerCanvas({
     const editor = new Editor(canvas, API_URL, '/api/layout', '/ws/layout')
     editor.setReadOnly(true)
     editorRef.current = editor
+
     return () => {
+      editor.setOnPadClick(null)
       editorRef.current = null
     }
   }, [])
 
-  // Keep editor model in sync with selected project/target/footprint.
   useEffect(() => {
     const editor = editorRef.current
     if (!editor) return
 
-    loadRequestSeq.current += 1
-    const requestSeq = loadRequestSeq.current
+    let canceled = false
 
-    void (async () => {
+    const loadModel = async () => {
       try {
         await sendActionWithResponse(
           'loadLayout',
           { projectId: projectRoot, targetName },
           { timeoutMs: 10000 }
         )
-        if (requestSeq !== loadRequestSeq.current) return
+        if (canceled) return
         await editor.loadRenderModel(footprintUuid, true)
       } catch (error) {
-        if (requestSeq !== loadRequestSeq.current) return
+        if (canceled) return
         console.warn('Failed to update footprint viewer model', error)
       }
-    })()
+    }
+
+    void loadModel()
+
+    return () => {
+      canceled = true
+    }
   }, [projectRoot, targetName, footprintUuid])
 
-  // Update pad styles when pins change
   useEffect(() => {
-    const editor = editorRef.current
-    if (!editor) return
-
     const colorOverrides = new Map<string, ReturnType<typeof getSignalColors>['pad']>()
     const outlinePads = new Set<string>()
 
@@ -72,17 +72,14 @@ export function FootprintViewerCanvas({
       if (!pin.is_connected) outlinePads.add(pin.pin_number)
     }
 
-    editor.setPadColorOverrides(colorOverrides)
-    editor.setOutlinePads(outlinePads)
+    editorRef.current?.setPadColorOverrides(colorOverrides)
+    editorRef.current?.setOutlinePads(outlinePads)
   }, [pins])
 
-  // Update highlighted pads when selection changes
   useEffect(() => {
-    const highlighted = new Set(selectedPinNumber ? [selectedPinNumber] : [])
-    editorRef.current?.setHighlightedPads(highlighted)
+    editorRef.current?.setHighlightedPads(new Set(selectedPinNumber ? [selectedPinNumber] : []))
   }, [selectedPinNumber])
 
-  // Update pad click callback
   useEffect(() => {
     editorRef.current?.setOnPadClick(onPadClick)
   }, [onPadClick])

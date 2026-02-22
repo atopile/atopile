@@ -154,18 +154,6 @@
   color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
-.pinout-connected-cell,
-.pinout-connected-item {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pinout-connected-code {
-  font-size: 0.85em;
-}
-
 .pinout-placeholder {
   opacity: 0.4;
 }

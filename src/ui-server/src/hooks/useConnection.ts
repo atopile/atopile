@@ -9,10 +9,6 @@ import { onExtensionMessage, postMessage, requestSelectionState } from '../api/v
 
 // Track pending glb-only builds to report success/failure to extension
 let pendingGlbBuildIds: Set<string> = new Set();
-const arraysEqual = (a: string[], b: string[]) => {
-  if (a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-};
 
 /**
  * Hook to manage WebSocket connection lifecycle.
@@ -177,7 +173,8 @@ export function useConnection() {
           const current = useStore.getState();
           if (
             current.selectedProjectRoot === projectRoot &&
-            arraysEqual(current.selectedTargetNames, targetNames)
+            current.selectedTargetNames.length === targetNames.length &&
+            current.selectedTargetNames.every((value, index) => value === targetNames[index])
           ) {
             break;
           }

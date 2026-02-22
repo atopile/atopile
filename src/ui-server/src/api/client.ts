@@ -287,10 +287,6 @@ export const api = {
       fetchJSON<PinoutData>(
         `/api/pinout?project_root=${encodeURIComponent(projectRoot)}&target=${encodeURIComponent(targetName)}`
       ),
-    targets: (projectRoot: string) =>
-      fetchJSON<{ targets: string[] }>(
-        `/api/pinout/targets?project_root=${encodeURIComponent(projectRoot)}`
-      ),
   },
 
   // Parts

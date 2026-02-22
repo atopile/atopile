@@ -45,10 +45,6 @@ let packageDetailsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let projectsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let atopileErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 
-const arraysEqual = (a: string[], b: string[]) => {
-  if (a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-};
 // Mutable flag — sidebar entry point enables this so selection changes
 // are broadcast back to the VS Code extension via postMessage.
 let _broadcastSelection = false;
@@ -1031,7 +1027,8 @@ useStore.subscribe(
   (current, previous) => {
     const selectionChanged =
       current.projectRoot !== previous.projectRoot ||
-      !arraysEqual(current.targetNames, previous.targetNames);
+      current.targetNames.length !== previous.targetNames.length ||
+      current.targetNames.some((value, index) => value !== previous.targetNames[index]);
 
     if (selectionChanged) {
       if (_broadcastSelection) {

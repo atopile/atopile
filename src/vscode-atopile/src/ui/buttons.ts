@@ -18,7 +18,6 @@ import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
 import { openLayoutEditor } from './layout-editor';
-import { openPinoutTable } from './pinout-table';
 import * as modelviewer from './modelviewer';
 import {
     getBuildTarget,
@@ -79,7 +78,6 @@ const cmdKicanvasPreview = registerCommand('atopile.kicanvas_preview', atoKicanv
 const cmdModelViewerPreview = registerCommand('atopile.model_viewer_preview', atoModelViewerPreview);
 const cmdExport = registerCommand('atopile.export', atoExport);
 const cmdServe = registerCommand('atopile.serve', atoServe);
-const cmdPinoutTable = registerCommand('atopile.pinout_table', openPinoutTable);
 
 // Register buttons for sidebar display
 registerButton('server-process', cmdServe, 'Start/show ato server', 'ato serve');
@@ -96,7 +94,6 @@ registerButton('eye', cmdKicanvasPreview, 'Open Layout Preview', 'Open Layout Pr
 registerButton('symbol-constructor', cmdModelViewerPreview, 'Open 3D Model Preview', 'Open 3D Model Preview');
 registerButton('checklist', cmdChooseBuild, 'Select build targets', 'Select build targets');
 registerButton('folder', cmdChooseProject, 'Select project folder', 'Select project folder');
-registerButton('symbol-class', cmdPinoutTable, 'Open Pinout Table', 'Pinout Table');
 
 /**
  * Get button metadata for the sidebar.
