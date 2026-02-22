@@ -336,6 +336,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@layout-editor': resolve(__dirname, '../atopile/layout_server/frontend/src'),
+        'earcut': resolve(__dirname, 'node_modules/earcut'),
       },
     },
     // Dev server settings
