@@ -3312,21 +3312,28 @@ class TestBlockInheritance:
         assert "a" in identifiers, "Inherited field 'a' should exist"
         assert "b" in identifiers, "Own field 'b' should exist"
 
-    def test_redefinition_errors(self):
-        """Redefining a parent field in derived type raises an error."""
-        with pytest.raises(ValueError, match="Child already exists"):
-            build_type(
-                """
-                import Electrical
+    def test_redefinition_overrides_silently(self):
+        """Redefining a parent field in derived type: derived wins silently."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
 
-                module Base:
-                    x = new Electrical
+            module Base:
+                x = new Electrical
 
-                module Derived from Base:
-                    x = new Electrical
-                """,
-                link=True,
-            )
+            module Derived from Base:
+                x = new Electrical
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["Derived"]
+        identifiers = {
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=derived_type)
+            if identifier is not None
+        }
+        assert "x" in identifiers, "Derived should have 'x'"
 
 
 class TestRetypeOperator:
@@ -3441,11 +3448,14 @@ class TestRetypeOperator:
 class TestMakeChildDeduplication:
     """Tests for MakeChild creation and inheritance deduplication.
 
+    These tests match the legacy (v0.12) behavior except where noted.
+
     - Explicit declarations (`resistance: ohm`) create a MakeChild.
     - Implicit assignments (`resistance = 10kohm`) create a MakeChild, unless
       the identifier was already explicitly declared in the same type.
     - Duplicate explicit declarations for the same identifier are an error.
     - Duplicate implicit assignments for the same identifier are an error.
+      (Legacy silently kept the first; now an error.)
     - During inheritance, `merge_types` deduplicates: if the derived type already
       has a child with the same identifier as the parent, the derived's version wins.
     """
@@ -3576,52 +3586,6 @@ class TestMakeChildDeduplication:
             f"Expected 1 'resistance' MakeChild, got {resistance_count}"
         )
 
-    def test_multiple_implicit_same_identifier_keeps_first(self):
-        """Multiple implicit (soft) declarations keep the first one.
-
-        When the same identifier is assigned multiple times implicitly,
-        only the first soft MakeChild is kept. Parameter will be constrained
-        to an empty numeric interval.
-        """
-        g, tg, stdlib, result = build_type(
-            """
-            module App:
-                resistance = 10kohm
-                resistance = 20kohm
-            """,
-            link=True,
-        )
-
-        app_type = result.state.type_roots["App"]
-
-        # Should have exactly one 'resistance' MakeChild
-        resistance_count = sum(
-            1
-            for id, _ in tg.collect_make_children(type_node=app_type)
-            if id == "resistance"
-        )
-        assert resistance_count == 1, (
-            f"Expected 1 'resistance' MakeChild, got {resistance_count}"
-        )
-
-        import faebryk.library._F as F
-
-        instance = tg.instantiate_node(type_node=app_type, attributes={})
-
-        assert (
-            F.Parameters.NumericParameter.bind_instance(
-                not_none(
-                    fbrk.EdgeComposition.get_child_by_identifier(
-                        bound_node=instance, child_identifier="resistance"
-                    )
-                )
-            )
-            .force_extract_superset()
-            .get_numeric_set()
-            .get_intervals()
-            == []
-        )
-
     def test_multiple_explicit_same_identifier_errors(self):
         """Multiple explicit declarations for same identifier is an error."""
         with pytest.raises(DslException, match="resistance"):
@@ -3635,9 +3599,10 @@ class TestMakeChildDeduplication:
             )
 
     def test_multiple_implicit_same_identifier_errors(self):
-        """
-        Multiple implicit assignments for same identifier is an error (duplicate
-        MakeChild).
+        """Multiple implicit assignments for same identifier is an error.
+
+        Legacy silently kept the first and discarded the second.
+        Now duplicate MakeChild nodes are caught by validate_type.
         """
         with pytest.raises(DslException, match="resistance"):
             build_type(
