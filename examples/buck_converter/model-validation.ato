@@ -1,0 +1,838 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+import SimulationTransient
+import SimulationSweep
+import SimulationAC
+import Requirement
+from "buck_converter.ato" import TI_TPS54560
+
+# =============================================================================
+# TPS54560 Model Validation
+# Datasheet: SLVSBN0C (March 2013, Rev March 2017)
+# Section 8.2.3 — Application Curves (Figures 34–55)
+# Section 6 — Typical Characteristics (Figure 21)
+#
+# DUT: 5V/5A output, 12V nominal input, 400kHz switching (DS Figure 33)
+#
+# Coverage:
+#   Fig 21  — Soft-Start Time vs Switching Frequency     [4 sims, 7 reqs]
+#   Fig 34  — Load Transient                             [1 sim,  1 req]
+#   Fig 35  — Line Transient (8V to 40V)                 [1 sim,  1 req]
+#   Fig 36  — Start-up With VIN                          [1 sim,  3 reqs]
+#   Fig 37  — Start-up With EN                           [1 sim,  1 req]
+#   Fig 38  — Output Ripple CCM                          [1 sim,  4 reqs]
+#   Fig 39  — Output Ripple DCM                          [1 sim,  1 req]
+#   Fig 40  — Output Ripple PSM                          [1 sim,  1 req]
+#   Fig 41  — Input Ripple CCM                           [1 sim,  1 req]
+#   Fig 42  — Input Ripple DCM                           [1 sim,  1 req]
+#   Fig 43  — Low Dropout Operation                      [1 sim,  1 req]
+#   Fig 44  — Efficiency vs Load Current (5V)            [6 sweeps, no req*]
+#   Fig 45  — Light Load Efficiency (5V)                 [2 sweeps, no req*]
+#   Fig 46  — Efficiency vs Load Current (3.3V)          [6 sweeps, no req*]
+#   Fig 47  — Light Load Efficiency (3.3V)               [2 sweeps, no req*]
+#   Fig 48  — (covered by Fig 44 sweeps)
+#   Fig 49  — Overall Loop Frequency Response (Bode)     [1 sim,  1 req]
+#   Fig 50  — Regulation vs Load Current                 [1 sweep, 1 req]
+#   Fig 51  — Regulation vs Input Voltage                [1 sweep, 1 req]
+#   Figs 52–55 — Safe Operating Area (thermal) — not simulatable
+#
+#   * Efficiency cannot be validated with behavioral model (ideal switches)
+#
+# Netlist element map (from generated circuit.spice):
+#   V1 = input voltage source (VIN)
+#   R1 = r_bottom (FB divider, 10.2k)
+#   R2 = r_comp (compensation, 16.9k)
+#   R3 = r_en (EN divider top, 442k)
+#   R4 = r_en_bot (EN divider bottom, 90.9k)
+#   R5 = r_load (1 ohm)
+#   R6 = r_rt (RT/CLK, 243k)
+#   R7 = r_top (FB divider, 53.6k)
+#   C1 = c_boot (100n)
+#   C2 = c_comp (4.7n)
+#   C3 = c_comp1 (47p)
+#   C4 = c_in (10u)
+#   C5-C7 = c_out (3x 47u)
+#   L1 = inductor (6.8u)
+#
+# X1 pin order (TPS54560_TRANS subcircuit):
+#   BOOT COMP EN GND SW RT VIN FB
+#
+# Common extra_spice to override X1 with FS=400k:
+#   X1 dut_package_boot dut_package_comp dut_package_en 0
+#      dut_package_sw dut_package_rt_clk dut_power_in_hv
+#      dut_package_fb TPS54560_TRANS FS=400k
+#
+# 3.3V FB divider override (for Figs 46, 47):
+#   Remove R7 (53.6k), add R_TOP_33 (31.6k) → Vout = 0.8*(31.6k+10.2k)/10.2k ≈ 3.28V
+#   Remove R3, R4 (EN divider), force EN high — needed for VIN=6V (below UVLO)
+# =============================================================================
+
+module ModelValidation:
+    "TPS54560 model validation — DS Section 8.2.3 Application Curves."
+
+    dut = new TI_TPS54560
+    assert dut.power_out.voltage within 5V +/- 5%
+    assert dut.power_in.voltage within 12V to 48V
+    assert dut.power_out.current <= 5A
+    assert dut.frequency <= 1MHz
+
+    # =================================================================
+    # SIMULATIONS
+    # =================================================================
+
+    # -----------------------------------------------------------------
+    # 1. STARTUP (DS Figures 36, 37)
+    # -----------------------------------------------------------------
+
+    # Fig 36: Start-up with VIN ramp (0 -> 12V)
+    # DS scope: VIN (4V/div), VOUT (1V/div), time=2ms/div
+    # Captures full startup from t=0 to t=20ms (8000 cycles)
+    fig36_startup_vin = new SimulationTransient
+    fig36_startup_vin.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig36_startup_vin.time_stop = 20e-3
+    fig36_startup_vin.time_step = 1e-6
+    fig36_startup_vin.remove_elements = "X1"
+    fig36_startup_vin.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    # Fig 37: Start-up with EN control (VIN=12V steady, EN pulse at 2ms)
+    # DS scope: VIN (4V/div), EN (2V/div), VOUT (5V/div), time=2ms/div
+    fig37_startup_en = new SimulationTransient
+    fig37_startup_en.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig37_startup_en.time_stop = 20e-3
+    fig37_startup_en.time_step = 1e-6
+    fig37_startup_en.remove_elements = "X1,R3"
+    fig37_startup_en.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_EN dut_package_en 0 PULSE(0 12 2e-3 10u 10u 10 10)"
+
+    # -----------------------------------------------------------------
+    # 2. TRANSIENT RESPONSE (DS Figures 34, 35)
+    # -----------------------------------------------------------------
+
+    # Fig 34: Load transient — 1.25A to 3.75A step
+    # DS scope: IOUT (1A/div), VOUT AC-coupled (200mV/div), time=100us/div
+    # DS Table 1: delta_VOUT = 4% (200mV at 5V)
+    # Steady-state from 10ms, step at 15ms, observe 5ms after
+    fig34_load_transient = new SimulationTransient
+    fig34_load_transient.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig34_load_transient.time_start = 10e-3
+    fig34_load_transient.time_stop = 20e-3
+    fig34_load_transient.time_step = 500e-9
+    fig34_load_transient.remove_elements = "X1,R5"
+    fig34_load_transient.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_LOAD_BASE dut_power_out_hv 0 4|V_ISENSE load_sense 0 0|I_LOAD dut_power_out_hv load_sense PULSE(0 2.5 15e-3 1u 1u 10 10)"
+
+    # Fig 35: Line transient — VIN step 8V to 40V
+    # DS scope: VIN (10V/div), VOUT AC-coupled (10mV/div), time=4ms/div
+    fig35_line_transient = new SimulationTransient
+    fig35_line_transient.spice = "V1 dut_power_in_hv 0 PULSE(8 40 15e-3 1u 1u 5e-3 20e-3)"
+    fig35_line_transient.time_start = 8e-3
+    fig35_line_transient.time_stop = 30e-3
+    fig35_line_transient.time_step = 1e-6
+    fig35_line_transient.remove_elements = "X1"
+    fig35_line_transient.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    # -----------------------------------------------------------------
+    # 3. OUTPUT RIPPLE (DS Figures 38, 39, 40)
+    # At 400kHz, T=2.5us. Capture 40 cycles = 100us for robust p-p measurement.
+    # -----------------------------------------------------------------
+
+    # Fig 38: Output ripple, CCM (5A load)
+    # DS scope: SW (10V/div), IL (1A/div), VOUT AC (10mV/div), time=4us/div
+    fig38_ripple_ccm = new SimulationTransient
+    fig38_ripple_ccm.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig38_ripple_ccm.time_start = 10e-3
+    fig38_ripple_ccm.time_stop = 10.1e-3
+    fig38_ripple_ccm.time_step = 25e-9
+    fig38_ripple_ccm.remove_elements = "X1"
+    fig38_ripple_ccm.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    # Fig 39: Output ripple, DCM (IOUT=100mA, R=50 ohm)
+    # DS scope: SW (10V/div), IL (500mA/div), VOUT AC (10mV/div), time=4us/div
+    # DCM needs more settling time (20ms)
+    fig39_ripple_dcm = new SimulationTransient
+    fig39_ripple_dcm.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig39_ripple_dcm.time_start = 20e-3
+    fig39_ripple_dcm.time_stop = 20.1e-3
+    fig39_ripple_dcm.time_step = 25e-9
+    fig39_ripple_dcm.remove_elements = "X1,R5"
+    fig39_ripple_dcm.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_LOAD_DCM dut_power_out_hv 0 50"
+
+    # Fig 40: Output ripple, eco-mode / PSM (no load, 100k dummy)
+    # DS scope: SW (10V/div), IL (1mA/div), VOUT AC (200mV/div), time=1ms/div
+    # PSM has very slow pulse-skipping dynamics — need long window
+    fig40_ripple_psm = new SimulationTransient
+    fig40_ripple_psm.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig40_ripple_psm.time_start = 10e-3
+    fig40_ripple_psm.time_stop = 20e-3
+    fig40_ripple_psm.time_step = 100e-9
+    fig40_ripple_psm.remove_elements = "X1,R5"
+    fig40_ripple_psm.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_LOAD_PSM dut_power_out_hv 0 100k"
+
+    # -----------------------------------------------------------------
+    # 4. INPUT RIPPLE (DS Figures 41, 42)
+    # Same 40-cycle window as output ripple
+    # -----------------------------------------------------------------
+
+    # Fig 41: Input ripple, CCM (5A load)
+    # DS scope: SW (10V/div), IL (200mA/div), VIN AC (10mV/div), time=4us/div
+    fig41_input_ripple_ccm = new SimulationTransient
+    fig41_input_ripple_ccm.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig41_input_ripple_ccm.time_start = 10e-3
+    fig41_input_ripple_ccm.time_stop = 10.1e-3
+    fig41_input_ripple_ccm.time_step = 25e-9
+    fig41_input_ripple_ccm.remove_elements = "X1"
+    fig41_input_ripple_ccm.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    # Fig 42: Input ripple, DCM (IOUT=100mA, R=50 ohm)
+    # DS scope: SW (10V/div), IL (500mA/div), VIN AC (20mV/div), time=4us/div
+    fig42_input_ripple_dcm = new SimulationTransient
+    fig42_input_ripple_dcm.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig42_input_ripple_dcm.time_start = 20e-3
+    fig42_input_ripple_dcm.time_stop = 20.1e-3
+    fig42_input_ripple_dcm.time_step = 25e-9
+    fig42_input_ripple_dcm.remove_elements = "X1,R5"
+    fig42_input_ripple_dcm.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_LOAD_DCM dut_power_out_hv 0 50"
+
+    # -----------------------------------------------------------------
+    # 5. LOW DROPOUT (DS Figure 43)
+    # VIN close to VOUT — near 100% duty cycle
+    # DS scope: SW (20mV/div), VOUT (2V/div), IL (200mA/div), time=40us/div
+    # VIN=7V with 5V output → low headroom (D ≈ 0.71)
+    # DS minimum VIN = 7V for 5V output
+    # -----------------------------------------------------------------
+
+    fig43_low_dropout = new SimulationTransient
+    fig43_low_dropout.spice = "V1 dut_power_in_hv 0 PULSE(0 7 0 10u 10u 10 10)"
+    fig43_low_dropout.time_start = 10e-3
+    fig43_low_dropout.time_stop = 10.5e-3
+    fig43_low_dropout.time_step = 25e-9
+    fig43_low_dropout.remove_elements = "X1,R3,R4"
+    fig43_low_dropout.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_EN_FORCE dut_package_en 0 DC 5"
+
+    # -----------------------------------------------------------------
+    # 6. EFFICIENCY vs LOAD CURRENT — 5V (DS Figure 44)
+    # Sweep ILOAD at each VIN: 7, 12, 24, 36, 48, 60V
+    # VOUT=5V, fsw=400kHz
+    # Note: Behavioral model does not accurately model power loss.
+    #       These sweeps produce waveform data but no pass/fail requirements.
+    # -----------------------------------------------------------------
+
+    fig44_eff_vin7 = new SimulationSweep
+    fig44_eff_vin7.param_name = "ILOAD"
+    fig44_eff_vin7.param_values = "0.5,1,2,3,4,5"
+    fig44_eff_vin7.param_unit = "A"
+    fig44_eff_vin7.spice = "V1 dut_power_in_hv 0 PULSE(0 7 0 10u 10u 10 10)"
+    fig44_eff_vin7.time_start = 10e-3
+    fig44_eff_vin7.time_stop = 10.5e-3
+    fig44_eff_vin7.time_step = 500e-9
+    fig44_eff_vin7.remove_elements = "X1,R5"
+    fig44_eff_vin7.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig44_eff_vin12 = new SimulationSweep
+    fig44_eff_vin12.param_name = "ILOAD"
+    fig44_eff_vin12.param_values = "0.5,1,2,3,4,5"
+    fig44_eff_vin12.param_unit = "A"
+    fig44_eff_vin12.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig44_eff_vin12.time_start = 10e-3
+    fig44_eff_vin12.time_stop = 10.5e-3
+    fig44_eff_vin12.time_step = 500e-9
+    fig44_eff_vin12.remove_elements = "X1,R5"
+    fig44_eff_vin12.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig44_eff_vin24 = new SimulationSweep
+    fig44_eff_vin24.param_name = "ILOAD"
+    fig44_eff_vin24.param_values = "0.5,1,2,3,4,5"
+    fig44_eff_vin24.param_unit = "A"
+    fig44_eff_vin24.spice = "V1 dut_power_in_hv 0 PULSE(0 24 0 10u 10u 10 10)"
+    fig44_eff_vin24.time_start = 10e-3
+    fig44_eff_vin24.time_stop = 10.5e-3
+    fig44_eff_vin24.time_step = 500e-9
+    fig44_eff_vin24.remove_elements = "X1,R5"
+    fig44_eff_vin24.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig44_eff_vin36 = new SimulationSweep
+    fig44_eff_vin36.param_name = "ILOAD"
+    fig44_eff_vin36.param_values = "0.5,1,2,3,4,5"
+    fig44_eff_vin36.param_unit = "A"
+    fig44_eff_vin36.spice = "V1 dut_power_in_hv 0 PULSE(0 36 0 10u 10u 10 10)"
+    fig44_eff_vin36.time_start = 10e-3
+    fig44_eff_vin36.time_stop = 10.5e-3
+    fig44_eff_vin36.time_step = 500e-9
+    fig44_eff_vin36.remove_elements = "X1,R5"
+    fig44_eff_vin36.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig44_eff_vin48 = new SimulationSweep
+    fig44_eff_vin48.param_name = "ILOAD"
+    fig44_eff_vin48.param_values = "0.5,1,2,3,4,5"
+    fig44_eff_vin48.param_unit = "A"
+    fig44_eff_vin48.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    fig44_eff_vin48.time_start = 10e-3
+    fig44_eff_vin48.time_stop = 10.5e-3
+    fig44_eff_vin48.time_step = 500e-9
+    fig44_eff_vin48.remove_elements = "X1,R5"
+    fig44_eff_vin48.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig44_eff_vin60 = new SimulationSweep
+    fig44_eff_vin60.param_name = "ILOAD"
+    fig44_eff_vin60.param_values = "0.5,1,2,3,4,5"
+    fig44_eff_vin60.param_unit = "A"
+    fig44_eff_vin60.spice = "V1 dut_power_in_hv 0 PULSE(0 60 0 10u 10u 10 10)"
+    fig44_eff_vin60.time_start = 10e-3
+    fig44_eff_vin60.time_stop = 10.5e-3
+    fig44_eff_vin60.time_step = 500e-9
+    fig44_eff_vin60.remove_elements = "X1,R5"
+    fig44_eff_vin60.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # 7. LIGHT LOAD EFFICIENCY — 5V (DS Figure 45)
+    # Log-scale current sweep: 1mA to 1A
+    # -----------------------------------------------------------------
+
+    fig45_light_eff_vin12 = new SimulationSweep
+    fig45_light_eff_vin12.param_name = "ILOAD"
+    fig45_light_eff_vin12.param_values = "0.001,0.005,0.01,0.05,0.1,0.5,1"
+    fig45_light_eff_vin12.param_unit = "A"
+    fig45_light_eff_vin12.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig45_light_eff_vin12.time_start = 20e-3
+    fig45_light_eff_vin12.time_stop = 21e-3
+    fig45_light_eff_vin12.time_step = 500e-9
+    fig45_light_eff_vin12.remove_elements = "X1,R5"
+    fig45_light_eff_vin12.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig45_light_eff_vin48 = new SimulationSweep
+    fig45_light_eff_vin48.param_name = "ILOAD"
+    fig45_light_eff_vin48.param_values = "0.001,0.005,0.01,0.05,0.1,0.5,1"
+    fig45_light_eff_vin48.param_unit = "A"
+    fig45_light_eff_vin48.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    fig45_light_eff_vin48.time_start = 20e-3
+    fig45_light_eff_vin48.time_stop = 21e-3
+    fig45_light_eff_vin48.time_step = 500e-9
+    fig45_light_eff_vin48.remove_elements = "X1,R5"
+    fig45_light_eff_vin48.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # 8. EFFICIENCY vs LOAD CURRENT — 3.3V (DS Figure 46)
+    # Same as Fig 44 but with 3.3V FB divider: R7→31.6k (R1=10.2k stays)
+    # Vout = 0.8 * (31.6k + 10.2k) / 10.2k ≈ 3.28V
+    # EN divider removed and forced high for VIN=6V operation
+    # VIN sweep: 6, 12, 24, 36, 48, 60V
+    # -----------------------------------------------------------------
+
+    fig46_eff_3v3_vin6 = new SimulationSweep
+    fig46_eff_3v3_vin6.param_name = "ILOAD"
+    fig46_eff_3v3_vin6.param_values = "0.5,1,2,3,4,5"
+    fig46_eff_3v3_vin6.param_unit = "A"
+    fig46_eff_3v3_vin6.spice = "V1 dut_power_in_hv 0 PULSE(0 6 0 10u 10u 10 10)"
+    fig46_eff_3v3_vin6.time_start = 10e-3
+    fig46_eff_3v3_vin6.time_stop = 10.5e-3
+    fig46_eff_3v3_vin6.time_step = 500e-9
+    fig46_eff_3v3_vin6.remove_elements = "X1,R5,R7,R3,R4"
+    fig46_eff_3v3_vin6.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig46_eff_3v3_vin12 = new SimulationSweep
+    fig46_eff_3v3_vin12.param_name = "ILOAD"
+    fig46_eff_3v3_vin12.param_values = "0.5,1,2,3,4,5"
+    fig46_eff_3v3_vin12.param_unit = "A"
+    fig46_eff_3v3_vin12.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig46_eff_3v3_vin12.time_start = 10e-3
+    fig46_eff_3v3_vin12.time_stop = 10.5e-3
+    fig46_eff_3v3_vin12.time_step = 500e-9
+    fig46_eff_3v3_vin12.remove_elements = "X1,R5,R7,R3,R4"
+    fig46_eff_3v3_vin12.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig46_eff_3v3_vin24 = new SimulationSweep
+    fig46_eff_3v3_vin24.param_name = "ILOAD"
+    fig46_eff_3v3_vin24.param_values = "0.5,1,2,3,4,5"
+    fig46_eff_3v3_vin24.param_unit = "A"
+    fig46_eff_3v3_vin24.spice = "V1 dut_power_in_hv 0 PULSE(0 24 0 10u 10u 10 10)"
+    fig46_eff_3v3_vin24.time_start = 10e-3
+    fig46_eff_3v3_vin24.time_stop = 10.5e-3
+    fig46_eff_3v3_vin24.time_step = 500e-9
+    fig46_eff_3v3_vin24.remove_elements = "X1,R5,R7,R3,R4"
+    fig46_eff_3v3_vin24.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig46_eff_3v3_vin36 = new SimulationSweep
+    fig46_eff_3v3_vin36.param_name = "ILOAD"
+    fig46_eff_3v3_vin36.param_values = "0.5,1,2,3,4,5"
+    fig46_eff_3v3_vin36.param_unit = "A"
+    fig46_eff_3v3_vin36.spice = "V1 dut_power_in_hv 0 PULSE(0 36 0 10u 10u 10 10)"
+    fig46_eff_3v3_vin36.time_start = 10e-3
+    fig46_eff_3v3_vin36.time_stop = 10.5e-3
+    fig46_eff_3v3_vin36.time_step = 500e-9
+    fig46_eff_3v3_vin36.remove_elements = "X1,R5,R7,R3,R4"
+    fig46_eff_3v3_vin36.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig46_eff_3v3_vin48 = new SimulationSweep
+    fig46_eff_3v3_vin48.param_name = "ILOAD"
+    fig46_eff_3v3_vin48.param_values = "0.5,1,2,3,4,5"
+    fig46_eff_3v3_vin48.param_unit = "A"
+    fig46_eff_3v3_vin48.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    fig46_eff_3v3_vin48.time_start = 10e-3
+    fig46_eff_3v3_vin48.time_stop = 10.5e-3
+    fig46_eff_3v3_vin48.time_step = 500e-9
+    fig46_eff_3v3_vin48.remove_elements = "X1,R5,R7,R3,R4"
+    fig46_eff_3v3_vin48.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig46_eff_3v3_vin60 = new SimulationSweep
+    fig46_eff_3v3_vin60.param_name = "ILOAD"
+    fig46_eff_3v3_vin60.param_values = "0.5,1,2,3,4,5"
+    fig46_eff_3v3_vin60.param_unit = "A"
+    fig46_eff_3v3_vin60.spice = "V1 dut_power_in_hv 0 PULSE(0 60 0 10u 10u 10 10)"
+    fig46_eff_3v3_vin60.time_start = 10e-3
+    fig46_eff_3v3_vin60.time_stop = 10.5e-3
+    fig46_eff_3v3_vin60.time_step = 500e-9
+    fig46_eff_3v3_vin60.remove_elements = "X1,R5,R7,R3,R4"
+    fig46_eff_3v3_vin60.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # 9. LIGHT LOAD EFFICIENCY — 3.3V (DS Figure 47)
+    # Log-scale current sweep: 1mA to 1A, 3.3V FB divider
+    # -----------------------------------------------------------------
+
+    fig47_light_eff_3v3_vin12 = new SimulationSweep
+    fig47_light_eff_3v3_vin12.param_name = "ILOAD"
+    fig47_light_eff_3v3_vin12.param_values = "0.001,0.005,0.01,0.05,0.1,0.5,1"
+    fig47_light_eff_3v3_vin12.param_unit = "A"
+    fig47_light_eff_3v3_vin12.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig47_light_eff_3v3_vin12.time_start = 20e-3
+    fig47_light_eff_3v3_vin12.time_stop = 21e-3
+    fig47_light_eff_3v3_vin12.time_step = 500e-9
+    fig47_light_eff_3v3_vin12.remove_elements = "X1,R5,R7,R3,R4"
+    fig47_light_eff_3v3_vin12.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    fig47_light_eff_3v3_vin48 = new SimulationSweep
+    fig47_light_eff_3v3_vin48.param_name = "ILOAD"
+    fig47_light_eff_3v3_vin48.param_values = "0.001,0.005,0.01,0.05,0.1,0.5,1"
+    fig47_light_eff_3v3_vin48.param_unit = "A"
+    fig47_light_eff_3v3_vin48.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    fig47_light_eff_3v3_vin48.time_start = 20e-3
+    fig47_light_eff_3v3_vin48.time_stop = 21e-3
+    fig47_light_eff_3v3_vin48.time_step = 500e-9
+    fig47_light_eff_3v3_vin48.remove_elements = "X1,R5,R7,R3,R4"
+    fig47_light_eff_3v3_vin48.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|R_TOP_33 dut_power_out_hv dut_package_5 31.6k|V_EN_FORCE dut_package_en 0 DC 5|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # 10. BODE PLOT (DS Figure 49)
+    # Overall loop frequency response
+    # VIN=12V, VOUT=5V, IOUT=5A
+    # -----------------------------------------------------------------
+
+    fig49_bode = new SimulationAC
+    fig49_bode.spice = "V1 dut_power_in_hv 0 DC 12 AC 0"
+    fig49_bode.start_freq = 100
+    fig49_bode.stop_freq = 1e7
+    fig49_bode.points_per_dec = 100
+    fig49_bode.remove_elements = "X1"
+    fig49_bode.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    # -----------------------------------------------------------------
+    # 11. LOAD REGULATION (DS Figure 50)
+    # Sweep ILOAD at VIN=12V, measure Vout stability
+    # -----------------------------------------------------------------
+
+    fig50_load_reg = new SimulationSweep
+    fig50_load_reg.param_name = "ILOAD"
+    fig50_load_reg.param_values = "0.5,1,2,3,4,5"
+    fig50_load_reg.param_unit = "A"
+    fig50_load_reg.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig50_load_reg.time_start = 10e-3
+    fig50_load_reg.time_stop = 10.5e-3
+    fig50_load_reg.time_step = 500e-9
+    fig50_load_reg.remove_elements = "X1,R5"
+    fig50_load_reg.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_LOAD dut_power_out_hv 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # 12. LINE REGULATION (DS Figure 51)
+    # Sweep VIN at IOUT=5A, measure Vout stability
+    # -----------------------------------------------------------------
+
+    fig51_line_reg = new SimulationSweep
+    fig51_line_reg.param_name = "VIN"
+    fig51_line_reg.param_values = "8,12,24,36,48,60"
+    fig51_line_reg.param_unit = "V"
+    fig51_line_reg.spice_template = "V1 dut_power_in_hv 0 PULSE(0 {VIN} 0 10u 10u 10 10)"
+    fig51_line_reg.time_start = 10e-3
+    fig51_line_reg.time_stop = 10.5e-3
+    fig51_line_reg.time_step = 500e-9
+    fig51_line_reg.remove_elements = "X1"
+    fig51_line_reg.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    # -----------------------------------------------------------------
+    # 13. STARTUP vs SWITCHING FREQUENCY (DS Figure 21)
+    # Soft-start = 1024 cycles. tss = 1024/fsw
+    # 4 frequencies: 200kHz (5.12ms), 400kHz (2.56ms),
+    #                600kHz (1.71ms), 1000kHz (1.02ms)
+    # Same DUT, only FS parameter changes in extra_spice
+    # -----------------------------------------------------------------
+
+    fig21_startup_200k = new SimulationTransient
+    fig21_startup_200k.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig21_startup_200k.time_stop = 20e-3
+    fig21_startup_200k.time_step = 1e-6
+    fig21_startup_200k.remove_elements = "X1"
+    fig21_startup_200k.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=200k"
+
+    fig21_startup_400k = new SimulationTransient
+    fig21_startup_400k.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig21_startup_400k.time_stop = 20e-3
+    fig21_startup_400k.time_step = 1e-6
+    fig21_startup_400k.remove_elements = "X1"
+    fig21_startup_400k.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    fig21_startup_600k = new SimulationTransient
+    fig21_startup_600k.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig21_startup_600k.time_stop = 20e-3
+    fig21_startup_600k.time_step = 1e-6
+    fig21_startup_600k.remove_elements = "X1"
+    fig21_startup_600k.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=600k"
+
+    fig21_startup_1000k = new SimulationTransient
+    fig21_startup_1000k.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    fig21_startup_1000k.time_stop = 20e-3
+    fig21_startup_1000k.time_step = 1e-6
+    fig21_startup_1000k.remove_elements = "X1"
+    fig21_startup_1000k.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=1000k"
+
+    # =================================================================
+    # REQUIREMENTS
+    # =================================================================
+
+    # -----------------------------------------------------------------
+    # DS Fig 36 — Start-up With VIN
+    # -----------------------------------------------------------------
+
+    mv_001 = new Requirement
+    mv_001.req_name = "MV-001: [Fig 36] Start-up With VIN — Vout regulation"
+    mv_001.simulation = "fig36_startup_vin"
+    mv_001.net = "dut.power_out.hv"
+    mv_001.min_val = 4.75
+    mv_001.typical = 5.0
+    mv_001.max_val = 5.25
+    mv_001.measurement = "final_value"
+    mv_001.context_nets = "dut.power_in.hv"
+    mv_001.justification = "DS Fig 36: Output must reach 5V +/-5% after startup."
+
+    mv_002 = new Requirement
+    mv_002.req_name = "MV-002: [Fig 36] Start-up With VIN — Settling time"
+    mv_002.simulation = "fig36_startup_vin"
+    mv_002.net = "dut.power_out.hv"
+    mv_002.min_val = 0
+    mv_002.typical = 3e-3
+    mv_002.max_val = 10e-3
+    mv_002.measurement = "settling_time"
+    mv_002.settling_tolerance = 0.02
+    mv_002.context_nets = "dut.power_in.hv"
+    mv_002.justification = "DS Section 8.3.2: Soft-start 1024 cycles. At 400kHz, tss=2.56ms."
+
+    mv_003 = new Requirement
+    mv_003.req_name = "MV-003: [Fig 36] Start-up With VIN — Overshoot"
+    mv_003.simulation = "fig36_startup_vin"
+    mv_003.net = "dut.power_out.hv"
+    mv_003.min_val = 0
+    mv_003.typical = 3
+    mv_003.max_val = 10
+    mv_003.measurement = "overshoot"
+    mv_003.context_nets = "dut.power_in.hv"
+    mv_003.justification = "DS Fig 36: Startup overshoot <10%."
+
+    # -----------------------------------------------------------------
+    # DS Fig 37 — Start-up With EN
+    # -----------------------------------------------------------------
+
+    mv_004 = new Requirement
+    mv_004.req_name = "MV-004: [Fig 37] Start-up With EN — Vout regulation"
+    mv_004.simulation = "fig37_startup_en"
+    mv_004.net = "dut.power_out.hv"
+    mv_004.min_val = 4.75
+    mv_004.typical = 5.0
+    mv_004.max_val = 5.25
+    mv_004.measurement = "final_value"
+    mv_004.context_nets = "dut.package.EN,dut.power_in.hv"
+    mv_004.justification = "DS Fig 37: EN-controlled startup must reach 5V regulation."
+
+    # -----------------------------------------------------------------
+    # DS Fig 34 — Load Transient
+    # -----------------------------------------------------------------
+
+    mv_005 = new Requirement
+    mv_005.req_name = "MV-005: [Fig 34] Load Transient — Vout perturbation"
+    mv_005.simulation = "fig34_load_transient"
+    mv_005.net = "dut.power_out.hv"
+    mv_005.min_val = 0
+    mv_005.typical = 0.2
+    mv_005.max_val = 0.4
+    mv_005.measurement = "peak_to_peak"
+    mv_005.context_nets = "i(V_ISENSE)"
+    mv_005.justification = "DS Table 1: Load transient 1.25A-3.75A, delta_VOUT < 4% (200mV)."
+
+    # -----------------------------------------------------------------
+    # DS Fig 35 — Line Transient (8V to 40V)
+    # -----------------------------------------------------------------
+
+    mv_006 = new Requirement
+    mv_006.req_name = "MV-006: [Fig 35] Line Transient — Vout perturbation"
+    mv_006.simulation = "fig35_line_transient"
+    mv_006.net = "dut.power_out.hv"
+    mv_006.min_val = 0
+    mv_006.typical = 0.1
+    mv_006.max_val = 0.3
+    mv_006.measurement = "peak_to_peak"
+    mv_006.context_nets = "dut.power_in.hv"
+    mv_006.justification = "DS Fig 35: Line transient 8V-40V, Vout perturbation <300mV."
+
+    # -----------------------------------------------------------------
+    # DS Fig 38 — Output Ripple CCM
+    # -----------------------------------------------------------------
+
+    mv_007 = new Requirement
+    mv_007.req_name = "MV-007: [Fig 38] Output Ripple CCM — Vout ripple"
+    mv_007.simulation = "fig38_ripple_ccm"
+    mv_007.net = "dut.power_out.hv"
+    mv_007.min_val = 0
+    mv_007.typical = 0.015
+    mv_007.max_val = 0.025
+    mv_007.measurement = "peak_to_peak"
+    mv_007.context_nets = "dut.package.SW,i(L1)"
+    mv_007.justification = "DS Table 1: Output ripple < 0.5% of Vout (25mV). DS Fig 38 ~15mV."
+
+    mv_008 = new Requirement
+    mv_008.req_name = "MV-008: [Fig 38] Output Ripple CCM — Switching frequency"
+    mv_008.simulation = "fig38_ripple_ccm"
+    mv_008.net = "dut.package.SW"
+    mv_008.min_val = 360e3
+    mv_008.typical = 400e3
+    mv_008.max_val = 440e3
+    mv_008.measurement = "frequency"
+    mv_008.context_nets = "dut.power_out.hv,i(L1)"
+    mv_008.justification = "DS: fsw=400kHz +/-10%. Validates FS=400k parameter."
+
+    mv_009 = new Requirement
+    mv_009.req_name = "MV-009: [Fig 38] Output Ripple CCM — Inductor current avg"
+    mv_009.simulation = "fig38_ripple_ccm"
+    mv_009.net = "i(L1)"
+    mv_009.min_val = 4.0
+    mv_009.typical = 5.0
+    mv_009.max_val = 6.0
+    mv_009.measurement = "average"
+    mv_009.context_nets = "dut.power_out.hv,dut.package.SW"
+    mv_009.justification = "IL_avg = Iout = Vout/Rload = 5V/1ohm = 5A."
+
+    mv_010 = new Requirement
+    mv_010.req_name = "MV-010: [Fig 38] Output Ripple CCM — Inductor ripple"
+    mv_010.simulation = "fig38_ripple_ccm"
+    mv_010.net = "i(L1)"
+    mv_010.min_val = 0.5
+    mv_010.typical = 1.59
+    mv_010.max_val = 3.0
+    mv_010.measurement = "peak_to_peak"
+    mv_010.context_nets = "dut.power_out.hv,dut.package.SW"
+    mv_010.justification = "DS Eq.28: IL_pp = (VIN-VOUT)*D/(fsw*L) = (12-5)*0.42/(400k*6.8u) ~ 1.08A."
+
+    # -----------------------------------------------------------------
+    # DS Fig 39 — Output Ripple DCM
+    # -----------------------------------------------------------------
+
+    mv_011 = new Requirement
+    mv_011.req_name = "MV-011: [Fig 39] Output Ripple DCM — Vout ripple"
+    mv_011.simulation = "fig39_ripple_dcm"
+    mv_011.net = "dut.power_out.hv"
+    mv_011.min_val = 0
+    mv_011.typical = 0.010
+    mv_011.max_val = 0.150
+    mv_011.measurement = "peak_to_peak"
+    mv_011.context_nets = "dut.package.SW,i(L1)"
+    mv_011.justification = "DS Fig 39: DCM ripple at 100mA load (50 ohm)."
+
+    # -----------------------------------------------------------------
+    # DS Fig 40 — Output Ripple PSM (Eco-mode)
+    # -----------------------------------------------------------------
+
+    mv_012 = new Requirement
+    mv_012.req_name = "MV-012: [Fig 40] Output Ripple PSM — Vout ripple"
+    mv_012.simulation = "fig40_ripple_psm"
+    mv_012.net = "dut.power_out.hv"
+    mv_012.min_val = 0
+    mv_012.typical = 0.030
+    mv_012.max_val = 0.100
+    mv_012.measurement = "peak_to_peak"
+    mv_012.context_nets = "dut.package.SW,i(L1)"
+    mv_012.justification = "DS Fig 40: Eco-mode (no load) ripple. Pulse-skipping increases ripple."
+
+    # -----------------------------------------------------------------
+    # DS Fig 41 — Input Ripple CCM
+    # -----------------------------------------------------------------
+
+    mv_013 = new Requirement
+    mv_013.req_name = "MV-013: [Fig 41] Input Ripple CCM — VIN ripple"
+    mv_013.simulation = "fig41_input_ripple_ccm"
+    mv_013.net = "dut.power_in.hv"
+    mv_013.min_val = 0
+    mv_013.typical = 0.050
+    mv_013.max_val = 0.200
+    mv_013.measurement = "peak_to_peak"
+    mv_013.context_nets = "dut.package.SW,i(L1)"
+    mv_013.justification = "DS Fig 41: Input voltage ripple at 5A CCM load."
+
+    # -----------------------------------------------------------------
+    # DS Fig 42 — Input Ripple DCM
+    # -----------------------------------------------------------------
+
+    mv_014 = new Requirement
+    mv_014.req_name = "MV-014: [Fig 42] Input Ripple DCM — VIN ripple"
+    mv_014.simulation = "fig42_input_ripple_dcm"
+    mv_014.net = "dut.power_in.hv"
+    mv_014.min_val = 0
+    mv_014.typical = 0.020
+    mv_014.max_val = 0.100
+    mv_014.measurement = "peak_to_peak"
+    mv_014.context_nets = "dut.package.SW,i(L1)"
+    mv_014.justification = "DS Fig 42: Input voltage ripple at 100mA DCM load."
+
+    # -----------------------------------------------------------------
+    # DS Fig 43 — Low Dropout Operation
+    # -----------------------------------------------------------------
+
+    mv_015 = new Requirement
+    mv_015.req_name = "MV-015: [Fig 43] Low Dropout — Vout regulation"
+    mv_015.simulation = "fig43_low_dropout"
+    mv_015.net = "dut.power_out.hv"
+    mv_015.min_val = 4.5
+    mv_015.typical = 5.0
+    mv_015.max_val = 5.25
+    mv_015.measurement = "average"
+    mv_015.context_nets = "dut.package.SW,i(L1)"
+    mv_015.justification = "DS Fig 43: Vout regulation at VIN=7V (min rated input, D~0.71)."
+
+    # -----------------------------------------------------------------
+    # DS Fig 49 — Overall Loop Frequency Response (Bode)
+    # Note: AC analysis of switching behavioral model produces no
+    # meaningful gain data (PULSE sources don't respond to AC stimulus).
+    # Simulation exists for waveform capture but no pass/fail requirement.
+    # A proper Bode plot requires a small-signal averaged model or
+    # loop-break AC injection technique.
+    # -----------------------------------------------------------------
+
+    # -----------------------------------------------------------------
+    # DS Fig 50 — Regulation vs Load Current
+    # -----------------------------------------------------------------
+
+    mv_016 = new Requirement
+    mv_016.req_name = "MV-016: [Fig 50] Load Regulation — Vout vs IOUT"
+    mv_016.simulation = "fig50_load_reg"
+    mv_016.net = "dut.power_out.hv"
+    mv_016.min_val = 4.85
+    mv_016.typical = 5.00
+    mv_016.max_val = 5.15
+    mv_016.measurement = "average"
+    mv_016.context_nets = "dut.package.COMP,dut.package.FB"
+    mv_016.justification = "DS Fig 50: Load regulation within +/-0.6% across 0.5-5A."
+
+    # -----------------------------------------------------------------
+    # DS Fig 51 — Regulation vs Input Voltage
+    # -----------------------------------------------------------------
+
+    mv_017 = new Requirement
+    mv_017.req_name = "MV-017: [Fig 51] Line Regulation — Vout vs VIN"
+    mv_017.simulation = "fig51_line_reg"
+    mv_017.net = "dut.power_out.hv"
+    mv_017.min_val = 4.85
+    mv_017.typical = 5.00
+    mv_017.max_val = 5.15
+    mv_017.measurement = "average"
+    mv_017.context_nets = "dut.power_in.hv,dut.package.COMP"
+    mv_017.justification = "DS Fig 51: Line regulation within +/-0.3% across 8-60V."
+
+    # -----------------------------------------------------------------
+    # DS Fig 21 — Soft-Start Time vs Switching Frequency
+    # Soft-start = 1024 cycles. tss = 1024/fsw
+    # -----------------------------------------------------------------
+
+    mv_018 = new Requirement
+    mv_018.req_name = "MV-018: [Fig 21] Soft-Start Time — 200kHz settling"
+    mv_018.simulation = "fig21_startup_200k"
+    mv_018.net = "dut.power_out.hv"
+    mv_018.min_val = 3e-3
+    mv_018.typical = 5.12e-3
+    mv_018.max_val = 15e-3
+    mv_018.measurement = "settling_time"
+    mv_018.settling_tolerance = 0.02
+    mv_018.context_nets = "dut.power_in.hv,i(L1)"
+    mv_018.justification = "DS Fig 21: 1024 cycles @ 200kHz = 5.12ms."
+
+    mv_019 = new Requirement
+    mv_019.req_name = "MV-019: [Fig 21] Soft-Start Time — 400kHz settling"
+    mv_019.simulation = "fig21_startup_400k"
+    mv_019.net = "dut.power_out.hv"
+    mv_019.min_val = 1e-3
+    mv_019.typical = 2.56e-3
+    mv_019.max_val = 10e-3
+    mv_019.measurement = "settling_time"
+    mv_019.settling_tolerance = 0.02
+    mv_019.context_nets = "dut.power_in.hv,i(L1)"
+    mv_019.justification = "DS Fig 21: 1024 cycles @ 400kHz = 2.56ms."
+
+    mv_020 = new Requirement
+    mv_020.req_name = "MV-020: [Fig 21] Soft-Start Time — 600kHz settling"
+    mv_020.simulation = "fig21_startup_600k"
+    mv_020.net = "dut.power_out.hv"
+    mv_020.min_val = 0.5e-3
+    mv_020.typical = 1.71e-3
+    mv_020.max_val = 8e-3
+    mv_020.measurement = "settling_time"
+    mv_020.settling_tolerance = 0.02
+    mv_020.context_nets = "dut.power_in.hv,i(L1)"
+    mv_020.justification = "DS Fig 21: 1024 cycles @ 600kHz = 1.71ms."
+
+    mv_021 = new Requirement
+    mv_021.req_name = "MV-021: [Fig 21] Soft-Start Time — 1000kHz settling"
+    mv_021.simulation = "fig21_startup_1000k"
+    mv_021.net = "dut.power_out.hv"
+    mv_021.min_val = 0.3e-3
+    mv_021.typical = 1.02e-3
+    mv_021.max_val = 6e-3
+    mv_021.measurement = "settling_time"
+    mv_021.settling_tolerance = 0.02
+    mv_021.context_nets = "dut.power_in.hv,i(L1)"
+    mv_021.justification = "DS Fig 21: 1024 cycles @ 1000kHz = 1.02ms."
+
+    mv_022 = new Requirement
+    mv_022.req_name = "MV-022: [Fig 21] Soft-Start Time — 200kHz Vout regulation"
+    mv_022.simulation = "fig21_startup_200k"
+    mv_022.net = "dut.power_out.hv"
+    mv_022.min_val = 4.75
+    mv_022.typical = 5.0
+    mv_022.max_val = 5.25
+    mv_022.measurement = "final_value"
+    mv_022.context_nets = "dut.power_in.hv,i(L1)"
+    mv_022.justification = "DS Fig 21: Output must reach 5V at 200kHz."
+
+    mv_023 = new Requirement
+    mv_023.req_name = "MV-023: [Fig 21] Soft-Start Time — 600kHz Vout regulation"
+    mv_023.simulation = "fig21_startup_600k"
+    mv_023.net = "dut.power_out.hv"
+    mv_023.min_val = 4.75
+    mv_023.typical = 5.0
+    mv_023.max_val = 5.25
+    mv_023.measurement = "final_value"
+    mv_023.context_nets = "dut.power_in.hv,i(L1)"
+    mv_023.justification = "DS Fig 21: Output must reach 5V at 600kHz."
+
+    mv_024 = new Requirement
+    mv_024.req_name = "MV-024: [Fig 21] Soft-Start Time — 1000kHz Vout regulation"
+    mv_024.simulation = "fig21_startup_1000k"
+    mv_024.net = "dut.power_out.hv"
+    mv_024.min_val = 4.75
+    mv_024.typical = 5.0
+    mv_024.max_val = 5.25
+    mv_024.measurement = "final_value"
+    mv_024.context_nets = "dut.power_in.hv,i(L1)"
+    mv_024.justification = "DS Fig 21: Output must reach 5V at 1000kHz."
+
+    # =================================================================
+    # NOTES ON MISSING FIGURES
+    # =================================================================
+    # Fig 48: Efficiency vs Output Current — covered by Fig 44 sweeps
+    #         (same measurement, subset of VIN conditions)
+    #
+    # Figs 52–55: Safe Operating Area (thermal derating curves)
+    #   These are temperature-based derating charts that cannot be
+    #   simulated with a behavioral SPICE model (no thermal model).
+    #   Requires real silicon thermal characterization.

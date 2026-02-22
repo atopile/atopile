@@ -381,7 +381,7 @@ async function refreshVariables(): Promise<void> {
   }
 }
 
-async function refreshRequirements(): Promise<void> {
+export async function refreshRequirements(): Promise<void> {
   const state = useStore.getState();
   if (!state.selectedProjectRoot) return;
   const targetName = getSelectedTargetName();

@@ -1,0 +1,539 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+import SimulationTransient
+import SimulationSweep
+import Requirement
+import SweepOverlayChart
+from "buck_converter.ato" import TI_TPS54560
+
+# =============================================================================
+# Design Validation — TPS54560 Buck Converter
+#
+# Comprehensive benchtop-equivalent validation of the 12V→5V/5A/400kHz design.
+# Tests mirror what an EE would measure when boards arrive:
+#
+#   S — Startup performance (settling time, overshoot)
+#   L — Line regulation (Vout vs VIN)
+#   R — Load regulation (Vout vs ILOAD)
+#   T — Load transient (step & dump response)
+#   V — Line transient (VIN step & dump response)
+#   F — Switching frequency verification
+#   P — Output ripple (peak-to-peak)
+#   E — Efficiency vs load
+#
+# SPICE netlist element map (from circuit.spice):
+#   V1 = input voltage source on dut_package_2 (VIN node)
+#   R5 = load resistor 1Ω (dut_power_out_hv → 0)
+#   X1 = TPS54560_TRANS subcircuit (FS=1068k default, override to 400k)
+#   L1 = inductor 6.8µH
+#
+# NOTE: All ato timing values use plain decimal (not scientific notation).
+# =============================================================================
+
+module DesignValidation:
+    "Design validation — comprehensive operating condition verification."
+
+    dut = new TI_TPS54560
+
+    # =================================================================
+    # S — STARTUP PERFORMANCE
+    # =================================================================
+    # Measures how quickly Vout reaches regulation after VIN is applied.
+    # The TPS54560 soft-start is 1024 switching cycles:
+    #   At 400kHz: t_ss = 1024/400k = 2.56ms
+    # Expected settling: ~3-4ms to final value.
+
+    sim_startup_12v = new SimulationTransient
+    sim_startup_12v.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_startup_12v.time_stop = 0.015
+    sim_startup_12v.time_step = 0.000001
+    sim_startup_12v.remove_elements = "X1"
+    sim_startup_12v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_s01 = new Requirement
+    req_s01.req_name = "DV-S01: Startup settling — VIN=12V"
+    req_s01.simulation = "sim_startup_12v"
+    req_s01.net = "dut.power_out.hv"
+    req_s01.measurement = "settling_time"
+    req_s01.settling_tolerance = "0.03"
+    req_s01.min_val = 0
+    req_s01.max_val = 0.005
+    req_s01.typical = 0.003
+    req_s01.context_nets = "dut.package.SW,dut.package.COMP"
+    req_s01.justification = "Output must settle within 5ms at VIN=12V (DS soft-start = 2.56ms at 400kHz)."
+
+    req_s02 = new Requirement
+    req_s02.req_name = "DV-S02: Startup overshoot — VIN=12V"
+    req_s02.simulation = "sim_startup_12v"
+    req_s02.net = "dut.power_out.hv"
+    req_s02.measurement = "overshoot"
+    req_s02.min_val = 0
+    req_s02.max_val = 10
+    req_s02.typical = 3
+    req_s02.context_nets = "dut.package.SW,dut.package.COMP"
+    req_s02.justification = "Overshoot must be <10% at startup (DS Figure 34 reference)."
+
+    sim_startup_48v = new SimulationTransient
+    sim_startup_48v.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    sim_startup_48v.time_stop = 0.015
+    sim_startup_48v.time_step = 0.000001
+    sim_startup_48v.remove_elements = "X1"
+    sim_startup_48v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_s03 = new Requirement
+    req_s03.req_name = "DV-S03: Startup settling — VIN=48V"
+    req_s03.simulation = "sim_startup_48v"
+    req_s03.net = "dut.power_out.hv"
+    req_s03.measurement = "settling_time"
+    req_s03.settling_tolerance = "0.03"
+    req_s03.min_val = 0
+    req_s03.max_val = 0.005
+    req_s03.typical = 0.003
+    req_s03.context_nets = "dut.package.SW,dut.package.COMP"
+    req_s03.justification = "Output must settle within 5ms at VIN=48V."
+
+    req_s04 = new Requirement
+    req_s04.req_name = "DV-S04: Startup overshoot — VIN=48V"
+    req_s04.simulation = "sim_startup_48v"
+    req_s04.net = "dut.power_out.hv"
+    req_s04.measurement = "overshoot"
+    req_s04.min_val = 0
+    req_s04.max_val = 10
+    req_s04.typical = 3
+    req_s04.context_nets = "dut.package.SW,dut.package.COMP"
+    req_s04.justification = "Overshoot must be <10% at startup (max VIN worst case)."
+
+    # =================================================================
+    # L — LINE REGULATION (Vout vs VIN)
+    # =================================================================
+    # Measures output voltage accuracy across the input voltage range.
+    # DS Figure 50: line regulation ±0.6% from 6-60V.
+    # Requirement: Vout = 5.00V ±3% (4.85V to 5.15V)
+
+    line_reg = new SimulationSweep
+    line_reg.param_name = "VIN"
+    line_reg.param_values = "12,18,24,36,48"
+    line_reg.param_unit = "V"
+    line_reg.spice_template = "V1 dut_power_in_hv 0 PULSE(0 {VIN} 0 10u 10u 10 10)"
+    line_reg.time_start = 0.010
+    line_reg.time_stop = 0.0105
+    line_reg.time_step = 0.0000005
+    line_reg.remove_elements = "X1"
+    line_reg.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_l01 = new Requirement
+    req_l01.req_name = "DV-L01: Line regulation — Vout vs VIN"
+    req_l01.simulation = "line_reg"
+    req_l01.net = "dut.power_out.hv"
+    req_l01.measurement = "average"
+    req_l01.min_val = 4.85
+    req_l01.max_val = 5.15
+    req_l01.typical = 5.0
+    req_l01.context_nets = "dut.package.COMP,dut.package.FB"
+    req_l01.justification = "DS Fig 50: Vout ±3% across 12-48V input range at 5A load."
+
+    # =================================================================
+    # R — LOAD REGULATION (Vout vs ILOAD)
+    # =================================================================
+    # Measures output voltage accuracy across load current.
+    # DS Figure 50: load regulation ±0.6% from 0-5A.
+    # Requirement: Vout = 5.00V ±3% (4.85V to 5.15V)
+    # Uses current source load (removes R5, adds I_LOAD).
+
+    load_reg_12v = new SimulationSweep
+    load_reg_12v.param_name = "ILOAD"
+    load_reg_12v.param_values = "0.5,1,2,3,4,5"
+    load_reg_12v.param_unit = "A"
+    load_reg_12v.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    load_reg_12v.time_start = 0.010
+    load_reg_12v.time_stop = 0.0105
+    load_reg_12v.time_step = 0.0000005
+    load_reg_12v.remove_elements = "X1,R5"
+    load_reg_12v.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_LOAD dut_power_out_hv 0 DC {ILOAD}"
+
+    req_r01 = new Requirement
+    req_r01.req_name = "DV-R01: Load regulation — VIN=12V"
+    req_r01.simulation = "load_reg_12v"
+    req_r01.net = "dut.power_out.hv"
+    req_r01.measurement = "average"
+    req_r01.min_val = 4.85
+    req_r01.max_val = 5.15
+    req_r01.typical = 5.0
+    req_r01.context_nets = "dut.package.COMP,dut.package.FB"
+    req_r01.justification = "DS Fig 50: Vout ±3% across 0.5-5A load at VIN=12V."
+
+    load_reg_48v = new SimulationSweep
+    load_reg_48v.param_name = "ILOAD"
+    load_reg_48v.param_values = "0.5,1,2,3,4,5"
+    load_reg_48v.param_unit = "A"
+    load_reg_48v.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    load_reg_48v.time_start = 0.010
+    load_reg_48v.time_stop = 0.0105
+    load_reg_48v.time_step = 0.0000005
+    load_reg_48v.remove_elements = "X1,R5"
+    load_reg_48v.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_LOAD dut_power_out_hv 0 DC {ILOAD}"
+
+    req_r02 = new Requirement
+    req_r02.req_name = "DV-R02: Load regulation — VIN=48V"
+    req_r02.simulation = "load_reg_48v"
+    req_r02.net = "dut.power_out.hv"
+    req_r02.measurement = "average"
+    req_r02.min_val = 4.85
+    req_r02.max_val = 5.15
+    req_r02.typical = 5.0
+    req_r02.context_nets = "dut.package.COMP,dut.package.FB"
+    req_r02.justification = "DS Fig 50: Vout ±3% across 0.5-5A load at VIN=48V."
+
+    # =================================================================
+    # T — LOAD TRANSIENT RESPONSE
+    # =================================================================
+    # Measures Vout deviation during sudden load changes.
+    # DS Figure 42-43: load step/dump response.
+    # Keeps R5 (1Ω base load = 5A at 5V). Uses I_STEP to offset the
+    # load current, then removes the offset to create the step/dump.
+    #
+    # Load STEP (1A→5A): I_STEP injects -4A (reducing net load to ~1A),
+    #   then steps to 0A at 10ms (net load returns to 5A).
+    # Load DUMP (5A→1A): I_STEP starts at 0A (net load 5A),
+    #   then injects -4A at 10ms (net load drops to ~1A).
+
+    sim_load_step = new SimulationTransient
+    sim_load_step.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_load_step.time_stop = 0.011
+    sim_load_step.time_step = 0.0000001
+    sim_load_step.remove_elements = "X1"
+    sim_load_step.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_STEP dut_power_out_hv 0 PULSE(-4 0 10e-3 1e-6 1e-6 500e-6 10)"
+
+    req_t01 = new Requirement
+    req_t01.req_name = "DV-T01: Load step 1→5A — VIN=12V"
+    req_t01.simulation = "sim_load_step"
+    req_t01.net = "dut.power_out.hv"
+    req_t01.measurement = "peak_to_peak"
+    req_t01.tran_start = 0.0099
+    req_t01.min_val = 0
+    req_t01.max_val = 0.5
+    req_t01.typical = 0.2
+    req_t01.context_nets = "dut.package.SW,dut.package.COMP,i(l1)"
+    req_t01.justification = "DS Fig 42: Vout deviation <500mV during 1→5A load step."
+
+    sim_load_dump = new SimulationTransient
+    sim_load_dump.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_load_dump.time_stop = 0.011
+    sim_load_dump.time_step = 0.0000001
+    sim_load_dump.remove_elements = "X1"
+    sim_load_dump.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_STEP dut_power_out_hv 0 PULSE(0 -4 10e-3 1e-6 1e-6 500e-6 10)"
+
+    req_t02 = new Requirement
+    req_t02.req_name = "DV-T02: Load dump 5→1A — VIN=12V"
+    req_t02.simulation = "sim_load_dump"
+    req_t02.net = "dut.power_out.hv"
+    req_t02.measurement = "peak_to_peak"
+    req_t02.tran_start = 0.0099
+    req_t02.min_val = 0
+    req_t02.max_val = 0.5
+    req_t02.typical = 0.2
+    req_t02.context_nets = "dut.package.SW,dut.package.COMP,i(l1)"
+    req_t02.justification = "DS Fig 43: Vout deviation <500mV during 5→1A load dump."
+
+    # VIN=48V load transient — worst-case duty cycle (~10%)
+    sim_load_step_48v = new SimulationTransient
+    sim_load_step_48v.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    sim_load_step_48v.time_stop = 0.011
+    sim_load_step_48v.time_step = 0.0000001
+    sim_load_step_48v.remove_elements = "X1"
+    sim_load_step_48v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_STEP dut_power_out_hv 0 PULSE(-4 0 10e-3 1e-6 1e-6 500e-6 10)"
+
+    req_t03 = new Requirement
+    req_t03.req_name = "DV-T03: Load step 1→5A — VIN=48V"
+    req_t03.simulation = "sim_load_step_48v"
+    req_t03.net = "dut.power_out.hv"
+    req_t03.measurement = "peak_to_peak"
+    req_t03.tran_start = 0.0099
+    req_t03.min_val = 0
+    req_t03.max_val = 0.5
+    req_t03.typical = 0.2
+    req_t03.context_nets = "dut.package.SW,dut.package.COMP,i(l1)"
+    req_t03.justification = "Load step at VIN=48V (low duty cycle): Vout deviation <500mV."
+
+    sim_load_dump_48v = new SimulationTransient
+    sim_load_dump_48v.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    sim_load_dump_48v.time_stop = 0.011
+    sim_load_dump_48v.time_step = 0.0000001
+    sim_load_dump_48v.remove_elements = "X1"
+    sim_load_dump_48v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|I_STEP dut_power_out_hv 0 PULSE(0 -4 10e-3 1e-6 1e-6 500e-6 10)"
+
+    req_t04 = new Requirement
+    req_t04.req_name = "DV-T04: Load dump 5→1A — VIN=48V"
+    req_t04.simulation = "sim_load_dump_48v"
+    req_t04.net = "dut.power_out.hv"
+    req_t04.measurement = "peak_to_peak"
+    req_t04.tran_start = 0.0099
+    req_t04.min_val = 0
+    req_t04.max_val = 0.5
+    req_t04.typical = 0.2
+    req_t04.context_nets = "dut.package.SW,dut.package.COMP,i(l1)"
+    req_t04.justification = "Load dump at VIN=48V (low duty cycle): Vout deviation <500mV."
+
+    # =================================================================
+    # V — LINE TRANSIENT RESPONSE
+    # =================================================================
+    # Measures Vout deviation during sudden input voltage changes.
+    # DS Figure 44-45: line step/dump response.
+    # Test: VIN 12→24V step, then 24→12V dump at 5A load.
+    # VIN starts at initial value from t=0, so converter starts normally.
+
+    sim_line_step = new SimulationTransient
+    sim_line_step.spice = "V1 dut_power_in_hv 0 PULSE(12 24 10e-3 1e-6 1e-6 500e-6 10)"
+    sim_line_step.time_stop = 0.011
+    sim_line_step.time_step = 0.0000001
+    sim_line_step.remove_elements = "X1"
+    sim_line_step.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_v01 = new Requirement
+    req_v01.req_name = "DV-V01: Line step 12→24V — 5A load"
+    req_v01.simulation = "sim_line_step"
+    req_v01.net = "dut.power_out.hv"
+    req_v01.measurement = "peak_to_peak"
+    req_v01.tran_start = 0.0095
+    req_v01.min_val = 0
+    req_v01.max_val = 0.5
+    req_v01.typical = 0.15
+    req_v01.context_nets = "dut.package.SW,dut.package.COMP,dut.power_in.hv"
+    req_v01.justification = "DS Fig 44: Vout deviation <500mV during VIN 12→24V step."
+
+    sim_line_dump = new SimulationTransient
+    sim_line_dump.spice = "V1 dut_power_in_hv 0 PULSE(24 12 10e-3 1e-6 1e-6 500e-6 10)"
+    sim_line_dump.time_stop = 0.011
+    sim_line_dump.time_step = 0.0000001
+    sim_line_dump.remove_elements = "X1"
+    sim_line_dump.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_v02 = new Requirement
+    req_v02.req_name = "DV-V02: Line dump 24→12V — 5A load"
+    req_v02.simulation = "sim_line_dump"
+    req_v02.net = "dut.power_out.hv"
+    req_v02.measurement = "peak_to_peak"
+    req_v02.tran_start = 0.0095
+    req_v02.min_val = 0
+    req_v02.max_val = 0.5
+    req_v02.typical = 0.15
+    req_v02.context_nets = "dut.package.SW,dut.package.COMP,dut.power_in.hv"
+    req_v02.justification = "DS Fig 45: Vout deviation <500mV during VIN 24→12V dump."
+
+    # Full-range line transient (12→48V and 48→12V) — worst case
+    sim_line_step_full = new SimulationTransient
+    sim_line_step_full.spice = "V1 dut_power_in_hv 0 PULSE(12 48 10e-3 1e-6 1e-6 500e-6 10)"
+    sim_line_step_full.time_stop = 0.011
+    sim_line_step_full.time_step = 0.0000001
+    sim_line_step_full.remove_elements = "X1"
+    sim_line_step_full.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_v03 = new Requirement
+    req_v03.req_name = "DV-V03: Line step 12→48V — 5A load"
+    req_v03.simulation = "sim_line_step_full"
+    req_v03.net = "dut.power_out.hv"
+    req_v03.measurement = "peak_to_peak"
+    req_v03.tran_start = 0.0095
+    req_v03.min_val = 0
+    req_v03.max_val = 0.5
+    req_v03.typical = 0.2
+    req_v03.context_nets = "dut.package.SW,dut.package.COMP,dut.power_in.hv"
+    req_v03.justification = "Full-range VIN step (12→48V): Vout deviation <500mV."
+
+    sim_line_dump_full = new SimulationTransient
+    sim_line_dump_full.spice = "V1 dut_power_in_hv 0 PULSE(48 12 10e-3 1e-6 1e-6 500e-6 10)"
+    sim_line_dump_full.time_stop = 0.011
+    sim_line_dump_full.time_step = 0.0000001
+    sim_line_dump_full.remove_elements = "X1"
+    sim_line_dump_full.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_v04 = new Requirement
+    req_v04.req_name = "DV-V04: Line dump 48→12V — 5A load"
+    req_v04.simulation = "sim_line_dump_full"
+    req_v04.net = "dut.power_out.hv"
+    req_v04.measurement = "peak_to_peak"
+    req_v04.tran_start = 0.0095
+    req_v04.min_val = 0
+    req_v04.max_val = 0.5
+    req_v04.typical = 0.2
+    req_v04.context_nets = "dut.package.SW,dut.package.COMP,dut.power_in.hv"
+    req_v04.justification = "Full-range VIN dump (48→12V): Vout deviation <500mV."
+
+    # =================================================================
+    # F — SWITCHING FREQUENCY VERIFICATION
+    # =================================================================
+    # Verifies switching frequency at the SW node.
+    # DS Eq.6: fsw = 101756 / (R_RT_kohm ^ 1.008) kHz
+    # At R_RT = 243kΩ: fsw ≈ 400kHz
+    # Behavioral model uses FS parameter = 400kHz.
+    # Requirement: 400kHz ±10% (360k to 440kHz).
+
+    sim_fsw_12v = new SimulationTransient
+    sim_fsw_12v.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_fsw_12v.time_start = 0.010
+    sim_fsw_12v.time_stop = 0.0101
+    sim_fsw_12v.time_step = 0.00000005
+    sim_fsw_12v.remove_elements = "X1"
+    sim_fsw_12v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_f01 = new Requirement
+    req_f01.req_name = "DV-F01: Switching frequency — VIN=12V"
+    req_f01.simulation = "sim_fsw_12v"
+    req_f01.net = "dut.package.SW"
+    req_f01.measurement = "frequency"
+    req_f01.min_val = 360000
+    req_f01.max_val = 440000
+    req_f01.typical = 400000
+    req_f01.context_nets = "dut.power_out.hv"
+    req_f01.justification = "DS Eq.6: fsw = 400kHz ±10% (R_RT=243kΩ)."
+
+    sim_fsw_48v = new SimulationTransient
+    sim_fsw_48v.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    sim_fsw_48v.time_start = 0.010
+    sim_fsw_48v.time_stop = 0.0101
+    sim_fsw_48v.time_step = 0.00000005
+    sim_fsw_48v.remove_elements = "X1"
+    sim_fsw_48v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_f02 = new Requirement
+    req_f02.req_name = "DV-F02: Switching frequency — VIN=48V"
+    req_f02.simulation = "sim_fsw_48v"
+    req_f02.net = "dut.package.SW"
+    req_f02.measurement = "frequency"
+    req_f02.min_val = 360000
+    req_f02.max_val = 440000
+    req_f02.typical = 400000
+    req_f02.context_nets = "dut.power_out.hv"
+    req_f02.justification = "DS Eq.6: fsw should remain 400kHz ±10% at VIN=48V."
+
+    # =================================================================
+    # P — OUTPUT RIPPLE
+    # =================================================================
+    # Measures peak-to-peak voltage ripple on Vout at steady state.
+    # DS Eq.31-33: with 3×47µF output caps, expected ripple ~10-25mV.
+    # Requirement: ripple < 50mV.
+    # Uses small time window in steady state for accurate P-P measurement.
+
+    sim_ripple_12v = new SimulationTransient
+    sim_ripple_12v.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_ripple_12v.time_start = 0.010
+    sim_ripple_12v.time_stop = 0.01005
+    sim_ripple_12v.time_step = 0.00000005
+    sim_ripple_12v.remove_elements = "X1"
+    sim_ripple_12v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_p01 = new Requirement
+    req_p01.req_name = "DV-P01: Output ripple — VIN=12V, 5A"
+    req_p01.simulation = "sim_ripple_12v"
+    req_p01.net = "dut.power_out.hv"
+    req_p01.measurement = "peak_to_peak"
+    req_p01.min_val = 0
+    req_p01.max_val = 0.05
+    req_p01.typical = 0.015
+    req_p01.context_nets = "dut.package.SW,i(l1)"
+    req_p01.justification = "DS Eq.31-33: output ripple <50mV with 3x47µF output caps."
+
+    sim_ripple_48v = new SimulationTransient
+    sim_ripple_48v.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    sim_ripple_48v.time_start = 0.010
+    sim_ripple_48v.time_stop = 0.01005
+    sim_ripple_48v.time_step = 0.00000005
+    sim_ripple_48v.remove_elements = "X1"
+    sim_ripple_48v.extra_spice = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k"
+
+    req_p02 = new Requirement
+    req_p02.req_name = "DV-P02: Output ripple — VIN=48V, 5A"
+    req_p02.simulation = "sim_ripple_48v"
+    req_p02.net = "dut.power_out.hv"
+    req_p02.measurement = "peak_to_peak"
+    req_p02.min_val = 0
+    req_p02.max_val = 0.05
+    req_p02.typical = 0.025
+    req_p02.context_nets = "dut.package.SW,i(l1)"
+    req_p02.justification = "DS Eq.31-33: output ripple <50mV at VIN=48V worst case."
+
+    # =================================================================
+    # E — EFFICIENCY VS LOAD
+    # =================================================================
+    # Measures η = Pout/Pin at each load current across input voltages.
+    # DS Figure 11-14: efficiency curves at various VIN.
+    # Requirement: η > 70% across 0.5-5A (proof of concept bounds).
+
+    eff_vin12 = new SimulationSweep
+    eff_vin12.param_name = "ILOAD"
+    eff_vin12.param_values = "0.5,1,2,3,4,5"
+    eff_vin12.param_unit = "A"
+    eff_vin12.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    eff_vin12.time_start = 0.010
+    eff_vin12.time_stop = 0.0105
+    eff_vin12.time_step = 0.0000005
+    eff_vin12.remove_elements = "X1,R5"
+    eff_vin12.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    eff_vin24 = new SimulationSweep
+    eff_vin24.param_name = "ILOAD"
+    eff_vin24.param_values = "0.5,1,2,3,4,5"
+    eff_vin24.param_unit = "A"
+    eff_vin24.spice = "V1 dut_power_in_hv 0 PULSE(0 24 0 10u 10u 10 10)"
+    eff_vin24.time_start = 0.010
+    eff_vin24.time_stop = 0.0105
+    eff_vin24.time_step = 0.0000005
+    eff_vin24.remove_elements = "X1,R5"
+    eff_vin24.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    eff_vin36 = new SimulationSweep
+    eff_vin36.param_name = "ILOAD"
+    eff_vin36.param_values = "0.5,1,2,3,4,5"
+    eff_vin36.param_unit = "A"
+    eff_vin36.spice = "V1 dut_power_in_hv 0 PULSE(0 36 0 10u 10u 10 10)"
+    eff_vin36.time_start = 0.010
+    eff_vin36.time_stop = 0.0105
+    eff_vin36.time_step = 0.0000005
+    eff_vin36.remove_elements = "X1,R5"
+    eff_vin36.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    eff_vin48 = new SimulationSweep
+    eff_vin48.param_name = "ILOAD"
+    eff_vin48.param_values = "0.5,1,2,3,4,5"
+    eff_vin48.param_unit = "A"
+    eff_vin48.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    eff_vin48.time_start = 0.010
+    eff_vin48.time_stop = 0.0105
+    eff_vin48.time_step = 0.0000005
+    eff_vin48.remove_elements = "X1,R5"
+    eff_vin48.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # NOTE: Efficiency pass/fail requirements are omitted because the
+    # behavioral switch model (S_hs with Ron/Roff) cannot accurately model
+    # input current, especially at high step-down ratios.  At light loads
+    # the measured i(V1) is too low (η > 100%) and at heavy loads with
+    # high VIN it is too high (η < 50%).  The overlay chart below still
+    # provides a visual reference.  Accurate efficiency validation requires
+    # a transistor-level MOSFET model or an analytical loss budget.
+
+    # =================================================================
+    # OVERLAY CHARTS — combined views
+    # =================================================================
+
+    chart_efficiency = new SweepOverlayChart
+    chart_efficiency.title = "Efficiency vs Load Current"
+    chart_efficiency.x_label = "Load Current (A)"
+    chart_efficiency.y_label = "Efficiency (%)"
+    chart_efficiency.simulations = "eff_vin12,eff_vin24,eff_vin36,eff_vin48"
+    chart_efficiency.series_labels = "VIN=12V,VIN=24V,VIN=36V,VIN=48V"
+    chart_efficiency.net = "dut.power_out.hv"
+    chart_efficiency.measurement = "efficiency"
+    chart_efficiency.context_nets = "i(V1),dut.power_in.hv,i(V_LSENSE)"
+    chart_efficiency.min_val = 70
+    chart_efficiency.max_val = 100
+
+    chart_load_reg = new SweepOverlayChart
+    chart_load_reg.title = "Load Regulation"
+    chart_load_reg.x_label = "Load Current (A)"
+    chart_load_reg.y_label = "Output Voltage (V)"
+    chart_load_reg.simulations = "load_reg_12v,load_reg_48v"
+    chart_load_reg.series_labels = "VIN=12V,VIN=48V"
+    chart_load_reg.net = "dut.power_out.hv"
+    chart_load_reg.measurement = "average"
+    chart_load_reg.min_val = 4.85
+    chart_load_reg.max_val = 5.15

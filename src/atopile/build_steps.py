@@ -783,10 +783,9 @@ def _write_requirements_json(
 
         # Attach transient config and time-series
         if capture == "transient":
-            tran_start = req.get_tran_start()
+            tran_start = req.get_tran_start() or 0
             tran_stop = req.get_tran_stop()
-            if tran_start and tran_start > 0:
-                entry["tranStart"] = tran_start
+            entry["tranStart"] = tran_start
             if tran_stop is not None:
                 entry["tranStop"] = tran_stop
 

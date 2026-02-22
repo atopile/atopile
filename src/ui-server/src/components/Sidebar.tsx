@@ -15,7 +15,7 @@ import { PackagesPanel } from './PackagesPanel';
 import { PartsSearchPanel } from './PartsSearchPanel';
 import { PartsDetailPanel } from './PartsDetailPanel';
 import { FileExplorerPanel } from './FileExplorerPanel';
-import { sendAction, sendActionWithResponse } from '../api/websocket';
+import { sendAction, sendActionWithResponse, refreshRequirements } from '../api/websocket';
 import { postMessage, isVsCodeWebview } from '../api/vscodeApi';
 import { useStore } from '../store';
 import { usePanelSizing } from '../hooks/usePanelSizing';
@@ -470,7 +470,7 @@ export function Sidebar() {
           </button>
           <button
             className={`tab-button ${activeTab === 'requirements' ? 'active' : ''}`}
-            onClick={() => setActiveTab('requirements')}
+            onClick={() => { setActiveTab('requirements'); void refreshRequirements(); }}
             data-tooltip="Requirements"
           >
             <CheckSquare size={14} />
