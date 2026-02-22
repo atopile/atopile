@@ -118,6 +118,174 @@ Always classify behavior as one of:
 
 This avoids false confidence and prevents hallucinated ato features.
 
+# 1.9 End-to-End Board Design Workflow
+
+This is the canonical sequence for designing a board in atopile. Follow these phases in order. Each phase has a gate condition — do not advance until the gate is met.
+
+### Phase 1: Requirements
+
+Capture electrical, mechanical, and interface requirements before writing code.
+
+- Input voltage/current, output rails, communication buses, sensors, actuators.
+- Board size constraints, connector placement, mounting hole needs.
+- Manufacturing constraints (layer count, assembly house capabilities).
+
+Gate: requirements are written down (even informally) before any `.ato` code.
+
+### Phase 2: High-level block design
+
+Define the architecture as modules and interfaces in `.ato`. Do not wire pins yet.
+
+- One integration module that composes child modules.
+- Each major subsystem (power, MCU, sensors, comms, IO) is its own module/file.
+- Public interfaces (`ElectricPower`, `I2C`, `SPI`, `UART`, etc.) at module boundaries.
+- Follow Section 12 decomposition rules.
+
+Gate: architecture plan exists with module boundaries, interface contracts, and file ownership.
+
+### Phase 3: Find existing packages
+
+Search the atopile package registry before building from scratch.
+
+- Use `packages_search` to find existing drivers for ICs, connectors, and modules.
+- Use `packages_install` to add dependencies.
+- Use `package_ato_read` to inspect package source and understand its public interface.
+- Prefer reusing a well-tested package over writing a new driver module.
+
+Gate: all major ICs/connectors have either a package dependency or a plan to write a custom driver.
+
+### Phase 4: Part selection
+
+Choose components using generics + constraints wherever possible.
+
+- Use stdlib generics (`Resistor`, `Capacitor`, `Inductor`, `Diode`, `LED`, `Fuse`) with value + package constraints for auto-picking. Prefer generics over locked parts.
+- Use `parts_search` only when a specific part is needed (IC, connector, specialized component).
+- Use `parts_install` for parts that need explicit LCSC IDs.
+- Lock only high-risk parts (MCU, PMIC, RF, connectors). Leave commodity passives auto-picked.
+- Follow Section 5.6–5.7 picking strategy.
+
+Gate: every component is either a constrained generic or an explicitly selected part.
+
+### Phase 5: Detailed design
+
+Wire connectivity, add constraints and equations, complete the design.
+
+- Wire modules through interfaces using `~` (or `~>` for bridge/series paths).
+- Add parameter constraints (`assert ... within ...`) for all key electrical properties.
+- Add decoupling, pullups, and protection per Section 7 patterns.
+- Follow Section 4 invariants throughout.
+
+Gate: design is complete — all modules wired, all constraints declared, all interfaces connected.
+
+### Phase 6: Build + fix loop
+
+Run the build and fix issues iteratively until it passes.
+
+- Run `build_run` and inspect results.
+- Check `build_logs_search` for errors/warnings.
+- Use `design_diagnostics` for silent failures.
+- Fix issues using Section 9 failure repair playbooks.
+- Repeat until build passes cleanly.
+
+Gate: build completes without errors.
+
+### Phase 7: Board shape
+
+Add a `RectangularBoardShape` to define the physical PCB outline.
+
+```ato
+import RectangularBoardShape
+
+board = new RectangularBoardShape
+board.width = 30mm
+board.height = 40mm
+board.corner_radius = 2mm
+board.mounting_hole_diameter = 3.2mm
+```
+
+- `width` and `height` are required (in mm).
+- `corner_radius` is required (use `0mm` for sharp corners). Cannot exceed half the smallest dimension.
+- `mounting_hole_diameter` is optional — creates 4 corner mounting holes when set.
+- Only one board shape per design is allowed.
+- `RectangularBoardShape` is stdlib-allowlisted — use bare `import`, no path needed.
+
+Gate: build passes with board outline visible in PCB.
+
+### Phase 8: Manual placement
+
+Place critical components that have fixed mechanical positions.
+
+- Use `layout_set_component_position` for connectors, mounting holes, and edge-constrained parts.
+- Place USB connectors, power jacks, debug headers, and any mechanically constrained component.
+- Check `placement_check` in each result to confirm `on_board` status and `collision_count`.
+
+Gate: all mechanically constrained components are placed and on-board.
+
+### Phase 9: Review placement
+
+Verify manual placement before auto-placement.
+
+- Use `autolayout_request_screenshot` to generate board preview images.
+- Check that connectors are at board edges with correct orientation.
+- Check that mounting holes align with enclosure/mechanical requirements.
+- Iterate placement with `layout_set_component_position` until satisfied.
+
+Gate: manual placement looks correct in screenshot review.
+
+### Phase 10: Auto-placement
+
+Send remaining components for automatic placement.
+
+- Run `autolayout_run` for placement.
+- Monitor with `autolayout_status` (use `wait_seconds`/`poll_interval_seconds`).
+- Call `autolayout_fetch_to_layout` only when state is `awaiting_selection` or `completed`.
+- Each run is capped at 2 minutes. Use iterative cycles: run, review, resume with `resume_board_id`.
+
+Gate: auto-placement result fetched and applied.
+
+### Phase 11: Review auto-placement
+
+Verify component placement quality before routing.
+
+- Use `autolayout_request_screenshot` (2D and/or 3D).
+- Use `highlight_components` to spotlight specific areas on crowded boards.
+- Check for: components outside board outline, excessive crowding, poor grouping of related components.
+- If unsatisfied, adjust with `layout_set_component_position` and/or resume auto-placement.
+
+Gate: placement is acceptable — components grouped logically, within board outline, no collisions.
+
+### Phase 12: Auto-routing
+
+Send for automatic trace routing.
+
+- Use `autolayout_configure_board_intent` first to set ground pours, layer count, and stackup.
+- Run `autolayout_run` for routing.
+- Monitor and fetch as in Phase 10.
+- Resume with `resume_board_id` for iterative improvement passes.
+
+Gate: routing result fetched and applied.
+
+### Phase 13: Review auto-routing
+
+Verify routing quality.
+
+- Use `autolayout_request_screenshot` for visual review.
+- Run `layout_run_drc` to check design rule violations.
+- Review DRC errors (critical) and warnings (may be acceptable).
+- If quality is insufficient, resume routing with `resume_board_id` for another pass.
+
+Gate: DRC passes (or remaining violations are accepted) and routing looks clean.
+
+### Phase 14: Generate manufacturing outputs
+
+Produce files for fabrication and assembly.
+
+- Call `manufacturing_generate` to create Gerbers, drill files, BOM, and pick-and-place data.
+- Track with `build_logs_search`.
+- Inspect with `manufacturing_summary` to verify all outputs are present.
+
+Gate: manufacturing artifacts generated and verified.
+
 # 2. ato Mental Model + Semantics
 
 ## 2.1 Declarative graph model
@@ -2478,6 +2646,13 @@ Frequent stdlib modules:
 
 These are typically auto-pick enabled and respond well to value + package constraints.
 
+## 6.5.1 Board and mechanical modules
+
+- `RectangularBoardShape` — parameterized rectangular PCB outline with optional rounded corners and corner mounting holes. See Phase 7 in Section 1.9.
+- `MountingHole` — standalone mounting hole for mechanical attachment.
+- `TestPoint` — test point for debugging and measurement.
+- `NetTie` — net tie for connecting separate nets on the PCB.
+
 ## 6.6 Trait utilities relevant to ato authoring
 
 Common traits encountered in `.ato`:
@@ -3078,12 +3253,19 @@ This constrains line levels indirectly through Addressor behavior.
 #pragma experiment("BRIDGE_CONNECT")
 
 import ElectricPower
+import RectangularBoardShape
 
 from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
 from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
 from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
 
 module ESP32_MINIMAL:
+    # Board outline
+    board = new RectangularBoardShape
+    board.width = 30mm
+    board.height = 25mm
+    board.corner_radius = 2mm
+
     micro = new ESP32_C3_MINI_1
     usb_c = new USB2_0TypeCHorizontalConnector
     ldo_3V3 = new TI_TLV75901
@@ -3105,6 +3287,7 @@ module ESP32_MINIMAL:
   - USB bus power -> regulator -> MCU rail.
 - Uses bridge connect for power path composition.
 - Keeps external interfaces at module boundaries.
+- Includes board shape — every manufacturable design needs a physical outline.
 
 ### Reviewer cautions
 
@@ -3948,6 +4131,7 @@ Use this checklist for non-trivial designs before final output:
 - [ ] No duplicate connect statements for same net pair unless intentional and documented.
 - [ ] Experimental pragmas are only present when corresponding constructs are used.
 - [ ] Unused imports are removed.
+- [ ] Board shape is defined (`RectangularBoardShape` with width/height/corner_radius) per Phase 7 in Section 1.9.
 
 ## 12.6 Hierarchy examples
 

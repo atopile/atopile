@@ -221,12 +221,12 @@ export const api = {
       return fetchJSON<{ jobs: Record<string, unknown>[] }>(`/api/autolayout/jobs${query}`);
     },
 
-    getJob: (jobId: string, refresh: boolean = true) =>
+    getJob: (jobId: string, refresh: boolean = false) =>
       fetchJSON<{ job: Record<string, unknown> }>(
         `/api/autolayout/jobs/${encodeURIComponent(jobId)}?refresh=${refresh ? 'true' : 'false'}`
       ),
 
-    listCandidates: (jobId: string, refresh: boolean = true) =>
+    listCandidates: (jobId: string, refresh: boolean = false) =>
       fetchJSON<{ candidates: Record<string, unknown>[] }>(
         `/api/autolayout/jobs/${encodeURIComponent(jobId)}/candidates?refresh=${refresh ? 'true' : 'false'}`
       ),

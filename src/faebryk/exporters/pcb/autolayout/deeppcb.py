@@ -21,6 +21,7 @@ from atopile.server.domains.autolayout.models import (
     DownloadResult,
     ProviderCapabilities,
     ProviderStatus,
+    ProviderWebhookUpdate,
     SubmitRequest,
     SubmitResult,
 )
@@ -119,29 +120,47 @@ class DeepPCBAutolayout:
                 + " | ".join(status_errors)
             )
 
-        state = _map_provider_state(
-            self._extract_string(
-                response,
-                keys=("status", "state", "task_status", "boardStatus", "board_state"),
-            )
+        return self._provider_status_from_payload(
+            response,
+            provider_job_ref=external_job_id,
+            use_cached_candidates=True,
         )
 
-        candidates = self._parse_board_candidates(response, external_job_id)
-        if not candidates:
-            candidates = self._parse_candidates(response)
-            if not candidates:
-                candidates = self._candidate_cache.get(external_job_id, [])
-        if candidates:
-            self._candidate_cache[external_job_id] = candidates
-
-        if candidates and state in {AutolayoutState.RUNNING, AutolayoutState.COMPLETED}:
-            state = AutolayoutState.AWAITING_SELECTION
-
-        return ProviderStatus(
-            state=state,
-            message=self._extract_string(response, keys=("message", "detail")),
-            progress=self._extract_progress(response),
-            candidates=candidates,
+    def parse_webhook(self, payload: dict[str, Any]) -> ProviderWebhookUpdate:
+        """Convert DeepPCB webhook payload into provider-agnostic update fields."""
+        normalized_payload = self._unwrap_webhook_payload(payload)
+        provider_job_ref = self._extract_provider_job_ref(normalized_payload)
+        request_id = self._extract_string(
+            normalized_payload,
+            keys=("requestId", "request_id", "requestID"),
+        )
+        token = self._extract_string(
+            payload,
+            keys=(
+                "webhookToken",
+                "webhook_token",
+                "token",
+                "signature",
+            ),
+        ) or self._extract_string(
+            normalized_payload,
+            keys=(
+                "webhookToken",
+                "webhook_token",
+                "token",
+                "signature",
+            ),
+        )
+        status = self._provider_status_from_payload(
+            normalized_payload,
+            provider_job_ref=provider_job_ref,
+            use_cached_candidates=False,
+        )
+        return ProviderWebhookUpdate(
+            provider_job_ref=provider_job_ref,
+            request_id=request_id,
+            token=token,
+            status=status,
         )
 
     def list_candidates(self, external_job_id: str) -> list[AutolayoutCandidate]:
@@ -940,6 +959,62 @@ class DeepPCBAutolayout:
         if candidate_scores:
             return max(candidate_scores)
         return None
+
+    def _provider_status_from_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        provider_job_ref: str | None,
+        use_cached_candidates: bool,
+    ) -> ProviderStatus:
+        state = _map_provider_state(
+            self._extract_string(
+                payload,
+                keys=("status", "state", "task_status", "boardStatus", "board_state"),
+            )
+        )
+
+        candidates = self._parse_board_candidates(payload, provider_job_ref or "")
+        if not candidates:
+            candidates = self._parse_candidates(payload)
+            if not candidates and use_cached_candidates and provider_job_ref:
+                candidates = self._candidate_cache.get(provider_job_ref, [])
+        if candidates and provider_job_ref:
+            self._candidate_cache[provider_job_ref] = candidates
+
+        if candidates and state in {AutolayoutState.RUNNING, AutolayoutState.COMPLETED}:
+            state = AutolayoutState.AWAITING_SELECTION
+
+        return ProviderStatus(
+            state=state,
+            message=self._extract_string(payload, keys=("message", "detail")),
+            progress=self._extract_progress(payload),
+            candidates=candidates,
+        )
+
+    def _extract_provider_job_ref(self, payload: dict[str, Any]) -> str | None:
+        explicit = self._extract_string(
+            payload,
+            keys=(
+                "boardId",
+                "board_id",
+                "taskId",
+                "task_id",
+                "boardPublicId",
+                "boardPId",
+            ),
+        )
+        if explicit:
+            return explicit
+        candidates = _extract_board_candidates(payload)
+        return candidates[0] if candidates else None
+
+    def _unwrap_webhook_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        for key in ("data", "payload", "eventData", "body"):
+            nested = payload.get(key)
+            if isinstance(nested, dict):
+                return nested
+        return payload
 
     def _auth_headers(self) -> dict[str, str]:
         return self._api.auth_headers()

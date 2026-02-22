@@ -743,6 +743,18 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.BuildsChanged:
       void refreshBuilds();
       break;
+    case EventType.AutolayoutChanged:
+    case EventType.AutolayoutCandidateReady:
+    case EventType.AutolayoutFailed:
+      window.dispatchEvent(
+        new CustomEvent('atopile:autolayout_event', {
+          detail: {
+            event,
+            ...data,
+          },
+        })
+      );
+      break;
     case EventType.ProjectDependenciesChanged:
       // Clear all installing packages - a dependency change means install completed
       useStore.getState().clearInstallingPackages();

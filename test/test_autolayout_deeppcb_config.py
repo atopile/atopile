@@ -252,6 +252,53 @@ def test_webhook_url_is_required_without_config(monkeypatch):
         provider._webhook_url(request)
 
 
+def test_parse_webhook_extracts_status_and_refs(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    update = provider.parse_webhook(
+        {
+            "event": "board.updated",
+            "data": {
+                "boardId": "board-123",
+                "requestId": "al-abc123",
+                "status": "completed",
+                "message": "done",
+                "workflows": [
+                    {
+                        "revisions": [
+                            {"revisionNumber": 3, "id": "rev-3"},
+                        ]
+                    }
+                ],
+            },
+        }
+    )
+
+    assert update.provider_job_ref == "board-123"
+    assert update.request_id == "al-abc123"
+    assert update.status.state == deeppcb_module.AutolayoutState.AWAITING_SELECTION
+    assert [candidate.candidate_id for candidate in update.status.candidates] == ["3"]
+
+
+def test_parse_webhook_extracts_payload_token(monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    update = provider.parse_webhook(
+        {
+            "boardId": "board-123",
+            "requestId": "al-abc123",
+            "status": "running",
+            "webhookToken": "token-from-payload",
+        }
+    )
+
+    assert update.token == "token-from-payload"
+
+
 def test_webhook_token_fallback_is_not_predictable_job_id(monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
     monkeypatch.setenv("ATO_DEEPPCB_WEBHOOK_URL", "https://example.com/deeppcb")

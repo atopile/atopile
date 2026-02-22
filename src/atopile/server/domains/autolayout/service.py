@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import os
+import secrets
 import shutil
 import threading
 import time
@@ -21,6 +23,7 @@ from atopile.server.domains.autolayout.models import (
     AutolayoutCandidate,
     AutolayoutJob,
     AutolayoutState,
+    ProviderWebhookUpdate,
     ResolvedAutolayoutTargetFiles,
     SubmitRequest,
     utc_now_iso,
@@ -69,6 +72,14 @@ class AutolayoutServiceSettings(BaseSettings):
             "ATO_ENABLE_AUTOLAYOUT",
             "ENABLE_AUTOLAYOUT",
             "FBRK_ENABLE_AUTOLAYOUT",
+        ),
+    )
+    poll_provider_on_refresh: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "ATO_AUTOLAYOUT_POLL_PROVIDER",
+            "AUTOLAYOUT_POLL_PROVIDER",
+            "FBRK_AUTOLAYOUT_POLL_PROVIDER",
         ),
     )
 
@@ -128,6 +139,9 @@ class AutolayoutService:
             f"Unsupported autolayout provider '{provider_name}'. "
             f"Available providers: {available}"
         )
+
+    def _get_deeppcb_provider(self) -> _AutolayoutProvider:
+        return self._get_provider("deeppcb")
 
     def start_job(
         self,
@@ -214,35 +228,41 @@ class AutolayoutService:
             self._trim_jobs_locked()
             self._persist_jobs_locked()
 
+        submit_request = SubmitRequest(
+            job_id=job_id,
+            project_root=Path(job.project_root),
+            build_target=build_target,
+            layout_path=Path(job.layout_path),
+            provider_input_path=provider_input_path,
+            input_zip_path=zip_path,
+            work_dir=work_dir,
+            constraints=merged_constraints,
+            options=merged_options,
+            kicad_project_path=target_files.kicad_project_path,
+            schematic_path=target_files.schematic_path,
+        )
+
         try:
-            submit_result = provider.submit(
-                SubmitRequest(
-                    job_id=job_id,
-                    project_root=Path(job.project_root),
-                    build_target=build_target,
-                    layout_path=Path(job.layout_path),
-                    provider_input_path=provider_input_path,
-                    input_zip_path=zip_path,
-                    work_dir=work_dir,
-                    constraints=merged_constraints,
-                    options=merged_options,
-                    kicad_project_path=target_files.kicad_project_path,
-                    schematic_path=target_files.schematic_path,
-                )
-            )
+            submit_result = provider.submit(submit_request)
+            # Preserve provider-resolved defaults (e.g. generated webhook token).
+            merged_options = dict(submit_request.options)
         except Exception as exc:
             with self._lock:
                 current = self._jobs[job_id]
+                previous_state = current.state
                 current.state = AutolayoutState.FAILED
                 current.error = str(exc)
                 current.message = str(exc)
                 current.mark_updated()
                 self._persist_jobs_locked()
                 self._emit_job_event(current)
+                self._emit_job_transition_events_locked(current, previous_state)
                 return copy.deepcopy(current)
 
         with self._lock:
             current = self._jobs[job_id]
+            previous_state = current.state
+            current.options = dict(merged_options)
             current.provider_job_ref = submit_result.external_job_id
             current.state = submit_result.state
             current.message = submit_result.message
@@ -257,6 +277,7 @@ class AutolayoutService:
             self._emit_job_event(current)
             should_auto_apply = _should_auto_apply(current)
             candidate_id = _choose_auto_apply_candidate_id(current.candidates)
+            self._emit_job_transition_events_locked(current, previous_state)
             result = copy.deepcopy(current)
 
         if should_auto_apply and candidate_id:
@@ -291,6 +312,8 @@ class AutolayoutService:
             if job.state in {AutolayoutState.FAILED, AutolayoutState.CANCELLED}:
                 return copy.deepcopy(job)
             autolayout = self._get_provider(job.provider)
+            if not self._settings.poll_provider_on_refresh:
+                return copy.deepcopy(job)
             provider_job_ref = job.provider_job_ref
 
         if not provider_job_ref:
@@ -311,16 +334,19 @@ class AutolayoutService:
         except Exception as exc:
             with self._lock:
                 current = self._jobs[job_id]
+                previous_state = current.state
                 current.state = AutolayoutState.FAILED
                 current.error = str(exc)
                 current.message = str(exc)
                 current.mark_updated()
                 self._persist_jobs_locked()
                 self._emit_job_event(current)
+                self._emit_job_transition_events_locked(current, previous_state)
                 return copy.deepcopy(current)
 
         with self._lock:
             current = self._jobs[job_id]
+            previous_state = current.state
             current.state = status.state
             current.message = status.message
             current.progress = status.progress
@@ -336,11 +362,84 @@ class AutolayoutService:
             self._emit_job_event(current)
             should_auto_apply = _should_auto_apply(current)
             candidate_id = _choose_auto_apply_candidate_id(current.candidates)
+            self._emit_job_transition_events_locked(current, previous_state)
             result = copy.deepcopy(current)
 
         if should_auto_apply and candidate_id:
             return self._auto_apply_candidate(job_id, candidate_id)
         return result
+
+    def handle_deeppcb_webhook(
+        self,
+        payload: dict[str, Any],
+        *,
+        provided_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Apply a DeepPCB webhook payload to matching in-memory job state."""
+        provider = self._get_deeppcb_provider()
+        if not hasattr(provider, "parse_webhook"):
+            raise RuntimeError(
+                "Current autolayout provider does not support webhook ingestion."
+            )
+        raw_update = provider.parse_webhook(payload)
+        update = (
+            raw_update
+            if isinstance(raw_update, ProviderWebhookUpdate)
+            else ProviderWebhookUpdate.model_validate(raw_update)
+        )
+
+        with self._lock:
+            self._maybe_reload_jobs_from_disk_locked()
+            job = self._resolve_job_from_webhook_locked(update)
+            if job is None:
+                return {
+                    "accepted": False,
+                    "matched": False,
+                    "reason": "no_matching_job",
+                    "provider_job_ref": update.provider_job_ref,
+                    "request_id": update.request_id,
+                }
+
+            expected_token = self._expected_webhook_token_locked(job)
+            received_token = provided_token or update.token
+            if expected_token:
+                if not received_token:
+                    raise PermissionError(
+                        "Missing DeepPCB webhook token for matched autolayout job."
+                    )
+                if not secrets.compare_digest(
+                    expected_token.strip(),
+                    str(received_token).strip(),
+                ):
+                    raise PermissionError("Invalid DeepPCB webhook token.")
+
+            previous_state = job.state
+            job.provider_job_ref = update.provider_job_ref or job.provider_job_ref
+            job.state = update.status.state
+            job.message = update.status.message
+            job.progress = update.status.progress
+            if update.status.candidates:
+                job.candidates = _dedupe_candidates(update.status.candidates)
+                if job.state == AutolayoutState.COMPLETED:
+                    job.state = AutolayoutState.AWAITING_SELECTION
+            if job.state in {AutolayoutState.FAILED, AutolayoutState.CANCELLED}:
+                job.error = update.status.message or job.error
+            else:
+                job.error = None
+
+            job.mark_updated()
+            self._persist_jobs_locked()
+            self._emit_job_event(job)
+            self._emit_job_transition_events_locked(job, previous_state)
+
+            return {
+                "accepted": True,
+                "matched": True,
+                "job_id": job.job_id,
+                "state": job.state.value,
+                "provider_job_ref": job.provider_job_ref,
+                "candidate_count": len(job.candidates),
+            }
 
     def list_candidates(
         self,
@@ -762,6 +861,113 @@ class AutolayoutService:
         if self._settings.enable_autolayout:
             return
         raise RuntimeError("Autolayout is disabled via ATO_ENABLE_AUTOLAYOUT")
+
+    def configure_deeppcb_webhook_defaults(
+        self,
+        *,
+        webhook_url: str,
+        webhook_token: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Update process-local DeepPCB webhook defaults.
+
+        This updates both environment variables and the live provider config so
+        new jobs can use webhook defaults immediately without restart.
+        """
+        normalized_url = str(webhook_url or "").strip()
+        if not normalized_url:
+            raise ValueError("webhook_url is required")
+
+        normalized_token = (
+            str(webhook_token).strip()
+            if isinstance(webhook_token, str) and webhook_token.strip()
+            else None
+        )
+
+        os.environ["ATO_DEEPPCB_WEBHOOK_URL"] = normalized_url
+        if normalized_token:
+            os.environ["ATO_DEEPPCB_WEBHOOK_TOKEN"] = normalized_token
+
+        with self._lock:
+            provider_cfg = getattr(self._get_deeppcb_provider(), "config", None)
+            if provider_cfg is not None:
+                setattr(provider_cfg, "webhook_url", normalized_url)
+                if normalized_token:
+                    setattr(provider_cfg, "webhook_token", normalized_token)
+
+        return {
+            "webhook_url": normalized_url,
+            "webhook_token": normalized_token,
+        }
+
+    def _resolve_job_from_webhook_locked(
+        self,
+        update: ProviderWebhookUpdate,
+    ) -> AutolayoutJob | None:
+        if update.request_id:
+            direct = self._jobs.get(update.request_id)
+            if direct is not None:
+                return direct
+
+        if update.provider_job_ref:
+            matches = [
+                job
+                for job in self._jobs.values()
+                if job.provider_job_ref == update.provider_job_ref
+            ]
+            if matches:
+                matches.sort(
+                    key=lambda item: (item.created_at, item.updated_at, item.job_id),
+                    reverse=True,
+                )
+                return matches[0]
+        return None
+
+    def _expected_webhook_token_locked(self, job: AutolayoutJob) -> str | None:
+        for key in ("webhook_token", "webhookToken", "webHookToken"):
+            value = job.options.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        provider_cfg = getattr(self._get_deeppcb_provider(), "config", None)
+        provider_value = getattr(provider_cfg, "webhook_token", None)
+        if isinstance(provider_value, str) and provider_value.strip():
+            return provider_value.strip()
+        return None
+
+    def _emit_job_transition_events_locked(
+        self,
+        job: AutolayoutJob,
+        previous_state: AutolayoutState,
+    ) -> None:
+        if job.state == previous_state:
+            return
+
+        if (
+            job.state == AutolayoutState.AWAITING_SELECTION
+            and len(job.candidates) > 0
+        ):
+            event_bus.emit_sync(
+                "autolayout_candidate_ready",
+                {
+                    "jobId": job.job_id,
+                    "state": job.state.value,
+                    "projectRoot": job.project_root,
+                    "buildTarget": job.build_target,
+                    "candidateCount": len(job.candidates),
+                },
+            )
+        elif job.state == AutolayoutState.FAILED:
+            event_bus.emit_sync(
+                "autolayout_failed",
+                {
+                    "jobId": job.job_id,
+                    "state": job.state.value,
+                    "projectRoot": job.project_root,
+                    "buildTarget": job.build_target,
+                    "error": job.error or job.message,
+                },
+            )
 
     def _emit_job_event(self, job: AutolayoutJob) -> None:
         event_bus.emit_sync(

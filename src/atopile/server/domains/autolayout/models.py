@@ -88,6 +88,15 @@ class ProviderStatus(_AutolayoutModel):
     candidates: list[AutolayoutCandidate] = Field(default_factory=list)
 
 
+class ProviderWebhookUpdate(_AutolayoutModel):
+    """Provider webhook payload mapped to internal status update."""
+
+    provider_job_ref: str | None = None
+    request_id: str | None = None
+    token: str | None = None
+    status: ProviderStatus
+
+
 class DownloadResult(_AutolayoutModel):
     """Provider download result for a specific candidate."""
 

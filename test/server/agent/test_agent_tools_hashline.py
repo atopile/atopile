@@ -46,6 +46,7 @@ def _test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_delete_path" in names
     assert "manufacturing_generate" in names
     assert "autolayout_run" in names
+    assert "autolayout_webhook_gateway" in names
     assert "autolayout_status" in names
     assert "autolayout_fetch_to_layout" in names
     assert "autolayout_request_screenshot" in names
@@ -676,6 +677,183 @@ def _test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> Non
     assert options["timeout"] == 2
     assert options["maxBatchTimeout"] == 45
     assert options["responseBoardFormat"] == 3
+
+
+def _test_autolayout_webhook_gateway_tool_start_status_stop(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _ = tmp_path
+    calls: dict[str, list[dict[str, object]]] = {"start": [], "stop": []}
+
+    class FakeGatewayManager:
+        def __init__(self) -> None:
+            self.running = False
+
+        def start(self, **kwargs):
+            calls["start"].append(dict(kwargs))
+            self.running = True
+            return {
+                "running": True,
+                "webhook_url": "https://example.trycloudflare.com/api/autolayout/webhooks/deeppcb",
+                "webhook_token": "tok-gateway",
+                "gateway_port": 40123,
+            }
+
+        def status(self):
+            if not self.running:
+                return {"running": False}
+            return {
+                "running": True,
+                "webhook_url": "https://example.trycloudflare.com/api/autolayout/webhooks/deeppcb",
+                "webhook_token": "tok-gateway",
+            }
+
+        def stop(self):
+            calls["stop"].append({"called": True})
+            self.running = False
+            return {"running": False, "stopped": True}
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.configured: list[dict[str, str]] = []
+
+        def configure_deeppcb_webhook_defaults(
+            self,
+            *,
+            webhook_url: str,
+            webhook_token: str | None = None,
+        ):
+            self.configured.append(
+                {"webhook_url": webhook_url, "webhook_token": webhook_token or ""}
+            )
+            return {"webhook_url": webhook_url, "webhook_token": webhook_token}
+
+    fake_manager = FakeGatewayManager()
+    fake_service = FakeService()
+    monkeypatch.setattr(
+        tools,
+        "get_autolayout_webhook_gateway_manager",
+        lambda: fake_manager,
+    )
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: fake_service)
+
+    started = _run(
+        tools.execute_tool(
+            name="autolayout_webhook_gateway",
+            arguments={"action": "start", "tunnel_provider": "none"},
+            project_root=Path("."),
+            ctx=AppContext(),
+        )
+    )
+    assert started["action"] == "start"
+    assert started["status"]["running"] is True
+    assert calls["start"]
+    assert fake_service.configured
+
+    status = _run(
+        tools.execute_tool(
+            name="autolayout_webhook_gateway",
+            arguments={"action": "status"},
+            project_root=Path("."),
+            ctx=AppContext(),
+        )
+    )
+    assert status["status"]["running"] is True
+
+    stopped = _run(
+        tools.execute_tool(
+            name="autolayout_webhook_gateway",
+            arguments={"action": "stop"},
+            project_root=Path("."),
+            ctx=AppContext(),
+        )
+    )
+    assert stopped["action"] == "stop"
+    assert stopped["status"]["running"] is False
+    assert calls["stop"]
+
+
+def _test_autolayout_run_auto_setup_webhook_uses_gateway(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.configured: list[dict[str, object]] = []
+
+        def configure_deeppcb_webhook_defaults(
+            self,
+            *,
+            webhook_url: str,
+            webhook_token: str | None = None,
+        ):
+            self.configured.append(
+                {"webhook_url": webhook_url, "webhook_token": webhook_token}
+            )
+            return {"webhook_url": webhook_url, "webhook_token": webhook_token}
+
+        def start_job(
+            self,
+            project_root: str,
+            build_target: str,
+            constraints: dict,
+            options: dict,
+        ) -> AutolayoutJob:
+            captured["options"] = dict(options)
+            return AutolayoutJob(
+                job_id="al-123456789abc",
+                project_root=project_root,
+                build_target=build_target,
+                provider="deeppcb",
+                state=AutolayoutState.RUNNING,
+                created_at=utc_now_iso(),
+                updated_at=utc_now_iso(),
+                provider_job_ref="board-123",
+                constraints=constraints,
+                options=options,
+            )
+
+    class FakeGatewayManager:
+        def start(self, **kwargs):
+            captured["gateway_start_kwargs"] = dict(kwargs)
+            return {
+                "running": True,
+                "webhook_url": "https://example.trycloudflare.com/api/autolayout/webhooks/deeppcb",
+                "webhook_token": "tok-auto",
+                "gateway_port": 41111,
+            }
+
+    fake_service = FakeService()
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: fake_service)
+    monkeypatch.setattr(
+        tools,
+        "get_autolayout_webhook_gateway_manager",
+        lambda: FakeGatewayManager(),
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_run",
+            arguments={
+                "build_target": "default",
+                "auto_setup_webhook": True,
+                "tunnel_provider": "none",
+                "options": {"responseBoardFormat": 3},
+            },
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    options = captured["options"]
+    assert isinstance(options, dict)
+    assert options["webhook_url"].startswith("https://example.trycloudflare.com")
+    assert options["webhook_token"] == "tok-auto"
+    assert result["webhook_setup"] is not None
+    assert result["webhook_token_configured"] is True
 
 def _test_autolayout_fetch_to_layout_archives_iteration(
     monkeypatch,
@@ -2277,6 +2455,12 @@ class TestAgentToolsHashline:
     )
     test_autolayout_run_maps_common_options = staticmethod(
         _test_autolayout_run_maps_common_options
+    )
+    test_autolayout_webhook_gateway_tool_start_status_stop = staticmethod(
+        _test_autolayout_webhook_gateway_tool_start_status_stop
+    )
+    test_autolayout_run_auto_setup_webhook_uses_gateway = staticmethod(
+        _test_autolayout_run_auto_setup_webhook_uses_gateway
     )
     test_autolayout_fetch_to_layout_archives_iteration = staticmethod(
         _test_autolayout_fetch_to_layout_archives_iteration

@@ -317,6 +317,20 @@ def suggest_tools(
                 score += 1.3
             elif name == "autolayout_configure_board_intent":
                 score += 1.1
+            elif name == "autolayout_webhook_gateway":
+                score += 1.0
+        webhook_terms = (
+            "webhook",
+            "cloudflared",
+            "tunnel",
+            "public callback",
+            "deeppcb callback",
+        )
+        if (
+            any(term in search_blob for term in webhook_terms)
+            and name == "autolayout_webhook_gateway"
+        ):
+            score += 2.2
         stackup_terms = (
             "ground pour",
             "ground plane",
@@ -468,4 +482,3 @@ def suggest_tools(
         )
     )
     return suggestions[: max(1, limit)]
-

@@ -221,6 +221,39 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
+            "name": "autolayout_webhook_gateway",
+            "description": (
+                "Manage a dev webhook-only gateway for DeepPCB callbacks. "
+                "This exposes only /api/autolayout/webhooks/deeppcb publicly."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["start", "status", "stop"],
+                        "default": "status",
+                    },
+                    "tunnel_provider": {
+                        "type": "string",
+                        "enum": ["cloudflared", "none"],
+                        "default": "cloudflared",
+                    },
+                    "internal_api_base_url": {"type": ["string", "null"]},
+                    "gateway_host": {"type": "string", "default": "127.0.0.1"},
+                    "gateway_port": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535,
+                        "default": 0,
+                    },
+                    "webhook_token": {"type": ["string", "null"]},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
             "name": "autolayout_run",
             "description": (
                 "Start an autolayout placement or routing run as a background task. "
@@ -249,6 +282,20 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     },
                     "resume_board_id": {"type": ["string", "null"]},
                     "resume_stop_first": {"type": "boolean", "default": True},
+                    "auto_setup_webhook": {"type": "boolean", "default": False},
+                    "tunnel_provider": {
+                        "type": "string",
+                        "enum": ["cloudflared", "none"],
+                        "default": "cloudflared",
+                    },
+                    "internal_api_base_url": {"type": ["string", "null"]},
+                    "gateway_host": {"type": "string", "default": "127.0.0.1"},
+                    "gateway_port": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65535,
+                        "default": 0,
+                    },
                     "webhook_url": {"type": ["string", "null"]},
                     "webhook_token": {"type": ["string", "null"]},
                     "constraints": {"type": "object", "default": {}},
@@ -268,7 +315,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "job_id": {"type": ["string", "null"]},
-                    "refresh": {"type": "boolean", "default": True},
+                    "refresh": {"type": "boolean", "default": False},
                     "include_candidates": {"type": "boolean", "default": True},
                     "wait_seconds": {
                         "type": "integer",

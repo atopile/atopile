@@ -1,5 +1,6 @@
 import shutil
 import uuid
+import os
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from atopile.server.domains.autolayout.models import (
     DownloadResult,
     ProviderCapabilities,
     ProviderStatus,
+    ProviderWebhookUpdate,
     SubmitResult,
     utc_now_iso,
 )
@@ -287,6 +289,7 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
         state_path=tmp_path / "autolayout_jobs_state.json",
     )
     service.register_provider(CompletedRefreshProvider())
+    service._settings.poll_provider_on_refresh = True
     build_cfg = ProjectConfig.from_path(project_root).builds["default"]  # type: ignore[union-attr]
     job = AutolayoutJob(
         job_id="al-refresh123456",
@@ -380,3 +383,204 @@ def test_autolayout_auto_apply_uses_best_score_candidate(tmp_path: Path):
 
     assert job.state == AutolayoutState.COMPLETED
     assert job.applied_candidate_id == "best"
+
+
+def test_autolayout_service_handles_deeppcb_webhook_updates(tmp_path: Path):
+    project_root = _write_test_project(tmp_path)
+
+    class WebhookProvider:
+        name = "deeppcb"
+        capabilities = ProviderCapabilities(
+            supports_cancel=True,
+            supports_candidates=True,
+            supports_download=True,
+        )
+
+        def __init__(self) -> None:
+            self.config = type("Cfg", (), {"webhook_token": None})()
+
+        def submit(self, request):  # pragma: no cover - unused in this test
+            _ = request
+            raise NotImplementedError
+
+        def status(self, external_job_id: str):  # pragma: no cover - unused
+            _ = external_job_id
+            raise NotImplementedError
+
+        def list_candidates(self, external_job_id: str):  # pragma: no cover - unused
+            _ = external_job_id
+            return []
+
+        def download_candidate(  # pragma: no cover - unused
+            self,
+            external_job_id: str,
+            candidate_id: str,
+            out_dir: Path,
+            target_layout_path: Path | None = None,
+        ):
+            _ = (external_job_id, candidate_id, out_dir, target_layout_path)
+            raise NotImplementedError
+
+        def cancel(self, external_job_id: str):  # pragma: no cover - unused
+            _ = external_job_id
+            raise NotImplementedError
+
+        def parse_webhook(self, payload: dict):
+            _ = payload
+            return ProviderWebhookUpdate(
+                provider_job_ref="board-123",
+                request_id=None,
+                token=None,
+                status=ProviderStatus(
+                    state=AutolayoutState.COMPLETED,
+                    message="ready",
+                    progress=1.0,
+                    candidates=[AutolayoutCandidate(candidate_id="7")],
+                ),
+            )
+
+    service = AutolayoutService(
+        state_path=tmp_path / "autolayout_jobs_state.json",
+    )
+    service.register_provider(WebhookProvider())
+    build_cfg = ProjectConfig.from_path(project_root).builds["default"]  # type: ignore[union-attr]
+    job = AutolayoutJob(
+        job_id="al-webhook1234",
+        project_root=str(project_root.resolve()),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.RUNNING,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-123",
+        layout_path=str(build_cfg.paths.layout),
+        options={"webhook_token": "secret-token"},
+    )
+    with service._lock:
+        service._jobs[job.job_id] = job
+
+    result = service.handle_deeppcb_webhook({}, provided_token="secret-token")
+    assert result["accepted"] is True
+    assert result["matched"] is True
+    assert result["state"] == AutolayoutState.AWAITING_SELECTION.value
+
+    updated = service.get_job("al-webhook1234")
+    assert updated.state == AutolayoutState.AWAITING_SELECTION
+    assert [candidate.candidate_id for candidate in updated.candidates] == ["7"]
+
+
+def test_autolayout_service_rejects_invalid_webhook_token(tmp_path: Path):
+    class WebhookProvider:
+        name = "deeppcb"
+        capabilities = ProviderCapabilities(
+            supports_cancel=True,
+            supports_candidates=True,
+            supports_download=True,
+        )
+
+        def __init__(self) -> None:
+            self.config = type("Cfg", (), {"webhook_token": "expected-token"})()
+
+        def submit(self, request):  # pragma: no cover - unused
+            _ = request
+            raise NotImplementedError
+
+        def status(self, external_job_id: str):  # pragma: no cover - unused
+            _ = external_job_id
+            raise NotImplementedError
+
+        def list_candidates(self, external_job_id: str):  # pragma: no cover - unused
+            _ = external_job_id
+            return []
+
+        def download_candidate(  # pragma: no cover - unused
+            self,
+            external_job_id: str,
+            candidate_id: str,
+            out_dir: Path,
+            target_layout_path: Path | None = None,
+        ):
+            _ = (external_job_id, candidate_id, out_dir, target_layout_path)
+            raise NotImplementedError
+
+        def cancel(self, external_job_id: str):  # pragma: no cover - unused
+            _ = external_job_id
+            raise NotImplementedError
+
+        def parse_webhook(self, payload: dict):
+            _ = payload
+            return ProviderWebhookUpdate(
+                provider_job_ref="board-123",
+                request_id="al-webhook1234",
+                token=None,
+                status=ProviderStatus(state=AutolayoutState.RUNNING),
+            )
+
+    service = AutolayoutService(
+        state_path=tmp_path / "autolayout_jobs_state.json",
+    )
+    service.register_provider(WebhookProvider())
+    with service._lock:
+        service._jobs["al-webhook1234"] = AutolayoutJob(
+            job_id="al-webhook1234",
+            project_root=str(tmp_path),
+            build_target="default",
+            provider="deeppcb",
+            state=AutolayoutState.RUNNING,
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
+            provider_job_ref="board-123",
+        )
+
+    with pytest.raises(PermissionError, match="Invalid DeepPCB webhook token"):
+        service.handle_deeppcb_webhook({}, provided_token="wrong-token")
+
+
+def test_start_job_persists_provider_resolved_options(tmp_path: Path):
+    project_root = _write_test_project(tmp_path)
+
+    class SubmitMutatingProvider(MockAutolayoutProvider):
+        def submit(self, request) -> SubmitResult:
+            request.options["webhook_token"] = "generated-token"
+            return super().submit(request)
+
+    service = AutolayoutService(
+        state_path=tmp_path / "autolayout_jobs_state.json",
+    )
+    service.register_provider(SubmitMutatingProvider())
+
+    job = service.start_job(
+        project_root=str(project_root),
+        build_target="default",
+    )
+
+    assert job.options.get("webhook_token") == "generated-token"
+
+
+def test_configure_deeppcb_webhook_defaults_updates_env_and_provider(
+    tmp_path: Path,
+    monkeypatch,
+):
+    class Provider:
+        name = "deeppcb"
+        config = type("Cfg", (), {"webhook_url": None, "webhook_token": None})()
+
+    monkeypatch.delenv("ATO_DEEPPCB_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("ATO_DEEPPCB_WEBHOOK_TOKEN", raising=False)
+
+    provider = Provider()
+    service = AutolayoutService(
+        state_path=tmp_path / "autolayout_jobs_state.json",
+    )
+    service.register_provider(provider)
+
+    result = service.configure_deeppcb_webhook_defaults(
+        webhook_url="https://example.com/hook",
+        webhook_token="tok-configured",
+    )
+    assert result["webhook_url"] == "https://example.com/hook"
+    assert result["webhook_token"] == "tok-configured"
+    assert provider.config.webhook_url == "https://example.com/hook"
+    assert provider.config.webhook_token == "tok-configured"
+    os.environ.pop("ATO_DEEPPCB_WEBHOOK_URL", None)
+    os.environ.pop("ATO_DEEPPCB_WEBHOOK_TOKEN", None)
