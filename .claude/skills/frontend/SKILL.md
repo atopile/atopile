@@ -10,14 +10,14 @@ Default target is extension webviews (`ui-server` + `vscode-atopile`).
 
 ## Quick Start
 
-Dependency install (Bun for dependency management):
+Dependency install:
 
 ```bash
 cd src/ui-server
 bun install
 ```
 
-Run/build/test directly (Vite/Vitest):
+Frontend-only loop (no backend integration):
 
 ```bash
 cd src/ui-server
@@ -26,7 +26,14 @@ bunx vitest run
 bunx tsc && bunx vite build
 ```
 
-Extension package + install loop:
+Webview integration loop (backend + Vite):
+
+```bash
+cd src/ui-server
+./dev.sh
+```
+
+Extension package/install loop:
 
 ```bash
 ato dev compile && ato dev install cursor
@@ -34,10 +41,14 @@ ato dev compile && ato dev install cursor
 ato dev compile && ato dev install vscode
 ```
 
-Notes:
-- Use Bun for install/sync of JS dependencies.
-- Use Vite/Vitest directly for runtime/build/test loops.
-- `ato dev compile` default target `all` includes type generation + extension packaging.
+Command reference:
+- `bun install`: install/sync JS dependencies.
+- `bunx vite`: start Vite dev server (frontend-only iteration).
+- `bunx vitest run`: run frontend tests once.
+- `bunx tsc && bunx vite build`: type-check then production build.
+- `./dev.sh`: run backend + Vite for integration testing in browser.
+- `ato dev compile`: build extension artifacts (default target `all`).
+- `ato dev install cursor|vscode`: install latest built extension `.vsix`.
 
 ## Relevant Files
 
