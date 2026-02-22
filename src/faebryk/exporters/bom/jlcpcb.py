@@ -189,17 +189,6 @@ def _get_bomline(
     return out
 
 
-# TODO: move to global fixtures
-@pytest.fixture()
-def setup_project_config(tmp_path):
-    from atopile.config import ProjectConfig, ProjectPaths, config
-
-    config.project = ProjectConfig.skeleton(
-        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
-    )
-    yield
-
-
 class TestJLCBom:
     @staticmethod
     def test_get_bomline():

@@ -124,7 +124,7 @@ async def get_requirements(
 @router.get("/api/resolve-location")
 async def resolve_location(
     address: str = Query(
-        ..., description="Atopile address to resolve (e.g., 'file.ato::Module.field')"
+        ..., description="atopile address to resolve (e.g., 'file.ato::Module.field')"
     ),
     project_root: Optional[str] = Query(
         None, description="Path to project root (optional for resolution)"

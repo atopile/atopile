@@ -69,9 +69,9 @@ const persistedState = getVsCodeApi()?.getState() as {
 
 // Initial state for the store
 const initialState: AppState = {
-  // Connection - start as true so we don't flash error screen during startup
-  // WebSocket will set to false after 5s timeout if backend isn't ready
-  isConnected: true,
+  // Connection
+  isConnected: false,
+  hasEverConnected: false,
 
   // Projects
   projects: [],
@@ -122,7 +122,7 @@ const initialState: AppState = {
   activeEditorFile: null,
   lastAtoFile: null,
 
-  // Atopile configuration
+  // atopile configuration
   atopile: {
     // Actual running atopile info
     actualVersion: null as string | null,
@@ -269,7 +269,7 @@ interface StoreActions {
   setLoadingRequirements: (loading: boolean) => void;
   setRequirementsError: (error: string | null) => void;
 
-  // Atopile config
+  // atopile config
   setAtopileConfig: (update: Partial<AppState['atopile']>) => void;
 
   // Project data
@@ -324,7 +324,10 @@ export const useStore = create<Store>()(
         ...initialState,
 
       // Connection
-      setConnected: (connected) => set({ isConnected: connected }),
+      setConnected: (connected) => set((state) => ({
+        isConnected: connected,
+        ...(connected && !state.hasEverConnected ? { hasEverConnected: true } : {}),
+      })),
 
       // Full state replacement (from WebSocket broadcast)
       replaceState: (newState) => {
@@ -357,6 +360,7 @@ export const useStore = create<Store>()(
           ...state,
           ...newState,
           isConnected: true,
+          hasEverConnected: true,
         }));
 
         if (newState.packagesError) {
@@ -737,7 +741,7 @@ export const useStore = create<Store>()(
         set({ requirementsError: error, isLoadingRequirements: false });
       },
 
-      // Atopile config
+      // atopile config
       setAtopileConfig: (update) => {
         console.log('[Store] setAtopileConfig update:', update);
         set((state) => {
