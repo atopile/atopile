@@ -102,6 +102,22 @@ class AutolayoutService:
         if options:
             merged_options.update(options)
 
+        force_new_job = _coerce_bool(
+            merged_options.get("force_new_job")
+            or merged_options.get("forceNewJob")
+            or merged_options.get("new_job")
+            or merged_options.get("newJob")
+        )
+        if not force_new_job:
+            with self._lock:
+                reusable_job = self._find_reusable_job_locked(
+                    project_root=str(target_files.project_root),
+                    build_target=build_target,
+                    provider_name=provider.name,
+                )
+                if reusable_job is not None:
+                    return copy.deepcopy(reusable_job)
+
         zip_path = self._prepare_input_package(
             work_dir=work_dir,
             layout_path=target_files.layout_path,
@@ -436,6 +452,34 @@ class AutolayoutService:
         keep_ids = {job.job_id for job in ordered[: self._max_persisted_jobs]}
         self._jobs = {job_id: job for job_id, job in self._jobs.items() if job_id in keep_ids}
 
+    def _find_reusable_job_locked(
+        self,
+        *,
+        project_root: str,
+        build_target: str,
+        provider_name: str,
+    ) -> AutolayoutJob | None:
+        active_states = {
+            AutolayoutState.QUEUED,
+            AutolayoutState.RUNNING,
+            AutolayoutState.AWAITING_SELECTION,
+        }
+        matching = [
+            job
+            for job in self._jobs.values()
+            if job.project_root == project_root
+            and job.build_target == build_target
+            and job.provider == provider_name
+            and job.state in active_states
+        ]
+        if not matching:
+            return None
+        matching.sort(
+            key=lambda job: (job.created_at, job.updated_at, job.job_id),
+            reverse=True,
+        )
+        return matching[0]
+
     def _persist_jobs_locked(self) -> None:
         self._trim_jobs_locked()
         payload = {
@@ -619,6 +663,16 @@ def _dedupe_candidates(
         seen.add(candidate.candidate_id)
         deduped.append(candidate)
     return deduped
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
 
 
 _AUTOLAYOUT_SERVICE = AutolayoutService()

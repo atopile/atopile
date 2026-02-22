@@ -28,8 +28,10 @@ class MockAutolayoutProvider:
 
     def __init__(self) -> None:
         self._jobs: dict[str, dict[str, object]] = {}
+        self.submit_calls = 0
 
     def submit(self, request) -> SubmitResult:
+        self.submit_calls += 1
         external_job_id = f"mock-{uuid.uuid4().hex[:12]}"
         candidate = AutolayoutCandidate(
             candidate_id="baseline",
@@ -182,6 +184,36 @@ def test_autolayout_service_mock_lifecycle(tmp_path: Path):
     assert applied.backup_layout_path is not None
     assert Path(applied.backup_layout_path).exists()
     assert Path(applied.layout_path or "").exists()
+
+
+def test_autolayout_start_job_reuses_active_job_by_default(tmp_path: Path):
+    project_root = _write_test_project(tmp_path)
+    service = AutolayoutService()
+    provider = MockAutolayoutProvider()
+    service._autolayout = provider
+
+    job1 = service.start_job(project_root=str(project_root), build_target="default")
+    job2 = service.start_job(project_root=str(project_root), build_target="default")
+
+    assert job1.job_id == job2.job_id
+    assert provider.submit_calls == 1
+
+
+def test_autolayout_start_job_force_new_job_override(tmp_path: Path):
+    project_root = _write_test_project(tmp_path)
+    service = AutolayoutService()
+    provider = MockAutolayoutProvider()
+    service._autolayout = provider
+
+    job1 = service.start_job(project_root=str(project_root), build_target="default")
+    job2 = service.start_job(
+        project_root=str(project_root),
+        build_target="default",
+        options={"force_new_job": True},
+    )
+
+    assert job1.job_id != job2.job_id
+    assert provider.submit_calls == 2
 
 
 def test_autolayout_service_persists_and_restores_job_state(tmp_path: Path):
