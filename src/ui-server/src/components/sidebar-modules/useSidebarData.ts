@@ -109,7 +109,6 @@ export function useSidebarData({ state }: UseSidebarDataParams) {
           entry: t.entry,
           isSystem: t.isSystem ?? false,
           boards: t.boards ?? [],
-          hasMultiboardManifest: t.hasMultiboardManifest ?? false,
           status: build?.status === 'failed' ? 'error' : (build?.status || normalizeLastBuildStatus(t.lastBuild?.status)),
           warnings: build?.warnings ?? t.lastBuild?.warnings,
           errors: build?.errors ?? t.lastBuild?.errors,

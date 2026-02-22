@@ -335,7 +335,7 @@ function TargetSelector({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        {(activeTarget?.isSystem || activeTarget?.hasMultiboardManifest)
+        {activeTarget?.isSystem
           ? <Boxes size={14} className="target-icon system-icon" />
           : <Target size={14} className="target-icon" />
         }
@@ -360,7 +360,7 @@ function TargetSelector({
                   role="option"
                   aria-selected={isActive}
                 >
-                  {(target.isSystem || target.hasMultiboardManifest)
+                  {target.isSystem
                     ? <Boxes size={12} className="option-icon system-icon" />
                     : <Target size={12} className="option-icon" />
                   }
@@ -1085,7 +1085,7 @@ export function ActiveProjectPanel({
 
           <div className="action-divider" />
 
-          {onOpenMultiboard && activeTarget?.hasMultiboardManifest ? (
+          {onOpenMultiboard && activeTarget?.isSystem ? (
             <button
               className="action-btn"
               onClick={() => {

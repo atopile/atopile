@@ -1,6 +1,6 @@
 """Integration tests for multi-board build logic.
 
-Tests board detection, cable detection, cross-board DRC, system BOM,
+Tests board detection, harness detection, cross-board DRC, system BOM,
 and multiboard manifest generation using in-memory graph structures.
 """
 
@@ -33,11 +33,11 @@ class _Board(fabll.Node):
     elec = F.Electrical.MakeChild()
 
 
-class _Cable(fabll.Node):
-    """Cable module with two Electrical endpoints."""
+class _Harness(fabll.Node):
+    """Harness module with two Electrical endpoints."""
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-    _is_cable = fabll.Traits.MakeEdge(F.is_cable.MakeChild())
+    _is_harness = fabll.Traits.MakeEdge(F.Harness.is_harness.MakeChild())
     side_a = F.Electrical.MakeChild()
     side_b = F.Electrical.MakeChild()
 
@@ -52,18 +52,18 @@ class _ThreeBoards(fabll.Node):
     board_c = _Board.MakeChild()
 
 
-class _TwoBoardsWithCable(fabll.Node):
-    """System with two boards and a cable."""
+class _TwoBoardsWithHarness(fabll.Node):
+    """System with two boards and a harness."""
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _is_multiboard = fabll.Traits.MakeEdge(F.is_multiboard.MakeChild())
     board_a = _Board.MakeChild()
     board_b = _Board.MakeChild()
-    cable = _Cable.MakeChild()
+    harness = _Harness.MakeChild()
 
 
 class _TwoBoards(fabll.Node):
-    """System with two boards, no cable."""
+    """System with two boards, no harness."""
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _is_multiboard = fabll.Traits.MakeEdge(F.is_multiboard.MakeChild())
@@ -71,29 +71,29 @@ class _TwoBoards(fabll.Node):
     board_b = _Board.MakeChild()
 
 
-class _CabledSystem(fabll.Node):
-    """System with two boards connected through a cable."""
+class _HarnessedSystem(fabll.Node):
+    """System with two boards connected through a harness."""
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _is_multiboard = fabll.Traits.MakeEdge(F.is_multiboard.MakeChild())
     board_a = _Board.MakeChild()
     board_b = _Board.MakeChild()
-    cable = _Cable.MakeChild()
+    harness = _Harness.MakeChild()
     _connections = [
         fabll.is_interface.MakeConnectionEdge(
-            [board_a, _Board.elec], [cable, _Cable.side_a]
+            [board_a, _Board.elec], [harness, _Harness.side_a]
         ),
         fabll.is_interface.MakeConnectionEdge(
-            [cable, _Cable.side_a], [cable, _Cable.side_b]
+            [harness, _Harness.side_a], [harness, _Harness.side_b]
         ),
         fabll.is_interface.MakeConnectionEdge(
-            [cable, _Cable.side_b], [board_b, _Board.elec]
+            [harness, _Harness.side_b], [board_b, _Board.elec]
         ),
     ]
 
 
 class _DirectConnectSystem(fabll.Node):
-    """System with two boards directly connected (no cable — violation)."""
+    """System with two boards directly connected (no harness — violation)."""
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _is_multiboard = fabll.Traits.MakeEdge(F.is_multiboard.MakeChild())
@@ -125,18 +125,18 @@ def test_detect_boards_in_system():
     assert len(boards) == 3
 
 
-def test_detect_cables_in_system():
-    """Cable detection finds all is_cable children in a system module."""
+def test_detect_harnesses_in_system():
+    """Harness detection finds all is_harness children in a system module."""
     g, tg = _make_graph()
 
-    system = _TwoBoardsWithCable.bind_typegraph(tg).create_instance(g=g)
+    system = _TwoBoardsWithHarness.bind_typegraph(tg).create_instance(g=g)
 
-    cables = list(
+    harnesses = list(
         system.get_children(
-            direct_only=False, types=fabll.Node, required_trait=F.is_cable
+            direct_only=False, types=fabll.Node, required_trait=F.Harness.is_harness
         )
     )
-    assert len(cables) == 1
+    assert len(harnesses) == 1
 
 
 def test_is_system_build_detection():
@@ -157,11 +157,11 @@ def test_is_system_build_detection():
 # ---------------------------------------------------------------------------
 
 
-def test_drc_passes_with_cable_between_boards():
-    """Cross-board DRC should pass when boards are connected via a cable."""
+def test_drc_passes_with_harness_between_boards():
+    """Cross-board DRC should pass when boards are connected via a harness."""
     g, tg = _make_graph()
 
-    system = _CabledSystem.bind_typegraph(tg).create_instance(g=g)
+    system = _HarnessedSystem.bind_typegraph(tg).create_instance(g=g)
 
     boards = list(
         system.get_children(
@@ -201,16 +201,16 @@ def test_system_3d_manifest_structure(tmp_path: Path):
     """Verify the multiboard manifest JSON structure."""
     g, tg = _make_graph()
 
-    system = _TwoBoardsWithCable.bind_typegraph(tg).create_instance(g=g)
+    system = _TwoBoardsWithHarness.bind_typegraph(tg).create_instance(g=g)
 
     boards = list(
         system.get_children(
             direct_only=False, types=fabll.Node, required_trait=F.is_board
         )
     )
-    cables = list(
+    harnesses = list(
         system.get_children(
-            direct_only=False, types=fabll.Node, required_trait=F.is_cable
+            direct_only=False, types=fabll.Node, required_trait=F.Harness.is_harness
         )
     )
 
@@ -226,14 +226,14 @@ def test_system_3d_manifest_structure(tmp_path: Path):
             }
             for board in boards
         ],
-        "cables": [
+        "harnesses": [
             {
-                "name": cable.get_name(),
-                "type": cable.get_full_name(include_uuid=False, types=True),
+                "name": harness.get_name(),
+                "type": harness.get_full_name(include_uuid=False, types=True),
                 "from": boards[0].get_name() if boards else "",
                 "to": boards[-1].get_name() if boards else "",
             }
-            for cable in cables
+            for harness in harnesses
         ],
     }
 
@@ -248,13 +248,13 @@ def test_system_3d_manifest_structure(tmp_path: Path):
     assert loaded["version"] == "1.0"
     assert loaded["type"] == "multiboard"
     assert len(loaded["boards"]) == 2
-    assert len(loaded["cables"]) == 1
+    assert len(loaded["harnesses"]) == 1
 
     for board_entry in loaded["boards"]:
         assert "name" in board_entry
         assert "glb_path" in board_entry
         assert board_entry["glb_path"].endswith(".pcba.glb")
 
-    cable_entry = loaded["cables"][0]
-    assert "name" in cable_entry
-    assert "type" in cable_entry
+    harness_entry = loaded["harnesses"][0]
+    assert "name" in harness_entry
+    assert "type" in harness_entry
