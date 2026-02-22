@@ -2,7 +2,7 @@ import { Vec2, BBox } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintAll, paintGroupHalos, paintSelection, computeBBox } from "./painter";
+import { paintAll, paintGroupBBox, paintGroupHalos, paintSelection, computeBBox } from "./painter";
 import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
 import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
@@ -33,11 +33,17 @@ export class Editor {
     private singleOverrideMode = false;
     private groupsById = new Map<string, UiFootprintGroup>();
     private groupIdByFpIndex = new Map<number, string>();
+    private trackIndexByUuid = new Map<string, number>();
+    private viaIndexByUuid = new Map<string, number>();
 
     private isDragging = false;
     private dragStartWorld: Vec2 | null = null;
     private dragTargetIndices: number[] = [];
     private dragStartPositions: Map<number, { x: number; y: number }> | null = null;
+    private dragTargetTrackUuids: string[] = [];
+    private dragStartTrackPositions: Map<string, { sx: number; sy: number; ex: number; ey: number; mx?: number; my?: number }> | null = null;
+    private dragTargetViaUuids: string[] = [];
+    private dragStartViaPositions: Map<string, { x: number; y: number }> | null = null;
     private isBoxSelecting = false;
     private boxSelectStartWorld: Vec2 | null = null;
     private boxSelectCurrentWorld: Vec2 | null = null;
@@ -142,6 +148,7 @@ export class Editor {
         if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
             const hovered = this.groupsById.get(this.hoveredGroupId);
             if (hovered) {
+                paintGroupBBox(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
                 paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
             }
         }
@@ -157,6 +164,7 @@ export class Editor {
         if (!this.singleOverrideMode && this.selectedGroupId) {
             const selectedGroup = this.groupsById.get(this.selectedGroupId);
             if (selectedGroup) {
+                paintGroupBBox(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
                 paintGroupHalos(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
             }
         }
@@ -177,6 +185,8 @@ export class Editor {
         const index = buildGroupIndex(this.model);
         this.groupsById = index.groupsById;
         this.groupIdByFpIndex = index.groupIdByFpIndex;
+        this.trackIndexByUuid = index.trackIndexByUuid;
+        this.viaIndexByUuid = index.viaIndexByUuid;
     }
 
     private getSelectedSingleUuid(): string | null {
@@ -338,6 +348,10 @@ export class Editor {
         this.dragStartWorld = null;
         this.dragStartPositions = null;
         this.dragTargetIndices = [];
+        this.dragTargetTrackUuids = [];
+        this.dragStartTrackPositions = null;
+        this.dragTargetViaUuids = [];
+        this.dragStartViaPositions = null;
     }
 
     private clearBoxSelectionState() {
@@ -346,7 +360,7 @@ export class Editor {
         this.boxSelectCurrentWorld = null;
     }
 
-    private beginDragSelection(worldPos: Vec2, targetIndices: number[]) {
+    private beginDragSelection(worldPos: Vec2, targetIndices: number[], trackUuids: string[] = [], viaUuids: string[] = []) {
         const dragStartPositions = new Map<number, { x: number; y: number }>();
         for (const index of targetIndices) {
             const fp = this.model?.footprints[index];
@@ -356,10 +370,34 @@ export class Editor {
         if (dragStartPositions.size === 0) {
             return false;
         }
+        const dragStartTrackPositions = new Map<string, { sx: number; sy: number; ex: number; ey: number; mx?: number; my?: number }>();
+        for (const uuid of trackUuids) {
+            const idx = this.trackIndexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            const track = this.model?.tracks[idx];
+            if (!track) continue;
+            dragStartTrackPositions.set(uuid, {
+                sx: track.start.x, sy: track.start.y,
+                ex: track.end.x, ey: track.end.y,
+                ...(track.mid ? { mx: track.mid.x, my: track.mid.y } : {}),
+            });
+        }
+        const dragStartViaPositions = new Map<string, { x: number; y: number }>();
+        for (const uuid of viaUuids) {
+            const idx = this.viaIndexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            const via = this.model?.vias[idx];
+            if (!via) continue;
+            dragStartViaPositions.set(uuid, { x: via.at.x, y: via.at.y });
+        }
         this.isDragging = true;
         this.dragStartWorld = worldPos;
         this.dragTargetIndices = [...dragStartPositions.keys()];
         this.dragStartPositions = dragStartPositions;
+        this.dragTargetTrackUuids = [...dragStartTrackPositions.keys()];
+        this.dragStartTrackPositions = dragStartTrackPositions;
+        this.dragTargetViaUuids = [...dragStartViaPositions.keys()];
+        this.dragStartViaPositions = dragStartViaPositions;
         return true;
     }
 
@@ -456,7 +494,10 @@ export class Editor {
                 }
 
                 const dragTargets = this.selectedIndicesForDrag(hitIdx);
-                if (!this.beginDragSelection(worldPos, dragTargets)) {
+                const isGroupDrag = this.selectionMode === "group";
+                const dragTrackUuids = isGroupDrag ? (this.selectedGroup()?.trackMemberUuids ?? []) : [];
+                const dragViaUuids = isGroupDrag ? (this.selectedGroup()?.viaMemberUuids ?? []) : [];
+                if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids)) {
                     this.repaintWithSelection();
                     return;
                 }
@@ -513,6 +554,34 @@ export class Editor {
                 if (!fp || !start) continue;
                 fp.at.x = start.x + delta.x;
                 fp.at.y = start.y + delta.y;
+            }
+            if (this.dragStartTrackPositions) {
+                for (const uuid of this.dragTargetTrackUuids) {
+                    const idx = this.trackIndexByUuid.get(uuid);
+                    if (idx === undefined) continue;
+                    const track = this.model.tracks[idx];
+                    const start = this.dragStartTrackPositions.get(uuid);
+                    if (!track || !start) continue;
+                    track.start.x = start.sx + delta.x;
+                    track.start.y = start.sy + delta.y;
+                    track.end.x = start.ex + delta.x;
+                    track.end.y = start.ey + delta.y;
+                    if (track.mid && start.mx !== undefined && start.my !== undefined) {
+                        track.mid.x = start.mx + delta.x;
+                        track.mid.y = start.my + delta.y;
+                    }
+                }
+            }
+            if (this.dragStartViaPositions) {
+                for (const uuid of this.dragTargetViaUuids) {
+                    const idx = this.viaIndexByUuid.get(uuid);
+                    if (idx === undefined) continue;
+                    const via = this.model.vias[idx];
+                    const start = this.dragStartViaPositions.get(uuid);
+                    if (!via || !start) continue;
+                    via.at.x = start.x + delta.x;
+                    via.at.y = start.y + delta.y;
+                }
             }
 
             this.paint();

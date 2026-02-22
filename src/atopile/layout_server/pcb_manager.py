@@ -6,6 +6,7 @@ import abc
 import math
 import time
 from pathlib import Path
+from typing import Any
 
 from atopile.layout_server.models import (
     ArcDrawingModel,
@@ -35,6 +36,7 @@ from atopile.layout_server.models import (
     Size2,
     TextModel,
     TrackModel,
+    ViaModel,
     ZoneModel,
 )
 from faebryk.libs.kicad.fileformats import kicad
@@ -55,75 +57,136 @@ class Action(abc.ABC):
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None: ...
 
 
-def _find_footprint_by_uuid(pcb: kicad.pcb.KicadPcb, uuid: str):
-    for fp in pcb.footprints:
-        if fp.uuid == uuid:
-            return fp
-    raise ValueError(f"Footprint with uuid {uuid!r} not found")
+def _build_uuid_index(pcb: kicad.pcb.KicadPcb) -> dict[str, Any]:
+    """Map UUID string → PCB object for every object in all PCB containers."""
+    index: dict[str, Any] = {}
+    for collection in [
+        pcb.footprints,
+        pcb.segments,
+        pcb.arcs,
+        pcb.vias,
+        pcb.zones,
+        pcb.gr_lines,
+        pcb.gr_arcs,
+        pcb.gr_circles,
+        pcb.gr_rects,
+        pcb.gr_polys,
+        pcb.gr_curves,
+        pcb.gr_texts,
+        pcb.gr_text_boxes,
+        getattr(pcb, "images", []),
+        getattr(pcb, "tables", []),
+    ]:
+        for obj in collection:
+            uid = getattr(obj, "uuid", None)
+            if uid:
+                token = str(uid).strip()
+                if token:
+                    index[token] = obj
+    return index
 
 
-class _FootprintAction(Action):
-    uuid: str
+def _find_object_by_uuid(pcb: kicad.pcb.KicadPcb, uuid: str) -> Any:
+    """Find any PCB object by UUID, searching all containers."""
+    obj = _build_uuid_index(pcb).get(uuid)
+    if obj is None:
+        raise ValueError(f"Object with uuid {uuid!r} not found")
+    return obj
 
-    def _find(self, pcb: kicad.pcb.KicadPcb):
-        return _find_footprint_by_uuid(pcb, self.uuid)
+
+def _get_object_center(obj: Any) -> tuple[float, float]:
+    """Return the representative (x, y) centre of any PCB object."""
+    # Footprint, Via, Text, Image: direct 'at' field
+    at = getattr(obj, "at", None)
+    if at is not None:
+        x = getattr(at, "x", None)
+        y = getattr(at, "y", None)
+        if x is not None and y is not None:
+            return (float(x), float(y))
+    # Segment, ArcSegment, Line, Arc, Rect, TextBox: midpoint of start/end
+    start = getattr(obj, "start", None)
+    end = getattr(obj, "end", None)
+    if start is not None and end is not None:
+        return (
+            (float(start.x) + float(end.x)) / 2,
+            (float(start.y) + float(end.y)) / 2,
+        )
+    # Circle: center point
+    center = getattr(obj, "center", None)
+    if center is not None:
+        return (float(center.x), float(center.y))
+    # Zone: centroid of outline polygon
+    polygon = getattr(obj, "polygon", None)
+    if polygon is not None:
+        xys = getattr(getattr(polygon, "pts", None), "xys", None) or []
+        if xys:
+            return (
+                sum(float(p.x) for p in xys) / len(xys),
+                sum(float(p.y) for p in xys) / len(xys),
+            )
+    # Polygon, Curve: centroid of pts
+    pts_obj = getattr(obj, "pts", None)
+    if pts_obj is not None:
+        xys = getattr(pts_obj, "xys", None) or []
+        if xys:
+            return (
+                sum(float(p.x) for p in xys) / len(xys),
+                sum(float(p.y) for p in xys) / len(xys),
+            )
+    return (0.0, 0.0)
 
 
-class MoveAction(_FootprintAction):
-    """Move a footprint to a new position."""
+class MoveAction(Action):
+    """Move any PCB object by (dx, dy).
 
-    def __init__(
-        self, uuid: str, new_x: float, new_y: float, new_r: float | None
-    ) -> None:
+    For footprints the absolute old position is saved for reliable undo/redo.
+    For all other object types the inverse delta is applied on undo.
+    """
+
+    def __init__(self, uuid: str, dx: float, dy: float) -> None:
         self.uuid = uuid
-        self.new = kicad.pcb.Xyr(x=new_x, y=new_y, r=new_r)
-        # Saved on first execute
-        self.old: kicad.pcb.Xyr | None = None
+        self.dx = dx
+        self.dy = dy
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        fp = self._find(pcb)
-        # Copy the Xyr to avoid reference issues when move_fp modifies fp.at
-        self.old = kicad.pcb.Xyr(x=fp.at.x, y=fp.at.y, r=fp.at.r)
-        new = kicad.pcb.Xyr(
-            x=self.new.x,
-            y=self.new.y,
-            # if r is None, just keep old one
-            r=self.new.r if self.new.r is not None else fp.at.r,
-        )
-        PCB_Transformer.move_fp(fp, new, layer=fp.layer)
+        obj = _find_object_by_uuid(pcb, self.uuid)
+        PCB_Transformer.move_object(obj, kicad.pcb.Xy(x=self.dx, y=self.dy))
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        fp = self._find(pcb)
-        assert self.old is not None
-        PCB_Transformer.move_fp(fp, self.old, layer=fp.layer)
+        obj = _find_object_by_uuid(pcb, self.uuid)
+        PCB_Transformer.move_object(obj, kicad.pcb.Xy(x=-self.dx, y=-self.dy))
 
 
-class RotateAction(_FootprintAction):
-    """Rotate a footprint by a delta angle (degrees)."""
+class RotateAction(Action):
+    """Rotate a PCB object by a delta angle (degrees).
+
+    Currently meaningful for footprints only; other types are no-ops.
+    """
 
     def __init__(self, uuid: str, delta_degrees: float) -> None:
         self.uuid = uuid
         self.delta_degrees = delta_degrees
 
-    def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+    def _rotate(self, pcb: kicad.pcb.KicadPcb, delta: float) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        fp = self._find(pcb)
-        PCB_Transformer.rotate_fp(fp, self.delta_degrees)
+        obj = _find_object_by_uuid(pcb, self.uuid)
+        if isinstance(obj, kicad.pcb.Footprint):
+            PCB_Transformer.rotate_fp(obj, delta)
+
+    def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._rotate(pcb, self.delta_degrees)
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
-        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-
-        fp = self._find(pcb)
-        PCB_Transformer.rotate_fp(fp, -self.delta_degrees)
+        self._rotate(pcb, -self.delta_degrees)
 
 
-class FlipAction(_FootprintAction):
-    """Flip a footprint between front and back."""
+class FlipAction(Action):
+    """Flip any PCB object between front and back."""
 
     def __init__(self, uuid: str) -> None:
         self.uuid = uuid
@@ -131,8 +194,8 @@ class FlipAction(_FootprintAction):
     def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        fp = self._find(pcb)
-        PCB_Transformer._flip_obj(fp)
+        obj = _find_object_by_uuid(pcb, self.uuid)
+        PCB_Transformer._flip_obj(obj)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         self._flip(pcb)
@@ -223,69 +286,58 @@ class PcbManager:
     ) -> None:
         """Execute a typed action request."""
         if isinstance(request, MoveCommand):
-            fps = self._resolve_to_footprints(request.uuids)
-            if not fps:
+            objects = self._resolve_to_objects(request.uuids)
+            if not objects:
                 return
-            actions: list[Action] = [
-                MoveAction(
-                    uuid=fp.uuid,
-                    new_x=fp.at.x + request.dx,
-                    new_y=fp.at.y + request.dy,
-                    new_r=fp.at.r or 0,
-                )
-                for fp in fps
-                if fp.uuid
-            ]
+            actions: list[Action] = []
+            for obj in objects:
+                uid = str(getattr(obj, "uuid", "") or "").strip()
+                if not uid:
+                    continue
+                actions.append(MoveAction(uid, request.dx, request.dy))
             if actions:
                 self.execute_action(CompositeAction(actions))
             return
 
         if isinstance(request, RotateCommand):
-            fps = self._resolve_to_footprints(request.uuids)
-            if not fps:
+            objects = self._resolve_to_objects(request.uuids)
+            if not objects:
                 return
-            cx = sum(fp.at.x for fp in fps) / len(fps)
-            cy = sum(fp.at.y for fp in fps) / len(fps)
+            centers = [_get_object_center(obj) for obj in objects]
+            cx = sum(c[0] for c in centers) / len(centers)
+            cy = sum(c[1] for c in centers) / len(centers)
             actions = []
-            for fp in fps:
-                if fp.uuid is None:
+            for obj, (obj_cx, obj_cy) in zip(objects, centers):
+                uid = str(getattr(obj, "uuid", "") or "").strip()
+                if not uid:
                     continue
-                dx = fp.at.x - cx
-                dy = fp.at.y - cy
-                rdx, rdy = _rotate_kicad_xy(dx, dy, request.delta_degrees)
-                new_r = ((fp.at.r or 0.0) + request.delta_degrees) % 360.0
-                actions.append(
-                    MoveAction(
-                        uuid=fp.uuid,
-                        new_x=cx + rdx,
-                        new_y=cy + rdy,
-                        new_r=new_r,
-                    )
-                )
+                dvx, dvy = obj_cx - cx, obj_cy - cy
+                rdvx, rdvy = _rotate_kicad_xy(dvx, dvy, request.delta_degrees)
+                move_dx = (cx + rdvx) - obj_cx
+                move_dy = (cy + rdvy) - obj_cy
+                if abs(move_dx) > 1e-9 or abs(move_dy) > 1e-9:
+                    actions.append(MoveAction(uid, move_dx, move_dy))
+                if isinstance(obj, kicad.pcb.Footprint):
+                    actions.append(RotateAction(uid, request.delta_degrees))
             if actions:
                 self.execute_action(CompositeAction(actions))
             return
 
         if isinstance(request, FlipCommand):
-            fps = self._resolve_to_footprints(request.uuids)
-            if not fps:
+            objects = self._resolve_to_objects(request.uuids)
+            if not objects:
                 return
-            cx = sum(fp.at.x for fp in fps) / len(fps)
+            centers = [_get_object_center(obj) for obj in objects]
+            cx = sum(c[0] for c in centers) / len(centers)
             actions = []
-            for fp in fps:
-                if fp.uuid is None:
+            for obj, (obj_cx, _obj_cy) in zip(objects, centers):
+                uid = str(getattr(obj, "uuid", "") or "").strip()
+                if not uid:
                     continue
-                mirrored_x = 2.0 * cx - fp.at.x
-                actions.append(FlipAction(fp.uuid))
-                actions.append(
-                    MoveAction(
-                        uuid=fp.uuid,
-                        new_x=mirrored_x,
-                        new_y=fp.at.y,
-                        # keep post-flip rotation
-                        new_r=None,
-                    )
-                )
+                move_dx = 2.0 * (cx - obj_cx)
+                actions.append(FlipAction(uid))
+                if abs(move_dx) > 1e-9:
+                    actions.append(MoveAction(uid, move_dx, 0.0))
             if actions:
                 self.execute_action(CompositeAction(actions))
 
@@ -307,13 +359,12 @@ class PcbManager:
         all_layers = _board_all_layers(pcb)
         copper_layers = _board_copper_layers(pcb)
         global_texts = self._extract_global_texts(pcb)
-        via_drawings = self._synthesize_via_drawings(pcb.vias, copper_layers)
         net_names_by_number = {
             net.number: not_none(net.name) for net in pcb.nets if net.name
         }
         model = RenderModel(
             board=self._extract_board(pcb),
-            drawings=[*self._extract_global_drawings(pcb), *via_drawings],
+            drawings=self._extract_global_drawings(pcb),
             texts=global_texts,
             footprints=[
                 self._extract_footprint(
@@ -329,6 +380,7 @@ class PcbManager:
                 *[self._extract_segment(seg) for seg in pcb.segments],
                 *[self._extract_arc_segment(arc) for arc in pcb.arcs],
             ],
+            vias=self._extract_vias(pcb, copper_layers),
             zones=self._extract_zones(pcb, all_layers),
         )
         model.layers = _build_layer_models(model, all_layers, copper_layers)
@@ -355,26 +407,53 @@ class PcbManager:
 
     # --- Private helpers ---
 
-    def _resolve_to_footprints(self, uuids: list[str]) -> list[kicad.pcb.Footprint]:
-        """Expand group UUIDs to member footprints; pass footprint UUIDs through."""
-        fps_by_uuid = {fp.uuid: fp for fp in self.pcb.footprints if fp.uuid}
+    def _resolve_to_objects(self, uuids: list[str]) -> list[Any]:
+        """Expand group UUIDs to member objects; pass any other UUID through."""
+        all_objects = _build_uuid_index(self.pcb)
         groups_by_uuid = {
             g.uuid: g for g in (getattr(self.pcb, "groups", []) or []) if g.uuid
         }
-        result: list[kicad.pcb.Footprint] = []
+        result: list[Any] = []
         seen: set[str] = set()
         for uuid in uuids:
             if uuid in groups_by_uuid:
                 for member in groups_by_uuid[uuid].members or []:
                     token = str(member).strip()
-                    fp = fps_by_uuid.get(token)
-                    if fp and fp.uuid not in seen:
-                        seen.add(fp.uuid)
-                        result.append(fp)
-            elif uuid in fps_by_uuid and uuid not in seen:
+                    if token in all_objects and token not in seen:
+                        seen.add(token)
+                        result.append(all_objects[token])
+            elif uuid in all_objects and uuid not in seen:
                 seen.add(uuid)
-                result.append(fps_by_uuid[uuid])
+                result.append(all_objects[uuid])
         return result
+
+    def _extract_vias(
+        self, pcb: kicad.pcb.KicadPcb, copper_layers: list[str]
+    ) -> list[ViaModel]:
+        vias: list[ViaModel] = []
+        for via in pcb.vias:
+            cx = via.at.x
+            cy = via.at.y
+            drill_d = float(via.drill) if via.drill else 0.0
+            outer_d = float(via.size) if via.size else 0.0
+            via_layers = list(via.layers)
+            expanded_copper = _expand_copper_layers(
+                via_layers, all_copper_layers=copper_layers, include_between=True
+            )
+            drill_lyrs = _drill_layers_from_copper_layers(
+                expanded_copper, all_copper_layers=copper_layers, include_between=False
+            )
+            vias.append(
+                ViaModel(
+                    uuid=(str(via.uuid).strip() if via.uuid else None),
+                    at=PointXY(x=cx, y=cy),
+                    size=outer_d,
+                    drill=drill_d,
+                    copper_layers=expanded_copper,
+                    drill_layers=drill_lyrs,
+                )
+            )
+        return vias
 
     def _extract_footprint_groups(
         self, pcb: kicad.pcb.KicadPcb
@@ -382,18 +461,34 @@ class PcbManager:
         footprints_by_uuid = {
             fp.uuid: fp for fp in pcb.footprints if fp.uuid is not None
         }
+        track_uuids: set[str] = set()
+        for seg in pcb.segments:
+            if seg.uuid:
+                track_uuids.add(str(seg.uuid).strip())
+        for arc in pcb.arcs:
+            if arc.uuid:
+                track_uuids.add(str(arc.uuid).strip())
+        via_uuids: set[str] = set()
+        for via in pcb.vias:
+            if via.uuid:
+                via_uuids.add(str(via.uuid).strip())
         groups: list[FootprintGroupModel] = []
         for group in pcb.groups:
             member_uuids: list[str] = []
+            track_member_uuids: list[str] = []
+            via_member_uuids: list[str] = []
             seen_members: set[str] = set()
             for member in group.members:
                 token = member.strip()
                 if not token or token in seen_members:
                     continue
-                if token not in footprints_by_uuid:
-                    continue
                 seen_members.add(token)
-                member_uuids.append(token)
+                if token in footprints_by_uuid:
+                    member_uuids.append(token)
+                elif token in track_uuids:
+                    track_member_uuids.append(token)
+                elif token in via_uuids:
+                    via_member_uuids.append(token)
             if len(member_uuids) < 2:
                 continue
             member_fps = [footprints_by_uuid[u] for u in member_uuids]
@@ -404,6 +499,8 @@ class PcbManager:
                     uuid=((group.uuid or "").strip() or None),
                     name=((group.name or "").strip() or None),
                     member_uuids=member_uuids,
+                    track_member_uuids=track_member_uuids,
+                    via_member_uuids=via_member_uuids,
                     at=PointXYR(x=cx, y=cy, r=0),
                 )
             )
@@ -1403,6 +1500,9 @@ def _collect_scene_layers(model: RenderModel) -> set[str]:
     for track in model.tracks:
         if track.layer:
             layer_ids.add(track.layer)
+    for via in model.vias:
+        layer_ids.update(via.copper_layers)
+        layer_ids.update(via.drill_layers)
     for zone in model.zones:
         layer_ids.update(zone.layers)
         for filled in zone.filled_polygons:

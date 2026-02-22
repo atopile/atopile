@@ -22,6 +22,7 @@ export interface RenderModel {
     footprints: FootprintModel[];
     footprint_groups: FootprintGroupModel[];
     tracks: TrackModel[];
+    vias: ViaModel[];
     zones: ZoneModel[];
 }
 
@@ -60,6 +61,8 @@ export interface FootprintModel extends PcbObjectModel {
 export interface FootprintGroupModel extends PcbObjectModel {
     name: string | null;
     member_uuids: string[];
+    track_member_uuids: string[];
+    via_member_uuids: string[];
 }
 
 export interface TextModel {
@@ -162,6 +165,15 @@ export interface TrackModel {
     layer: string | null;
     net: number;
     uuid: string | null;
+}
+
+export interface ViaModel {
+    uuid: string | null;
+    at: Point2;
+    size: number;
+    drill: number;
+    copper_layers: string[];
+    drill_layers: string[];
 }
 
 export interface ZoneModel {

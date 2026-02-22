@@ -161,6 +161,8 @@ class FootprintModel(PcbObjectModel):
 class FootprintGroupModel(PcbObjectModel):
     name: str | None = None
     member_uuids: list[str]
+    track_member_uuids: list[str] = Field(default_factory=list)
+    via_member_uuids: list[str] = Field(default_factory=list)
 
 
 # --- Tracks ---
@@ -174,6 +176,18 @@ class TrackModel(BaseModel):
     layer: str | None = None
     net: int = 0
     uuid: str | None = None
+
+
+# --- Vias ---
+
+
+class ViaModel(BaseModel):
+    uuid: str | None = None
+    at: PointXY
+    size: float  # outer diameter
+    drill: float  # drill diameter (0 = no drill)
+    copper_layers: list[str]  # expanded copper layers for annular ring / filled circle
+    drill_layers: list[str]  # drill visualisation layer IDs
 
 
 # --- Zones ---
@@ -221,6 +235,7 @@ class RenderModel(BaseModel):
     footprints: list[FootprintModel]
     footprint_groups: list[FootprintGroupModel] = Field(default_factory=list)
     tracks: list[TrackModel]
+    vias: list[ViaModel] = Field(default_factory=list)
     zones: list[ZoneModel]
 
 

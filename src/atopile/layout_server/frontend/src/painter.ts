@@ -11,6 +11,7 @@ import type {
     HoleModel,
     PadModel,
     TrackModel,
+    ViaModel,
     DrawingModel,
     Point2,
     Point3,
@@ -141,6 +142,7 @@ export function paintAll(renderer: Renderer, model: RenderModel, hiddenLayers?: 
     paintGlobalDrawings(renderer, model, hidden, "non_copper", layerById);
     paintZones(renderer, model, hidden, layerById);
     paintTracks(renderer, model, hidden, layerById);
+    paintVias(renderer, model.vias, hidden, layerById);
     paintGlobalDrawings(renderer, model, hidden, "copper", layerById);
     const orderedFootprints = [...model.footprints].sort(
         (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById),
@@ -315,6 +317,66 @@ function paintTracks(
                 ? arcToPoints(track.start, track.mid, track.end)
                 : [p2v(track.start), p2v(track.end)];
             layer.geometry.add_polyline(pts, track.width, r, g, b, a);
+        }
+        renderer.end_layer();
+    }
+}
+
+function paintVias(
+    renderer: Renderer,
+    vias: ViaModel[],
+    hidden: Set<string>,
+    layerById: Map<string, LayerModel>,
+) {
+    // Copper layers: annular ring or filled circle
+    const byCopperLayer = new Map<string, ViaModel[]>();
+    for (const via of vias) {
+        for (const layerName of via.copper_layers) {
+            if (!layerName || hidden.has(layerName)) continue;
+            let arr = byCopperLayer.get(layerName);
+            if (!arr) { arr = []; byCopperLayer.set(layerName, arr); }
+            arr.push(via);
+        }
+    }
+    for (const [layerName, layerVias] of sortedLayerEntries(byCopperLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`via:${layerName}`);
+        for (const via of layerVias) {
+            const cx = via.at.x;
+            const cy = via.at.y;
+            const outerD = via.size;
+            const drillD = via.drill;
+            if (drillD > 0 && outerD > drillD) {
+                const annulus = (outerD - drillD) / 2;
+                const centerlineR = (outerD + drillD) / 4;
+                const pts = circleToPoints(cx, cy, centerlineR);
+                if (pts.length > 1) {
+                    layer.geometry.add_polyline(pts, annulus, r, g, b, Math.max(a, 0.78));
+                }
+            } else if (outerD > 0) {
+                layer.geometry.add_circle(cx, cy, outerD / 2, r, g, b, Math.max(a, 0.78));
+            }
+        }
+        renderer.end_layer();
+    }
+
+    // Drill holes
+    const byDrillLayer = new Map<string, ViaModel[]>();
+    for (const via of vias) {
+        if (via.drill <= 0) continue;
+        for (const layerName of via.drill_layers) {
+            if (!layerName || hidden.has(layerName)) continue;
+            let arr = byDrillLayer.get(layerName);
+            if (!arr) { arr = []; byDrillLayer.set(layerName, arr); }
+            arr.push(via);
+        }
+    }
+    for (const [layerName, layerVias] of sortedLayerEntries(byDrillLayer, layerById)) {
+        const [r, g, b, a] = getLayerColor(layerName, layerById);
+        const layer = renderer.start_layer(`via:drill:${layerName}`);
+        for (const via of layerVias) {
+            if (via.drill <= 0) continue;
+            layer.geometry.add_circle(via.at.x, via.at.y, via.drill / 2, r, g, b, a);
         }
         renderer.end_layer();
     }
@@ -834,6 +896,46 @@ export function paintGroupHalos(
     }
     renderer.end_layer();
     return null;
+}
+
+/** Paint a single bounding box encompassing all footprints in a group. */
+export function paintGroupBBox(
+    renderer: Renderer,
+    footprints: FootprintModel[],
+    memberIndices: number[],
+    mode: "selected" | "hover",
+): void {
+    if (memberIndices.length === 0) return;
+    const grow = mode === "selected" ? 0.4 : 0.28;
+    const strokeWidth = mode === "selected" ? 0.12 : 0.09;
+    const alpha = mode === "selected" ? 0.8 : 0.4;
+    const fillAlpha = mode === "selected" ? 0.06 : 0.025;
+
+    const boxes: BBox[] = [];
+    for (const index of memberIndices) {
+        const fp = footprints[index];
+        if (!fp) continue;
+        const b = footprintBBox(fp);
+        if (b.w > 0 || b.h > 0) boxes.push(b);
+    }
+    if (boxes.length === 0) return;
+
+    const combined = BBox.combine(boxes).grow(grow);
+    if (combined.w <= 0 || combined.h <= 0) return;
+
+    const layer = renderer.start_layer(mode === "selected" ? "group-bbox-selected" : "group-bbox-hover");
+    const corners = [
+        new Vec2(combined.x, combined.y),
+        new Vec2(combined.x2, combined.y),
+        new Vec2(combined.x2, combined.y2),
+        new Vec2(combined.x, combined.y2),
+        new Vec2(combined.x, combined.y),
+    ];
+    if (fillAlpha > 0) {
+        layer.geometry.add_polygon(corners.slice(0, 4), 0.4, 0.75, 1.0, fillAlpha);
+    }
+    layer.geometry.add_polyline(corners, strokeWidth, 0.4, 0.75, 1.0, alpha);
+    renderer.end_layer();
 }
 
 /** Compute a bounding box for the full render model */

@@ -1066,6 +1066,14 @@ class PCB_Transformer:
     @staticmethod
     def move_object(obj: Any, vector: kicad.pcb.Xy):
         match obj:
+            case kicad.pcb.Footprint():
+                PCB_Transformer.move_fp(
+                    obj,
+                    kicad.pcb.Xyr(
+                        x=obj.at.x + vector.x, y=obj.at.y + vector.y, r=obj.at.r
+                    ),
+                    obj.layer,
+                )
             case kicad.pcb.Segment():
                 obj.start = kicad.geo.add(obj.start, vector)
                 obj.end = kicad.geo.add(obj.end, vector)
