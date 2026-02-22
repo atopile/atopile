@@ -1490,18 +1490,28 @@ class DeepPCB_Transformer:
                 "clearance": 200,
                 "viaDefinition": (board.viaDefinitions[0] if board.viaDefinitions else ""),
                 "nets": [str(net.get("id", "")) for net in board.nets],
-                "viaPriority": [[board.viaDefinitions[0]]] if board.viaDefinitions else [],
             }
+        ]
+        board.planes = [
+            {
+                "layer": int(plane.get("layer", 0)),
+                "netId": str(plane.get("netId", "")),
+                "shape": plane.get("shape", {}),
+            }
+            for plane in board.planes
         ]
 
         for comp in board.components:
             comp.pop("embeddedFonts", None)
-            rp = comp.get("referenceProperty")
-            if isinstance(rp, dict):
-                rp.pop("effects", None)
+            # Provider canonical output does not include component reference property.
+            comp.pop("referenceProperty", None)
 
         for padstack in board.padstacks:
             padstack["allowVia"] = False
+            # Internal reconstruction hints are non-canonical for provider JSON.
+            for key in list(padstack.keys()):
+                if key.startswith("kicad"):
+                    padstack.pop(key, None)
 
         cls._provider_scale_flip_coordinates(board)
 
