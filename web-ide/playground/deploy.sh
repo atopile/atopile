@@ -68,6 +68,28 @@ if ! $FLY auth whoami &>/dev/null; then
   exit 1
 fi
 
+# Detect container runtime — flyctl talks the Docker API, so for podman
+# we start the socket service and point DOCKER_HOST at it.
+# Note: podman-docker provides a "docker" binary that wraps podman but has no
+# daemon, so we verify the daemon is reachable with `docker info` before trusting it.
+if command -v docker &>/dev/null && docker info &>/dev/null; then
+  echo "Container runtime: docker"
+elif command -v podman &>/dev/null; then
+  echo "Container runtime: podman"
+  systemctl --user start podman.socket 2>/dev/null || true
+  PODMAN_SOCK="$(podman info --format '{{.Host.RemoteSocket.Path}}' 2>/dev/null)"
+  if [ -S "${PODMAN_SOCK}" ]; then
+    export DOCKER_HOST="unix://${PODMAN_SOCK}"
+  else
+    echo "Error: podman socket not available at ${PODMAN_SOCK}"
+    echo "  Try: systemctl --user enable --now podman.socket"
+    exit 1
+  fi
+else
+  echo "Error: neither docker nor podman found"
+  exit 1
+fi
+
 echo "Logged in as: $($FLY auth whoami)"
 echo ""
 
@@ -86,7 +108,7 @@ echo ""
 # Workspace image: build via Fly remote builder → registry.fly.io
 # ---------------------------------------------------------------------------
 if [ "$DEPLOY_WORKSPACE" = true ]; then
-  echo "--- Building workspace image (Fly remote builder)"
+  echo "--- Building workspace image (local build)"
   echo "    Dockerfile: web-ide/Dockerfile"
   echo "    Build context: repo root"
   echo ""
@@ -103,7 +125,7 @@ if [ "$DEPLOY_WORKSPACE" = true ]; then
     --dockerfile "${REPO_ROOT}/web-ide/Dockerfile" \
     --build-arg "SOURCE_HASH=${SOURCE_HASH}" \
     --image-label latest \
-    --remote-only \
+    --local-only \
     --strategy immediate \
     --ha=false
 

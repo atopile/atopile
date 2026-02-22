@@ -49,6 +49,7 @@ COPY src/atopile /src/src/atopile
 
 WORKDIR /src
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/src/src/faebryk/core/zig/.zig-cache \
     uv build --wheel --out-dir /wheels
 
 # ──────────────────────────────────────────────────────────────────
