@@ -156,7 +156,11 @@ class DeepPCB_Transformer:
             if definition_id not in component_definitions:
                 definition_pins = []
                 for pad_index, pad in enumerate(fp.pads):
-                    pin_id = cls._pin_id(pad, pad_index)
+                    pin_id = cls._pin_id(
+                        pad,
+                        pad_index,
+                        provider_strict=provider_strict,
+                    )
                     padstack_id, padstack = cls._padstack_from_pad(
                         pad,
                         copper_layer_index,
@@ -254,7 +258,7 @@ class DeepPCB_Transformer:
                 if not net_id:
                     continue
                 pins_by_net.setdefault(net_id, []).append(
-                    f"{component_id}-{cls._pin_id(pad, pad_index)}"
+                    f"{component_id}-{cls._pin_id(pad, pad_index, provider_strict=provider_strict)}"
                 )
 
         board.componentDefinitions = sorted(
@@ -1323,10 +1327,14 @@ class DeepPCB_Transformer:
         return str(fp.uuid)
 
     @staticmethod
-    def _pin_id(pad: Any, index: int) -> str:
+    def _pin_id(pad: Any, index: int, *, provider_strict: bool = False) -> str:
         raw = str(getattr(pad, "name", "") or "").strip()
         if raw:
+            if provider_strict and len(raw) < 2:
+                return f"P{raw}"
             return raw
+        if not provider_strict:
+            return ""
         return f"PAD_{index + 1}"
 
     @classmethod
