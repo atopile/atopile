@@ -9,6 +9,140 @@ import sys
 from pathlib import Path
 
 import pytest
+import typer
+from rich.console import Console
+from rich.table import Table
+
+SIZE_ORDER = {"small": 0, "medium": 1, "large": 2, "xlarge": 3}
+app = typer.Typer(add_completion=False)
+
+
+def _format_bench_value(value: float | None, precision: int = 3) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.{precision}f}"
+
+
+def _print_benchmark_tables(report: dict, artifact_path: Path) -> None:
+    rows = report.get("rows", [])
+    metadata = report.get("metadata", {})
+
+    timing_table = Table(title=f"S-Expression Timing ({artifact_path})")
+    timing_table.add_column("Profile")
+    timing_table.add_column("Size")
+    timing_table.add_column("Bytes", justify="right")
+    timing_table.add_column("Depth", justify="right")
+    timing_table.add_column("Tokenizer (ms)", justify="right")
+    timing_table.add_column("AST (ms)", justify="right")
+    timing_table.add_column("Parser (ms)", justify="right")
+    timing_table.add_column("Encode (ms)", justify="right")
+    timing_table.add_column("Pretty (ms)", justify="right")
+    timing_table.add_column("Cum Peak KiB", justify="right")
+    timing_table.add_column("Cum Peak>Start KiB", justify="right")
+
+    memory_table = Table(title=f"S-Expression Stage Memory ({artifact_path})")
+    memory_table.add_column("Profile")
+    memory_table.add_column("Size")
+    memory_table.add_column("Tok ΔKiB", justify="right")
+    memory_table.add_column("AST ΔKiB", justify="right")
+    memory_table.add_column("Par ΔKiB", justify="right")
+    memory_table.add_column("Enc ΔKiB", justify="right")
+    memory_table.add_column("Pre ΔKiB", justify="right")
+    memory_table.add_column("Tok Peak+KiB", justify="right")
+    memory_table.add_column("AST Peak+KiB", justify="right")
+    memory_table.add_column("Par Peak+KiB", justify="right")
+    memory_table.add_column("Enc Peak+KiB", justify="right")
+    memory_table.add_column("Pre Peak+KiB", justify="right")
+
+    grouped: dict[tuple[str, str], dict[str, float | int | str]] = {}
+    for row in rows:
+        key = (row["depth_profile"], row["size_label"])
+        grouped.setdefault(
+            key,
+            {
+                "bytes": row["bytes"],
+                "max_depth": row["max_depth"],
+            },
+        )
+        grouped[key][row["layer"]] = row["mean_ms"]
+        grouped[key][f"{row['layer']}_mem_delta_kib"] = row.get(
+            "mean_stage_mem_delta_kib",
+            row.get("delta_mean_peak_kib_from_prev", 0.0),
+        )
+        grouped[key][f"{row['layer']}_peak_inc_kib"] = row.get(
+            "mean_stage_peak_increment_kib",
+            0.0,
+        )
+        grouped[key][f"{row['layer']}_cum_peak_kib"] = row.get(
+            "mean_cumulative_pipeline_peak_kib",
+            0.0,
+        )
+        grouped[key][f"{row['layer']}_cum_peak_over_start_kib"] = row.get(
+            "mean_cumulative_pipeline_peak_over_start_kib",
+            row.get("mean_cumulative_pipeline_peak_kib", 0.0),
+        )
+
+    sorted_keys = sorted(
+        grouped.keys(),
+        key=lambda key: (key[0], SIZE_ORDER.get(key[1], 99)),
+    )
+
+    for profile, size in sorted_keys:
+        data = grouped[(profile, size)]
+        timing_table.add_row(
+            profile,
+            size,
+            f"{int(data['bytes']):,}",
+            str(int(data["max_depth"])),
+            _format_bench_value(data.get("tokenizer")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("ast")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("parser")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("encode")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("pretty")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("pretty_cum_peak_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("pretty_cum_peak_over_start_kib")),  # type: ignore[arg-type]
+        )
+        memory_table.add_row(
+            profile,
+            size,
+            _format_bench_value(data.get("tokenizer_mem_delta_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("ast_mem_delta_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("parser_mem_delta_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("encode_mem_delta_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("pretty_mem_delta_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("tokenizer_peak_inc_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("ast_peak_inc_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("parser_peak_inc_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("encode_peak_inc_kib")),  # type: ignore[arg-type]
+            _format_bench_value(data.get("pretty_peak_inc_kib")),  # type: ignore[arg-type]
+        )
+
+    console = Console()
+    console.print(
+        "Run metadata: "
+        f"warmup={metadata.get('warmup', '?')}, "
+        f"samples={metadata.get('samples', '?')}, "
+        f"max_size_label={metadata.get('max_size_label', '?')}, "
+        f"dataset_count={metadata.get('dataset_count', '?')}, "
+        f"row_count={metadata.get('row_count', '?')}"
+    )
+    console.print(timing_table)
+    console.print(memory_table)
+
+
+@app.command("print-table")
+def main(
+    json_path: Path = typer.Argument(
+        Path("artifacts/sexp-benchmark.json"),
+        help="Path to benchmark JSON (default: artifacts/sexp-benchmark.json).",
+    ),
+) -> None:
+    artifact_path = json_path
+    if not artifact_path.exists():
+        raise FileNotFoundError(f"Benchmark JSON not found: {artifact_path}")
+
+    report = json.loads(artifact_path.read_text())
+    _print_benchmark_tables(report, artifact_path)
 
 
 @pytest.mark.slow
@@ -120,3 +254,10 @@ def test_performance_sexp_synthetic_matrix(repo_root: Path):
             assert isinstance(value, int | float)
             assert math.isfinite(value)
             assert value >= 0
+
+    # Print benchmark tables at the end for easier human review.
+    _print_benchmark_tables(report, artifact_path)
+
+
+if __name__ == "__main__":
+    app()
