@@ -1,5 +1,5 @@
 """
-Atopile installation management domain.
+atopile installation management domain.
 
 Handles validating local atopile paths.
 """

@@ -38,7 +38,7 @@ import { FileContextMenu, type ContextMenuPosition, type ContextMenuTarget } fro
 import './FileExplorerPanel.css';
 
 // ============================================================================
-// Atopile Icon Component (same as header logo)
+// atopile Icon Component (same as header logo)
 // ============================================================================
 
 const AtopileIcon = memo(function AtopileIcon({ size = 16 }: { size?: number }) {
