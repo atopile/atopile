@@ -38,16 +38,7 @@ services:
       - NET_BIND_SERVICE
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=512m
-    volumes:
-      # Persist workspace between restarts (seeded by entrypoint on first run)
-      - workspace-data:/home/openvscode-server/workspace
-      # Persist VS Code user data between restarts (runtime data dir is under HOME)
-      - vscode-user-data:/home/openvscode-server/.openvscode-server/data/User
     environment:
       - OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
       - WEB_IDE_PUBLIC_HOST=${WEB_IDE_PUBLIC_HOST:-code-vm}
     restart: unless-stopped
-
-volumes:
-  workspace-data:
-  vscode-user-data:

@@ -81,22 +81,21 @@ ${OVSCODE} --list-extensions --extensions-dir "${EXT_DIR}"
 mkdir -p "${OPENVSCODE_SERVER_ROOT}/data/Machine"
 cp /tmp/scripts/settings.json "${OPENVSCODE_SERVER_ROOT}/data/Machine/settings.json"
 
-# User keybindings — placed in two locations:
-#   • server data dir  (used on first boot)
-#   • ~/.local/etc     (restored by entrypoint.sh after volume mounts shadow the above)
+# User keybindings
 mkdir -p "${OPENVSCODE_SERVER_ROOT}/data/User"
 cp /tmp/scripts/keybindings.json "${OPENVSCODE_SERVER_ROOT}/data/User/keybindings.json"
-mkdir -p "${HOME}/.local/etc"
-cp /tmp/scripts/keybindings.json "${HOME}/.local/etc/keybindings.json"
 
 # Entrypoint + Caddy config
+mkdir -p "${HOME}/.local/etc"
 cp /tmp/scripts/entrypoint.sh "${HOME}/.local/bin/entrypoint.sh"
 chmod +x "${HOME}/.local/bin/entrypoint.sh"
 cp /tmp/scripts/Caddyfile "${HOME}/.local/etc/Caddyfile"
 
-# ── 6. Create workspace dir ──────────────────────────────────────
-# Entrypoint seeds this with the example project on first run
-mkdir -p "${HOME}/workspace"
+# ── 6. uv symlink ────────────────────────────────────────────────
+# The atopile extension expects uv at this globalStorage path
+UV_SYMLINK_DIR="${HOME}/.openvscode-server/data/User/globalStorage/atopile.atopile/uv-bin"
+mkdir -p "${UV_SYMLINK_DIR}"
+ln -sf /usr/local/bin/uv "${UV_SYMLINK_DIR}/uv"
 
 # ── 7. Clean up build artifacts ──────────────────────────────────
 rm -rf /tmp/artifacts /tmp/setup /tmp/scripts /tmp/branding

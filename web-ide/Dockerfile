@@ -130,7 +130,7 @@ COPY --chown=openvscode-server:openvscode-server \
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/setup/ /tmp/setup/
 COPY --chown=openvscode-server:openvscode-server \
-    web-ide/workspace/ /tmp/default-workspace/
+    web-ide/workspace/ /home/openvscode-server/workspace/
 
 # Copy built artifacts last — these change on every source commit and invalidate
 # all subsequent layers, so keep them right before the RUN that consumes them.
@@ -146,9 +146,6 @@ WORKDIR ${HOME}
 # Install atopile from wheel, VS Code extensions, apply branding, copy configs, and clean up
 # Must match requires-python in pyproject.toml (>=3.14,<3.15)
 RUN /tmp/setup/setup.sh
-
-# Note: uv symlink is created by entrypoint.sh on each startup because the
-# User data volume mount shadows this directory on subsequent container starts
 
 # Lock down extensions: make dirs root-owned so user can't install new ones.
 # "Install from VSIX" and drag-and-drop both fail with permission denied.
