@@ -7,8 +7,8 @@ Schematic exporter – generates hierarchical JSON for the Three.js schematic vi
 Produces **v2 format**: a recursive tree of SchematicSheets, each containing
 modules (expandable blocks), components (leaf parts), and scoped nets.
 
-Leverages the pinout exporter's ``_trace_lead_interfaces`` for rich per-pin
-bus-type classification and module-interface mapping.
+Leverages lead interface tracing for rich per-pin bus-type classification and
+module-interface mapping.
 
 Output: ``layout/<build>.ato_sch``
 """
@@ -24,11 +24,6 @@ from pathlib import Path
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
-from faebryk.exporters.pinout.pinout import (
-    _assign_sides_from_positions,
-    _determine_pin_type,
-    _trace_lead_interfaces,
-)
 from faebryk.exporters.utils import natural_sort_key, strip_root_hex, write_json
 
 logger = logging.getLogger(__name__)
@@ -63,7 +58,267 @@ def _is_passthrough_binding(binding: _ResolvedInterfacePin) -> bool:
     return category == "control" or iface_type in {"gpio", "control"}
 
 
-# ── Pin classification (reuses pinout exporter primitives) ──────
+def _classify_interface(name: str) -> str:
+    """Classify an interface path into a broad bus/category type."""
+    lower = name.lower()
+
+    if any(
+        kw in lower
+        for kw in ["power", ".hv", ".lv", "vcc", "vdd", "gnd", "p3v3", "vbus"]
+    ):
+        return "Power"
+
+    if "i2c" in lower:
+        return "I2C"
+    if "spi" in lower or "mspi" in lower:
+        return "SPI"
+    if "uart" in lower or "rxd" in lower or "txd" in lower:
+        return "UART"
+    if "i2s" in lower:
+        return "I2S"
+    if "usb" in lower:
+        return "USB"
+    if "jtag" in lower:
+        return "JTAG"
+    if "xtal" in lower or "crystal" in lower:
+        return "Crystal"
+    if "adc" in lower:
+        return "Analog"
+    if "gpio" in lower:
+        return "GPIO"
+    if "enable" in lower or "en" == lower.split(".")[-1]:
+        return "Control"
+
+    return "Signal"
+
+
+def _get_interface_path(node: fabll.Node, component_node: fabll.Node) -> str | None:
+    """Build an interface path relative to the owning component/module."""
+    try:
+        full_name = strip_root_hex(node.get_full_name())
+        comp_name = strip_root_hex(component_node.get_full_name())
+
+        parent = component_node.get_parent()
+        if parent:
+            parent_name = strip_root_hex(parent[0].get_full_name())
+            if full_name.startswith(parent_name + "."):
+                return full_name[len(parent_name) + 1 :]
+
+        if full_name.startswith(comp_name + "."):
+            return full_name[len(comp_name) + 1 :]
+
+        return full_name
+    except Exception:
+        return None
+
+
+def _is_external_connection(
+    connected_node: fabll.Node,
+    component_parent: fabll.Node | None,
+) -> bool:
+    """Return True when the connected interface is outside component parent."""
+    if component_parent is None:
+        return False
+    try:
+        hierarchy = connected_node.get_hierarchy()
+        return not any(component_parent.is_same(ancestor) for ancestor, _ in hierarchy)
+    except Exception:
+        return False
+
+
+def _trace_lead_interfaces(
+    lead_electrical: fabll.Node,
+    component_node: fabll.Node,
+) -> list[dict]:
+    """Trace all interface functions reachable from a lead electrical node."""
+    functions: list[dict] = []
+    seen_names: set[str] = set()
+
+    comp_parent_info = component_node.get_parent()
+    comp_parent = comp_parent_info[0] if comp_parent_info else None
+
+    skip_names = {"part_of", "can_bridge", "reference", "line"}
+    skip_prefixes = ("_is_", "_has_", "pad_")
+    skip_contains = ("unnamed", ".unnamed", "part_of", "_is_")
+
+    try:
+        if not lead_electrical.has_trait(fabll.is_interface):
+            return functions
+
+        is_if = lead_electrical.get_trait(fabll.is_interface)
+        connected = is_if.get_connected(include_self=False)
+
+        for connected_node, path in connected.items():
+            try:
+                if comp_parent is not None:
+                    try:
+                        hierarchy = connected_node.get_hierarchy()
+                        ancestors = [a for a, _ in hierarchy]
+                        is_in_parent = any(comp_parent.is_same(a) for a in ancestors)
+                        if not is_in_parent and path.length > 1:
+                            continue
+                    except Exception:
+                        pass
+
+                iface_path = _get_interface_path(connected_node, component_node)
+                if not iface_path:
+                    continue
+
+                if iface_path in skip_names:
+                    continue
+                if any(iface_path.startswith(p) for p in skip_prefixes):
+                    continue
+                if any(skip in iface_path for skip in skip_contains):
+                    continue
+                if "pad_" in iface_path or "_is_" in iface_path:
+                    continue
+                if iface_path.startswith("package."):
+                    continue
+                if iface_path in ("line", "hv", "lv", "gnd", "vcc"):
+                    continue
+                if len(iface_path.split(".")) > 4:
+                    continue
+
+                raw_name = iface_path
+                is_line_level = raw_name.endswith(".line") or ".line." in raw_name
+
+                display_name = raw_name[:-5] if raw_name.endswith(".line") else raw_name
+                if display_name in seen_names:
+                    continue
+                seen_names.add(display_name)
+
+                bus_type = _classify_interface(iface_path)
+                external = _is_external_connection(connected_node, comp_parent)
+
+                functions.append(
+                    {
+                        "name": display_name,
+                        "raw_name": raw_name,
+                        "type": bus_type,
+                        "external": external,
+                        "is_line_level": is_line_level,
+                    }
+                )
+            except Exception:
+                continue
+    except Exception as e:
+        logger.debug(f"Error tracing lead interfaces: {e}")
+
+    all_names = {fn["name"] for fn in functions}
+    cleaned: list[dict] = []
+    for fn in functions:
+        name = fn["name"]
+        parts = name.split(".")
+        is_redundant = False
+        if len(parts) >= 2:
+            for start in range(1, len(parts)):
+                shorter = ".".join(parts[start:])
+                if shorter in all_names and shorter != name:
+                    is_redundant = True
+                    break
+        if not is_redundant:
+            cleaned.append(fn)
+
+    return cleaned
+
+
+def _determine_pin_type(pad_name: str, functions: list[dict]) -> str:
+    """Determine a pin type from its name and traced interface functions."""
+    lower = pad_name.lower()
+
+    if lower in ("gnd", "vss", "ep", "epad", "exposed"):
+        return "ground"
+
+    if any(
+        kw in lower for kw in ["vcc", "vdd", "3v3", "p3v3", "5v", "vin", "vbus", "vbat"]
+    ):
+        return "power"
+
+    for fn in functions:
+        if fn["type"] == "Power":
+            if ".lv" in fn["name"] or "gnd" in fn["name"].lower():
+                return "ground"
+            return "power"
+
+    if lower in ("nc", "n/c", "dnc"):
+        return "nc"
+
+    return "signal"
+
+
+def _assign_sides_from_positions(
+    pad_names: list[str],
+    positions: dict[str, tuple[float, float]],
+) -> dict[str, tuple[str, int]]:
+    """Assign pins to sides based on their physical XY coordinates."""
+    if not positions or not pad_names:
+        return {}
+
+    positioned = [(name, positions[name]) for name in pad_names if name in positions]
+    if not positioned:
+        return {}
+
+    xs = [p[1][0] for p in positioned]
+    ys = [p[1][1] for p in positioned]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    width = max_x - min_x or 1.0
+    height = max_y - min_y or 1.0
+    cx = (min_x + max_x) / 2
+    cy = (min_y + max_y) / 2
+
+    sides: dict[str, list[tuple[str, float]]] = {
+        "left": [],
+        "right": [],
+        "top": [],
+        "bottom": [],
+    }
+
+    interior_threshold = 0.3
+    for name, (x, y) in positioned:
+        nx = (x - cx) / (width / 2) if width > 0.01 else 0
+        ny = (y - cy) / (height / 2) if height > 0.01 else 0
+
+        if abs(nx) < interior_threshold and abs(ny) < interior_threshold:
+            sides["bottom"].append((name, x))
+            continue
+
+        dist_left = abs(nx - (-1))
+        dist_right = abs(nx - 1)
+        dist_top = abs(ny - (-1))
+        dist_bottom = abs(ny - 1)
+        min_dist = min(dist_left, dist_right, dist_top, dist_bottom)
+
+        if min_dist == dist_left:
+            sides["left"].append((name, y))
+        elif min_dist == dist_right:
+            sides["right"].append((name, y))
+        elif min_dist == dist_top:
+            sides["top"].append((name, x))
+        else:
+            sides["bottom"].append((name, x))
+
+    for side_name in sides:
+        sides[side_name].sort(key=lambda t: t[1])
+    sides["top"].reverse()
+    sides["right"].reverse()
+
+    result: dict[str, tuple[str, int]] = {}
+    for side_name, pad_list in sides.items():
+        for pos_idx, (name, _) in enumerate(pad_list):
+            result[name] = (side_name, pos_idx)
+
+    fallback_pos = 0
+    for name in pad_names:
+        if name not in result:
+            result[name] = ("left", fallback_pos)
+            fallback_pos += 1
+
+    return result
+
+
+# ── Pin classification helpers ───────────────────────────────────
 
 
 def _classify_pin(name: str, lead_functions: list[dict]) -> tuple[str, str]:
