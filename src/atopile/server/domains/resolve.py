@@ -18,7 +18,7 @@ def handle_resolve_location(
     Resolve an atopile address to a source file location.
 
     Args:
-        address: Atopile address (e.g., 'file.ato::Module.field')
+        address: atopile address (e.g., 'file.ato::Module.field')
         project_root: Optional project root path
         ctx: Application context with workspace paths
 

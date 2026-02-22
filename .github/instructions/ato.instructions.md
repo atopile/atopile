@@ -5,7 +5,7 @@ applyTo: *.ato, ato.yaml
 
 ato is a declarative DSL to design electronics (PCBs) with.
 It is part of the atopile project.
-Atopile is run by the vscode/cursor/windsurf extension.
+atopile is run by the vscode/cursor/windsurf extension.
 The CLI (which is invoked by the extension) actually builds the project.
 
 # Not available in ato
