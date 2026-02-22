@@ -24,7 +24,7 @@ FROM docker.io/library/caddy:2 AS caddy
 # ──────────────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS wheel-builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /usr/local/bin/uv
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -74,7 +74,7 @@ RUN --mount=type=cache,target=/root/.npm \
     mkdir -p /vsix && npx vsce package --out /vsix/
 
 # ──────────────────────────────────────────────────────────────────
-# Stage 4: Final image on KiCad base
+# Stage 4: Final image on KiCad base (slim — no 3D models)
 # ──────────────────────────────────────────────────────────────────
 FROM ghcr.io/kicad/kicad:${KICAD_VERSION}
 
@@ -120,21 +120,24 @@ COPY --from=openvscode --chown=openvscode-server:openvscode-server \
 COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
 
 # Install uv for Python management
-COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /usr/local/bin/uv
 
-# Copy built artifacts from builder stages
-COPY --from=wheel-builder --chown=openvscode-server:openvscode-server \
-    /wheels/*.whl /tmp/artifacts/
-COPY --from=vsix-builder --chown=openvscode-server:openvscode-server \
-    /vsix/*.vsix /tmp/artifacts/
-
-# Copy scripts, branding, and default workspace
+# Copy scripts, branding, setup, and default workspace (stable — cached across source changes)
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/scripts/ /tmp/scripts/
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/branding/ /tmp/branding/
 COPY --chown=openvscode-server:openvscode-server \
+    web-ide/setup/ /tmp/setup/
+COPY --chown=openvscode-server:openvscode-server \
     web-ide/workspace/ /tmp/default-workspace/
+
+# Copy built artifacts last — these change on every source commit and invalidate
+# all subsequent layers, so keep them right before the RUN that consumes them.
+COPY --from=wheel-builder --chown=openvscode-server:openvscode-server \
+    /wheels/*.whl /tmp/artifacts/
+COPY --from=vsix-builder --chown=openvscode-server:openvscode-server \
+    /vsix/*.vsix /tmp/artifacts/
 
 # ---------- Switch to non-root user for tool install + extensions ----------
 USER openvscode-server
@@ -142,19 +145,7 @@ WORKDIR ${HOME}
 
 # Install atopile from wheel, VS Code extensions, apply branding, copy configs, and clean up
 # Must match requires-python in pyproject.toml (>=3.14,<3.15)
-RUN uv tool install --python 3.14 /tmp/artifacts/atopile-*.whl && \
-    /tmp/scripts/install-extensions.sh && \
-    /tmp/branding/apply-branding.sh && \
-    cp /tmp/scripts/settings.json ${HOME}/.openvscode-server/data/Machine/settings.json && \
-    mkdir -p ${HOME}/.openvscode-server/data/User && \
-    cp /tmp/scripts/keybindings.json ${HOME}/.openvscode-server/data/User/keybindings.json && \
-    mkdir -p ${HOME}/.local/etc && \
-    cp /tmp/scripts/keybindings.json ${HOME}/.local/etc/keybindings.json && \
-    cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
-    cp /tmp/scripts/Caddyfile ${HOME}/.local/etc/Caddyfile && \
-    chmod +x ${HOME}/.local/bin/entrypoint.sh && \
-    mkdir -p ${HOME}/workspace && \
-    rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
+RUN /tmp/setup/setup.sh
 
 # Note: uv symlink is created by entrypoint.sh on each startup because the
 # User data volume mount shadows this directory on subsequent container starts
