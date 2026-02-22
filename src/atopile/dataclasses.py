@@ -579,7 +579,6 @@ class BuildTarget(CamelModel):
     entry: str
     root: str
     last_build: Optional[BuildTargetStatus] = None
-    has_multiboard_manifest: bool = False
     is_system: bool = False
     boards: list[str] = Field(default_factory=list)
 

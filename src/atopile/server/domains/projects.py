@@ -253,13 +253,6 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 targets: list[BuildTarget] = []
                 for name, cfg in data.get("builds", {}).items():
                     if isinstance(cfg, dict):
-                        multiboard_manifest = (
-                            project_root
-                            / "build"
-                            / "builds"
-                            / name
-                            / f"{name}.multiboard.json"
-                        )
                         cfg_targets = (
                             cfg.get("targets", []) if isinstance(cfg, dict) else []
                         )
@@ -274,7 +267,6 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                                 name=name,
                                 entry=cfg.get("entry", ""),
                                 root=root_str,
-                                has_multiboard_manifest=multiboard_manifest.exists(),
                                 is_system=is_system,
                                 boards=cfg_boards,
                             )

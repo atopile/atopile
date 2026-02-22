@@ -21,6 +21,7 @@ from atopile.compiler.build import build_stage_2
 from atopile.config import PROJECT_CONFIG_FILENAME, BuildType, config
 from atopile.errors import (
     UserBadParameterError,
+    UserDesignCheckException,
     UserException,
     UserExportError,
     UserPickError,
@@ -652,6 +653,32 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "cross-board-drc",
+    description="Cross-board DRC",
+    dependencies=[post_instantiation_design_check],
+)
+def cross_board_drc(ctx: BuildStepContext) -> None:
+    """Check for cross-board connections that don't pass through a harness."""
+    if not ctx.is_system_build:
+        return
+    from atopile.cross_board_drc import (
+        CrossBoardDRCFault,
+        check_cross_board_connections,
+    )
+
+    app = ctx.require_app()
+    violations = check_cross_board_connections(app, ctx.boards)
+
+    with accumulate(UserDesignCheckException) as acc:
+        for v in violations:
+            with acc.collect():
+                raise CrossBoardDRCFault(v.message, nodes=[app])
+
+    if not violations:
+        logger.info("Cross-board DRC passed: all inter-board connections use harnesses")
+
+
+@muster.register(
     "load-pcb",
     description="Loading PCB",
     dependencies=[post_instantiation_design_check],
@@ -898,28 +925,6 @@ def post_pcb_checks(ctx: BuildStepContext) -> None:
 @muster.register("build-design", dependencies=[post_pcb_checks], virtual=True)
 def build_design(ctx: BuildStepContext) -> None:
     pass
-
-
-@muster.register(
-    "cross-board-drc",
-    description="Cross-board DRC",
-    dependencies=[build_design],
-)
-def cross_board_drc(ctx: BuildStepContext) -> None:
-    """Check for cross-board connections that don't pass through a cable."""
-    if not ctx.is_system_build:
-        return
-    from atopile.cross_board_drc import check_cross_board_connections
-
-    violations = check_cross_board_connections(ctx.require_app(), ctx.boards)
-    drc_mode = config.build.cross_board_drc or "warning"
-    for v in violations:
-        if drc_mode == "error":
-            raise UserException(v.message)
-        else:
-            logger.warning(v.message)
-    if not violations:
-        logger.info("Cross-board DRC passed: all inter-board connections use harnesses")
 
 
 @muster.register(

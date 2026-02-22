@@ -5,12 +5,17 @@
 Cross-board DRC: detects electrical connections that span multiple boards
 without passing through a harness/cable module, and validates connector
 gender compatibility.
+
+Implemented as a design check trait following the same pattern as
+needs_erc_check — attached to the app during prepare_build and
+discovered/run by check_design() at POST_INSTANTIATION_DESIGN_CHECK.
 """
 
 from dataclasses import dataclass
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.errors import accumulate
 from atopile.logging import get_logger
 
 logger = get_logger(__name__)
@@ -301,3 +306,44 @@ def check_cross_board_connections(
     violations.extend(gender_violations)
 
     return violations
+
+
+class CrossBoardDRCFault(F.implements_design_check.UnfulfilledCheckException):
+    """Cross-board DRC violation."""
+
+
+class needs_cross_board_drc(fabll.Node):
+    """
+    Cross-board DRC check trait.
+
+    Checks for:
+    - Electrical connections spanning multiple boards without a harness
+    - Connector gender compatibility (plug vs receptacle)
+    """
+
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
+
+    @F.implements_design_check.register_post_instantiation_design_check
+    def __check_post_instantiation_design_check__(self):
+        app = fabll.Traits(self).get_obj_raw()
+
+        boards = list(
+            app.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.is_board,
+            )
+        )
+
+        violations = check_cross_board_connections(app, boards)
+
+        with accumulate(CrossBoardDRCFault) as acc:
+            for v in violations:
+                with acc.collect():
+                    raise CrossBoardDRCFault(v.message, nodes=[app])
+
+        if not violations:
+            logger.info(
+                "Cross-board DRC passed: all inter-board connections use harnesses"
+            )

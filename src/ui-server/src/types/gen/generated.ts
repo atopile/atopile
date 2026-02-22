@@ -30,7 +30,6 @@ export interface Project {
 export interface TargetElement {
     boards?:                string[];
     entry:                  string;
-    hasMultiboardManifest?: boolean;
     isSystem?:              boolean;
     lastBuild?:             null | TargetBuildTargetStatus;
     name:                   string;
@@ -70,7 +69,6 @@ export enum BuildStatus {
 export interface BuildTarget {
     boards?:                string[];
     entry:                  string;
-    hasMultiboardManifest?: boolean;
     isSystem?:              boolean;
     lastBuild?:             null | BuildTargetBuildTargetStatus;
     name:                   string;
