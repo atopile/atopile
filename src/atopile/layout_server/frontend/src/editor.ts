@@ -2,15 +2,15 @@ import { Vec2 } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintAll, paintSelection, computeBBox } from "./painter";
-import { hitTestFootprints } from "./hit-test";
+import { paintAll, paintSelection, paintFootprint, computeBBox } from "./painter";
+import { hitTestFootprints, hitTestPads } from "./hit-test";
+import type { Color } from "./colors";
 import type { RenderModel } from "./types";
 
 export class Editor {
     private canvas: HTMLCanvasElement;
     private renderer: Renderer;
     private camera: Camera2;
-    private panAndZoom: PanAndZoom;
     private model: RenderModel | null = null;
     private baseUrl: string;
     private apiPrefix: string;
@@ -34,6 +34,13 @@ export class Editor {
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
 
+    // Pinout viewer mode
+    private readOnly = false;
+    private padColorOverrides: Map<string, Color> | undefined;
+    private highlightedPads: Set<string> | undefined;
+    private onPadClickCallback: ((padName: string) => void) | null = null;
+    private outlinePads: Set<string> | undefined;
+
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
         this.baseUrl = baseUrl;
@@ -41,7 +48,7 @@ export class Editor {
         this.wsPath = wsPath;
         this.renderer = new Renderer(canvas);
         this.camera = new Camera2();
-        this.panAndZoom = new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
+        new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
 
         this.setupMouseHandlers();
         this.setupKeyboardHandlers();
@@ -51,22 +58,66 @@ export class Editor {
     }
 
     async init() {
-        await this.fetchAndPaint();
+        await this.loadRenderModel(null, true);
         this.connectWebSocket();
     }
 
-    private async fetchAndPaint() {
-        const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-        this.applyModel(await resp.json(), true);
+    /** Set read-only mode (disables drag and footprint selection) */
+    setReadOnly(readOnly: boolean) {
+        this.readOnly = readOnly;
+    }
+
+    /** Set per-pad color overrides (pad name → color) */
+    setPadColorOverrides(overrides: Map<string, Color>) {
+        this.padColorOverrides = overrides;
+        this.paintAndRequestRedraw();
+    }
+
+    /** Set which pads should be highlighted */
+    setHighlightedPads(padNames: Set<string>) {
+        this.highlightedPads = padNames;
+        this.paintAndRequestRedraw();
+    }
+
+    /** Set which pads should be drawn as outlines (unconnected) */
+    setOutlinePads(padNames: Set<string>) {
+        this.outlinePads = padNames;
+        this.paintAndRequestRedraw();
+    }
+
+    /** Set callback when a pad is clicked (read-only mode) */
+    setOnPadClick(cb: ((padName: string) => void) | null) {
+        this.onPadClickCallback = cb;
+    }
+
+    async loadRenderModel(
+        footprintUuid: string | null = null,
+        fitToView = false,
+    ) {
+        const params = new URLSearchParams();
+        if (footprintUuid) {
+            params.set("footprint_uuid", footprintUuid);
+        }
+        const query = params.toString();
+        const resp = await fetch(
+            `${this.baseUrl}${this.apiPrefix}/render-model${query ? `?${query}` : ""}`
+        );
+        if (!resp.ok) {
+            throw new Error(`render-model request failed: ${resp.status}`);
+        }
+        this.applyModel(await resp.json(), fitToView);
     }
 
     private applyModel(model: RenderModel, fitToView = false) {
         this.model = model;
+        if (this.selectedFpIndex >= model.footprints.length) {
+            this.selectedFpIndex = -1;
+        }
         this.paint();
 
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
         if (fitToView) {
-            this.camera.bbox = computeBBox(this.model);
+            this.camera.bbox = computeBBox(model);
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
@@ -74,7 +125,27 @@ export class Editor {
 
     private paint() {
         if (!this.model) return;
-        paintAll(this.renderer, this.model, this.hiddenLayers);
+
+        if (this.padColorOverrides || this.highlightedPads || this.outlinePads) {
+            // Pinout mode: paint with per-pad overrides
+            const hidden = this.hiddenLayers;
+            const concreteLayers = new Set<string>();
+            for (const fp of this.model.footprints) {
+                concreteLayers.add(fp.layer);
+                for (const pad of fp.pads) for (const l of pad.layers) concreteLayers.add(l);
+                for (const d of fp.drawings) if (d.layer) concreteLayers.add(d.layer);
+            }
+            for (const l of concreteLayers) {
+                if (l.includes("*") || l.includes("&")) concreteLayers.delete(l);
+            }
+            this.renderer.dispose_layers();
+            for (const fp of this.model.footprints) {
+                paintFootprint(this.renderer, fp, hidden, concreteLayers,
+                    this.padColorOverrides, this.highlightedPads, this.outlinePads);
+            }
+        } else {
+            paintAll(this.renderer, this.model, this.hiddenLayers);
+        }
 
         if (this.selectedFpIndex >= 0 && this.selectedFpIndex < this.model.footprints.length) {
             paintSelection(this.renderer, this.model.footprints[this.selectedFpIndex]!);
@@ -107,6 +178,20 @@ export class Editor {
 
             if (!this.model) return;
 
+            // Read-only mode: pad-level hit testing only
+            if (this.readOnly) {
+                if (this.onPadClickCallback && this.model.footprints.length > 0) {
+                    for (const fp of this.model.footprints) {
+                        const padIdx = hitTestPads(worldPos, fp);
+                        if (padIdx >= 0) {
+                            this.onPadClickCallback(fp.pads[padIdx]!.name);
+                            return;
+                        }
+                    }
+                }
+                return;
+            }
+
             const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
 
             if (hitIdx >= 0) {
@@ -115,12 +200,11 @@ export class Editor {
                 this.isDragging = true;
                 this.dragStartWorld = worldPos;
                 this.dragStartFpPos = { x: fp.at.x, y: fp.at.y };
-                this.repaintWithSelection();
+                this.paintAndRequestRedraw();
             } else {
                 if (this.selectedFpIndex >= 0) {
                     this.selectedFpIndex = -1;
-                    this.paint();
-                    this.requestRedraw();
+                    this.paintAndRequestRedraw();
                 }
             }
         });
@@ -134,7 +218,7 @@ export class Editor {
                 this.onMouseMoveCallback(worldPos.x, worldPos.y);
             }
 
-            if (!this.isDragging || !this.model || this.selectedFpIndex < 0) return;
+            if (this.readOnly || !this.isDragging || !this.model || this.selectedFpIndex < 0) return;
 
             const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
             const delta = worldPos.sub(this.dragStartWorld!);
@@ -142,8 +226,7 @@ export class Editor {
             fp.at.x = this.dragStartFpPos!.x + delta.x;
             fp.at.y = this.dragStartFpPos!.y + delta.y;
 
-            this.paint();
-            this.requestRedraw();
+            this.paintAndRequestRedraw();
         });
 
         window.addEventListener("mouseup", async (e: MouseEvent) => {
@@ -241,16 +324,6 @@ export class Editor {
 
     // --- Layer visibility ---
 
-    setLayerVisible(layer: string, visible: boolean) {
-        if (visible) {
-            this.hiddenLayers.delete(layer);
-        } else {
-            this.hiddenLayers.add(layer);
-        }
-        this.paint();
-        this.requestRedraw();
-    }
-
     setLayersVisible(layers: string[], visible: boolean) {
         for (const layer of layers) {
             if (visible) {
@@ -259,8 +332,7 @@ export class Editor {
                 this.hiddenLayers.add(layer);
             }
         }
-        this.paint();
-        this.requestRedraw();
+        this.paintAndRequestRedraw();
     }
 
     isLayerVisible(layer: string): boolean {
@@ -305,7 +377,7 @@ export class Editor {
         this.onMouseMoveCallback = cb;
     }
 
-    private repaintWithSelection() {
+    private paintAndRequestRedraw() {
         this.paint();
         this.requestRedraw();
     }

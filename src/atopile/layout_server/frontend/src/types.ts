@@ -50,11 +50,13 @@ export interface FootprintModel {
     drawings: DrawingModel[];
 }
 
+export type PadShape = "circle" | "oval" | "rect" | "roundrect" | "trapezoid" | "custom";
+
 export interface PadModel {
     name: string;
     at: Point3;
     size: Size2;
-    shape: string;
+    shape: PadShape;
     type: string;
     layers: string[];
     net: number;

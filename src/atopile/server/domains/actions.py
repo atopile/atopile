@@ -1524,7 +1524,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.emit_event("open_file", {"path": str(entry_path)})
             return {"success": True}
 
-        if action == "openLayout":
+        if action in {"openLayout", "loadLayout"}:
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
@@ -1549,7 +1549,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             await asyncio.to_thread(layout_service.load, target)
             await layout_service.start_watcher()
-            await server_state.emit_event("open_layout", {"path": str(target)})
+            if action == "openLayout":
+                await server_state.emit_event("open_layout", {"path": str(target)})
             return {"success": True}
 
         if action == "openKiCad":

@@ -1,6 +1,6 @@
 import { Vec2, BBox } from "./math";
 import { Renderer, RenderLayer } from "./webgl/renderer";
-import { getLayerColor, getPadColor, VIA_COLOR, VIA_DRILL_COLOR, SELECTION_COLOR, ZONE_COLOR_ALPHA } from "./colors";
+import { getLayerColor, getPadColor, VIA_COLOR, VIA_DRILL_COLOR, SELECTION_COLOR, ZONE_COLOR_ALPHA, PAD_HIGHLIGHT_COLOR, UNCONNECTED_PAD_COLOR, type Color } from "./colors";
 import type { RenderModel, FootprintModel, PadModel, TrackModel, DrawingModel, Point2, Point3 } from "./types";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -221,7 +221,12 @@ function paintVias(renderer: Renderer, model: RenderModel) {
     renderer.end_layer();
 }
 
-function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>) {
+/** Paint a single footprint, with optional pad color overrides and highlights */
+export function paintFootprint(
+    renderer: Renderer, fp: FootprintModel, hidden: Set<string>, concreteLayers: Set<string>,
+    padColorOverrides?: Map<string, Color>, highlightedPads?: Set<string>,
+    outlinePads?: Set<string>,
+) {
     const drawingsByLayer = new Map<string, DrawingModel[]>();
     for (const drawing of fp.drawings) {
         const ln = drawing.layer ?? "F.SilkS";
@@ -238,21 +243,31 @@ function paintFootprint(renderer: Renderer, fp: FootprintModel, hidden: Set<stri
         }
         renderer.end_layer();
     }
-    if (fp.pads.length > 0) {
-        // Check if any pad layer is visible (expanding wildcards)
-        const anyVisible = fp.pads.some(pad =>
-            pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
-        );
-        if (anyVisible) {
-            const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-            for (const pad of fp.pads) {
-                if (pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))) {
-                    paintPad(layer, fp.at, pad);
-                }
-            }
-            renderer.end_layer();
-        }
+    
+    // Check if any pad layer is visible (expanding wildcards)
+    const anyVisible = fp.pads.some(pad =>
+        pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
+    );
+
+    if (!anyVisible || fp.pads.length === 0) return;
+
+    const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
+    for (const pad of fp.pads) {
+        const visible = pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers));
+        if (!visible) continue;
+
+        const outlined = outlinePads?.has(pad.name) ?? false;
+        const padColor = padColorOverrides?.get(pad.name);
+
+        const paintOptions: PadPaintOptions = {
+            outlined,
+            color: outlined ? (padColor ?? UNCONNECTED_PAD_COLOR) : padColor,
+            highlighted: highlightedPads?.has(pad.name) ?? false,
+        };
+
+        paintPad(layer, fp.at, pad, paintOptions);
     }
+    renderer.end_layer();
 }
 
 function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r: number, g: number, b: number, a: number) {
@@ -292,33 +307,89 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
     }
 }
 
-function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
-    const [cr, cg, cb, ca] = getPadColor(pad.layers);
+type PadPaintOptions =
+    {
+        color?: Color;
+        outlined?: boolean;
+        highlighted?: boolean;
+    };
+
+function buildPadOutlineLoop(fpAt: Point3, pad: PadModel, inflate = 0): Vec2[] {
+    const hw = pad.size.w / 2 + inflate;
+    const hh = pad.size.h / 2 + inflate;
+    switch (pad.shape) {
+        case "circle":
+        case "oval": {
+            const points: Vec2[] = [];
+            const segments = 32;
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * 2 * Math.PI;
+                points.push(padTransform(fpAt, pad.at, hw * Math.cos(angle), hh * Math.sin(angle)));
+            }
+            return points;
+        }
+        case "rect":
+        case "roundrect":
+        case "trapezoid":
+        case "custom": {
+            const corners: [Vec2, Vec2, Vec2, Vec2] = [
+                padTransform(fpAt, pad.at, -hw, -hh),
+                padTransform(fpAt, pad.at, hw, -hh),
+                padTransform(fpAt, pad.at, hw, hh),
+                padTransform(fpAt, pad.at, -hw, hh),
+            ];
+            return [...corners, corners[0]!];
+        }
+    }
+}
+
+function paintPad(
+    layer: RenderLayer,
+    fpAt: Point3,
+    pad: PadModel,
+    options: PadPaintOptions = {},
+): void {
     const hw = pad.size.w / 2;
     const hh = pad.size.h / 2;
+    const [cr, cg, cb, ca] = options.color ?? getPadColor(pad.layers);
 
-    if (pad.shape === "circle") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
-    } else if (pad.shape === "oval") {
-        const longAxis = Math.max(hw, hh);
-        const shortAxis = Math.min(hw, hh);
-        const focalDist = longAxis - shortAxis;
-        let p1: Vec2, p2: Vec2;
-        if (hw >= hh) {
-            p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-            p2 = padTransform(fpAt, pad.at, focalDist, 0);
-        } else {
-            p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-            p2 = padTransform(fpAt, pad.at, 0, focalDist);
-        }
-        layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+    if (options.outlined) {
+        const lineWidth = Math.min(hw, hh) * 0.2;
+        const outline = buildPadOutlineLoop(fpAt, pad);
+        layer.geometry.add_polyline(outline, lineWidth, cr, cg, cb, ca);
     } else {
-        const corners = [
-            padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
-            padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
-        ];
-        layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+        if (pad.shape === "circle") {
+            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+            layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+        } else if (pad.shape === "oval") {
+            const longAxis = Math.max(hw, hh);
+            const shortAxis = Math.min(hw, hh);
+            const focalDist = longAxis - shortAxis;
+            let p1: Vec2;
+            let p2: Vec2;
+            if (hw >= hh) {
+                p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+                p2 = padTransform(fpAt, pad.at, focalDist, 0);
+            } else {
+                p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+                p2 = padTransform(fpAt, pad.at, 0, focalDist);
+            }
+            layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+        } else {
+            const corners = [
+                padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
+                padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
+            ];
+            layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+        }
+    }
+
+    if (options.highlighted) {
+        const [hr, hg, hb, ha] = PAD_HIGHLIGHT_COLOR;
+        const highlightInflate = 0.15;
+        const highlightLineWidth = 0.3;
+        const outline = buildPadOutlineLoop(fpAt, pad, highlightInflate);
+        layer.geometry.add_polyline(outline, highlightLineWidth, hr, hg, hb, ha);
     }
 
     if (pad.drill && pad.type === "thru_hole") {

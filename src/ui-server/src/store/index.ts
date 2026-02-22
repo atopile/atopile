@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
-import { postMessage, getVsCodeApi } from '../api/vscodeApi';
+import { postMessage } from '../api/vscodeApi';
 import type {
   AppState,
   Project,
@@ -45,10 +45,14 @@ let packageDetailsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let projectsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let atopileErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 
-const arraysEqual = (a: string[], b: string[]) => {
-  if (a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-};
+// Mutable flag — sidebar entry point enables this so selection changes
+// are broadcast back to the VS Code extension via postMessage.
+let _broadcastSelection = false;
+
+/** Call from the sidebar entry point to enable selection broadcasting. */
+export function enableSelectionBroadcast(): void {
+  _broadcastSelection = true;
+}
 
 // BroadcastChannel for cross-webview state synchronization
 const _channel: BroadcastChannel | null = (() => {
@@ -58,13 +62,6 @@ const _channel: BroadcastChannel | null = (() => {
     return null;
   }
 })();
-
-// Restore last selection from VS Code webview state (survives reloads)
-const persistedState = getVsCodeApi()?.getState() as {
-  selectedProjectRoot?: string | null;
-  selectedProjectName?: string | null;
-  selectedTargetNames?: string[];
-} | undefined;
 
 // Initial state for the store
 const initialState: AppState = {
@@ -76,8 +73,8 @@ const initialState: AppState = {
   projects: [],
   isLoadingProjects: false,
   projectsError: null,
-  selectedProjectRoot: persistedState?.selectedProjectRoot ?? null,
-  selectedTargetNames: persistedState?.selectedTargetNames ?? [],
+  selectedProjectRoot: null,
+  selectedTargetNames: [] as string[],
   migratingProjectRoots: [] as string[],
   migrationErrors: {} as Record<string, string>,
 
@@ -111,7 +108,7 @@ const initialState: AppState = {
   // Build selection
   selectedBuildId: null,
   selectedBuildName: null,
-  selectedProjectName: persistedState?.selectedProjectName ?? null,
+  selectedProjectName: null,
 
   // Log viewer
   logViewerBuildId: null as string | null,
@@ -1025,31 +1022,22 @@ _channel?.addEventListener('message', (event: MessageEvent) => {
 useStore.subscribe(
   (state) => ({
     projectRoot: state.selectedProjectRoot,
-    projectName: state.selectedProjectName,
     targetNames: state.selectedTargetNames,
   }),
   (current, previous) => {
     const selectionChanged =
       current.projectRoot !== previous.projectRoot ||
-      !arraysEqual(current.targetNames, previous.targetNames);
+      current.targetNames.length !== previous.targetNames.length ||
+      current.targetNames.some((value, index) => value !== previous.targetNames[index]);
 
     if (selectionChanged) {
-      postMessage({
-        type: 'selectionChanged',
-        projectRoot: current.projectRoot,
-        targetNames: current.targetNames,
-      });
-    }
-
-    // Persist for next webview load — also fires when project name is
-    // resolved after discovery, even if root/targets didn't change.
-    if (selectionChanged || current.projectName !== previous.projectName) {
-      const api = getVsCodeApi();
-      api?.setState({
-        selectedProjectRoot: current.projectRoot,
-        selectedProjectName: current.projectName,
-        selectedTargetNames: current.targetNames,
-      });
+      if (_broadcastSelection) {
+        postMessage({
+          type: 'selectionChanged',
+          projectRoot: current.projectRoot,
+          targetNames: current.targetNames,
+        });
+      }
     }
   }
 );

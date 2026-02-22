@@ -1,0 +1,163 @@
+.pinout-panel {
+  width: 100%;
+  height: 100%;
+  padding: 16px 24px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.pinout-header {
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.pinout-title {
+  margin-right: 8px;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.pinout-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.pinout-tab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.pinout-error-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.pinout-filters {
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pinout-search-box {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.pinout-count {
+  opacity: 0.7;
+  font-size: var(--font-size-sm);
+}
+
+.pinout-content {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+.pinout-table-wrap {
+  overflow: auto;
+}
+
+.pinout-table-wrap.has-footprint {
+  flex: 0 0 60%;
+}
+
+.pinout-table-wrap.full-width {
+  flex: 1 1 100%;
+}
+
+.pinout-footprint {
+  flex: 0 0 38%;
+  min-height: 0;
+}
+
+.pinout-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.pinout-head-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pinout-sort-header,
+.pinout-notes-header {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pinout-sort-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.pinout-row {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pinout-row.is-hovered {
+  background: var(--bg-hover);
+}
+
+.pinout-cell {
+  padding: 6px 10px;
+  vertical-align: top;
+}
+
+.pinout-dim-code {
+  opacity: 0.7;
+}
+
+.pinout-pin-name {
+  font-weight: 500;
+}
+
+.pinout-signal-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+.pinout-interface-tag,
+.pinout-note-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  margin-bottom: 2px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.pinout-interface-tag {
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+}
+
+.pinout-note-tag {
+  background: rgba(100, 100, 100, 0.2);
+}
+
+.pinout-note-tag.is-warning {
+  background: rgba(204, 167, 0, 0.15);
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.pinout-placeholder {
+  opacity: 0.4;
+}
+
+.pinout-no-results {
+  min-height: 96px;
+}

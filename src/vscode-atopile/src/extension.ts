@@ -11,7 +11,7 @@ import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
 import { captureEvent, deinitializeTelemetry, initializeTelemetry, updateConfig } from './common/telemetry';
-import { onBuildTargetChanged } from './common/target';
+import { onBuildTargetChanged, onSelectionStateChanged, setSelectionState } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
@@ -21,6 +21,7 @@ import { SidebarProvider, LogViewerProvider } from './providers';
 import { ensureAtoBin } from './ui/setup';
 
 export let g_lsClient: LanguageClient | undefined;
+const SELECTION_STATE_KEY = 'selectionState';
 
 function _setupLogging(context: vscode.ExtensionContext) {
     const outputChannel = createOutputChannel(SERVER_NAME);
@@ -142,6 +143,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     initTimer();
     traceMilestone('activate()');
 
+    const persistedSelection = context.workspaceState.get<{ projectRoot?: string | null; targetNames?: string[] }>(
+        SELECTION_STATE_KEY
+    );
+    setSelectionState({
+        projectRoot: persistedSelection?.projectRoot ?? undefined,
+        targetNames: persistedSelection?.targetNames ?? [],
+    });
+
     // 1. Register webview providers FIRST
     // If sidebar is open, webview starts loading immediately while servers start
     const extensionVersion = vscode.extensions.getExtension('atopile.atopile')?.packageJSON?.version ?? 'unknown';
@@ -207,6 +216,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         onNeedsRestart(restartAll),
         onBuildTargetChanged((target: Build | undefined) => {
             g_lsClient?.sendNotification('atopile/didChangeBuildTarget', { buildTarget: target?.entry ?? '' });
+        }),
+        onSelectionStateChanged((selection) => {
+            void context.workspaceState.update(SELECTION_STATE_KEY, {
+                projectRoot: selection.projectRoot ?? null,
+                targetNames: selection.targetNames,
+            });
         }),
     );
 

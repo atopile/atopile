@@ -31,6 +31,52 @@ export const SELECTION_COLOR: Color = [1.0, 1.0, 1.0, 0.3];
 export const BOARD_BG: Color = [0.08, 0.08, 0.08, 1.0];
 export const ZONE_COLOR_ALPHA = 0.25;
 
+export type SignalType = "digital" | "analog" | "power" | "ground" | "nc";
+
+/** Shared signal-type colors for pinout table badges + footprint pad overrides */
+export const SIGNAL_TYPE_COLORS: Record<SignalType, { pad: Color; badgeBg: string; badgeFg: string }> = {
+    digital: {
+        pad: [0.30, 0.55, 0.85, 0.9],
+        badgeBg: "#264f78",
+        badgeFg: "#9cdcfe",
+    },
+    analog: {
+        pad: [0.30, 0.60, 0.30, 0.9],
+        badgeBg: "#2d4a2d",
+        badgeFg: "#a3d9a5",
+    },
+    power: {
+        pad: [0.80, 0.30, 0.30, 0.9],
+        badgeBg: "#5c2020",
+        badgeFg: "#f5a8a8",
+    },
+    ground: {
+        pad: [0.45, 0.45, 0.45, 0.9],
+        badgeBg: "#3c3c3c",
+        badgeFg: "#aaa",
+    },
+    nc: {
+        pad: [0.35, 0.35, 0.35, 0.7],
+        badgeBg: "#444",
+        badgeFg: "#888",
+    },
+};
+
+export function getSignalColors(signalType: string | null | undefined): {
+    pad: Color;
+    badgeBg: string;
+    badgeFg: string;
+} {
+    const normalized = (signalType ?? "").toLowerCase();
+    return SIGNAL_TYPE_COLORS[normalized as SignalType] ?? SIGNAL_TYPE_COLORS.digital;
+}
+
+/** Color for unconnected pads (outline only) */
+export const UNCONNECTED_PAD_COLOR: Color = [0.45, 0.45, 0.45, 0.7];
+
+/** Bright highlight color for selected pads */
+export const PAD_HIGHLIGHT_COLOR: Color = [1.0, 1.0, 1.0, 0.6];
+
 export function getLayerColor(layer: string | null | undefined): Color {
     if (!layer) return [0.5, 0.5, 0.5, 0.5];
     return LAYER_COLORS[layer] ?? [0.5, 0.5, 0.5, 0.5];

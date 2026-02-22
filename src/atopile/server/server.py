@@ -580,6 +580,9 @@ def create_app(
         parts_search as parts_search_routes,
     )
     from atopile.server.routes import (
+        pinout as pinout_routes,
+    )
+    from atopile.server.routes import (
         problems as problems_routes,
     )
     from atopile.server.routes import (
@@ -605,6 +608,7 @@ def create_app(
     app.include_router(packages_routes.router)
     app.include_router(tests_routes.router)
     app.include_router(manufacturing_routes.router)
+    app.include_router(pinout_routes.router)
 
     return app
 
