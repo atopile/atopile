@@ -315,12 +315,20 @@ export class Editor {
         return group ? group.memberUuids : [];
     }
 
-    private selectedBatchUuids(): string[] {
-        if (this.selectionMode === "group" && !this.singleOverrideMode) {
-            return this.selectedGroupMemberUuids();
+    private selectedUuids(): string[] {
+        if (this.singleOverrideMode && this.selectedFpIndex >= 0) {
+            const uuid = this.model?.footprints[this.selectedFpIndex]?.uuid;
+            return uuid ? [uuid] : [];
         }
-        if (this.selectionMode === "multi" && this.selectedMultiIndices.length > 0) {
-            return this.getSelectedMultiUuids();
+        if (this.selectionMode === "group" && this.selectedGroupId) {
+            const group = this.groupsById.get(this.selectedGroupId);
+            // Send the KiCad group UUID — backend resolves to members
+            return group?.uuid ? [group.uuid] : (group?.memberUuids ?? []);
+        }
+        if (this.selectionMode === "multi") return this.getSelectedMultiUuids();
+        if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+            const uuid = this.model?.footprints[this.selectedFpIndex]?.uuid;
+            return uuid ? [uuid] : [];
         }
         return [];
     }
@@ -553,27 +561,9 @@ export class Editor {
 
             if (isNoop) return;
 
-            const batchUuids = this.selectedBatchUuids();
-            if (batchUuids.length > 0) {
-                await this.executeAction({
-                    command: "move_footprints",
-                    uuids: batchUuids,
-                    dx,
-                    dy,
-                });
-                return;
-            }
-
-            if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
-                const selectedFp = this.model.footprints[this.selectedFpIndex]!;
-                if (!selectedFp.uuid) return;
-                await this.executeAction({
-                    command: "move_footprint",
-                    uuid: selectedFp.uuid,
-                    x: selectedFp.at.x,
-                    y: selectedFp.at.y,
-                    r: selectedFp.at.r || null,
-                });
+            const uuids = this.selectedUuids();
+            if (uuids.length > 0) {
+                await this.executeAction({ command: "move", uuids, dx, dy });
             }
         });
     }
@@ -625,43 +615,17 @@ export class Editor {
 
     private async rotateSelection(deltaDegrees: number) {
         if (!this.model) return;
-        const batchUuids = this.selectedBatchUuids();
-        if (batchUuids.length > 0) {
-            await this.executeAction({
-                command: "rotate_footprints",
-                uuids: batchUuids,
-                delta_degrees: deltaDegrees,
-            });
-            return;
-        }
-        if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
-            const fp = this.model.footprints[this.selectedFpIndex]!;
-            if (!fp.uuid) return;
-            await this.executeAction({
-                command: "rotate_footprint",
-                uuid: fp.uuid,
-                delta_degrees: deltaDegrees,
-            });
+        const uuids = this.selectedUuids();
+        if (uuids.length > 0) {
+            await this.executeAction({ command: "rotate", uuids, delta_degrees: deltaDegrees });
         }
     }
 
     private async flipSelection() {
         if (!this.model) return;
-        const batchUuids = this.selectedBatchUuids();
-        if (batchUuids.length > 0) {
-            await this.executeAction({
-                command: "flip_footprints",
-                uuids: batchUuids,
-            });
-            return;
-        }
-        if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
-            const fp = this.model.footprints[this.selectedFpIndex]!;
-            if (!fp.uuid) return;
-            await this.executeAction({
-                command: "flip_footprint",
-                uuid: fp.uuid,
-            });
+        const uuids = this.selectedUuids();
+        if (uuids.length > 0) {
+            await this.executeAction({ command: "flip", uuids });
         }
     }
 

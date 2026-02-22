@@ -25,6 +25,11 @@ class Size2(BaseModel):
     h: float
 
 
+class PcbObjectModel(BaseModel):
+    uuid: str | None = None
+    at: PointXYR
+
+
 # --- Board ---
 
 
@@ -141,12 +146,10 @@ class PadNumberAnnotationModel(BaseModel):
     layer_ids: list[str]
 
 
-class FootprintModel(BaseModel):
-    uuid: str | None
+class FootprintModel(PcbObjectModel):
     name: str
     reference: str | None
     value: str | None
-    at: PointXYR
     layer: str
     pads: list[PadModel]
     drawings: list[DrawingModel]
@@ -155,8 +158,7 @@ class FootprintModel(BaseModel):
     pad_numbers: list[PadNumberAnnotationModel]
 
 
-class FootprintGroupModel(BaseModel):
-    uuid: str | None = None
+class FootprintGroupModel(PcbObjectModel):
     name: str | None = None
     member_uuids: list[str]
 
@@ -242,40 +244,21 @@ class _StrictCommandModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MoveFootprintCommand(_StrictCommandModel):
-    command: Literal["move_footprint"]
-    uuid: str
-    x: float
-    y: float
-    r: float | None = None
-
-
-class RotateFootprintCommand(_StrictCommandModel):
-    command: Literal["rotate_footprint"]
-    uuid: str
-    delta_degrees: float
-
-
-class FlipFootprintCommand(_StrictCommandModel):
-    command: Literal["flip_footprint"]
-    uuid: str
-
-
-class MoveFootprintsCommand(_StrictCommandModel):
-    command: Literal["move_footprints"]
+class MoveCommand(_StrictCommandModel):
+    command: Literal["move"]
     uuids: list[str] = Field(min_length=1)
     dx: float
     dy: float
 
 
-class RotateFootprintsCommand(_StrictCommandModel):
-    command: Literal["rotate_footprints"]
+class RotateCommand(_StrictCommandModel):
+    command: Literal["rotate"]
     uuids: list[str] = Field(min_length=1)
     delta_degrees: float
 
 
-class FlipFootprintsCommand(_StrictCommandModel):
-    command: Literal["flip_footprints"]
+class FlipCommand(_StrictCommandModel):
+    command: Literal["flip"]
     uuids: list[str] = Field(min_length=1)
 
 
@@ -288,14 +271,7 @@ class RedoCommand(_StrictCommandModel):
 
 
 ActionRequest = Annotated[
-    MoveFootprintCommand
-    | RotateFootprintCommand
-    | FlipFootprintCommand
-    | MoveFootprintsCommand
-    | RotateFootprintsCommand
-    | FlipFootprintsCommand
-    | UndoCommand
-    | RedoCommand,
+    MoveCommand | RotateCommand | FlipCommand | UndoCommand | RedoCommand,
     Field(discriminator="command"),
 ]
 

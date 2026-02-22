@@ -40,12 +40,15 @@ export interface EdgeModel {
     center?: Point2;
 }
 
-export interface FootprintModel {
+export interface PcbObjectModel {
     uuid: string | null;
+    at: Point3;
+}
+
+export interface FootprintModel extends PcbObjectModel {
     name: string;
     reference: string | null;
     value: string | null;
-    at: Point3;
     layer: string;
     pads: PadModel[];
     drawings: DrawingModel[];
@@ -54,8 +57,7 @@ export interface FootprintModel {
     pad_numbers: PadNumberAnnotationModel[];
 }
 
-export interface FootprintGroupModel {
-    uuid: string | null;
+export interface FootprintGroupModel extends PcbObjectModel {
     name: string | null;
     member_uuids: string[];
 }
@@ -200,40 +202,21 @@ export interface StatusResponse {
     model: RenderModel | null;
 }
 
-export interface MoveFootprintCommand {
-    command: "move_footprint";
-    uuid: string;
-    x: number;
-    y: number;
-    r?: number | null;
-}
-
-export interface RotateFootprintCommand {
-    command: "rotate_footprint";
-    uuid: string;
-    delta_degrees: number;
-}
-
-export interface FlipFootprintCommand {
-    command: "flip_footprint";
-    uuid: string;
-}
-
-export interface MoveFootprintsCommand {
-    command: "move_footprints";
+export interface MoveCommand {
+    command: "move";
     uuids: string[];
     dx: number;
     dy: number;
 }
 
-export interface RotateFootprintsCommand {
-    command: "rotate_footprints";
+export interface RotateCommand {
+    command: "rotate";
     uuids: string[];
     delta_degrees: number;
 }
 
-export interface FlipFootprintsCommand {
-    command: "flip_footprints";
+export interface FlipCommand {
+    command: "flip";
     uuids: string[];
 }
 
@@ -246,11 +229,8 @@ export interface RedoCommand {
 }
 
 export type ActionCommand =
-    | MoveFootprintCommand
-    | RotateFootprintCommand
-    | FlipFootprintCommand
-    | MoveFootprintsCommand
-    | RotateFootprintsCommand
-    | FlipFootprintsCommand
+    | MoveCommand
+    | RotateCommand
+    | FlipCommand
     | UndoCommand
     | RedoCommand;

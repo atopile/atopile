@@ -15,16 +15,14 @@ from atopile.layout_server.models import (
     DrawingModel,
     EdgeModel,
     FilledPolygonModel,
-    FlipFootprintCommand,
-    FlipFootprintsCommand,
+    FlipCommand,
     FootprintGroupModel,
     FootprintModel,
     FootprintSummary,
     HoleModel,
     LayerModel,
     LineDrawingModel,
-    MoveFootprintCommand,
-    MoveFootprintsCommand,
+    MoveCommand,
     PadModel,
     PadNameAnnotationModel,
     PadNumberAnnotationModel,
@@ -33,8 +31,7 @@ from atopile.layout_server.models import (
     PolygonDrawingModel,
     RectDrawingModel,
     RenderModel,
-    RotateFootprintCommand,
-    RotateFootprintsCommand,
+    RotateCommand,
     Size2,
     TextModel,
     TrackModel,
@@ -219,128 +216,78 @@ class PcbManager:
     def can_redo(self) -> bool:
         return len(self._redo_stack) > 0
 
-    # --- High-level mutation helpers ---
-
-    def move_footprint(
-        self, uuid: str, x: float, y: float, r: float | None = None
-    ) -> None:
-        self.execute_action(MoveAction(uuid, x, y, r or 0))
-
-    def rotate_footprint(self, uuid: str, delta_degrees: float) -> None:
-        self.execute_action(RotateAction(uuid, delta_degrees))
-
-    def flip_footprint(self, uuid: str) -> None:
-        self.execute_action(FlipAction(uuid))
-
-    def move_footprints(self, uuids: list[str], dx: float, dy: float) -> None:
-        targets = self._footprints_from_uuids(uuids)
-        if not targets:
-            return
-        actions: list[Action] = []
-        for fp in targets:
-            if fp.uuid is None:
-                continue
-            actions.append(
-                MoveAction(
-                    uuid=fp.uuid,
-                    new_x=fp.at.x + dx,
-                    new_y=fp.at.y + dy,
-                    new_r=fp.at.r or 0,
-                )
-            )
-        if actions:
-            self.execute_action(CompositeAction(actions))
-
-    def rotate_footprints(self, uuids: list[str], delta_degrees: float) -> None:
-        targets = self._footprints_from_uuids(uuids)
-        if not targets:
-            return
-        cx = sum(fp.at.x for fp in targets) / len(targets)
-        cy = sum(fp.at.y for fp in targets) / len(targets)
-
-        actions: list[Action] = []
-        for fp in targets:
-            if fp.uuid is None:
-                continue
-            # vector from center of group to footprint
-            dx = fp.at.x - cx
-            dy = fp.at.y - cy
-            # rotate vector using KiCad screen-space rotation convention
-            # (clockwise-positive in rendered view), matching single-footprint rotate.
-            rdx, rdy = _rotate_kicad_xy(dx, dy, delta_degrees)
-            new_x = cx + rdx
-            new_y = cy + rdy
-
-            new_r = ((fp.at.r or 0.0) + delta_degrees) % 360.0
-            actions.append(
-                MoveAction(
-                    uuid=fp.uuid,
-                    new_x=new_x,
-                    new_y=new_y,
-                    new_r=new_r,
-                )
-            )
-        if actions:
-            self.execute_action(CompositeAction(actions))
-
-    def flip_footprints(self, uuids: list[str]) -> None:
-        targets = self._footprints_from_uuids(uuids)
-        if not targets:
-            return
-        cx = sum(fp.at.x for fp in targets) / len(targets)
-        actions: list[Action] = []
-        for fp in targets:
-            if fp.uuid is None:
-                continue
-            mirrored_x = 2.0 * cx - fp.at.x
-            actions.append(FlipAction(fp.uuid))
-            actions.append(
-                MoveAction(
-                    uuid=fp.uuid,
-                    new_x=mirrored_x,
-                    new_y=fp.at.y,
-                    # keep post-flip rotation
-                    new_r=None,
-                )
-            )
-        if actions:
-            self.execute_action(CompositeAction(actions))
+    # --- Action dispatch ---
 
     def dispatch_action(
-        self,
-        request: MoveFootprintCommand
-        | RotateFootprintCommand
-        | FlipFootprintCommand
-        | MoveFootprintsCommand
-        | RotateFootprintsCommand
-        | FlipFootprintsCommand,
+        self, request: MoveCommand | RotateCommand | FlipCommand
     ) -> None:
-        """Execute a typed v2 action request."""
-        if isinstance(request, MoveFootprintCommand):
-            self.move_footprint(request.uuid, request.x, request.y, request.r)
+        """Execute a typed action request."""
+        if isinstance(request, MoveCommand):
+            fps = self._resolve_to_footprints(request.uuids)
+            if not fps:
+                return
+            actions: list[Action] = [
+                MoveAction(
+                    uuid=fp.uuid,
+                    new_x=fp.at.x + request.dx,
+                    new_y=fp.at.y + request.dy,
+                    new_r=fp.at.r or 0,
+                )
+                for fp in fps
+                if fp.uuid
+            ]
+            if actions:
+                self.execute_action(CompositeAction(actions))
             return
-        if isinstance(request, RotateFootprintCommand):
-            self.rotate_footprint(request.uuid, request.delta_degrees)
+
+        if isinstance(request, RotateCommand):
+            fps = self._resolve_to_footprints(request.uuids)
+            if not fps:
+                return
+            cx = sum(fp.at.x for fp in fps) / len(fps)
+            cy = sum(fp.at.y for fp in fps) / len(fps)
+            actions = []
+            for fp in fps:
+                if fp.uuid is None:
+                    continue
+                dx = fp.at.x - cx
+                dy = fp.at.y - cy
+                rdx, rdy = _rotate_kicad_xy(dx, dy, request.delta_degrees)
+                new_r = ((fp.at.r or 0.0) + request.delta_degrees) % 360.0
+                actions.append(
+                    MoveAction(
+                        uuid=fp.uuid,
+                        new_x=cx + rdx,
+                        new_y=cy + rdy,
+                        new_r=new_r,
+                    )
+                )
+            if actions:
+                self.execute_action(CompositeAction(actions))
             return
-        if isinstance(request, FlipFootprintCommand):
-            self.flip_footprint(request.uuid)
-            return
-        if isinstance(request, MoveFootprintsCommand):
-            self.move_footprints(
-                uuids=[uuid for uuid in request.uuids if uuid.strip()],
-                dx=request.dx,
-                dy=request.dy,
-            )
-            return
-        if isinstance(request, RotateFootprintsCommand):
-            self.rotate_footprints(
-                uuids=[uuid for uuid in request.uuids if uuid.strip()],
-                delta_degrees=request.delta_degrees,
-            )
-            return
-        if isinstance(request, FlipFootprintsCommand):
-            self.flip_footprints(uuids=[uuid for uuid in request.uuids if uuid.strip()])
-            return
+
+        if isinstance(request, FlipCommand):
+            fps = self._resolve_to_footprints(request.uuids)
+            if not fps:
+                return
+            cx = sum(fp.at.x for fp in fps) / len(fps)
+            actions = []
+            for fp in fps:
+                if fp.uuid is None:
+                    continue
+                mirrored_x = 2.0 * cx - fp.at.x
+                actions.append(FlipAction(fp.uuid))
+                actions.append(
+                    MoveAction(
+                        uuid=fp.uuid,
+                        new_x=mirrored_x,
+                        new_y=fp.at.y,
+                        # keep post-flip rotation
+                        new_r=None,
+                    )
+                )
+            if actions:
+                self.execute_action(CompositeAction(actions))
 
     def was_recently_saved(self, threshold: float = 2.0) -> bool:
         """Check if we saved within the last `threshold` seconds."""
@@ -406,29 +353,35 @@ class PcbManager:
             )
         return result
 
-    # --- Private extraction helpers ---
+    # --- Private helpers ---
 
-    def _footprints_from_uuids(self, uuids: list[str]) -> list[kicad.pcb.Footprint]:
-        wanted = {uuid for uuid in uuids if uuid}
-        if not wanted:
-            return []
-        by_uuid = {fp.uuid: fp for fp in self.pcb.footprints if fp.uuid is not None}
-        ordered: list[kicad.pcb.Footprint] = []
+    def _resolve_to_footprints(self, uuids: list[str]) -> list[kicad.pcb.Footprint]:
+        """Expand group UUIDs to member footprints; pass footprint UUIDs through."""
+        fps_by_uuid = {fp.uuid: fp for fp in self.pcb.footprints if fp.uuid}
+        groups_by_uuid = {
+            g.uuid: g for g in (getattr(self.pcb, "groups", []) or []) if g.uuid
+        }
+        result: list[kicad.pcb.Footprint] = []
         seen: set[str] = set()
         for uuid in uuids:
-            if uuid in seen:
-                continue
-            fp = by_uuid.get(uuid)
-            if fp is None:
-                continue
-            seen.add(uuid)
-            ordered.append(fp)
-        return ordered
+            if uuid in groups_by_uuid:
+                for member in groups_by_uuid[uuid].members or []:
+                    token = str(member).strip()
+                    fp = fps_by_uuid.get(token)
+                    if fp and fp.uuid not in seen:
+                        seen.add(fp.uuid)
+                        result.append(fp)
+            elif uuid in fps_by_uuid and uuid not in seen:
+                seen.add(uuid)
+                result.append(fps_by_uuid[uuid])
+        return result
 
     def _extract_footprint_groups(
         self, pcb: kicad.pcb.KicadPcb
     ) -> list[FootprintGroupModel]:
-        footprints_by_uuid = {fp.uuid for fp in pcb.footprints if fp.uuid is not None}
+        footprints_by_uuid = {
+            fp.uuid: fp for fp in pcb.footprints if fp.uuid is not None
+        }
         groups: list[FootprintGroupModel] = []
         for group in pcb.groups:
             member_uuids: list[str] = []
@@ -443,11 +396,15 @@ class PcbManager:
                 member_uuids.append(token)
             if len(member_uuids) < 2:
                 continue
+            member_fps = [footprints_by_uuid[u] for u in member_uuids]
+            cx = sum(fp.at.x for fp in member_fps) / len(member_fps)
+            cy = sum(fp.at.y for fp in member_fps) / len(member_fps)
             groups.append(
                 FootprintGroupModel(
                     uuid=((group.uuid or "").strip() or None),
                     name=((group.name or "").strip() or None),
                     member_uuids=member_uuids,
+                    at=PointXYR(x=cx, y=cy, r=0),
                 )
             )
         return groups

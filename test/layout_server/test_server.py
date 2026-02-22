@@ -156,7 +156,7 @@ async def test_execute_action_rotate(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"command": "rotate_footprint", "uuid": uuid, "delta_degrees": 90},
+        json={"command": "rotate", "uuids": [uuid], "delta_degrees": 90},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -172,7 +172,7 @@ async def test_execute_action_move(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"command": "move_footprint", "uuid": uuid, "x": 10.0, "y": 20.0},
+        json={"command": "move", "uuids": [uuid], "dx": 10.0, "dy": 20.0},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -189,7 +189,7 @@ async def test_execute_action_flip(client: AsyncClient):
 
     resp = await client.post(
         "/api/execute-action",
-        json={"command": "flip_footprint", "uuid": uuid},
+        json={"command": "flip", "uuids": [uuid]},
     )
     assert resp.status_code == 200
     data = resp.json()
