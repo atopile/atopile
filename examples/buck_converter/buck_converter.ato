@@ -1,7 +1,10 @@
 #pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("FOR_LOOP")
 
 import Resistor
 import Capacitor
+import MultiCapacitor
 import Diode
 import Inductor
 import ElectricPower
@@ -9,7 +12,6 @@ import ElectricLogic
 
 from "parts/Texas_Instruments_TPS54560DDAR/Texas_Instruments_TPS54560DDAR.ato" import Texas_Instruments_TPS54560DDAR_package
 from "parts/STMicroelectronics_STPS340U/STMicroelectronics_STPS340U.ato" import STMicroelectronics_STPS340U
-from "requirements.ato" import SimulationRequirements
 from "atopile/indicator-leds/indicator-leds.ato" import LEDIndicatorGreen
 
 module Usage:
@@ -32,7 +34,7 @@ module TI_TPS54560:
     package = new Texas_Instruments_TPS54560DDAR_package
     diode = new STMicroelectronics_STPS340U
 
-    # Inductor (2.2uH per WEBENCH)
+    # Inductor
     inductor = new Inductor
     inductor.inductance = 2.2uH +/- 20%
     inductor.package = "SMD8x8mm"
@@ -43,11 +45,12 @@ module TI_TPS54560:
     c_in.max_voltage = 25V to 100V
     c_in.package = "0805"
 
-    # Output cap (2x 47uF = 94uF total per WEBENCH)
-    c_out = new Capacitor
-    c_out.capacitance = 100uF +/- 20%
-    c_out.max_voltage = 16V to 100V
-    c_out.package = "1210"
+    # Output caps (3x 47uF in parallel)
+    c_out = new MultiCapacitor<count=3>
+    for c in c_out.capacitors:
+        c.capacitance = 47uF +/- 20%
+        c.max_voltage = 16V to 100V
+        c.package = "1206"
 
     # Bootstrap cap (100nF per WEBENCH)
     c_boot = new Capacitor
@@ -97,7 +100,7 @@ module TI_TPS54560:
     # Output stage
     package.SW ~> inductor ~> power_out.hv
     package.SW <~ diode <~ power_out.lv
-    power_out ~ c_out.power
+    power_out.hv ~> c_out ~> power_out.lv
 
     # Compensation
     package.COMP ~> r_comp ~> c_comp ~> power_in.lv
@@ -125,6 +128,3 @@ module TI_TPS54560:
     r_load.resistance = 1ohm +/- 5%
     r_load.package = "R1210"
     power_out.hv ~> r_load ~> power_out.lv
-
-    # Simulation requirements
-    reqs = new SimulationRequirements

@@ -421,6 +421,117 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData) {
   });
 }
 
+export async function renderSweepPlot(el: HTMLDivElement, req: RequirementData) {
+  const Plotly = await getPlotly();
+  const colors = themeColors();
+  const pts = req.sweepPoints!;
+  const xVals = pts.map(p => p.paramValue);
+  const yVals = pts.map(p => p.actual);
+  const ptColors = pts.map(p => p.passed ? colors.success : colors.error);
+
+  const dim = fitDimensions(el);
+  const layout: Record<string, unknown> = {
+    ...baseLayout(colors),
+    width: dim.width,
+    height: dim.height,
+    title: { text: `<b>${req.name}</b> — sweep`, font: { size: 13, color: colors.text } },
+    xaxis: { ...baseLayout(colors).xaxis, title: { text: req.sweepParamName || 'Parameter', font: { size: 11, color: colors.muted } } },
+    yaxis: { ...baseLayout(colors).yaxis, title: { text: req.unit, font: { size: 11, color: colors.muted } } },
+    shapes: [
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+    ],
+  };
+
+  Plotly.newPlot(el, [{
+    x: xVals, y: yVals, type: 'scatter', mode: 'lines+markers',
+    marker: { size: 8, color: ptColors },
+    line: { color: colors.info, width: 2 },
+    name: 'Measured',
+  }], layout as Partial<Plotly.Layout>, { responsive: true, displaylogo: false, displayModeBar: false });
+}
+
+/**
+ * Render a single pre-built Plotly spec at an explicit size.
+ * Used by RequirementsAllPage to render individual specs from Python.
+ */
+export async function renderSpecAtSize(
+  el: HTMLDivElement,
+  spec: { data: Record<string, unknown>[]; layout: Record<string, unknown> },
+  width: number,
+  height: number,
+) {
+  const Plotly = await getPlotly();
+  const colors = themeColors();
+
+  // Deep-clone layout so we can mutate without affecting the original
+  const layout: Record<string, unknown> = JSON.parse(JSON.stringify(spec.layout));
+
+  layout.paper_bgcolor = 'rgba(0,0,0,0)';
+  layout.plot_bgcolor = 'rgba(0,0,0,0)';
+  layout.width = width;
+  layout.height = height;
+
+  const font = (layout.font ?? {}) as Record<string, unknown>;
+  font.color = colors.text;
+  font.family = '-apple-system, sans-serif';
+  layout.font = font;
+
+  layout.modebar = { bgcolor: 'rgba(0,0,0,0)', color: colors.muted, activecolor: colors.accent };
+
+  // Override legend: move to the right side
+  const legend = (layout.legend ?? {}) as Record<string, unknown>;
+  const legendFont = (legend.font ?? {}) as Record<string, unknown>;
+  legendFont.color = colors.muted;
+  legend.font = legendFont;
+  legend.x = 1.02;
+  legend.xanchor = 'left';
+  legend.y = 1;
+  legend.yanchor = 'top';
+  layout.legend = legend;
+
+  // Ensure right margin has room for the legend
+  const margin = (layout.margin ?? {}) as Record<string, unknown>;
+  margin.r = Math.max(Number(margin.r ?? 0), 140);
+  layout.margin = margin;
+
+  // Override axis colors for dark theme
+  for (const key of Object.keys(layout)) {
+    if (key.startsWith('xaxis') || key.startsWith('yaxis')) {
+      const axis = layout[key] as Record<string, unknown> | undefined;
+      if (axis && typeof axis === 'object') {
+        axis.gridcolor = `${colors.surface}66`;
+        axis.zerolinecolor = `${colors.surface}99`;
+        const axTitle = axis.title as Record<string, unknown> | undefined;
+        if (axTitle && typeof axTitle === 'object') {
+          const axTitleFont = (axTitle.font ?? {}) as Record<string, unknown>;
+          axTitleFont.color = colors.muted;
+          axTitle.font = axTitleFont;
+        }
+        const tickFont = (axis.tickfont ?? {}) as Record<string, unknown>;
+        tickFont.color = colors.muted;
+        axis.tickfont = tickFont;
+      }
+    }
+  }
+
+  // Override annotation colors
+  const annotations = layout.annotations as Record<string, unknown>[] | undefined;
+  if (Array.isArray(annotations)) {
+    for (const ann of annotations) {
+      const annFont = (ann.font ?? {}) as Record<string, unknown>;
+      if (!annFont.color) annFont.color = colors.text;
+      ann.font = annFont;
+    }
+  }
+
+  await Plotly.newPlot(el, spec.data as Plotly.Data[], layout as Partial<Plotly.Layout>, {
+    responsive: true,
+    displaylogo: false,
+    displayModeBar: false,
+  });
+}
+
 export async function purgePlot(el: HTMLDivElement) {
   const Plotly = await getPlotly();
   Plotly.purge(el);

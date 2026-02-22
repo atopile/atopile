@@ -857,53 +857,6 @@ def _write_requirements_json(
 
 
 @muster.register(
-    "verify-requirements",
-    description="Verifying simulation requirements",
-    dependencies=[post_instantiation_design_check],
-    produces_artifact=True,
-)
-def verify_requirements_step(ctx: BuildStepContext) -> None:
-    """Find all Requirement nodes, group by parent scope, run scoped simulations."""
-    try:
-        from faebryk.exporters.simulation.requirement import (
-            _ac_group_key,
-            _tran_group_key,
-            verify_requirements_scoped,
-        )
-
-        app = ctx.require_app()
-        solver = ctx.require_solver()
-        output_dir = config.build.paths.output_base.parent
-
-        results, tran_data, ac_data = verify_requirements_scoped(
-            app, solver, output_dir
-        )
-        if not results:
-            return
-
-        passed = sum(1 for r in results if r.passed)
-        total = len(results)
-        logger.info(f"Requirements: {passed}/{total} passed")
-        if passed < total:
-            for r in results:
-                if not r.passed:
-                    logger.warning(
-                        f"FAIL: {r.requirement.get_name()} = {r.actual:.4g} "
-                        f"[{r.requirement.get_min_val()}, "
-                        f"{r.requirement.get_max_val()}]"
-                    )
-
-        _write_requirements_json(
-            results, tran_data, _tran_group_key,
-            ac_data=ac_data, ac_group_key_fn=_ac_group_key,
-        )
-    except Exception:
-        logger.warning(
-            "Simulation requirement verification failed — skipping", exc_info=True
-        )
-
-
-@muster.register(
     "load-pcb",
     description="Loading PCB",
     dependencies=[post_instantiation_design_check],
@@ -930,6 +883,246 @@ def pick_parts(ctx: BuildStepContext) -> None:
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
     save_part_info_to_pcb(app)
+
+
+@muster.register(
+    "run-simulations",
+    description="Running SPICE simulations",
+    dependencies=[pick_parts],
+)
+def run_simulations_step(ctx: BuildStepContext) -> None:
+    """Phase 1: Run all SimulationTransient/Sweep/AC nodes and cache results."""
+    try:
+        from faebryk.exporters.simulation.simulation_runner import (
+            run_simulations_scoped,
+        )
+
+        app = ctx.require_app()
+        solver = ctx.require_solver()
+        output_dir = config.build.paths.output_base.parent
+
+        results_registry, sim_stats = run_simulations_scoped(
+            app, solver, output_dir
+        )
+
+        # Cache on the context for verify-requirements
+        ctx._simulation_results = results_registry
+
+        if sim_stats:
+            total_time = sum(s.elapsed_s for s in sim_stats)
+            total_pts = sum(s.data_points for s in sim_stats)
+            logger.info(
+                f"Ran {len(sim_stats)} simulation(s) in {total_time:.1f}s "
+                f"({total_pts:,} data points)"
+            )
+            for s in sorted(sim_stats, key=lambda x: x.elapsed_s, reverse=True):
+                logger.info(
+                    f"  {s.name}: {s.sim_type} {s.elapsed_s:.1f}s "
+                    f"({s.data_points:,} pts)"
+                )
+    except Exception:
+        logger.warning(
+            "Simulation runner failed — skipping", exc_info=True
+        )
+        ctx._simulation_results = {}
+
+
+@muster.register(
+    "verify-requirements",
+    description="Verifying simulation requirements",
+    dependencies=[run_simulations_step],
+    produces_artifact=True,
+)
+def verify_requirements_step(ctx: BuildStepContext) -> None:
+    """Phase 2: Verify requirements against cached simulation results."""
+    try:
+        from faebryk.exporters.simulation.requirement import (
+            RequirementResult,
+            _measure_ac,
+            _measure_tran,
+            _slice_from,
+            plot_requirement,
+        )
+        from faebryk.exporters.simulation.ngspice import (
+            ACResult,
+            TransientResult,
+        )
+
+        app = ctx.require_app()
+        output_dir = config.build.paths.output_base.parent
+
+        # Get cached simulation results from Phase 1
+        sim_results = getattr(ctx, "_simulation_results", {})
+
+        # Find all Requirement nodes
+        reqs = app.get_children(direct_only=False, types=F.Requirement)
+        if not reqs:
+            return
+
+        results: list[RequirementResult] = []
+
+        for req in reqs:
+            sim_name = req.get_simulation()
+            if sim_name is None:
+                continue
+
+            if sim_name not in sim_results:
+                logger.warning(
+                    f"Requirement '{req.get_name()}' references simulation "
+                    f"'{sim_name}' which was not found in cached results"
+                )
+                continue
+
+            sim_result, net_aliases = sim_results[sim_name]
+            measurement = req.get_measurement()
+            raw_net = req.get_net()
+            settling_tol = req.get_settling_tolerance()
+
+            # Resolve net alias
+            resolved_net = net_aliases.get(raw_net, raw_net)
+            raw_addr = req.net.get().try_extract_singleton() or ""
+
+            # Resolve context nets
+            resolved_ctx = [
+                net_aliases.get(ctx_net, ctx_net)
+                for ctx_net in req.get_context_nets()
+            ]
+
+            # Resolve diff_ref_net
+            raw_diff = req.get_diff_ref_net()
+            resolved_diff = None
+            if raw_diff:
+                resolved_diff = net_aliases.get(raw_diff, raw_diff)
+
+            if isinstance(sim_result, TransientResult):
+                # Construct signal key
+                sig_key = (
+                    f"v({resolved_net})"
+                    if not resolved_net.startswith(("v(", "i("))
+                    else resolved_net
+                )
+
+                # Handle differential measurement
+                if resolved_diff:
+                    ref_key = (
+                        f"v({resolved_diff})"
+                        if not resolved_diff.startswith(("v(", "i("))
+                        else resolved_diff
+                    )
+                    signal_data = [
+                        a - b
+                        for a, b in zip(sim_result[sig_key], sim_result[ref_key])
+                    ]
+                else:
+                    signal_data = sim_result[sig_key]
+
+                time_data = sim_result.time
+                actual = _measure_tran(
+                    measurement,
+                    signal_data,
+                    time_data,
+                    settling_tolerance=settling_tol,
+                )
+            elif isinstance(sim_result, ACResult):
+                ref_net = req.get_ac_ref_net()
+                measure_freq = req.get_ac_measure_freq()
+                actual = _measure_ac(
+                    measurement, sim_result, resolved_net,
+                    ref_net, measure_freq,
+                )
+            elif isinstance(sim_result, dict):
+                # Sweep result: dict[float, TransientResult]
+                # Measure each point and take the worst case
+                actuals = []
+                for pval, point_result in sim_result.items():
+                    if not isinstance(point_result, TransientResult):
+                        continue
+                    sig_key = (
+                        f"v({resolved_net})"
+                        if not resolved_net.startswith(("v(", "i("))
+                        else resolved_net
+                    )
+                    signal_data = point_result[sig_key]
+                    time_data = point_result.time
+                    val = _measure_tran(
+                        measurement,
+                        signal_data,
+                        time_data,
+                        settling_tolerance=settling_tol,
+                    )
+                    actuals.append(val)
+                if actuals:
+                    # For sweep: use worst-case (furthest from bounds)
+                    min_v = req.get_min_val()
+                    max_v = req.get_max_val()
+                    mid = (min_v + max_v) / 2
+                    actual = max(actuals, key=lambda v: abs(v - mid))
+                else:
+                    actual = float("nan")
+            else:
+                logger.warning(
+                    f"Unsupported result type for requirement "
+                    f"'{req.get_name()}': {type(sim_result)}"
+                )
+                continue
+
+            import math
+
+            passed = (
+                not math.isnan(actual)
+                and req.get_min_val() <= actual <= req.get_max_val()
+            )
+            r = RequirementResult(
+                requirement=req,
+                actual=actual,
+                passed=passed,
+                display_net=raw_addr,
+                resolved_net=resolved_net,
+                resolved_diff_ref=resolved_diff,
+                resolved_ctx_nets=resolved_ctx,
+            )
+            results.append(r)
+
+            # Generate plot
+            name_slug = (
+                req.get_name()
+                .replace(" ", "_")
+                .replace(":", "")
+            )
+            plot_path = output_dir / f"req_{name_slug}.html"
+            if isinstance(sim_result, TransientResult):
+                plot_requirement(r, sim_result, plot_path)
+            elif isinstance(sim_result, ACResult):
+                plot_requirement(r, None, plot_path, ac_data=sim_result)
+
+        if not results:
+            return
+
+        passed = sum(1 for r in results if r.passed)
+        total = len(results)
+        logger.info(f"Requirements: {passed}/{total} passed")
+        if passed < total:
+            for r in results:
+                if not r.passed:
+                    logger.warning(
+                        f"FAIL: {r.requirement.get_name()} = {r.actual:.4g} "
+                        f"[{r.requirement.get_min_val()}, "
+                        f"{r.requirement.get_max_val()}]"
+                    )
+
+        # Build minimal tran_data/ac_data for JSON export
+        from faebryk.exporters.simulation.requirement import (
+            _tran_group_key,
+            _ac_group_key,
+        )
+        _write_requirements_json(
+            results, {}, _tran_group_key,
+            ac_data={}, ac_group_key_fn=_ac_group_key,
+        )
+    except Exception:
+        logger.warning(
+            "Simulation requirement verification failed — skipping", exc_info=True
+        )
 
 
 @muster.register(

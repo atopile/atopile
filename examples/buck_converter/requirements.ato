@@ -1,279 +1,282 @@
 import Requirement
 
-module SimulationRequirements:
-    "Simulation requirements for the TPS54560 buck converter (switching model)."
+module ModelValidationRequirements:
+    "TPS54560 model validation — datasheet application curves (MV-NNN)."
+    "Verifies SPICE model reproduces TPS54560 datasheet Section 9.2 behavior."
 
-    # Shared transient config:
-    #   Source: PULSE(0 12 0 10u 10u 10 10) — ramp VIN 0->12V with 10us rise
-    #   Step: 200ns (captures 600kHz switching: ~8 points/cycle)
-    #   Duration: 6ms (sufficient for startup + steady state)
-    #
-    # Net name mapping (from generated SPICE netlist):
-    #   power_out_hv = output voltage rail
-    #   package_2    = VIN (input voltage)
-    #   package_5    = FB (feedback pin)
-    #   package_8    = SW (switch node)
+    # =========================================================================
+    # 1. STARTUP (Fig 40, 41)
+    # =========================================================================
 
-    # REQ-001: Output voltage steady-state
-    req_output_voltage = new Requirement
-    req_output_voltage.req_name = "REQ-001: Startup output voltage"
-    req_output_voltage.net = "power_out_hv"
-    req_output_voltage.min_val = "4.80"
-    req_output_voltage.typical = "5.0"
-    req_output_voltage.max_val = "5.20"
-    req_output_voltage.capture = "transient"
-    req_output_voltage.measurement = "final_value"
-    req_output_voltage.context_nets = "package_2"
-    req_output_voltage.tran_step = "2e-7"
-    req_output_voltage.tran_stop = "6e-3"
-    req_output_voltage.source_name = "V1"
-    req_output_voltage.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_output_voltage.justification = "WEBENCH: Vout=5V within 4%"
+    # MV-001: Startup output reaches regulation
+    mv_001 = new Requirement
+    mv_001.req_name = "MV-001: Startup Vout regulation"
+    mv_001.simulation = "fig40_startup_vin"
+    mv_001.net = "dut.power_out.hv"
+    mv_001.min_val = 4.75
+    mv_001.typical = 5.0
+    mv_001.max_val = 5.25
+    mv_001.measurement = "final_value"
+    mv_001.context_nets = "dut.power_in.hv,i(L1),dut.package.SW,dut.package.COMP"
+    mv_001.justification = "DS Fig 40: Output must reach 5V +/-5% after startup."
 
-    # REQ-002: Feedback voltage steady-state
-    req_fb_voltage = new Requirement
-    req_fb_voltage.req_name = "REQ-002: Feedback voltage"
-    req_fb_voltage.net = "package_5"
-    req_fb_voltage.min_val = "0.75"
-    req_fb_voltage.typical = "0.80"
-    req_fb_voltage.max_val = "0.85"
-    req_fb_voltage.capture = "transient"
-    req_fb_voltage.measurement = "final_value"
-    req_fb_voltage.context_nets = "power_out_hv"
-    req_fb_voltage.tran_step = "2e-7"
-    req_fb_voltage.tran_stop = "6e-3"
-    req_fb_voltage.source_name = "V1"
-    req_fb_voltage.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_fb_voltage.justification = "TPS54560 Vref=0.8V within 6%"
+    # MV-002: Startup settling time
+    mv_002 = new Requirement
+    mv_002.req_name = "MV-002: Startup settling time"
+    mv_002.simulation = "fig40_startup_vin"
+    mv_002.net = "dut.power_out.hv"
+    mv_002.min_val = 0
+    mv_002.typical = 3e-3
+    mv_002.max_val = 10e-3
+    mv_002.measurement = "settling_time"
+    mv_002.settling_tolerance = 0.02
+    mv_002.context_nets = "dut.power_in.hv,i(L1),dut.package.COMP"
+    mv_002.justification = "DS Section 8.3.2: Soft-start 1024 cycles. At 400kHz, tss=2.56ms."
 
-    # REQ-003: Startup overshoot
-    req_overshoot = new Requirement
-    req_overshoot.req_name = "REQ-003: Startup overshoot"
-    req_overshoot.net = "power_out.hv"
-    req_overshoot.min_val = 0
-    req_overshoot.typical = 5
-    req_overshoot.max_val = 15
-    req_overshoot.capture = "transient"
-    req_overshoot.measurement = "overshoot"
-    req_overshoot.context_nets = "package_2"
-    req_overshoot.tran_step = 2e-7
-    req_overshoot.tran_stop = 6e-3
-    req_overshoot.source_name = "V1"
-    req_overshoot.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_overshoot.justification = "Startup overshoot <15%"
+    # MV-003: Startup overshoot
+    mv_003 = new Requirement
+    mv_003.req_name = "MV-003: Startup overshoot"
+    mv_003.simulation = "fig40_startup_vin"
+    mv_003.net = "dut.power_out.hv"
+    mv_003.min_val = 0
+    mv_003.typical = 3
+    mv_003.max_val = 10
+    mv_003.measurement = "overshoot"
+    mv_003.context_nets = "dut.power_in.hv,i(L1),dut.package.COMP"
+    mv_003.justification = "DS Fig 40: Startup overshoot <10%."
 
-    # REQ-004: Startup settling time
-    req_settling = new Requirement
-    req_settling.req_name = "REQ-004: Startup settling time"
-    req_settling.net = "power_out_hv"
-    req_settling.min_val = "0"
-    req_settling.typical = "0.002"
-    req_settling.max_val = "0.005"
-    req_settling.capture = "transient"
-    req_settling.measurement = "settling_time"
-    req_settling.settling_tolerance = "0.02"
-    req_settling.context_nets = "package_2"
-    req_settling.tran_step = "2e-7"
-    req_settling.tran_stop = "6e-3"
-    req_settling.source_name = "V1"
-    req_settling.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_settling.justification = "Settle within 5ms, 2% band"
+    # MV-004: EN-controlled startup reaches regulation
+    mv_004 = new Requirement
+    mv_004.req_name = "MV-004: EN startup Vout regulation"
+    mv_004.simulation = "fig41_startup_en"
+    mv_004.net = "dut.power_out.hv"
+    mv_004.min_val = 4.75
+    mv_004.typical = 5.0
+    mv_004.max_val = 5.25
+    mv_004.measurement = "final_value"
+    mv_004.context_nets = "dut.power_in.hv,dut.package.EN,dut.package.COMP"
+    mv_004.justification = "DS Fig 41: EN-controlled startup must reach 5V regulation."
 
-    # REQ-005: Inductor current at steady state
-    req_inductor_current = new Requirement
-    req_inductor_current.req_name = "REQ-005: Inductor current"
-    req_inductor_current.net = "i(L1)"
-    req_inductor_current.min_val = 3.0
-    req_inductor_current.typical = 5.0
-    req_inductor_current.max_val = 6.0
-    req_inductor_current.capture = "transient"
-    req_inductor_current.measurement = "final_value"
-    req_inductor_current.context_nets = "package_8"
-    req_inductor_current.tran_start = 4e-3
-    req_inductor_current.tran_step = 100e-9
-    req_inductor_current.tran_stop = 4.01e-3
-    req_inductor_current.source_name = "V1"
-    req_inductor_current.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_inductor_current.justification = "5V/1ohm = 5A load current at steady state"
+    # =========================================================================
+    # 2. LOAD & LINE TRANSIENT (Fig 38, 39)
+    # =========================================================================
 
-    # REQ-006: Load step transient response (0.5A → 5A)
-    # Replaces R4 with a 10Ω light load (0.5A at 5V), then steps I_LOAD from 0→4.5A.
-    # V_ISENSE is a 0V voltage source used as a current sensor for I_LOAD.
-    # Load is connected from power_out_hv to 0 (power_out.lv = GND in SPICE).
-    req_load_step = new Requirement
-    req_load_step.req_name = "REQ-006: Load step response"
-    req_load_step.net = "power_out.hv"
-    req_load_step.min_val = 0
-    req_load_step.typical = 0.5
-    req_load_step.max_val = 2.0
-    req_load_step.capture = "transient"
-    req_load_step.measurement = "peak_to_peak"
-    req_load_step.context_nets = "i(V_ISENSE)"
-    req_load_step.tran_step = 2e-7
-    req_load_step.tran_start = 10e-3
-    req_load_step.tran_stop = 13e-3
-    req_load_step.source_name = "V1"
-    req_load_step.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_load_step.remove_elements = "R4"
-    req_load_step.extra_spice = "R4_LIGHT power_out_hv 0 10|V_ISENSE load_sense 0 0|I_LOAD power_out_hv load_sense PULSE(0 4.5 10.5e-3 1u 1u 10 10)"
-    req_load_step.justification = "Output voltage stability during 0.5A to 5A load step"
+    # MV-005: Load transient Vout perturbation
+    mv_005 = new Requirement
+    mv_005.req_name = "MV-005: Load transient Vout perturbation"
+    mv_005.simulation = "fig38_load_transient"
+    mv_005.net = "dut.power_out.hv"
+    mv_005.min_val = 0
+    mv_005.typical = 0.2
+    mv_005.max_val = 0.4
+    mv_005.measurement = "peak_to_peak"
+    mv_005.context_nets = "i(V_ISENSE),dut.package.SW,dut.package.COMP"
+    mv_005.justification = "DS Table 1: Load transient Vout deviation <4% (0.2V at 5V)."
 
-    # REQ-007: Switching frequency at full load
-    # Measure on SW node during steady-state (10ms–10.02ms window)
-    # RT = 95.3kΩ → Fsw = 101800/95.3 ≈ 1068kHz (datasheet formula)
-    req_sw_freq_loaded = new Requirement
-    req_sw_freq_loaded.req_name = "REQ-007: Switching frequency (full load)"
-    req_sw_freq_loaded.net = "package.SW"
-    req_sw_freq_loaded.min_val = 950e3
-    req_sw_freq_loaded.typical = 1068e3
-    req_sw_freq_loaded.max_val = 1200e3
-    req_sw_freq_loaded.capture = "transient"
-    req_sw_freq_loaded.measurement = "frequency"
-    req_sw_freq_loaded.context_nets = "power_out.hv"
-    req_sw_freq_loaded.tran_start = 10e-3
-    req_sw_freq_loaded.tran_step = 20e-9
-    req_sw_freq_loaded.tran_stop = 10.02e-3
-    req_sw_freq_loaded.source_name = "V1"
-    req_sw_freq_loaded.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_sw_freq_loaded.justification = "TPS54560 Fsw = 101800/RT(kΩ), RT=95.3kΩ → ~1068kHz"
+    # MV-006: Line transient Vout perturbation
+    mv_006 = new Requirement
+    mv_006.req_name = "MV-006: Line transient Vout perturbation"
+    mv_006.simulation = "fig39_line_transient"
+    mv_006.net = "dut.power_out.hv"
+    mv_006.min_val = 0
+    mv_006.typical = 0.1
+    mv_006.max_val = 0.3
+    mv_006.measurement = "peak_to_peak"
+    mv_006.context_nets = "dut.power_in.hv,dut.package.COMP,i(L1)"
+    mv_006.justification = "DS Fig 39: Line transient 8V-40V, Vout perturbation <300mV."
 
-    # REQ-008: Switching frequency (light load)
-    # Replace R4 (1Ω/5A) with 2.5Ω (2A) to verify Fsw stability at reduced load
-    # CCM boundary: ~0.6A for 2.2µH/1068kHz, so 2A is safely in CCM
-    # Model exhibits Eco-mode pulse-skipping at 2A (COMP near 0.65V threshold),
-    # reducing effective Fsw to ~880kHz. Wider bounds accommodate this behavior.
-    req_sw_freq_light = new Requirement
-    req_sw_freq_light.req_name = "REQ-008: Switching frequency (light load)"
-    req_sw_freq_light.net = "package.SW"
-    req_sw_freq_light.min_val = 800e3
-    req_sw_freq_light.typical = 1068e3
-    req_sw_freq_light.max_val = 1200e3
-    req_sw_freq_light.capture = "transient"
-    req_sw_freq_light.measurement = "frequency"
-    req_sw_freq_light.context_nets = "power_out.hv,package.COMP"
-    req_sw_freq_light.tran_start = 10e-3
-    req_sw_freq_light.tran_step = 20e-9
-    req_sw_freq_light.tran_stop = 10.02e-3
-    req_sw_freq_light.source_name = "V1"
-    req_sw_freq_light.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_sw_freq_light.remove_elements = "R4"
-    req_sw_freq_light.extra_spice = "R4_LIGHT power_out_hv 0 2.5"
-    req_sw_freq_light.justification = "Fsw at 2A, model Eco-mode reduces effective Fsw (~880kHz)"
+    # =========================================================================
+    # 3. RIPPLE — CCM, DCM, PSM (Fig 42-45)
+    # =========================================================================
 
-    # REQ-009: Output voltage ripple (steady-state, VIN=12V, 5A)
-    # Fine timestep (20ns) to resolve 600kHz switching ripple accurately.
-    # Measurement window: 4ms–4.02ms (steady-state, ~12 switching cycles).
-    req_output_ripple = new Requirement
-    req_output_ripple.req_name = "REQ-009: Output voltage ripple"
-    req_output_ripple.net = "power_out_hv"
-    req_output_ripple.min_val = 0
-    req_output_ripple.typical = 0.010
-    req_output_ripple.max_val = 0.100
-    req_output_ripple.capture = "transient"
-    req_output_ripple.measurement = "peak_to_peak"
-    req_output_ripple.context_nets = "i(L1)"
-    req_output_ripple.tran_start = 4e-3
-    req_output_ripple.tran_step = 20e-9
-    req_output_ripple.tran_stop = 4.02e-3
-    req_output_ripple.source_name = "V1"
-    req_output_ripple.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_output_ripple.justification = "Steady-state Vout ripple <100mV at VIN=12V, 5A load"
+    # MV-007: CCM output ripple
+    mv_007 = new Requirement
+    mv_007.req_name = "MV-007: CCM output ripple"
+    mv_007.simulation = "fig42_ripple_ccm"
+    mv_007.net = "dut.power_out.hv"
+    mv_007.min_val = 0
+    mv_007.typical = 0.015
+    mv_007.max_val = 0.025
+    mv_007.measurement = "peak_to_peak"
+    mv_007.context_nets = "i(L1),dut.package.SW"
+    mv_007.justification = "DS Fig 42: CCM ripple ~15mV. 0.5% of Vout max."
 
-    # REQ-010: Regulation at VIN=6V (minimum input, 1A load)
-    # Low VIN near Vout requires reduced load to avoid excessive duty cycle.
-    # R4 replaced with 5ohm (1A at 5V), VIN=6V → D≈83%.
-    req_vin_low = new Requirement
-    req_vin_low.req_name = "REQ-010: Regulation at VIN=6V"
-    req_vin_low.net = "power_out_hv"
-    req_vin_low.min_val = 4.80
-    req_vin_low.typical = 5.00
-    req_vin_low.max_val = 5.20
-    req_vin_low.capture = "transient"
-    req_vin_low.measurement = "average"
-    req_vin_low.context_nets = "package_2"
-    req_vin_low.tran_start = 4e-3
-    req_vin_low.tran_step = 2e-7
-    req_vin_low.tran_stop = 5e-3
-    req_vin_low.source_name = "V1"
-    req_vin_low.source_spec = "PULSE(0 6 0 10u 10u 10 10)"
-    req_vin_low.remove_elements = "R4"
-    req_vin_low.extra_spice = "R4_LIGHT power_out_hv 0 5"
-    req_vin_low.justification = "Output regulation at minimum VIN (6V), 1A load"
+    # MV-008: CCM switching frequency
+    mv_008 = new Requirement
+    mv_008.req_name = "MV-008: CCM switching frequency"
+    mv_008.simulation = "fig42_ripple_ccm"
+    mv_008.net = "dut.package.SW"
+    mv_008.min_val = 360e3
+    mv_008.typical = 400e3
+    mv_008.max_val = 440e3
+    mv_008.measurement = "frequency"
+    mv_008.context_nets = "dut.power_out.hv,i(L1)"
+    mv_008.justification = "DS: fsw=400kHz +/-10%. Validates FS parameter override."
 
-    # REQ-011: Regulation at VIN=48V (maximum input, 5A load)
-    # High VIN test: D≈10.4%, verifies low duty cycle operation.
-    req_vin_high = new Requirement
-    req_vin_high.req_name = "REQ-011: Regulation at VIN=48V"
-    req_vin_high.net = "power_out_hv"
-    req_vin_high.min_val = 4.80
-    req_vin_high.typical = 5.00
-    req_vin_high.max_val = 5.20
-    req_vin_high.capture = "transient"
-    req_vin_high.measurement = "average"
-    req_vin_high.context_nets = "package_2"
-    req_vin_high.tran_start = 4e-3
-    req_vin_high.tran_step = 2e-7
-    req_vin_high.tran_stop = 5e-3
-    req_vin_high.source_name = "V1"
-    req_vin_high.source_spec = "PULSE(0 48 0 10u 10u 10 10)"
-    req_vin_high.justification = "Output regulation at maximum VIN (48V), 5A load"
+    # MV-009: CCM inductor current average
+    mv_009 = new Requirement
+    mv_009.req_name = "MV-009: CCM inductor current average"
+    mv_009.simulation = "fig42_ripple_ccm"
+    mv_009.net = "i(L1)"
+    mv_009.min_val = 4.0
+    mv_009.typical = 5.0
+    mv_009.max_val = 6.0
+    mv_009.measurement = "average"
+    mv_009.context_nets = "dut.power_out.hv,dut.package.SW"
+    mv_009.justification = "IL_avg = Iout = Vout/Rload = 5V/1ohm = 5A."
 
-    # REQ-012: Line transient response (VIN step 12V→18V→12V)
-    # 50% input voltage step tests loop bandwidth and compensation.
-    # Measures output perturbation (pk-pk) during step.
-    req_line_transient = new Requirement
-    req_line_transient.req_name = "REQ-012: Line transient response"
-    req_line_transient.net = "power_out_hv"
-    req_line_transient.min_val = 0
-    req_line_transient.typical = 0.020
-    req_line_transient.max_val = 0.200
-    req_line_transient.capture = "transient"
-    req_line_transient.measurement = "peak_to_peak"
-    req_line_transient.context_nets = "package_2"
-    req_line_transient.tran_start = 3.9e-3
-    req_line_transient.tran_step = 2e-7
-    req_line_transient.tran_stop = 7e-3
-    req_line_transient.source_name = "V1"
-    req_line_transient.source_spec = "PULSE(12 18 4e-3 1u 1u 2e-3 10)"
-    req_line_transient.justification = "Output perturbation <200mV during 50% VIN step (12V to 18V)"
+    # MV-010: CCM inductor current ripple
+    mv_010 = new Requirement
+    mv_010.req_name = "MV-010: CCM inductor ripple"
+    mv_010.simulation = "fig42_ripple_ccm"
+    mv_010.net = "i(L1)"
+    mv_010.min_val = 0.5
+    mv_010.typical = 1.59
+    mv_010.max_val = 3.0
+    mv_010.measurement = "peak_to_peak"
+    mv_010.context_nets = "dut.power_out.hv,dut.package.SW"
+    mv_010.justification = "DS Eq.28: IL_pp=(12-5)*0.42/(400k*7.2u)=1.02A. Model may differ."
 
-    # REQ-013: Inductor current ripple (VIN=12V, 5A)
-    # ΔiL = (VIN-VOUT)*D/(fsw*L) ≈ 2.2A at VIN=12V, 600kHz, 2.2µH.
-    # Fine timestep to resolve current waveform.
-    req_inductor_ripple = new Requirement
-    req_inductor_ripple.req_name = "REQ-013: Inductor current ripple"
-    req_inductor_ripple.net = "i(L1)"
-    req_inductor_ripple.min_val = 0
-    req_inductor_ripple.typical = 2.2
-    req_inductor_ripple.max_val = 5.0
-    req_inductor_ripple.capture = "transient"
-    req_inductor_ripple.measurement = "peak_to_peak"
-    req_inductor_ripple.context_nets = "power_out_hv,package_8"
-    req_inductor_ripple.tran_start = 4e-3
-    req_inductor_ripple.tran_step = 20e-9
-    req_inductor_ripple.tran_stop = 4.02e-3
-    req_inductor_ripple.source_name = "V1"
-    req_inductor_ripple.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_inductor_ripple.justification = "Inductor ripple confirms CCM operation and L value adequacy"
+    # MV-011: DCM output ripple
+    mv_011 = new Requirement
+    mv_011.req_name = "MV-011: DCM output ripple"
+    mv_011.simulation = "fig43_ripple_dcm"
+    mv_011.net = "dut.power_out.hv"
+    mv_011.min_val = 0
+    mv_011.typical = 0.010
+    mv_011.max_val = 0.050
+    mv_011.measurement = "peak_to_peak"
+    mv_011.context_nets = "i(L1),dut.package.SW"
+    mv_011.justification = "DS Fig 43: DCM ripple at 100mA load."
 
-    # REQ-014: Eco-mode regulation (light load, 50mA)
-    # R4 replaced with 100ohm (50mA at 5V).
-    # At this load, COMP drops below 0.65V threshold and the model
-    # enters pulse-skipping Eco-mode. Verifies output stays regulated.
-    req_ecomode = new Requirement
-    req_ecomode.req_name = "REQ-014: Eco-mode regulation (50mA)"
-    req_ecomode.net = "power_out_hv"
-    req_ecomode.min_val = 4.80
-    req_ecomode.typical = 5.00
-    req_ecomode.max_val = 5.20
-    req_ecomode.capture = "transient"
-    req_ecomode.measurement = "average"
-    req_ecomode.context_nets = "package_8,i(L1)"
-    req_ecomode.tran_start = 4e-3
-    req_ecomode.tran_step = 2e-7
-    req_ecomode.tran_stop = 5e-3
-    req_ecomode.source_name = "V1"
-    req_ecomode.source_spec = "PULSE(0 12 0 10u 10u 10 10)"
-    req_ecomode.remove_elements = "R4"
-    req_ecomode.extra_spice = "R4_LIGHT power_out_hv 0 100"
-    req_ecomode.justification = "Regulation in pulse-skipping Eco-mode at 50mA load"
+    # MV-012: Eco-mode (PSM) output ripple
+    mv_012 = new Requirement
+    mv_012.req_name = "MV-012: Eco-mode output ripple"
+    mv_012.simulation = "fig44_ripple_psm"
+    mv_012.net = "dut.power_out.hv"
+    mv_012.min_val = 0
+    mv_012.typical = 0.030
+    mv_012.max_val = 0.100
+    mv_012.measurement = "peak_to_peak"
+    mv_012.context_nets = "dut.package.SW,dut.package.COMP"
+    mv_012.justification = "DS Fig 44: Eco-mode ripple. Pulse-skipping increases ripple."
+
+    # MV-013: Input ripple at CCM
+    mv_013 = new Requirement
+    mv_013.req_name = "MV-013: Input ripple CCM"
+    mv_013.simulation = "fig45_input_ripple"
+    mv_013.net = "dut.power_in.hv"
+    mv_013.min_val = 0
+    mv_013.typical = 0.050
+    mv_013.max_val = 0.200
+    mv_013.measurement = "peak_to_peak"
+    mv_013.context_nets = "dut.power_out.hv,dut.package.SW,i(L1)"
+    mv_013.justification = "DS Fig 45: Input voltage ripple at 5A CCM load."
+
+    # =========================================================================
+    # 4. LOW DROPOUT (Fig 47-49)
+    # =========================================================================
+
+    # MV-014: LDO no-load Vout tracking
+    mv_014 = new Requirement
+    mv_014.req_name = "MV-014: LDO no-load Vout"
+    mv_014.simulation = "fig47_ldo_noload"
+    mv_014.net = "dut.power_out.hv"
+    mv_014.min_val = 3.5
+    mv_014.typical = 5.0
+    mv_014.max_val = 5.5
+    mv_014.measurement = "final_value"
+    mv_014.context_nets = "dut.power_in.hv,dut.package.SW"
+    mv_014.justification = "DS Fig 47: Low dropout behavior, no load. Vout tracks VIN near dropout."
+
+    # MV-015: LDO 100mA Vout
+    mv_015 = new Requirement
+    mv_015.req_name = "MV-015: LDO 100mA Vout"
+    mv_015.simulation = "fig48_ldo_100mA"
+    mv_015.net = "dut.power_out.hv"
+    mv_015.min_val = 3.5
+    mv_015.typical = 5.0
+    mv_015.max_val = 5.5
+    mv_015.measurement = "final_value"
+    mv_015.context_nets = "dut.power_in.hv,dut.package.SW"
+    mv_015.justification = "DS Fig 48: Low dropout at 100mA."
+
+    # MV-016: LDO 1A Vout
+    mv_016 = new Requirement
+    mv_016.req_name = "MV-016: LDO 1A Vout"
+    mv_016.simulation = "fig49_ldo_1A"
+    mv_016.net = "dut.power_out.hv"
+    mv_016.min_val = 3.0
+    mv_016.typical = 5.0
+    mv_016.max_val = 5.5
+    mv_016.measurement = "final_value"
+    mv_016.context_nets = "dut.power_in.hv,dut.package.SW"
+    mv_016.justification = "DS Fig 49: Low dropout at 1A. More dropout expected under load."
+
+    # =========================================================================
+    # 5. EFFICIENCY SWEEPS (Fig 50)
+    # =========================================================================
+
+    # MV-017: Efficiency at VIN=12V
+    mv_017 = new Requirement
+    mv_017.req_name = "MV-017: Efficiency VIN=12V"
+    mv_017.simulation = "fig50_eff_vin12"
+    mv_017.net = "dut.power_out.hv"
+    mv_017.min_val = 60
+    mv_017.typical = 90
+    mv_017.max_val = 100
+    mv_017.measurement = "efficiency"
+    mv_017.context_nets = "i(V1),dut.power_in.hv,i(V_LSENSE)"
+    mv_017.justification = "DS Fig 50: Efficiency at VIN=12V, 400kHz. Expect >85% at 2-5A."
+
+    # MV-018: Efficiency at VIN=24V
+    mv_018 = new Requirement
+    mv_018.req_name = "MV-018: Efficiency VIN=24V"
+    mv_018.simulation = "fig50_eff_vin24"
+    mv_018.net = "dut.power_out.hv"
+    mv_018.min_val = 60
+    mv_018.typical = 88
+    mv_018.max_val = 100
+    mv_018.measurement = "efficiency"
+    mv_018.context_nets = "i(V1),dut.power_in.hv,i(V_LSENSE)"
+    mv_018.justification = "DS Fig 50: Efficiency at VIN=24V, 400kHz."
+
+    # MV-019: Efficiency at VIN=48V
+    mv_019 = new Requirement
+    mv_019.req_name = "MV-019: Efficiency VIN=48V"
+    mv_019.simulation = "fig50_eff_vin48"
+    mv_019.net = "dut.power_out.hv"
+    mv_019.min_val = 50
+    mv_019.typical = 85
+    mv_019.max_val = 100
+    mv_019.measurement = "efficiency"
+    mv_019.context_nets = "i(V1),dut.power_in.hv,i(V_LSENSE)"
+    mv_019.justification = "DS Fig 50: Efficiency at VIN=48V. Lower due to higher switching losses."
+
+    # =========================================================================
+    # 6. REGULATION SWEEPS (Fig 56, 57)
+    # =========================================================================
+
+    # MV-020: Load regulation
+    mv_020 = new Requirement
+    mv_020.req_name = "MV-020: Load regulation"
+    mv_020.simulation = "fig56_load_reg"
+    mv_020.net = "dut.power_out.hv"
+    mv_020.min_val = 4.85
+    mv_020.typical = 5.00
+    mv_020.max_val = 5.15
+    mv_020.measurement = "average"
+    mv_020.context_nets = "dut.package.COMP,dut.package.FB"
+    mv_020.justification = "DS Fig 56: Load regulation +/-0.5% (4.975-5.025V ideal)."
+
+    # MV-021: Line regulation
+    mv_021 = new Requirement
+    mv_021.req_name = "MV-021: Line regulation"
+    mv_021.simulation = "fig57_line_reg"
+    mv_021.net = "dut.power_out.hv"
+    mv_021.min_val = 4.85
+    mv_021.typical = 5.00
+    mv_021.max_val = 5.15
+    mv_021.measurement = "average"
+    mv_021.context_nets = "dut.power_in.hv,dut.package.COMP"
+    mv_021.justification = "DS Fig 57: Line regulation +/-0.3% across 7-60V."

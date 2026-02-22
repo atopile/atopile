@@ -254,7 +254,7 @@
 
 .rdp-root {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100vh;
   overflow: hidden;
   background: var(--bg-primary);
@@ -282,17 +282,20 @@
   font-family: var(--font-mono);
 }
 
-/* Info card area */
+/* Info card area — left column */
 .rdp-info {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  width: 360px;
   padding: var(--spacing-lg);
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  overflow-y: auto;
 }
 
-/* Chart area — horizontally centered, top-aligned */
+/* Chart area — fills remaining space */
 .rdp-chart {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   padding: var(--spacing-xl);
   overflow: hidden;
@@ -380,9 +383,7 @@
   color: var(--text-primary);
   text-align: right;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 .ric-value.pass { color: var(--success); }
 .ric-value.fail { color: var(--error); }
@@ -434,4 +435,140 @@
   color: var(--text-secondary);
   font-style: italic;
   line-height: 1.5;
+}
+
+/* ---- View All button ---- */
+.req-view-all-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.req-view-all-btn:hover {
+  background: var(--bg-hover);
+}
+
+/* ---- Search input ---- */
+.req-search-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-sans);
+  outline: none;
+}
+.req-search-input:focus {
+  border-color: var(--accent);
+}
+.req-search-input::placeholder {
+  color: var(--text-muted);
+}
+.req-search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 0 4px;
+}
+
+/* ============================================
+   All Requirements Page (editor panel)
+   ============================================ */
+
+.rall-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.rall-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.rall-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+.rall-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+.rall-summary .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.rall-summary .dot.pass { background: var(--success); }
+.rall-summary .dot.fail { background: var(--error); }
+
+.rall-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+.rall-search {
+  position: relative;
+  flex: 1;
+  max-width: 300px;
+}
+
+.rall-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.rall-row {
+  display: flex;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  align-items: flex-start;
+}
+
+.rall-card {
+  flex: 2;
+  min-width: 0;
+}
+
+.rall-plots {
+  flex: 4;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }

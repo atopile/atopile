@@ -1,9 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RequirementsDetailPage } from './components/RequirementsDetailPage';
+import { RequirementsAllPage } from './components/RequirementsAllPage';
 import { initializeTheme } from './hooks/useTheme';
 import { preloadPlotly } from './components/requirements/charts';
-import type { RequirementData } from './components/requirements/types';
+import type { RequirementData, RequirementsData } from './components/requirements/types';
 import './styles/index.css';
 
 // Start loading Plotly immediately — runs in parallel with React mount
@@ -13,7 +14,7 @@ initializeTheme();
 
 type WindowGlobals = Window & {
   __ATOPILE_REQUIREMENT_ID__?: string;
-  __ATOPILE_REQUIREMENT_DATA__?: RequirementData;
+  __ATOPILE_REQUIREMENT_DATA__?: RequirementData | RequirementsData;
   __ATOPILE_BUILD_TIME__?: string;
   __ATOPILE_API_URL__?: string;
   __ATOPILE_PROJECT_ROOT__?: string;
@@ -30,13 +31,30 @@ function getRequirementId(): string {
 }
 
 const requirementId = getRequirementId();
+const isAllMode = requirementId === '__ALL__';
+
+function App() {
+  if (isAllMode) {
+    const allData = w.__ATOPILE_REQUIREMENT_DATA__ as RequirementsData | undefined;
+    return (
+      <RequirementsAllPage
+        requirements={allData?.requirements ?? []}
+        buildTime={allData?.buildTime ?? w.__ATOPILE_BUILD_TIME__ ?? ''}
+      />
+    );
+  }
+
+  return (
+    <RequirementsDetailPage
+      requirementId={requirementId}
+      injectedData={(w.__ATOPILE_REQUIREMENT_DATA__ as RequirementData) ?? null}
+      injectedBuildTime={w.__ATOPILE_BUILD_TIME__ ?? ''}
+    />
+  );
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RequirementsDetailPage
-      requirementId={requirementId}
-      injectedData={w.__ATOPILE_REQUIREMENT_DATA__ ?? null}
-      injectedBuildTime={w.__ATOPILE_BUILD_TIME__ ?? ''}
-    />
+    <App />
   </React.StrictMode>
 );

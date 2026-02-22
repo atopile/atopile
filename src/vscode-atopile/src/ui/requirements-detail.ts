@@ -24,10 +24,12 @@ export interface RequirementDetailOptions {
 export function openRequirementDetail(extensionUri: vscode.Uri, options: RequirementDetailOptions): void {
   const extensionPath = extensionUri.fsPath;
   const { requirementId } = options;
+  const isAllMode = requirementId === '__ALL__';
+  const panelTitle = isAllMode ? 'All Requirements' : `Requirement: ${requirementId}`;
 
   if (panel) {
     // Reuse existing panel, update content
-    panel.title = `Requirement: ${requirementId}`;
+    panel.title = panelTitle;
     panel.webview.html = getProdHtml(panel.webview, extensionPath, options);
     panel.reveal(vscode.ViewColumn.One);
     return;
@@ -41,7 +43,7 @@ export function openRequirementDetail(extensionUri: vscode.Uri, options: Require
 
   panel = vscode.window.createWebviewPanel(
     'atopile.requirementDetail',
-    `Requirement: ${requirementId}`,
+    panelTitle,
     vscode.ViewColumn.One,
     webviewOptions,
   );

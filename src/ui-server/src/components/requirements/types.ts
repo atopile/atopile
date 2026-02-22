@@ -19,6 +19,18 @@ export interface RequirementData {
   tranStop?: number;
   timeSeries: TimeSeriesData | null;
   frequencySeries: FrequencySeriesData | null;
+  sweepPoints?: SweepPointData[];
+  sweepParamName?: string;
+  sweepParamUnit?: string;
+  /** Pre-rendered Plotly figure specs from Python — each has data + layout */
+  plotSpecs?: Array<{ data: Record<string, unknown>[]; layout: Record<string, unknown> }>;
+}
+
+/** A single sweep data point */
+export interface SweepPointData {
+  paramValue: number;
+  actual: number;
+  passed: boolean;
 }
 
 /** Time-domain simulation data */

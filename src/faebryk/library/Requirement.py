@@ -92,6 +92,7 @@ class Requirement(fabll.Node):
 
     # Core fields
     req_name = F.Parameters.StringParameter.MakeChild()
+    simulation = F.Parameters.StringParameter.MakeChild()
     net = F.Parameters.StringParameter.MakeChild()
     context_nets = F.Parameters.StringParameter.MakeChild()
     min_val = F.Parameters.StringParameter.MakeChild()
@@ -207,6 +208,9 @@ class Requirement(fabll.Node):
 
     def get_name(self) -> str:
         return self.req_name.get().extract_singleton()
+
+    def get_simulation(self) -> str | None:
+        return self.simulation.get().try_extract_singleton()
 
     @staticmethod
     def _sanitize_net_name(name: str) -> str:

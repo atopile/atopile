@@ -13,6 +13,10 @@ builds:
     entry: buck_converter.ato:Usage
     hide_designators: true
     exclude_checks: [PCB.requires_drc_check]
+  simulation:
+    entry: model_validation.ato:ModelValidationEntry
+    hide_designators: true
+    exclude_checks: [PCB.requires_drc_check]
 dependencies:
 - type: registry
   identifier: atopile/indicator-leds

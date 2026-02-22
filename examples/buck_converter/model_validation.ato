@@ -1,0 +1,6 @@
+from "simulations.ato" import ModelValidation
+from "requirements.ato" import ModelValidationRequirements
+
+module ModelValidationEntry from ModelValidation:
+    "Combined entry: ModelValidation sims + ModelValidationRequirements."
+    reqs = new ModelValidationRequirements

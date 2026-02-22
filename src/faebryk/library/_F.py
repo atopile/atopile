@@ -25,8 +25,10 @@ from faebryk.library.Logic import Logic
 import faebryk.library.Measurements as Measurements
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+from faebryk.library.is_spice_simulation import is_spice_simulation
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
+from faebryk.library.is_requirement import is_requirement
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_source_chunk import has_source_chunk
@@ -38,6 +40,7 @@ import faebryk.library.Footprints as Footprints
 import faebryk.library.Pickable as Pickable
 from faebryk.library.Requirement import Requirement
 from faebryk.library.SerializableMetadata import SerializableMetadata
+import faebryk.library.Simulations as Simulations
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_doc_string import has_doc_string
@@ -60,6 +63,7 @@ from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
+import faebryk.library.Plots as Plots
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
@@ -132,8 +136,10 @@ __all__ = [
     "Measurements",
     "Mechanical",
     "Signal",
+    "is_spice_simulation",
     "is_app_root",
     "bus_parameter_utils",
+    "is_requirement",
     "Literals",
     "can_bridge",
     "has_source_chunk",
@@ -145,6 +151,7 @@ __all__ = [
     "Pickable",
     "Requirement",
     "SerializableMetadata",
+    "Simulations",
     "has_datasheet",
     "has_designator_prefix",
     "has_doc_string",
@@ -167,6 +174,7 @@ __all__ = [
     "is_sum_bus_parameter",
     "Filter",
     "Lead",
+    "Plots",
     "has_net_name_affix",
     "requires_external_usage",
     "XtalIF",

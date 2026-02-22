@@ -63,6 +63,17 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
     });
   }, [selectedProjectRoot, selectedTargetNames, requirementsData]);
 
+  const handleViewAll = useCallback(() => {
+    postMessage({
+      type: 'openRequirementDetail',
+      requirementId: '__ALL__',
+      projectRoot: selectedProjectRoot ?? '',
+      target: selectedTargetNames?.[0] ?? 'default',
+      requirementData: requirementsData,
+      buildTime: requirementsData?.buildTime ?? '',
+    });
+  }, [selectedProjectRoot, selectedTargetNames, requirementsData]);
+
   const handleHover = useCallback((req: RequirementData, rect: DOMRect) => {
     setTooltip({ req, rect });
   }, []);
@@ -168,6 +179,17 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
           </div>
         )}
       </div>
+
+      {/* View All button */}
+      <button className="req-view-all-btn" onClick={handleViewAll}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        View All
+      </button>
 
       <ReqTooltip req={tooltip.req} rect={tooltip.rect} />
     </div>

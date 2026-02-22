@@ -150,7 +150,7 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
               <div className="ric-section-title">Configuration</div>
               <div className="ric-row">
                 <span className="ric-label">Net</span>
-                <span className="ric-value">{req.net}</span>
+                <span className="ric-value">{req.displayNet || req.net}</span>
               </div>
               <div className="ric-row">
                 <span className="ric-label">Capture</span>
