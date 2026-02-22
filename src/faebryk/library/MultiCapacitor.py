@@ -47,6 +47,9 @@ class MultiCapacitor(fabll.Node):
         F.can_bridge.MakeChild(["unnamed[0]"], ["unnamed[1]"])
     )
 
+    # Virtual container — only children get designators
+    _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
+
     @classmethod
     @once
     def factory(cls, count: int) -> type[Self]:

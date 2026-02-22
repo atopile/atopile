@@ -24,7 +24,8 @@ module Usage:
 module TI_TPS54560:
     """
     Texas Instruments TPS54560x Buck Converter
-    WEBENCH Design: 12V input, 5V/5A output
+    Datasheet Reference Design (Section 9.2, Figure 37)
+    12V input, 5V/5A output, 400kHz switching frequency
     """
     power_in = new ElectricPower
     power_out = new ElectricPower
@@ -34,58 +35,58 @@ module TI_TPS54560:
     package = new Texas_Instruments_TPS54560DDAR_package
     diode = new STMicroelectronics_STPS340U
 
-    # Inductor
+    # Inductor — 6.8µH (nearest E6 to DS Eq.27 calc of 7.2µH)
     inductor = new Inductor
-    inductor.inductance = 2.2uH +/- 20%
+    inductor.inductance = 6.8uH +/- 20%
     inductor.package = "SMD8x8mm"
 
-    # Input cap (10uF per WEBENCH)
+    # Input cap (10uF ceramic)
     c_in = new Capacitor
     c_in.capacitance = 10uF +/- 20%
     c_in.max_voltage = 25V to 100V
     c_in.package = "0805"
 
-    # Output caps (3x 47uF in parallel)
+    # Output caps — 3×47µF ≈ 141µF (DS Eq.31-33)
     c_out = new MultiCapacitor<count=3>
     for c in c_out.capacitors:
         c.capacitance = 47uF +/- 20%
         c.max_voltage = 16V to 100V
         c.package = "1206"
 
-    # Bootstrap cap (100nF per WEBENCH)
+    # Bootstrap cap (100nF)
     c_boot = new Capacitor
     c_boot.capacitance = 100nF +/- 20%
     c_boot.max_voltage = 25V to 100V
     c_boot.package = "0603"
 
-    # Compensation network (per WEBENCH)
+    # Compensation network — Type 2A, fco≈30kHz (DS Eq.46-49)
     r_comp = new Resistor
-    r_comp.resistance = 23.7kohm +/- 2%
+    r_comp.resistance = 16.9kohm +/- 5%
     r_comp.package = "0402"
 
     c_comp = new Capacitor
-    c_comp.capacitance = 33nF +/- 20%
+    c_comp.capacitance = 4.7nF +/- 20%
     c_comp.max_voltage = 25V to 100V
     c_comp.package = "0805"
 
     c_comp1 = new Capacitor
-    c_comp1.capacitance = 6.8pF +/- 30%
+    c_comp1.capacitance = 47pF +/- 30%
     c_comp1.max_voltage = 25V to 100V
     c_comp1.package = "0603"
 
-    # Switching frequency resistor (162kohm ~ 600kHz)
+    # Switching frequency resistor — 243kΩ → 400kHz (DS Eq.6)
     r_rt = new Resistor
-    r_rt.resistance = 95kohm +/- 2%
+    r_rt.resistance = 243kohm +/- 2%
     r_rt.package = "0402"
 
-    # Feedback voltage divider (per WEBENCH: Rfbt=40.2k, Rfbb=7.68k)
-    # Vout = Vref * (Rfbt + Rfbb) / Rfbb = 0.8 * (40.2k + 7.68k) / 7.68k = 4.99V
+    # Feedback voltage divider (DS Section 9.2)
+    # Vout = Vref × (Rfbt + Rfbb) / Rfbb = 0.8 × (53.6k + 10.2k) / 10.2k = 5.00V
     r_top = new Resistor
-    r_top.resistance = 40.2kohm +/- 1%
+    r_top.resistance = 53.6kohm +/- 1%
     r_top.package = "R0402"
 
     r_bottom = new Resistor
-    r_bottom.resistance = 7.68kohm +/- 1%
+    r_bottom.resistance = 10.2kohm +/- 1%
     r_bottom.package = "R0402"
 
     # Power connections
@@ -112,18 +113,24 @@ module TI_TPS54560:
     power_out.hv ~> r_top ~> package.FB
     package.FB ~> r_bottom ~> power_in.lv
 
-    # Enable — pullup keeps EN high in simulation
+    # UVLO divider — Start=6.5V, Stop=5V (DS Eq.39-40)
     r_en = new Resistor
-    r_en.resistance = 100kohm +/- 5%
+    r_en.resistance = 442kohm +/- 5%
     r_en.package = "0402"
+
+    r_en_bot = new Resistor
+    r_en_bot.resistance = 90.9kohm +/- 5%
+    r_en_bot.package = "0402"
+
     power_in.hv ~> r_en ~> package.EN
+    package.EN ~> r_en_bot ~> power_in.lv
     enable.line ~ package.EN
     enable.reference.lv ~ power_in.lv
 
     # Input voltage constraint (generates V source in SPICE)
     assert power_in.voltage within 12V +/- 5%
 
-    # Load resistor (5V/5A = 1 ohm, provides simulation load)
+    # Load resistor (5V/5A = 1Ω)
     r_load = new Resistor
     r_load.resistance = 1ohm +/- 5%
     r_load.package = "R1210"
