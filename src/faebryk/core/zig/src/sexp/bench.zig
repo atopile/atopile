@@ -765,20 +765,24 @@ fn measureEncode(
     };
 }
 
+fn buildPrettyInputSource(allocator: std.mem.Allocator, model: pcb.PcbFile) ![]u8 {
+    var raw = std.array_list.Managed(u8).init(allocator);
+    errdefer raw.deinit();
+    try structure.encodeWrappedStreamForBenchmark(
+        model.kicad_pcb,
+        allocator,
+        "kicad_pcb",
+        raw.writer(),
+    );
+    return try raw.toOwnedSlice();
+}
+
 fn measurePretty(
     allocator: std.mem.Allocator,
-    model: pcb.PcbFile,
+    pretty_source: []const u8,
     warmup: usize,
     samples: usize,
 ) !LayerSamples {
-    var encode_arena = std.heap.ArenaAllocator.init(allocator);
-    defer encode_arena.deinit();
-    const encoded = try structure.encodeWrappedForBenchmark(
-        model.kicad_pcb,
-        encode_arena.allocator(),
-        "kicad_pcb",
-    );
-
     var times_out = try allocator.alloc(f64, samples);
     var peak_out = try allocator.alloc(f64, samples);
     var mem_before_out = try allocator.alloc(f64, samples);
@@ -801,7 +805,7 @@ fn measurePretty(
         const stage_start_peak = tracker.peak_bytes;
 
         var timer = try std.time.Timer.start();
-        _ = try encoded.pretty(output_arena.allocator());
+        _ = try ast.SExp.prettify_sexp_string(output_arena.allocator(), pretty_source);
         const elapsed_ms = nsToMs(timer.read());
         const stage_end_current = tracker.current_bytes;
         const stage_peak = tracker.peak_bytes;
@@ -866,12 +870,14 @@ fn measureCumulativePipelinePeaks(
         const parser_peak = tracker.peak_bytes;
 
         const encode_start = tracker.current_bytes;
-        const encoded = try structure.encodeWrappedForBenchmark(model.kicad_pcb, a, "kicad_pcb");
+        var raw = std.array_list.Managed(u8).init(a);
+        try structure.encodeWrappedStreamForBenchmark(model.kicad_pcb, a, "kicad_pcb", raw.writer());
+        const pretty_source = try raw.toOwnedSlice();
         const encode_end = tracker.current_bytes;
         const encode_peak = tracker.peak_bytes;
 
         const pretty_start = tracker.current_bytes;
-        _ = try encoded.pretty(a);
+        _ = try ast.SExp.prettify_sexp_string(a, pretty_source);
         const pretty_end = tracker.current_bytes;
         const pretty_peak = tracker.peak_bytes;
 
@@ -984,6 +990,8 @@ fn benchmarkDataset(
     const tokens = try tokenizer._tokenize(parse_alloc, dataset.input);
     const parsed = try ast.parse(parse_alloc, tokens);
     const model = try pcb.PcbFile.loads(parse_alloc, .{ .sexp = parsed });
+    const pretty_source = try buildPrettyInputSource(allocator, model);
+    defer allocator.free(pretty_source);
     const cumulative = try measureCumulativePipelinePeaks(allocator, dataset.input, warmup, samples);
     defer cumulative.deinit(allocator);
 
@@ -1023,7 +1031,7 @@ fn benchmarkDataset(
     defer allocator.free(encode_samples.peak_increment_kib);
     _ = try appendLayerResult(allocator, rows, dataset, .encode, encode_samples, cumulative.encode);
 
-    const pretty_samples = try measurePretty(allocator, model, warmup, samples);
+    const pretty_samples = try measurePretty(allocator, pretty_source, warmup, samples);
     defer allocator.free(pretty_samples.times_ms);
     defer allocator.free(pretty_samples.peak_kib);
     defer allocator.free(pretty_samples.mem_before_kib);
