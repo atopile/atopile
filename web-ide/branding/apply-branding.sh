@@ -48,6 +48,23 @@ sed -i 's|<link rel="icon" href="{{WORKBENCH_WEB_BASE_URL}}/resources/server/fav
 # Patch apple-mobile-web-app-title
 sed -i 's|content="Code"|content="atopile"|' "${WORKBENCH_HTML}"
 
+# Patch workbench.html: inject loading overlay
+# Shows an atopile-branded splash screen (logo + PCB-trace animation) while
+# VS Code initializes, then fades out once the Layout editor tab appears.
+"${OPENVSCODE_SERVER_ROOT}/node" -e "
+const fs = require('fs');
+let html = fs.readFileSync('${WORKBENCH_HTML}', 'utf8');
+const overlay = fs.readFileSync('${BRANDING_DIR}/loading-overlay.html', 'utf8');
+const marker = '<!-- @BODY -->';
+const idx = overlay.indexOf(marker);
+const head = overlay.substring(0, idx).trim();
+const body = overlay.substring(idx + marker.length).trim();
+html = html.replace(/<body([^>]*)>/, function(m, p1) { return '<body' + p1 + '>\\n' + body; });
+html = html.replace('</head>', function(m) { return head + '\\n' + m; });
+fs.writeFileSync('${WORKBENCH_HTML}', html);
+console.log('Patched workbench.html: loading overlay injected');
+"
+
 # Patch product.json: disable workspace trust prompt (this is a cloud dev environment)
 # Must use top-level "disableWorkspaceTrust" key, NOT configurationDefaults —
 # the trust check happens at the environment level before settings are consulted.
