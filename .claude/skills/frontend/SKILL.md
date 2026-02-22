@@ -17,13 +17,13 @@ cd src/ui-server
 bun install
 ```
 
-Run/build/test (Vite/Vitest scripts):
+Run/build/test directly (Vite/Vitest):
 
 ```bash
 cd src/ui-server
-npm run dev:all
-npm run test
-npm run build
+bunx vite
+bunx vitest run
+bunx tsc && bunx vite build
 ```
 
 Extension package + install loop:
@@ -36,7 +36,7 @@ ato dev compile && ato dev install vscode
 
 Notes:
 - Use Bun for install/sync of JS dependencies.
-- Use Vite/Vitest tooling for runtime/build/test loops.
+- Use Vite/Vitest directly for runtime/build/test loops.
 - `ato dev compile` default target `all` includes type generation + extension packaging.
 
 ## Relevant Files
@@ -361,7 +361,7 @@ Agents should self-test in browser flow first:
 
 ```bash
 cd src/ui-server
-npm run dev:all
+./dev.sh
 ```
 
 Then:
@@ -423,7 +423,7 @@ A feature is done only when all are true:
 - [ ] Pydantic models updated for API/WS changes
 - [ ] Generated TS schema/types regenerated and committed
 - [ ] WS reconnect/resync behavior verified
-- [ ] Browser dev viewer flow validated (`npm run dev:all`)
+- [ ] Browser dev viewer flow validated (`./dev.sh`)
 - [ ] Screenshots + UI logs reviewed (no unapproved runtime errors)
 - [ ] Added/updated: store test, transport test, UI interaction test
 - [ ] Asked user to test in extension host only after browser checks passed
