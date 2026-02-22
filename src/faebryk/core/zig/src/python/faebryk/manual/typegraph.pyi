@@ -105,6 +105,7 @@ class TypeGraph:
         lhs_reference: BoundNode,
         rhs_reference: BoundNode,
         edge_attributes: EdgeCreationAttributes,
+        soft_create: bool = ...,
     ) -> BoundNode: ...
     def ensure_child_reference(
         self,
