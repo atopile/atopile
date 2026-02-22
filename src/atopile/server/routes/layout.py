@@ -31,9 +31,15 @@ def _require_loaded() -> None:
 
 
 @router.get("/api/layout/render-model", response_model=RenderModel)
-async def get_render_model() -> RenderModel:
+async def get_render_model(footprint_uuid: str | None = None) -> RenderModel:
     _require_loaded()
-    return await asyncio.to_thread(layout_service.manager.get_render_model)
+    try:
+        return await asyncio.to_thread(
+            layout_service.manager.get_render_model,
+            footprint_uuid,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/api/layout/footprints", response_model=list[FootprintSummary])

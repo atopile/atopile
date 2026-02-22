@@ -363,6 +363,8 @@ export interface FootprintDrawing {
 export interface PinoutComponent {
   name: string;
   type_name: string;
+  footprint_uuid: string | null;
+  footprint_reference: string | null;
   pins: PinInfo[];
   warnings: string[];
   footprint_pads?: FootprintPadGeometry[];

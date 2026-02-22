@@ -199,7 +199,7 @@ function buildLayerPanel() {
 
             row.addEventListener("click", () => {
                 const vis = !editor.isLayerVisible(child.name);
-                editor.setLayerVisible(child.name, vis);
+                editor.setLayersVisible([child.name], vis);
                 updateRowVisual(row, vis);
                 updateGroupVisual(groupRow, childNames);
             });
@@ -226,7 +226,7 @@ function buildLayerPanel() {
 
         row.addEventListener("click", () => {
             const vis = !editor.isLayerVisible(name);
-            editor.setLayerVisible(name, vis);
+            editor.setLayersVisible([name], vis);
             updateRowVisual(row, vis);
         });
 

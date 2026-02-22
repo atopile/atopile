@@ -11,15 +11,11 @@ export class Editor {
     private canvas: HTMLCanvasElement;
     private renderer: Renderer;
     private camera: Camera2;
-    private panAndZoom: PanAndZoom;
     private model: RenderModel | null = null;
-    private sourceModel: RenderModel | null = null;
     private baseUrl: string;
     private apiPrefix: string;
     private wsPath: string;
     private ws: WebSocket | null = null;
-    private reconnectTimer: number | null = null;
-    private disposed = false;
 
     // Selection & drag state
     private selectedFpIndex = -1;
@@ -44,8 +40,6 @@ export class Editor {
     private highlightedPads: Set<string> | undefined;
     private onPadClickCallback: ((padName: string) => void) | null = null;
     private outlinePads: Set<string> | undefined;
-    private filteredFootprintPadNames: Set<string> | null = null;
-    private filteredViewHideRouting = false;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -54,7 +48,7 @@ export class Editor {
         this.wsPath = wsPath;
         this.renderer = new Renderer(canvas);
         this.camera = new Camera2();
-        this.panAndZoom = new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
+        new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
 
         this.setupMouseHandlers();
         this.setupKeyboardHandlers();
@@ -64,22 +58,11 @@ export class Editor {
     }
 
     async init() {
-        try {
-            await this.fetchAndPaint();
-        } catch (err) {
-            console.warn("Initial layout fetch failed:", err);
-        }
+        await this.loadRenderModel(null, true);
         this.connectWebSocket();
     }
 
-    /** Restrict view to the best matching footprint by pad names. Pass null to clear. */
-    setFilteredFootprintPadNames(padNames: Set<string> | null, fitToView = true) {
-        this.filteredFootprintPadNames = padNames && padNames.size > 0 ? new Set(padNames) : null;
-        this.filteredViewHideRouting = this.filteredFootprintPadNames !== null;
-        this.rebuildDisplayModel(fitToView);
-    }
-
-    /** Set read-only mode (disables drag, keyboard, footprint selection) */
+    /** Set read-only mode (disables drag and footprint selection) */
     setReadOnly(readOnly: boolean) {
         this.readOnly = readOnly;
     }
@@ -87,22 +70,19 @@ export class Editor {
     /** Set per-pad color overrides (pad name → color) */
     setPadColorOverrides(overrides: Map<string, Color>) {
         this.padColorOverrides = overrides;
-        this.paint();
-        this.requestRedraw();
+        this.paintAndRequestRedraw();
     }
 
     /** Set which pads should be highlighted */
     setHighlightedPads(padNames: Set<string>) {
         this.highlightedPads = padNames;
-        this.paint();
-        this.requestRedraw();
+        this.paintAndRequestRedraw();
     }
 
     /** Set which pads should be drawn as outlines (unconnected) */
     setOutlinePads(padNames: Set<string>) {
         this.outlinePads = padNames;
-        this.paint();
-        this.requestRedraw();
+        this.paintAndRequestRedraw();
     }
 
     /** Set callback when a pad is clicked (read-only mode) */
@@ -110,85 +90,22 @@ export class Editor {
         this.onPadClickCallback = cb;
     }
 
-    dispose() {
-        this.disposed = true;
-        if (this.reconnectTimer !== null) {
-            window.clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
+    async loadRenderModel(
+        footprintUuid: string | null = null,
+        fitToView = false,
+    ) {
+        const params = new URLSearchParams();
+        if (footprintUuid) {
+            params.set("footprint_uuid", footprintUuid);
         }
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
-    }
-
-    private async fetchAndPaint() {
-        const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
+        const query = params.toString();
+        const resp = await fetch(
+            `${this.baseUrl}${this.apiPrefix}/render-model${query ? `?${query}` : ""}`
+        );
         if (!resp.ok) {
             throw new Error(`render-model request failed: ${resp.status}`);
         }
-        this.setSourceModel(await resp.json(), true);
-    }
-
-    private setSourceModel(model: RenderModel, fitToView = false) {
-        if (this.disposed) return;
-        this.sourceModel = model;
-        this.rebuildDisplayModel(fitToView);
-    }
-
-    private rebuildDisplayModel(fitToView = false) {
-        if (!this.sourceModel) return;
-        const displayModel = this.projectModel(this.sourceModel);
-        this.applyModel(displayModel, fitToView);
-    }
-
-    private pickBestMatchingFootprint(
-        model: RenderModel,
-        padNames: Set<string>,
-    ): RenderModel["footprints"][number] | null {
-        if (model.footprints.length === 0) return null;
-        if (padNames.size === 0) return model.footprints[0] ?? null;
-
-        let best: RenderModel["footprints"][number] | null = null;
-        let bestScore = -1;
-        for (const fp of model.footprints) {
-            let score = 0;
-            for (const pad of fp.pads) {
-                if (padNames.has(pad.name)) score += 1;
-            }
-            if (score > bestScore) {
-                best = fp;
-                bestScore = score;
-            }
-        }
-        return bestScore > 0 ? best : null;
-    }
-
-    private projectModel(model: RenderModel): RenderModel {
-        if (!this.filteredFootprintPadNames) return model;
-
-        const footprint = this.pickBestMatchingFootprint(model, this.filteredFootprintPadNames);
-        if (!footprint) {
-            return {
-                ...model,
-                footprints: [],
-                tracks: [],
-                arcs: [],
-                vias: [],
-                zones: [],
-                nets: [],
-            };
-        }
-
-        return {
-            ...model,
-            footprints: [footprint],
-            tracks: this.filteredViewHideRouting ? [] : model.tracks,
-            arcs: this.filteredViewHideRouting ? [] : model.arcs,
-            vias: this.filteredViewHideRouting ? [] : model.vias,
-            zones: this.filteredViewHideRouting ? [] : model.zones,
-            nets: this.filteredViewHideRouting ? [] : model.nets,
-        };
+        this.applyModel(await resp.json(), fitToView);
     }
 
     private applyModel(model: RenderModel, fitToView = false) {
@@ -200,7 +117,7 @@ export class Editor {
 
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
         if (fitToView) {
-            this.camera.bbox = computeBBox(this.model);
+            this.camera.bbox = computeBBox(model);
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
@@ -236,21 +153,18 @@ export class Editor {
     }
 
     private connectWebSocket() {
-        if (!this.wsPath) return;
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);
         this.ws.onopen = () => console.log("WS connected");
         this.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             if (msg.type === "layout_updated" && msg.model) {
-                this.setSourceModel(msg.model);
+                this.applyModel(msg.model);
             }
         };
         this.ws.onerror = (err) => console.error("WS error:", err);
         this.ws.onclose = () => {
-            this.ws = null;
-            if (this.disposed) return;
-            this.reconnectTimer = window.setTimeout(() => this.connectWebSocket(), 2000);
+            setTimeout(() => this.connectWebSocket(), 2000);
         };
     }
 
@@ -286,12 +200,11 @@ export class Editor {
                 this.isDragging = true;
                 this.dragStartWorld = worldPos;
                 this.dragStartFpPos = { x: fp.at.x, y: fp.at.y };
-                this.repaintWithSelection();
+                this.paintAndRequestRedraw();
             } else {
                 if (this.selectedFpIndex >= 0) {
                     this.selectedFpIndex = -1;
-                    this.paint();
-                    this.requestRedraw();
+                    this.paintAndRequestRedraw();
                 }
             }
         });
@@ -313,8 +226,7 @@ export class Editor {
             fp.at.x = this.dragStartFpPos!.x + delta.x;
             fp.at.y = this.dragStartFpPos!.y + delta.y;
 
-            this.paint();
-            this.requestRedraw();
+            this.paintAndRequestRedraw();
         });
 
         window.addEventListener("mouseup", async (e: MouseEvent) => {
@@ -340,7 +252,6 @@ export class Editor {
 
     private setupKeyboardHandlers() {
         window.addEventListener("keydown", async (e: KeyboardEvent) => {
-            if (this.readOnly) return;
             // R — rotate selected footprint by 90 degrees
             if (e.key === "r" || e.key === "R") {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -395,7 +306,7 @@ export class Editor {
                 body: JSON.stringify({ type, details }),
             });
             const data = await resp.json();
-            if (data.model) this.setSourceModel(data.model);
+            if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
         }
@@ -405,23 +316,13 @@ export class Editor {
         try {
             const resp = await fetch(`${this.baseUrl}${this.apiPrefix}${path}`, { method: "POST" });
             const data = await resp.json();
-            if (data.model) this.setSourceModel(data.model);
+            if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error(`Failed ${path}:`, err);
         }
     }
 
     // --- Layer visibility ---
-
-    setLayerVisible(layer: string, visible: boolean) {
-        if (visible) {
-            this.hiddenLayers.delete(layer);
-        } else {
-            this.hiddenLayers.add(layer);
-        }
-        this.paint();
-        this.requestRedraw();
-    }
 
     setLayersVisible(layers: string[], visible: boolean) {
         for (const layer of layers) {
@@ -431,8 +332,7 @@ export class Editor {
                 this.hiddenLayers.add(layer);
             }
         }
-        this.paint();
-        this.requestRedraw();
+        this.paintAndRequestRedraw();
     }
 
     isLayerVisible(layer: string): boolean {
@@ -477,7 +377,7 @@ export class Editor {
         this.onMouseMoveCallback = cb;
     }
 
-    private repaintWithSelection() {
+    private paintAndRequestRedraw() {
         this.paint();
         this.requestRedraw();
     }

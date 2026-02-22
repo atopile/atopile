@@ -23,11 +23,12 @@ import * as modelviewer from './modelviewer';
 import {
     getBuildTarget,
     getSelectedTargets,
+    setSelectionState,
+    syncSelectedTargets,
     setSelectedTargets,
     isTargetSelected,
     toggleTarget,
     getProjectRoot,
-    setProjectRoot,
 } from '../common/target';
 import { disambiguatePaths } from '../common/utilities';
 import { backendServer } from '../common/backendServer';
@@ -78,7 +79,7 @@ const cmdKicanvasPreview = registerCommand('atopile.kicanvas_preview', atoKicanv
 const cmdModelViewerPreview = registerCommand('atopile.model_viewer_preview', atoModelViewerPreview);
 const cmdExport = registerCommand('atopile.export', atoExport);
 const cmdServe = registerCommand('atopile.serve', atoServe);
-const cmdPinoutTable = registerCommand('atopile.pinout_table', atoPinoutTable);
+const cmdPinoutTable = registerCommand('atopile.pinout_table', openPinoutTable);
 
 // Register buttons for sidebar display
 registerButton('server-process', cmdServe, 'Start/show ato server', 'ato serve');
@@ -141,19 +142,26 @@ async function _autoSelectDefaultProject() {
         const roots = _getProjectRoots();
         if (roots.length > 0) {
             const firstRoot = roots[0];
-            setProjectRoot(firstRoot);
             const projectBuilds = builds.filter(b => b.root === firstRoot);
+            setSelectionState({
+                projectRoot: firstRoot,
+                targetNames: projectBuilds.map((b) => b.name),
+            });
             setSelectedTargets(projectBuilds);
         }
     }
     if (builds.length === 0) {
+        setSelectionState({
+            projectRoot: getProjectRoot(),
+            targetNames: [],
+        });
         setSelectedTargets([]);
-        setProjectRoot(undefined);
     }
 }
 
 async function _reloadBuilds() {
-    await loadBuilds();
+    const builds = await loadBuilds();
+    syncSelectedTargets(builds);
     await _autoSelectDefaultProject();
     return getBuilds();
 }
@@ -172,7 +180,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Only load builds, don't auto-select — the sidebar will restore the
     // user's persisted selection via selectionChanged once it loads.
-    await loadBuilds();
+    const builds = await loadBuilds();
+    syncSelectedTargets(builds);
 
     context.subscriptions.push(
         onDidChangeAtoBinInfo(async () => {
@@ -354,9 +363,11 @@ async function atoChooseProject() {
         return;
     }
 
-    setProjectRoot(result.root);
-
     const builds = getBuilds().filter(b => b.root === result.root);
+    setSelectionState({
+        projectRoot: result.root,
+        targetNames: builds.map((b) => b.name),
+    });
     setSelectedTargets(builds);
 
     captureEvent('vsce:project_select', { project: result.root });
@@ -400,8 +411,16 @@ async function atoChooseBuild() {
 
     quickPick.onDidTriggerButton(button => {
         if (button.tooltip === 'Select All') {
+            setSelectionState({
+                projectRoot: currentRoot,
+                targetNames: projectBuilds.map((b) => b.name),
+            });
             setSelectedTargets(projectBuilds);
         } else if (button.tooltip === 'Select None') {
+            setSelectionState({
+                projectRoot: currentRoot,
+                targetNames: [],
+            });
             setSelectedTargets([]);
         }
         quickPick.items = projectBuilds.map(build => ({
@@ -487,8 +506,4 @@ async function atoModelViewerPreview() {
 
 async function atoServe() {
     await backendServer.startOrShowTerminal();
-}
-
-async function atoPinoutTable() {
-    await openPinoutTable();
 }

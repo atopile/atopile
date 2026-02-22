@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
 from atopile.server.domains import pinout as pinout_domain
-
-log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["pinout"])
 
@@ -34,8 +31,6 @@ async def get_pinout(
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/api/pinout/targets")
@@ -70,5 +65,5 @@ async def get_pinout_by_build_id(build_id: str):
                 detail=f"Pinout not found for build {build_id}",
             )
         return result
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

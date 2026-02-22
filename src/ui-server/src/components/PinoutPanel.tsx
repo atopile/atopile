@@ -3,19 +3,20 @@ import { api } from '../api/client'
 import type { PinoutData, PinInfo } from '../types/build'
 import { FootprintViewerCanvas } from './FootprintViewerCanvas'
 import { getSignalColors } from '@layout-editor/colors'
+import { EmptyState, PanelSearchBox } from './shared'
+import { onExtensionMessage, requestSelectionState } from '../api/vscodeApi'
+import './PinoutPanel.css'
 
 function SignalBadge({ type }: { type: string }) {
   const colors = getSignalColors(type)
   return (
-    <span style={{
-      display: 'inline-block',
-      padding: '1px 8px',
-      borderRadius: 3,
-      fontSize: '0.85em',
-      fontWeight: 600,
-      background: colors.badgeBg,
-      color: colors.badgeFg,
-    }}>
+    <span
+      className="pinout-signal-badge"
+      style={{
+        background: colors.badgeBg,
+        color: colors.badgeFg,
+      }}
+    >
       {type}
     </span>
   )
@@ -27,6 +28,36 @@ function SignalBadge({ type }: { type: string }) {
 
 type SortKey = 'pin_number' | 'pin_name' | 'signal_type' | 'interfaces' | 'connected_to' | 'net_name'
 type SortDir = 'asc' | 'desc'
+type ConnectionFilter = 'all' | 'connected' | 'unconnected'
+type PinoutState =
+  | { status: 'idle' }
+  | { status: 'loading'; selectionKey: string }
+  | { status: 'error'; selectionKey: string; message: string }
+  | { status: 'loaded'; selectionKey: string; report: PinoutData }
+
+const PIN_ROW_ID_PREFIX = 'pin-row-'
+const getPinRowId = (pinNumber: string) => `${PIN_ROW_ID_PREFIX}${pinNumber}`
+const parseConnectionFilter = (value: string): ConnectionFilter => {
+  if (value === 'all' || value === 'connected' || value === 'unconnected') return value
+  throw new Error(`Unknown connection filter: ${value}`)
+}
+
+const SORT_COLUMNS: ReadonlyArray<{ label: string; key: SortKey }> = [
+  { label: 'Pin #', key: 'pin_number' },
+  { label: 'Signal Name', key: 'pin_name' },
+  { label: 'Signal Type', key: 'signal_type' },
+  { label: 'Interfaces', key: 'interfaces' },
+  { label: 'Connected To', key: 'connected_to' },
+  { label: 'Net Name', key: 'net_name' },
+]
+const SORT_VALUE: Record<SortKey, (pin: PinInfo) => string> = {
+  pin_number: pin => pin.pin_number ?? '',
+  pin_name: pin => pin.pin_name,
+  signal_type: pin => pin.signal_type,
+  interfaces: pin => pin.interfaces.join(','),
+  connected_to: pin => pin.connected_to.join(','),
+  net_name: pin => pin.net_name ?? '',
+}
 
 function SortHeader({ label, sortKey, currentSort, currentDir, onSort }: {
   label: string
@@ -38,7 +69,7 @@ function SortHeader({ label, sortKey, currentSort, currentDir, onSort }: {
   const arrow = currentSort === sortKey ? (currentDir === 'asc' ? ' \u25b2' : ' \u25bc') : ''
   return (
     <th
-      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', padding: '8px 12px', textAlign: 'left' }}
+      className="pinout-sort-header"
       onClick={() => onSort(sortKey)}
     >
       {label}{arrow}
@@ -51,144 +82,115 @@ function SortHeader({ label, sortKey, currentSort, currentDir, onSort }: {
 // ---------------------------------------------------------------------------
 
 export function PinoutPanel() {
-  const [projects, setProjects] = useState<{ root: string; name: string }[]>([])
-  const [selectedProject, setSelectedProject] = useState<string>('')
-  const [targets, setTargets] = useState<string[]>([])
-  const [selectedTarget, setSelectedTarget] = useState<string>('')
-  const [report, setReport] = useState<PinoutData | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [selection, setSelection] = useState<{ projectRoot: string | null; targetNames: string[] }>({
+    projectRoot: null,
+    targetNames: [],
+  })
+  const selectedProjectRoot = selection.projectRoot
+  const selectedTargetName = selection.targetNames[0] ?? null
+  const selectionKey = selectedProjectRoot && selectedTargetName
+    ? `${selectedProjectRoot}::${selectedTargetName}`
+    : null
+  const [pinoutState, setPinoutState] = useState<PinoutState>({ status: 'idle' })
   const [selectedComp, setSelectedComp] = useState(0)
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('pin_number')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [hoveredPinNumber, setHoveredPinNumber] = useState<string | null>(null)
   const [filterSignalType, setFilterSignalType] = useState<string>('all')
-  const [filterConnection, setFilterConnection] = useState<string>('all')
-
-  // Track mouse position + update hover on scroll
+  const [filterConnection, setFilterConnection] = useState<ConnectionFilter>('all')
+  const pinoutRequestSeq = useRef(0)
   const mousePos = useRef<{ x: number; y: number } | null>(null)
 
-  const updateHoverFromPoint = useCallback((x: number, y: number) => {
-    const el = document.elementFromPoint(x, y)
-    if (!el) return
-    const row = el.closest('tr[id^="pin-row-"]')
-    if (row) {
-      const pinNum = row.id.replace('pin-row-', '')
-      setHoveredPinNumber(pinNum)
-    } else {
-      setHoveredPinNumber(null)
-    }
+  useEffect(() => {
+    const unsub = onExtensionMessage((message) => {
+      if (message.type !== 'selectionState') return
+      setSelection({
+        projectRoot: message.projectRoot ?? null,
+        targetNames: message.targetNames ?? [],
+      })
+    })
+    requestSelectionState()
+    return unsub
+  }, [])
+
+  const resetPinoutView = useCallback(() => {
+    pinoutRequestSeq.current += 1
+    setPinoutState({ status: 'idle' })
+    setSelectedComp(0)
+    setHoveredPinNumber(null)
+    setSearch('')
+    setSortKey('pin_number')
+    setSortDir('asc')
+    setFilterSignalType('all')
+    setFilterConnection('all')
   }, [])
 
   useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      mousePos.current = { x: e.clientX, y: e.clientY }
-    }
-    const onWheel = () => {
-      // Check after the scroll has been applied to the DOM
-      requestAnimationFrame(() => {
-        if (mousePos.current) {
-          updateHoverFromPoint(mousePos.current.x, mousePos.current.y)
-        }
-      })
-    }
-
-    // Use document-level listeners so they work inside VS Code webview iframes
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('wheel', onWheel, { passive: true })
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('wheel', onWheel)
-    }
-  }, [updateHoverFromPoint])
-
-  // Load projects on mount
-  useEffect(() => {
-    api.projects.list()
-      .then(data => {
-        const projs = (data.projects || []).map(p => ({ root: p.root, name: p.name }))
-        setProjects(projs)
-      })
-      .catch(() => setProjects([]))
-  }, [])
-
-  // Load targets when project changes
-  useEffect(() => {
-    if (!selectedProject) return
-    setTargets([])
-    setSelectedTarget('')
-    api.pinout.targets(selectedProject)
-      .then(data => {
-        setTargets(data.targets || [])
-      })
-      .catch(() => setTargets([]))
-  }, [selectedProject])
+    resetPinoutView()
+  }, [selectedProjectRoot, selectedTargetName, resetPinoutView])
 
   // Load pinout data
   const loadPinout = useCallback(async () => {
-    if (!selectedProject || !selectedTarget) return
-    setLoading(true)
-    setError(null)
+    if (!selectionKey || !selectedProjectRoot || !selectedTargetName) return
+    pinoutRequestSeq.current += 1
+    const requestSeq = pinoutRequestSeq.current
+    setPinoutState({ status: 'loading', selectionKey })
     try {
-      const data = await api.pinout.get(selectedProject, selectedTarget)
-      setReport(data)
-      setSelectedComp(0)
+      const data = await api.pinout.get(selectedProjectRoot, selectedTargetName)
+      if (requestSeq !== pinoutRequestSeq.current) return
+      setPinoutState({ status: 'loaded', selectionKey, report: data })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load pinout data')
-      setReport(null)
-    } finally {
-      setLoading(false)
+      if (requestSeq !== pinoutRequestSeq.current) return
+      setPinoutState({
+        status: 'error',
+        selectionKey,
+        message: e instanceof Error ? e.message : 'Failed to load pinout data',
+      })
     }
-  }, [selectedProject, selectedTarget])
+  }, [selectionKey, selectedProjectRoot, selectedTargetName])
 
   useEffect(() => { loadPinout() }, [loadPinout])
+
+  const report = pinoutState.status === 'loaded' && pinoutState.selectionKey === selectionKey
+    ? pinoutState.report
+    : null
+  const loadingMessage = pinoutState.status === 'loading' && pinoutState.selectionKey === selectionKey
+  const errorMessage = pinoutState.status === 'error' && pinoutState.selectionKey === selectionKey
+    ? pinoutState.message
+    : null
 
   // Current component
   const comp = report?.components?.[selectedComp] || null
 
+  useEffect(() => {
+    if (!report?.components.length) return
+    setSelectedComp(index => Math.min(index, report.components.length - 1))
+  }, [report])
+
   // Filter and sort pins
-  const filteredPins = useMemo(() => {
-    if (!comp) return [] as PinInfo[]
-    let pins = comp.pins
+  const filteredPins = useMemo<PinInfo[]>(() => {
+    if (!comp) return []
 
-    // Signal type filter
-    if (filterSignalType !== 'all') {
-      pins = pins.filter(p => p.signal_type === filterSignalType)
-    }
-
-    // Connection filter
-    if (filterConnection === 'connected') {
-      pins = pins.filter(p => p.is_connected)
-    } else if (filterConnection === 'unconnected') {
-      pins = pins.filter(p => !p.is_connected)
-    }
-
-    // Search filter
-    if (search) {
-      const q = search.toLowerCase()
-      pins = pins.filter(p =>
-        p.pin_name.toLowerCase().includes(q) ||
-        (p.pin_number && p.pin_number.toLowerCase().includes(q)) ||
-        p.interfaces.some(i => i.toLowerCase().includes(q)) ||
-        p.connected_to.some(c => c.toLowerCase().includes(q)) ||
-        (p.net_name && p.net_name.toLowerCase().includes(q))
+    const query = search.trim().toLowerCase()
+    const valueForSort = SORT_VALUE[sortKey]
+    const pins = comp.pins
+      .filter(pin => filterSignalType === 'all' || pin.signal_type === filterSignalType)
+      .filter(pin =>
+        filterConnection === 'all' ||
+        (filterConnection === 'connected' ? pin.is_connected : !pin.is_connected)
       )
-    }
+      .filter(pin =>
+        !query ||
+        pin.pin_name.toLowerCase().includes(query) ||
+        pin.pin_number?.toLowerCase().includes(query) ||
+        pin.interfaces.some(iface => iface.toLowerCase().includes(query)) ||
+        pin.connected_to.some(connection => connection.toLowerCase().includes(query)) ||
+        pin.net_name?.toLowerCase().includes(query)
+      )
 
-    // Sort
-    pins = [...pins].sort((a, b) => {
-      let va: string, vb: string
-      switch (sortKey) {
-        case 'pin_number': va = a.pin_number || ''; vb = b.pin_number || ''; break
-        case 'pin_name': va = a.pin_name; vb = b.pin_name; break
-        case 'signal_type': va = a.signal_type; vb = b.signal_type; break
-        case 'interfaces': va = a.interfaces.join(','); vb = b.interfaces.join(','); break
-        case 'connected_to': va = a.connected_to.join(','); vb = b.connected_to.join(','); break
-        case 'net_name': va = a.net_name || ''; vb = b.net_name || ''; break
-        default: va = ''; vb = ''
-      }
-      const cmp = va.localeCompare(vb, undefined, { numeric: true })
+    pins.sort((a, b) => {
+      const cmp = valueForSort(a).localeCompare(valueForSort(b), undefined, { numeric: true })
       return sortDir === 'asc' ? cmp : -cmp
     })
 
@@ -213,78 +215,84 @@ export function PinoutPanel() {
   const totalPins = comp?.pins.length ?? 0
 
   // Check if footprint data is available
-  const hasFootprint = (comp?.footprint_pads?.length ?? 0) > 0
+  const hasFootprint = Boolean(comp?.footprint_uuid)
 
   // Handle pad hover from footprint viewer → scroll to table row
   const handlePadHover = useCallback((padNumber: string) => {
     setHoveredPinNumber(padNumber)
-    const row = document.getElementById(`pin-row-${padNumber}`)
+    const row = document.getElementById(getPinRowId(padNumber))
     if (row) {
       row.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [])
 
-  // Container style (uses VS Code CSS variables)
-  const containerStyle: React.CSSProperties = {
-    padding: '16px 24px',
-    margin: '0 auto',
-    fontFamily: 'var(--vscode-font-family, monospace)',
-    fontSize: 'var(--vscode-font-size, 13px)',
-    color: 'var(--vscode-foreground, #ccc)',
-    height: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    boxSizing: 'border-box',
-    overflow: 'hidden',
-  }
+  const updateHoverFromPoint = useCallback((x: number, y: number) => {
+    const el = document.elementFromPoint(x, y)
+    if (!el) {
+      setHoveredPinNumber(null)
+      return
+    }
+    const row = el.closest('tr[data-pin-number]')
+    setHoveredPinNumber(row?.getAttribute('data-pin-number') ?? null)
+  }, [])
 
-  if (loading) {
-    return <div style={containerStyle}><p style={{ opacity: 0.6 }}>Loading pinout data...</p></div>
-  }
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      mousePos.current = { x: e.clientX, y: e.clientY }
+    }
+    const onWheel = () => {
+      requestAnimationFrame(() => {
+        if (mousePos.current) {
+          updateHoverFromPoint(mousePos.current.x, mousePos.current.y)
+        }
+      })
+    }
 
-  if (error) {
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('wheel', onWheel, { passive: true })
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('wheel', onWheel)
+    }
+  }, [updateHoverFromPoint])
+
+  if (loadingMessage) {
     return (
-      <div style={containerStyle}>
-        <p style={{ color: 'var(--vscode-errorForeground, #f44)' }}>{error}</p>
-        <button onClick={loadPinout} style={btnStyle}>Retry</button>
+      <div className="pinout-panel sidebar-panel">
+        <EmptyState title="Loading pinout data..." />
+      </div>
+    )
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="pinout-panel sidebar-panel">
+        <EmptyState
+          title="Error loading pinout"
+          description={errorMessage}
+          className="error"
+        />
+        <div className="pinout-error-actions">
+          <button onClick={loadPinout} className="action-btn secondary">Retry</button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={containerStyle}>
+    <div className="pinout-panel sidebar-panel">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontWeight: 500 }}>Pinout Table</h2>
-
-        {/* Project selector */}
-        <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={selectStyle}>
-          <option value="">Select project...</option>
-          {projects.map(p => <option key={p.root} value={p.root}>{p.name}</option>)}
-        </select>
-
-        {/* Target selector */}
-        <select value={selectedTarget} onChange={e => setSelectedTarget(e.target.value)} style={selectStyle} disabled={!selectedProject}>
-          <option value="">Select target...</option>
-          {targets.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+      <div className="panel-toolbar-row pinout-header">
+        <h2 className="pinout-title">Pinout Table</h2>
 
         {/* Component tabs */}
         {report && report.components.length > 1 && (
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div className="pinout-tabs">
             {report.components.map((c, i) => (
               <button
-                key={i}
+                key={c.name}
                 onClick={() => setSelectedComp(i)}
-                style={{
-                  ...btnStyle,
-                  background: i === selectedComp
-                    ? 'var(--vscode-button-background, #0e639c)'
-                    : 'var(--vscode-input-background, #3c3c3c)',
-                  color: i === selectedComp
-                    ? 'var(--vscode-button-foreground, #fff)'
-                    : 'var(--vscode-foreground, #ccc)',
-                }}
+                className={`action-btn secondary pinout-tab ${i === selectedComp ? 'is-active' : ''}`}
               >
                 {c.name.split('.').pop()}
               </button>
@@ -292,171 +300,143 @@ export function PinoutPanel() {
           </div>
         )}
 
-        {selectedProject && selectedTarget && (
-          <button onClick={loadPinout} style={btnStyle} title="Refresh">Refresh</button>
+        {selectedProjectRoot && selectedTargetName && (
+          <button onClick={loadPinout} className="action-btn secondary" title="Refresh">Refresh</button>
         )}
       </div>
 
       {!report || report.components.length === 0 ? (
-        <p style={{ opacity: 0.6 }}>
-          {!selectedProject
-            ? 'Select a project and target to view pinout data.'
-            : !selectedTarget
-              ? 'Select a target to view pinout data.'
-              : <>No pinout data available. Add the <code>generate_pinout_details</code> trait to a component and run <code>ato build</code>.</>
+        <EmptyState
+          title={!selectedProjectRoot ? 'No project selected' : !selectedTargetName ? 'No target selected' : 'No pinout data available'}
+          description={
+            !selectedProjectRoot
+              ? 'Select a project in the sidebar to view pinout data.'
+              : !selectedTargetName
+                ? 'Select a target in the sidebar to view pinout data.'
+                : 'Add the generate_pinout_details trait to a component and run ato build.'
           }
-        </p>
+        />
       ) : (
         <>
-
-
       {/* Filters bar */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <input
-          type="text"
-          placeholder="Search pins, interfaces, connections..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{
-            ...inputStyle,
-            flex: '1 1 250px',
-            minWidth: 200,
-          }}
-        />
+      <div className="panel-toolbar-row pinout-filters">
+        <div className="pinout-search-box">
+          <PanelSearchBox
+            value={search}
+            onChange={setSearch}
+            placeholder="Search pins, interfaces, connections..."
+          />
+        </div>
 
-        <select value={filterSignalType} onChange={e => setFilterSignalType(e.target.value)} style={selectStyle}>
-          <option value="all">All types</option>
-          {signalTypes.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <div className="bom-project-select">
+          <select
+            value={filterSignalType}
+            onChange={e => setFilterSignalType(e.target.value)}
+          >
+            <option value="all">All types</option>
+            {signalTypes.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
 
-        <select value={filterConnection} onChange={e => setFilterConnection(e.target.value)} style={selectStyle}>
-          <option value="all">All pins</option>
-          <option value="connected">Connected</option>
-          <option value="unconnected">Unconnected</option>
-        </select>
+        <div className="bom-project-select">
+          <select
+            value={filterConnection}
+            onChange={e => setFilterConnection(parseConnectionFilter(e.target.value))}
+          >
+            <option value="all">All pins</option>
+            <option value="connected">Connected</option>
+            <option value="unconnected">Unconnected</option>
+          </select>
+        </div>
 
-        <span style={{ opacity: 0.6, fontSize: '0.85em' }}>
+        <span className="pinout-count">
           {filteredPins.length} of {totalPins} pins
         </span>
       </div>
 
       {/* Side-by-side layout: Table + Footprint Viewer */}
-      <div style={{
-        display: 'flex',
-        gap: 16,
-        alignItems: 'stretch',
-        flex: 1,
-        minHeight: 0,
-      }}>
+      <div className="pinout-content">
         {/* Table */}
-        <div style={{
-          flex: hasFootprint ? '0 0 60%' : '1 1 100%',
-          overflowX: 'auto',
-          overflowY: 'auto',
-        }}>
-          <table style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: '0.9em',
-          }}>
+        <div className={`pinout-table-wrap ${hasFootprint ? 'has-footprint' : 'full-width'}`}>
+          <table className="pinout-table">
             <thead>
-              <tr style={{
-                borderBottom: '2px solid var(--vscode-panel-border, #444)',
-                background: 'var(--vscode-input-background, #252526)',
-                position: 'sticky',
-                top: 0,
-                zIndex: 1,
-              }}>
-                <SortHeader label="Pin #" sortKey="pin_number" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <SortHeader label="Signal Name" sortKey="pin_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <SortHeader label="Signal Type" sortKey="signal_type" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <SortHeader label="Interfaces" sortKey="interfaces" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <SortHeader label="Connected To" sortKey="connected_to" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <SortHeader label="Net Name" sortKey="net_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Notes</th>
+              <tr className="pinout-head-row">
+                {SORT_COLUMNS.map((column) => (
+                  <SortHeader
+                    key={column.key}
+                    label={column.label}
+                    sortKey={column.key}
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                ))}
+                <th className="pinout-notes-header">Notes</th>
               </tr>
             </thead>
             <tbody>
-              {filteredPins.map((pin) => {
-                const isHovered = hoveredPinNumber === pin.pin_number
+              {filteredPins.map((pin, index) => {
+                const pinNumber = pin.pin_number
+                const isHovered = pinNumber !== null && hoveredPinNumber === pinNumber
                 const hasNotes = pin.notes.length > 0
+                const rowKey = pinNumber ?? `${pin.pin_name}:${pin.net_name ?? ''}:${index}`
 
                 return (
                   <tr
-                    key={pin.pin_number ?? pin.pin_name}
-                    id={`pin-row-${pin.pin_number}`}
-                    style={{
-                      borderBottom: '1px solid var(--vscode-panel-border, #333)',
-                      background: isHovered
-                        ? 'var(--vscode-list-hoverBackground, rgba(255,255,255,0.04))'
-                        : 'transparent',
+                    key={rowKey}
+                    id={pinNumber ? getPinRowId(pinNumber) : undefined}
+                    data-pin-number={pinNumber ?? undefined}
+                    className={`pinout-row ${isHovered ? 'is-hovered' : ''}`}
+                    onMouseEnter={() => {
+                      if (pinNumber) setHoveredPinNumber(pinNumber)
                     }}
-                    onMouseEnter={() => setHoveredPinNumber(pin.pin_number)}
-                    onMouseLeave={() => setHoveredPinNumber(prev => prev === pin.pin_number ? null : prev)}
+                    onMouseLeave={() => setHoveredPinNumber(prev => (pinNumber && prev === pinNumber ? null : prev))}
                   >
-                    <td style={cellStyle}>
-                      <code style={{ opacity: 0.7 }}>{pin.pin_number || '-'}</code>
+                    <td className="pinout-cell">
+                      <code className="pinout-dim-code">{pin.pin_number || '-'}</code>
                     </td>
-                    <td style={cellStyle}>
-                      <code style={{ fontWeight: 500 }}>{pin.pin_name}</code>
+                    <td className="pinout-cell">
+                      <code className="pinout-pin-name">{pin.pin_name}</code>
                     </td>
-                    <td style={cellStyle}>
+                    <td className="pinout-cell">
                       <SignalBadge type={pin.signal_type} />
                     </td>
-                    <td style={cellStyle}>
+                    <td className="pinout-cell">
                       {pin.interfaces.length > 0
                         ? pin.interfaces.map((iface, i) => (
-                            <span key={i} style={{
-                              display: 'inline-block',
-                              padding: '1px 6px',
-                              marginRight: 4,
-                              marginBottom: 2,
-                              borderRadius: 3,
-                              background: 'var(--vscode-badge-background, #4d4d4d)',
-                              color: 'var(--vscode-badge-foreground, #fff)',
-                              fontSize: '0.85em',
-                            }}>
+                            <span key={i} className="pinout-interface-tag">
                               {iface}
                             </span>
                           ))
-                        : <span style={{ opacity: 0.4 }}>-</span>
+                        : <span className="pinout-placeholder">-</span>
                       }
                     </td>
-                    <td style={{ ...cellStyle, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td className="pinout-cell pinout-connected-cell">
                       {pin.connected_to.length > 0
                         ? (
-                          <span title={pin.connected_to.join('\n')}>
+                          <div title={pin.connected_to.join('\n')}>
                             {pin.connected_to.map((c, i) => (
-                              <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                <code style={{ fontSize: '0.85em' }}>{c}</code>
+                              <div key={`${c}-${i}`} className="pinout-connected-item">
+                                <code className="pinout-connected-code">{c}</code>
                               </div>
                             ))}
-                          </span>
+                          </div>
                         )
-                        : <span style={{ opacity: 0.4 }}>-</span>
+                        : <span className="pinout-placeholder">-</span>
                       }
                     </td>
-                    <td style={cellStyle}>
+                    <td className="pinout-cell">
                       {pin.net_name
                         ? <code>{pin.net_name}</code>
-                        : <span style={{ opacity: 0.4 }}>-</span>
+                        : <span className="pinout-placeholder">-</span>
                       }
                     </td>
-                    <td style={cellStyle}>
+                    <td className="pinout-cell">
                       {hasNotes && pin.notes.map((n, i) => (
-                        <span key={i} style={{
-                          display: 'inline-block',
-                          padding: '1px 6px',
-                          marginRight: 4,
-                          borderRadius: 3,
-                          background: n.includes('Unconnected')
-                            ? 'rgba(204, 167, 0, 0.15)'
-                            : 'rgba(100, 100, 100, 0.2)',
-                          color: n.includes('Unconnected')
-                            ? 'var(--vscode-editorWarning-foreground, #cca700)'
-                            : 'inherit',
-                          fontSize: '0.85em',
-                        }}>
+                        <span
+                          key={i}
+                          className={`pinout-note-tag ${n.includes('Unconnected') ? 'is-warning' : ''}`}
+                        >
                           {n}
                         </span>
                       ))}
@@ -468,19 +448,21 @@ export function PinoutPanel() {
           </table>
 
           {filteredPins.length === 0 && comp && (
-            <div style={{ textAlign: 'center', padding: 32, opacity: 0.5 }}>
-              No pins match the current filter
-            </div>
+            <EmptyState
+              title="No pins match filters"
+              description="Adjust search, signal type, or connection filters."
+              className="pinout-no-results"
+            />
           )}
         </div>
 
         {/* Footprint Viewer */}
-        {hasFootprint && comp && (
-          <div style={{ flex: '0 0 38%', minHeight: 0 }}>
+        {hasFootprint && comp && selectedProjectRoot && selectedTargetName && (
+          <div className="pinout-footprint">
             <FootprintViewerCanvas
-              projectRoot={selectedProject}
-              targetName={selectedTarget}
-              pads={comp.footprint_pads!}
+              projectRoot={selectedProjectRoot}
+              targetName={selectedTargetName}
+              footprintUuid={comp.footprint_uuid}
               pins={comp.pins}
               selectedPinNumber={hoveredPinNumber}
               onPadClick={handlePadHover}
@@ -492,42 +474,4 @@ export function PinoutPanel() {
       )}
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------
-//  Shared styles
-// ---------------------------------------------------------------------------
-
-const btnStyle: React.CSSProperties = {
-  padding: '4px 12px',
-  border: '1px solid var(--vscode-button-border, transparent)',
-  borderRadius: 3,
-  background: 'var(--vscode-button-secondaryBackground, #3c3c3c)',
-  color: 'var(--vscode-button-secondaryForeground, #ccc)',
-  cursor: 'pointer',
-  fontSize: '0.9em',
-}
-
-const selectStyle: React.CSSProperties = {
-  padding: '4px 8px',
-  border: '1px solid var(--vscode-input-border, #444)',
-  borderRadius: 3,
-  background: 'var(--vscode-input-background, #3c3c3c)',
-  color: 'var(--vscode-input-foreground, #ccc)',
-  fontSize: '0.9em',
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  border: '1px solid var(--vscode-input-border, #444)',
-  borderRadius: 3,
-  background: 'var(--vscode-input-background, #3c3c3c)',
-  color: 'var(--vscode-input-foreground, #ccc)',
-  outline: 'none',
-  fontSize: '0.9em',
-}
-
-const cellStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  verticalAlign: 'top',
 }

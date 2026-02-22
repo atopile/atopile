@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
-import { getAndCheckResource } from '../common/resources';
 import { backendServer } from '../common/backendServer';
-import { getWsOrigin, getNonce } from '../common/webview';
+import { getExtension } from '../common/vscodeapi';
+import { getSelectionState, onSelectionStateChanged } from '../common/target';
 import { BaseWebview } from './webview-base';
+import { buildWebviewHtml, findWebviewAssets, getWebviewLocalResourceRoots } from './webview-utils';
 
 class PinoutTableWebview extends BaseWebview {
+    private _subscriptions: vscode.Disposable[] = [];
+
     constructor() {
         super({
             id: 'pinout_table',
@@ -16,49 +19,59 @@ class PinoutTableWebview extends BaseWebview {
 
     protected getHtmlContent(webview: vscode.Webview): string {
         const apiUrl = backendServer.apiUrl;
-        const wsOrigin = getWsOrigin(backendServer.wsUrl);
-        const nonce = getNonce();
+        const extensionPath = getExtension().extensionPath;
+        const assets = findWebviewAssets(extensionPath, 'pinoutTable');
 
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.file(getAndCheckResource('webviews/pinoutTable.js'))
+        return buildWebviewHtml({
+            webview,
+            assets,
+            title: 'Pinout Table',
+            bootstrapScript: `
+                window.__ATOPILE_API_URL__ = ${JSON.stringify(apiUrl)};
+            `,
+        });
+    }
+
+    protected getLocalResourceRoots(): vscode.Uri[] {
+        return getWebviewLocalResourceRoots(getExtension().extensionUri);
+    }
+
+    protected setupPanel(): void {
+        this._subscriptions.push(
+            onSelectionStateChanged(() => this._postSelectionState())
         );
+        if (this.panel) {
+            this._subscriptions.push(
+                this.panel.webview.onDidReceiveMessage((message) => {
+                    if (message?.type === 'requestSelectionState') {
+                        this._postSelectionState();
+                    }
+                })
+            );
+        }
+    }
 
-        return /* html */ `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <meta http-equiv="Content-Security-Policy" content="
-                    default-src 'none';
-                    style-src 'unsafe-inline';
-                    script-src 'nonce-${nonce}' ${webview.cspSource};
-                    connect-src ${apiUrl} ${wsOrigin};
-                ">
-                <title>Pinout Table</title>
-                <style>
-                    html, body {
-                        padding: 0; margin: 0;
-                        height: 100%; width: 100%;
-                        overflow: auto;
-                        background: var(--vscode-editor-background, #1e1e1e);
-                        color: var(--vscode-foreground, #ccc);
-                        font-family: var(--vscode-font-family, monospace);
-                        font-size: var(--vscode-font-size, 13px);
-                    }
-                    #root {
-                        min-height: 100%;
-                    }
-                </style>
-            </head>
-            <body>
-                <script nonce="${nonce}">
-                    window.__ATOPILE_API_URL__ = '${apiUrl}';
-                </script>
-                <div id="root"></div>
-                <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
-            </body>
-            </html>`;
+    protected onDispose(): void {
+        for (const disposable of this._subscriptions) {
+            disposable.dispose();
+        }
+        this._subscriptions = [];
+    }
+
+    private _getSelectionState(): { projectRoot: string | null; targetNames: string[] } {
+        const selection = getSelectionState();
+        return {
+            projectRoot: selection.projectRoot ?? null,
+            targetNames: selection.targetNames,
+        };
+    }
+
+    private _postSelectionState(): void {
+        if (!this.panel) return;
+        void this.panel.webview.postMessage({
+            type: 'selectionState',
+            ...this._getSelectionState(),
+        });
     }
 }
 

@@ -5,10 +5,14 @@
 import { useEffect } from 'react';
 import { useStore } from '../store';
 import { connect, disconnect, isConnected, sendAction } from '../api/websocket';
-import { initExtensionMessageListener, onExtensionMessage, postMessage } from '../api/vscodeApi';
+import { onExtensionMessage, postMessage, requestSelectionState } from '../api/vscodeApi';
 
 // Track pending glb-only builds to report success/failure to extension
 let pendingGlbBuildIds: Set<string> = new Set();
+const arraysEqual = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+};
 
 /**
  * Hook to manage WebSocket connection lifecycle.
@@ -20,9 +24,6 @@ export function useConnection() {
   useEffect(() => {
     // Connect on mount
     connect();
-
-    // Initialize listener for messages from VS Code extension
-    initExtensionMessageListener();
 
     // Listen for action results to track glb-only build IDs
     const handleActionResult = (event: Event) => {
@@ -170,8 +171,32 @@ export function useConnection() {
           }
           break;
         }
+        case 'selectionState': {
+          const projectRoot = message.projectRoot ?? null;
+          const targetNames = message.targetNames ?? [];
+          const current = useStore.getState();
+          if (
+            current.selectedProjectRoot === projectRoot &&
+            arraysEqual(current.selectedTargetNames, targetNames)
+          ) {
+            break;
+          }
+          const selectedProjectName = projectRoot
+            ? (current.projects.find((project) => project.root === projectRoot)?.name ?? null)
+            : null;
+          useStore.setState({
+            selectedProjectRoot: projectRoot,
+            selectedTargetNames: [...targetNames],
+            selectedProjectName,
+          });
+          break;
+        }
       }
     });
+
+    // Ask the extension for the current selection so the store is populated
+    // before projects finish loading (avoids null→auto-select→correction cycle).
+    requestSelectionState();
 
     // Disconnect on unmount
     return () => {

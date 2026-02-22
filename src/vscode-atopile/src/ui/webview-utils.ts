@@ -79,6 +79,7 @@ export interface WebviewHtmlOptions {
     webview: vscode.Webview;
     assets: WebviewAssets;
     title: string;
+    bootstrapScript?: string;
 }
 
 /**
@@ -90,7 +91,7 @@ export interface WebviewHtmlOptions {
  * - React app entry point
  */
 export function buildWebviewHtml(options: WebviewHtmlOptions): string {
-    const { webview, assets, title } = options;
+    const { webview, assets, title, bootstrapScript } = options;
 
     if (!assets.js) {
         return buildNotBuiltHtml();
@@ -100,6 +101,9 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
     const jsUri = webview.asWebviewUri(vscode.Uri.file(assets.js));
     const baseCssUri = assets.baseCss ? webview.asWebviewUri(vscode.Uri.file(assets.baseCss)) : null;
     const cssUri = assets.css ? webview.asWebviewUri(vscode.Uri.file(assets.css)) : null;
+    const bootstrapScriptTag = bootstrapScript
+        ? `<script nonce="${nonce}">${bootstrapScript}</script>`
+        : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -112,12 +116,14 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
         script-src 'nonce-${nonce}';
         font-src ${webview.cspSource};
         img-src ${webview.cspSource} https: http: data:;
+        connect-src ${webview.cspSource} https: http: ws: wss: blob:;
     ">
     <title>${title}</title>
     ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
     ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
 </head>
 <body>
+    ${bootstrapScriptTag}
     <div id="root"></div>
     <script nonce="${nonce}" type="module" src="${jsUri}"></script>
 </body>

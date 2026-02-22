@@ -4,10 +4,12 @@ import type { Root } from 'react-dom/client';
 import { Sidebar } from './components/Sidebar';
 import { AppProvider } from './AppProvider';
 import { initializeTheme } from './hooks/useTheme';
+import { enableSelectionBroadcast } from './store';
 import './index.css';
 
 // Initialize theme before React renders to prevent flash
 initializeTheme();
+enableSelectionBroadcast();
 
 const rootElement = document.getElementById('root');
 if (rootElement) {

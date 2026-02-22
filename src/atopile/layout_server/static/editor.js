@@ -1595,41 +1595,32 @@ function paintFootprint(renderer, fp, hidden, concreteLayers, padColorOverrides,
   }
   for (const [layerName, drawings] of drawingsByLayer) {
     const [r, g, b, a] = getLayerColor(layerName);
-    const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+    const layer2 = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
     for (const drawing of drawings) {
-      paintDrawing(layer, fp.at, drawing, r, g, b, a);
+      paintDrawing(layer2, fp.at, drawing, r, g, b, a);
     }
     renderer.end_layer();
   }
-  if (fp.pads.length > 0) {
-    const anyVisible = fp.pads.some(
-      (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
-    );
-    if (anyVisible) {
-      const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-      for (const pad of fp.pads) {
-        if (pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))) {
-          if (outlinePads?.has(pad.name)) {
-            const outlineColor = padColorOverrides?.get(pad.name) ?? UNCONNECTED_PAD_COLOR;
-            paintPadOutline(layer, fp.at, pad, outlineColor);
-          } else {
-            const colorOverride = padColorOverrides?.get(pad.name);
-            paintPad(layer, fp.at, pad, colorOverride);
-          }
-        }
-      }
-      renderer.end_layer();
-      if (highlightedPads && highlightedPads.size > 0) {
-        const hlLayer = renderer.start_layer(`fp:${fp.uuid}:pad-highlights`);
-        for (const pad of fp.pads) {
-          if (highlightedPads.has(pad.name)) {
-            paintPadHighlight(hlLayer, fp.at, pad);
-          }
-        }
-        renderer.end_layer();
-      }
-    }
+  const anyVisible = fp.pads.some(
+    (pad) => pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers))
+  );
+  if (!anyVisible || fp.pads.length === 0)
+    return;
+  const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
+  for (const pad of fp.pads) {
+    const visible = pad.layers.some((l) => isPadLayerVisible(l, hidden, concreteLayers));
+    if (!visible)
+      continue;
+    const outlined = outlinePads?.has(pad.name) ?? false;
+    const padColor = padColorOverrides?.get(pad.name);
+    const paintOptions = {
+      outlined,
+      color: outlined ? padColor ?? UNCONNECTED_PAD_COLOR : padColor,
+      highlighted: highlightedPads?.has(pad.name) ?? false
+    };
+    paintPad(layer, fp.at, pad, paintOptions);
   }
+  renderer.end_layer();
 }
 function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
   const w2 = drawing.width || 0.12;
@@ -1668,108 +1659,81 @@ function paintDrawing(layer, fpAt, drawing, r, g, b, a) {
     }
   }
 }
-function paintPad(layer, fpAt, pad, colorOverride) {
-  const [cr, cg, cb, ca] = colorOverride ?? getPadColor(pad.layers);
+function buildPadOutlineLoop(fpAt, pad, inflate = 0) {
+  const hw = pad.size.w / 2 + inflate;
+  const hh = pad.size.h / 2 + inflate;
+  switch (pad.shape) {
+    case "circle":
+    case "oval": {
+      const points = [];
+      const segments = 32;
+      for (let i = 0; i <= segments; i++) {
+        const angle = i / segments * 2 * Math.PI;
+        points.push(padTransform(fpAt, pad.at, hw * Math.cos(angle), hh * Math.sin(angle)));
+      }
+      return points;
+    }
+    case "rect":
+    case "roundrect":
+    case "trapezoid":
+    case "custom": {
+      const corners = [
+        padTransform(fpAt, pad.at, -hw, -hh),
+        padTransform(fpAt, pad.at, hw, -hh),
+        padTransform(fpAt, pad.at, hw, hh),
+        padTransform(fpAt, pad.at, -hw, hh)
+      ];
+      return [...corners, corners[0]];
+    }
+  }
+}
+function paintPad(layer, fpAt, pad, options = {}) {
   const hw = pad.size.w / 2;
   const hh = pad.size.h / 2;
-  if (pad.shape === "circle") {
-    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-    layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
-  } else if (pad.shape === "oval") {
-    const longAxis = Math.max(hw, hh);
-    const shortAxis = Math.min(hw, hh);
-    const focalDist = longAxis - shortAxis;
-    let p1, p2;
-    if (hw >= hh) {
-      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-      p2 = padTransform(fpAt, pad.at, focalDist, 0);
-    } else {
-      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-      p2 = padTransform(fpAt, pad.at, 0, focalDist);
-    }
-    layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+  const [cr, cg, cb, ca] = options.color ?? getPadColor(pad.layers);
+  if (options.outlined) {
+    const lineWidth = Math.min(hw, hh) * 0.2;
+    const outline = buildPadOutlineLoop(fpAt, pad);
+    layer.geometry.add_polyline(outline, lineWidth, cr, cg, cb, ca);
   } else {
-    const corners = [
-      padTransform(fpAt, pad.at, -hw, -hh),
-      padTransform(fpAt, pad.at, hw, -hh),
-      padTransform(fpAt, pad.at, hw, hh),
-      padTransform(fpAt, pad.at, -hw, hh)
-    ];
-    layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+    if (pad.shape === "circle") {
+      const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+      layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+    } else if (pad.shape === "oval") {
+      const longAxis = Math.max(hw, hh);
+      const shortAxis = Math.min(hw, hh);
+      const focalDist = longAxis - shortAxis;
+      let p1;
+      let p2;
+      if (hw >= hh) {
+        p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+        p2 = padTransform(fpAt, pad.at, focalDist, 0);
+      } else {
+        p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+        p2 = padTransform(fpAt, pad.at, 0, focalDist);
+      }
+      layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+    } else {
+      const corners = [
+        padTransform(fpAt, pad.at, -hw, -hh),
+        padTransform(fpAt, pad.at, hw, -hh),
+        padTransform(fpAt, pad.at, hw, hh),
+        padTransform(fpAt, pad.at, -hw, hh)
+      ];
+      layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+    }
+  }
+  if (options.highlighted) {
+    const [hr, hg, hb, ha] = PAD_HIGHLIGHT_COLOR;
+    const highlightInflate = 0.15;
+    const highlightLineWidth = 0.3;
+    const outline = buildPadOutlineLoop(fpAt, pad, highlightInflate);
+    layer.geometry.add_polyline(outline, highlightLineWidth, hr, hg, hb, ha);
   }
   if (pad.drill && pad.type === "thru_hole") {
     const center = fpTransform(fpAt, pad.at.x, pad.at.y);
     const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
     layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1);
-  }
-}
-function paintPadOutline(layer, fpAt, pad, color) {
-  const [cr, cg, cb, ca] = color;
-  const hw = pad.size.w / 2;
-  const hh = pad.size.h / 2;
-  const lineWidth = Math.min(hw, hh) * 0.2;
-  if (pad.shape === "circle") {
-    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-    const pts = [];
-    for (let i = 0; i <= 32; i++) {
-      const angle = i / 32 * 2 * Math.PI;
-      pts.push(new Vec2(center.x + hw * Math.cos(angle), center.y + hw * Math.sin(angle)));
-    }
-    layer.geometry.add_polyline(pts, lineWidth, cr, cg, cb, ca);
-  } else if (pad.shape === "oval") {
-    const longAxis = Math.max(hw, hh);
-    const shortAxis = Math.min(hw, hh);
-    const focalDist = longAxis - shortAxis;
-    let p1, p2;
-    if (hw >= hh) {
-      p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-      p2 = padTransform(fpAt, pad.at, focalDist, 0);
-    } else {
-      p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-      p2 = padTransform(fpAt, pad.at, 0, focalDist);
-    }
-    const innerWidth = shortAxis * 2;
-    const outerPts = [];
-    for (let i = 0; i <= 32; i++) {
-      const angle = i / 32 * 2 * Math.PI;
-      const lx = hw * Math.cos(angle);
-      const ly = hh * Math.sin(angle);
-      outerPts.push(padTransform(fpAt, pad.at, lx, ly));
-    }
-    layer.geometry.add_polyline(outerPts, lineWidth, cr, cg, cb, ca);
-  } else {
-    const corners = [
-      padTransform(fpAt, pad.at, -hw, -hh),
-      padTransform(fpAt, pad.at, hw, -hh),
-      padTransform(fpAt, pad.at, hw, hh),
-      padTransform(fpAt, pad.at, -hw, hh),
-      padTransform(fpAt, pad.at, -hw, -hh)
-    ];
-    layer.geometry.add_polyline(corners, lineWidth, cr, cg, cb, ca);
-  }
-}
-function paintPadHighlight(layer, fpAt, pad) {
-  const [hr, hg, hb, ha] = PAD_HIGHLIGHT_COLOR;
-  const outlineWidth = 0.15;
-  const hw = pad.size.w / 2 + outlineWidth;
-  const hh = pad.size.h / 2 + outlineWidth;
-  if (pad.shape === "circle") {
-    const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-    const pts = [];
-    for (let i = 0; i <= 32; i++) {
-      const angle = i / 32 * 2 * Math.PI;
-      pts.push(new Vec2(center.x + hw * Math.cos(angle), center.y + hw * Math.sin(angle)));
-    }
-    layer.geometry.add_polyline(pts, outlineWidth * 2, hr, hg, hb, ha);
-  } else {
-    const corners = [
-      padTransform(fpAt, pad.at, -hw, -hh),
-      padTransform(fpAt, pad.at, hw, -hh),
-      padTransform(fpAt, pad.at, hw, hh),
-      padTransform(fpAt, pad.at, -hw, hh),
-      padTransform(fpAt, pad.at, -hw, -hh)
-    ];
-    layer.geometry.add_polyline(corners, outlineWidth * 2, hr, hg, hb, ha);
   }
 }
 function paintSelection(renderer, fp) {
@@ -1923,7 +1887,6 @@ var Editor = class {
   canvas;
   renderer;
   camera;
-  panAndZoom;
   model = null;
   baseUrl;
   apiPrefix;
@@ -1948,7 +1911,6 @@ var Editor = class {
   highlightedPads;
   onPadClickCallback = null;
   outlinePads;
-  externalModel = false;
   constructor(canvas2, baseUrl2, apiPrefix2 = "/api", wsPath2 = "/ws") {
     this.canvas = canvas2;
     this.baseUrl = baseUrl2;
@@ -1956,7 +1918,7 @@ var Editor = class {
     this.wsPath = wsPath2;
     this.renderer = new Renderer(canvas2);
     this.camera = new Camera2();
-    this.panAndZoom = new PanAndZoom(canvas2, this.camera, () => this.requestRedraw());
+    new PanAndZoom(canvas2, this.camera, () => this.requestRedraw());
     this.setupMouseHandlers();
     this.setupKeyboardHandlers();
     this.setupResizeHandler();
@@ -1964,52 +1926,48 @@ var Editor = class {
     this.startRenderLoop();
   }
   async init() {
-    if (this.externalModel)
-      return;
-    await this.fetchAndPaint();
+    await this.fetchAndPaint(true);
     this.connectWebSocket();
   }
-  /** Inject a model externally (for pinout viewer use) */
-  setModel(model, fitToView = true) {
-    this.externalModel = true;
-    this.applyModel(model, fitToView);
-  }
-  /** Set read-only mode (disables drag, keyboard, footprint selection) */
+  /** Set read-only mode (disables drag and footprint selection) */
   setReadOnly(readOnly) {
     this.readOnly = readOnly;
   }
   /** Set per-pad color overrides (pad name → color) */
   setPadColorOverrides(overrides) {
     this.padColorOverrides = overrides;
-    this.paint();
-    this.requestRedraw();
+    this.paintAndRequestRedraw();
   }
   /** Set which pads should be highlighted */
   setHighlightedPads(padNames) {
     this.highlightedPads = padNames;
-    this.paint();
-    this.requestRedraw();
+    this.paintAndRequestRedraw();
   }
   /** Set which pads should be drawn as outlines (unconnected) */
   setOutlinePads(padNames) {
     this.outlinePads = padNames;
-    this.paint();
-    this.requestRedraw();
+    this.paintAndRequestRedraw();
   }
   /** Set callback when a pad is clicked (read-only mode) */
   setOnPadClick(cb) {
     this.onPadClickCallback = cb;
   }
-  async fetchAndPaint() {
+  async fetchAndPaint(fitToView = false) {
     const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/render-model`);
-    this.applyModel(await resp.json(), true);
+    if (!resp.ok) {
+      throw new Error(`render-model request failed: ${resp.status}`);
+    }
+    this.applyModel(await resp.json(), fitToView);
   }
   applyModel(model, fitToView = false) {
     this.model = model;
+    if (this.selectedFpIndex >= model.footprints.length) {
+      this.selectedFpIndex = -1;
+    }
     this.paint();
     this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
     if (fitToView) {
-      this.camera.bbox = computeBBox(this.model);
+      this.camera.bbox = computeBBox(model);
     }
     this.requestRedraw();
     if (this.onLayersChanged)
@@ -2054,8 +2012,6 @@ var Editor = class {
     }
   }
   connectWebSocket() {
-    if (!this.wsPath)
-      return;
     const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
     this.ws = new WebSocket(wsUrl);
     this.ws.onopen = () => console.log("WS connected");
@@ -2098,12 +2054,11 @@ var Editor = class {
         this.isDragging = true;
         this.dragStartWorld = worldPos;
         this.dragStartFpPos = { x: fp.at.x, y: fp.at.y };
-        this.repaintWithSelection();
+        this.paintAndRequestRedraw();
       } else {
         if (this.selectedFpIndex >= 0) {
           this.selectedFpIndex = -1;
-          this.paint();
-          this.requestRedraw();
+          this.paintAndRequestRedraw();
         }
       }
     });
@@ -2121,8 +2076,7 @@ var Editor = class {
       const fp = this.model.footprints[this.selectedFpIndex];
       fp.at.x = this.dragStartFpPos.x + delta.x;
       fp.at.y = this.dragStartFpPos.y + delta.y;
-      this.paint();
-      this.requestRedraw();
+      this.paintAndRequestRedraw();
     });
     window.addEventListener("mouseup", async (e) => {
       if (e.button !== 0 || !this.isDragging)
@@ -2145,8 +2099,6 @@ var Editor = class {
   }
   setupKeyboardHandlers() {
     window.addEventListener("keydown", async (e) => {
-      if (this.readOnly)
-        return;
       if (e.key === "r" || e.key === "R") {
         if (e.ctrlKey || e.metaKey || e.altKey)
           return;
@@ -2207,15 +2159,6 @@ var Editor = class {
     }
   }
   // --- Layer visibility ---
-  setLayerVisible(layer, visible) {
-    if (visible) {
-      this.hiddenLayers.delete(layer);
-    } else {
-      this.hiddenLayers.add(layer);
-    }
-    this.paint();
-    this.requestRedraw();
-  }
   setLayersVisible(layers, visible) {
     for (const layer of layers) {
       if (visible) {
@@ -2224,8 +2167,7 @@ var Editor = class {
         this.hiddenLayers.add(layer);
       }
     }
-    this.paint();
-    this.requestRedraw();
+    this.paintAndRequestRedraw();
   }
   isLayerVisible(layer) {
     return !this.hiddenLayers.has(layer);
@@ -2271,7 +2213,7 @@ var Editor = class {
   setOnMouseMove(cb) {
     this.onMouseMoveCallback = cb;
   }
-  repaintWithSelection() {
+  paintAndRequestRedraw() {
     this.paint();
     this.requestRedraw();
   }
@@ -2445,7 +2387,7 @@ function buildLayerPanel() {
       updateRowVisual(row, editor.isLayerVisible(child.name));
       row.addEventListener("click", () => {
         const vis = !editor.isLayerVisible(child.name);
-        editor.setLayerVisible(child.name, vis);
+        editor.setLayersVisible([child.name], vis);
         updateRowVisual(row, vis);
         updateGroupVisual(groupRow, childNames);
       });
@@ -2464,7 +2406,7 @@ function buildLayerPanel() {
     updateRowVisual(row, editor.isLayerVisible(name));
     row.addEventListener("click", () => {
       const vis = !editor.isLayerVisible(name);
-      editor.setLayerVisible(name, vis);
+      editor.setLayersVisible([name], vis);
       updateRowVisual(row, vis);
     });
     content.appendChild(row);

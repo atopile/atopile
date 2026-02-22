@@ -243,38 +243,31 @@ export function paintFootprint(
         }
         renderer.end_layer();
     }
-    if (fp.pads.length > 0) {
-        // Check if any pad layer is visible (expanding wildcards)
-        const anyVisible = fp.pads.some(pad =>
-            pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
-        );
-        if (anyVisible) {
-            const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
-            for (const pad of fp.pads) {
-                if (pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))) {
-                    if (outlinePads?.has(pad.name)) {
-                        const outlineColor = padColorOverrides?.get(pad.name) ?? UNCONNECTED_PAD_COLOR;
-                        paintPadOutline(layer, fp.at, pad, outlineColor);
-                    } else {
-                        const colorOverride = padColorOverrides?.get(pad.name);
-                        paintPad(layer, fp.at, pad, colorOverride);
-                    }
-                }
-            }
-            renderer.end_layer();
+    
+    // Check if any pad layer is visible (expanding wildcards)
+    const anyVisible = fp.pads.some(pad =>
+        pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers))
+    );
 
-            // Paint highlights on top of pads
-            if (highlightedPads && highlightedPads.size > 0) {
-                const hlLayer = renderer.start_layer(`fp:${fp.uuid}:pad-highlights`);
-                for (const pad of fp.pads) {
-                    if (highlightedPads.has(pad.name)) {
-                        paintPadHighlight(hlLayer, fp.at, pad);
-                    }
-                }
-                renderer.end_layer();
-            }
-        }
+    if (!anyVisible || fp.pads.length === 0) return;
+
+    const layer = renderer.start_layer(`fp:${fp.uuid}:pads`);
+    for (const pad of fp.pads) {
+        const visible = pad.layers.some(l => isPadLayerVisible(l, hidden, concreteLayers));
+        if (!visible) continue;
+
+        const outlined = outlinePads?.has(pad.name) ?? false;
+        const padColor = padColorOverrides?.get(pad.name);
+
+        const paintOptions: PadPaintOptions = {
+            outlined,
+            color: outlined ? (padColor ?? UNCONNECTED_PAD_COLOR) : padColor,
+            highlighted: highlightedPads?.has(pad.name) ?? false,
+        };
+
+        paintPad(layer, fp.at, pad, paintOptions);
     }
+    renderer.end_layer();
 }
 
 function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r: number, g: number, b: number, a: number) {
@@ -314,113 +307,95 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
     }
 }
 
-function paintPad(layer: RenderLayer, fpAt: Point3, pad: PadModel, colorOverride?: Color) {
-    const [cr, cg, cb, ca] = colorOverride ?? getPadColor(pad.layers);
+type PadPaintOptions =
+    {
+        color?: Color;
+        outlined?: boolean;
+        highlighted?: boolean;
+    };
+
+function buildPadOutlineLoop(fpAt: Point3, pad: PadModel, inflate = 0): Vec2[] {
+    const hw = pad.size.w / 2 + inflate;
+    const hh = pad.size.h / 2 + inflate;
+    switch (pad.shape) {
+        case "circle":
+        case "oval": {
+            const points: Vec2[] = [];
+            const segments = 32;
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * 2 * Math.PI;
+                points.push(padTransform(fpAt, pad.at, hw * Math.cos(angle), hh * Math.sin(angle)));
+            }
+            return points;
+        }
+        case "rect":
+        case "roundrect":
+        case "trapezoid":
+        case "custom": {
+            const corners: [Vec2, Vec2, Vec2, Vec2] = [
+                padTransform(fpAt, pad.at, -hw, -hh),
+                padTransform(fpAt, pad.at, hw, -hh),
+                padTransform(fpAt, pad.at, hw, hh),
+                padTransform(fpAt, pad.at, -hw, hh),
+            ];
+            return [...corners, corners[0]!];
+        }
+    }
+}
+
+function paintPad(
+    layer: RenderLayer,
+    fpAt: Point3,
+    pad: PadModel,
+    options: PadPaintOptions = {},
+): void {
     const hw = pad.size.w / 2;
     const hh = pad.size.h / 2;
+    const [cr, cg, cb, ca] = options.color ?? getPadColor(pad.layers);
 
-    if (pad.shape === "circle") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
-    } else if (pad.shape === "oval") {
-        const longAxis = Math.max(hw, hh);
-        const shortAxis = Math.min(hw, hh);
-        const focalDist = longAxis - shortAxis;
-        let p1: Vec2, p2: Vec2;
-        if (hw >= hh) {
-            p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-            p2 = padTransform(fpAt, pad.at, focalDist, 0);
-        } else {
-            p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-            p2 = padTransform(fpAt, pad.at, 0, focalDist);
-        }
-        layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+    if (options.outlined) {
+        const lineWidth = Math.min(hw, hh) * 0.2;
+        const outline = buildPadOutlineLoop(fpAt, pad);
+        layer.geometry.add_polyline(outline, lineWidth, cr, cg, cb, ca);
     } else {
-        const corners = [
-            padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
-            padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
-        ];
-        layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+        if (pad.shape === "circle") {
+            const center = fpTransform(fpAt, pad.at.x, pad.at.y);
+            layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+        } else if (pad.shape === "oval") {
+            const longAxis = Math.max(hw, hh);
+            const shortAxis = Math.min(hw, hh);
+            const focalDist = longAxis - shortAxis;
+            let p1: Vec2;
+            let p2: Vec2;
+            if (hw >= hh) {
+                p1 = padTransform(fpAt, pad.at, -focalDist, 0);
+                p2 = padTransform(fpAt, pad.at, focalDist, 0);
+            } else {
+                p1 = padTransform(fpAt, pad.at, 0, -focalDist);
+                p2 = padTransform(fpAt, pad.at, 0, focalDist);
+            }
+            layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+        } else {
+            const corners = [
+                padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
+                padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
+            ];
+            layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+        }
+    }
+
+    if (options.highlighted) {
+        const [hr, hg, hb, ha] = PAD_HIGHLIGHT_COLOR;
+        const highlightInflate = 0.15;
+        const highlightLineWidth = 0.3;
+        const outline = buildPadOutlineLoop(fpAt, pad, highlightInflate);
+        layer.geometry.add_polyline(outline, highlightLineWidth, hr, hg, hb, ha);
     }
 
     if (pad.drill && pad.type === "thru_hole") {
         const center = fpTransform(fpAt, pad.at.x, pad.at.y);
         const drillR = (pad.drill.size_x ?? pad.size.w * 0.5) / 2;
         layer.geometry.add_circle(center.x, center.y, drillR, 0.15, 0.15, 0.15, 1.0);
-    }
-}
-
-/** Paint a pad as an outline (not filled) */
-function paintPadOutline(layer: RenderLayer, fpAt: Point3, pad: PadModel, color: Color) {
-    const [cr, cg, cb, ca] = color;
-    const hw = pad.size.w / 2;
-    const hh = pad.size.h / 2;
-    const lineWidth = Math.min(hw, hh) * 0.2;
-
-    if (pad.shape === "circle") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        const pts: Vec2[] = [];
-        for (let i = 0; i <= 32; i++) {
-            const angle = (i / 32) * 2 * Math.PI;
-            pts.push(new Vec2(center.x + hw * Math.cos(angle), center.y + hw * Math.sin(angle)));
-        }
-        layer.geometry.add_polyline(pts, lineWidth, cr, cg, cb, ca);
-    } else if (pad.shape === "oval") {
-        const longAxis = Math.max(hw, hh);
-        const shortAxis = Math.min(hw, hh);
-        const focalDist = longAxis - shortAxis;
-        let p1: Vec2, p2: Vec2;
-        if (hw >= hh) {
-            p1 = padTransform(fpAt, pad.at, -focalDist, 0);
-            p2 = padTransform(fpAt, pad.at, focalDist, 0);
-        } else {
-            p1 = padTransform(fpAt, pad.at, 0, -focalDist);
-            p2 = padTransform(fpAt, pad.at, 0, focalDist);
-        }
-        // Draw as a thick line but at reduced width to show outline
-        const innerWidth = shortAxis * 2;
-        const outerPts: Vec2[] = [];
-        // Approximate oval outline with segments
-        for (let i = 0; i <= 32; i++) {
-            const angle = (i / 32) * 2 * Math.PI;
-            const lx = hw * Math.cos(angle);
-            const ly = hh * Math.sin(angle);
-            outerPts.push(padTransform(fpAt, pad.at, lx, ly));
-        }
-        layer.geometry.add_polyline(outerPts, lineWidth, cr, cg, cb, ca);
-    } else {
-        const corners = [
-            padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
-            padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
-            padTransform(fpAt, pad.at, -hw, -hh),
-        ];
-        layer.geometry.add_polyline(corners, lineWidth, cr, cg, cb, ca);
-    }
-}
-
-/** Paint a highlight outline around a single pad */
-function paintPadHighlight(layer: RenderLayer, fpAt: Point3, pad: PadModel) {
-    const [hr, hg, hb, ha] = PAD_HIGHLIGHT_COLOR;
-    const outlineWidth = 0.15;
-    const hw = pad.size.w / 2 + outlineWidth;
-    const hh = pad.size.h / 2 + outlineWidth;
-
-    if (pad.shape === "circle") {
-        const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        // Draw a ring by using a thick polyline circle
-        const pts: Vec2[] = [];
-        for (let i = 0; i <= 32; i++) {
-            const angle = (i / 32) * 2 * Math.PI;
-            pts.push(new Vec2(center.x + hw * Math.cos(angle), center.y + hw * Math.sin(angle)));
-        }
-        layer.geometry.add_polyline(pts, outlineWidth * 2, hr, hg, hb, ha);
-    } else {
-        const corners = [
-            padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
-            padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
-            padTransform(fpAt, pad.at, -hw, -hh),
-        ];
-        layer.geometry.add_polyline(corners, outlineWidth * 2, hr, hg, hb, ha);
     }
 }
 

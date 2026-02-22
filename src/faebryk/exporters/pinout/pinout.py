@@ -89,6 +89,10 @@ class PinInfo:
 class PinoutComponent:
     name: str  # Component instance name (e.g., "micro")
     type_name: str  # Type name (e.g., "ESP32_C3_MINI_1")
+    footprint_uuid: str | None = None  # matches layout footprint.uuid
+    footprint_reference: str | None = (
+        None  # e.g., "U1" to match layout footprint.reference
+    )
     pins: list[PinInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     footprint_pads: list[FootprintPadGeometry] = field(default_factory=list)
@@ -577,6 +581,42 @@ def _extract_footprint_geometry(
     return pads, drawings
 
 
+def _get_footprint_reference(ic_module: fabll.Node) -> str | None:
+    """Get the PCB reference designator for the IC module, e.g. U1."""
+    try:
+        atomic_part = ic_module.try_get_trait(F.is_atomic_part)
+        if atomic_part is None:
+            return None
+
+        designator_trait = atomic_part.try_get_sibling_trait(F.has_designator)
+        if designator_trait is None:
+            return None
+        return designator_trait.get_designator() or None
+    except Exception:
+        logger.debug("Could not extract footprint reference for %s", ic_module)
+        return None
+
+
+def _get_footprint_uuid(ic_module: fabll.Node) -> str | None:
+    """Get the PCB footprint UUID for the IC module."""
+    try:
+        graph_fp = ic_module.get_trait(
+            F.Footprints.has_associated_footprint
+        ).get_footprint()
+        trait = graph_fp.try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_pcb_footprint
+        )
+        if trait is None:
+            return None
+        footprint = trait.get_footprint()
+        if footprint.uuid is None:
+            return None
+        return str(footprint.uuid)
+    except Exception:
+        logger.debug("Could not extract footprint UUID for %s", ic_module)
+        return None
+
+
 def _extract_net_name(pin: fabll.Node, sub_key: str | None = None) -> str | None:
     """Get the net name by finding the F.Net connected to the pin's electrical bus.
 
@@ -860,6 +900,8 @@ def extract_pinout(
 
         # Extract footprint geometry if IC module found
         if ic_module is not None:
+            pinout_comp.footprint_uuid = _get_footprint_uuid(ic_module)
+            pinout_comp.footprint_reference = _get_footprint_reference(ic_module)
             pinout_comp.footprint_pads, pinout_comp.footprint_drawings = (
                 _extract_footprint_geometry(ic_module)
             )

@@ -8,13 +8,12 @@ declare module '@layout-editor/editor' {
   export class Editor {
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix?: string, wsPath?: string);
     init(): Promise<void>;
-    setFilteredFootprintPadNames(padNames: Set<string> | null, fitToView?: boolean): void;
+    loadRenderModel(footprintUuid?: string | null, fitToView?: boolean): Promise<void>;
     setReadOnly(readOnly: boolean): void;
     setPadColorOverrides(overrides: Map<string, import('@layout-editor/colors').Color>): void;
     setHighlightedPads(padNames: Set<string>): void;
     setOutlinePads(padNames: Set<string>): void;
     setOnPadClick(cb: ((padName: string) => void) | null): void;
-    dispose(): void;
   }
 }
 
@@ -43,7 +42,8 @@ declare module '@layout-editor/types' {
   export interface BoardModel { edges: EdgeModel[]; width: number; height: number; origin: Point2; }
   export interface EdgeModel { type: "line" | "arc" | "circle" | "rect"; start?: Point2; end?: Point2; mid?: Point2; center?: Point2; }
   export interface FootprintModel { uuid: string | null; name: string; reference: string | null; value: string | null; at: Point3; layer: string; pads: PadModel[]; drawings: DrawingModel[]; }
-  export interface PadModel { name: string; at: Point3; size: Size2; shape: string; type: string; layers: string[]; net: number; roundrect_rratio: number | null; drill: DrillModel | null; }
+  export type PadShape = "circle" | "oval" | "rect" | "roundrect" | "trapezoid" | "custom";
+  export interface PadModel { name: string; at: Point3; size: Size2; shape: PadShape; type: string; layers: string[]; net: number; roundrect_rratio: number | null; drill: DrillModel | null; }
   export interface DrillModel { shape: string | null; size_x: number | null; size_y: number | null; }
   export interface DrawingModel { type: "line" | "arc" | "circle" | "rect" | "polygon"; start?: Point2; end?: Point2; mid?: Point2; center?: Point2; width: number; layer: string | null; points?: Point2[]; }
   export interface TrackModel { start: Point2; end: Point2; width: number; layer: string | null; net: number; uuid: string | null; }
