@@ -187,7 +187,7 @@ class DeepPCB_Transformer:
                     "keepouts": [],
                 }
 
-            component_id = cls._component_id(fp)
+            component_id = cls._component_id(fp, provider_strict=provider_strict)
             reference_property = None
             for prop in getattr(fp, "propertys", []):
                 if str(getattr(prop, "name", "")) != "Reference":
@@ -677,6 +677,9 @@ class DeepPCB_Transformer:
         pcb.footprints = []
         for component in board_file.components:
             component_id = str(component.get("id", ""))
+            decoded_reference, decoded_atopile_address = cls._decode_component_id(
+                component_id
+            )
             definition_id = str(component.get("definition", ""))
             definition = definition_by_id.get(definition_id, {})
             position = component.get("position", [0, 0])
@@ -811,7 +814,10 @@ class DeepPCB_Transformer:
 
             reference_prop = component.get("referenceProperty")
             if isinstance(reference_prop, dict):
-                ref_value = str(reference_prop.get("value", component_id))
+                ref_value = str(reference_prop.get("value", decoded_reference))
+                ref_value, inline_addr = cls._decode_component_id(ref_value)
+                if not decoded_atopile_address and inline_addr:
+                    decoded_atopile_address = inline_addr
                 ref_point = reference_prop.get("at", [0, 0])
                 if not isinstance(ref_point, list) or len(ref_point) < 2:
                     ref_point = [0, 0]
@@ -825,7 +831,7 @@ class DeepPCB_Transformer:
                 ref_unlocked = reference_prop.get("unlocked")
                 effects_payload = reference_prop.get("effects")
             else:
-                ref_value = component_id
+                ref_value = decoded_reference
                 ref_point = [0, 0]
                 ref_rotation = None
                 ref_layer = "F.SilkS"
@@ -878,22 +884,17 @@ class DeepPCB_Transformer:
                         r=rotation,
                     ),
                     path=None,
-                    propertys=[
-                        kicad.pcb.Property(
-                            name="Reference",
-                            value=ref_value,
-                            at=kicad.pcb.Xyr(
-                                x=cls._from_unit(float(ref_point[0]), resolution),
-                                y=cls._from_unit(float(ref_point[1]), resolution),
-                                r=ref_rotation,
-                            ),
-                            unlocked=ref_unlocked,
-                            layer=ref_layer,
-                            hide=ref_hide,
-                            uuid=kicad.gen_uuid(),
-                            effects=effects,
-                        )
-                    ],
+                    propertys=cls._component_properties(
+                        ref_value=ref_value,
+                        ref_point=ref_point,
+                        ref_rotation=ref_rotation,
+                        ref_unlocked=ref_unlocked,
+                        ref_layer=ref_layer,
+                        ref_hide=ref_hide,
+                        effects=effects,
+                        resolution=resolution,
+                        atopile_address=decoded_atopile_address,
+                    ),
                     attr=[],
                     fp_lines=fp_lines,
                     fp_arcs=fp_arcs,
@@ -1320,11 +1321,70 @@ class DeepPCB_Transformer:
         return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}__{fp.uuid}"
 
     @staticmethod
-    def _component_id(fp: Any) -> str:
+    def _component_id(fp: Any, *, provider_strict: bool = False) -> str:
         ref = Property.try_get_property(fp.propertys, "Reference")
-        if isinstance(ref, str) and ref.strip():
-            return ref.strip()
-        return str(fp.uuid)
+        component_ref = str(ref).strip() if isinstance(ref, str) else ""
+        if not component_ref:
+            component_ref = str(fp.uuid)
+        if provider_strict:
+            atopile_address = Property.try_get_property(fp.propertys, "atopile_address")
+            if isinstance(atopile_address, str) and atopile_address.strip():
+                return f"{component_ref}@@{atopile_address.strip()}"
+        return component_ref
+
+    @staticmethod
+    def _decode_component_id(component_id: str) -> tuple[str, str | None]:
+        if "@@" not in component_id:
+            return component_id, None
+        ref, _, addr = component_id.partition("@@")
+        ref = ref.strip() or component_id
+        addr = addr.strip()
+        return ref, (addr or None)
+
+    @classmethod
+    def _component_properties(
+        cls,
+        *,
+        ref_value: str,
+        ref_point: list[Any],
+        ref_rotation: float | None,
+        ref_unlocked: Any,
+        ref_layer: str,
+        ref_hide: Any,
+        effects: Any,
+        resolution: int,
+        atopile_address: str | None,
+    ) -> list[Any]:
+        properties = [
+            kicad.pcb.Property(
+                name="Reference",
+                value=ref_value,
+                at=kicad.pcb.Xyr(
+                    x=cls._from_unit(float(ref_point[0]), resolution),
+                    y=cls._from_unit(float(ref_point[1]), resolution),
+                    r=ref_rotation,
+                ),
+                unlocked=ref_unlocked,
+                layer=ref_layer,
+                hide=ref_hide,
+                uuid=kicad.gen_uuid(),
+                effects=effects,
+            )
+        ]
+        if atopile_address:
+            properties.append(
+                kicad.pcb.Property(
+                    name="atopile_address",
+                    value=atopile_address,
+                    at=kicad.pcb.Xyr(x=0.0, y=0.0, r=0.0),
+                    unlocked=True,
+                    layer="F.Fab",
+                    hide=True,
+                    uuid=kicad.gen_uuid(),
+                    effects=None,
+                )
+            )
+        return properties
 
     @staticmethod
     def _pin_id(pad: Any, index: int, *, provider_strict: bool = False) -> str:
