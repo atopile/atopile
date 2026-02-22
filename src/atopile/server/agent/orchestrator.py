@@ -32,6 +32,7 @@ from atopile.server.agent.orchestrator_helpers import (
     _compute_rate_limit_retry_delay_s,
     _consume_steering_updates,
     _extract_function_calls,
+    _extract_retry_after_delay_s,
     _extract_sdk_error_text,
     _extract_text,
     _emit_progress,
@@ -61,6 +62,9 @@ SteeringMessagesCallback = Callable[[], list[str]]
 MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
+
+# Backward-compatible alias expected by existing tests/callers.
+_SYSTEM_PROMPT = SYSTEM_PROMPT
 
 
 def _remap_hashline_anchor(
@@ -424,6 +428,643 @@ class AgentOrchestrator:
             "generated_at": time.time(),
         }
 
+    def _build_model_request_payload(
+        self,
+        *,
+        project_path: Path,
+        input_items: list[dict[str, Any]],
+        instructions: str,
+        tool_defs: list[dict[str, Any]],
+        skill_state: dict[str, Any],
+        previous_response_id: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "input": input_items,
+            "instructions": instructions,
+            "tools": tool_defs,
+            "tool_choice": "auto",
+            "truncation": "disabled",
+            "prompt_cache_key": _build_prompt_cache_key(
+                project_path=project_path,
+                tool_defs=tool_defs,
+                skill_state=skill_state,
+                model=self.model,
+            ),
+            "prompt_cache_retention": self.prompt_cache_retention,
+        }
+        if previous_response_id:
+            payload["previous_response_id"] = previous_response_id
+        return payload
+
+    @staticmethod
+    def _response_id_or_none(response: dict[str, Any]) -> str | None:
+        value = response.get("id")
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return None
+        return str(value)
+
+    def _build_turn_result(
+        self,
+        *,
+        text: str,
+        traces: list[ToolTrace],
+        last_response_id: str | None,
+        skill_state: dict[str, Any],
+        telemetry: dict[str, Any],
+    ) -> AgentTurnResult:
+        return AgentTurnResult(
+            text=text,
+            tool_traces=traces,
+            model=self.model,
+            response_id=last_response_id,
+            skill_state=skill_state,
+            context_metrics=telemetry,
+        )
+
+    def _active_trace_callback(
+        self,
+        trace_callback: TraceCallback | None,
+    ) -> TraceCallback | None:
+        return trace_callback if self.trace_enabled else None
+
+    async def _stop_turn(
+        self,
+        *,
+        reason: str,
+        text: str,
+        loops: int,
+        traces: list[ToolTrace],
+        last_response_id: str | None,
+        skill_state: dict[str, Any],
+        telemetry: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+        trace_callback: TraceCallback | None,
+        progress_extras: dict[str, Any] | None = None,
+        trace_extras: dict[str, Any] | None = None,
+    ) -> AgentTurnResult:
+        progress_payload: dict[str, Any] = {
+            "phase": "stopped",
+            "reason": reason,
+            "loop": loops,
+            "tool_calls_total": len(traces),
+        }
+        if progress_extras:
+            progress_payload.update(progress_extras)
+        await _emit_progress(progress_callback, progress_payload)
+
+        trace_payload: dict[str, Any] = {
+            "reason": reason,
+            "loop": loops,
+            "tool_calls_total": len(traces),
+        }
+        if trace_extras:
+            trace_payload.update(trace_extras)
+        await _emit_trace(trace_callback, "turn_stopped", trace_payload)
+
+        return self._build_turn_result(
+            text=text,
+            traces=traces,
+            last_response_id=last_response_id,
+            skill_state=skill_state,
+            telemetry=telemetry,
+        )
+
+    @staticmethod
+    def _collect_steering_inputs(
+        consume_steering_messages: SteeringMessagesCallback | None,
+    ) -> list[dict[str, Any]]:
+        return _build_steering_inputs_for_model(
+            _consume_steering_updates(consume_steering_messages)
+        )
+
+    async def _request_followup_response(
+        self,
+        *,
+        project_path: Path,
+        input_items: list[dict[str, Any]],
+        instructions: str,
+        tool_defs: list[dict[str, Any]],
+        skill_state: dict[str, Any],
+        previous_response_id: str | None,
+        telemetry: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+        trace_callback: TraceCallback | None,
+    ) -> dict[str, Any]:
+        return await self._responses_create_with_context_control(
+            payload=self._build_model_request_payload(
+                project_path=project_path,
+                input_items=input_items,
+                instructions=instructions,
+                tool_defs=tool_defs,
+                skill_state=skill_state,
+                previous_response_id=previous_response_id,
+            ),
+            telemetry=telemetry,
+            progress_callback=progress_callback,
+            trace_callback=trace_callback,
+            enable_preflight=False,
+        )
+
+    async def _execute_tool_call_with_retries(
+        self,
+        *,
+        tool_name: str,
+        raw_args: str,
+        parsed_args: dict[str, Any] | None,
+        project_path: Path,
+        ctx: AppContext,
+    ) -> tuple[dict[str, Any], dict[str, Any], bool]:
+        args: dict[str, Any]
+        result_payload: dict[str, Any]
+        ok = True
+        try:
+            args = parsed_args if parsed_args is not None else {}
+            if parsed_args is None:
+                args = tools.parse_tool_arguments(raw_args)
+            result_payload = await tools.execute_tool(
+                name=tool_name,
+                arguments=args,
+                project_root=project_path,
+                ctx=ctx,
+            )
+        except Exception as exc:
+            ok = False
+            args = parsed_args if parsed_args is not None else {}
+            remaps = getattr(exc, "remaps", None)
+            auto_remap_attempted = False
+            if tool_name == "project_edit_file" and isinstance(remaps, dict):
+                remapped_args, did_remap = _apply_project_edit_remaps(
+                    args,
+                    remaps,
+                )
+                if did_remap:
+                    auto_remap_attempted = True
+                    try:
+                        result_payload = await tools.execute_tool(
+                            name=tool_name,
+                            arguments=remapped_args,
+                            project_root=project_path,
+                            ctx=ctx,
+                        )
+                        args = remapped_args
+                        ok = True
+                        if isinstance(result_payload, dict):
+                            result_payload = dict(result_payload)
+                            result_payload["auto_remap_retry"] = True
+                    except Exception as remap_exc:
+                        args = remapped_args
+                        exc = remap_exc
+                        remaps = getattr(remap_exc, "remaps", None)
+
+            if not ok:
+                result_payload = {
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                }
+                if auto_remap_attempted:
+                    result_payload["auto_remap_retry"] = True
+                if isinstance(remaps, dict):
+                    result_payload["remaps"] = remaps
+                mismatches = getattr(exc, "mismatches", None)
+                if isinstance(mismatches, list):
+                    result_payload["mismatches"] = [
+                        {
+                            "line": getattr(mismatch, "line", None),
+                            "expected": getattr(mismatch, "expected", None),
+                            "actual": getattr(mismatch, "actual", None),
+                        }
+                        for mismatch in mismatches
+                    ]
+
+        return args, result_payload, ok
+
+    async def _handle_no_function_calls(
+        self,
+        *,
+        response: dict[str, Any],
+        loops: int,
+        traces: list[ToolTrace],
+        last_response_id: str | None,
+        consume_steering_messages: SteeringMessagesCallback | None,
+        project_path: Path,
+        instructions: str,
+        tool_defs: list[dict[str, Any]],
+        skill_state: dict[str, Any],
+        telemetry: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+        trace_callback: TraceCallback | None,
+    ) -> tuple[dict[str, Any] | None, str | None, AgentTurnResult | None]:
+        steering_inputs = self._collect_steering_inputs(consume_steering_messages)
+        if steering_inputs:
+            await _emit_trace(
+                trace_callback,
+                "steering_applied",
+                {
+                    "loop": loops,
+                    "steering_items": len(steering_inputs),
+                },
+            )
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Steering",
+                    "detail_text": "Applying latest user guidance",
+                },
+            )
+            next_response = await self._request_followup_response(
+                project_path=project_path,
+                input_items=steering_inputs,
+                instructions=instructions,
+                tool_defs=tool_defs,
+                skill_state=skill_state,
+                previous_response_id=self._response_id_or_none(response),
+                telemetry=telemetry,
+                progress_callback=progress_callback,
+                trace_callback=trace_callback,
+            )
+            next_response_id = self._response_id_or_none(next_response) or last_response_id
+            return next_response, next_response_id, None
+
+        text = _extract_text(response)
+        if not text:
+            text = "No assistant response produced."
+        await _emit_trace(
+            trace_callback,
+            "turn_completed",
+            {
+                "loop": loops,
+                "tool_calls_total": len(traces),
+                "response_id": response.get("id"),
+                "assistant_text_preview": _to_trace_preview(
+                    text,
+                    max_chars=self.trace_preview_max_chars,
+                ),
+            },
+        )
+        await _emit_progress(
+            progress_callback,
+            {
+                "phase": "thinking",
+                "status_text": "Composing response",
+            },
+        )
+        await _emit_progress(
+            progress_callback,
+            {
+                "phase": "done",
+                "loop": loops,
+                "tool_calls_total": len(traces),
+            },
+        )
+        return None, last_response_id, self._build_turn_result(
+            text=text,
+            traces=traces,
+            last_response_id=last_response_id,
+            skill_state=skill_state,
+            telemetry=telemetry,
+        )
+
+    async def _process_function_calls(
+        self,
+        *,
+        function_calls: list[dict[str, Any]],
+        loops: int,
+        project_path: Path,
+        ctx: AppContext,
+        traces: list[ToolTrace],
+        recent_tool_signatures: list[str],
+        consecutive_tool_failures: int,
+        telemetry: dict[str, Any],
+        skill_state: dict[str, Any],
+        last_response_id: str | None,
+        progress_callback: ProgressCallback | None,
+        trace_callback: TraceCallback | None,
+    ) -> tuple[
+        list[dict[str, Any]],
+        list[ToolTrace],
+        list[str],
+        int,
+        AgentTurnResult | None,
+    ]:
+        outputs: list[dict[str, Any]] = []
+        loop_traces: list[ToolTrace] = []
+        tool_count = len(function_calls)
+        for tool_index, call in enumerate(function_calls, start=1):
+            call_id = call.get("call_id") or call.get("id")
+            if not call_id:
+                await _emit_trace(
+                    trace_callback,
+                    "tool_call_skipped",
+                    {
+                        "loop": loops,
+                        "tool_index": tool_index,
+                        "tool_count": tool_count,
+                        "reason": "missing_call_id",
+                        "call": _summarize_function_call_for_trace(
+                            call,
+                            max_chars=self.trace_preview_max_chars,
+                        ),
+                    },
+                )
+                continue
+
+            tool_name = str(call.get("name", ""))
+            raw_args = str(call.get("arguments", ""))
+
+            parsed_args: dict[str, Any] | None = None
+            try:
+                parsed_args = tools.parse_tool_arguments(raw_args)
+            except Exception:
+                parsed_args = None
+
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "tool_start",
+                    "loop": loops,
+                    "tool_index": tool_index,
+                    "tool_count": tool_count,
+                    "call_id": str(call_id),
+                    "name": tool_name,
+                    "args": parsed_args if parsed_args is not None else {},
+                },
+            )
+            await _emit_trace(
+                trace_callback,
+                "tool_call_started",
+                {
+                    "loop": loops,
+                    "tool_index": tool_index,
+                    "tool_count": tool_count,
+                    "call_id": str(call_id),
+                    "name": tool_name,
+                    "raw_arguments_preview": _to_trace_preview(
+                        raw_args,
+                        max_chars=self.trace_preview_max_chars,
+                    ),
+                    "parsed_arguments": (
+                        parsed_args if parsed_args is not None else {}
+                    ),
+                },
+            )
+
+            args, result_payload, ok = await self._execute_tool_call_with_retries(
+                tool_name=tool_name,
+                raw_args=raw_args,
+                parsed_args=parsed_args,
+                project_path=project_path,
+                ctx=ctx,
+            )
+
+            traces.append(
+                ToolTrace(
+                    name=tool_name,
+                    args=args,
+                    ok=ok,
+                    result=result_payload,
+                )
+            )
+            loop_traces.append(traces[-1])
+            if ok:
+                consecutive_tool_failures = 0
+            else:
+                consecutive_tool_failures += 1
+            recent_tool_signatures.append(
+                _tool_call_signature(tool_name=tool_name, args=args)
+            )
+            if len(recent_tool_signatures) > 48:
+                recent_tool_signatures = recent_tool_signatures[-48:]
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "tool_end",
+                    "loop": loops,
+                    "tool_index": tool_index,
+                    "tool_count": tool_count,
+                    "call_id": str(call_id),
+                    "trace": {
+                        "name": tool_name,
+                        "args": args,
+                        "ok": ok,
+                        "result": result_payload,
+                    },
+                },
+            )
+            await _emit_trace(
+                trace_callback,
+                "tool_call_completed",
+                {
+                    "loop": loops,
+                    "tool_index": tool_index,
+                    "tool_count": tool_count,
+                    "call_id": str(call_id),
+                    "name": tool_name,
+                    "ok": ok,
+                    "arguments": args,
+                    "result": _summarize_tool_result_for_trace(
+                        result_payload,
+                        max_chars=self.trace_preview_max_chars,
+                    ),
+                },
+            )
+            if consecutive_tool_failures >= self.worker_failure_streak_limit:
+                telemetry["failure_streak"] = consecutive_tool_failures
+                stop_result = await self._stop_turn(
+                    reason="repeated_tool_failures",
+                    text=_build_worker_failure_streak_stop_text(
+                        traces=traces,
+                        loops=loops,
+                        failure_streak=consecutive_tool_failures,
+                    ),
+                    loops=loops,
+                    traces=traces,
+                    last_response_id=last_response_id,
+                    skill_state=skill_state,
+                    telemetry=telemetry,
+                    progress_callback=progress_callback,
+                    trace_callback=trace_callback,
+                    progress_extras={
+                        "failure_streak": consecutive_tool_failures,
+                    },
+                    trace_extras={"failure_streak": consecutive_tool_failures},
+                )
+                return (
+                    outputs,
+                    loop_traces,
+                    recent_tool_signatures,
+                    consecutive_tool_failures,
+                    stop_result,
+                )
+            output_count_before = len(outputs)
+            outputs.extend(
+                _build_function_call_outputs_for_model(
+                    call_id=str(call_id),
+                    tool_name=tool_name,
+                    result_payload=_limit_tool_output_for_model(
+                        _sanitize_tool_output_for_model(result_payload),
+                        max_chars=self.tool_output_max_chars,
+                    ),
+                )
+            )
+            await _emit_trace(
+                trace_callback,
+                "function_call_output_built",
+                {
+                    "loop": loops,
+                    "call_id": str(call_id),
+                    "tool_name": tool_name,
+                    "output_items_added": len(outputs) - output_count_before,
+                },
+            )
+
+        return (
+            outputs,
+            loop_traces,
+            recent_tool_signatures,
+            consecutive_tool_failures,
+            None,
+        )
+
+    async def _apply_loop_controls(
+        self,
+        *,
+        loops: int,
+        traces: list[ToolTrace],
+        loop_traces: list[ToolTrace],
+        outputs: list[dict[str, Any]],
+        recent_tool_signatures: list[str],
+        loop_guard_hits: int,
+        no_progress_loops: int,
+        consume_steering_messages: SteeringMessagesCallback | None,
+        last_response_id: str | None,
+        skill_state: dict[str, Any],
+        telemetry: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+        trace_callback: TraceCallback | None,
+    ) -> tuple[list[dict[str, Any]], int, int, AgentTurnResult | None]:
+        steering_inputs = self._collect_steering_inputs(consume_steering_messages)
+        if _loop_has_concrete_progress(loop_traces):
+            no_progress_loops = 0
+        else:
+            no_progress_loops += 1
+        telemetry["no_progress_loops"] = no_progress_loops
+        if steering_inputs:
+            no_progress_loops = max(0, no_progress_loops - 1)
+
+        guard_message = _build_worker_loop_guard_message(
+            traces=traces,
+            recent_tool_signatures=recent_tool_signatures,
+            loops=loops,
+            guard_hits=loop_guard_hits,
+            window=self.worker_loop_guard_window,
+            min_discovery=self.worker_loop_guard_min_discovery,
+        )
+
+        guard_inputs: list[dict[str, Any]] = []
+        if guard_message:
+            loop_guard_hits += 1
+            telemetry["loop_guard_hits"] = loop_guard_hits
+            guard_inputs = _build_execution_guard_inputs_for_model(guard_message)
+            outputs.extend(guard_inputs)
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Execution nudge",
+                    "detail_text": "Breaking repetitive discovery loop",
+                    "loop": loops,
+                    "tool_calls_total": len(traces),
+                    "loop_guard_hits": loop_guard_hits,
+                },
+            )
+            await _emit_trace(
+                trace_callback,
+                "loop_guard_triggered",
+                {
+                    "loop": loops,
+                    "tool_calls_total": len(traces),
+                    "loop_guard_hits": loop_guard_hits,
+                    "guard_message_preview": _to_trace_preview(
+                        guard_message,
+                        max_chars=self.trace_preview_max_chars,
+                    ),
+                },
+            )
+            if loop_guard_hits > self.worker_loop_guard_max_hits:
+                return (
+                    outputs,
+                    no_progress_loops,
+                    loop_guard_hits,
+                    await self._stop_turn(
+                        reason="repetitive_discovery_loop",
+                        text=_build_worker_loop_guard_stop_text(
+                            traces=traces,
+                            loops=loops,
+                        ),
+                        loops=loops,
+                        traces=traces,
+                        last_response_id=last_response_id,
+                        skill_state=skill_state,
+                        telemetry=telemetry,
+                        progress_callback=progress_callback,
+                        trace_callback=trace_callback,
+                    ),
+                )
+
+        if no_progress_loops >= self.worker_no_progress_loop_limit:
+            return (
+                outputs,
+                no_progress_loops,
+                loop_guard_hits,
+                await self._stop_turn(
+                    reason="no_concrete_progress",
+                    text=_build_worker_no_progress_stop_text(
+                        traces=traces,
+                        loops=loops,
+                        no_progress_loops=no_progress_loops,
+                    ),
+                    loops=loops,
+                    traces=traces,
+                    last_response_id=last_response_id,
+                    skill_state=skill_state,
+                    telemetry=telemetry,
+                    progress_callback=progress_callback,
+                    trace_callback=trace_callback,
+                    progress_extras={"no_progress_loops": no_progress_loops},
+                    trace_extras={"no_progress_loops": no_progress_loops},
+                ),
+            )
+
+        if steering_inputs:
+            outputs.extend(steering_inputs)
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Steering",
+                    "detail_text": "Applying latest user guidance",
+                    "loop": loops,
+                    "tool_calls_total": len(traces),
+                },
+            )
+        elif not guard_inputs:
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Reviewing tool results",
+                    "detail_text": "Choosing next step",
+                    "loop": loops,
+                    "tool_calls_total": len(traces),
+                },
+            )
+
+        return outputs, no_progress_loops, loop_guard_hits, None
+
     async def run_turn(
         self,
         *,
@@ -469,11 +1110,6 @@ class AgentOrchestrator:
         trace_callback: TraceCallback | None = None,
     ) -> AgentTurnResult:
         _ = message_callback
-
-        if not self.api_key:
-            raise RuntimeError(
-                "Missing API key. Set ATOPILE_AGENT_OPENAI_API_KEY or OPENAI_API_KEY."
-            )
 
         project_path = tools.validate_tool_scope(project_root, ctx)
         include_session_primer = previous_response_id is None and len(history) == 0
@@ -530,30 +1166,17 @@ class AgentOrchestrator:
                 ),
             }
         )
-        request_input.extend(
-            _build_steering_inputs_for_model(
-                _consume_steering_updates(consume_steering_messages)
-            )
-        )
+        request_input.extend(self._collect_steering_inputs(consume_steering_messages))
 
         tool_defs = tools.get_tool_definitions()
-        request_payload: dict[str, Any] = {
-            "model": self.model,
-            "input": request_input,
-            "instructions": instructions,
-            "tools": tool_defs,
-            "tool_choice": "auto",
-            "truncation": "disabled",
-            "prompt_cache_key": _build_prompt_cache_key(
-                project_path=project_path,
-                tool_defs=tool_defs,
-                skill_state=skill_state,
-                model=self.model,
-            ),
-            "prompt_cache_retention": self.prompt_cache_retention,
-        }
-        if previous_response_id:
-            request_payload["previous_response_id"] = previous_response_id
+        request_payload = self._build_model_request_payload(
+            project_path=project_path,
+            input_items=request_input,
+            instructions=instructions,
+            tool_defs=tool_defs,
+            skill_state=skill_state,
+            previous_response_id=previous_response_id,
+        )
 
         telemetry: dict[str, Any] = {
             "api_retry_count": 0,
@@ -561,7 +1184,7 @@ class AgentOrchestrator:
             "preflight_input_tokens": None,
         }
         await _emit_trace(
-            trace_callback if self.trace_enabled else None,
+            self._active_trace_callback(trace_callback),
             "turn_started",
             {
                 "model": self.model,
@@ -590,7 +1213,7 @@ class AgentOrchestrator:
             payload=request_payload,
             telemetry=telemetry,
             progress_callback=progress_callback,
-            trace_callback=trace_callback if self.trace_enabled else None,
+            trace_callback=self._active_trace_callback(trace_callback),
         )
 
         traces: list[ToolTrace] = []
@@ -604,7 +1227,7 @@ class AgentOrchestrator:
         while loops < self.max_tool_loops:
             elapsed_s = time.monotonic() - started_at_s
             await _emit_trace(
-                trace_callback if self.trace_enabled else None,
+                self._active_trace_callback(trace_callback),
                 "loop_started",
                 {
                     "loop": loops + 1,
@@ -613,42 +1236,27 @@ class AgentOrchestrator:
                 },
             )
             if elapsed_s >= self.max_turn_seconds:
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "stopped",
-                        "reason": "turn_time_budget_exceeded",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "elapsed_seconds": round(elapsed_s, 1),
-                    },
-                )
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "turn_stopped",
-                    {
-                        "reason": "turn_time_budget_exceeded",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "elapsed_seconds": round(elapsed_s, 1),
-                    },
-                )
-                return AgentTurnResult(
+                return await self._stop_turn(
+                    reason="turn_time_budget_exceeded",
                     text=_build_worker_time_budget_stop_text(
                         traces=traces,
                         loops=loops,
                         elapsed_seconds=elapsed_s,
                     ),
-                    tool_traces=traces,
-                    model=self.model,
-                    response_id=last_response_id,
+                    loops=loops,
+                    traces=traces,
+                    last_response_id=last_response_id,
                     skill_state=skill_state,
-                    context_metrics=telemetry,
+                    telemetry=telemetry,
+                    progress_callback=progress_callback,
+                    trace_callback=self._active_trace_callback(trace_callback),
+                    progress_extras={"elapsed_seconds": round(elapsed_s, 1)},
+                    trace_extras={"elapsed_seconds": round(elapsed_s, 1)},
                 )
             loops += 1
             function_calls = _extract_function_calls(response)
             await _emit_trace(
-                trace_callback if self.trace_enabled else None,
+                self._active_trace_callback(trace_callback),
                 "loop_function_calls",
                 {
                     "loop": loops,
@@ -664,508 +1272,93 @@ class AgentOrchestrator:
                 },
             )
             if not function_calls:
-                steering_inputs = _build_steering_inputs_for_model(
-                    _consume_steering_updates(consume_steering_messages)
-                )
-                if steering_inputs:
-                    await _emit_trace(
-                        trace_callback if self.trace_enabled else None,
-                        "steering_applied",
-                        {
-                            "loop": loops,
-                            "steering_items": len(steering_inputs),
-                        },
-                    )
-                    await _emit_progress(
-                        progress_callback,
-                        {
-                            "phase": "thinking",
-                            "status_text": "Steering",
-                            "detail_text": "Applying latest user guidance",
-                        },
-                    )
-                    response = await self._responses_create_with_context_control(
-                        payload={
-                            "model": self.model,
-                            "previous_response_id": response.get("id"),
-                            "input": steering_inputs,
-                            "instructions": instructions,
-                            "tools": tool_defs,
-                            "tool_choice": "auto",
-                            "truncation": "disabled",
-                            "prompt_cache_key": _build_prompt_cache_key(
-                                project_path=project_path,
-                                tool_defs=tool_defs,
-                                skill_state=skill_state,
-                                model=self.model,
-                            ),
-                            "prompt_cache_retention": self.prompt_cache_retention,
-                        },
-                        telemetry=telemetry,
-                        progress_callback=progress_callback,
-                        trace_callback=trace_callback if self.trace_enabled else None,
-                        enable_preflight=False,
-                    )
-                    last_response_id = response.get("id") or last_response_id
-                    continue
-                text = _extract_text(response)
-                if not text:
-                    text = "No assistant response produced."
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "turn_completed",
-                    {
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "response_id": response.get("id"),
-                        "assistant_text_preview": _to_trace_preview(
-                            text,
-                            max_chars=self.trace_preview_max_chars,
-                        ),
-                    },
-                )
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "thinking",
-                        "status_text": "Composing response",
-                    },
-                )
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "done",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                    },
-                )
-                return AgentTurnResult(
-                    text=text,
-                    tool_traces=traces,
-                    model=self.model,
-                    response_id=last_response_id,
+                response, last_response_id, done = await self._handle_no_function_calls(
+                    response=response,
+                    loops=loops,
+                    traces=traces,
+                    last_response_id=last_response_id,
+                    consume_steering_messages=consume_steering_messages,
+                    project_path=project_path,
+                    instructions=instructions,
+                    tool_defs=tool_defs,
                     skill_state=skill_state,
-                    context_metrics=telemetry,
+                    telemetry=telemetry,
+                    progress_callback=progress_callback,
+                    trace_callback=self._active_trace_callback(trace_callback),
                 )
-
-            outputs: list[dict[str, Any]] = []
-            loop_traces: list[ToolTrace] = []
-            tool_count = len(function_calls)
-            for tool_index, call in enumerate(function_calls, start=1):
-                call_id = call.get("call_id") or call.get("id")
-                if not call_id:
-                    await _emit_trace(
-                        trace_callback if self.trace_enabled else None,
-                        "tool_call_skipped",
-                        {
-                            "loop": loops,
-                            "tool_index": tool_index,
-                            "tool_count": tool_count,
-                            "reason": "missing_call_id",
-                            "call": _summarize_function_call_for_trace(
-                                call,
-                                max_chars=self.trace_preview_max_chars,
-                            ),
-                        },
-                    )
+                if done is not None:
+                    return done
+                if response is not None:
                     continue
 
-                tool_name = str(call.get("name", ""))
-                raw_args = str(call.get("arguments", ""))
-                args: dict[str, Any]
-                result_payload: dict[str, Any]
-                ok = True
-
-                parsed_args: dict[str, Any] | None = None
-                try:
-                    parsed_args = tools.parse_tool_arguments(raw_args)
-                except Exception:
-                    parsed_args = None
-
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "tool_start",
-                        "loop": loops,
-                        "tool_index": tool_index,
-                        "tool_count": tool_count,
-                        "call_id": str(call_id),
-                        "name": tool_name,
-                        "args": parsed_args if parsed_args is not None else {},
-                    },
-                )
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "tool_call_started",
-                    {
-                        "loop": loops,
-                        "tool_index": tool_index,
-                        "tool_count": tool_count,
-                        "call_id": str(call_id),
-                        "name": tool_name,
-                        "raw_arguments_preview": _to_trace_preview(
-                            raw_args,
-                            max_chars=self.trace_preview_max_chars,
-                        ),
-                        "parsed_arguments": (
-                            parsed_args if parsed_args is not None else {}
-                        ),
-                    },
-                )
-
-                try:
-                    args = parsed_args if parsed_args is not None else {}
-                    if parsed_args is None:
-                        args = tools.parse_tool_arguments(raw_args)
-                    result_payload = await tools.execute_tool(
-                        name=tool_name,
-                        arguments=args,
-                        project_root=project_path,
-                        ctx=ctx,
-                    )
-                except Exception as exc:
-                    ok = False
-                    args = parsed_args if parsed_args is not None else {}
-                    remaps = getattr(exc, "remaps", None)
-                    auto_remap_attempted = False
-                    if tool_name == "project_edit_file" and isinstance(remaps, dict):
-                        remapped_args, did_remap = _apply_project_edit_remaps(
-                            args,
-                            remaps,
-                        )
-                        if did_remap:
-                            auto_remap_attempted = True
-                            try:
-                                result_payload = await tools.execute_tool(
-                                    name=tool_name,
-                                    arguments=remapped_args,
-                                    project_root=project_path,
-                                    ctx=ctx,
-                                )
-                                args = remapped_args
-                                ok = True
-                                if isinstance(result_payload, dict):
-                                    result_payload = dict(result_payload)
-                                    result_payload["auto_remap_retry"] = True
-                            except Exception as remap_exc:
-                                args = remapped_args
-                                exc = remap_exc
-                                remaps = getattr(remap_exc, "remaps", None)
-
-                    if not ok:
-                        result_payload = {
-                            "error": str(exc),
-                            "error_type": type(exc).__name__,
-                        }
-                        if auto_remap_attempted:
-                            result_payload["auto_remap_retry"] = True
-                        if isinstance(remaps, dict):
-                            result_payload["remaps"] = remaps
-                        mismatches = getattr(exc, "mismatches", None)
-                        if isinstance(mismatches, list):
-                            result_payload["mismatches"] = [
-                                {
-                                    "line": getattr(mismatch, "line", None),
-                                    "expected": getattr(mismatch, "expected", None),
-                                    "actual": getattr(mismatch, "actual", None),
-                                }
-                                for mismatch in mismatches
-                            ]
-
-                traces.append(
-                    ToolTrace(
-                        name=tool_name,
-                        args=args,
-                        ok=ok,
-                        result=result_payload,
-                    )
-                )
-                loop_traces.append(traces[-1])
-                if ok:
-                    consecutive_tool_failures = 0
-                else:
-                    consecutive_tool_failures += 1
-                recent_tool_signatures.append(
-                    _tool_call_signature(tool_name=tool_name, args=args)
-                )
-                if len(recent_tool_signatures) > 48:
-                    recent_tool_signatures = recent_tool_signatures[-48:]
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "tool_end",
-                        "loop": loops,
-                        "tool_index": tool_index,
-                        "tool_count": tool_count,
-                        "call_id": str(call_id),
-                        "trace": {
-                            "name": tool_name,
-                            "args": args,
-                            "ok": ok,
-                            "result": result_payload,
-                        },
-                    },
-                )
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "tool_call_completed",
-                    {
-                        "loop": loops,
-                        "tool_index": tool_index,
-                        "tool_count": tool_count,
-                        "call_id": str(call_id),
-                        "name": tool_name,
-                        "ok": ok,
-                        "arguments": args,
-                        "result": _summarize_tool_result_for_trace(
-                            result_payload,
-                            max_chars=self.trace_preview_max_chars,
-                        ),
-                    },
-                )
-                if consecutive_tool_failures >= self.worker_failure_streak_limit:
-                    telemetry["failure_streak"] = consecutive_tool_failures
-                    await _emit_progress(
-                        progress_callback,
-                        {
-                            "phase": "stopped",
-                            "reason": "repeated_tool_failures",
-                            "loop": loops,
-                            "tool_calls_total": len(traces),
-                            "failure_streak": consecutive_tool_failures,
-                        },
-                    )
-                    await _emit_trace(
-                        trace_callback if self.trace_enabled else None,
-                        "turn_stopped",
-                        {
-                            "reason": "repeated_tool_failures",
-                            "loop": loops,
-                            "tool_calls_total": len(traces),
-                            "failure_streak": consecutive_tool_failures,
-                        },
-                    )
-                    return AgentTurnResult(
-                        text=_build_worker_failure_streak_stop_text(
-                            traces=traces,
-                            loops=loops,
-                            failure_streak=consecutive_tool_failures,
-                        ),
-                        tool_traces=traces,
-                        model=self.model,
-                        response_id=last_response_id,
-                        skill_state=skill_state,
-                        context_metrics=telemetry,
-                    )
-                output_count_before = len(outputs)
-                outputs.extend(
-                    _build_function_call_outputs_for_model(
-                        call_id=str(call_id),
-                        tool_name=tool_name,
-                        result_payload=_limit_tool_output_for_model(
-                            _sanitize_tool_output_for_model(result_payload),
-                            max_chars=self.tool_output_max_chars,
-                        ),
-                    )
-                )
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "function_call_output_built",
-                    {
-                        "loop": loops,
-                        "call_id": str(call_id),
-                        "tool_name": tool_name,
-                        "output_items_added": len(outputs) - output_count_before,
-                    },
-                )
-
-            steering_inputs = _build_steering_inputs_for_model(
-                _consume_steering_updates(consume_steering_messages)
-            )
-            if _loop_has_concrete_progress(loop_traces):
-                no_progress_loops = 0
-            else:
-                no_progress_loops += 1
-            telemetry["no_progress_loops"] = no_progress_loops
-            if steering_inputs:
-                no_progress_loops = max(0, no_progress_loops - 1)
-            guard_message = _build_worker_loop_guard_message(
+            (
+                outputs,
+                loop_traces,
+                recent_tool_signatures,
+                consecutive_tool_failures,
+                early_result,
+            ) = await self._process_function_calls(
+                function_calls=function_calls,
+                loops=loops,
+                project_path=project_path,
+                ctx=ctx,
                 traces=traces,
                 recent_tool_signatures=recent_tool_signatures,
-                loops=loops,
-                guard_hits=loop_guard_hits,
-                window=self.worker_loop_guard_window,
-                min_discovery=self.worker_loop_guard_min_discovery,
+                consecutive_tool_failures=consecutive_tool_failures,
+                telemetry=telemetry,
+                skill_state=skill_state,
+                last_response_id=last_response_id,
+                progress_callback=progress_callback,
+                trace_callback=self._active_trace_callback(trace_callback),
             )
-            guard_inputs: list[dict[str, Any]] = []
-            if guard_message:
-                loop_guard_hits += 1
-                telemetry["loop_guard_hits"] = loop_guard_hits
-                guard_inputs = _build_execution_guard_inputs_for_model(guard_message)
-                outputs.extend(guard_inputs)
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "thinking",
-                        "status_text": "Execution nudge",
-                        "detail_text": "Breaking repetitive discovery loop",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "loop_guard_hits": loop_guard_hits,
-                    },
-                )
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "loop_guard_triggered",
-                    {
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "loop_guard_hits": loop_guard_hits,
-                        "guard_message_preview": _to_trace_preview(
-                            guard_message,
-                            max_chars=self.trace_preview_max_chars,
-                        ),
-                    },
-                )
-                if loop_guard_hits > self.worker_loop_guard_max_hits:
-                    await _emit_progress(
-                        progress_callback,
-                        {
-                            "phase": "stopped",
-                            "reason": "repetitive_discovery_loop",
-                            "loop": loops,
-                            "tool_calls_total": len(traces),
-                        },
-                    )
-                    await _emit_trace(
-                        trace_callback if self.trace_enabled else None,
-                        "turn_stopped",
-                        {
-                            "reason": "repetitive_discovery_loop",
-                            "loop": loops,
-                            "tool_calls_total": len(traces),
-                        },
-                    )
-                    return AgentTurnResult(
-                        text=_build_worker_loop_guard_stop_text(
-                            traces=traces,
-                            loops=loops,
-                        ),
-                        tool_traces=traces,
-                        model=self.model,
-                        response_id=last_response_id,
-                        skill_state=skill_state,
-                        context_metrics=telemetry,
-                    )
-            if no_progress_loops >= self.worker_no_progress_loop_limit:
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "stopped",
-                        "reason": "no_concrete_progress",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "no_progress_loops": no_progress_loops,
-                    },
-                )
-                await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
-                    "turn_stopped",
-                    {
-                        "reason": "no_concrete_progress",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                        "no_progress_loops": no_progress_loops,
-                    },
-                )
-                return AgentTurnResult(
-                    text=_build_worker_no_progress_stop_text(
-                        traces=traces,
-                        loops=loops,
-                        no_progress_loops=no_progress_loops,
-                    ),
-                    tool_traces=traces,
-                    model=self.model,
-                    response_id=last_response_id,
-                    skill_state=skill_state,
-                    context_metrics=telemetry,
-                )
-            if steering_inputs:
-                outputs.extend(steering_inputs)
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "thinking",
-                        "status_text": "Steering",
-                        "detail_text": "Applying latest user guidance",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                    },
-                )
-            elif guard_inputs:
-                # Progress event already emitted for guard trigger; avoid noisy
-                # "reviewing tool results" chatter on the same loop.
-                pass
-            else:
-                await _emit_progress(
-                    progress_callback,
-                    {
-                        "phase": "thinking",
-                        "status_text": "Reviewing tool results",
-                        "detail_text": "Choosing next step",
-                        "loop": loops,
-                        "tool_calls_total": len(traces),
-                    },
-                )
-            response = await self._responses_create_with_context_control(
-                payload={
-                    "model": self.model,
-                    "previous_response_id": response.get("id"),
-                    "input": outputs,
-                    "instructions": instructions,
-                    "tools": tool_defs,
-                    "tool_choice": "auto",
-                    "truncation": "disabled",
-                    "prompt_cache_key": _build_prompt_cache_key(
-                        project_path=project_path,
-                        tool_defs=tool_defs,
-                        skill_state=skill_state,
-                        model=self.model,
-                    ),
-                    "prompt_cache_retention": self.prompt_cache_retention,
-                },
+            if early_result is not None:
+                return early_result
+
+            (
+                outputs,
+                no_progress_loops,
+                loop_guard_hits,
+                early_result,
+            ) = await self._apply_loop_controls(
+                loops=loops,
+                traces=traces,
+                loop_traces=loop_traces,
+                outputs=outputs,
+                recent_tool_signatures=recent_tool_signatures,
+                loop_guard_hits=loop_guard_hits,
+                no_progress_loops=no_progress_loops,
+                consume_steering_messages=consume_steering_messages,
+                last_response_id=last_response_id,
+                skill_state=skill_state,
                 telemetry=telemetry,
                 progress_callback=progress_callback,
-                trace_callback=trace_callback if self.trace_enabled else None,
-                enable_preflight=False,
+                trace_callback=self._active_trace_callback(trace_callback),
             )
-            last_response_id = response.get("id") or last_response_id
+            if early_result is not None:
+                return early_result
+            response = await self._request_followup_response(
+                project_path=project_path,
+                input_items=outputs,
+                instructions=instructions,
+                tool_defs=tool_defs,
+                skill_state=skill_state,
+                previous_response_id=self._response_id_or_none(response),
+                telemetry=telemetry,
+                progress_callback=progress_callback,
+                trace_callback=self._active_trace_callback(trace_callback),
+            )
+            last_response_id = self._response_id_or_none(response) or last_response_id
 
-        await _emit_progress(
-            progress_callback,
-            {
-                "phase": "stopped",
-                "reason": "too_many_tool_iterations",
-                "loop": loops,
-                "tool_calls_total": len(traces),
-            },
-        )
-        await _emit_trace(
-            trace_callback if self.trace_enabled else None,
-            "turn_stopped",
-            {
-                "reason": "too_many_tool_iterations",
-                "loop": loops,
-                "tool_calls_total": len(traces),
-            },
-        )
-        return AgentTurnResult(
+        return await self._stop_turn(
+            reason="too_many_tool_iterations",
             text="Stopped after too many tool iterations.",
-            tool_traces=traces,
-            model=self.model,
-            response_id=last_response_id,
+            loops=loops,
+            traces=traces,
+            last_response_id=last_response_id,
             skill_state=skill_state,
-            context_metrics=telemetry,
+            telemetry=telemetry,
+            progress_callback=progress_callback,
+            trace_callback=self._active_trace_callback(trace_callback),
         )
 
     async def _build_context(
@@ -1303,7 +1496,7 @@ class AgentOrchestrator:
             if isinstance(preflight_tokens, int):
                 counted_preflight_tokens = preflight_tokens
             await _emit_trace(
-                trace_callback if self.trace_enabled else None,
+                self._active_trace_callback(trace_callback),
                 "model_preflight_tokens",
                 {
                     "input_tokens": preflight_tokens,
@@ -1332,7 +1525,7 @@ class AgentOrchestrator:
                     )
                     if compacted_id:
                         await _emit_trace(
-                            trace_callback if self.trace_enabled else None,
+                            self._active_trace_callback(trace_callback),
                             "context_compacted",
                             {
                                 "from_response_id": previous_response_id,
@@ -1346,7 +1539,7 @@ class AgentOrchestrator:
                         if isinstance(preflight_tokens_after, int):
                             counted_preflight_tokens = preflight_tokens_after
                         await _emit_trace(
-                            trace_callback if self.trace_enabled else None,
+                            self._active_trace_callback(trace_callback),
                             "model_preflight_tokens",
                             {
                                 "input_tokens": preflight_tokens_after,
@@ -1371,7 +1564,7 @@ class AgentOrchestrator:
             payload,
             telemetry=telemetry,
             progress_callback=progress_callback,
-            trace_callback=trace_callback if self.trace_enabled else None,
+            trace_callback=self._active_trace_callback(trace_callback),
             preflight_input_tokens=counted_preflight_tokens,
             context_limit_tokens=self.context_hard_max_tokens,
         )
@@ -1393,7 +1586,7 @@ class AgentOrchestrator:
         function_output_shrink_index = 0
         for attempt in range(self.api_retries + 1):
             await _emit_trace(
-                trace_callback if self.trace_enabled else None,
+                self._active_trace_callback(trace_callback),
                 "model_request",
                 {
                     "attempt": attempt + 1,
@@ -1413,7 +1606,7 @@ class AgentOrchestrator:
             try:
                 response = await client.responses.create(**working_payload)
                 await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
+                    self._active_trace_callback(trace_callback),
                     "model_response",
                     {
                         "attempt": attempt + 1,
@@ -1447,7 +1640,7 @@ class AgentOrchestrator:
                         },
                     )
                     await _emit_trace(
-                        trace_callback if self.trace_enabled else None,
+                        self._active_trace_callback(trace_callback),
                         "model_retry_scheduled",
                         {
                             "attempt": attempt + 1,
@@ -1484,7 +1677,7 @@ class AgentOrchestrator:
                                 },
                             )
                             await _emit_trace(
-                                trace_callback if self.trace_enabled else None,
+                                self._active_trace_callback(trace_callback),
                                 "tool_output_compacted",
                                 {
                                     "attempt": attempt + 1,
@@ -1523,7 +1716,7 @@ class AgentOrchestrator:
                     )
                     if compacted_id:
                         await _emit_trace(
-                            trace_callback if self.trace_enabled else None,
+                            self._active_trace_callback(trace_callback),
                             "context_compacted",
                             {
                                 "from_response_id": working_payload[
@@ -1537,7 +1730,7 @@ class AgentOrchestrator:
                 snippet = _extract_sdk_error_text(exc)[:500]
                 payload_debug = _payload_debug_summary(working_payload)
                 await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
+                    self._active_trace_callback(trace_callback),
                     "model_request_failed",
                     {
                         "attempt": attempt + 1,
@@ -1575,7 +1768,7 @@ class AgentOrchestrator:
                         },
                     )
                     await _emit_trace(
-                        trace_callback if self.trace_enabled else None,
+                        self._active_trace_callback(trace_callback),
                         "model_retry_scheduled",
                         {
                             "attempt": attempt + 1,
@@ -1587,7 +1780,7 @@ class AgentOrchestrator:
                     continue
                 payload_debug = _payload_debug_summary(working_payload)
                 await _emit_trace(
-                    trace_callback if self.trace_enabled else None,
+                    self._active_trace_callback(trace_callback),
                     "model_request_failed",
                     {
                         "attempt": attempt + 1,

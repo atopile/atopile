@@ -31,31 +31,90 @@ def read_datasheet_file(
     url: str | None = None,
     resolve_scoped_path: Callable[[Path, str], Path],
     scope_error_cls: type[Exception],
+    read_datasheet_bytes_from_path_fn: (
+        Callable[
+            [Path, str],
+            tuple[bytes, str, str | None],
+        ]
+        | None
+    ) = None,
+    read_datasheet_bytes_from_url_fn: (
+        Callable[[str], tuple[bytes, str, str | None]] | None
+    ) = None,
+    detect_datasheet_format_fn: (
+        Callable[
+            [str, str | None, bytes],
+            Literal["pdf", "html", "text"],
+        ]
+        | None
+    ) = None,
+    guess_datasheet_filename_fn: (
+        Callable[[str, Literal["path", "url"], bytes], str] | None
+    ) = None,
 ) -> tuple[bytes, dict[str, object]]:
     """Resolve datasheet bytes from a local file or remote URL."""
+    if read_datasheet_bytes_from_path_fn is None:
+        def read_datasheet_bytes_from_path_fn(
+            root: Path,
+            raw_path: str,
+        ) -> tuple[bytes, str, str | None]:
+            return _read_datasheet_bytes_from_path(
+                root,
+                raw_path,
+                resolve_scoped_path=resolve_scoped_path,
+                scope_error_cls=scope_error_cls,
+            )
+    if read_datasheet_bytes_from_url_fn is None:
+        def read_datasheet_bytes_from_url_fn(
+            raw_url: str,
+        ) -> tuple[bytes, str, str | None]:
+            return _read_datasheet_bytes_from_url(
+                raw_url,
+                scope_error_cls=scope_error_cls,
+            )
+    if detect_datasheet_format_fn is None:
+        def detect_datasheet_format_fn(
+            source_value: str,
+            content_type: str | None,
+            raw_bytes: bytes,
+        ) -> Literal["pdf", "html", "text"]:
+            return _detect_datasheet_format(
+                source_value=source_value,
+                content_type=content_type,
+                raw_bytes=raw_bytes,
+            )
+    if guess_datasheet_filename_fn is None:
+        def guess_datasheet_filename_fn(
+            source_value: str,
+            source_kind: Literal["path", "url"],
+            raw_bytes: bytes,
+        ) -> str:
+            return _guess_datasheet_filename(
+                source_value=source_value,
+                source_kind=source_kind,
+                raw_bytes=raw_bytes,
+            )
+
     sources = [bool(path and str(path).strip()), bool(url and str(url).strip())]
     if sum(1 for source in sources if source) != 1:
         raise scope_error_cls("Provide exactly one datasheet source: path or url")
 
     if path and str(path).strip():
-        raw_bytes, source_value, content_type = _read_datasheet_bytes_from_path(
+        raw_bytes, source_value, content_type = read_datasheet_bytes_from_path_fn(
             project_root,
             str(path),
-            resolve_scoped_path=resolve_scoped_path,
-            scope_error_cls=scope_error_cls,
         )
         source_kind: Literal["path", "url"] = "path"
     else:
-        raw_bytes, source_value, content_type = _read_datasheet_bytes_from_url(
+        raw_bytes, source_value, content_type = read_datasheet_bytes_from_url_fn(
             str(url or ""),
-            scope_error_cls=scope_error_cls,
         )
         source_kind = "url"
 
     if not raw_bytes:
         raise scope_error_cls("Datasheet source returned empty content.")
 
-    data_format = _detect_datasheet_format(
+    data_format = detect_datasheet_format_fn(
         source_value=source_value,
         content_type=content_type,
         raw_bytes=raw_bytes,
@@ -70,11 +129,7 @@ def read_datasheet_file(
             "This often means the URL returned HTML instead of the file."
         )
 
-    filename = _guess_datasheet_filename(
-        source_value=source_value,
-        source_kind=source_kind,
-        raw_bytes=raw_bytes,
-    )
+    filename = guess_datasheet_filename_fn(source_value, source_kind, raw_bytes)
     sha256 = hashlib.sha256(raw_bytes).hexdigest()
     metadata: dict[str, object] = {
         "source_kind": source_kind,

@@ -1251,7 +1251,7 @@ class DeepPCB_Transformer:
             }
             layer_suffix = "0_1" if len(layers) > 1 else "0"
             padstack_id = f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
-        elif provider_strict and shape in {"circle", "oval"} and drill_payload is not None and len(layers) > 1:
+        elif provider_strict and shape == "circle" and drill_payload is not None and len(layers) > 1:
             radius = int(round(max(size_w, size_h) * 500))
             drill_x = drill_payload.get("sizeX")
             drill_y = drill_payload.get("sizeY")

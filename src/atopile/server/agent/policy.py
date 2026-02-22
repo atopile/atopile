@@ -14,6 +14,10 @@ from atopile.dataclasses import AppContext
 from atopile.server.agent import policy_datasheet
 from atopile.server.agent import policy_scope
 
+# Backward-compatible re-exports for existing callers/tests.
+lcsc_wmsc_url = policy_datasheet.lcsc_wmsc_url
+urllib_request = policy_datasheet.urllib_request
+
 _MAX_WRITE_FILE_BYTES = 600_000
 _MAX_UI_DIFF_BYTES = 220_000
 _HASH_HEX_CHARS = 4
@@ -85,6 +89,26 @@ class HashlineMismatchError(ScopeError):
             for mismatch in mismatches
         }
         super().__init__(_format_mismatch_error(mismatches, file_lines))
+
+
+def _detect_datasheet_format(
+    *,
+    source_value: str,
+    content_type: str | None,
+    raw_bytes: bytes,
+) -> Literal["pdf", "html", "text"]:
+    return policy_datasheet._detect_datasheet_format(
+        source_value=source_value,
+        content_type=content_type,
+        raw_bytes=raw_bytes,
+    )
+
+
+def _read_datasheet_bytes_from_url(url: str) -> tuple[bytes, str, str | None]:
+    return policy_datasheet._read_datasheet_bytes_from_url(
+        url,
+        scope_error_cls=ScopeError,
+    )
 
 
 def resolve_project_root(project_root: str, ctx: AppContext) -> Path:
@@ -204,12 +228,26 @@ def read_datasheet_file(
     url: str | None = None,
 ) -> tuple[bytes, dict[str, object]]:
     """Resolve datasheet bytes from a local file or remote URL."""
+    def _read_from_path(
+        root: Path,
+        raw_path: str,
+    ) -> tuple[bytes, str, str | None]:
+        return policy_datasheet._read_datasheet_bytes_from_path(
+            root,
+            raw_path,
+            resolve_scoped_path=resolve_scoped_path,
+            scope_error_cls=ScopeError,
+        )
+
     return policy_datasheet.read_datasheet_file(
         project_root,
         path=path,
         url=url,
         resolve_scoped_path=resolve_scoped_path,
         scope_error_cls=ScopeError,
+        read_datasheet_bytes_from_path_fn=_read_from_path,
+        read_datasheet_bytes_from_url_fn=_read_datasheet_bytes_from_url,
+        detect_datasheet_format_fn=_detect_datasheet_format,
     )
 
 

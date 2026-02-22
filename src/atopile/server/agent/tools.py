@@ -28,6 +28,7 @@ from atopile.model import builds as builds_domain
 from atopile.model.sqlite import BuildHistory
 from atopile.server import module_introspection
 from atopile.server.agent import policy
+from atopile.server.agent import tool_layout as _tool_layout_module
 from atopile.server.agent.tool_autolayout_web_helpers import (
     _apply_component_highlight_overlay,
     _autolayout_recommended_action,
@@ -64,10 +65,12 @@ from atopile.server.agent.tool_layout import (
     _LayoutComponentRecord,
     _footprint_reference,
     _layout_component_payload,
-    _layout_get_component_position,
-    _layout_set_component_position,
+    _layout_get_component_position as _layout_get_component_position_impl,
+    _layout_set_component_position as _layout_set_component_position_impl,
+    _load_layout_component_index as _load_layout_component_index_impl,
     _resolve_highlight_components,
-    _resolve_layout_file_for_tool,
+    _resolve_layout_file_for_tool as _resolve_layout_file_for_tool_impl,
+    _write_layout_component_file as _write_layout_component_file_impl,
 )
 from atopile.server.agent.tool_references import (
     _collect_example_projects,
@@ -122,6 +125,66 @@ _EXPECTED_MANUFACTURING_OUTPUT_KEYS: tuple[str, ...] = (
     "pcb_summary",
 )
 _AUTOLAYOUT_MAX_TIMEOUT_MINUTES = 2
+
+# Backward-compatible aliases and patch points for tests/callers.
+_resolve_layout_file_for_tool = _resolve_layout_file_for_tool_impl
+_load_layout_component_index = _load_layout_component_index_impl
+_write_layout_component_file = _write_layout_component_file_impl
+
+
+def _sync_layout_tool_patchpoints() -> None:
+    # Keep tool_layout internals in sync with module-level monkeypatches.
+    _tool_layout_module._resolve_layout_file_for_tool = _resolve_layout_file_for_tool
+    _tool_layout_module._load_layout_component_index = _load_layout_component_index
+    _tool_layout_module._write_layout_component_file = _write_layout_component_file
+
+
+def _layout_get_component_position(
+    *,
+    project_root: Path,
+    target: str,
+    address: str,
+    fuzzy_limit: int,
+) -> dict[str, Any]:
+    _sync_layout_tool_patchpoints()
+    return _layout_get_component_position_impl(
+        project_root=project_root,
+        target=target,
+        address=address,
+        fuzzy_limit=fuzzy_limit,
+    )
+
+
+def _layout_set_component_position(
+    *,
+    project_root: Path,
+    target: str,
+    address: str,
+    mode: str,
+    x_mm: float | None,
+    y_mm: float | None,
+    rotation_deg: float | None,
+    dx_mm: float | None,
+    dy_mm: float | None,
+    drotation_deg: float | None,
+    layer: str | None,
+    fuzzy_limit: int,
+) -> dict[str, Any]:
+    _sync_layout_tool_patchpoints()
+    return _layout_set_component_position_impl(
+        project_root=project_root,
+        target=target,
+        address=address,
+        mode=mode,
+        x_mm=x_mm,
+        y_mm=y_mm,
+        rotation_deg=rotation_deg,
+        dx_mm=dx_mm,
+        dy_mm=dy_mm,
+        drotation_deg=drotation_deg,
+        layer=layer,
+        fuzzy_limit=fuzzy_limit,
+    )
 
 def _datasheet_cache_key(*, project_root: Path, source_type: str, source: str) -> str:
     root = str(project_root.resolve())
@@ -184,6 +247,85 @@ def _datasheet_cache_keys(
         add(source_kind, source)
 
     return keys
+
+
+def _run_exa_web_search_with_compat(
+    *,
+    query: str,
+    num_results: int,
+    search_type: str,
+    include_domains: list[str],
+    exclude_domains: list[str],
+    content_mode: str,
+    max_characters: int | None,
+    max_age_hours: int | None,
+    timeout_s: float,
+) -> dict[str, Any]:
+    try:
+        return _exa_web_search(
+            query=query,
+            num_results=num_results,
+            search_type=search_type,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            content_mode=content_mode,
+            max_characters=max_characters,
+            max_age_hours=max_age_hours,
+            timeout_s=timeout_s,
+        )
+    except TypeError as exc:
+        # Compatibility path for older adapters/tests that still use
+        # include_text instead of content_mode/max_* options.
+        if "unexpected keyword argument" not in str(exc):
+            raise
+        return _exa_web_search(
+            query=query,
+            num_results=num_results,
+            search_type=search_type,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            include_text=(content_mode == "text"),
+            timeout_s=timeout_s,
+        )
+
+
+def _resolve_web_search_content_mode(arguments: dict[str, Any]) -> str:
+    raw_mode = arguments.get("content_mode")
+    content_mode = str(raw_mode).strip().lower() if raw_mode is not None else ""
+    if content_mode and content_mode not in {"none", "highlights", "text"}:
+        raise ValueError("content_mode must be one of: none, highlights, text")
+    if content_mode:
+        return content_mode
+
+    include_text = arguments.get("include_text")
+    if isinstance(include_text, bool):
+        return "text" if include_text else "highlights"
+    return "highlights"
+
+
+def _resolve_web_search_max_characters(
+    arguments: dict[str, Any],
+    *,
+    content_mode: str,
+) -> int | None:
+    raw_max_characters = arguments.get("max_characters")
+    if raw_max_characters is None:
+        if content_mode == "highlights":
+            return 2_000
+        if content_mode == "text":
+            return 10_000
+        return None
+
+    max_characters = int(raw_max_characters)
+    return max(200, min(max_characters, 100_000))
+
+
+def _resolve_web_search_max_age_hours(arguments: dict[str, Any]) -> int | None:
+    raw_max_age_hours = arguments.get("max_age_hours")
+    if raw_max_age_hours is None:
+        return None
+    max_age_hours = int(raw_max_age_hours)
+    return max(-1, min(max_age_hours, 24 * 365))
 
 
 
@@ -546,34 +688,12 @@ async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: A
         arguments.get("exclude_domains"),
         field_name="exclude_domains",
     )
-    if include_domains and exclude_domains:
-        raise ValueError("include_domains and exclude_domains cannot both be set")
-
-    raw_mode = arguments.get("content_mode")
-    content_mode = str(raw_mode).strip().lower() if raw_mode is not None else ""
-    if content_mode and content_mode not in {"none", "highlights", "text"}:
-        raise ValueError("content_mode must be one of: none, highlights, text")
-
-    if not content_mode:
-        include_text = arguments.get("include_text")
-        if isinstance(include_text, bool):
-            content_mode = "text" if include_text else "highlights"
-        else:
-            content_mode = "highlights"
-
-    raw_max_characters = arguments.get("max_characters")
-    if raw_max_characters is None:
-        max_characters = (
-            2_000 if content_mode == "highlights" else 10_000 if content_mode == "text" else None
-        )
-    else:
-        max_characters = int(raw_max_characters)
-        max_characters = max(200, min(max_characters, 100_000))
-
-    raw_max_age_hours = arguments.get("max_age_hours")
-    max_age_hours = int(raw_max_age_hours) if raw_max_age_hours is not None else None
-    if max_age_hours is not None:
-        max_age_hours = max(-1, min(max_age_hours, 24 * 365))
+    content_mode = _resolve_web_search_content_mode(arguments)
+    max_characters = _resolve_web_search_max_characters(
+        arguments,
+        content_mode=content_mode,
+    )
+    max_age_hours = _resolve_web_search_max_age_hours(arguments)
     timeout_s = float(os.getenv("ATOPILE_AGENT_EXA_TIMEOUT_S", "30"))
     timeout_s = max(3.0, min(timeout_s, 120.0))
     hard_timeout_s = timeout_s + 5.0
@@ -581,7 +701,7 @@ async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: A
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(
-                _exa_web_search,
+                _run_exa_web_search_with_compat,
                 query=query,
                 num_results=num_results,
                 search_type=search_type,
