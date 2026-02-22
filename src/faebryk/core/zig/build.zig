@@ -186,6 +186,34 @@ fn addSexpExtension(
     return sexp_ext_step;
 }
 
+fn addSexpBenchmark(
+    b: *std.Build,
+    sexp_mod: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step {
+    const bench_exe = b.addExecutable(.{
+        .name = "sexp_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/sexp/bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "sexp", .module = sexp_mod },
+            },
+        }),
+    });
+    bench_exe.linkLibC();
+
+    const install_bench = b.addInstallArtifact(bench_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "bin" } },
+    });
+
+    const bench_step = b.step("sexp-bench", "Build S-expression benchmark executable");
+    bench_step.dependOn(&install_bench.step);
+    return bench_step;
+}
+
 fn build_python_module(
     b: *std.Build,
     modules: ModuleMap,
@@ -263,6 +291,7 @@ pub fn build(b: *std.Build) void {
     const sexp_ext_step = addSexpExtension(b, sexp_lib.root_module, sexp_lib, compat_mod, target, optimize, python_lib, python_lib_dir);
     const py_ext_step = build_python_module(b, modules_main, compat_mod, target, optimize, sexp_lib, python_include, python_lib, python_lib_dir);
     const pyi_step = build_pyi(b, modules_all, compat_mod, target, optimize);
+    _ = addSexpBenchmark(b, sexp_lib.root_module, target, optimize);
 
     // Ensure python-ext depends on sexp ext and pyi generation so one command builds all.
     py_ext_step.dependOn(sexp_ext_step);
