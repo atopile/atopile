@@ -163,7 +163,7 @@ def test_autolayout_service_mock_lifecycle(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
 
     service = AutolayoutService()
-    service._autolayout = MockAutolayoutProvider()
+    service.register_provider(MockAutolayoutProvider())
 
     job = service.start_job(
         project_root=str(project_root),
@@ -190,7 +190,7 @@ def test_autolayout_start_job_reuses_active_job_by_default(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
     service = AutolayoutService()
     provider = MockAutolayoutProvider()
-    service._autolayout = provider
+    service.register_provider(provider)
 
     job1 = service.start_job(project_root=str(project_root), build_target="default")
     job2 = service.start_job(project_root=str(project_root), build_target="default")
@@ -203,7 +203,7 @@ def test_autolayout_start_job_force_new_job_override(tmp_path: Path):
     project_root = _write_test_project(tmp_path)
     service = AutolayoutService()
     provider = MockAutolayoutProvider()
-    service._autolayout = provider
+    service.register_provider(provider)
 
     job1 = service.start_job(project_root=str(project_root), build_target="default")
     job2 = service.start_job(
@@ -223,7 +223,7 @@ def test_autolayout_service_persists_and_restores_job_state(tmp_path: Path):
     service = AutolayoutService(
         state_path=state_path,
     )
-    service._autolayout = MockAutolayoutProvider()
+    service.register_provider(MockAutolayoutProvider())
     job = service.start_job(
         project_root=str(project_root),
         build_target="default",
@@ -233,7 +233,7 @@ def test_autolayout_service_persists_and_restores_job_state(tmp_path: Path):
     reloaded = AutolayoutService(
         state_path=state_path,
     )
-    reloaded._autolayout = MockAutolayoutProvider()
+    reloaded.register_provider(MockAutolayoutProvider())
     restored = reloaded.get_job(job.job_id)
     assert restored.job_id == job.job_id
     assert restored.project_root == job.project_root
@@ -286,7 +286,7 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
     service = AutolayoutService(
         state_path=tmp_path / "autolayout_jobs_state.json",
     )
-    service._autolayout = CompletedRefreshProvider()
+    service.register_provider(CompletedRefreshProvider())
     build_cfg = ProjectConfig.from_path(project_root).builds["default"]  # type: ignore[union-attr]
     job = AutolayoutJob(
         job_id="al-refresh123456",
@@ -309,3 +309,74 @@ def test_refresh_job_updates_completed_job_candidates(tmp_path: Path):
         "42",
         "41",
     ]
+
+
+def test_autolayout_candidate_count_limit_applies_to_provider_results(tmp_path: Path):
+    project_root = _write_test_project(tmp_path)
+
+    class ManyCandidatesProvider(MockAutolayoutProvider):
+        def submit(self, request) -> SubmitResult:
+            self.submit_calls += 1
+            external_job_id = f"mock-{uuid.uuid4().hex[:12]}"
+            candidates = [
+                AutolayoutCandidate(candidate_id="c1", score=0.1),
+                AutolayoutCandidate(candidate_id="c2", score=0.8),
+                AutolayoutCandidate(candidate_id="c3", score=0.6),
+            ]
+            self._jobs[external_job_id] = {
+                "layout_path": request.layout_path,
+                "state": AutolayoutState.AWAITING_SELECTION,
+                "candidates": candidates,
+            }
+            return SubmitResult(
+                external_job_id=external_job_id,
+                state=AutolayoutState.AWAITING_SELECTION,
+                message="many candidates",
+                candidates=candidates,
+            )
+
+    service = AutolayoutService()
+    service.register_provider(ManyCandidatesProvider())
+    job = service.start_job(project_root=str(project_root), build_target="default")
+
+    # candidate_count=2 from ato.yaml should be enforced at service boundary.
+    assert [candidate.candidate_id for candidate in job.candidates] == ["c1", "c2"]
+
+
+def test_autolayout_auto_apply_uses_best_score_candidate(tmp_path: Path):
+    project_root = _write_test_project(tmp_path)
+    ato_yaml = project_root / "ato.yaml"
+    ato_yaml.write_text(
+        ato_yaml.read_text(encoding="utf-8").replace(
+            "      candidate_count: 2\n",
+            "      candidate_count: 3\n      auto_apply: true\n",
+        ),
+        encoding="utf-8",
+    )
+
+    class AutoApplyProvider(MockAutolayoutProvider):
+        def submit(self, request) -> SubmitResult:
+            self.submit_calls += 1
+            external_job_id = f"mock-{uuid.uuid4().hex[:12]}"
+            candidates = [
+                AutolayoutCandidate(candidate_id="low", score=0.2),
+                AutolayoutCandidate(candidate_id="best", score=0.9),
+            ]
+            self._jobs[external_job_id] = {
+                "layout_path": request.layout_path,
+                "state": AutolayoutState.AWAITING_SELECTION,
+                "candidates": candidates,
+            }
+            return SubmitResult(
+                external_job_id=external_job_id,
+                state=AutolayoutState.AWAITING_SELECTION,
+                message="auto apply",
+                candidates=candidates,
+            )
+
+    service = AutolayoutService()
+    service.register_provider(AutoApplyProvider())
+    job = service.start_job(project_root=str(project_root), build_target="default")
+
+    assert job.state == AutolayoutState.COMPLETED
+    assert job.applied_candidate_id == "best"

@@ -1190,33 +1190,13 @@ class DeepPCB_Transformer:
                 "anchor": getattr(pad_options, "anchor", None),
             }
 
-        if shape in {"circle", "oval"}:
-            radius = max(size_w, size_h) / 2.0
-            geom = {
-                "type": "circle",
-                "center": [0, 0],
-                "radius": cls._to_unit(radius),
-            }
-        else:
-            half_w = cls._to_unit(size_w / 2.0)
-            half_h = cls._to_unit(size_h / 2.0)
-            geom = {
-                "type": "polyline",
-                "points": [
-                    [-half_w, -half_h],
-                    [half_w, -half_h],
-                    [half_w, half_h],
-                    [-half_w, half_h],
-                    [-half_w, -half_h],
-                ],
-            }
-
         raw_layers_id = ",".join(raw_layers)
         drill_id = ""
         if isinstance(drill_payload, dict):
             drill_id = (
                 f"_D{drill_payload.get('shape')}:{drill_payload.get('sizeX')}:{drill_payload.get('sizeY')}"
             )
+
         if provider_strict and shape == "custom":
             layer_suffix = "0_1" if len(layers) > 1 else "0"
             size_w_i = cls._to_unit(size_w) // 1000
@@ -1252,6 +1232,12 @@ class DeepPCB_Transformer:
             layer_suffix = "0_1" if len(layers) > 1 else "0"
             padstack_id = f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
         elif provider_strict and shape == "circle" and drill_payload is not None and len(layers) > 1:
+            radius = max(size_w, size_h) / 2.0
+            geom = {
+                "type": "circle",
+                "center": [0, 0],
+                "radius": cls._to_unit(radius),
+            }
             radius = int(round(max(size_w, size_h) * 500))
             drill_x = drill_payload.get("sizeX")
             drill_y = drill_payload.get("sizeY")
@@ -1259,7 +1245,30 @@ class DeepPCB_Transformer:
                 f"Padstack_Circle_0_0_{radius}_D{drill_x}_{drill_y}"
                 f"_P{str(getattr(pad, 'name', '0'))}_L0_1"
             )
+        elif shape in {"circle", "oval"}:
+            radius = max(size_w, size_h) / 2.0
+            geom = {
+                "type": "circle",
+                "center": [0, 0],
+                "radius": cls._to_unit(radius),
+            }
+            padstack_id = (
+                f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
+                f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
+            )
         else:
+            half_w = cls._to_unit(size_w / 2.0)
+            half_h = cls._to_unit(size_h / 2.0)
+            geom = {
+                "type": "polyline",
+                "points": [
+                    [-half_w, -half_h],
+                    [half_w, -half_h],
+                    [half_w, half_h],
+                    [-half_w, half_h],
+                    [-half_w, -half_h],
+                ],
+            }
             padstack_id = (
                 f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
                 f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"

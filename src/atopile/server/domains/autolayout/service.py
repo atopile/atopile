@@ -141,7 +141,6 @@ class AutolayoutService:
             self._maybe_reload_jobs_from_disk_locked()
 
         target_files = self._resolve_target_files(project_root, build_target)
-        provider = self._autolayout
 
         job_id = f"al-{uuid.uuid4().hex[:12]}"
         work_dir = target_files.work_root / job_id
@@ -154,8 +153,23 @@ class AutolayoutService:
         merged_options = dict(target_files.default_options)
         if options:
             merged_options.update(options)
+        provider_name = self._resolve_provider_name(
+            default_provider_name=target_files.provider_name,
+            options=merged_options,
+        )
+        provider = self._get_provider(provider_name)
+        auto_apply = _resolve_auto_apply_enabled(
+            options=merged_options,
+            default_value=target_files.auto_apply,
+        )
+        merged_options["auto_apply"] = auto_apply
 
-        force_new_job = _coerce_bool(merged_options.get("force_new_job"))
+        force_new_job = _coerce_bool(
+            merged_options.get("force_new_job")
+            or merged_options.get("forceNewJob")
+            or merged_options.get("new_job")
+            or merged_options.get("newJob")
+        )
         if not force_new_job:
             with self._lock:
                 reusable_job = self._find_reusable_job_locked(
@@ -177,6 +191,7 @@ class AutolayoutService:
             work_dir=work_dir,
             layout_path=target_files.layout_path,
             deeppcb_path=target_files.deeppcb_path,
+            provider_name=provider.name,
         )
 
         job = AutolayoutJob(
@@ -231,13 +246,22 @@ class AutolayoutService:
             current.provider_job_ref = submit_result.external_job_id
             current.state = submit_result.state
             current.message = submit_result.message
-            current.candidates = _dedupe_candidates(submit_result.candidates)
+            current.candidates = _limit_candidates_for_options(
+                _dedupe_candidates(submit_result.candidates),
+                current.options,
+            )
             if current.candidates and current.state == AutolayoutState.COMPLETED:
                 current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
             self._persist_jobs_locked()
             self._emit_job_event(current)
-            return copy.deepcopy(current)
+            should_auto_apply = _should_auto_apply(current)
+            candidate_id = _choose_auto_apply_candidate_id(current.candidates)
+            result = copy.deepcopy(current)
+
+        if should_auto_apply and candidate_id:
+            return self._auto_apply_candidate(job_id, candidate_id)
+        return result
 
     def get_job(self, job_id: str) -> AutolayoutJob:
         with self._lock:
@@ -266,7 +290,7 @@ class AutolayoutService:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
             if job.state in {AutolayoutState.FAILED, AutolayoutState.CANCELLED}:
                 return copy.deepcopy(job)
-            autolayout = self._autolayout
+            autolayout = self._get_provider(job.provider)
             provider_job_ref = job.provider_job_ref
 
         if not provider_job_ref:
@@ -275,8 +299,8 @@ class AutolayoutService:
                 if current is None:
                     raise KeyError(f"Unknown autolayout job: {job_id}")
                 current.state = AutolayoutState.FAILED
-                current.error = "Missing DeepPCB job reference"
-                current.message = "Missing DeepPCB job reference"
+                current.error = "Missing provider job reference"
+                current.message = "Missing provider job reference"
                 current.mark_updated()
                 self._persist_jobs_locked()
                 self._emit_job_event(current)
@@ -301,13 +325,22 @@ class AutolayoutService:
             current.message = status.message
             current.progress = status.progress
             if status.candidates:
-                current.candidates = _dedupe_candidates(status.candidates)
+                current.candidates = _limit_candidates_for_options(
+                    _dedupe_candidates(status.candidates),
+                    current.options,
+                )
                 if current.state == AutolayoutState.COMPLETED:
                     current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
             self._persist_jobs_locked()
             self._emit_job_event(current)
-            return copy.deepcopy(current)
+            should_auto_apply = _should_auto_apply(current)
+            candidate_id = _choose_auto_apply_candidate_id(current.candidates)
+            result = copy.deepcopy(current)
+
+        if should_auto_apply and candidate_id:
+            return self._auto_apply_candidate(job_id, candidate_id)
+        return result
 
     def list_candidates(
         self,
@@ -322,18 +355,28 @@ class AutolayoutService:
         if not job.provider_job_ref:
             return []
 
-        candidates = self._autolayout.list_candidates(job.provider_job_ref)
+        provider = self._get_provider(job.provider)
+        candidates = provider.list_candidates(job.provider_job_ref)
 
         with self._lock:
             self._maybe_reload_jobs_from_disk_locked()
             current = self._jobs[job_id]
-            current.candidates = _dedupe_candidates(candidates)
+            current.candidates = _limit_candidates_for_options(
+                _dedupe_candidates(candidates),
+                current.options,
+            )
             if current.candidates and current.state == AutolayoutState.COMPLETED:
                 current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
             self._persist_jobs_locked()
             self._emit_job_event(current)
-            return [copy.deepcopy(candidate) for candidate in current.candidates]
+            should_auto_apply = _should_auto_apply(current)
+            candidate_id = _choose_auto_apply_candidate_id(current.candidates)
+            result = [copy.deepcopy(candidate) for candidate in current.candidates]
+
+        if should_auto_apply and candidate_id:
+            self._auto_apply_candidate(job_id, candidate_id)
+        return result
 
     def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
         with self._lock:
@@ -368,14 +411,15 @@ class AutolayoutService:
             if selected_candidate_id is None:
                 raise ValueError("No candidate selected")
             provider_job_ref = job.provider_job_ref
+            provider = self._get_provider(job.provider)
             layout_path = Path(job.layout_path or "")
 
         assert selected_candidate_id is not None
         if not provider_job_ref:
             raise RuntimeError(
-                "Missing DeepPCB job reference; cannot download candidate artifact."
+                "Missing provider job reference; cannot download candidate artifact."
             )
-        download_result = self._autolayout.download_candidate(
+        download_result = provider.download_candidate(
             provider_job_ref,
             selected_candidate_id,
             out_dir=Path(job.work_dir or ".") / "downloads",
@@ -400,6 +444,26 @@ class AutolayoutService:
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
+    def _auto_apply_candidate(
+        self,
+        job_id: str,
+        candidate_id: str,
+    ) -> AutolayoutJob:
+        try:
+            return self.apply_candidate(job_id, candidate_id=candidate_id)
+        except Exception as exc:
+            with self._lock:
+                current = self._jobs.get(job_id)
+                if current is None:
+                    raise KeyError(f"Unknown autolayout job: {job_id}") from exc
+                current.state = AutolayoutState.FAILED
+                current.error = str(exc)
+                current.message = f"Auto-apply failed: {exc}"
+                current.mark_updated()
+                self._persist_jobs_locked()
+                self._emit_job_event(current)
+                return copy.deepcopy(current)
+
     def cancel_job(self, job_id: str) -> AutolayoutJob:
         with self._lock:
             self._maybe_reload_jobs_from_disk_locked()
@@ -407,9 +471,10 @@ class AutolayoutService:
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
             provider_job_ref = job.provider_job_ref
+            provider = self._get_provider(job.provider)
 
         if provider_job_ref:
-            self._autolayout.cancel(provider_job_ref)
+            provider.cancel(provider_job_ref)
 
         with self._lock:
             current = self._jobs[job_id]
@@ -588,9 +653,13 @@ class AutolayoutService:
             schematic_path = fallback if fallback.exists() else None
 
         autolayout_cfg = build_cfg.autolayout
+        provider_name = "deeppcb"
+        auto_apply = False
         default_constraints = {}
         default_options = {}
         if autolayout_cfg is not None:
+            provider_name = str(autolayout_cfg.provider).strip().lower() or "deeppcb"
+            auto_apply = bool(autolayout_cfg.auto_apply)
             default_constraints = dict(autolayout_cfg.constraints)
             default_options = {
                 "objective": autolayout_cfg.objective,
@@ -600,6 +669,8 @@ class AutolayoutService:
         return ResolvedAutolayoutTargetFiles(
             project_root=project_path,
             build_target=build_target,
+            provider_name=provider_name,
+            auto_apply=auto_apply,
             layout_path=layout_path,
             deeppcb_path=deeppcb_path,
             kicad_project_path=kicad_project_path,
@@ -614,7 +685,11 @@ class AutolayoutService:
         work_dir: Path,
         layout_path: Path,
         deeppcb_path: Path | None,
+        provider_name: str,
     ) -> Path:
+        if provider_name != "deeppcb":
+            return layout_path
+
         if deeppcb_path is not None and deeppcb_path.exists():
             return deeppcb_path
 
@@ -721,6 +796,69 @@ def _coerce_bool(value: Any) -> bool:
     if isinstance(value, (int, float)):
         return bool(value)
     return False
+
+
+def _resolve_auto_apply_enabled(
+    *,
+    options: dict[str, Any],
+    default_value: bool,
+) -> bool:
+    for key in ("auto_apply", "autoApply"):
+        if key in options:
+            return _coerce_bool(options.get(key))
+    return bool(default_value)
+
+
+def _candidate_limit_from_options(options: dict[str, Any]) -> int | None:
+    for key in ("candidate_count", "candidateCount"):
+        if key not in options:
+            continue
+        raw_value = options.get(key)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            return None
+        if value < 1:
+            return None
+        return value
+    return None
+
+
+def _limit_candidates_for_options(
+    candidates: list[AutolayoutCandidate],
+    options: dict[str, Any],
+) -> list[AutolayoutCandidate]:
+    limit = _candidate_limit_from_options(options)
+    if limit is None:
+        return candidates
+    return candidates[:limit]
+
+
+def _should_auto_apply(job: AutolayoutJob) -> bool:
+    if job.applied_candidate_id:
+        return False
+    if job.state != AutolayoutState.AWAITING_SELECTION:
+        return False
+    if not job.candidates:
+        return False
+    return _resolve_auto_apply_enabled(options=job.options, default_value=False)
+
+
+def _choose_auto_apply_candidate_id(
+    candidates: list[AutolayoutCandidate],
+) -> str | None:
+    if not candidates:
+        return None
+
+    indexed = list(enumerate(candidates))
+    indexed.sort(
+        key=lambda item: (
+            item[1].score if item[1].score is not None else float("-inf"),
+            -item[0],
+        ),
+        reverse=True,
+    )
+    return indexed[0][1].candidate_id
 
 
 _AUTOLAYOUT_SERVICE = AutolayoutService()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -100,3 +101,50 @@ def test_deeppcb_fileformat_load_dump_smoke(tmp_path: Path) -> None:
     assert loaded.resolution.get("value") == 1_000_000
     assert isinstance(loaded.layers, list)
     assert isinstance(loaded.wires, list)
+
+
+def test_padstack_from_pad_applies_provider_strict_shape_branches() -> None:
+    copper_layer_index = {"F.Cu": 0, "B.Cu": 1}
+
+    oval_pad = SimpleNamespace(
+        name="1",
+        shape="oval",
+        type="smd",
+        size=SimpleNamespace(w=1.2, h=0.8),
+        layers=["F.Cu", "B.Cu"],
+        remove_unused_layers=None,
+        drill=None,
+        options=None,
+    )
+    oval_id, oval_payload = DeepPCB_Transformer._padstack_from_pad(
+        oval_pad,
+        copper_layer_index,
+        provider_strict=True,
+        strict_scope="strict",
+    )
+    assert oval_payload["shape"]["type"] == "path"
+    assert oval_id.startswith("Padstack_Pad_")
+
+    circle_pad = SimpleNamespace(
+        name="2",
+        shape="circle",
+        type="thru_hole",
+        size=SimpleNamespace(w=1.0, h=1.0),
+        layers=["F.Cu", "B.Cu"],
+        remove_unused_layers=None,
+        drill=SimpleNamespace(
+            shape="circle",
+            size_x=0.4,
+            size_y=0.4,
+            offset=None,
+        ),
+        options=None,
+    )
+    circle_id, circle_payload = DeepPCB_Transformer._padstack_from_pad(
+        circle_pad,
+        copper_layer_index,
+        provider_strict=True,
+        strict_scope="strict",
+    )
+    assert "Padstack_Circle_" in circle_id
+    assert circle_payload["shape"]["type"] == "circle"

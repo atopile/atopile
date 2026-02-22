@@ -344,7 +344,7 @@ def _detect_datasheet_format(
         return "html"
 
     if lowered_type.startswith("application/pdf") or lowered_source.endswith(".pdf"):
-        return "text"
+        return "pdf"
 
     if "html" in lowered_type:
         return "html"

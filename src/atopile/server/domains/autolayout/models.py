@@ -133,6 +133,8 @@ class ResolvedAutolayoutTargetFiles(_AutolayoutModel):
 
     project_root: Path
     build_target: str
+    provider_name: str = "deeppcb"
+    auto_apply: bool = False
     layout_path: Path
     deeppcb_path: Path | None = None
     kicad_project_path: Path | None = None

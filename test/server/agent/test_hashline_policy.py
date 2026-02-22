@@ -223,6 +223,14 @@ def _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
     )
     assert detected == "html"
 
+def _test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes() -> None:
+    detected = policy_datasheet._detect_datasheet_format(
+        source_value="https://example.com/datasheet.pdf",
+        content_type="application/pdf",
+        raw_bytes=b"PK\x03\x04not-html",
+    )
+    assert detected == "pdf"
+
 def _test_create_path_supports_directories_and_allowed_files(
     tmp_path: Path,
 ) -> None:
@@ -382,6 +390,9 @@ class TestHashlinePolicy:
     )
     test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html = staticmethod(
         _test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html
+    )
+    test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes = staticmethod(
+        _test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes
     )
     test_create_path_supports_directories_and_allowed_files = staticmethod(
         _test_create_path_supports_directories_and_allowed_files
