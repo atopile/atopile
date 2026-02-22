@@ -43,6 +43,7 @@ from atopile.layout_server.models import (
     ZoneModel,
 )
 from faebryk.libs.kicad.fileformats import kicad
+from faebryk.libs.util import not_none
 
 # --- Actions for undo/redo ---
 
@@ -64,50 +65,6 @@ def _find_footprint_by_uuid(pcb: kicad.pcb.KicadPcb, uuid: str):
     raise ValueError(f"Footprint with uuid {uuid!r} not found")
 
 
-def _flip_point_y(point) -> None:
-    if point is not None and hasattr(point, "y"):
-        point.y = -point.y
-
-
-def _flip_layer_field(obj) -> None:
-    layer = getattr(obj, "layer", None)
-    if not layer:
-        return
-    if hasattr(layer, "layer"):
-        nested = getattr(layer, "layer", None)
-        if nested:
-            layer.layer = _flip_layer(nested)
-        return
-    if isinstance(layer, str):
-        obj.layer = _flip_layer(layer)
-
-
-def _iter_footprint_flip_items(fp):
-    container_names = (
-        "fp_lines",
-        "fp_arcs",
-        "fp_circles",
-        "fp_rects",
-        "fp_poly",
-        "propertys",
-        "fp_texts",
-    )
-    for name in container_names:
-        for item in getattr(fp, name, []) or []:
-            yield item
-
-
-def _flip_footprint_geometry(fp) -> None:
-    for item in _iter_footprint_flip_items(fp):
-        for point_attr in ("start", "mid", "end", "center", "at"):
-            _flip_point_y(getattr(item, point_attr, None))
-        pts = getattr(getattr(item, "pts", None), "xys", None)
-        if pts is not None:
-            for point in pts:
-                _flip_point_y(point)
-        _flip_layer_field(item)
-
-
 class _FootprintAction(Action):
     uuid: str
 
@@ -119,36 +76,33 @@ class MoveAction(_FootprintAction):
     """Move a footprint to a new position."""
 
     def __init__(
-        self,
-        uuid: str,
-        new_x: float,
-        new_y: float,
-        new_r: float | None,
+        self, uuid: str, new_x: float, new_y: float, new_r: float | None
     ) -> None:
         self.uuid = uuid
-        self.new_x = new_x
-        self.new_y = new_y
-        self.new_r = new_r
+        self.new = kicad.pcb.Xyr(x=new_x, y=new_y, r=new_r)
         # Saved on first execute
-        self.old_x: float = 0
-        self.old_y: float = 0
-        self.old_r: float | None = None
+        self.old: kicad.pcb.Xyr | None = None
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
         fp = self._find(pcb)
-        self.old_x = fp.at.x
-        self.old_y = fp.at.y
-        self.old_r = fp.at.r
-        fp.at.x = self.new_x
-        fp.at.y = self.new_y
-        if self.new_r is not None:
-            fp.at.r = self.new_r
+        # Copy the Xyr to avoid reference issues when move_fp modifies fp.at
+        self.old = kicad.pcb.Xyr(x=fp.at.x, y=fp.at.y, r=fp.at.r)
+        new = kicad.pcb.Xyr(
+            x=self.new.x,
+            y=self.new.y,
+            # if r is None, just keep old one
+            r=self.new.r if self.new.r is not None else fp.at.r,
+        )
+        PCB_Transformer.move_fp(fp, new, layer=fp.layer)
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
         fp = self._find(pcb)
-        fp.at.x = self.old_x
-        fp.at.y = self.old_y
-        fp.at.r = self.old_r
+        assert self.old is not None
+        PCB_Transformer.move_fp(fp, self.old, layer=fp.layer)
 
 
 class RotateAction(_FootprintAction):
@@ -157,24 +111,18 @@ class RotateAction(_FootprintAction):
     def __init__(self, uuid: str, delta_degrees: float) -> None:
         self.uuid = uuid
         self.delta_degrees = delta_degrees
-        self._old_r: float | None = None
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
         fp = self._find(pcb)
-        self._old_r = fp.at.r
-        fp.at.r = ((fp.at.r or 0) + self.delta_degrees) % 360
+        PCB_Transformer.rotate_fp(fp, self.delta_degrees)
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
         fp = self._find(pcb)
-        fp.at.r = self._old_r
-
-
-def _flip_layer(layer: str) -> str:
-    if layer.startswith("F."):
-        return layer.replace("F.", "B.", 1)
-    elif layer.startswith("B."):
-        return layer.replace("B.", "F.", 1)
-    return layer
+        PCB_Transformer.rotate_fp(fp, -self.delta_degrees)
 
 
 class FlipAction(_FootprintAction):
@@ -184,17 +132,10 @@ class FlipAction(_FootprintAction):
         self.uuid = uuid
 
     def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
         fp = self._find(pcb)
-        # Flip the footprint layer
-        fp.layer = _flip_layer(fp.layer)
-        # Mirror rotation
-        fp.at.r = ((fp.at.r or 0) + 180) % 360
-        # Flip pads
-        for pad in fp.pads:
-            pad.at.y = -pad.at.y
-            pad.at.r = ((pad.at.r or 0) + 180) % 360
-            pad.layers = [_flip_layer(ly) for ly in pad.layers]
-        _flip_footprint_geometry(fp)
+        PCB_Transformer._flip_obj(fp)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         self._flip(pcb)
@@ -215,6 +156,7 @@ class CompositeAction(Action):
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
         for action in reversed(self.actions):
+            print(f"Undoing action: {action}")
             action.undo(pcb)
 
 
@@ -282,7 +224,7 @@ class PcbManager:
     def move_footprint(
         self, uuid: str, x: float, y: float, r: float | None = None
     ) -> None:
-        self.execute_action(MoveAction(uuid, x, y, r))
+        self.execute_action(MoveAction(uuid, x, y, r or 0))
 
     def rotate_footprint(self, uuid: str, delta_degrees: float) -> None:
         self.execute_action(RotateAction(uuid, delta_degrees))
@@ -303,7 +245,7 @@ class PcbManager:
                     uuid=fp.uuid,
                     new_x=fp.at.x + dx,
                     new_y=fp.at.y + dy,
-                    new_r=fp.at.r,
+                    new_r=fp.at.r or 0,
                 )
             )
         if actions:
@@ -315,18 +257,20 @@ class PcbManager:
             return
         cx = sum(fp.at.x for fp in targets) / len(targets)
         cy = sum(fp.at.y for fp in targets) / len(targets)
-        delta_rad = math.radians(delta_degrees)
-        cos_t = math.cos(delta_rad)
-        sin_t = math.sin(delta_rad)
 
         actions: list[Action] = []
         for fp in targets:
             if fp.uuid is None:
                 continue
+            # vector from center of group to footprint
             dx = fp.at.x - cx
             dy = fp.at.y - cy
-            new_x = cx + dx * cos_t - dy * sin_t
-            new_y = cy + dx * sin_t + dy * cos_t
+            # rotate vector using KiCad screen-space rotation convention
+            # (clockwise-positive in rendered view), matching single-footprint rotate.
+            rdx, rdy = _rotate_kicad_xy(dx, dy, delta_degrees)
+            new_x = cx + rdx
+            new_y = cy + rdy
+
             new_r = ((fp.at.r or 0.0) + delta_degrees) % 360.0
             actions.append(
                 MoveAction(
@@ -355,6 +299,7 @@ class PcbManager:
                     uuid=fp.uuid,
                     new_x=mirrored_x,
                     new_y=fp.at.y,
+                    # keep post-flip rotation
                     new_r=None,
                 )
             )
@@ -417,7 +362,7 @@ class PcbManager:
         global_texts = self._extract_global_texts(pcb)
         via_drawings = self._synthesize_via_drawings(pcb.vias, copper_layers)
         net_names_by_number = {
-            int(net.number): net.name for net in pcb.nets if getattr(net, "name", None)
+            net.number: not_none(net.name) for net in pcb.nets if net.name
         }
         model = RenderModel(
             board=self._extract_board(pcb),
@@ -578,7 +523,7 @@ class PcbManager:
 
     def _extract_footprint(
         self,
-        fp,
+        fp: kicad.pcb.Footprint,
         net_names_by_number: dict[int, str],
         copper_layers: list[str],
         all_layers: list[str],
@@ -587,13 +532,18 @@ class PcbManager:
         value = _get_property(fp, "Value")
 
         pads: list[PadModel] = []
+        fp_rotation = fp.at.r or 0
         for pad in fp.pads:
             pad_h = pad.size.h if pad.size.h is not None else pad.size.w
             pad_layers = _expand_layer_rules(list(pad.layers), known_layers=all_layers)
+            # KiCad stores pad rotation as absolute in PCB coordinates, but x/y
+            # are relative to the footprint. Convert rotation to be relative to
+            # the footprint so the frontend can treat it as a sub-coordinate system.
+            pad_relative_r = ((pad.at.r or 0) - fp_rotation) % 360
             pads.append(
                 PadModel(
                     name=pad.name,
-                    at=PointXYR(x=pad.at.x, y=pad.at.y, r=pad.at.r or 0),
+                    at=PointXYR(x=pad.at.x, y=pad.at.y, r=pad_relative_r),
                     size=Size2(w=pad.size.w, h=pad_h),
                     shape=pad.shape,
                     type=pad.type,
@@ -605,12 +555,12 @@ class PcbManager:
             )
 
         drawings = self._extract_drawing_primitives(
-            lines=getattr(fp, "fp_lines", []),
-            arcs=getattr(fp, "fp_arcs", []),
-            circles=getattr(fp, "fp_circles", []),
-            rects=getattr(fp, "fp_rects", []),
-            polygons=getattr(fp, "fp_poly", []),
-            curves=getattr(fp, "fp_curves", []),
+            lines=fp.fp_lines,
+            arcs=fp.fp_arcs,
+            circles=fp.fp_circles,
+            rects=fp.fp_rects,
+            polygons=fp.fp_poly,
+            curves=getattr(fp, "fp_curves", []),  # Not in typed model
         )
 
         texts = self._extract_text_entries(fp, ref, value)
@@ -893,28 +843,28 @@ class PcbManager:
 
     def _extract_pad_name_annotations_for_footprint(
         self,
-        fp,
+        fp: kicad.pcb.Footprint,
         net_names_by_number: dict[int, str],
         copper_layers: list[str],
     ) -> list[PadNameAnnotationModel]:
         out: list[PadNameAnnotationModel] = []
         for pad_index, pad in enumerate(fp.pads):
-            pad_name = (getattr(pad, "name", "") or "").strip()
+            pad_name = pad.name.strip()
             if not pad_name:
                 continue
             text_layer_ids = _pad_net_text_layers(
-                list(getattr(pad, "layers", []) or []),
+                pad.layers,
                 all_copper_layers=copper_layers,
             )
             if not text_layer_ids:
                 continue
-            pad_net = getattr(pad, "net", None)
+            pad_net = pad.net
             if pad_net is None:
                 continue
-            net_number = int(getattr(pad_net, "number", 0) or 0)
+            net_number = pad_net.number
             if net_number <= 0:
                 continue
-            net_name = (getattr(pad_net, "name", None) or "").strip()
+            net_name = (pad_net.name or "").strip()
             if not net_name:
                 net_name = (net_names_by_number.get(net_number) or "").strip()
             if not net_name:
@@ -1386,26 +1336,6 @@ def _curve_drawing(
     )
 
 
-def _estimate_stroke_text_advance(text: str) -> float:
-    """Approximate Newstroke advance units for a single-line label."""
-    if not text:
-        return 0.6
-
-    narrow = set("1Iil|!.,:;'`")
-    wide = set("MW@%#")
-    advance = 0.0
-    for ch in text:
-        if ch == " ":
-            advance += 0.6
-        elif ch in narrow:
-            advance += 0.45
-        elif ch in wide:
-            advance += 0.95
-        else:
-            advance += 0.72
-    return max(advance, 0.6)
-
-
 PAD_NET_FIT_MARGIN = 0.78
 PAD_NET_MAJOR_FIT = 0.96
 PAD_NET_MINOR_FIT = 0.88
@@ -1418,91 +1348,6 @@ PAD_NET_STROKE_MAX = 0.20
 PAD_NET_GENERIC_TOKENS = {"input", "output", "line", "net"}
 PAD_NET_PREFIXES = ("power_in-", "power_vbus-", "power-")
 PAD_NET_TRUNCATE_LENGTHS = (16, 12, 10, 8, 6, 5, 4, 3, 2, 1)
-
-
-def _fit_text_inside_pad(
-    text: str, pad_w: float, pad_h: float
-) -> tuple[float, float, float] | None:
-    """Return (char_w, char_h, thickness) fitted to pad size."""
-    if pad_w <= 0 or pad_h <= 0:
-        return None
-
-    # Keep margin so labels do not touch pad boundaries.
-    usable_w = max(0.0, pad_w * PAD_NET_FIT_MARGIN)
-    usable_h = max(0.0, pad_h * PAD_NET_FIT_MARGIN)
-    if usable_w <= 0 or usable_h <= 0:
-        return None
-
-    # Fit text against the longer/shorter pad dimensions, leaving margin.
-    vertical = usable_h > usable_w
-    major = usable_h if vertical else usable_w
-    minor = usable_w if vertical else usable_h
-
-    char_w_ratio = PAD_NET_CHAR_W_RATIO
-    advance_units = _estimate_stroke_text_advance(text)
-    max_h_by_width = major / max(advance_units * char_w_ratio, 1e-6)
-    # Fit first, then downscale so text sits comfortably inside pads like KiCad.
-    char_h = min(minor * PAD_NET_MINOR_FIT, max_h_by_width * PAD_NET_MAJOR_FIT)
-    # Larger baseline for readability while still fitting within pads.
-    char_h *= PAD_NET_CHAR_SCALE
-
-    # Tiny text is unreadable and expensive to draw at scale.
-    if char_h < PAD_NET_MIN_CHAR_H:
-        return None
-
-    char_w = char_h * char_w_ratio
-    thickness = min(
-        PAD_NET_STROKE_MAX,
-        max(PAD_NET_STROKE_MIN, char_h * PAD_NET_STROKE_SCALE),
-    )
-    return (char_w, char_h, thickness)
-
-
-def _fit_pad_net_text(
-    text: str, pad_w: float, pad_h: float
-) -> tuple[str, tuple[float, float, float]] | None:
-    for candidate in _pad_net_text_candidates(text):
-        fitted = _fit_text_inside_pad(candidate, pad_w, pad_h)
-        if fitted is not None:
-            return (candidate, fitted)
-    return None
-
-
-def _pad_net_text_candidates(text: str) -> list[str]:
-    base = text.strip()
-    if not base:
-        return []
-
-    candidates: list[str] = []
-    seen: set[str] = set()
-
-    def add(candidate: str) -> None:
-        token = candidate.strip()
-        if not token or token in seen:
-            return
-        seen.add(token)
-        candidates.append(token)
-
-    add(base)
-
-    normalized = base
-    for prefix in PAD_NET_PREFIXES:
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix) :]
-    add(normalized)
-
-    tokens = [t for t in normalized.replace("/", "-").split("-") if t.strip()]
-    for token in reversed(tokens):
-        if token.lower() in PAD_NET_GENERIC_TOKENS:
-            continue
-        add(token)
-        add(token.replace("[", "").replace("]", ""))
-
-    for max_len in PAD_NET_TRUNCATE_LENGTHS:
-        if len(normalized) > max_len:
-            add(normalized[:max_len])
-
-    return candidates
 
 
 def _pad_net_text_layers(
@@ -1525,27 +1370,6 @@ def _pad_number_text_layers(
     return [
         layer[:-3] + ".PadNumbers" for layer in copper_layers if layer.endswith(".Cu")
     ]
-
-
-def _pad_net_text_rotation(
-    total_pad_rotation_deg: float, pad_w: float, pad_h: float
-) -> float:
-    """Snap pad net label rotation to world 0 or +90 degrees.
-
-    - Symmetric pads always return 0.
-    - Non-symmetric pads consider total pad rotation (footprint + pad).
-    """
-    if pad_w <= 0 or pad_h <= 0:
-        return 0.0
-    if abs(pad_w - pad_h) <= 1e-6:
-        return 0.0
-
-    long_axis_deg = (
-        total_pad_rotation_deg if pad_w > pad_h else total_pad_rotation_deg + 90.0
-    )
-    axis_x = abs(math.cos(math.radians(long_axis_deg)))
-    axis_y = abs(math.sin(math.radians(long_axis_deg)))
-    return 90.0 if axis_y > axis_x else 0.0
 
 
 def _is_filled(obj) -> bool:

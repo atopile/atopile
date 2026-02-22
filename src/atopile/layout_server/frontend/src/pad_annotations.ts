@@ -10,10 +10,6 @@ const PAD_ANNOTATION_CHAR_W_RATIO = 0.72;
 const PAD_ANNOTATION_STROKE_SCALE = 0.22;
 const PAD_ANNOTATION_STROKE_MIN = 0.02;
 const PAD_ANNOTATION_STROKE_MAX = 0.16;
-const PAD_NAME_GENERIC_TOKENS = new Set(["input", "output", "line", "net"]);
-const PAD_NAME_PREFIXES = ["power_in-", "power_vbus-", "power-"];
-const PAD_NAME_TRUNCATE_LENGTHS = [16, 12, 10, 8, 6, 5, 4, 3, 2];
-const PAD_NAME_TARGET_CHAR_H = 0.14;
 const PAD_NUMBER_BADGE_SIZE_RATIO = 0.36;
 const PAD_NUMBER_BADGE_MARGIN_RATIO = 0.05;
 const PAD_NUMBER_CHAR_SCALE = 0.80;
@@ -83,53 +79,12 @@ function fitTextInsideBox(
     return [charW, charH, thickness];
 }
 
-function padNameCandidates(text: string): string[] {
-    const base = text.trim();
-    if (!base) return [];
-    const out: string[] = [];
-    const seen = new Set<string>();
-    const add = (v: string) => {
-        const t = v.trim();
-        if (!t || seen.has(t)) return;
-        seen.add(t);
-        out.push(t);
-    };
-
-    add(base);
-    let normalized = base;
-    for (const prefix of PAD_NAME_PREFIXES) {
-        if (normalized.startsWith(prefix)) normalized = normalized.slice(prefix.length);
-    }
-    add(normalized);
-
-    const tokens = normalized.replaceAll("/", "-").split("-").map(t => t.trim()).filter(Boolean);
-    for (let idx = tokens.length - 1; idx >= 0; idx--) {
-        const token = tokens[idx]!;
-        if (PAD_NAME_GENERIC_TOKENS.has(token.toLowerCase())) continue;
-        add(token);
-        add(token.replaceAll("[", "").replaceAll("]", ""));
-    }
-
-    for (const maxLen of PAD_NAME_TRUNCATE_LENGTHS) {
-        if (normalized.length > maxLen) add(normalized.slice(0, maxLen));
-    }
-
-    return out;
-}
-
 function fitPadNameLabel(text: string, boxW: number, boxH: number): [string, [number, number, number]] | null {
-    let fallback: [string, [number, number, number]] | null = null;
-    for (const candidate of padNameCandidates(text)) {
-        const fit = fitTextInsideBox(candidate, boxW, boxH);
-        if (!fit) continue;
-        if (!fallback || fit[1] > fallback[1][1]) {
-            fallback = [candidate, fit];
-        }
-        if (fit[1] >= PAD_NAME_TARGET_CHAR_H) {
-            return [candidate, fit];
-        }
-    }
-    return fallback;
+    const displayText = text.trim();
+    if (!displayText) return null;
+    const fit = fitTextInsideBox(displayText, boxW, boxH);
+    if (!fit) return null;
+    return [displayText, fit];
 }
 
 function padLabelWorldRotation(totalPadRotationDeg: number, padW: number, padH: number): number {

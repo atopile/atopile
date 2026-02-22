@@ -1031,6 +1031,22 @@ class PCB_Transformer:
 
     # Positioning ----------------------------------------------------------------------
     @staticmethod
+    def rotate_fp(fp: KiCadPCBFootprint, angle: float):
+        angle %= 360
+        if not angle:
+            return
+        # Rotation vector in kicad footprint objs not relative to footprint rotation
+        #  or is it?
+        for obj in fp.pads:
+            obj.at.r = ((obj.at.r or 0) + angle) % 360
+        # For some reason text rotates in the opposite direction
+        #  or maybe not?
+        for obj in chain(fp.fp_texts, fp.propertys):
+            obj.at.r = ((obj.at.r or 0) + angle) % 360
+
+        fp.at.r = (fp.at.r or 0) + angle
+
+    @staticmethod
     def move_fp(fp: KiCadPCBFootprint, coord: kicad.pcb.Xyr, layer: str):
         if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):
             logger.warning(f"Skipped no touch component: {fp.name}")
@@ -1043,16 +1059,7 @@ class PCB_Transformer:
 
         # Rotate
         rot_angle = ((coord.r or 0) - (fp.at.r or 0)) % 360
-
-        if rot_angle:
-            # Rotation vector in kicad footprint objs not relative to footprint rotation
-            #  or is it?
-            for obj in fp.pads:
-                obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
-            # For some reason text rotates in the opposite direction
-            #  or maybe not?
-            for obj in chain(fp.fp_texts, fp.propertys):
-                obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
+        PCB_Transformer.rotate_fp(fp, rot_angle)
 
         fp.at = coord
 
@@ -1573,7 +1580,7 @@ class PCB_Transformer:
                 obj.at = kicad.pcb.Xyr(
                     x=obj.at.x,
                     y=obj.at.y,
-                    r=(((obj.at.r or 0) + 180) % 360) or None,
+                    r=((180 - (obj.at.r or 0)) % 360) or None,
                 )
                 for _obj in chain(
                     obj.pads, obj.propertys, obj.fp_texts, get_all_geos(obj)
@@ -1585,7 +1592,7 @@ class PCB_Transformer:
                 obj.at = kicad.pcb.Xyr(
                     x=obj.at.x,
                     y=-obj.at.y,
-                    r=(((obj.at.r or 0) + 180) % 360) or None,
+                    r=((180 - (obj.at.r or 0)) % 360) or None,
                 )
                 if obj.primitives is not None:
                     PCB_Transformer._flip_obj(obj.primitives)
