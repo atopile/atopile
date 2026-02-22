@@ -32,46 +32,6 @@ export interface WebviewAssets {
     css: string[];
 }
 
-function toKebabCase(value: string): string {
-    return value.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-function getStylesheetsFromHtml(webviewsDir: string, webviewName: string): string[] {
-    const htmlCandidates = [
-        `${webviewName}.html`,
-        `${toKebabCase(webviewName)}.html`,
-    ];
-
-    const htmlFile = htmlCandidates
-        .map(file => path.join(webviewsDir, file))
-        .find(file => fs.existsSync(file)) ?? null;
-
-    if (!htmlFile) return [];
-
-    const html = fs.readFileSync(htmlFile, 'utf8');
-    const stylesheetRegex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["']/gi;
-    const stylesheets: string[] = [];
-    const seen = new Set<string>();
-    let stylesheetMatch: RegExpExecArray | null;
-
-    while ((stylesheetMatch = stylesheetRegex.exec(html)) !== null) {
-        const stylesheetPath = path.join(
-            webviewsDir,
-            stylesheetMatch[1]
-                .replace(/^\.\//, '')
-                .replace(/^\//, '')
-                .split('?')[0]
-                .split('#')[0],
-        );
-        if (fs.existsSync(stylesheetPath) && !seen.has(stylesheetPath)) {
-            seen.add(stylesheetPath);
-            stylesheets.push(stylesheetPath);
-        }
-    }
-
-    return stylesheets;
-}
-
 /**
  * Find webview assets for a given webview name.
  *
@@ -79,7 +39,11 @@ function getStylesheetsFromHtml(webviewsDir: string, webviewName: string): strin
  * 1. resources/webviews/ - production (packaged extension)
  * 2. webviews/dist/ - development
  */
-export function findWebviewAssets(extensionPath: string, webviewName: string): WebviewAssets {
+export function findWebviewAssets(
+    extensionPath: string,
+    webviewName: string,
+    stylesheetFiles: readonly string[],
+): WebviewAssets {
     const productionDir = path.join(extensionPath, 'resources', 'webviews');
     const devDir = path.join(extensionPath, 'webviews', 'dist');
     const webviewsDir = fs.existsSync(productionDir) ? productionDir : devDir;
@@ -91,7 +55,9 @@ export function findWebviewAssets(extensionPath: string, webviewName: string): W
     const jsFile = path.join(webviewsDir, `${webviewName}.js`);
     return {
         js: fs.existsSync(jsFile) ? jsFile : null,
-        css: getStylesheetsFromHtml(webviewsDir, webviewName),
+        css: stylesheetFiles
+            .map(file => path.join(webviewsDir, file))
+            .filter(file => fs.existsSync(file)),
     };
 }
 

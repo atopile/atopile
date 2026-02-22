@@ -20,7 +20,11 @@ class PinoutTableWebview extends BaseWebview {
     protected getHtmlContent(webview: vscode.Webview): string {
         const apiUrl = backendServer.apiUrl;
         const extensionPath = getExtension().extensionPath;
-        const assets = findWebviewAssets(extensionPath, 'pinoutTable');
+        const assets = findWebviewAssets(
+            extensionPath,
+            'pinoutTable',
+            ['index.css', 'TreeRowHeader.css', 'pinoutTable.css'],
+        );
 
         return buildWebviewHtml({
             webview,
