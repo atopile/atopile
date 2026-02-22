@@ -186,6 +186,96 @@ def _datasheet_cache_keys(
     return keys
 
 
+def _dedupe_non_empty_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        candidate = str(value).strip()
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        deduped.append(candidate)
+    return deduped
+
+
+async def _append_lcsc_jlc_datasheet_candidates(
+    *,
+    lcsc_id: str,
+    candidate_urls: list[str],
+    fallback_sources: list[dict[str, Any]],
+) -> None:
+    try:
+        jlc_candidates, jlc_error = await asyncio.to_thread(
+            parts_domain.search_jlc_parts,
+            lcsc_id,
+            limit=6,
+        )
+    except Exception as exc:
+        fallback_sources.append(
+            {
+                "source": "jlc_search_error",
+                "error": _trim_message(
+                    f"{type(exc).__name__}: {exc}",
+                    220,
+                ),
+            }
+        )
+        return
+
+    if isinstance(jlc_error, str) and jlc_error.strip():
+        fallback_sources.append(
+            {
+                "source": "jlc_search_error",
+                "error": _trim_message(jlc_error, 220),
+            }
+        )
+
+    for item in jlc_candidates or []:
+        if not isinstance(item, dict):
+            continue
+        candidate_url = str(item.get("datasheet_url") or "").strip()
+        if not candidate_url:
+            continue
+        candidate_urls.append(candidate_url)
+        fallback_sources.append(
+            {
+                "source": "jlc_search",
+                "url": candidate_url,
+                "lcsc": item.get("lcsc"),
+                "mpn": item.get("mpn"),
+            }
+        )
+
+
+async def _read_first_datasheet_from_urls(
+    *,
+    project_root: Path,
+    candidate_urls: list[str],
+) -> tuple[bytes, dict[str, Any], str]:
+    last_error: Exception | None = None
+    attempted_errors: list[str] = []
+
+    for candidate_url in candidate_urls:
+        try:
+            datasheet_bytes, metadata = await asyncio.to_thread(
+                policy.read_datasheet_file,
+                project_root,
+                path=None,
+                url=candidate_url,
+            )
+            return datasheet_bytes, metadata, candidate_url
+        except Exception as exc:
+            last_error = exc
+            attempted_errors.append(
+                _trim_message(f"{candidate_url} -> {exc}", 320)
+            )
+
+    details = "; ".join(attempted_errors[:3]) or "unknown"
+    raise policy.ScopeError(
+        f"Failed to fetch datasheet from all resolved URLs ({details})"
+    ) from last_error
+
+
 def _resolve_web_search_content_mode(arguments: dict[str, Any]) -> str:
     raw_mode = arguments.get("content_mode")
     content_mode = str(raw_mode).strip().lower() if raw_mode is not None else ""
@@ -1102,80 +1192,23 @@ async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ct
         candidate_urls: list[str] = []
         if source_url:
             candidate_urls.append(source_url)
-
         if lcsc_id:
-            try:
-                jlc_candidates, jlc_error = await asyncio.to_thread(
-                    parts_domain.search_jlc_parts,
-                    lcsc_id,
-                    limit=6,
-                )
-                if isinstance(jlc_error, str) and jlc_error.strip():
-                    fallback_sources.append(
-                        {
-                            "source": "jlc_search_error",
-                            "error": _trim_message(jlc_error, 220),
-                        }
-                    )
-                for item in jlc_candidates or []:
-                    if not isinstance(item, dict):
-                        continue
-                    candidate_url = str(item.get("datasheet_url") or "").strip()
-                    if not candidate_url:
-                        continue
-                    candidate_urls.append(candidate_url)
-                    fallback_sources.append(
-                        {
-                            "source": "jlc_search",
-                            "url": candidate_url,
-                            "lcsc": item.get("lcsc"),
-                            "mpn": item.get("mpn"),
-                        }
-                    )
-            except Exception as exc:
-                fallback_sources.append(
-                    {
-                        "source": "jlc_search_error",
-                        "error": _trim_message(
-                            f"{type(exc).__name__}: {exc}",
-                            220,
-                        ),
-                    }
-                )
+            await _append_lcsc_jlc_datasheet_candidates(
+                lcsc_id=lcsc_id,
+                candidate_urls=candidate_urls,
+                fallback_sources=fallback_sources,
+            )
 
-        deduped_urls: list[str] = []
-        for candidate_url in candidate_urls:
-            if candidate_url and candidate_url not in deduped_urls:
-                deduped_urls.append(candidate_url)
-
-        if not deduped_urls:
+        candidate_urls = _dedupe_non_empty_strings(candidate_urls)
+        if not candidate_urls:
             raise policy.ScopeError(
                 "No datasheet URL could be resolved for this request."
             )
 
-        last_error: Exception | None = None
-        selected_url: str | None = None
-        attempted_errors: list[str] = []
-        for candidate_url in deduped_urls:
-            try:
-                datasheet_bytes, metadata = await asyncio.to_thread(
-                    policy.read_datasheet_file,
-                    project_root,
-                    path=None,
-                    url=candidate_url,
-                )
-                selected_url = candidate_url
-                break
-            except Exception as exc:
-                last_error = exc
-                attempted_errors.append(
-                    _trim_message(f"{candidate_url} -> {exc}", 320)
-                )
-        else:
-            details = "; ".join(attempted_errors[:3]) or "unknown"
-            raise policy.ScopeError(
-                f"Failed to fetch datasheet from all resolved URLs ({details})"
-            ) from last_error
+        datasheet_bytes, metadata, selected_url = await _read_first_datasheet_from_urls(
+            project_root=project_root,
+            candidate_urls=candidate_urls,
+        )
 
         if selected_url and source_url and selected_url != source_url:
             resolution = {
@@ -1183,7 +1216,7 @@ async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ct
                 "url_fallback": {
                     "selected_url": selected_url,
                     "primary_url": source_url,
-                    "attempted_urls": len(deduped_urls),
+                    "attempted_urls": len(candidate_urls),
                 },
             }
 
