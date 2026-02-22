@@ -863,6 +863,53 @@ class MutationStage:
         )
 
 
+def _seed_superset_bounds(
+    initial_state: "MutationMap",
+    forward_mapping: dict[
+        F.Parameters.is_parameter_operatable,
+        F.Parameters.is_parameter_operatable,
+    ],
+    g_out: graph.GraphView,
+    tg_out: fbrk.TypeGraph,
+) -> None:
+    """
+    Seed superset bounds from a previous solve into a new working graph.
+
+    When the solver bootstraps a new relevance set, it starts from scratch.
+    By copying solved numeric bounds from the previous state, the solver
+    converges in fewer iterations.
+
+    Literals are recreated in the target graph rather than copied across graphs,
+    because cross-graph copy_into loses unit references.
+    """
+    new_input_set = set(forward_mapping.keys())
+    seeded = 0
+    for po in initial_state.input_operables:
+        if po not in new_input_set:
+            continue
+        if po.as_parameter.try_get() is None:
+            continue
+        ss_lit = initial_state.try_extract_superset(po, domain_default=False)
+        if ss_lit is None:
+            continue
+        new_po = forward_mapping[po]
+        lit_node = fabll.Traits(ss_lit).get_obj_raw()
+        numbers = lit_node.try_cast(F.Literals.Numbers)
+        if numbers is None:
+            continue
+        min_val = numbers.get_min_value()
+        max_val = numbers.get_max_value()
+        target_unit_t = new_po.try_get_sibling_trait(F.Units.has_unit)
+        target_unit = target_unit_t.get_is_unit() if target_unit_t else None
+        new_lit = F.Literals.Numbers.create_instance(
+            g=g_out, tg=tg_out
+        ).setup_from_min_max(min=min_val, max=max_val, unit=target_unit)
+        new_po.set_superset(g=g_out, value=new_lit)
+        seeded += 1
+    if seeded:
+        logger.debug(f"Seeded {seeded} superset bounds from previous solve")
+
+
 class MutationMap:
     @dataclass
     class LookupResult:
@@ -1100,6 +1147,7 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand],
         iteration: int = 0,
+        initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
         relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
         if S_LOG:
@@ -1117,7 +1165,6 @@ class MutationMap:
             )
 
         g_out, tg_out = cls._bootstrap_copy(g, tg)
-        logger.info("initial_state is None")
         for pred in relevant_root_predicates:
             pred.copy_into(g_out)
 
@@ -1153,6 +1200,9 @@ class MutationMap:
             fabll.Traits.create_and_add_instance_to(
                 fabll.Traits(mapped).get_obj_raw(), is_relevant
             )
+
+        if initial_state:
+            _seed_superset_bounds(initial_state, forward_mapping, g_out, tg_out)
 
         if S_LOG:
             expr_count = len(
@@ -1235,13 +1285,9 @@ class MutationMap:
                 raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
 
         if relevant:
-            # TODO re-enable if resume implemented
-            if initial_state and False:
-                mut_map = MutationMap._with_relevance_set_resume(
-                    g, tg, relevant, initial_state, iteration
-                )
-            else:
-                mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+            mut_map = MutationMap._with_relevance_set(
+                g, tg, relevant, iteration, initial_state=initial_state
+            )
         else:
             mut_map = MutationMap._identity(tg, g, iteration)
 
