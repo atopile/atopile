@@ -1216,11 +1216,33 @@ class DeepPCB_Transformer:
             padstack_id = (
                 f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_{size_w_i}_{size_h_i}_L{layer_suffix}"
             )
+            width = cls._to_unit(min(size_w, size_h))
+            travel = max(0.0, (max(size_w, size_h) - min(size_w, size_h)) / 2.0)
+            geom = {
+                "type": "path",
+                "points": [[0, cls._to_unit(travel)], [0, -cls._to_unit(travel)]],
+                "width": width,
+            }
         elif provider_strict and shape in {"rect", "rectangle"}:
             half_w = cls._to_unit(size_w / 2.0) // 1000
             half_h = cls._to_unit(size_h / 2.0) // 1000
             layer_suffix = "0_1" if len(layers) > 1 else "0"
             padstack_id = f"Padstack_Rectangle_{-half_w}_{-half_h}_{half_w}_{half_h}_L{layer_suffix}"
+            geom = {
+                "type": "rectangle",
+                "lowerLeft": [-cls._to_unit(size_w / 2.0), -cls._to_unit(size_h / 2.0)],
+                "upperRight": [cls._to_unit(size_w / 2.0), cls._to_unit(size_h / 2.0)],
+            }
+        elif provider_strict and shape in {"oval"}:
+            width = cls._to_unit(min(size_w, size_h))
+            travel = max(0.0, (max(size_w, size_h) - min(size_w, size_h)) / 2.0)
+            geom = {
+                "type": "path",
+                "points": [[0, cls._to_unit(travel)], [0, -cls._to_unit(travel)]],
+                "width": width,
+            }
+            layer_suffix = "0_1" if len(layers) > 1 else "0"
+            padstack_id = f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
         elif provider_strict and shape in {"circle", "oval"} and drill_payload is not None and len(layers) > 1:
             radius = int(round(max(size_w, size_h) * 500))
             drill_x = drill_payload.get("sizeX")
@@ -1234,7 +1256,7 @@ class DeepPCB_Transformer:
                 f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
                 f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
             )
-        if provider_strict and strict_scope:
+        if provider_strict and strict_scope and shape not in {"rect", "rectangle", "custom", "oval"}:
             padstack_id = f"{padstack_id}_{strict_scope}"
         return padstack_id, {
             "id": padstack_id,
@@ -1270,8 +1292,8 @@ class DeepPCB_Transformer:
                 "radius": cls._to_unit(size / 2.0),
             },
             "layers": layers,
-            "allowVia": True,
-            "drill": cls._to_unit(drill / 2.0),
+            "allowVia": False if provider_strict else True,
+            "drill": None if provider_strict else cls._to_unit(drill / 2.0),
         }
 
     @classmethod
@@ -1486,6 +1508,14 @@ class DeepPCB_Transformer:
                 shape["center"] = pxy(center)
             if isinstance(shape.get("radius"), (int, float)):
                 shape["radius"] = int(round(float(shape["radius"]) / 1000.0))
+            if isinstance(shape.get("width"), (int, float)):
+                shape["width"] = int(round(float(shape["width"]) / 1000.0))
+            lower_left = shape.get("lowerLeft")
+            if isinstance(lower_left, list):
+                shape["lowerLeft"] = pxy(lower_left)
+            upper_right = shape.get("upperRight")
+            if isinstance(upper_right, list):
+                shape["upperRight"] = pxy(upper_right)
 
         boundary = board.boundary if isinstance(board.boundary, dict) else {}
         bshape = boundary.get("shape")
