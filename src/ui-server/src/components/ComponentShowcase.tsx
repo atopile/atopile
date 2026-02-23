@@ -10,6 +10,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 // ---- Primitives ----
 import { Badge, BadgeAsLink } from './shared/Badge'
 import { Button } from './shared/Button'
+import { Input } from './shared/Input'
 import { Checkbox } from './shared/Checkbox'
 import { Spinner } from './shared/Spinner'
 import { Skeleton } from './shared/Skeleton'

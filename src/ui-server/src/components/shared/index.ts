@@ -6,6 +6,8 @@
 export { Badge, BadgeAsLink } from './Badge'
 export type { BadgeProps, BadgeAsLinkProps } from './Badge'
 export { CopyableCodeBlock } from './CopyableCodeBlock'
+export { Input } from './Input'
+export type { InputProps } from './Input'
 export { EmptyState } from './EmptyState'
 export { VersionSelector } from './VersionSelector'
 export { PublisherBadge } from './PublisherBadge'
