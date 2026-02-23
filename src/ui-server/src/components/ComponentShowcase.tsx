@@ -8,7 +8,10 @@ import { Zap, Package, Star, Trash2, Mail, Calendar, Globe } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 // ---- Primitives ----
+import { Badge, BadgeAsLink } from './shared/Badge'
 import { Button } from './shared/Button'
+import { Input } from './shared/Input'
+import { SearchBar, RegexSearchBar } from './shared/SearchBar'
 import { Checkbox } from './shared/Checkbox'
 import { Spinner } from './shared/Spinner'
 import { Skeleton } from './shared/Skeleton'
@@ -99,12 +102,49 @@ export function ComponentShowcase() {
   const [checkA, setCheckA] = useState(false)
   const [checkB, setCheckB] = useState(true)
   const [search, setSearch] = useState('')
+  const [searchBasic, setSearchBasic] = useState('')
+  const [searchRegex, setSearchRegex] = useState('')
+  const [isRegex, setIsRegex] = useState(false)
+  const [caseSensitive, setCaseSensitive] = useState(false)
   const [selectVal, setSelectVal] = useState<string | null>(null)
   const [treeExpanded, setTreeExpanded] = useState(false)
 
   return (
     <div className="showcase">
       <h1>Shared Component Library</h1>
+
+      {/* ---- Badge ---- */}
+      <section className="showcase-section">
+        <h2>Badge</h2>
+
+        <h3>Variants</h3>
+        <div className="showcase-row">
+          <Badge variant="default">Default</Badge>
+          <Badge variant="secondary">Secondary</Badge>
+          <Badge variant="outline">Outline</Badge>
+          <Badge variant="destructive">Destructive</Badge>
+          <Badge variant="success">Success</Badge>
+          <Badge variant="warning">Warning</Badge>
+          <Badge variant="info">Info</Badge>
+        </div>
+
+        <h3>With icons</h3>
+        <div className="showcase-row">
+          <Badge variant="success"><Zap size={12} /> Passed</Badge>
+          <Badge variant="destructive"><Trash2 size={12} /> Failed</Badge>
+          <Badge variant="info"><Mail size={12} /> 3 new</Badge>
+        </div>
+
+        <h3>As link</h3>
+        <div className="showcase-row">
+          <BadgeAsLink variant="default" href="#">Default</BadgeAsLink>
+          <BadgeAsLink variant="secondary" href="#">Secondary</BadgeAsLink>
+          <BadgeAsLink variant="outline" href="#">Outline</BadgeAsLink>
+          <BadgeAsLink variant="info" href="#">Docs</BadgeAsLink>
+        </div>
+      </section>
+
+      <hr className="showcase-divider" />
 
       {/* ---- Button ---- */}
       <section className="showcase-section">
@@ -133,6 +173,60 @@ export function ComponentShowcase() {
           <Button><Mail size={14} /> Send Email</Button>
           <Button variant="destructive"><Trash2 size={14} /> Delete</Button>
           <Button variant="outline" disabled>Disabled</Button>
+        </div>
+      </section>
+
+      <hr className="showcase-divider" />
+
+      {/* ---- Input ---- */}
+      <section className="showcase-section">
+        <h2>Input</h2>
+
+        <h3>Default</h3>
+        <div className="showcase-grid">
+          <Input placeholder="Email address..." type="email" />
+          <Input placeholder="Search..." type="search" />
+        </div>
+
+        <h3>Disabled</h3>
+        <div className="showcase-grid">
+          <Input placeholder="Disabled input" disabled />
+        </div>
+
+        <h3>File</h3>
+        <div className="showcase-grid">
+          <Input type="file" />
+        </div>
+
+        <h3>Invalid</h3>
+        <div className="showcase-grid">
+          <Input defaultValue="bad-email" aria-invalid="true" />
+        </div>
+      </section>
+
+      <hr className="showcase-divider" />
+
+      {/* ---- SearchBar ---- */}
+      <section className="showcase-section">
+        <h2>SearchBar</h2>
+
+        <h3>Basic</h3>
+        <div className="showcase-grid">
+          <SearchBar value={searchBasic} onChange={setSearchBasic} placeholder="Search components..." />
+          <SearchBar value="" onChange={() => {}} placeholder="Disabled" disabled />
+        </div>
+
+        <h3>With regex toggle</h3>
+        <div className="showcase-grid">
+          <RegexSearchBar
+            value={searchRegex}
+            onChange={setSearchRegex}
+            isRegex={isRegex}
+            onRegexChange={setIsRegex}
+            caseSensitive={caseSensitive}
+            onCaseSensitiveChange={setCaseSensitive}
+            placeholder="Filter by name..."
+          />
         </div>
       </section>
 
