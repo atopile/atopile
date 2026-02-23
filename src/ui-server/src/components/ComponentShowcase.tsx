@@ -8,6 +8,7 @@ import { Zap, Package, Star, Trash2, Mail, Calendar, Globe } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 // ---- Primitives ----
+import { Badge, BadgeAsLink } from './shared/Badge'
 import { Button } from './shared/Button'
 import { Checkbox } from './shared/Checkbox'
 import { Spinner } from './shared/Spinner'
@@ -105,6 +106,39 @@ export function ComponentShowcase() {
   return (
     <div className="showcase">
       <h1>Shared Component Library</h1>
+
+      {/* ---- Badge ---- */}
+      <section className="showcase-section">
+        <h2>Badge</h2>
+
+        <h3>Variants</h3>
+        <div className="showcase-row">
+          <Badge variant="default">Default</Badge>
+          <Badge variant="secondary">Secondary</Badge>
+          <Badge variant="outline">Outline</Badge>
+          <Badge variant="destructive">Destructive</Badge>
+          <Badge variant="success">Success</Badge>
+          <Badge variant="warning">Warning</Badge>
+          <Badge variant="info">Info</Badge>
+        </div>
+
+        <h3>With icons</h3>
+        <div className="showcase-row">
+          <Badge variant="success"><Zap size={12} /> Passed</Badge>
+          <Badge variant="destructive"><Trash2 size={12} /> Failed</Badge>
+          <Badge variant="info"><Mail size={12} /> 3 new</Badge>
+        </div>
+
+        <h3>As link</h3>
+        <div className="showcase-row">
+          <BadgeAsLink variant="default" href="#">Default</BadgeAsLink>
+          <BadgeAsLink variant="secondary" href="#">Secondary</BadgeAsLink>
+          <BadgeAsLink variant="outline" href="#">Outline</BadgeAsLink>
+          <BadgeAsLink variant="info" href="#">Docs</BadgeAsLink>
+        </div>
+      </section>
+
+      <hr className="showcase-divider" />
 
       {/* ---- Button ---- */}
       <section className="showcase-section">
