@@ -46,10 +46,15 @@ class has_bus_spec(fabll.Node):
     @classmethod
     def MakeChild(
         cls,
-        topology: list[Topology],
+        topology: str | list[Topology],
         data_flow: DataFlow,
         multi_controller: bool,
     ) -> fabll._ChildField[Any]:
+        # From ato: topology=[BUS], data_flow=HALF_DUPLEX, multi_controller=True
+        # From Python: topology=[has_bus_spec.Topology.BUS],
+        # data_flow=has_bus_spec.DataFlow.HALF_DUPLEX, multi_controller=True
+        if isinstance(topology, str):
+            topology = [cls.Topology[t.strip()] for t in topology.split(",")]
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_SetSuperset(
@@ -185,7 +190,11 @@ class has_bus_role(fabll.Node):
     role_ = F.Parameters.EnumParameter.MakeChild(enum_t=BusRole)
 
     @classmethod
-    def MakeChild(cls, role: list[BusRole]) -> fabll._ChildField[Any]:
+    def MakeChild(cls, role: str | list[BusRole]) -> fabll._ChildField[Any]:
+        # From ato: role="CONTROLLER" or role="CONTROLLER,TARGET"
+        # From Python: role=[BusRole.CONTROLLER]
+        if isinstance(role, str):
+            role = [cls.BusRole[r.strip()] for r in role.split(",")]
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_SetSuperset(
