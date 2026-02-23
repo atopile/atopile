@@ -474,15 +474,27 @@ def _find_bus_role_in_hierarchy(
     Walk up the hierarchy from an electrical to find the first ancestor
     with a has_bus_role trait (the bus interface).
 
+    Skips electricals whose path to the bus-role node crosses an ElectricPower
+    boundary, since those are power references, not bus signals.
+
     Returns:
         Tuple of (bus_interface_name, parent_module_name, roles) or None.
     """
     hierarchy = electrical.get_hierarchy()
 
     # Walk from leaf toward root (reversed), skip the electrical itself (last entry)
+    crossed_power = False
     for i in range(len(hierarchy) - 2, -1, -1):
         node, name = hierarchy[i]
+
+        # If the path crosses an ElectricPower node, this electrical is a
+        # power reference (e.g. i2c.sda.reference.lv), not a bus signal.
+        if node.isinstance(F.ElectricPower):
+            crossed_power = True
+
         if node.has_trait(has_bus_role):
+            if crossed_power:
+                return None
             bus_name = name
             roles = node.get_trait(has_bus_role).get_roles()
             # Find parent of the bus interface (one level up)
