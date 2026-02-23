@@ -12,7 +12,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserDesignCheckException, accumulate
-from faebryk.library.bus import BusRole, Topology, has_bus_role, has_bus_spec
+from faebryk.library.bus import has_bus_role, has_bus_spec
 from faebryk.libs.app.checks import check_design
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,10 @@ class needs_bus_check(fabll.Node):
                 topologies = spec.get_topology_values()
 
                 # Only enforce for strictly point-to-point buses
-                if topologies == {Topology.POINT_TO_POINT} and len(bus_members) > 2:
+                if (
+                    topologies == {has_bus_spec.Topology.POINT_TO_POINT}
+                    and len(bus_members) > 2
+                ):
                     friendly = ", ".join(n.get_full_name() for n in bus_members)
                     raise BusTopologyViolation(
                         f"Point-to-point bus has {len(bus_members)} endpoints "
@@ -151,7 +154,7 @@ class needs_bus_check(fabll.Node):
         for spec, bus_members in self._get_bus_groups():
             with accumulator.collect():
                 # Collect roles for members that have has_bus_role
-                role_map: dict[fabll.Node, set[BusRole]] = {}
+                role_map: dict[fabll.Node, set[has_bus_role.BusRole]] = {}
                 for member in bus_members:
                     if member.has_trait(has_bus_role):
                         role_trait = member.get_trait(has_bus_role)
@@ -162,10 +165,14 @@ class needs_bus_check(fabll.Node):
                     continue
 
                 controllers = [
-                    n for n, roles in role_map.items() if BusRole.CONTROLLER in roles
+                    n
+                    for n, roles in role_map.items()
+                    if has_bus_role.BusRole.CONTROLLER in roles
                 ]
                 targets = [
-                    n for n, roles in role_map.items() if BusRole.TARGET in roles
+                    n
+                    for n, roles in role_map.items()
+                    if has_bus_role.BusRole.TARGET in roles
                 ]
 
                 multi_controller = spec.get_multi_controller()
@@ -270,21 +277,21 @@ class Test:
     class _I2CControllerModule(fabll.Node):
         i2c = F.I2C.MakeChild()
         _bus_role = fabll.Traits.MakeEdge(
-            has_bus_role.MakeChild(role=[BusRole.CONTROLLER]),
+            has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER]),
             owner=[i2c],
         )
 
     class _I2CTargetModule(fabll.Node):
         i2c = F.I2C.MakeChild()
         _bus_role = fabll.Traits.MakeEdge(
-            has_bus_role.MakeChild(role=[BusRole.TARGET]),
+            has_bus_role.MakeChild(role=[has_bus_role.BusRole.TARGET]),
             owner=[i2c],
         )
 
     class _SPIControllerModule(fabll.Node):
         spi = F.SPI.MakeChild()
         _bus_role = fabll.Traits.MakeEdge(
-            has_bus_role.MakeChild(role=[BusRole.CONTROLLER]),
+            has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER]),
             owner=[spi],
         )
 

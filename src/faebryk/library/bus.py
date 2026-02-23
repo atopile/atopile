@@ -14,30 +14,6 @@ from faebryk.libs.util import once
 logger = logging.getLogger(__name__)
 
 
-class Topology(Enum):
-    POINT_TO_POINT = auto()
-    BUS = auto()
-    STAR = auto()
-    DAISY_CHAIN = auto()
-    RING = auto()
-    MESH = auto()
-    TREE = auto()
-
-
-class DataFlow(Enum):
-    SIMPLEX = auto()
-    HALF_DUPLEX = auto()
-    FULL_DUPLEX = auto()
-
-
-class BusRole(Enum):
-    CONTROLLER = auto()
-    TARGET = auto()
-    NODE = auto()
-    END_NODE = auto()
-    PASSIVE = auto()
-
-
 class has_bus_spec(fabll.Node):
     """
     Type-level protocol spec for bus interfaces.
@@ -49,8 +25,19 @@ class has_bus_spec(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
 
-    Topology = Topology
-    DataFlow = DataFlow
+    class Topology(Enum):
+        POINT_TO_POINT = auto()
+        BUS = auto()
+        STAR = auto()
+        DAISY_CHAIN = auto()
+        RING = auto()
+        MESH = auto()
+        TREE = auto()
+
+    class DataFlow(Enum):
+        SIMPLEX = auto()
+        HALF_DUPLEX = auto()
+        FULL_DUPLEX = auto()
 
     topology_ = F.Parameters.EnumParameter.MakeChild(enum_t=Topology)
     data_flow_ = F.Parameters.EnumParameter.MakeChild(enum_t=DataFlow)
@@ -88,10 +75,10 @@ class has_bus_spec(fabll.Node):
         lit = self.topology_.get().try_extract_superset()
         if lit is None:
             return set()
-        return set(lit.get_values_typed(Topology))
+        return set(lit.get_values_typed(self.Topology))
 
     def get_data_flow(self) -> DataFlow | None:
-        return self.data_flow_.get().try_extract_singleton_typed(DataFlow)
+        return self.data_flow_.get().try_extract_singleton_typed(self.DataFlow)
 
     def get_multi_controller(self) -> bool | None:
         return self.multi_controller_.get().try_extract_singleton()
@@ -188,7 +175,12 @@ class has_bus_role(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    BusRole = BusRole
+    class BusRole(Enum):
+        CONTROLLER = auto()
+        TARGET = auto()
+        NODE = auto()
+        END_NODE = auto()
+        PASSIVE = auto()
 
     role_ = F.Parameters.EnumParameter.MakeChild(enum_t=BusRole)
 
@@ -207,7 +199,7 @@ class has_bus_role(fabll.Node):
         lit = self.role_.get().try_extract_superset()
         if lit is None:
             return set()
-        return set(lit.get_values_typed(BusRole))
+        return set(lit.get_values_typed(self.BusRole))
 
 
 # ---------------------------------------------------------------------------
@@ -222,8 +214,8 @@ class Test:
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             bus_spec = fabll.Traits.MakeEdge(
                 has_bus_spec.MakeChild(
-                    topology=[Topology.BUS],
-                    data_flow=DataFlow.HALF_DUPLEX,
+                    topology=[has_bus_spec.Topology.BUS],
+                    data_flow=has_bus_spec.DataFlow.HALF_DUPLEX,
                     multi_controller=True,
                 )
             )
@@ -231,8 +223,8 @@ class Test:
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
         spec = inst.get_trait(has_bus_spec)
 
-        assert spec.get_topology_values() == {Topology.BUS}
-        assert spec.get_data_flow() == DataFlow.HALF_DUPLEX
+        assert spec.get_topology_values() == {has_bus_spec.Topology.BUS}
+        assert spec.get_data_flow() == has_bus_spec.DataFlow.HALF_DUPLEX
         assert spec.get_multi_controller() is True
 
     def test_bus_spec_multi_topology(self):
@@ -243,8 +235,8 @@ class Test:
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             bus_spec = fabll.Traits.MakeEdge(
                 has_bus_spec.MakeChild(
-                    topology=[Topology.STAR, Topology.TREE],
-                    data_flow=DataFlow.FULL_DUPLEX,
+                    topology=[has_bus_spec.Topology.STAR, has_bus_spec.Topology.TREE],
+                    data_flow=has_bus_spec.DataFlow.FULL_DUPLEX,
                     multi_controller=False,
                 )
             )
@@ -252,8 +244,11 @@ class Test:
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
         spec = inst.get_trait(has_bus_spec)
 
-        assert spec.get_topology_values() == {Topology.STAR, Topology.TREE}
-        assert spec.get_data_flow() == DataFlow.FULL_DUPLEX
+        assert spec.get_topology_values() == {
+            has_bus_spec.Topology.STAR,
+            has_bus_spec.Topology.TREE,
+        }
+        assert spec.get_data_flow() == has_bus_spec.DataFlow.FULL_DUPLEX
         assert spec.get_multi_controller() is False
 
     def test_bus_role_roundtrip(self):
@@ -263,13 +258,13 @@ class Test:
         class _Host(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             _bus_role = fabll.Traits.MakeEdge(
-                has_bus_role.MakeChild(role=[BusRole.CONTROLLER])
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER])
             )
 
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
         role = inst.get_trait(has_bus_role)
 
-        assert role.get_roles() == {BusRole.CONTROLLER}
+        assert role.get_roles() == {has_bus_role.BusRole.CONTROLLER}
 
     def test_bus_role_multi_role(self):
         g = graph.GraphView.create()
@@ -278,13 +273,18 @@ class Test:
         class _Host(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             _bus_role = fabll.Traits.MakeEdge(
-                has_bus_role.MakeChild(role=[BusRole.CONTROLLER, BusRole.TARGET])
+                has_bus_role.MakeChild(
+                    role=[has_bus_role.BusRole.CONTROLLER, has_bus_role.BusRole.TARGET]
+                )
             )
 
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
         role = inst.get_trait(has_bus_role)
 
-        assert role.get_roles() == {BusRole.CONTROLLER, BusRole.TARGET}
+        assert role.get_roles() == {
+            has_bus_role.BusRole.CONTROLLER,
+            has_bus_role.BusRole.TARGET,
+        }
 
     def test_bus_spec_aliasing(self):
         g = graph.GraphView.create()
@@ -295,8 +295,8 @@ class Test:
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             bus_spec = fabll.Traits.MakeEdge(
                 has_bus_spec.MakeChild(
-                    topology=[Topology.BUS],
-                    data_flow=DataFlow.HALF_DUPLEX,
+                    topology=[has_bus_spec.Topology.BUS],
+                    data_flow=has_bus_spec.DataFlow.HALF_DUPLEX,
                     multi_controller=True,
                 )
             )
@@ -311,7 +311,7 @@ class Test:
         spec_a = a.get_trait(has_bus_spec)
         spec_b = b.get_trait(has_bus_spec)
 
-        assert spec_a.get_topology_values() == {Topology.BUS}
-        assert spec_b.get_topology_values() == {Topology.BUS}
+        assert spec_a.get_topology_values() == {has_bus_spec.Topology.BUS}
+        assert spec_b.get_topology_values() == {has_bus_spec.Topology.BUS}
         assert spec_a.get_multi_controller() is True
         assert spec_b.get_multi_controller() is True
