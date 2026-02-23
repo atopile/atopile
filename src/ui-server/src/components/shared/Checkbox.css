@@ -47,12 +47,12 @@
 }
 
 .checkbox-input:checked + .checkbox-indicator {
-  background: var(--text-primary);
-  border-color: var(--text-primary);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .checkbox-input:checked + .checkbox-indicator .checkbox-icon {
-  color: var(--bg-primary);
+  color: var(--text-on-accent);
 }
 
 .checkbox-icon {
