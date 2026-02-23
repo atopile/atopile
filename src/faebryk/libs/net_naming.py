@@ -7,6 +7,7 @@ from typing import Iterable
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.library.bus import has_bus_role
 
 MAX_NAME_LENGTH = 255
 MAX_CONFLICT_RESOLUTION_ITERATIONS = 100
@@ -456,6 +457,79 @@ def add_affixes(
         processable_net.net_name.required_suffix = found_suffix
 
 
+# Bus role priority: lower value = higher priority
+_ROLE_PRIORITY: dict[has_bus_role.BusRole, int] = {
+    has_bus_role.BusRole.CONTROLLER: 0,
+    has_bus_role.BusRole.END_NODE: 1,
+    has_bus_role.BusRole.TARGET: 2,
+    has_bus_role.BusRole.NODE: 3,
+    has_bus_role.BusRole.PASSIVE: 4,
+}
+
+
+def _find_bus_role_in_hierarchy(
+    electrical: F.Electrical,
+) -> tuple[str, str, set[has_bus_role.BusRole]] | None:
+    """
+    Walk up the hierarchy from an electrical to find the first ancestor
+    with a has_bus_role trait (the bus interface).
+
+    Returns:
+        Tuple of (bus_interface_name, parent_module_name, roles) or None.
+    """
+    hierarchy = electrical.get_hierarchy()
+
+    # Walk from leaf toward root (reversed), skip the electrical itself (last entry)
+    for i in range(len(hierarchy) - 2, -1, -1):
+        node, name = hierarchy[i]
+        if node.has_trait(has_bus_role):
+            bus_name = name
+            roles = node.get_trait(has_bus_role).get_roles()
+            # Find parent of the bus interface (one level up)
+            if i > 0:
+                _, parent_name = hierarchy[i - 1]
+            else:
+                parent_name = name
+            return (bus_name, parent_name, roles)
+
+    return None
+
+
+def add_bus_prefix(
+    processable_nets: list[ProcessableNet],
+) -> None:
+    """
+    Add a bus-role-based prefix to net names.
+
+    For each net, walks up the hierarchy of its electricals to find bus interfaces
+    with has_bus_role traits. Picks the interface with the highest-priority role
+    and sets the prefix to "<parent_name>.<bus_interface_name>".
+
+    Only sets prefix if no prefix is already set (e.g. from conflict resolution).
+    """
+    for processable_net in processable_nets:
+        if processable_net.net_name.prefix:
+            # Already has a prefix (e.g. from a previous step), skip
+            continue
+
+        best_priority = len(_ROLE_PRIORITY)  # worst possible
+        best_prefix: str | None = None
+
+        for ewn in processable_net.electricals:
+            result = _find_bus_role_in_hierarchy(ewn.electrical)
+            if result is None:
+                continue
+            bus_name, parent_name, roles = result
+            for role in roles:
+                priority = _ROLE_PRIORITY.get(role, len(_ROLE_PRIORITY))
+                if priority < best_priority:
+                    best_priority = priority
+                    best_prefix = f"{parent_name}.{bus_name}"
+
+        if best_prefix:
+            processable_net.net_name.prefix = best_prefix
+
+
 def _get_full_hierarchy_path(electrical: F.Electrical) -> str:
     """
     Get the full hierarchical path of an electrical through interface parents.
@@ -601,7 +675,19 @@ def resolve_name_conflicts(
             remaining_nets = conflict_group_sorted[1:]
             for net in remaining_nets:
                 if parent_name := _get_parent_interface_name(net):
-                    net.net_name.prefix = parent_name
+                    existing_prefix = net.net_name.prefix
+                    if existing_prefix:
+                        # Skip if the parent name is already the leading
+                        # component of the existing prefix — prepending it
+                        # again would create redundancy like
+                        # "i2c_mux.i2c_mux.i2cs[1]".
+                        prefix_parts = existing_prefix.split(".")
+                        if prefix_parts[0] == parent_name:
+                            continue
+                        # Prepend to existing prefix (e.g. bus prefix)
+                        net.net_name.prefix = f"{parent_name}.{existing_prefix}"
+                    else:
+                        net.net_name.prefix = parent_name
                     conflicts_resolved += 1
                 # If no parent interface (shouldn't happen in well-formed hierarchy),
                 # or if prefixing still causes conflicts, we'll handle with suffix below
@@ -612,11 +698,11 @@ def resolve_name_conflicts(
             break
 
         # Apply numeric suffixes for remaining conflicts (identical paths)
+        # Suffix ALL conflicting nets (starting from 0) so every name is explicit
         for _, conflict_group in remaining_conflicts.items():
             conflict_group_sorted = sorted(conflict_group, key=_get_conflict_sort_key)
 
-            # Apply suffixes starting from 1 (skip first net, keep it unchanged)
-            for i, net in enumerate(conflict_group_sorted[1:], start=1):
+            for i, net in enumerate(conflict_group_sorted):
                 net.net_name.suffix = i
                 conflicts_resolved += 1
     else:
@@ -712,6 +798,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     process_required_and_suggested_names(processable_nets)
     add_base_name(processable_nets)
     add_affixes(processable_nets)
+    add_bus_prefix(processable_nets)
     conflicts_resolved = resolve_name_conflicts(processable_nets)
     apply_names_to_nets(processable_nets)
 
@@ -1004,7 +1091,7 @@ class TestNetNaming:
             "app_interface2",
             "app_interface2.level1_interface",
             "base_interface",
-            "dup_name",
+            "dup_name-0",
             "dup_name-1",
             "dup_name_suggested",
             "dup_with_affix_SUF",
@@ -1013,7 +1100,7 @@ class TestNetNaming:
             "level0_interface.dup_with_affix_SUF",
             "level0_interface.PRE_dup_with_affix",
             "level1_interface",
-            "level1_interface.dup_name_suggested",
+            "level1_interface.dup_name_suggested-0",
             "level1_interface.dup_name_suggested-1",
             "level1_interface.dup_name_suggested-2",
             "level1_interface.level0_interface",
@@ -1085,10 +1172,10 @@ class TestNetNaming:
         # Conflicts should be resolved using is_module parent (inner_module)
         # not is_interface parents (base_a, base_b, second, inner_interface)
         assert net_names == [
-            "inner_module.sig_a",
+            "inner_module.sig_a-0",
             "inner_module.sig_a-1",
             "inner_module.sig_a-2",
-            "inner_module.sig_b",
+            "inner_module.sig_b-0",
             "inner_module.sig_b-1",
             "inner_module.sig_b-2",
             "sig_a",
@@ -1148,9 +1235,9 @@ class TestNetNaming:
         # With no is_module parents, conflicts should be resolved using
         # is_interface parents (inner_a, inner_b)
         assert net_names == [
-            "inner_a.sig",
+            "inner_a.sig-0",
             "inner_a.sig-1",
-            "inner_b.sig",
+            "inner_b.sig-0",
             "inner_b.sig-1",
             "outer_a.sig",
             "outer_b.sig",
@@ -1804,3 +1891,243 @@ class TestNetNaming:
 
         with pytest.raises(ValueError, match="collision after truncation"):
             apply_names_to_nets([pn1, pn2])
+
+    # =========================================================================
+    # Bus role prefix tests
+    # =========================================================================
+
+    def test_bus_role_prefix_controller_wins(self):
+        """
+        Test that bus role prefix is applied and CONTROLLER role wins over TARGET.
+
+        Hierarchy:
+        - BusPrefixApp
+          - mcu (BusPrefixModule, is_module)
+            - i2c (BusPrefixI2C, is_interface, has_bus_role=CONTROLLER)
+              - scl (F.Electrical, has_net_name_suggestion="SCL")
+              - sda (F.Electrical, has_net_name_suggestion="SDA")
+          - sensor (BusPrefixModule, is_module)
+            - i2c (BusPrefixI2C, is_interface, has_bus_role=TARGET)
+              - scl (F.Electrical, has_net_name_suggestion="SCL")
+              - sda (F.Electrical, has_net_name_suggestion="SDA")
+
+        Connected: mcu.i2c.scl ~ sensor.i2c.scl, mcu.i2c.sda ~ sensor.i2c.sda
+        Expected net names: mcu.i2c.SCL, mcu.i2c.SDA (CONTROLLER prefix wins)
+        """
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class BusPrefixI2C(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            scl = F.Electrical.MakeChild()
+            sda = F.Electrical.MakeChild()
+            scl.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="SCL",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[scl],
+                )
+            )
+            sda.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="SDA",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[sda],
+                )
+            )
+
+        class BusPrefixControllerI2C(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER])
+            )
+            i2c = BusPrefixI2C.MakeChild()
+
+        class BusPrefixTargetI2C(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.TARGET])
+            )
+            i2c = BusPrefixI2C.MakeChild()
+
+        class BusPrefixMCU(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            bus_iface = BusPrefixControllerI2C.MakeChild()
+
+        class BusPrefixSensor(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            bus_iface = BusPrefixTargetI2C.MakeChild()
+
+        class BusPrefixApp(fabll.Node):
+            mcu = BusPrefixMCU.MakeChild()
+            sensor = BusPrefixSensor.MakeChild()
+            # Connect SCL and SDA lines
+            _conn_scl = fabll.MakeEdge(
+                [mcu, "bus_iface", "i2c", "scl"],
+                [sensor, "bus_iface", "i2c", "scl"],
+                edge=interface.build(shallow=False),
+            )
+            _conn_sda = fabll.MakeEdge(
+                [mcu, "bus_iface", "i2c", "sda"],
+                [sensor, "bus_iface", "i2c", "sda"],
+                edge=interface.build(shallow=False),
+            )
+
+        app = BusPrefixApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+        attach_net_names(nets)
+
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None],
+            key=lambda name: name.lower(),
+        )
+
+        print(f"net_names: {net_names}")
+
+        # CONTROLLER (mcu) should provide the prefix
+        assert "mcu.bus_iface.SCL" in net_names
+        assert "mcu.bus_iface.SDA" in net_names
+
+    def test_bus_role_prefix_no_role_no_prefix(self):
+        """
+        Test that when no bus role is present, no bus prefix is added.
+        """
+        import faebryk.core.node as fabll
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class NoBusRoleInterface(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sig = F.Electrical.MakeChild()
+
+        class NoBusRoleApp(fabll.Node):
+            iface = NoBusRoleInterface.MakeChild()
+
+        app = NoBusRoleApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+
+        processable_nets = collect_unnamed_nets(nets)
+        add_base_name(processable_nets)
+        add_bus_prefix(processable_nets)
+
+        # No bus role → no prefix should be set
+        for pn in processable_nets:
+            assert pn.net_name.prefix is None, (
+                f"Expected no prefix for net with base_name={pn.net_name.base_name}, "
+                f"got prefix={pn.net_name.prefix}"
+            )
+
+    def test_bus_role_prefix_multiple_roles_priority(self):
+        """
+        Test that when multiple bus roles exist, the highest priority wins.
+
+        CONTROLLER (priority 0) should beat PASSIVE (priority 4).
+        """
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class BusPrioSignal(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sig = F.Electrical.MakeChild()
+
+        class BusPrioController(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER])
+            )
+            inner = BusPrioSignal.MakeChild()
+
+        class BusPrioPassive(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.PASSIVE])
+            )
+            inner = BusPrioSignal.MakeChild()
+
+        class BusPrioApp(fabll.Node):
+            controller = BusPrioController.MakeChild()
+            passive = BusPrioPassive.MakeChild()
+            _conn = fabll.MakeEdge(
+                [controller, "inner", "sig"],
+                [passive, "inner", "sig"],
+                edge=interface.build(shallow=False),
+            )
+
+        app = BusPrioApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+
+        processable_nets = collect_unnamed_nets(nets)
+        add_base_name(processable_nets)
+        add_bus_prefix(processable_nets)
+
+        # The connected net should get controller's parent as prefix
+        connected_net = next(pn for pn in processable_nets if len(pn.electricals) > 1)
+        assert connected_net.net_name.prefix is not None
+        # CONTROLLER is on "controller" node, so prefix should reference it
+        assert "controller" in connected_net.net_name.prefix
+
+    def test_bus_role_prefix_find_helper(self):
+        """Test _find_bus_role_in_hierarchy returns correct values."""
+        import faebryk.core.node as fabll
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class BusFindSignals(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sig = F.Electrical.MakeChild()
+
+        class BusFindBusIface(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.TARGET])
+            )
+            inner = BusFindSignals.MakeChild()
+
+        class BusFindApp(fabll.Node):
+            my_bus = BusFindBusIface.MakeChild()
+
+        app = BusFindApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Get the sig electrical deep in the hierarchy
+        sig_electricals = [
+            e
+            for e in app.get_children(direct_only=False, types=F.Electrical)
+            if "sig" in e.get_name(accept_no_parent=True)
+        ]
+        assert len(sig_electricals) >= 1
+
+        result = _find_bus_role_in_hierarchy(sig_electricals[0])
+        assert result is not None
+        bus_name, parent_name, roles = result
+        assert bus_name == "my_bus"
+        assert has_bus_role.BusRole.TARGET in roles
