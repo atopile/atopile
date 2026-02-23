@@ -8,7 +8,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-xs);
-  padding: 1px 8px;
+  padding: 2px 8px;
   border: 1px solid transparent;
   border-radius: 9999px;
   font-family: var(--font-sans);
@@ -54,25 +54,22 @@
 /* ---- Variant: success ---- */
 
 .badge-success {
-  background: var(--success-bg);
-  color: var(--success);
-  border-color: var(--success);
+  background: var(--success);
+  color: var(--text-on-status);
 }
 
 /* ---- Variant: warning ---- */
 
 .badge-warning {
-  background: var(--warning-bg);
-  color: var(--warning);
-  border-color: var(--warning);
+  background: var(--warning);
+  color: var(--text-on-status);
 }
 
 /* ---- Variant: info ---- */
 
 .badge-info {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: var(--info);
+  background: var(--info);
+  color: var(--text-on-status);
 }
 
 /* ---- BadgeAsLink ---- */

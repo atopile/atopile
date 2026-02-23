@@ -70,6 +70,7 @@
 
 .table-footer {
   border-top: 1px solid var(--border-color);
+  background: var(--hover);
   font-weight: 500;
 }
 

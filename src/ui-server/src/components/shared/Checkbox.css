@@ -27,8 +27,9 @@
   height: 16px;
   min-width: 16px;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,12 +47,12 @@
 }
 
 .checkbox-input:checked + .checkbox-indicator {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .checkbox-input:checked + .checkbox-indicator .checkbox-icon {
-  color: var(--text-on-accent);
+  color: var(--bg-primary);
 }
 
 .checkbox-icon {

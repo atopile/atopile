@@ -14,10 +14,10 @@
   padding: 6px 10px;
   font-size: var(--font-size-xs);
   line-height: 1.4;
-  color: var(--vscode-editorHoverWidget-foreground, var(--text-primary));
-  background: var(--vscode-editorHoverWidget-background, var(--bg-secondary));
-  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border-subtle));
-  border-radius: var(--radius-sm);
+  color: var(--bg-primary);
+  background: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 12px var(--shadow-color);
   pointer-events: none;
   white-space: normal;
