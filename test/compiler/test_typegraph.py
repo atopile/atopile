@@ -2064,22 +2064,22 @@ class TestTraitStatements:
             #pragma experiment("TRAITS")
             #pragma experiment("INSTANCE_TRAITS")
             import has_net_name_suggestion
-            import Resistor
+            import Electrical
 
             module App:
-                r1 = new Resistor
-                trait r1 has_net_name_suggestion<name="MY_NET", level="SUGGESTED">
+                e1 = new Electrical
+                trait e1 has_net_name_suggestion<name="MY_NET", level="SUGGESTED">
             """,
             root="App",
         )
 
-        r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=app_root, child_identifier="r1"
+        e1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_root, child_identifier="e1"
         )
-        assert r1_bnode is not None
+        assert e1_bnode is not None
 
-        r1 = fabll.Node.bind_instance(r1_bnode)
-        trait = r1.get_trait(F.has_net_name_suggestion)
+        e1 = fabll.Node.bind_instance(e1_bnode)
+        trait = e1.get_trait(F.has_net_name_suggestion)
 
         assert trait.name == "MY_NET"
         assert trait.level == F.has_net_name_suggestion.Level.SUGGESTED
