@@ -54,6 +54,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.power_tree.power_tree import export_power_tree
+from faebryk.libs.app.bus_checks import needs_bus_check
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
     attach_random_designators,
@@ -361,8 +362,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -556,6 +561,7 @@ def prepare_build(ctx: BuildStepContext) -> None:
 
     # TODO remove, once erc split up
     fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
+    fabll.Traits.create_and_add_instance_to(app, needs_bus_check)
 
 
 @muster.register(
@@ -601,6 +607,7 @@ def post_instantiation_setup(ctx: BuildStepContext) -> None:
 
     F.is_alias_bus_parameter.resolve_bus_parameters(app.g, app.tg)
     F.is_sum_bus_parameter.resolve_bus_parameters(app.g, app.tg)
+    F.has_bus_spec.resolve_bus_spec_parameters(app.g, app.tg)
 
 
 @muster.register(
