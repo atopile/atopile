@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { RequirementData, FilterType } from './requirements/types';
 import { RequirementItem } from './requirements/RequirementItem';
-import { StatusPie } from './requirements/StatusPie';
 import { ReqTooltip } from './requirements/ReqTooltip';
 import { postMessage } from '../api/vscodeApi';
 import { useStore } from '../store';
@@ -22,7 +21,6 @@ const FILTER_LABELS: Record<FilterType, string> = {
 export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
-  const [pieOpen, setPieOpen] = useState(false);
   const [tooltip, setTooltip] = useState<{ req: RequirementData | null; rect: DOMRect | null }>({
     req: null,
     rect: null,
@@ -126,26 +124,23 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
         </div>
       </div>
 
-      {/* Summary pie */}
+      {/* Summary */}
       <div className="req-summary">
-        <button className="req-summary-toggle" onClick={() => setPieOpen(!pieOpen)}>
+        <div className="req-summary-toggle">
           <span className="dot pass" />
           <span>{passCount} passed</span>
           <span className="dot fail" />
           <span>{failCount} failed</span>
-          <svg
-            className={`chevron ${pieOpen ? 'open' : ''}`}
-            width="12" height="12" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" strokeWidth="2"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-        {pieOpen && (
-          <div className="req-summary-chart">
-            <StatusPie passCount={passCount} failCount={failCount} />
-          </div>
-        )}
+          <button className="req-view-all-btn" onClick={handleViewAll}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+            View All
+          </button>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -179,17 +174,6 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
           </div>
         )}
       </div>
-
-      {/* View All button */}
-      <button className="req-view-all-btn" onClick={handleViewAll}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="7" height="7" />
-          <rect x="14" y="3" width="7" height="7" />
-          <rect x="14" y="14" width="7" height="7" />
-          <rect x="3" y="14" width="7" height="7" />
-        </svg>
-        View All
-      </button>
 
       <ReqTooltip req={tooltip.req} rect={tooltip.rect} />
     </div>

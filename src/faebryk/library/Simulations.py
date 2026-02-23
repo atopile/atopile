@@ -74,6 +74,7 @@ class SimulationTransient(fabll.Node):
     spice = F.Parameters.StringParameter.MakeChild()
     extra_spice = F.Parameters.StringParameter.MakeChild()
     remove_elements = F.Parameters.StringParameter.MakeChild()
+    duts = F.Parameters.StringParameter.MakeChild()
 
     # --- Transient-specific fields (StringParameter for bare-number ato assignments) ---
     time_start = F.Parameters.StringParameter.MakeChild()
@@ -88,6 +89,9 @@ class SimulationTransient(fabll.Node):
 
     def get_remove_elements(self) -> list[str]:
         return _parse_comma_list(self.remove_elements)
+
+    def get_duts(self) -> list[str]:
+        return _parse_comma_list(self.duts)
 
     def get_time_start(self) -> float | None:
         return _extract_float(self.time_start)
@@ -122,6 +126,7 @@ class SimulationAC(fabll.Node):
     spice = F.Parameters.StringParameter.MakeChild()
     extra_spice = F.Parameters.StringParameter.MakeChild()
     remove_elements = F.Parameters.StringParameter.MakeChild()
+    duts = F.Parameters.StringParameter.MakeChild()
 
     # --- AC-specific fields (StringParameter for bare-number ato assignments) ---
     start_freq = F.Parameters.StringParameter.MakeChild()
@@ -136,6 +141,9 @@ class SimulationAC(fabll.Node):
 
     def get_remove_elements(self) -> list[str]:
         return _parse_comma_list(self.remove_elements)
+
+    def get_duts(self) -> list[str]:
+        return _parse_comma_list(self.duts)
 
     def get_start_freq(self) -> float | None:
         return _extract_float(self.start_freq)
@@ -168,6 +176,7 @@ class SimulationDCOP(fabll.Node):
     spice = F.Parameters.StringParameter.MakeChild()
     extra_spice = F.Parameters.StringParameter.MakeChild()
     remove_elements = F.Parameters.StringParameter.MakeChild()
+    duts = F.Parameters.StringParameter.MakeChild()
 
     def get_spice(self) -> str | None:
         return self.spice.get().try_extract_singleton()
@@ -177,6 +186,9 @@ class SimulationDCOP(fabll.Node):
 
     def get_remove_elements(self) -> list[str]:
         return _parse_comma_list(self.remove_elements)
+
+    def get_duts(self) -> list[str]:
+        return _parse_comma_list(self.duts)
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +230,7 @@ class SimulationSweep(fabll.Node):
     spice = F.Parameters.StringParameter.MakeChild()
     extra_spice = F.Parameters.StringParameter.MakeChild()
     remove_elements = F.Parameters.StringParameter.MakeChild()
+    duts = F.Parameters.StringParameter.MakeChild()
 
     # --- Transient-specific fields (StringParameter for bare-number ato assignments) ---
     time_start = F.Parameters.StringParameter.MakeChild()
@@ -269,6 +282,9 @@ class SimulationSweep(fabll.Node):
 
     def get_remove_elements(self) -> list[str]:
         return _parse_comma_list(self.remove_elements)
+
+    def get_duts(self) -> list[str]:
+        return _parse_comma_list(self.duts)
 
     def get_time_start(self) -> float | None:
         return _extract_float(self.time_start)

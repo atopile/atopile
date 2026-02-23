@@ -109,6 +109,32 @@ def signal_unit(key: str) -> str:
 _CTX_COLORS = ["orange", "green", "purple", "brown"]
 
 
+def _viridis_hex(n: int) -> list[str]:
+    """Return *n* evenly-spaced hex colors from the Viridis colorscale."""
+    # 16-stop Viridis LUT — enough for smooth interpolation.
+    _LUT = [
+        (68, 1, 84), (72, 26, 108), (71, 47, 126), (65, 68, 135),
+        (57, 86, 140), (49, 104, 142), (42, 120, 142), (35, 137, 142),
+        (31, 154, 138), (34, 170, 127), (53, 186, 109), (86, 199, 83),
+        (122, 209, 55), (165, 218, 32), (210, 226, 27), (253, 231, 37),
+    ]
+    if n <= 0:
+        return []
+    if n == 1:
+        return [f"#{_LUT[8][0]:02x}{_LUT[8][1]:02x}{_LUT[8][2]:02x}"]
+    result: list[str] = []
+    for i in range(n):
+        t = i / (n - 1) * (len(_LUT) - 1)
+        lo = int(t)
+        hi = min(lo + 1, len(_LUT) - 1)
+        frac = t - lo
+        r = int(_LUT[lo][0] + frac * (_LUT[hi][0] - _LUT[lo][0]))
+        g = int(_LUT[lo][1] + frac * (_LUT[hi][1] - _LUT[lo][1]))
+        b = int(_LUT[lo][2] + frac * (_LUT[hi][2] - _LUT[lo][2]))
+        result.append(f"#{r:02x}{g:02x}{b:02x}")
+    return result
+
+
 def _compute_settling_milestones(
     signal_data: list[float],
     time_data: list[float],
@@ -201,12 +227,224 @@ class LineChart(fabll.Node):
     y = F.Electrical.MakeChild()
     x_label = F.Parameters.StringParameter.MakeChild()
     y_label = F.Parameters.StringParameter.MakeChild()
+    nets = F.Parameters.StringParameter.MakeChild()
 
     def get_title(self) -> str | None:
         try:
             return self.title.get().try_extract_singleton()
         except (AttributeError, Exception):
             return None
+
+    def get_nets(self) -> list[str]:
+        """Return comma-separated net names from the ``nets`` field."""
+        try:
+            raw = self.nets.get().try_extract_singleton()
+        except Exception:
+            return []
+        if raw is None:
+            return []
+        return [n.strip() for n in raw.split(",") if n.strip()]
+
+    # -------------------------------------------------------------------
+    # Multi-DUT overlay render
+    # -------------------------------------------------------------------
+
+    def render_multi_dut(
+        self,
+        multi_result: Any,
+        req: Any,
+        path: str | Path,
+    ) -> Path | None:
+        """Render overlaid traces for each DUT, labeled by DUT name.
+
+        For each net in ``get_nets()``, resolves ``dut.xxx`` → per-DUT net
+        name and adds a trace per DUT with distinct color + label.
+        """
+        try:
+            import plotly.graph_objects as go
+        except ImportError:
+            return None
+
+        from faebryk.exporters.simulation.ngspice import TransientResult
+        from faebryk.exporters.simulation.requirement import (
+            _slice_from,
+        )
+        from faebryk.exporters.simulation.simulation_runner import MultiDutResult
+
+        if not isinstance(multi_result, MultiDutResult):
+            return None
+
+        path = Path(path)
+        plot_nets = self.get_nets()
+        if not plot_nets:
+            # Fall back to the requirement's primary net
+            raw_net = req.net.get().try_extract_singleton() or ""
+            plot_nets = [raw_net] if raw_net else []
+
+        DUT_COLORS = [
+            "#89b4fa",  # blue
+            "#a6e3a1",  # green
+            "#cba6f7",  # purple
+            "#f38ba8",  # red
+            "#fab387",  # orange
+            "#f9e2af",  # yellow
+        ]
+        # Different dash styles per net to distinguish overlaid nets
+        NET_DASHES = ["solid", "dash", "dot", "dashdot"]
+
+        fig = go.Figure()
+        t_unit = "s"
+        scale = 1.0
+
+        for net_idx, plot_net in enumerate(plot_nets):
+            # Sanitize the net name (dut.power_out.hv → dut_power_out_hv)
+            from faebryk.library.Requirement import Requirement as ReqClass
+
+            raw_net = ReqClass._sanitize_net_name(plot_net)
+            dash = NET_DASHES[net_idx % len(NET_DASHES)]
+
+            for dut_idx, (dut_name, (dut_result, dut_aliases)) in enumerate(
+                multi_result.results.items()
+            ):
+                # Resolve dut.xxx → dut_name_xxx for this DUT
+                dut_net = raw_net
+                if dut_net.startswith("dut_"):
+                    dut_net = f"{dut_name}_{dut_net[4:]}"
+                elif dut_net.startswith("dut."):
+                    dut_net = f"{dut_name}_{dut_net[4:].replace('.', '_')}"
+                normalized = dut_net.replace(".", "_")
+                resolved = dut_aliases.get(
+                    dut_net, dut_aliases.get(normalized, normalized)
+                )
+
+                sig_key = (
+                    f"v({resolved})"
+                    if not resolved.startswith(("v(", "i("))
+                    else resolved
+                )
+                color = DUT_COLORS[dut_idx % len(DUT_COLORS)]
+
+                if not isinstance(dut_result, TransientResult):
+                    continue
+
+                try:
+                    signal_data = dut_result[sig_key]
+                except KeyError:
+                    continue
+                time_data = list(dut_result.time)
+
+                tran_start = req.get_tran_start()
+                if tran_start and tran_start > 0:
+                    time_data, signal_data = _slice_from(
+                        time_data, signal_data, tran_start
+                    )
+
+                t_max = max(time_data) if time_data else 1.0
+                scale, t_unit = auto_scale_time(t_max)
+                t_scaled = [t * scale for t in time_data]
+
+                # Build legend label
+                dut_params = multi_result.dut_params.get(dut_name, {})
+                vin = next(
+                    (
+                        v
+                        for k, v in dut_params.items()
+                        if "power_in" in k and "voltage" in k
+                    ),
+                    None,
+                )
+                vout = next(
+                    (
+                        v
+                        for k, v in dut_params.items()
+                        if "power_out" in k and "voltage" in k
+                    ),
+                    None,
+                )
+                # Net suffix for multi-net clarity
+                net_suffix = ""
+                if len(plot_nets) > 1:
+                    # Show the net portion after "dut."
+                    short = plot_net
+                    if short.startswith("dut."):
+                        short = short[4:]
+                    net_suffix = f" | {short}"
+
+                label = dut_name
+                if vin is not None and vout is not None:
+                    label += f" ({vin:.0f}V\u2192{vout:.1f}V)"
+                label += net_suffix
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=t_scaled,
+                        y=list(signal_data),
+                        mode="lines",
+                        name=label,
+                        line=dict(color=color, width=2, dash=dash),
+                    )
+                )
+
+        # Add pass band from requirement limits (if not vout_tolerance_pct)
+        try:
+            vout_pct = req.get_vout_tolerance_pct()
+            if vout_pct is None:
+                min_val = req.get_min_val()
+                max_val = req.get_max_val()
+                measurement = req.get_measurement()
+                if measurement in ("settling_time",):
+                    # Time-based limits → vertical lines
+                    self._add_time_limit_labels(fig, min_val, max_val, scale, t_unit)
+                else:
+                    fig.add_hrect(
+                        y0=min_val,
+                        y1=max_val,
+                        fillcolor="green",
+                        opacity=0.08,
+                        line_width=0,
+                    )
+                    fig.add_hline(
+                        y=min_val,
+                        line=dict(color="red", dash="dot", width=1.5),
+                    )
+                    fig.add_hline(
+                        y=max_val,
+                        line=dict(color="red", dash="dot", width=1.5),
+                    )
+        except Exception:
+            pass
+
+        # Status annotation
+        n_duts = len(multi_result.results)
+        chart_title = self.get_title() or req.get_name()
+
+        fig.update_layout(
+            title=dict(
+                text=(
+                    f"<b>{chart_title}</b><br>"
+                    f"<span style='font-size:12px;color:gray'>"
+                    f"Nets: {', '.join(plot_nets)}</span>"
+                ),
+                x=0.5,
+                font=dict(size=16),
+            ),
+            xaxis_title=f"Time ({t_unit})",
+            yaxis_title="Voltage (V)",
+            width=900,
+            height=500,
+            template="plotly_white",
+            showlegend=True,
+            legend=dict(
+                font=dict(size=10),
+                x=1.02,
+                y=1,
+                xanchor="left",
+                yanchor="top",
+            ),
+        )
+
+        fig.write_html(str(path), include_plotlyjs="cdn")
+        return path
 
     # -------------------------------------------------------------------
     # Public render entry point
@@ -2649,4 +2887,1051 @@ class CombinedSweepChart(fabll.Node):
         fig_wave.write_html(str(path_wave), include_plotlyjs="cdn")
 
         self._last_figs = [fig_meas, fig_wave]
+        return path
+
+
+# ---------------------------------------------------------------------------
+# SweepOverlayChart — multiple sweep simulations on the same axes
+# ---------------------------------------------------------------------------
+
+
+class SweepOverlayChart(fabll.Node):
+    """Multi-series sweep chart — plots multiple sweep simulations on one chart.
+
+    Each referenced simulation produces one line, with the sweep parameter on
+    the X-axis and the measured value on the Y-axis.  Pass/fail bands are drawn
+    from ``min_val`` / ``max_val``.
+
+    Usage in ato::
+
+        chart = new SweepOverlayChart
+        chart.title = "Efficiency vs Load Current"
+        chart.x_label = "Load Current (A)"
+        chart.y_label = "Efficiency (%)"
+        chart.simulations = "eff_vin12,eff_vin24,eff_vin36,eff_vin48"
+        chart.series_labels = "VIN=12V,VIN=24V,VIN=36V,VIN=48V"
+        chart.net = "dut.power_out.hv"
+        chart.measurement = "efficiency"
+        chart.context_nets = "i(V1),dut.power_in.hv,i(V_LSENSE)"
+        chart.min_val = 70
+        chart.max_val = 100
+    """
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    title = F.Parameters.StringParameter.MakeChild()
+    x_label = F.Parameters.StringParameter.MakeChild()
+    y_label = F.Parameters.StringParameter.MakeChild()
+    simulations = F.Parameters.StringParameter.MakeChild()
+    series_labels = F.Parameters.StringParameter.MakeChild()
+    net = F.Parameters.StringParameter.MakeChild()
+    measurement = F.Parameters.StringParameter.MakeChild()
+    context_nets = F.Parameters.StringParameter.MakeChild()
+    min_val = F.Parameters.StringParameter.MakeChild()
+    max_val = F.Parameters.StringParameter.MakeChild()
+
+    # --- Getters ---
+
+    def get_title(self) -> str | None:
+        try:
+            return self.title.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def get_x_label(self) -> str | None:
+        try:
+            return self.x_label.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def get_y_label(self) -> str | None:
+        try:
+            return self.y_label.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def get_simulations(self) -> list[str]:
+        try:
+            raw = self.simulations.get().try_extract_singleton()
+            if raw is None:
+                return []
+            return [s.strip() for s in raw.split(",") if s.strip()]
+        except (AttributeError, Exception):
+            return []
+
+    def get_series_labels(self) -> list[str]:
+        try:
+            raw = self.series_labels.get().try_extract_singleton()
+            if raw is None:
+                return []
+            return [s.strip() for s in raw.split(",") if s.strip()]
+        except (AttributeError, Exception):
+            return []
+
+    def get_net(self) -> str | None:
+        try:
+            return self.net.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def get_measurement(self) -> str | None:
+        try:
+            return self.measurement.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def get_context_nets(self) -> list[str]:
+        try:
+            raw = self.context_nets.get().try_extract_singleton()
+            if raw is None:
+                return []
+            return [s.strip() for s in raw.split(",") if s.strip()]
+        except (AttributeError, Exception):
+            return []
+
+    def _extract_float(self, param) -> float | None:
+        """Extract a float from a StringParameter, handling solver type coercion."""
+        try:
+            v = param.get().try_extract_singleton()
+            return float(v) if v is not None else None
+        except Exception:
+            try:
+                from faebryk.library.Literals import Numbers
+
+                nums = param.get().is_parameter_operatable.get().try_extract_superset(
+                    lit_type=Numbers
+                )
+                if nums is not None:
+                    return float(nums.get_single())
+            except Exception:
+                pass
+        return None
+
+    def get_min_val(self) -> float:
+        v = self._extract_float(self.min_val)
+        return v if v is not None else float("-inf")
+
+    def get_max_val(self) -> float:
+        v = self._extract_float(self.max_val)
+        return v if v is not None else float("inf")
+
+    # --- Render ---
+
+    def render(
+        self,
+        series_data: dict[str, list[SweepPoint]],
+        path: str | Path,
+    ) -> Path | None:
+        """Render overlay chart with one line per series.
+
+        Args:
+            series_data: Mapping of series label to list of SweepPoint.
+            path: Output HTML file path.
+        """
+        try:
+            import plotly.graph_objects as go
+        except ImportError:
+            return None
+
+        path = Path(path)
+        if not series_data:
+            return None
+
+        fig = go.Figure()
+        colors = [
+            "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+            "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+        ]
+        min_v = self.get_min_val()
+        max_v = self.get_max_val()
+
+        total_points = 0
+        total_pass = 0
+
+        for idx, (label, points) in enumerate(series_data.items()):
+            x_vals = [p.param_value for p in points]
+            y_vals = [p.actual for p in points]
+            color = colors[idx % len(colors)]
+
+            n_pass = sum(1 for p in points if p.passed)
+            total_points += len(points)
+            total_pass += n_pass
+
+            fig.add_trace(go.Scatter(
+                x=x_vals,
+                y=y_vals,
+                mode="lines+markers",
+                name=label,
+                line=dict(color=color, width=2.5),
+                marker=dict(size=8),
+            ))
+
+        # Pass band
+        if math.isfinite(min_v) and math.isfinite(max_v):
+            fig.add_hrect(
+                y0=min_v, y1=max_v,
+                fillcolor="green", opacity=0.08, line_width=0,
+            )
+            fig.add_hline(
+                y=min_v, line=dict(color="red", dash="dot", width=1.5),
+            )
+            fig.add_hline(
+                y=max_v, line=dict(color="red", dash="dot", width=1.5),
+            )
+
+        # Status badge
+        n_fail = total_points - total_pass
+        status = "ALL PASS" if n_fail == 0 else f"{n_fail} FAIL"
+        status_color = "#2ecc71" if n_fail == 0 else "#e74c3c"
+        fig.add_annotation(
+            x=0.02, y=0.98, xref="paper", yref="paper",
+            text=f"<b>{status}</b> ({total_pass}/{total_points} points)",
+            showarrow=False,
+            font=dict(color=status_color, size=12),
+            xanchor="left", yanchor="top",
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor=status_color, borderwidth=1, borderpad=4,
+        )
+
+        fig.update_layout(
+            title=dict(
+                text=self.get_title() or "Sweep Overlay",
+                font=dict(size=16),
+            ),
+            xaxis_title=self.get_x_label() or "Parameter",
+            yaxis_title=self.get_y_label() or "Measured Value",
+            template="plotly_white",
+            width=900,
+            height=550,
+            showlegend=True,
+            legend=dict(
+                font=dict(size=11), x=1.02, y=1,
+                xanchor="left", yanchor="top",
+            ),
+            margin=dict(t=60, b=60, l=60, r=120),
+        )
+
+        fig.write_html(str(path), include_plotlyjs="cdn")
+        return path
+
+
+# ---------------------------------------------------------------------------
+# StartupValidationChart — 3-panel soft-start validation
+# ---------------------------------------------------------------------------
+
+
+class StartupValidationChart(fabll.Node):
+    """Dense 3-panel startup validation chart.
+
+    Consolidates multiple startup transient simulations (one per switching
+    frequency) into a single dashboard with waveform overlay, settling-time
+    scatter, and a summary table.
+
+    Panel 1 (top, 45%): All startup waveforms overlaid — one trace per
+        frequency in distinct colours, with vertical dashed lines at each
+        settling time and final-value annotations.
+    Panel 2 (mid, 30%): Settling time vs frequency scatter.  Green/red
+        markers for pass/fail, per-frequency pass band shading, and a
+        dashed line for the theoretical 1024/fsw soft-start time.
+    Panel 3 (bot, 25%): Summary table — Frequency | Settling Time | Status
+        | Final Value | Status | Overshoot | Status.
+
+    Usage in ato::
+
+        chart = new StartupValidationChart
+        chart.title = "Soft-Start Time vs Switching Frequency (DS Fig 21)"
+        chart.simulations = "fig21_startup_200k,fig21_startup_400k,..."
+        chart.series_labels = "200kHz,400kHz,..."
+        chart.frequencies = "200e3,400e3,..."
+        chart.net = "dut.power_out.hv"
+        chart.settling_tolerance = 0.02
+        chart.settling_max = "15e-3,10e-3,..."
+        chart.final_value_min = 4.75
+        chart.final_value_max = 5.25
+        chart.overshoot_max = 10
+    """
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    title = F.Parameters.StringParameter.MakeChild()
+    simulations = F.Parameters.StringParameter.MakeChild()
+    series_labels = F.Parameters.StringParameter.MakeChild()
+    frequencies = F.Parameters.StringParameter.MakeChild()
+    net = F.Parameters.StringParameter.MakeChild()
+    settling_tolerance = F.Parameters.StringParameter.MakeChild()
+    settling_max = F.Parameters.StringParameter.MakeChild()
+    final_value_min = F.Parameters.StringParameter.MakeChild()
+    final_value_max = F.Parameters.StringParameter.MakeChild()
+    overshoot_max = F.Parameters.StringParameter.MakeChild()
+
+    # --- Getters ---
+
+    def _get_str(self, param) -> str | None:
+        try:
+            return param.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def _get_csv(self, param) -> list[str]:
+        raw = self._get_str(param)
+        if raw is None:
+            return []
+        return [s.strip() for s in raw.split(",") if s.strip()]
+
+    def _get_float(self, param) -> float | None:
+        raw = self._get_str(param)
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    def get_title(self) -> str | None:
+        return self._get_str(self.title)
+
+    def get_simulations(self) -> list[str]:
+        return self._get_csv(self.simulations)
+
+    def get_series_labels(self) -> list[str]:
+        return self._get_csv(self.series_labels)
+
+    def get_frequencies(self) -> list[float]:
+        return [float(f) for f in self._get_csv(self.frequencies)]
+
+    def get_net(self) -> str | None:
+        return self._get_str(self.net)
+
+    def get_settling_tolerance(self) -> float:
+        v = self._get_float(self.settling_tolerance)
+        return v if v is not None else 0.02
+
+    def get_settling_max(self) -> list[float]:
+        return [float(v) for v in self._get_csv(self.settling_max)]
+
+    def get_final_value_min(self) -> float:
+        v = self._get_float(self.final_value_min)
+        return v if v is not None else float("-inf")
+
+    def get_final_value_max(self) -> float:
+        v = self._get_float(self.final_value_max)
+        return v if v is not None else float("inf")
+
+    def get_overshoot_max(self) -> float:
+        v = self._get_float(self.overshoot_max)
+        return v if v is not None else float("inf")
+
+    # --- Render ---
+
+    def render(
+        self,
+        series_data: dict[str, Any],
+        net_key: str,
+        path: str | Path,
+    ) -> Path | None:
+        """Render 3-panel startup validation chart.
+
+        Args:
+            series_data: Mapping of sim name -> TransientResult.
+            net_key: SPICE net key for Vout (e.g. "v(dut_power_out_hv)").
+            path: Output HTML file path.
+        """
+        try:
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+        except ImportError:
+            return None
+
+        from faebryk.exporters.simulation.requirement import _measure_tran
+
+        path = Path(path)
+        if not series_data:
+            return None
+
+        sim_names = self.get_simulations()
+        labels = self.get_series_labels()
+        freqs = self.get_frequencies()
+        tol = self.get_settling_tolerance()
+        settling_maxes = self.get_settling_max()
+        fv_min = self.get_final_value_min()
+        fv_max = self.get_final_value_max()
+        os_max = self.get_overshoot_max()
+
+        if not sim_names:
+            return None
+
+        # Pad labels / freqs / settling_maxes to match sim count
+        while len(labels) < len(sim_names):
+            labels.append(sim_names[len(labels)])
+        while len(freqs) < len(sim_names):
+            freqs.append(0.0)
+        while len(settling_maxes) < len(sim_names):
+            settling_maxes.append(float("inf"))
+
+        colors = _viridis_hex(len(sim_names))
+
+        # --- Compute measurements for each simulation ---
+        measurements: list[dict[str, Any]] = []
+
+        # Find global time range for axis scaling
+        all_t_max = 0.0
+        for sname in sim_names:
+            tran = series_data.get(sname)
+            if tran is not None and hasattr(tran, "time") and tran.time:
+                all_t_max = max(all_t_max, max(tran.time))
+        t_scale, t_unit = auto_scale_time(all_t_max)
+
+        for i, sname in enumerate(sim_names):
+            tran = series_data.get(sname)
+            if tran is None or not hasattr(tran, "time") or not tran.time:
+                measurements.append({
+                    "label": labels[i],
+                    "freq": freqs[i],
+                    "settling_time": float("nan"),
+                    "final_value": float("nan"),
+                    "overshoot": float("nan"),
+                    "tran": None,
+                })
+                continue
+
+            try:
+                sig = list(tran[net_key])
+            except KeyError:
+                measurements.append({
+                    "label": labels[i],
+                    "freq": freqs[i],
+                    "settling_time": float("nan"),
+                    "final_value": float("nan"),
+                    "overshoot": float("nan"),
+                    "tran": None,
+                })
+                continue
+
+            st = _measure_tran("settling_time", sig, tran.time,
+                               settling_tolerance=tol)
+            fv = _measure_tran("final_value", sig, tran.time)
+            os_pct = _measure_tran("overshoot", sig, tran.time)
+
+            measurements.append({
+                "label": labels[i],
+                "freq": freqs[i],
+                "settling_time": st,
+                "final_value": fv,
+                "overshoot": os_pct,
+                "tran": tran,
+                "sig": sig,
+            })
+
+        # --- Create 3-panel figure ---
+        fig = make_subplots(
+            rows=3, cols=1,
+            row_heights=[0.45, 0.30, 0.25],
+            vertical_spacing=0.08,
+            specs=[
+                [{"type": "scatter"}],
+                [{"type": "scatter"}],
+                [{"type": "table"}],
+            ],
+            subplot_titles=[
+                "Startup Waveforms",
+                "Settling Time vs Frequency",
+                "",
+            ],
+        )
+
+        # Max points per trace to keep HTML manageable
+        _MAX_PTS = 2000
+
+        # --- Panel 1: Waveform overlay ---
+        for i, m in enumerate(measurements):
+            tran = m.get("tran")
+            sig = m.get("sig")
+            if tran is None or sig is None:
+                continue
+
+            raw_t = tran.time
+            raw_sig = sig
+            if len(raw_t) > _MAX_PTS:
+                step = len(raw_t) / _MAX_PTS
+                indices = [int(j * step) for j in range(_MAX_PTS)]
+                if indices[-1] != len(raw_t) - 1:
+                    indices.append(len(raw_t) - 1)
+                raw_t = [raw_t[j] for j in indices]
+                raw_sig = [raw_sig[j] for j in indices]
+
+            time_scaled = [t * t_scale for t in raw_t]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=time_scaled, y=raw_sig,
+                    mode="lines", name=m["label"],
+                    line=dict(color=colors[i], width=2),
+                ),
+                row=1, col=1,
+            )
+
+            # Vertical dashed line at settling time
+            st = m["settling_time"]
+            if not math.isnan(st) and math.isfinite(st):
+                st_scaled = st * t_scale
+                fig.add_vline(
+                    x=st_scaled, row=1, col=1,
+                    line=dict(color=colors[i], dash="dash", width=1),
+                    opacity=0.6,
+                )
+
+            # Final value annotation at trace end
+            fv = m["final_value"]
+            if not math.isnan(fv) and time_scaled:
+                fig.add_annotation(
+                    x=time_scaled[-1], y=fv,
+                    text=f"{fv:.3f}V",
+                    showarrow=False, font=dict(color=colors[i], size=9),
+                    xanchor="left", xshift=4,
+                    row=1, col=1,
+                )
+
+        fig.update_xaxes(title_text=f"Time ({t_unit})", row=1, col=1)
+        fig.update_yaxes(title_text="Voltage (V)", row=1, col=1)
+
+        # --- Panel 2: Settling time vs frequency ---
+        for i, m in enumerate(measurements):
+            freq = m["freq"]
+            st = m["settling_time"]
+            if math.isnan(st) or freq <= 0:
+                continue
+
+            # Pass/fail based on per-frequency settling_max
+            passed = st <= settling_maxes[i]
+            marker_color = "#2ecc71" if passed else "#e74c3c"
+
+            fig.add_trace(
+                go.Scatter(
+                    x=[freq], y=[st],
+                    mode="markers+text",
+                    marker=dict(color=marker_color, size=12,
+                                line=dict(color="white", width=2)),
+                    text=[m["label"]],
+                    textposition="top center",
+                    textfont=dict(size=9, color=marker_color),
+                    showlegend=False,
+                ),
+                row=2, col=1,
+            )
+
+        # Per-frequency pass bands
+        for i in range(len(freqs)):
+            if freqs[i] > 0 and settling_maxes[i] < float("inf"):
+                # Green shading up to settling_max
+                half_bw = freqs[i] * 0.15  # visual width for marker
+                fig.add_shape(
+                    type="rect",
+                    x0=freqs[i] - half_bw, x1=freqs[i] + half_bw,
+                    y0=0, y1=settling_maxes[i],
+                    fillcolor="green", opacity=0.06, line_width=0,
+                    row=2, col=1,
+                )
+
+        # Theoretical 1024/fsw line
+        if any(f > 0 for f in freqs):
+            f_min = min(f for f in freqs if f > 0) * 0.8
+            f_max = max(freqs) * 1.2
+            theory_x = []
+            theory_y = []
+            f_step = (f_max - f_min) / 50
+            f = f_min
+            while f <= f_max:
+                theory_x.append(f)
+                theory_y.append(1024.0 / f)
+                f += f_step
+            fig.add_trace(
+                go.Scatter(
+                    x=theory_x, y=theory_y,
+                    mode="lines", name="1024/fsw (theoretical)",
+                    line=dict(color="gray", dash="dash", width=1.5),
+                    showlegend=True,
+                ),
+                row=2, col=1,
+            )
+
+        fig.update_xaxes(title_text="Switching Frequency (Hz)", row=2, col=1)
+        fig.update_yaxes(title_text="Settling Time (s)", row=2, col=1)
+
+        # --- Panel 3: Summary table ---
+        freq_col = []
+        settle_col = []
+        settle_status = []
+        fv_col = []
+        fv_status = []
+        os_col = []
+        os_status = []
+        settle_fill = []
+        fv_fill = []
+        os_fill = []
+
+        for i, m in enumerate(measurements):
+            freq_col.append(m["label"])
+
+            st = m["settling_time"]
+            if math.isnan(st):
+                settle_col.append("N/A")
+                s_pass = False
+            else:
+                settle_col.append(format_eng(st, "s"))
+                s_pass = st <= settling_maxes[i]
+            settle_status.append("PASS" if s_pass else "FAIL")
+            settle_fill.append("#d5f5e3" if s_pass else "#fadbd8")
+
+            fv = m["final_value"]
+            if math.isnan(fv):
+                fv_col.append("N/A")
+                f_pass = False
+            else:
+                fv_col.append(f"{fv:.4f} V")
+                f_pass = fv_min <= fv <= fv_max
+            fv_status.append("PASS" if f_pass else "FAIL")
+            fv_fill.append("#d5f5e3" if f_pass else "#fadbd8")
+
+            os_pct = m["overshoot"]
+            if math.isnan(os_pct):
+                os_col.append("N/A")
+                o_pass = False
+            else:
+                os_col.append(f"{os_pct:.2f}%")
+                o_pass = os_pct <= os_max
+            os_status.append("PASS" if o_pass else "FAIL")
+            os_fill.append("#d5f5e3" if o_pass else "#fadbd8")
+
+        # Build cell fill colors: per-column fill array
+        white = ["white"] * len(measurements)
+        cell_fill = [
+            white,            # Frequency
+            white,            # Settling Time
+            settle_fill,      # Settle Status
+            white,            # Final Value
+            fv_fill,          # FV Status
+            white,            # Overshoot
+            os_fill,          # OS Status
+        ]
+
+        fig.add_trace(
+            go.Table(
+                header=dict(
+                    values=[
+                        "Frequency", "Settling Time", "Status",
+                        "Final Value", "Status", "Overshoot", "Status",
+                    ],
+                    fill_color="#264653",
+                    font=dict(color="white", size=11),
+                    align="center",
+                ),
+                cells=dict(
+                    values=[
+                        freq_col, settle_col, settle_status,
+                        fv_col, fv_status,
+                        os_col, os_status,
+                    ],
+                    fill_color=cell_fill,
+                    font=dict(size=11, color="#333"),
+                    align="center",
+                    height=28,
+                ),
+            ),
+            row=3, col=1,
+        )
+
+        # --- Layout ---
+        chart_title = self.get_title() or "Startup Validation"
+        n_sims = len(sim_names)
+        all_pass = all(
+            s == "PASS"
+            for s in settle_status + fv_status + os_status
+        )
+        status = "ALL PASS" if all_pass else "SOME FAIL"
+        status_color = "#2ecc71" if all_pass else "#e74c3c"
+
+        fig.update_layout(
+            title=dict(
+                text=(
+                    f"{chart_title}"
+                    f"<br><sup>{n_sims} frequencies | "
+                    f"<span style='color:{status_color}'>"
+                    f"{status}</span></sup>"
+                ),
+                font=dict(size=16),
+            ),
+            template="plotly_white",
+            width=1100,
+            height=950,
+            showlegend=True,
+            legend=dict(
+                font=dict(size=11), x=1.02, y=1,
+                xanchor="left", yanchor="top",
+            ),
+            margin=dict(t=80, b=40, l=60, r=140),
+        )
+
+        fig.write_html(str(path), include_plotlyjs="cdn")
+        return path
+
+
+# ---------------------------------------------------------------------------
+# EfficiencyValidationChart — multi-VIN efficiency dashboard
+# ---------------------------------------------------------------------------
+
+
+class EfficiencyValidationChart(fabll.Node):
+    """Dense 3-panel efficiency validation chart.
+
+    Consolidates multiple sweep simulations (one per VIN) into a single
+    dashboard showing efficiency curves, power breakdown, and a summary table.
+
+    Panel 1 (top, 45%): Efficiency vs Load Current — one line per VIN.
+    Panel 2 (mid, 30%): Power breakdown — Pin/Pout/Ploss vs load.
+    Panel 3 (bot, 25%): Summary table with per-VIN statistics.
+
+    Usage in ato::
+
+        chart = new EfficiencyValidationChart
+        chart.title = "Efficiency vs Load Current — 5V Output (DS Fig 44)"
+        chart.simulations = "fig44_eff_vin7,fig44_eff_vin12,..."
+        chart.series_labels = "VIN=7V,VIN=12V,..."
+        chart.net = "dut.power_out.hv"
+        chart.context_nets = "i(V1),dut.power_in.hv,i(V_LSENSE)"
+        chart.min_eff = 70
+        chart.max_eff = 100
+    """
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    title = F.Parameters.StringParameter.MakeChild()
+    simulations = F.Parameters.StringParameter.MakeChild()
+    series_labels = F.Parameters.StringParameter.MakeChild()
+    net = F.Parameters.StringParameter.MakeChild()
+    context_nets = F.Parameters.StringParameter.MakeChild()
+    min_eff = F.Parameters.StringParameter.MakeChild()
+    max_eff = F.Parameters.StringParameter.MakeChild()
+
+    # --- Getters ---
+
+    def _get_str(self, param) -> str | None:
+        try:
+            return param.get().try_extract_singleton()
+        except (AttributeError, Exception):
+            return None
+
+    def _get_csv(self, param) -> list[str]:
+        raw = self._get_str(param)
+        if raw is None:
+            return []
+        return [s.strip() for s in raw.split(",") if s.strip()]
+
+    def _get_float(self, param) -> float | None:
+        raw = self._get_str(param)
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    def get_title(self) -> str | None:
+        return self._get_str(self.title)
+
+    def get_simulations(self) -> list[str]:
+        return self._get_csv(self.simulations)
+
+    def get_series_labels(self) -> list[str]:
+        return self._get_csv(self.series_labels)
+
+    def get_net(self) -> str | None:
+        return self._get_str(self.net)
+
+    def get_context_nets(self) -> list[str]:
+        return self._get_csv(self.context_nets)
+
+    def get_min_eff(self) -> float | None:
+        return self._get_float(self.min_eff)
+
+    def get_max_eff(self) -> float | None:
+        return self._get_float(self.max_eff)
+
+    # --- Render ---
+
+    def render(
+        self,
+        series_data: dict[str, dict[float, Any]],
+        net_key: str,
+        path: str | Path,
+        context_keys: list[str] | None = None,
+    ) -> Path | None:
+        """Render 3-panel efficiency validation chart.
+
+        Args:
+            series_data: Mapping of series label to sweep dict
+                         (param_value -> TransientResult).
+            net_key: SPICE net key for Vout.
+            path: Output HTML file path.
+            context_keys: Resolved context net keys
+                          (e.g. ["i(v1)", "v(dut_power_in_hv)", "i(v_lsense)"]).
+        """
+        try:
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+        except ImportError:
+            return None
+
+        from faebryk.exporters.simulation.requirement import _measure_tran
+
+        path = Path(path)
+        if not series_data:
+            return None
+
+        colors = [
+            "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+            "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+        ]
+        ctx_keys = context_keys or []
+
+        min_eff = self.get_min_eff()
+        max_eff = self.get_max_eff()
+
+        # --- Compute efficiency and power at each sweep point per series ---
+        all_series: list[dict[str, Any]] = []
+
+        for label, sweep_dict in series_data.items():
+            loads: list[float] = []
+            effs: list[float] = []
+            pins: list[float] = []
+            pouts: list[float] = []
+            plosses: list[float] = []
+
+            for pval in sorted(sweep_dict.keys()):
+                tran = sweep_dict[pval]
+                if not hasattr(tran, "time") or not tran.time:
+                    continue
+
+                try:
+                    vout_data = list(tran[net_key])
+                except KeyError:
+                    continue
+
+                eff = _measure_tran(
+                    "efficiency", vout_data, tran.time,
+                    sim_result=tran, context_nets=ctx_keys,
+                )
+
+                # Compute power values from context nets
+                i_in_data = None
+                v_in_data = None
+                i_load_data = None
+
+                for ctx_key in ctx_keys:
+                    ctx_lc = ctx_key.lower()
+                    try:
+                        ctx_data = list(tran[ctx_key])
+                    except KeyError:
+                        continue
+                    if ctx_lc.startswith("i(v1") or ctx_lc.startswith("i(v_1"):
+                        i_in_data = ctx_data
+                    elif ctx_lc.startswith("i(v_lsense") or ctx_lc.startswith(
+                        "i(i_load"
+                    ):
+                        i_load_data = ctx_data
+                    elif "power_in" in ctx_lc or "vin" in ctx_lc:
+                        v_in_data = ctx_data
+
+                # Compute average powers
+                vout_avg = sum(vout_data) / len(vout_data)
+                pin_avg = 0.0
+                pout_avg = 0.0
+
+                if v_in_data and i_in_data:
+                    pin_avg = abs(
+                        sum(v * i for v, i in zip(v_in_data, i_in_data))
+                        / len(v_in_data)
+                    )
+                if i_load_data:
+                    pout_avg = abs(
+                        vout_avg
+                        * sum(i_load_data)
+                        / len(i_load_data)
+                    )
+
+                ploss_avg = max(0.0, pin_avg - pout_avg)
+
+                loads.append(pval)
+                effs.append(eff if not math.isnan(eff) else 0.0)
+                pins.append(pin_avg)
+                pouts.append(pout_avg)
+                plosses.append(ploss_avg)
+
+            if loads:
+                all_series.append({
+                    "label": label,
+                    "loads": loads,
+                    "effs": effs,
+                    "pins": pins,
+                    "pouts": pouts,
+                    "plosses": plosses,
+                })
+
+        if not all_series:
+            return None
+
+        # --- Create 3-panel figure ---
+        fig = make_subplots(
+            rows=3, cols=1,
+            row_heights=[0.45, 0.30, 0.25],
+            vertical_spacing=0.08,
+            specs=[
+                [{"type": "scatter"}],
+                [{"type": "scatter"}],
+                [{"type": "table"}],
+            ],
+            subplot_titles=[
+                "Efficiency vs Load Current",
+                "Power Breakdown",
+                "",
+            ],
+        )
+
+        # --- Panel 1: Efficiency curves ---
+        for idx, s in enumerate(all_series):
+            color = colors[idx % len(colors)]
+            fig.add_trace(
+                go.Scatter(
+                    x=s["loads"], y=s["effs"],
+                    mode="lines+markers", name=s["label"],
+                    line=dict(color=color, width=2.5),
+                    marker=dict(size=8),
+                    legendgroup=s["label"],
+                ),
+                row=1, col=1,
+            )
+
+        # Pass band shading
+        if min_eff is not None and max_eff is not None:
+            fig.add_hrect(
+                y0=min_eff, y1=max_eff, fillcolor="green", opacity=0.08,
+                line_width=0, row=1, col=1,
+            )
+            fig.add_hline(
+                y=min_eff, row=1, col=1,
+                line=dict(color="red", dash="dot", width=1.5),
+                annotation_text=f"Min {min_eff}%",
+                annotation_position="bottom left",
+            )
+
+        fig.update_xaxes(title_text="Load Current (A)", row=1, col=1)
+        fig.update_yaxes(title_text="Efficiency (%)", row=1, col=1)
+
+        # --- Panel 2: Power breakdown ---
+        for idx, s in enumerate(all_series):
+            color = colors[idx % len(colors)]
+            fig.add_trace(
+                go.Scatter(
+                    x=s["loads"], y=s["pouts"],
+                    mode="lines+markers", name=f"{s['label']} Pout",
+                    line=dict(color=color, width=2),
+                    marker=dict(size=6),
+                    legendgroup=s["label"],
+                    showlegend=False,
+                ),
+                row=2, col=1,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=s["loads"], y=s["pins"],
+                    mode="lines", name=f"{s['label']} Pin",
+                    line=dict(color=color, width=1.5, dash="dash"),
+                    legendgroup=s["label"],
+                    showlegend=False,
+                ),
+                row=2, col=1,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=s["loads"], y=s["plosses"],
+                    mode="lines", name=f"{s['label']} Ploss",
+                    line=dict(color=color, width=1, dash="dot"),
+                    legendgroup=s["label"],
+                    showlegend=False,
+                ),
+                row=2, col=1,
+            )
+
+        fig.update_xaxes(title_text="Load Current (A)", row=2, col=1)
+        fig.update_yaxes(title_text="Power (W)", row=2, col=1)
+
+        # --- Panel 3: Summary table ---
+        vin_labels = []
+        load_ranges = []
+        min_effs = []
+        max_effs = []
+        avg_effs = []
+
+        for s in all_series:
+            vin_labels.append(s["label"])
+            if s["loads"]:
+                load_ranges.append(f"{min(s['loads']):.3g} – {max(s['loads']):.3g} A")
+            else:
+                load_ranges.append("N/A")
+            if s["effs"]:
+                min_effs.append(f"{min(s['effs']):.1f}%")
+                max_effs.append(f"{max(s['effs']):.1f}%")
+                avg_effs.append(
+                    f"{sum(s['effs']) / len(s['effs']):.1f}%"
+                )
+            else:
+                min_effs.append("N/A")
+                max_effs.append("N/A")
+                avg_effs.append("N/A")
+
+        fig.add_trace(
+            go.Table(
+                header=dict(
+                    values=[
+                        "VIN", "Load Range", "Min Eff", "Max Eff", "Avg Eff",
+                    ],
+                    fill_color="#264653",
+                    font=dict(color="white", size=11),
+                    align="center",
+                ),
+                cells=dict(
+                    values=[vin_labels, load_ranges, min_effs, max_effs, avg_effs],
+                    font=dict(size=11),
+                    align="center",
+                    height=28,
+                ),
+            ),
+            row=3, col=1,
+        )
+
+        # --- Layout ---
+        chart_title = self.get_title() or "Efficiency Validation"
+        n_series = len(all_series)
+        n_points = sum(len(s["loads"]) for s in all_series)
+
+        fig.update_layout(
+            title=dict(
+                text=(
+                    f"{chart_title}"
+                    f"<br><sup>{n_series} VIN conditions, "
+                    f"{n_points} sweep points</sup>"
+                ),
+                font=dict(size=16),
+            ),
+            template="plotly_white",
+            width=1100,
+            height=900,
+            showlegend=True,
+            legend=dict(
+                font=dict(size=11), x=1.02, y=1,
+                xanchor="left", yanchor="top",
+            ),
+            margin=dict(t=80, b=40, l=60, r=140),
+        )
+
+        fig.write_html(str(path), include_plotlyjs="cdn")
         return path

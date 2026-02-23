@@ -491,14 +491,15 @@ class Circuit:
         Args:
             step: Timestep in seconds.
             stop: Stop time in seconds.
-            signals: Signal names to record. If None, records all node voltages.
+            signals: Signal names to record. If None, records all signals
+                (node voltages + inductor/source branch currents).
             start: Start time for recording (default 0).
             uic: Use Initial Conditions — skip DC operating point, start from
                  zero (or .ic values). Helps convergence for behavioral models.
             tmax: Maximum internal timestep (helps convergence for switching circuits).
         """
         if signals is None:
-            signals = self._detect_node_voltages()
+            signals = self._detect_signals()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             data_file = Path(tmpdir) / "tran_data.txt"
@@ -533,9 +534,10 @@ class Circuit:
                 tran_cmd,
                 f"wrdata {data_file} {' '.join(signals)}",
             )
-            spice_file.write_text(net.to_string())
+            spice_content = net.to_string()
+            spice_file.write_text(spice_content)
 
-            proc = _run_ngspice_subprocess(str(spice_file), timeout=300)
+            _run_ngspice_subprocess(str(spice_file), timeout=300)
             return _parse_wrdata(data_file, signals)
 
     def add_element(self, line: str) -> None:
@@ -585,10 +587,10 @@ class Circuit:
             start_freq: Start frequency in Hz.
             stop_freq: Stop frequency in Hz.
             points_per_decade: Number of frequency points per decade.
-            signals: Signal names to record. If None, records all node voltages.
+            signals: Signal names to record. If None, records all signals.
         """
         if signals is None:
-            signals = self._detect_node_voltages()
+            signals = self._detect_signals()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             data_file = Path(tmpdir) / "ac_data.txt"
@@ -612,11 +614,17 @@ class Circuit:
             _run_ngspice_subprocess(str(spice_file), timeout=300)
             return _parse_wrdata_ac(data_file, signals)
 
-    def _detect_node_voltages(self) -> list[str]:
-        """Auto-detect node names from the netlist and return as v(name) signals."""
+    def _detect_signals(self) -> list[str]:
+        """Auto-detect signals from the netlist.
+
+        Returns node voltages as v(name) and branch currents through
+        inductors and voltage sources as i(name).  Only top-level elements
+        are included (subcircuit-internal nodes/branches are excluded).
+        """
         nodes: set[str] = set()
-        all_lines = self._netlist._subcircuit_defs + self._netlist._lines
-        for line in all_lines:
+        branch_elements: set[str] = set()
+        # Only scan top-level lines (not subcircuit definitions)
+        for line in self._netlist._lines:
             parts = line.split()
             if len(parts) < 3:
                 continue
@@ -626,28 +634,29 @@ class Circuit:
                 for node in parts[1:3]:
                     if node != "0":
                         nodes.add(node)
+                # Record branch currents for inductors and voltage sources
+                if first_char in "LV":
+                    branch_elements.add(parts[0])
             elif first_char == "X":
-                # X line: XNAME PIN1 PIN2 ... SUBCKT_NAME [params...]
-                # Pins are between name and subcircuit name (last non-param token)
-                for token in parts[1:]:
-                    if "=" in token:
-                        break  # Hit parameters
-                    if token.startswith("."):
-                        break  # Hit directive
-                    # Skip the subcircuit name (last token before params)
-                    # We'll add all tokens except the last non-param one
                 if len(parts) >= 3:
-                    # Find where params start
                     pin_end = len(parts)
                     for i in range(1, len(parts)):
                         if "=" in parts[i]:
                             pin_end = i
                             break
-                    # pins are parts[1:pin_end-1], parts[pin_end-1] is subckt name
                     for node in parts[1 : pin_end - 1]:
                         if node != "0":
                             nodes.add(node)
-        return sorted(f"v({n})" for n in nodes)
+        signals = sorted(f"v({n})" for n in nodes)
+        signals.extend(sorted(f"i({e})" for e in branch_elements))
+        return signals
+
+    def _detect_node_voltages(self) -> list[str]:
+        """Auto-detect node names from the netlist and return as v(name) signals.
+
+        Deprecated: prefer _detect_signals() which also includes branch currents.
+        """
+        return [s for s in self._detect_signals() if s.startswith("v(")]
 
 
 # ---------------------------------------------------------------------------

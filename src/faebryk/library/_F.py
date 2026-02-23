@@ -38,7 +38,6 @@ from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
 import faebryk.library.Footprints as Footprints
 import faebryk.library.Pickable as Pickable
-from faebryk.library.Requirement import Requirement
 from faebryk.library.SerializableMetadata import SerializableMetadata
 import faebryk.library.Simulations as Simulations
 from faebryk.library.has_datasheet import has_datasheet
@@ -78,6 +77,7 @@ from faebryk.library.MountingHole import MountingHole
 from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
+from faebryk.library.Requirement import Requirement
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.CapacitorPolarized import CapacitorPolarized
 from faebryk.library.Comparator import Comparator
@@ -149,7 +149,6 @@ __all__ = [
     "Expressions",
     "Footprints",
     "Pickable",
-    "Requirement",
     "SerializableMetadata",
     "Simulations",
     "has_datasheet",
@@ -189,6 +188,7 @@ __all__ = [
     "Net",
     "Resistor",
     "TestPoint",
+    "Requirement",
     "Capacitor",
     "CapacitorPolarized",
     "Comparator",

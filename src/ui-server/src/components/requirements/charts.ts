@@ -76,7 +76,7 @@ function baseLayout(colors: ReturnType<typeof themeColors>) {
   };
 }
 
-export async function renderTransientPlot(el: HTMLDivElement, req: RequirementData) {
+export async function renderTransientPlot(el: HTMLDivElement, req: RequirementData, size?: { width: number; height: number }) {
   const Plotly = await getPlotly();
   const colors = themeColors();
   const ts = req.timeSeries!;
@@ -116,7 +116,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     }
   });
 
-  const dim = fitDimensions(el);
+  const dim = size ?? fitDimensions(el);
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
     width: dim.width,
@@ -255,7 +255,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
   });
 }
 
-export async function renderDCPlot(el: HTMLDivElement, req: RequirementData) {
+export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, size?: { width: number; height: number }) {
   const Plotly = await getPlotly();
   const colors = themeColors();
   const range = req.maxVal - req.minVal;
@@ -275,7 +275,7 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData) {
     name: 'Actual',
   }];
 
-  const dim = fitDimensions(el);
+  const dim = size ?? fitDimensions(el);
   const layout = {
     ...baseLayout(colors),
     width: dim.width,
@@ -307,7 +307,7 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData) {
   });
 }
 
-export async function renderBodePlot(el: HTMLDivElement, req: RequirementData) {
+export async function renderBodePlot(el: HTMLDivElement, req: RequirementData, size?: { width: number; height: number }) {
   const Plotly = await getPlotly();
   const colors = themeColors();
   const fs = req.frequencySeries!;
@@ -367,7 +367,7 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData) {
     });
   }
 
-  const dim = fitDimensions(el);
+  const dim = size ?? fitDimensions(el);
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
     width: dim.width,
@@ -421,7 +421,7 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData) {
   });
 }
 
-export async function renderSweepPlot(el: HTMLDivElement, req: RequirementData) {
+export async function renderSweepPlot(el: HTMLDivElement, req: RequirementData, size?: { width: number; height: number }) {
   const Plotly = await getPlotly();
   const colors = themeColors();
   const pts = req.sweepPoints!;
@@ -429,7 +429,7 @@ export async function renderSweepPlot(el: HTMLDivElement, req: RequirementData) 
   const yVals = pts.map(p => p.actual);
   const ptColors = pts.map(p => p.passed ? colors.success : colors.error);
 
-  const dim = fitDimensions(el);
+  const dim = size ?? fitDimensions(el);
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
     width: dim.width,

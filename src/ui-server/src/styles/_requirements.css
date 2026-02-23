@@ -441,21 +441,21 @@
   line-height: 1.5;
 }
 
-/* ---- View All button ---- */
+/* ---- View All button (inside summary row) ---- */
 .req-view-all-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: var(--spacing-xs);
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: none;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--accent);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: background var(--transition-fast);
+  white-space: nowrap;
 }
 .req-view-all-btn:hover {
   background: var(--bg-hover);
@@ -558,21 +558,19 @@
 }
 
 .rall-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2fr 4fr;
   gap: var(--spacing-lg);
   margin-bottom: var(--spacing-lg);
-  align-items: flex-start;
+  align-items: start;
+  min-height: 280px;
 }
 
 .rall-card {
-  flex: 2;
   min-width: 0;
 }
 
 .rall-plots {
-  flex: 4;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
+  overflow: hidden;
 }

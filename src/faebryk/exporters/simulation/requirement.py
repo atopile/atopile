@@ -66,8 +66,21 @@ def _measure_tran(
     signal_data: list[float],
     time_data: list[float],
     settling_tolerance: float | None = None,
+    sim_result: TransientResult | None = None,
+    context_nets: list[str] | None = None,
 ) -> float:
-    """Compute measurement from transient data."""
+    """Compute measurement from transient data.
+
+    Args:
+        measurement: Type of measurement to perform.
+        signal_data: Primary signal data.
+        time_data: Time vector.
+        settling_tolerance: Tolerance for settling_time measurement.
+        sim_result: Full simulation result (needed for multi-signal measurements
+            like efficiency).
+        context_nets: Resolved context net names (used by efficiency to find
+            input current, input voltage, and load current signals).
+    """
     if not signal_data:
         return float("nan")
 
@@ -127,6 +140,77 @@ def _measure_tran(
         total_time = crossings[-1] - crossings[0]
         num_cycles = len(crossings) - 1
         return num_cycles / total_time
+
+    if measurement == "efficiency":
+        # η = Pout / Pin × 100%
+        # Needs context_nets to find: i(V1) (input current),
+        # dut.power_in.hv (input voltage), i(V_LSENSE) (load current).
+        # Primary signal (signal_data) = Vout.
+        if sim_result is None or not context_nets:
+            logger.warning("Efficiency measurement requires sim_result and context_nets")
+            return float("nan")
+
+        # Find input current, input voltage, and load current from context_nets
+        i_in_key = None
+        v_in_key = None
+        i_load_key = None
+        for ctx in context_nets:
+            ctx_lc = ctx.lower()
+            if ctx_lc.startswith("i(v1") or ctx_lc.startswith("i(v_1"):
+                i_in_key = ctx_lc
+            elif ctx_lc.startswith("i(v_lsense") or ctx_lc.startswith("i(i_load"):
+                i_load_key = ctx_lc
+            elif "power_in" in ctx_lc or "vin" in ctx_lc:
+                v_in_key = f"v({ctx_lc})" if not ctx_lc.startswith("v(") else ctx_lc
+
+        if not i_in_key or not v_in_key:
+            # Try matching any i() and v() in context
+            for ctx in context_nets:
+                ctx_lc = ctx.lower()
+                if ctx_lc.startswith("i(") and i_in_key is None:
+                    i_in_key = ctx_lc
+                elif not ctx_lc.startswith("i(") and v_in_key is None:
+                    v_in_key = f"v({ctx_lc})" if not ctx_lc.startswith("v(") else ctx_lc
+
+        if not i_in_key or not v_in_key:
+            logger.warning(f"Efficiency: could not find Vin/Iin signals in context_nets={context_nets}")
+            return float("nan")
+
+        try:
+            i_in_data = sim_result[i_in_key]
+            v_in_data = sim_result[v_in_key]
+        except KeyError as e:
+            logger.warning(f"Efficiency: signal {e} not found in result")
+            return float("nan")
+
+        # Use second half of data (steady-state)
+        n = len(signal_data)
+        half = n // 2
+        vout_avg = sum(signal_data[half:]) / (n - half)
+        vin_avg = sum(v_in_data[half:]) / (n - half)
+        iin_avg = abs(sum(i_in_data[half:]) / (n - half))
+
+        # Load current: use context or compute from Vout/Rload
+        if i_load_key:
+            try:
+                i_load_data = sim_result[i_load_key]
+                iout_avg = abs(sum(i_load_data[half:]) / (n - half))
+            except KeyError:
+                iout_avg = None
+        else:
+            iout_avg = None
+
+        pin = vin_avg * iin_avg
+        if pin <= 0:
+            return float("nan")
+
+        if iout_avg is not None:
+            pout = vout_avg * iout_avg
+        else:
+            return float("nan")
+
+        eff = (pout / pin) * 100.0
+        return eff
 
     # Default: final value
     return signal_data[-1]

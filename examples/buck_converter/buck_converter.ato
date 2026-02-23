@@ -7,35 +7,41 @@ import Capacitor
 import MultiCapacitor
 import Diode
 import Inductor
-import ElectricPower
 import ElectricLogic
+import ElectricPower
 
 from "parts/Texas_Instruments_TPS54560DDAR/Texas_Instruments_TPS54560DDAR.ato" import Texas_Instruments_TPS54560DDAR_package
 from "parts/STMicroelectronics_STPS340U/STMicroelectronics_STPS340U.ato" import STMicroelectronics_STPS340U
 from "atopile/indicator-leds/indicator-leds.ato" import LEDIndicatorGreen
 
-module Usage:
-    buck_converter = new TI_TPS54560
-
-    led = new LEDIndicatorGreen
-
-    buck_converter.power_out ~ led.power
-
 module TI_TPS54560:
     """
-    Texas Instruments TPS54560x Buck Converter
-    Datasheet Reference Design (Section 9.2, Figure 37)
-    12V input, 5V/5A output, 400kHz switching frequency
+    Texas Instruments TPS54560x Buck Converter (DS Section 9.2, Figure 37)
+    Manual feedback divider resistors — set r_top.resistance per output voltage.
+    Vout = 0.8V * (r_top + r_bottom) / r_bottom
     """
+    enable = new ElectricLogic
     power_in = new ElectricPower
     power_out = new ElectricPower
-    enable = new ElectricLogic
+
+    switching_frequency: hertz
+    switching_frequency.default = 400kHz
+
+    uvlo_threshold: voltage
+    uvlo_threshold.default = 6.5V
 
     # IC
     package = new Texas_Instruments_TPS54560DDAR_package
     diode = new STMicroelectronics_STPS340U
 
-    # Inductor — 6.8µH (nearest E6 to DS Eq.27 calc of 7.2µH)
+    # Feedback divider resistors (Vref = 0.8V, DS Section 6.5)
+    r_top = new Resistor
+    r_top.package = "0402"
+    r_bottom = new Resistor
+    r_bottom.resistance = 10.2kohm +/- 1%
+    r_bottom.package = "0402"
+
+    # Inductor — 6.8µH (DS Eq.27, worst-case L >= 4.9µH at 12V/5V/400kHz/5A/0.3)
     inductor = new Inductor
     inductor.inductance = 6.8uH +/- 20%
     inductor.package = "SMD8x8mm"
@@ -74,20 +80,10 @@ module TI_TPS54560:
     c_comp1.max_voltage = 25V to 100V
     c_comp1.package = "0603"
 
-    # Switching frequency resistor — 243kΩ → 400kHz (DS Eq.6)
+    # Switching frequency resistor (DS Eq.7, 400kHz → 243k)
     r_rt = new Resistor
-    r_rt.resistance = 243kohm +/- 2%
+    r_rt.resistance = 243kohm +/- 5%
     r_rt.package = "0402"
-
-    # Feedback voltage divider (DS Section 9.2)
-    # Vout = Vref × (Rfbt + Rfbb) / Rfbb = 0.8 × (53.6k + 10.2k) / 10.2k = 5.00V
-    r_top = new Resistor
-    r_top.resistance = 53.6kohm +/- 1%
-    r_top.package = "R0402"
-
-    r_bottom = new Resistor
-    r_bottom.resistance = 10.2kohm +/- 1%
-    r_bottom.package = "R0402"
 
     # Power connections
     power_in.hv ~ package.VIN
@@ -109,9 +105,9 @@ module TI_TPS54560:
     package.BOOT ~> c_boot ~> package.SW
     package.RT_CLK ~> r_rt ~> power_in.lv
 
-    # Feedback
+    # Feedback divider — manual resistors
     power_out.hv ~> r_top ~> package.FB
-    package.FB ~> r_bottom ~> power_in.lv
+    package.FB ~> r_bottom ~> power_out.lv
 
     # UVLO divider — Start=6.5V, Stop=5V (DS Eq.39-40)
     r_en = new Resistor
@@ -127,11 +123,12 @@ module TI_TPS54560:
     enable.line ~ package.EN
     enable.reference.lv ~ power_in.lv
 
-    # Input voltage constraint (generates V source in SPICE)
-    assert power_in.voltage within 12V +/- 5%
+module TPS54560_Reference from TI_TPS54560:
+    """12V to 5V/5A/400kHz reference design (DS Section 9.2, Figure 37)."""
+    # Vout = 0.8 * (53.6k + 10.2k) / 10.2k = 5.004V
+    r_top.resistance = 53.6kohm +/- 1%
 
-    # Load resistor (5V/5A = 1Ω)
     r_load = new Resistor
     r_load.resistance = 1ohm +/- 5%
-    r_load.package = "R1210"
+    r_load.package = "1210"
     power_out.hv ~> r_load ~> power_out.lv

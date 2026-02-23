@@ -624,7 +624,7 @@ export interface ModuleChild {
 }
 
 /**
- * Atopile configuration state.
+ * atopile configuration state.
  */
 export interface AtopileConfig {
     availableBranches?:     string[];

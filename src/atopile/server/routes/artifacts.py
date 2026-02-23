@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import math
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.responses import Response
 
 from atopile.dataclasses import AppContext
 from atopile.server.domains import artifacts as artifacts_domain
@@ -97,6 +100,17 @@ async def get_variables_targets(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+def _sanitize_floats(obj: object) -> object:
+    """Replace non-JSON-compliant floats (inf, -inf, nan) with None."""
+    if isinstance(obj, float):
+        return None if not math.isfinite(obj) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
+
 @router.get("/api/requirements")
 async def get_requirements(
     project_root: str = Query(
@@ -114,7 +128,11 @@ async def get_requirements(
                 status_code=404,
                 detail="Requirements file not found. Run build with simulation first.",
             )
-        return result
+        safe_result = _sanitize_floats(result)
+        return Response(
+            content=json.dumps(safe_result, separators=(",", ":")),
+            media_type="application/json",
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

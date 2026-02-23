@@ -95,8 +95,8 @@ class Requirement(fabll.Node):
     simulation = F.Parameters.StringParameter.MakeChild()
     net = F.Parameters.StringParameter.MakeChild()
     context_nets = F.Parameters.StringParameter.MakeChild()
+    limit = F.Parameters.NumericParameter.MakeChild()
     min_val = F.Parameters.StringParameter.MakeChild()
-    typical = F.Parameters.StringParameter.MakeChild()
     max_val = F.Parameters.StringParameter.MakeChild()
     justification = F.Parameters.StringParameter.MakeChild()
 
@@ -129,6 +129,12 @@ class Requirement(fabll.Node):
     extra_spice = F.Parameters.StringParameter.MakeChild()
     remove_elements = F.Parameters.StringParameter.MakeChild()
 
+    # Multi-DUT: auto-compute min/max from VOUT as vout*(1 +/- pct/100)
+    vout_tolerance_pct = F.Parameters.StringParameter.MakeChild()
+
+    # Plot child for custom multi-DUT overlay rendering
+    plot = F.Plots.LineChart.MakeChild()
+
     def setup(
         self,
         name: str,
@@ -157,9 +163,11 @@ class Requirement(fabll.Node):
     ) -> Self:
         self.req_name.get().set_singleton(value=name)
         self.net.get().set_singleton(value=net)
-        self.min_val.get().set_singleton(value=str(min_val))
-        self.typical.get().set_singleton(value=str(typical))
-        self.max_val.get().set_singleton(value=str(max_val))
+
+        # Set limit bounds via NumericParameter range
+        from faebryk.library.Literals import Numbers
+
+        self.limit.get().constrain_superset(Numbers(min_val, max_val))
 
         capture_str = capture if isinstance(capture, str) else _CAPTURE_KEYS[capture]
         measurement_str = (
@@ -237,23 +245,63 @@ class Requirement(fabll.Node):
         raw = self.net.get().extract_singleton()
         return self._sanitize_net_name(raw)
 
+    def _get_limit_bounds(self) -> tuple[float, float] | None:
+        """Extract [min, max] from string params, limit NumericParameter, or operatable."""
+        import math
+
+        # 1) Try explicit min_val / max_val string params
+        try:
+            mn_s = self.min_val.get().try_extract_singleton()
+            mx_s = self.max_val.get().try_extract_singleton()
+            if mn_s is not None and mx_s is not None:
+                return (float(mn_s), float(mx_s))
+        except Exception:
+            pass
+
+        # 2) Try limit NumericParameter superset
+        try:
+            numbers = self.limit.get().try_extract_superset()
+            if numbers is not None:
+                mn = numbers.get_min_value()
+                mx = numbers.get_max_value()
+                if not math.isinf(mn) and not math.isinf(mx):
+                    return (mn, mx)
+        except Exception:
+            pass
+
+        # 3) Fallback: operatable extraction
+        try:
+            from faebryk.library.Literals import Numbers
+
+            op = self.limit.get().is_parameter_operatable.get()
+            numbers = op.try_extract_superset(lit_type=Numbers)
+            if numbers is not None:
+                mn = numbers.get_min_value()
+                mx = numbers.get_max_value()
+                if not math.isinf(mn) and not math.isinf(mx):
+                    return (mn, mx)
+        except Exception:
+            pass
+
+        return None
+
     def get_min_val(self) -> float:
-        v = self._extract_float(self.min_val)
-        if v is None:
-            raise ValueError("min_val is not set")
-        return v
+        bounds = self._get_limit_bounds()
+        if bounds is not None:
+            return bounds[0]
+        raise ValueError("limit bounds not set")
 
     def get_typical(self) -> float:
-        v = self._extract_float(self.typical)
-        if v is None:
-            raise ValueError("typical is not set")
-        return v
+        bounds = self._get_limit_bounds()
+        if bounds is not None:
+            return (bounds[0] + bounds[1]) / 2.0
+        raise ValueError("limit bounds not set")
 
     def get_max_val(self) -> float:
-        v = self._extract_float(self.max_val)
-        if v is None:
-            raise ValueError("max_val is not set")
-        return v
+        bounds = self._get_limit_bounds()
+        if bounds is not None:
+            return bounds[1]
+        raise ValueError("limit bounds not set")
 
     def get_justification(self) -> str | None:
         return self.justification.get().try_extract_singleton()
@@ -360,3 +408,19 @@ class Requirement(fabll.Node):
         if raw is None:
             return []
         return [name.strip() for name in raw.split(",") if name.strip()]
+
+    def get_vout_tolerance_pct(self) -> float | None:
+        return self._extract_float(self.vout_tolerance_pct)
+
+    def get_plots(self) -> list:
+        """Return all attached LineChart plot children (dynamically created)."""
+        try:
+            return [
+                p
+                for p in self.get_children(
+                    direct_only=True, types=F.Plots.LineChart
+                )
+                if p.get_title() is not None or p.get_nets()
+            ]
+        except Exception:
+            return []

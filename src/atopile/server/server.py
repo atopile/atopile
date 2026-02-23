@@ -420,10 +420,12 @@ def _fatal_error(msg: str, exc: BaseException | None = None) -> None:
 
 class CrashOnErrorMiddleware(BaseHTTPMiddleware):
     """
-    Middleware that crashes the server on unhandled exceptions.
+    Middleware that logs unhandled exceptions and returns HTTP 500.
 
-    Instead of returning HTTP 500, this terminates the process so that
-    server bugs are visible and don't silently degrade service.
+    Previously this killed the server on any unhandled error, but that
+    caused crash-restart loops when a single route had a serialization
+    or data issue.  Now we log the full traceback and return 500 so the
+    rest of the server keeps running.
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -435,21 +437,48 @@ class CrashOnErrorMiddleware(BaseHTTPMiddleware):
 
             if isinstance(exc, HTTPException):
                 raise
-            _fatal_error(f"Unhandled exception in route {request.url.path}", exc)
-            raise  # Unreachable, but keeps type checker happy
+            log.error(
+                "Unhandled exception in route %s: %s",
+                request.url.path,
+                exc,
+                exc_info=True,
+            )
+            from starlette.responses import JSONResponse
+
+            return JSONResponse(
+                {"detail": f"Internal server error: {exc}"},
+                status_code=500,
+            )
 
 
 def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
     """
-    Handle uncaught exceptions in asyncio tasks by crashing the server.
+    Handle uncaught exceptions in asyncio tasks.
 
-    This ensures background task failures are visible instead of being
-    silently logged and ignored.
+    WebSocket disconnections and cancelled tasks are normal network events
+    and are logged at debug level. All other exceptions crash the server
+    to ensure visibility.
     """
     exc = context.get("exception")
     msg = context.get("message", "Unknown asyncio error")
 
-    # Log the full context for debugging
+    if exc is not None:
+        # WebSocket client disconnections are normal — don't crash
+        import websockets.exceptions
+
+        if isinstance(
+            exc,
+            (
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK,
+                ConnectionResetError,
+                BrokenPipeError,
+                asyncio.CancelledError,
+            ),
+        ):
+            log.debug("Asyncio task ended (client disconnect): %s", msg)
+            return
+
     log.critical("Uncaught exception in asyncio task: %s", msg)
     if exc:
         _fatal_error(f"Asyncio task crashed: {msg}", exc)

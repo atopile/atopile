@@ -719,19 +719,34 @@ def _lttb_downsample(
 
 
 def _write_requirements_json(
-    results, tran_data, group_key_fn, ac_data=None, ac_group_key_fn=None
+    results, tran_data, group_key_fn, ac_data=None, ac_group_key_fn=None,
+    multi_dut_data=None,
 ) -> None:
     """Serialize requirement results + time-series to a JSON artifact."""
     from datetime import datetime, timezone
 
     import math
 
+    from faebryk.exporters.simulation.simulation_runner import MultiDutResult
+
+    multi_dut_data = multi_dut_data or {}
+
     reqs_json = []
     for r in results:
         req = r.requirement
         net = r.resolved_net or req.get_net()
         net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
-        capture = req.get_capture()
+        try:
+            capture = req.get_capture()
+        except Exception:
+            # Infer capture type from simulation result
+            key = group_key_fn(req)
+            if key in tran_data:
+                capture = "transient"
+            elif ac_data and ac_group_key_fn and ac_group_key_fn(req) in ac_data:
+                capture = "ac"
+            else:
+                capture = "transient"  # default
         measurement = req.get_measurement()
 
         # Determine unit
@@ -749,10 +764,12 @@ def _write_requirements_json(
             unit = "dB"
         elif measurement == "frequency":
             unit = "Hz"
+        elif measurement == "efficiency":
+            unit = "%"
         else:
             unit = _signal_unit(net_key)
 
-        actual = r.actual if not math.isnan(r.actual) else None
+        actual = r.actual if math.isfinite(r.actual) else None
         context_nets = r.resolved_ctx_nets if r.resolved_ctx_nets is not None else req.get_context_nets()
 
         entry: dict = {
@@ -843,6 +860,44 @@ def _write_requirements_json(
                     "phase_deg": freq_signals["phase_deg"],
                 }
 
+        # Attach multi-DUT time series
+        if multi_dut_data:
+            from faebryk.exporters.simulation.ngspice import TransientResult
+
+            key = group_key_fn(req)
+            md = multi_dut_data.get(key)
+            if md is not None and isinstance(md, MultiDutResult):
+                entry["multiDut"] = True
+                duts_series = {}
+                for dut_name, (dut_result, dut_aliases) in md.results.items():
+                    dut_net = net
+                    if dut_net.startswith("dut_"):
+                        dut_net = f"{dut_name}_{dut_net[4:]}"
+                    dn_norm = dut_net.replace(".", "_")
+                    resolved_dn = dut_aliases.get(
+                        dut_net, dut_aliases.get(dn_norm, dn_norm)
+                    )
+                    sk = (
+                        f"v({resolved_dn})"
+                        if not resolved_dn.startswith(("v(", "i("))
+                        else resolved_dn
+                    )
+                    if isinstance(dut_result, TransientResult):
+                        try:
+                            sig = list(dut_result[sk])
+                        except KeyError:
+                            continue
+                        t_list = list(dut_result.time)
+                        t_list, s_map = _lttb_downsample(
+                            t_list, {sk: sig}, _MAX_POINTS
+                        )
+                        duts_series[dut_name] = {
+                            "time": t_list,
+                            "signals": s_map,
+                        }
+                if duts_series:
+                    entry["dutTimeSeries"] = duts_series
+
         reqs_json.append(entry)
 
     artifact = {
@@ -926,6 +981,565 @@ def run_simulations_step(ctx: BuildStepContext) -> None:
         ctx._simulation_results = {}
 
 
+def _plot_multi_dut_requirement(
+    result,
+    multi_result,
+    path,
+    req,
+) -> None:
+    """Generate a per-requirement plot for multi-DUT simulation results.
+
+    Overlays one trace per DUT on the same chart.
+    """
+    from pathlib import Path
+
+    from faebryk.exporters.simulation.ngspice import TransientResult
+    from faebryk.exporters.simulation.requirement import (
+        _auto_scale_time,
+        _measure_tran,
+        _slice_from,
+    )
+    from faebryk.exporters.simulation.simulation_runner import MultiDutResult
+
+    if not isinstance(multi_result, MultiDutResult):
+        return
+
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        return
+
+    measurement = req.get_measurement()
+    raw_net = req.get_net()
+    settling_tol = req.get_settling_tolerance()
+
+    DUT_COLORS = [
+        "#89b4fa",  # blue
+        "#a6e3a1",  # green
+        "#cba6f7",  # purple
+        "#f38ba8",  # red
+        "#fab387",  # orange
+        "#f9e2af",  # yellow
+    ]
+
+    fig = go.Figure()
+    t_unit = "s"
+
+    for idx, (dut_name, (dut_result, dut_aliases)) in enumerate(
+        multi_result.results.items()
+    ):
+        # Resolve net for this DUT
+        dut_net = raw_net
+        if dut_net.startswith("dut_"):
+            dut_net = f"{dut_name}_{dut_net[4:]}"
+        elif dut_net.startswith("dut."):
+            dut_net = f"{dut_name}_{dut_net[4:].replace('.', '_')}"
+        normalized = dut_net.replace(".", "_")
+        resolved = dut_aliases.get(
+            dut_net, dut_aliases.get(normalized, normalized)
+        )
+
+        sig_key = (
+            f"v({resolved})"
+            if not resolved.startswith(("v(", "i("))
+            else resolved
+        )
+        color = DUT_COLORS[idx % len(DUT_COLORS)]
+
+        # Build legend label with DUT params
+        dut_params = multi_result.dut_params.get(dut_name, {})
+        vin = next(
+            (v for k, v in dut_params.items() if "power_in" in k and "voltage" in k),
+            None,
+        )
+        vout = next(
+            (v for k, v in dut_params.items() if "power_out" in k and "voltage" in k),
+            None,
+        )
+        label = dut_name
+        if vin is not None and vout is not None:
+            label += f" ({vin:.0f}V→{vout:.1f}V)"
+
+        if isinstance(dut_result, TransientResult):
+            try:
+                signal_data = dut_result[sig_key]
+            except KeyError:
+                continue
+            time_data = list(dut_result.time)
+
+            tran_start = req.get_tran_start()
+            if tran_start and tran_start > 0:
+                time_data, signal_data = _slice_from(
+                    time_data, signal_data, tran_start
+                )
+
+            t_max = max(time_data) if time_data else 1.0
+            scale, t_unit = _auto_scale_time(t_max)
+            t_scaled = [t * scale for t in time_data]
+            fig.add_trace(
+                go.Scatter(
+                    x=t_scaled,
+                    y=list(signal_data),
+                    mode="lines",
+                    name=label,
+                    line=dict(color=color, width=2),
+                )
+            )
+
+    # Add pass band if applicable
+    try:
+        vout_pct = req.get_vout_tolerance_pct()
+        if vout_pct is None:
+            min_val = req.get_min_val()
+            max_val = req.get_max_val()
+            fig.add_hrect(
+                y0=min_val, y1=max_val,
+                fillcolor="green", opacity=0.08, line_width=0,
+            )
+            fig.add_hline(
+                y=min_val, line=dict(color="red", dash="dot", width=1.5),
+            )
+            fig.add_hline(
+                y=max_val, line=dict(color="red", dash="dot", width=1.5),
+            )
+    except Exception:
+        pass
+
+    # Status annotation
+    n_duts = len(multi_result.results)
+    status = "PASS" if result.passed else "FAIL"
+    status_color = "#2ecc71" if result.passed else "#e74c3c"
+    fig.add_annotation(
+        x=0.02, y=0.98, xref="paper", yref="paper",
+        text=f"<b>{status}</b> ({n_duts} DUTs)",
+        showarrow=False,
+        font=dict(color=status_color, size=12),
+        xanchor="left", yanchor="top",
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor=status_color, borderwidth=1, borderpad=4,
+    )
+
+    fig.update_layout(
+        title=dict(text=req.get_name(), font=dict(size=16)),
+        xaxis_title=f"Time ({t_unit})",
+        yaxis_title=measurement.replace("_", " "),
+        template="plotly_white",
+        margin=dict(t=60, b=60, l=60, r=30),
+        showlegend=True,
+    )
+
+    path = Path(path)
+    fig.write_html(str(path), include_plotlyjs="cdn")
+
+
+def _plot_sweep_requirement(
+    result,
+    sweep_dict: dict,
+    net_aliases: dict,
+    path,
+) -> None:
+    """Generate a per-requirement plot for sweep simulation results.
+
+    Computes the measurement at each sweep point and plots measurement vs
+    sweep parameter value.
+    """
+    from pathlib import Path
+    from faebryk.exporters.simulation.ngspice import TransientResult
+    from faebryk.exporters.simulation.requirement import _measure_tran
+
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        return
+
+    req = result.requirement
+    measurement = req.get_measurement()
+    raw_net = req.get_net()
+    resolved_net = net_aliases.get(
+        raw_net, net_aliases.get(raw_net.replace(".", "_"), raw_net)
+    )
+    settling_tol = req.get_settling_tolerance()
+
+    # Resolve context nets
+    resolved_ctx = []
+    for ctx_net in req.get_context_nets():
+        normalized = ctx_net.replace(".", "_")
+        resolved = net_aliases.get(
+            ctx_net, net_aliases.get(normalized, ctx_net)
+        )
+        resolved_ctx.append(resolved)
+
+    # Compute measurement at each sweep point
+    x_vals = []
+    y_vals = []
+
+    for pval in sorted(sweep_dict.keys()):
+        point_result = sweep_dict[pval]
+        if not isinstance(point_result, TransientResult):
+            continue
+
+        sig_key = (
+            f"v({resolved_net})"
+            if not resolved_net.startswith(("v(", "i("))
+            else resolved_net
+        )
+        signal_data = point_result[sig_key]
+        time_data = point_result.time
+
+        val = _measure_tran(
+            measurement,
+            signal_data,
+            time_data,
+            settling_tolerance=settling_tol,
+            sim_result=point_result,
+            context_nets=resolved_ctx,
+        )
+        x_vals.append(pval)
+        y_vals.append(val)
+
+    if not x_vals:
+        return
+
+    min_val = req.get_min_val()
+    max_val = req.get_max_val()
+    colors = ["#2ecc71" if min_val <= y <= max_val else "#e74c3c" for y in y_vals]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=y_vals,
+        mode="lines+markers",
+        name="Measured",
+        line=dict(color="royalblue", width=2.5),
+        marker=dict(color=colors, size=10, line=dict(color="white", width=2)),
+    ))
+
+    # Pass band
+    fig.add_hrect(
+        y0=min_val, y1=max_val,
+        fillcolor="green", opacity=0.08, line_width=0,
+    )
+    fig.add_hline(
+        y=min_val, line=dict(color="red", dash="dot", width=1.5),
+    )
+    fig.add_hline(
+        y=max_val, line=dict(color="red", dash="dot", width=1.5),
+    )
+
+    # Unit for Y axis
+    if measurement == "efficiency":
+        y_unit = "%"
+    elif measurement in ("settling_time",):
+        y_unit = "s"
+    elif measurement in ("frequency",):
+        y_unit = "Hz"
+    else:
+        y_unit = "V"
+
+    n_pass = sum(1 for y in y_vals if min_val <= y <= max_val)
+    status = "ALL PASS" if n_pass == len(y_vals) else f"{len(y_vals) - n_pass} FAIL"
+    status_color = "#2ecc71" if n_pass == len(y_vals) else "#e74c3c"
+
+    fig.add_annotation(
+        x=0.02, y=0.98, xref="paper", yref="paper",
+        text=f"<b>{status}</b> ({n_pass}/{len(y_vals)} points)",
+        showarrow=False,
+        font=dict(color=status_color, size=12),
+        xanchor="left", yanchor="top",
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor=status_color, borderwidth=1, borderpad=4,
+    )
+
+    fig.update_layout(
+        title=dict(text=req.get_name(), font=dict(size=16)),
+        xaxis_title="Sweep Parameter",
+        yaxis_title=f"{measurement.replace('_', ' ')} ({y_unit})",
+        template="plotly_white",
+        margin=dict(t=60, b=60, l=60, r=30),
+    )
+
+    path = Path(path)
+    fig.write_html(str(path), include_plotlyjs="cdn")
+
+
+def _render_overlay_charts(
+    app,
+    sim_results: dict,
+    output_dir,
+) -> None:
+    """Discover and render SweepOverlayChart nodes defined in the design.
+
+    For each chart node, resolves its simulation references, computes the
+    measurement at each sweep point for each series, and calls the chart's
+    render() method.
+    """
+    from pathlib import Path
+    from faebryk.exporters.simulation.ngspice import TransientResult
+    from faebryk.exporters.simulation.requirement import _measure_tran
+    from faebryk.library.Plots import SweepOverlayChart, SweepPoint
+
+    charts = app.get_children(direct_only=False, types=SweepOverlayChart)
+    if not charts:
+        return
+
+    for chart in charts:
+        sim_names = chart.get_simulations()
+        labels = chart.get_series_labels()
+        raw_net = chart.get_net()
+        measurement = chart.get_measurement() or "average"
+        raw_ctx_nets = chart.get_context_nets()
+        min_v = chart.get_min_val()
+        max_v = chart.get_max_val()
+
+        if not sim_names or not raw_net:
+            continue
+
+        # Pad labels if fewer than simulations
+        while len(labels) < len(sim_names):
+            labels.append(sim_names[len(labels)])
+
+        series_data: dict[str, list[SweepPoint]] = {}
+
+        for sim_name, label in zip(sim_names, labels):
+            # Find simulation in results registry
+            matched_key = None
+            for key in sim_results:
+                if key == sim_name or key.endswith("." + sim_name):
+                    matched_key = key
+                    break
+            if matched_key is None:
+                logger.warning(
+                    f"SweepOverlayChart: simulation '{sim_name}' not found"
+                )
+                continue
+
+            sweep_dict, net_aliases = sim_results[matched_key]
+            if not isinstance(sweep_dict, dict):
+                continue
+
+            # Resolve net (normalize dots→underscores for lookup)
+            normalized_net = raw_net.replace(".", "_")
+            resolved_net = net_aliases.get(
+                raw_net,
+                net_aliases.get(normalized_net, normalized_net),
+            )
+
+            # Resolve context nets
+            resolved_ctx = []
+            for ctx_net in raw_ctx_nets:
+                normalized = ctx_net.replace(".", "_")
+                resolved = net_aliases.get(
+                    ctx_net, net_aliases.get(normalized, ctx_net)
+                )
+                resolved_ctx.append(resolved)
+
+            points: list[SweepPoint] = []
+            for pval in sorted(sweep_dict.keys()):
+                point_result = sweep_dict[pval]
+                if not isinstance(point_result, TransientResult):
+                    continue
+
+                sig_key = (
+                    f"v({resolved_net})"
+                    if not resolved_net.startswith(("v(", "i("))
+                    else resolved_net
+                )
+                try:
+                    signal_data = point_result[sig_key]
+                except KeyError:
+                    continue
+                time_data = point_result.time
+
+                val = _measure_tran(
+                    measurement,
+                    signal_data,
+                    time_data,
+                    sim_result=point_result,
+                    context_nets=resolved_ctx,
+                )
+
+                passed = min_v <= val <= max_v
+                points.append(SweepPoint(
+                    param_value=pval, actual=val, passed=passed,
+                ))
+
+            if points:
+                series_data[label] = points
+
+        if not series_data:
+            continue
+
+        # Build output filename from chart title
+        chart_title = chart.get_title() or "sweep_overlay"
+        name_slug = (
+            chart_title.replace(" ", "_").replace("/", "_").replace(":", "")
+        )
+        plot_path = Path(output_dir) / f"{name_slug}.html"
+        chart.render(series_data, plot_path)
+        logger.info(f"Overlay chart: {plot_path}")
+
+
+def _render_startup_validation_charts(
+    app,
+    sim_results: dict,
+    output_dir,
+) -> None:
+    """Discover and render StartupValidationChart nodes defined in the design.
+
+    Each chart references multiple SimulationTransient sims (one per frequency).
+    The chart's render() receives a dict mapping sim name -> TransientResult.
+    """
+    from pathlib import Path
+    from faebryk.library.Plots import StartupValidationChart
+
+    charts = app.get_children(direct_only=False, types=StartupValidationChart)
+    if not charts:
+        return
+
+    for chart in charts:
+        sim_names = chart.get_simulations()
+        raw_net = chart.get_net()
+
+        if not sim_names or not raw_net:
+            continue
+
+        # Resolve sim names -> TransientResult, resolve net key
+        series_data: dict = {}
+        resolved_net_key = None
+
+        for sim_name in sim_names:
+            matched_key = None
+            for key in sim_results:
+                if key == sim_name or key.endswith("." + sim_name):
+                    matched_key = key
+                    break
+            if matched_key is None:
+                logger.warning(
+                    f"StartupValidationChart: simulation '{sim_name}' not found"
+                )
+                continue
+
+            sim_result, net_aliases = sim_results[matched_key]
+
+            if resolved_net_key is None:
+                normalized_net = raw_net.replace(".", "_")
+                resolved_net = net_aliases.get(
+                    raw_net,
+                    net_aliases.get(normalized_net, normalized_net),
+                )
+                resolved_net_key = (
+                    f"v({resolved_net})"
+                    if not resolved_net.startswith(("v(", "i("))
+                    else resolved_net
+                )
+
+            series_data[sim_name] = sim_result
+
+        if not series_data or resolved_net_key is None:
+            continue
+
+        chart_title = chart.get_title() or "startup_validation"
+        name_slug = (
+            chart_title.replace(" ", "_").replace("/", "_").replace(":", "")
+        )
+        plot_path = Path(output_dir) / f"{name_slug}.html"
+        chart.render(series_data, resolved_net_key, plot_path)
+        logger.info(f"Startup validation chart: {plot_path}")
+
+
+def _render_efficiency_validation_charts(
+    app,
+    sim_results: dict,
+    output_dir,
+) -> None:
+    """Discover and render EfficiencyValidationChart nodes defined in the design.
+
+    For each chart node, resolves its simulation references (sweep sims),
+    collects the dict[float, TransientResult] for each series, and calls
+    the chart's render() method to produce a 3-panel efficiency dashboard.
+    """
+    from pathlib import Path
+    from faebryk.library.Plots import EfficiencyValidationChart
+
+    charts = app.get_children(direct_only=False, types=EfficiencyValidationChart)
+    if not charts:
+        return
+
+    for chart in charts:
+        sim_names = chart.get_simulations()
+        labels = chart.get_series_labels()
+        raw_net = chart.get_net()
+        raw_ctx_nets = chart.get_context_nets()
+
+        if not sim_names or not raw_net:
+            continue
+
+        while len(labels) < len(sim_names):
+            labels.append(sim_names[len(labels)])
+
+        series_data: dict[str, dict] = {}
+        resolved_net_key = None
+        resolved_ctx_keys: list[str] = []
+
+        for sim_name, label in zip(sim_names, labels):
+            matched_key = None
+            for key in sim_results:
+                if key == sim_name or key.endswith("." + sim_name):
+                    matched_key = key
+                    break
+            if matched_key is None:
+                logger.warning(
+                    f"EfficiencyValidationChart: simulation '{sim_name}' not found"
+                )
+                continue
+
+            sim_result, net_aliases = sim_results[matched_key]
+            if not isinstance(sim_result, dict):
+                logger.warning(
+                    f"EfficiencyValidationChart: '{sim_name}' is not a sweep sim"
+                )
+                continue
+
+            if resolved_net_key is None:
+                normalized_net = raw_net.replace(".", "_")
+                resolved_net = net_aliases.get(
+                    raw_net,
+                    net_aliases.get(normalized_net, normalized_net),
+                )
+                resolved_net_key = (
+                    f"v({resolved_net})"
+                    if not resolved_net.startswith(("v(", "i("))
+                    else resolved_net
+                )
+
+                for ctx_net in raw_ctx_nets:
+                    normalized = ctx_net.replace(".", "_")
+                    resolved = net_aliases.get(
+                        ctx_net, net_aliases.get(normalized, ctx_net)
+                    )
+                    ctx_key = (
+                        f"v({resolved})"
+                        if not resolved.startswith(("v(", "i("))
+                        else resolved
+                    )
+                    resolved_ctx_keys.append(ctx_key)
+
+            series_data[label] = sim_result
+
+        if not series_data or resolved_net_key is None:
+            continue
+
+        chart_title = chart.get_title() or "efficiency_validation"
+        name_slug = (
+            chart_title.replace(" ", "_").replace("/", "_").replace(":", "")
+        )
+        plot_path = Path(output_dir) / f"{name_slug}.html"
+        chart.render(
+            series_data, resolved_net_key, plot_path,
+            context_keys=resolved_ctx_keys or None,
+        )
+        logger.info(f"Efficiency validation chart: {plot_path}")
+
+
 @muster.register(
     "verify-requirements",
     description="Verifying simulation requirements",
@@ -946,6 +1560,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
             ACResult,
             TransientResult,
         )
+        from faebryk.exporters.simulation.simulation_runner import MultiDutResult
 
         app = ctx.require_app()
         output_dir = config.build.paths.output_base.parent
@@ -961,138 +1576,433 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
         results: list[RequirementResult] = []
 
         for req in reqs:
-            sim_name = req.get_simulation()
-            if sim_name is None:
-                continue
+            try:
+                sim_name = req.get_simulation()
+                if sim_name is None:
+                    continue
 
-            if sim_name not in sim_results:
-                logger.warning(
-                    f"Requirement '{req.get_name()}' references simulation "
-                    f"'{sim_name}' which was not found in cached results"
-                )
-                continue
-
-            sim_result, net_aliases = sim_results[sim_name]
-            measurement = req.get_measurement()
-            raw_net = req.get_net()
-            settling_tol = req.get_settling_tolerance()
-
-            # Resolve net alias
-            resolved_net = net_aliases.get(raw_net, raw_net)
-            raw_addr = req.net.get().try_extract_singleton() or ""
-
-            # Resolve context nets
-            resolved_ctx = [
-                net_aliases.get(ctx_net, ctx_net)
-                for ctx_net in req.get_context_nets()
-            ]
-
-            # Resolve diff_ref_net
-            raw_diff = req.get_diff_ref_net()
-            resolved_diff = None
-            if raw_diff:
-                resolved_diff = net_aliases.get(raw_diff, raw_diff)
-
-            if isinstance(sim_result, TransientResult):
-                # Construct signal key
-                sig_key = (
-                    f"v({resolved_net})"
-                    if not resolved_net.startswith(("v(", "i("))
-                    else resolved_net
-                )
-
-                # Handle differential measurement
-                if resolved_diff:
-                    ref_key = (
-                        f"v({resolved_diff})"
-                        if not resolved_diff.startswith(("v(", "i("))
-                        else resolved_diff
+                if sim_name not in sim_results:
+                    logger.warning(
+                        f"Requirement '{req.get_name()}' references simulation "
+                        f"'{sim_name}' which was not found in cached results"
                     )
-                    signal_data = [
-                        a - b
-                        for a, b in zip(sim_result[sig_key], sim_result[ref_key])
-                    ]
-                else:
-                    signal_data = sim_result[sig_key]
+                    continue
 
-                time_data = sim_result.time
-                actual = _measure_tran(
-                    measurement,
-                    signal_data,
-                    time_data,
-                    settling_tolerance=settling_tol,
+                sim_result, net_aliases = sim_results[sim_name]
+                measurement = req.get_measurement()
+                raw_net = req.get_net()
+                settling_tol = req.get_settling_tolerance()
+
+                # ----- Multi-DUT handling -----
+                with open("/tmp/plot_debug.log", "a") as _dbg:
+                    _dbg.write(
+                        f"Req '{req.get_name()}': sim='{sim_name}', "
+                        f"result_type={type(sim_result).__name__}\n"
+                    )
+                if isinstance(sim_result, MultiDutResult):
+                    with open("/tmp/plot_debug.log", "a") as _dbg:
+                        _dbg.write("Entered MultiDutResult branch\n")
+                        try:
+                            lp = req.limit.get()
+                            _dbg.write(f"  limit param: {lp!r}\n")
+                            # Try raw operatable extraction
+                            op = lp.is_parameter_operatable.get()
+                            _dbg.write(f"  operatable: {op!r}\n")
+                            # Try getting raw literal sets
+                            from faebryk.library.Literals import Numbers
+                            try:
+                                ss = op.try_extract_superset(lit_type=Numbers)
+                                _dbg.write(f"  superset Numbers: {ss!r}\n")
+                                if ss:
+                                    _dbg.write(f"    min={ss.get_min_value()}, max={ss.get_max_value()}\n")
+                            except Exception as e3:
+                                _dbg.write(f"  superset error: {e3}\n")
+                            try:
+                                from faebryk.library.Literals import Quantity
+                                sq = op.try_extract_superset(lit_type=Quantity)
+                                _dbg.write(f"  superset Quantity: {sq!r}\n")
+                                if sq:
+                                    _dbg.write(f"    min={sq.get_min_value()}, max={sq.get_max_value()}\n")
+                            except Exception as e4:
+                                _dbg.write(f"  superset Quantity error: {e4}\n")
+                            # Check what children/edges the param has
+                            children = lp.get_children(direct_only=True)
+                            _dbg.write(f"  children: {[type(c).__name__ for c in children]}\n")
+                        except Exception as e2:
+                            import traceback
+                            _dbg.write(f"  limit extraction error: {e2}\n{traceback.format_exc()}\n")
+                    raw_addr = req.net.get().try_extract_singleton() or ""
+                    actuals_per_dut: dict[str, float] = {}
+
+                    for dut_name, (dut_result, dut_aliases) in (
+                        sim_result.results.items()
+                    ):
+                        # Resolve dut.xxx → dut_name_xxx for net lookup
+                        dut_net = raw_net
+                        if dut_net.startswith("dut_"):
+                            dut_net = f"{dut_name}_{dut_net[4:]}"
+                        elif dut_net.startswith("dut."):
+                            dut_net = f"{dut_name}_{dut_net[4:].replace('.', '_')}"
+                        normalized_dut_net = dut_net.replace(".", "_")
+                        resolved_dut_net = dut_aliases.get(
+                            dut_net,
+                            dut_aliases.get(
+                                normalized_dut_net, normalized_dut_net
+                            ),
+                        )
+
+                        # Resolve context nets for this DUT
+                        dut_ctx = []
+                        for ctx_net in req.get_context_nets():
+                            cn = ctx_net
+                            if cn.startswith("dut_"):
+                                cn = f"{dut_name}_{cn[4:]}"
+                            elif cn.startswith("dut."):
+                                cn = f"{dut_name}_{cn[4:].replace('.', '_')}"
+                            cn_norm = cn.replace(".", "_")
+                            dut_ctx.append(
+                                dut_aliases.get(
+                                    cn, dut_aliases.get(cn_norm, cn_norm)
+                                )
+                            )
+
+                        sig_key = (
+                            f"v({resolved_dut_net})"
+                            if not resolved_dut_net.startswith(("v(", "i("))
+                            else resolved_dut_net
+                        )
+
+                        try:
+                            if isinstance(dut_result, TransientResult):
+                                signal_data = dut_result[sig_key]
+                                time_data = dut_result.time
+                                tran_start = req.get_tran_start()
+                                if tran_start and tran_start > 0:
+                                    time_data, signal_data = _slice_from(
+                                        time_data, signal_data, tran_start
+                                    )
+                                val = _measure_tran(
+                                    measurement,
+                                    signal_data,
+                                    time_data,
+                                    settling_tolerance=settling_tol,
+                                    sim_result=dut_result,
+                                    context_nets=dut_ctx,
+                                )
+                                actuals_per_dut[dut_name] = val
+                            elif isinstance(dut_result, dict):
+                                # Sweep result per DUT: dict[float, TransientResult]
+                                sweep_actuals = []
+                                for pval, point_result in dut_result.items():
+                                    if not isinstance(point_result, TransientResult):
+                                        continue
+                                    try:
+                                        sd = point_result[sig_key]
+                                    except KeyError:
+                                        continue
+                                    td = point_result.time
+                                    tran_start = req.get_tran_start()
+                                    if tran_start and tran_start > 0:
+                                        td, sd = _slice_from(td, sd, tran_start)
+                                    try:
+                                        v = _measure_tran(
+                                            measurement, sd, td,
+                                            settling_tolerance=settling_tol,
+                                            sim_result=point_result,
+                                            context_nets=dut_ctx,
+                                        )
+                                    except Exception:
+                                        continue
+                                    sweep_actuals.append(v)
+                                if sweep_actuals:
+                                    min_v = req.get_min_val()
+                                    max_v = req.get_max_val()
+                                    mid = (min_v + max_v) / 2
+                                    actuals_per_dut[dut_name] = max(
+                                        sweep_actuals,
+                                        key=lambda v: abs(v - mid),
+                                    )
+                        except Exception:
+                            logger.warning(
+                                f"  Multi-DUT '{dut_name}' measurement failed "
+                                f"for req '{req.get_name()}'",
+                                exc_info=True,
+                            )
+
+                    if not actuals_per_dut:
+                        actual = float("nan")
+                        passed = False
+                    else:
+                        # Determine bounds and pass/fail
+                        vout_pct = req.get_vout_tolerance_pct()
+                        if vout_pct is not None:
+                            # Per-DUT bounds based on VOUT
+                            all_passed = True
+                            worst_actual = None
+                            worst_dist = -1.0
+                            for dn, act in actuals_per_dut.items():
+                                dp = sim_result.dut_params.get(dn, {})
+                                vout = next(
+                                    (
+                                        v
+                                        for k, v in dp.items()
+                                        if "power_out" in k
+                                        and "voltage" in k
+                                    ),
+                                    None,
+                                )
+                                if vout is None:
+                                    all_passed = False
+                                    continue
+                                mn = vout * (1 - vout_pct / 100)
+                                mx = vout * (1 + vout_pct / 100)
+                                dut_pass = mn <= act <= mx
+                                all_passed &= dut_pass
+                                dist = abs(act - (mn + mx) / 2)
+                                if dist > worst_dist:
+                                    worst_dist = dist
+                                    worst_actual = act
+                            actual = (
+                                worst_actual
+                                if worst_actual is not None
+                                else float("nan")
+                            )
+                            passed = all_passed
+                        else:
+                            # Shared bounds — worst case
+                            min_v = req.get_min_val()
+                            max_v = req.get_max_val()
+                            mid = (min_v + max_v) / 2
+                            actual = max(
+                                actuals_per_dut.values(),
+                                key=lambda v: abs(v - mid),
+                            )
+                            import math
+
+                            passed = (
+                                not math.isnan(actual)
+                                and min_v <= actual <= max_v
+                            )
+
+                    r = RequirementResult(
+                        requirement=req,
+                        actual=actual,
+                        passed=passed,
+                        display_net=raw_addr,
+                        resolved_net=raw_net,
+                        resolved_diff_ref=None,
+                        resolved_ctx_nets=req.get_context_nets(),
+                    )
+                    results.append(r)
+
+                    # Generate multi-DUT plot(s)
+                    name_slug = (
+                        req.get_name()
+                        .replace(" ", "_")
+                        .replace(":", "")
+                    )
+
+                    # Use attached plot nodes if available
+                    plot_nodes = req.get_plots()
+                    with open("/tmp/plot_debug.log", "a") as _dbg:
+                        _dbg.write(
+                            f"Plot nodes: {len(plot_nodes)} found, "
+                            f"slug='{name_slug}', output_dir={output_dir}\n"
+                        )
+                        # Also check all LineChart children
+                        all_lc = req.get_children(
+                            direct_only=True, types=F.Plots.LineChart
+                        )
+                        _dbg.write(
+                            f"All LineChart children: {len(all_lc)}\n"
+                        )
+                        for lc in all_lc:
+                            _dbg.write(
+                                f"  LC: title={lc.get_title()!r}, "
+                                f"nets={lc.get_nets()!r}\n"
+                            )
+                    if plot_nodes:
+                        for pi, plot_node in enumerate(plot_nodes):
+                            suffix = f"_{pi}" if len(plot_nodes) > 1 else ""
+                            p = output_dir / f"req_{name_slug}{suffix}.html"
+                            plot_node.render_multi_dut(
+                                sim_result, req, p
+                            )
+                    else:
+                        plot_path = output_dir / f"req_{name_slug}.html"
+                        _plot_multi_dut_requirement(
+                            r, sim_result, plot_path, req
+                        )
+                    continue
+
+                # ----- Single-DUT handling (original path) -----
+                # Resolve net alias (normalize dots→underscores for lookup)
+                normalized_net = raw_net.replace(".", "_")
+                resolved_net = net_aliases.get(
+                    raw_net, net_aliases.get(normalized_net, raw_net)
                 )
-            elif isinstance(sim_result, ACResult):
-                ref_net = req.get_ac_ref_net()
-                measure_freq = req.get_ac_measure_freq()
-                actual = _measure_ac(
-                    measurement, sim_result, resolved_net,
-                    ref_net, measure_freq,
-                )
-            elif isinstance(sim_result, dict):
-                # Sweep result: dict[float, TransientResult]
-                # Measure each point and take the worst case
-                actuals = []
-                for pval, point_result in sim_result.items():
-                    if not isinstance(point_result, TransientResult):
-                        continue
+                raw_addr = req.net.get().try_extract_singleton() or ""
+
+                # Resolve context nets (normalize dots→underscores for alias lookup)
+                resolved_ctx = []
+                for ctx_net in req.get_context_nets():
+                    # Try exact match first, then normalized (dot→underscore)
+                    normalized = ctx_net.replace(".", "_")
+                    resolved = net_aliases.get(
+                        ctx_net,
+                        net_aliases.get(normalized, ctx_net),
+                    )
+                    resolved_ctx.append(resolved)
+
+                # Resolve diff_ref_net
+                raw_diff = req.get_diff_ref_net()
+                resolved_diff = None
+                if raw_diff:
+                    resolved_diff = net_aliases.get(raw_diff, raw_diff)
+
+                if isinstance(sim_result, TransientResult):
+                    # Construct signal key
                     sig_key = (
                         f"v({resolved_net})"
                         if not resolved_net.startswith(("v(", "i("))
                         else resolved_net
                     )
-                    signal_data = point_result[sig_key]
-                    time_data = point_result.time
-                    val = _measure_tran(
+
+                    # Handle differential measurement
+                    if resolved_diff:
+                        ref_key = (
+                            f"v({resolved_diff})"
+                            if not resolved_diff.startswith(("v(", "i("))
+                            else resolved_diff
+                        )
+                        signal_data = [
+                            a - b
+                            for a, b in zip(sim_result[sig_key], sim_result[ref_key])
+                        ]
+                    else:
+                        signal_data = sim_result[sig_key]
+
+                    time_data = sim_result.time
+
+                    # Apply tran_start filtering if requirement specifies it
+                    tran_start = req.get_tran_start()
+                    if tran_start and tran_start > 0:
+                        time_data, signal_data = _slice_from(
+                            time_data, signal_data, tran_start
+                        )
+
+                    actual = _measure_tran(
                         measurement,
                         signal_data,
                         time_data,
                         settling_tolerance=settling_tol,
+                        sim_result=sim_result,
+                        context_nets=resolved_ctx,
                     )
-                    actuals.append(val)
-                if actuals:
-                    # For sweep: use worst-case (furthest from bounds)
-                    min_v = req.get_min_val()
-                    max_v = req.get_max_val()
-                    mid = (min_v + max_v) / 2
-                    actual = max(actuals, key=lambda v: abs(v - mid))
+                elif isinstance(sim_result, ACResult):
+                    ref_net = req.get_ac_ref_net()
+                    measure_freq = req.get_ac_measure_freq()
+                    actual = _measure_ac(
+                        measurement, sim_result, resolved_net,
+                        ref_net, measure_freq,
+                    )
+                elif isinstance(sim_result, dict):
+                    # Sweep result: dict[float, TransientResult]
+                    # Measure each point and take the worst case
+                    actuals = []
+                    for pval, point_result in sim_result.items():
+                        if not isinstance(point_result, TransientResult):
+                            continue
+                        sig_key = (
+                            f"v({resolved_net})"
+                            if not resolved_net.startswith(("v(", "i("))
+                            else resolved_net
+                        )
+                        try:
+                            signal_data = point_result[sig_key]
+                        except KeyError:
+                            continue
+                        time_data = point_result.time
+
+                        # Apply tran_start filtering for sweeps too
+                        tran_start = req.get_tran_start()
+                        if tran_start and tran_start > 0:
+                            time_data, signal_data = _slice_from(
+                                time_data, signal_data, tran_start
+                            )
+
+                        try:
+                            val = _measure_tran(
+                                measurement,
+                                signal_data,
+                                time_data,
+                                settling_tolerance=settling_tol,
+                                sim_result=point_result,
+                                context_nets=resolved_ctx,
+                            )
+                        except Exception:
+                            continue
+                        actuals.append(val)
+                    if actuals:
+                        # For sweep: use worst-case (furthest from bounds)
+                        min_v = req.get_min_val()
+                        max_v = req.get_max_val()
+                        mid = (min_v + max_v) / 2
+                        actual = max(actuals, key=lambda v: abs(v - mid))
+                    else:
+                        actual = float("nan")
                 else:
-                    actual = float("nan")
-            else:
-                logger.warning(
-                    f"Unsupported result type for requirement "
-                    f"'{req.get_name()}': {type(sim_result)}"
+                    logger.warning(
+                        f"Unsupported result type for requirement "
+                        f"'{req.get_name()}': {type(sim_result)}"
+                    )
+                    continue
+
+                import math
+
+                passed = (
+                    not math.isnan(actual)
+                    and req.get_min_val() <= actual <= req.get_max_val()
                 )
-                continue
+                r = RequirementResult(
+                    requirement=req,
+                    actual=actual,
+                    passed=passed,
+                    display_net=raw_addr,
+                    resolved_net=resolved_net,
+                    resolved_diff_ref=resolved_diff,
+                    resolved_ctx_nets=resolved_ctx,
+                )
+                results.append(r)
 
-            import math
-
-            passed = (
-                not math.isnan(actual)
-                and req.get_min_val() <= actual <= req.get_max_val()
-            )
-            r = RequirementResult(
-                requirement=req,
-                actual=actual,
-                passed=passed,
-                display_net=raw_addr,
-                resolved_net=resolved_net,
-                resolved_diff_ref=resolved_diff,
-                resolved_ctx_nets=resolved_ctx,
-            )
-            results.append(r)
-
-            # Generate plot
-            name_slug = (
-                req.get_name()
-                .replace(" ", "_")
-                .replace(":", "")
-            )
-            plot_path = output_dir / f"req_{name_slug}.html"
-            if isinstance(sim_result, TransientResult):
-                plot_requirement(r, sim_result, plot_path)
-            elif isinstance(sim_result, ACResult):
-                plot_requirement(r, None, plot_path, ac_data=sim_result)
+                # Generate plot
+                name_slug = (
+                    req.get_name()
+                    .replace(" ", "_")
+                    .replace(":", "")
+                )
+                plot_path = output_dir / f"req_{name_slug}.html"
+                if isinstance(sim_result, TransientResult):
+                    plot_requirement(r, sim_result, plot_path)
+                elif isinstance(sim_result, ACResult):
+                    plot_requirement(r, None, plot_path, ac_data=sim_result)
+                elif isinstance(sim_result, dict):
+                    _plot_sweep_requirement(
+                        r, sim_result, net_aliases, plot_path
+                    )
+            except Exception as e:
+                import traceback
+                with open("/tmp/plot_debug.log", "a") as _dbg:
+                    _dbg.write(
+                        f"EXCEPTION processing req: {e}\n"
+                        f"{traceback.format_exc()}\n"
+                    )
+                logger.warning(
+                    f"Error processing requirement "
+                    f"'{req.get_name() if hasattr(req, 'get_name') else '?'}'"
+                    f": {e}",
+                    exc_info=True,
+                )
 
         if not results:
             return
@@ -1109,15 +2019,39 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         f"{r.requirement.get_max_val()}]"
                     )
 
-        # Build minimal tran_data/ac_data for JSON export
-        from faebryk.exporters.simulation.requirement import (
-            _tran_group_key,
-            _ac_group_key,
-        )
+        # Build tran_data/ac_data maps keyed by simulation name for JSON export
+        def _sim_name_key(req):
+            return req.get_simulation()
+
+        tran_data: dict = {}
+        ac_data_map: dict = {}
+        multi_dut_data: dict = {}
+        for req in reqs:
+            sim_name = req.get_simulation()
+            if sim_name is None or sim_name not in sim_results:
+                continue
+            sim_result, _aliases = sim_results[sim_name]
+            if isinstance(sim_result, MultiDutResult):
+                multi_dut_data[sim_name] = sim_result
+            elif isinstance(sim_result, TransientResult):
+                tran_data[sim_name] = sim_result
+            elif isinstance(sim_result, ACResult):
+                ac_data_map[sim_name] = sim_result
+
         _write_requirements_json(
-            results, {}, _tran_group_key,
-            ac_data={}, ac_group_key_fn=_ac_group_key,
+            results, tran_data, _sim_name_key,
+            ac_data=ac_data_map, ac_group_key_fn=_sim_name_key,
+            multi_dut_data=multi_dut_data,
         )
+
+        # Render SweepOverlayChart nodes defined in the design
+        _render_overlay_charts(app, sim_results, output_dir)
+
+        # Render StartupValidationChart nodes defined in the design
+        _render_startup_validation_charts(app, sim_results, output_dir)
+
+        # Render EfficiencyValidationChart nodes defined in the design
+        _render_efficiency_validation_charts(app, sim_results, output_dir)
     except Exception:
         logger.warning(
             "Simulation requirement verification failed — skipping", exc_info=True

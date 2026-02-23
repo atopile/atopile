@@ -31,29 +31,39 @@ const FILTER_LABELS: Record<FilterType, string> = {
 function RequirementRow({ req, buildTime }: { req: RequirementData; buildTime: string }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const plotsRef = useRef<HTMLDivElement>(null);
-  const [cardH, setCardH] = useState(0);
-  const [plotsW, setPlotsW] = useState(0);
+  const [plotSize, setPlotSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [cardHeight, setCardHeight] = useState<number>(0);
 
-  // Measure card height + plots container width
+  // Measure card intrinsic height to cap the row
   useEffect(() => {
     const card = cardRef.current;
-    const plots = plotsRef.current;
-    if (!card || !plots) return;
+    if (!card) return;
     const ro = new ResizeObserver(() => {
-      const ch = Math.round(card.getBoundingClientRect().height);
-      const pw = Math.round(plots.getBoundingClientRect().width);
-      if (ch > 0) setCardH(ch);
-      if (pw > 0) setPlotsW(pw);
+      const h = Math.round(card.getBoundingClientRect().height);
+      if (h > 0) setCardHeight(prev => prev === h ? prev : h);
     });
     ro.observe(card);
-    ro.observe(plots);
     return () => ro.disconnect();
   }, []);
 
-  // Render plots once sizes are known
+  // Measure plots container width; use card height to cap plot height
+  useEffect(() => {
+    const plots = plotsRef.current;
+    if (!plots || cardHeight === 0) return;
+    const measure = () => {
+      const w = Math.round(plots.getBoundingClientRect().width);
+      if (w > 0) setPlotSize(prev => (prev.w === w && prev.h === cardHeight) ? prev : { w, h: cardHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(plots);
+    return () => ro.disconnect();
+  }, [cardHeight]);
+
+  // Render plots once container size is known
   useEffect(() => {
     const container = plotsRef.current;
-    if (!container || plotsW === 0 || cardH === 0) return;
+    if (!container || plotSize.w === 0 || plotSize.h === 0) return;
 
     // Clear previous plots
     const oldChildren = Array.from(container.children) as HTMLDivElement[];
@@ -62,35 +72,30 @@ function RequirementRow({ req, buildTime }: { req: RequirementData; buildTime: s
     }
     container.innerHTML = '';
 
-    const plotW = plotsW;
-    const plotH = cardH;
+    const dim = { width: plotSize.w, height: plotSize.h };
 
     if (req.plotSpecs && req.plotSpecs.length > 0) {
       for (const spec of req.plotSpecs) {
         const wrapper = document.createElement('div');
-        wrapper.style.width = `${plotW}px`;
-        wrapper.style.height = `${plotH}px`;
+        wrapper.style.width = `${dim.width}px`;
+        wrapper.style.height = `${dim.height}px`;
         container.appendChild(wrapper);
-        renderSpecAtSize(wrapper as HTMLDivElement, spec, plotW, plotH);
+        renderSpecAtSize(wrapper as HTMLDivElement, spec, dim.width, dim.height);
       }
     } else {
-      const wrapper = document.createElement('div');
-      wrapper.style.width = `${plotW}px`;
-      wrapper.style.height = `${plotH}px`;
-      wrapper.style.padding = '0';
-      container.appendChild(wrapper);
-
       const chartEl = document.createElement('div');
-      wrapper.appendChild(chartEl);
+      chartEl.style.width = `${dim.width}px`;
+      chartEl.style.height = `${dim.height}px`;
+      container.appendChild(chartEl);
 
       if (req.sweepPoints && req.sweepPoints.length > 0) {
-        renderSweepPlot(chartEl as HTMLDivElement, req);
+        renderSweepPlot(chartEl as HTMLDivElement, req, dim);
       } else if (req.frequencySeries) {
-        renderBodePlot(chartEl as HTMLDivElement, req);
+        renderBodePlot(chartEl as HTMLDivElement, req, dim);
       } else if (req.timeSeries) {
-        renderTransientPlot(chartEl as HTMLDivElement, req);
+        renderTransientPlot(chartEl as HTMLDivElement, req, dim);
       } else {
-        renderDCPlot(chartEl as HTMLDivElement, req);
+        renderDCPlot(chartEl as HTMLDivElement, req, dim);
       }
     }
 
@@ -100,7 +105,7 @@ function RequirementRow({ req, buildTime }: { req: RequirementData; buildTime: s
         try { purgePlot(child); } catch { /* ignore */ }
       }
     };
-  }, [req.id, plotsW, cardH]);
+  }, [req.id, plotSize.w, plotSize.h]);
 
   const actualVal = req.actual ?? NaN;
   const margin = computeMargin(actualVal, req.minVal, req.maxVal);

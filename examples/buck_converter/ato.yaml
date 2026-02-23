@@ -6,15 +6,19 @@ paths:
 
 builds:
   default:
-    entry: buck_converter.ato:TI_TPS54560
+    entry: buck_converter.ato:TPS54560_Reference
     hide_designators: true
     exclude_checks: [PCB.requires_drc_check]
   usage:
     entry: buck_converter.ato:Usage
     hide_designators: true
     exclude_checks: [PCB.requires_drc_check]
-  simulation:
-    entry: model_validation.ato:ModelValidationEntry
+  model-validation:
+    entry: model-validation.ato:ModelValidation
+    hide_designators: true
+    exclude_checks: [PCB.requires_drc_check]
+  design-validation:
+    entry: design-validation.ato:DesignValidation
     hide_designators: true
     exclude_checks: [PCB.requires_drc_check]
 dependencies:
