@@ -56,6 +56,7 @@ from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
+import faebryk.library.bus as bus
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
@@ -158,6 +159,7 @@ __all__ = [
     "is_sum_bus_parameter",
     "Filter",
     "Lead",
+    "bus",
     "has_net_name_affix",
     "requires_external_usage",
     "XtalIF",
