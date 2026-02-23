@@ -23,9 +23,9 @@ class UART(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     bus_spec = fabll.Traits.MakeEdge(
-        F.has_bus_spec.MakeChild(
-            topology=[F.has_bus_spec.Topology.POINT_TO_POINT],
-            data_flow=F.has_bus_spec.DataFlow.FULL_DUPLEX,
+        F.bus.has_bus_spec.MakeChild(
+            topology=[F.bus.has_bus_spec.Topology.POINT_TO_POINT],
+            data_flow=F.bus.has_bus_spec.DataFlow.FULL_DUPLEX,
             multi_controller=False,
         )
     )
