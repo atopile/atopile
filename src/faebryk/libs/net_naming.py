@@ -181,85 +181,45 @@ def _try_extract_signal_name(node: fabll.Node) -> str | None:
     return None
 
 
-def process_required_and_suggested_names(
+def process_required_names(
     processable_nets: list[ProcessableNet],
 ) -> None:
     """
-    Check if a has_net_name trait is present or if
-    has_net_name_suggestion.Level.EXPECTED is used on any of the connected electricals.
+    Set base_name for nets that have a hard-required name.
 
-    Name priority levels:
-    - has_net_name trait: Highest priority, name is required and used as-is
-    - has_net_name_suggestion.Level.EXPECTED: Required name from suggestion
-    - has_net_name_suggestion.Level.SUGGESTED: Optional, joined with "-" separator
-    - `signal` name in an ato `component`
+    Sources (highest priority first):
+    - has_net_name trait on the net itself
+    - has_net_name trait on an interface node in the hierarchy
+    - has_net_name_suggestion.Level.EXPECTED on an interface node
+
+    SUGGESTED-level suggestions are NOT handled here; they are deferred
+    to add_base_name so that power and bus naming take precedence.
 
     Raises:
         ValueError: If multiple required names are found for a net
         ValueError: If a net has the same required name as another net
     """
 
-    def _get_required_and_suggested_names(
+    def _get_required_names(
         electricals: list[F.Electrical],
-    ) -> tuple[list[str], list[str]]:
+    ) -> list[str]:
         """
-        Extract hierarchically the names from the interfaces connected to the net.
-
-        Returns:
-            Tuple of (required_names, suggested_names)
+        Extract required names from the interface hierarchy of connected electricals.
         """
         required_names: list[str] = []
-        suggested_names: list[str] = []
 
-        def _check_suggested_and_expected_names(
-            interfaces: list[tuple[fabll.Node, str]],
-            suggested: bool = False,
-        ) -> tuple[list[str], list[str]]:
-            """
-            Check for suggested and expected names in the interface nodes.
-
-            Returns:
-                Tuple of (required_names, suggested_names)
-            """
-            _required_names: list[str] = []
-            _suggested_names: list[str] = []
-            for node, _ in interfaces:
+        connected_interfaces = _get_all_connected_interfaces(electricals)
+        for hierarchy in connected_interfaces:
+            for node, _ in hierarchy:
                 if name_trait := node.try_get_trait(F.has_net_name):
-                    # TODO: this might never trigger, only the unnamed
-                    # nets are processed. might need to do collision detection
-                    # higher up in the process. (after ALL nets are processed)
-                    _required_names.append(name_trait.get_name())
+                    required_names.append(name_trait.get_name())
                 elif suggestion_trait := node.try_get_trait(F.has_net_name_suggestion):
                     if (
                         suggestion_trait.level
                         == F.has_net_name_suggestion.Level.EXPECTED
                     ):
-                        _required_names.append(suggestion_trait.name)
-                    elif (
-                        suggestion_trait.level
-                        == F.has_net_name_suggestion.Level.SUGGESTED
-                    ):
-                        _suggested_names.append(suggestion_trait.name)
-            if suggested:
-                return _required_names, _suggested_names
-            return _required_names, []
-
-        connected_interfaces = _get_all_connected_interfaces(electricals)
-        # Take the last element (longest hierarchy, or alphabetically last if tied)
-        # since the list is sorted by (length, path_string) ascending
-        longest_hierarchy = connected_interfaces.pop()
-        longest_hierarchy_required_names, longest_hierarchy_suggested_names = (
-            _check_suggested_and_expected_names(longest_hierarchy, suggested=True)
-        )
-        suggested_names = longest_hierarchy_suggested_names
-        required_names = longest_hierarchy_required_names
-        for interfaces in connected_interfaces:
-            req_names, sug_names = _check_suggested_and_expected_names(interfaces)
-            if sug_names:
-                required_names.extend(sug_names)
-            if req_names:
-                required_names.extend(req_names)
-        return required_names, suggested_names
+                        required_names.append(suggestion_trait.name)
+        return required_names
 
     # Track required names across all nets for duplicate detection
     required_name_to_nets: dict[str, list[ProcessableNet]] = {}
@@ -270,29 +230,29 @@ def process_required_and_suggested_names(
                 f"Net {processable_net.net.get_name()} has no connected electricals"
             )
 
-        required_names, suggested_names = _get_required_and_suggested_names(
+        required_names = _get_required_names(
             [e.electrical for e in processable_net.electricals]
         )
 
         if name_trait := processable_net.net.try_get_trait(F.has_net_name):
             required_names.append(name_trait.get_name())
         if required_names:
-            if len(required_names) > 1:
+            # Deduplicate while preserving order
+            seen: set[str] = set()
+            unique_required: list[str] = []
+            for name in required_names:
+                if name not in seen:
+                    seen.add(name)
+                    unique_required.append(name)
+            if len(unique_required) > 1:
                 raise ValueError(
                     "Multiple required names found for net: "
                     f"{processable_net.net.get_name()}"
                 )
-            required_name = required_names[0]
+            required_name = unique_required[0]
             processable_net.net_name.base_name = required_name
             # Track for cross-net duplicate detection
             required_name_to_nets.setdefault(required_name, []).append(processable_net)
-        elif suggested_names:
-            # hierarchically add the suggested name
-            base_name = "-".join(suggested_names)
-            processable_net.net_name.base_name = base_name
-        else:
-            # use the default net name "net"
-            continue
 
     # Check for cross-net conflicts after processing all nets
     for name, nets in required_name_to_nets.items():
@@ -334,15 +294,46 @@ def sanitize_name(name: str) -> str:
     return name
 
 
+def _get_suggested_names(
+    electricals: list[F.Electrical],
+) -> list[str]:
+    """
+    Collect SUGGESTED-level net name suggestions from the longest interface
+    hierarchy of the net's electricals.
+
+    Only the longest (deepest) hierarchy contributes SUGGESTED names, since
+    it provides the most specific context for the net.
+
+    Returns:
+        List of suggested name parts (to be joined with "-").
+    """
+    connected_interfaces = _get_all_connected_interfaces(electricals)
+    if not connected_interfaces:
+        return []
+
+    # Take the last element (longest hierarchy, or alphabetically last if tied)
+    # since the list is sorted by (length, path_string) ascending
+    longest_hierarchy = connected_interfaces[-1]
+    suggested: list[str] = []
+    for node, _ in longest_hierarchy:
+        if suggestion_trait := node.try_get_trait(F.has_net_name_suggestion):
+            if suggestion_trait.level == F.has_net_name_suggestion.Level.SUGGESTED:
+                suggested.append(suggestion_trait.name)
+
+    return suggested
+
+
 def add_base_name(
     processable_nets: list[ProcessableNet],
 ) -> None:
     """
-    Add the base name to the net name
+    Add the base name to the net name for nets that don't already have one
+    (from required names, power naming, or bus naming).
 
     Stages:
-    1. try using one of the nice basenames derived from one of the connected electricals
-    2. default to "net" if nothing else is available
+    1. SUGGESTED-level net name suggestions (joined with "-")
+    2. nice basenames derived from one of the connected electricals
+    3. default to "net" if nothing else is available
     """
 
     def _add_nice_base_name(processable_net: ProcessableNet) -> None:
@@ -355,10 +346,10 @@ def add_base_name(
             Find nice base names and return them in order of preference.
 
             Order of preference:
-            1. name of the electrical connected to the footprint pad (ato `pin`)
-            2. name of the electrical that is defined as ato `signal`
-            3. names from all nodes in the interface hierarchy
+            1. names from all nodes in the interface hierarchy
                 (leaf to root, so deeper/more-specific names come first)
+            2. signal name extracted from ato pin (via _try_extract_signal_name)
+            3. raw pin name (package pin name, e.g. "SD0")
             4. default to "net"
             """
             from atopile.compiler.ast_visitor import is_ato_pin
@@ -377,22 +368,27 @@ def add_base_name(
                 if leaf_node.has_trait(is_ato_pin):
                     pin_nodes.append(leaf_node)
 
-            # Priotity 1: pin name extraction (unlikely this is a good name)
-            for pin_node in pin_nodes:
-                if pin_name := pin_node.get_name(accept_no_parent=True):
-                    nice_base_names.append(pin_name)
+            # Priority 1: names from all nodes in the interface hierarchy
+            # (leaf to root, so deeper/more-specific names come first)
+            # Iterate longest hierarchies first — deeper paths are more
+            # semantically meaningful (e.g. "sda" from an I2C interface
+            # should rank above "SD0" from a bare pin).
+            for hierarchy in reversed(connected_interfaces):
+                for _, name in reversed(hierarchy):
+                    if name not in nice_base_names:
+                        nice_base_names.append(name)
 
             # Priority 2: signal name extracted from ato pin
             for pin_node in pin_nodes:
                 if signal_name := _try_extract_signal_name(pin_node):
-                    nice_base_names.append(signal_name)
+                    if signal_name not in nice_base_names:
+                        nice_base_names.append(signal_name)
 
-            # Priority 3: names from all nodes in the interface hierarchy
-            # (leaf to root, so deeper/more-specific names come first)
-            for hierarchy in connected_interfaces:
-                for _, name in reversed(hierarchy):
-                    if name not in nice_base_names:
-                        nice_base_names.append(name)
+            # Priority 3: pin name extraction (raw package pin name)
+            for pin_node in pin_nodes:
+                if pin_name := pin_node.get_name(accept_no_parent=True):
+                    if pin_name not in nice_base_names:
+                        nice_base_names.append(pin_name)
 
             # Priority 4: default to "net"
 
@@ -414,11 +410,21 @@ def add_base_name(
 
     logger.debug(f"trying to add nice base names to {len(processable_nets)} nets")
     for processable_net in processable_nets:
-        if processable_net.net_name.base_name is None:
-            # skip setting base name if already set (by suggested or required names)
-            _add_nice_base_name(processable_net)
-        else:
+        if processable_net.net_name.base_name is not None:
+            # skip — already set by required, power, or bus naming
             logger.debug(f"nice! skipping {processable_net.net_name.name}")
+            continue
+
+        # Try SUGGESTED names first
+        suggested = _get_suggested_names(
+            [e.electrical for e in processable_net.electricals]
+        )
+        if suggested:
+            processable_net.net_name.base_name = "-".join(suggested)
+            continue
+
+        # Fall back to hierarchy-derived names
+        _add_nice_base_name(processable_net)
 
 
 def add_affixes(
@@ -467,9 +473,19 @@ _ROLE_PRIORITY: dict[has_bus_role.BusRole, int] = {
 }
 
 
+@dataclass
+class BusRoleMatch:
+    """Result of finding a bus role in an electrical's hierarchy."""
+
+    bus_name: str  # name of the bus interface node (e.g. "i2cs[0]")
+    parent_name: str  # name of the bus interface's parent (e.g. "i2c_mux")
+    signal_name: str  # first child below the bus node (e.g. "sda")
+    roles: set[has_bus_role.BusRole]
+
+
 def _find_bus_role_in_hierarchy(
     electrical: F.Electrical,
-) -> tuple[str, str, set[has_bus_role.BusRole]] | None:
+) -> BusRoleMatch | None:
     """
     Walk up the hierarchy from an electrical to find the first ancestor
     with a has_bus_role trait (the bus interface).
@@ -478,7 +494,8 @@ def _find_bus_role_in_hierarchy(
     boundary, since those are power references, not bus signals.
 
     Returns:
-        Tuple of (bus_interface_name, parent_module_name, roles) or None.
+        BusRoleMatch with bus name, parent name, signal name, and roles,
+        or None if no bus role found.
     """
     hierarchy = electrical.get_hierarchy()
 
@@ -502,7 +519,18 @@ def _find_bus_role_in_hierarchy(
                 _, parent_name = hierarchy[i - 1]
             else:
                 parent_name = name
-            return (bus_name, parent_name, roles)
+            # Signal name: first child below the bus role node on path
+            # to the electrical. E.g. for i2cs[0] → sda → line, signal = "sda"
+            if i + 1 < len(hierarchy):
+                _, signal_name = hierarchy[i + 1]
+            else:
+                signal_name = name
+            return BusRoleMatch(
+                bus_name=bus_name,
+                parent_name=parent_name,
+                signal_name=signal_name,
+                roles=roles,
+            )
 
     return None
 
@@ -557,6 +585,10 @@ def add_power_base_name(
     _CANONICAL_POWER_NAMES = {"hv", "lv"}
 
     for processable_net in processable_nets:
+        if processable_net.net_name.base_name is not None:
+            # Already named (e.g. by required names), skip
+            continue
+
         best: tuple[str, str, int] | None = None  # (power_name, elec_name, depth)
 
         for ewn in processable_net.electricals:
@@ -590,29 +622,31 @@ def add_bus_prefix(
     with has_bus_role traits. Picks the interface with the highest-priority role
     and sets the prefix to "<parent_name>.<bus_interface_name>".
 
-    Only sets prefix if no prefix is already set (e.g. from conflict resolution).
+    Skips nets that already have a prefix or base_name.
     """
     for processable_net in processable_nets:
         if processable_net.net_name.prefix:
-            # Already has a prefix (e.g. from a previous step), skip
+            continue
+        if processable_net.net_name.base_name is not None:
             continue
 
         best_priority = len(_ROLE_PRIORITY)  # worst possible
-        best_prefix: str | None = None
+        best_match: BusRoleMatch | None = None
 
         for ewn in processable_net.electricals:
             result = _find_bus_role_in_hierarchy(ewn.electrical)
             if result is None:
                 continue
-            bus_name, parent_name, roles = result
-            for role in roles:
+            for role in result.roles:
                 priority = _ROLE_PRIORITY.get(role, len(_ROLE_PRIORITY))
                 if priority < best_priority:
                     best_priority = priority
-                    best_prefix = f"{parent_name}.{bus_name}"
+                    best_match = result
 
-        if best_prefix:
-            processable_net.net_name.prefix = best_prefix
+        if best_match:
+            processable_net.net_name.prefix = (
+                f"{best_match.parent_name}.{best_match.bus_name}"
+            )
 
 
 def _get_full_hierarchy_path(electrical: F.Electrical) -> str:
@@ -858,11 +892,12 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     `{prefix}{required_prefix}{base_name}{numeric_suffix}{required_suffix}`
 
     Name resolution priority (highest to lowest):
-    1. has_net_name trait - name is used as-is (required)
-    2. has_net_name_suggestion.Level.EXPECTED - name from suggestion (required)
-    3. has_net_name_suggestion.Level.SUGGESTED - joined with "-" separator
-    4. electrical.get_name() - derived from electrical name
-    5. "net" - default fallback
+    1. has_net_name trait / EXPECTED suggestion - required, always wins
+    2. ElectricPower parent naming - power nets get "<power_name>.<hv|lv>"
+    3. Bus role prefix - signal nets get "<parent>.<bus_iface>" prefix
+    4. SUGGESTED net name suggestions - joined with "-" separator
+    5. Hierarchy-derived name - from electrical/interface names
+    6. "net" - default fallback
 
     Conflict resolution:
     - Hierarchical prefixing: nets get prefixed with parent module/interface name
@@ -880,11 +915,11 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     unnamed_count = len(processable_nets)
     already_named = total_nets - unnamed_count
 
-    process_required_and_suggested_names(processable_nets)
-    add_base_name(processable_nets)
+    process_required_names(processable_nets)
     add_power_base_name(processable_nets)
-    add_affixes(processable_nets)
     add_bus_prefix(processable_nets)
+    add_base_name(processable_nets)
+    add_affixes(processable_nets)
     conflicts_resolved = resolve_name_conflicts(processable_nets)
     apply_names_to_nets(processable_nets)
 
@@ -2113,8 +2148,8 @@ class TestNetNaming:
         )
 
         processable_nets = collect_unnamed_nets(nets)
-        add_base_name(processable_nets)
         add_bus_prefix(processable_nets)
+        add_base_name(processable_nets)
 
         # No bus role → no prefix should be set
         for pn in processable_nets:
@@ -2172,8 +2207,8 @@ class TestNetNaming:
         )
 
         processable_nets = collect_unnamed_nets(nets)
-        add_base_name(processable_nets)
         add_bus_prefix(processable_nets)
+        add_base_name(processable_nets)
 
         # The connected net should get controller's parent as prefix
         connected_net = next(pn for pn in processable_nets if len(pn.electricals) > 1)
@@ -2214,9 +2249,9 @@ class TestNetNaming:
 
         result = _find_bus_role_in_hierarchy(sig_electricals[0])
         assert result is not None
-        bus_name, parent_name, roles = result
-        assert bus_name == "my_bus"
-        assert has_bus_role.BusRole.TARGET in roles
+        assert result.bus_name == "my_bus"
+        assert result.signal_name == "inner"
+        assert has_bus_role.BusRole.TARGET in result.roles
 
     def test_bus_with_power_reference(self):
         """
@@ -2319,3 +2354,191 @@ class TestNetNaming:
                 assert name not in ("SDA", "SCL"), (
                     f"Power net incorrectly named '{name}'"
                 )
+
+    def test_pin_name_precedence(self):
+        """
+        Test that hierarchy names take precedence over pin names.
+
+        Simulates a real-world scenario like:
+          module Component:
+              signal sda ~ package.SD0
+
+        The net connected to both `sda` and `SD0` should be named "sda"
+        (from hierarchy), not "SD0" (from the raw pin name).
+
+        Also verifies that:
+        - Signal names extracted via _try_extract_signal_name come before raw pin names
+        - Raw pin names are still available as fallback
+        - When there's no hierarchy name, signal/pin names are used
+        """
+        import faebryk.core.node as fabll
+        from atopile.compiler.ast_visitor import is_ato_component, is_ato_pin
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # A component package with pin SD0 (marked as is_ato_pin)
+        class PinPrecPkg(fabll.Node):
+            _is_component = fabll.Traits.MakeEdge(is_ato_component.MakeChild())
+            SD0 = F.Electrical.MakeChild()
+            SD0.add_dependant(fabll.Traits.MakeEdge(is_ato_pin.MakeChild(), [SD0]))
+
+        # A bus interface with signal "sda" connected to the pin
+        class PinPrecBus(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sda = F.Electrical.MakeChild()
+
+        class PinPrecModule(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            bus = PinPrecBus.MakeChild()
+            package = PinPrecPkg.MakeChild()
+            # sda.line ~ package.SD0
+            _conn_sda = fabll.MakeEdge(
+                [bus, "sda"],
+                [package, "SD0"],
+                edge=interface.build(shallow=False),
+            )
+
+        class PinPrecApp(fabll.Node):
+            comp = PinPrecModule.MakeChild()
+
+        app = PinPrecApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+
+        processable_nets = collect_unnamed_nets(nets)
+        add_base_name(processable_nets)
+
+        # The net connecting sda and SD0 should use "sda" (hierarchy name)
+        # not "SD0" (raw pin name)
+        sda_net = next(
+            pn
+            for pn in processable_nets
+            if any(e.name == "sda" for e in pn.electricals)
+        )
+        assert sda_net.net_name.base_name == "sda", (
+            f"Expected hierarchy name 'sda' to win over pin name, "
+            f"got '{sda_net.net_name.base_name}'"
+        )
+
+    def test_pin_name_fallback_when_no_hierarchy(self):
+        """
+        Test that pin names are used as fallback when no hierarchy name exists.
+
+        When a pin electrical is not connected to any named interface signal,
+        the raw pin name should be used.
+        """
+        import faebryk.core.node as fabll
+        from atopile.compiler.ast_visitor import is_ato_component, is_ato_pin
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class PinFallbackPkg(fabll.Node):
+            _is_component = fabll.Traits.MakeEdge(is_ato_component.MakeChild())
+            MISO = F.Electrical.MakeChild()
+            MISO.add_dependant(fabll.Traits.MakeEdge(is_ato_pin.MakeChild(), [MISO]))
+
+        class PinFallbackApp(fabll.Node):
+            package = PinFallbackPkg.MakeChild()
+
+        app = PinFallbackApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+
+        processable_nets = collect_unnamed_nets(nets)
+        add_base_name(processable_nets)
+
+        # With no hierarchy name, the pin name "MISO" should be used
+        miso_net = next(
+            pn
+            for pn in processable_nets
+            if any(e.name == "MISO" for e in pn.electricals)
+        )
+        assert miso_net.net_name.base_name == "MISO", (
+            f"Expected pin name 'MISO' as fallback, got '{miso_net.net_name.base_name}'"
+        )
+
+    def test_bus_prefix_over_pin_name(self):
+        """
+        Test that bus prefix + hierarchy name takes precedence over pin names
+        in the full pipeline.
+
+        Simulates: a CONTROLLER bus interface with signal "sda" connected to
+        pin "SD0". The final net name should be "comp.bus.sda" (bus prefix +
+        hierarchy name), not "SD0" or "comp.bus.SD0".
+        """
+        import faebryk.core.node as fabll
+        from atopile.compiler.ast_visitor import is_ato_component, is_ato_pin
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class BusPinPkg(fabll.Node):
+            _is_component = fabll.Traits.MakeEdge(is_ato_component.MakeChild())
+            SD0 = F.Electrical.MakeChild()
+            SD0.add_dependant(fabll.Traits.MakeEdge(is_ato_pin.MakeChild(), [SD0]))
+            SC0 = F.Electrical.MakeChild()
+            SC0.add_dependant(fabll.Traits.MakeEdge(is_ato_pin.MakeChild(), [SC0]))
+
+        class BusPinI2C(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER])
+            )
+            sda = F.Electrical.MakeChild()
+            scl = F.Electrical.MakeChild()
+
+        class BusPinMCU(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            i2c = BusPinI2C.MakeChild()
+            package = BusPinPkg.MakeChild()
+            _conn_sda = fabll.MakeEdge(
+                [i2c, "sda"],
+                [package, "SD0"],
+                edge=interface.build(shallow=False),
+            )
+            _conn_scl = fabll.MakeEdge(
+                [i2c, "scl"],
+                [package, "SC0"],
+                edge=interface.build(shallow=False),
+            )
+
+        class BusPinApp(fabll.Node):
+            comp = BusPinMCU.MakeChild()
+
+        app = BusPinApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+        attach_net_names(nets)
+
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None],
+            key=lambda name: name.lower(),
+        )
+
+        print(f"net_names: {net_names}")
+
+        # Bus prefix from CONTROLLER + hierarchy name should win
+        assert "comp.i2c.scl" in net_names, f"Expected 'comp.i2c.scl', got {net_names}"
+        assert "comp.i2c.sda" in net_names, f"Expected 'comp.i2c.sda', got {net_names}"
+        # Pin names should NOT appear as net names
+        assert "SD0" not in net_names, "Pin name 'SD0' should not be a net name"
+        assert "SC0" not in net_names, "Pin name 'SC0' should not be a net name"
