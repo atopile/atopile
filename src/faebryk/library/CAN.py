@@ -24,6 +24,14 @@ class CAN(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
+    bus_spec = fabll.Traits.MakeEdge(
+        F.bus.has_bus_spec.MakeChild(
+            topology=[F.bus.has_bus_spec.Topology.BUS],
+            data_flow=F.bus.has_bus_spec.DataFlow.HALF_DUPLEX,
+            multi_controller=False,
+        )
+    )
+
     # ISO 11898: CAN bus differential impedance 120 Ohm +/- 10%
     _parameter_constraints = [
         F.Literals.Numbers.MakeChild_SetSuperset(
