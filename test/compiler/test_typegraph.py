@@ -2053,6 +2053,37 @@ class TestTraitStatements:
 
         assert trait.get_count() == 42
 
+    def test_instance_trait_on_child(self):
+        """Instance trait applies trait to a child field via dot syntax."""
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from test.compiler.conftest import build_instance
+
+        g, tg, stdlib, result, app_root = build_instance(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("INSTANCE_TRAITS")
+            import has_net_name_suggestion
+            import Resistor
+
+            module App:
+                r1 = new Resistor
+                trait r1 has_net_name_suggestion<name="MY_NET", level="SUGGESTED">
+            """,
+            root="App",
+        )
+
+        r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_root, child_identifier="r1"
+        )
+        assert r1_bnode is not None
+
+        r1 = fabll.Node.bind_instance(r1_bnode)
+        trait = r1.get_trait(F.has_net_name_suggestion)
+
+        assert trait.name == "MY_NET"
+        assert trait.level == F.has_net_name_suggestion.Level.SUGGESTED
+
 
 class TestAssignments:
     """Tests for parameter assignments in ato."""
