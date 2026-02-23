@@ -145,14 +145,17 @@ def _handle_build_sync(payload: dict) -> dict:
                 "needs_state_sync": False,
             }
 
-        # Pre-build check: verify package integrity before building
+        # Pre-build check: verify package integrity before building.
+        # Only sync_versions (detects modified packages). Skip install_missing
+        # since the build subprocess handles full dependency resolution.
+        # This avoids blocking the UI for several seconds before the build
+        # is enqueued.
         try:
-            from atopile.config import config
+            from atopile.config import config as atopile_config
             from faebryk.libs.project.dependencies import ProjectDependencies
 
-            config.apply_options(None, working_dir=project_path)
-            # This will raise PackageModifiedError if packages are modified
-            ProjectDependencies(sync_versions=True, install_missing=True)
+            atopile_config.apply_options(None, working_dir=project_path)
+            ProjectDependencies(sync_versions=True, install_missing=False)
         except PackageModifiedError as e:
             # Emit event for UI to display, then block the build
             from atopile.dataclasses import EventType
@@ -174,7 +177,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 "needs_state_sync": False,
             }
         except Exception as e:
-            log.warning(f"Pre-build sync check failed: {e}")
+            log.warning(f"Pre-build package check failed: {e}")
             # Don't block the build for other errors, let the subprocess handle it
 
         if build_all_targets:
@@ -1933,7 +1936,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "description": t.description,
                     "category": str(t.category),
                     "virtual": t.virtual,
-                    "producesArtifact": t.produces_artifact,
+                    "producesArtifacts": [
+                        {"baseName": a.base_name, "fileExtension": a.file_extension}
+                        for a in t.produces_artifacts
+                    ]
+                    if t.produces_artifacts is not None
+                    else None,
                     "tags": [str(tag) for tag in t.tags],
                     "aliases": list(t.aliases),
                     "dependencies": [d.name for d in t.dependencies],

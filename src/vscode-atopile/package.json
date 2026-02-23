@@ -97,17 +97,23 @@
                     "type": "boolean",
                     "default": false
                 },
-                "atopile.review.hideBars": {
+                "atopile.views.openFullscreen": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "scope": "resource",
-                    "description": "Hide sidebar and bottom panel when opening the Review Dashboard"
+                    "description": "Open views as a full tab instead of side-by-side"
                 },
-                "atopile.review.restoreBars": {
+                "atopile.views.hideBars": {
                     "type": "boolean",
                     "default": true,
                     "scope": "resource",
-                    "description": "Restore sidebar and bottom panel when closing the Review Dashboard"
+                    "description": "Hide sidebar and bottom panel when opening a view"
+                },
+                "atopile.views.restoreBars": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Restore sidebar and bottom panel when closing a view"
                 }
             }
         },

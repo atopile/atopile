@@ -1,17 +1,17 @@
 /**
  * ManufacturingDashboard — full-screen two-column layout for the
- * Build → Review → Export manufacturing workflow.
+ * Build → View → Export manufacturing workflow.
  *
- * The top bar shows project/target info and (when in review) the active page title.
- * Mark Reviewed / Comment buttons are in the ReviewShell bottom action bar.
+ * The top bar shows project/target info and (when viewing) the active page title.
  */
 
 import { useEffect } from 'react';
 import { useStore } from '../../../store';
 import { sendActionWithResponse } from '../../../api/websocket';
+import { Separator } from '../../shared/Separator';
 import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardContent } from './DashboardContent';
-import { REVIEW_PAGES } from './reviewPages';
+import { VIEW_PAGES } from './viewPages';
 import './ReviewDashboard.css';
 
 interface ManufacturingDashboardProps {
@@ -24,7 +24,6 @@ export function ManufacturingDashboard({ projectRoot, targetName }: Manufacturin
   const openDashboard = useStore((s) => s.openDashboard);
   const setDashboardOutputs = useStore((s) => s.setDashboardOutputs);
   const setDashboardGitStatus = useStore((s) => s.setDashboardGitStatus);
-  const setReviewComments = useStore((s) => s.setReviewComments);
 
   // Initialize dashboard state on mount
   useEffect(() => {
@@ -57,23 +56,13 @@ export function ManufacturingDashboard({ projectRoot, targetName }: Manufacturin
         setDashboardOutputs(r.outputs as typeof dashboard.outputs);
       }
     });
-
-    sendActionWithResponse('getReviewComments', {
-      projectRoot: dashboard.projectRoot,
-      target: dashboard.targetName,
-    }).then((res) => {
-      const r = res?.result as Record<string, unknown> | undefined;
-      if (r?.success && r.comments) {
-        setReviewComments(r.comments as typeof dashboard.reviewComments);
-      }
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.projectRoot, dashboard?.targetName]);
 
-  // Review-specific header elements
-  const isReviewStep = dashboard?.activeStep === 'review';
-  const activePage = isReviewStep
-    ? REVIEW_PAGES.find((p) => p.definition.id === dashboard?.activeReviewPage) ?? null
+  // View-specific header elements
+  const isViewStep = dashboard?.activeStep === 'review';
+  const activePage = isViewStep
+    ? VIEW_PAGES.find((p) => p.definition.id === dashboard?.activeReviewPage) ?? null
     : null;
 
   if (!dashboard) {
@@ -96,10 +85,10 @@ export function ManufacturingDashboard({ projectRoot, targetName }: Manufacturin
           {dashboard.projectRoot.split('/').pop()} / {dashboard.targetName}
         </span>
 
-        {/* Review page title in the top bar */}
+        {/* View page title in the top bar */}
         {activePage && (
           <>
-            <span className="mfg-header-separator" />
+            <Separator orientation="vertical" style={{ height: 18 }} />
             <span className="mfg-header-page-title">{activePage.definition.label}</span>
           </>
         )}

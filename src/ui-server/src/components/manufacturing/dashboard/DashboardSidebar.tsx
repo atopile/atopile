@@ -1,6 +1,6 @@
 /**
- * DashboardSidebar — left column with Build / Review / Export navigation.
- * Review items are generated from the REVIEW_PAGES registry.
+ * DashboardSidebar — left column with Build / View / Export navigation.
+ * View items are generated from the VIEW_PAGES registry.
  */
 
 import {
@@ -10,7 +10,7 @@ import {
   Circle,
 } from 'lucide-react';
 import { useStore } from '../../../store';
-import { REVIEW_PAGES } from './reviewPages';
+import { VIEW_PAGES } from './viewPages';
 import type { DashboardStep } from '../types';
 
 export function DashboardSidebar() {
@@ -20,21 +20,17 @@ export function DashboardSidebar() {
 
   if (!dashboard) return null;
 
-  const { activeStep, activeReviewPage, reviewedPages, outputs } = dashboard;
+  const { activeStep, activeReviewPage, outputs } = dashboard;
 
-  const availablePages = REVIEW_PAGES.filter(
+  const availablePages = VIEW_PAGES.filter(
     (p) => !outputs || p.definition.isAvailable(outputs)
   );
-
-  const reviewedCount = availablePages.filter(
-    (p) => reviewedPages[p.definition.id]
-  ).length;
 
   const handleStepClick = (step: DashboardStep) => {
     setDashboardStep(step);
   };
 
-  const handleReviewPageClick = (pageId: string) => {
+  const handleViewPageClick = (pageId: string) => {
     setDashboardReviewPage(pageId);
   };
 
@@ -59,27 +55,23 @@ export function DashboardSidebar() {
         </button>
       </div>
 
-      {/* Review section */}
+      {/* View section */}
       <div className="mfg-sidebar-section">
-        <h3 className="mfg-sidebar-section-title">Review</h3>
+        <h3 className="mfg-sidebar-section-title">View</h3>
         {availablePages.map((page) => {
           const Icon = page.definition.icon;
           const isActive = activeStep === 'review' && activeReviewPage === page.definition.id;
-          const isReviewed = reviewedPages[page.definition.id];
 
           return (
             <button
               key={page.definition.id}
               className={`mfg-sidebar-item ${isActive ? 'active' : ''}`}
-              onClick={() => handleReviewPageClick(page.definition.id)}
+              onClick={() => handleViewPageClick(page.definition.id)}
             >
               <span className="mfg-sidebar-item-icon">
                 <Icon size={16} />
               </span>
               <span className="mfg-sidebar-item-label">{page.definition.label}</span>
-              <span className={`mfg-sidebar-item-status ${isReviewed ? 'complete' : 'pending'}`}>
-                {isReviewed ? <CheckCircle2 size={14} /> : <Circle size={14} />}
-              </span>
             </button>
           );
         })}
@@ -95,13 +87,8 @@ export function DashboardSidebar() {
           <span className="mfg-sidebar-item-icon">
             <Download size={16} />
           </span>
-          <span className="mfg-sidebar-item-label">Export Files</span>
+          <span className="mfg-sidebar-item-label">Documents & Export</span>
         </button>
-      </div>
-
-      {/* Footer status */}
-      <div className="mfg-sidebar-footer">
-        {reviewedCount} of {availablePages.length} review items completed
       </div>
     </div>
   );

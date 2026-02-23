@@ -32,7 +32,6 @@ import type {
   CostEstimate,
   ManufacturingDashboardState,
   DashboardStep,
-  ReviewComment,
   BuildOutputs as MfgBuildOutputs,
   ManufacturingBuildStatus,
   GitStatus as MfgGitStatus,
@@ -314,10 +313,6 @@ interface StoreActions {
   closeDashboard: () => void;
   setDashboardStep: (step: DashboardStep) => void;
   setDashboardReviewPage: (pageId: string | null) => void;
-  markReviewed: (pageId: string, reviewed: boolean) => void;
-  addReviewComment: (comment: ReviewComment) => void;
-  setReviewComment: (comment: ReviewComment) => void;
-  setReviewComments: (comments: ReviewComment[]) => void;
   setDashboardOutputs: (outputs: MfgBuildOutputs | null) => void;
   setDashboardBuildStatus: (status: ManufacturingBuildStatus) => void;
   setDashboardBuildStages: (stages: string[]) => void;
@@ -1048,8 +1043,6 @@ export const useStore = create<Store>()(
             targetName,
             activeStep: 'build',
             activeReviewPage: null,
-            reviewedPages: {},
-            reviewComments: [],
             outputs: null,
             buildStatus: 'pending',
             buildStages: [],
@@ -1090,64 +1083,6 @@ export const useStore = create<Store>()(
               ...state.manufacturingDashboard,
               activeReviewPage: pageId,
               activeStep: 'review',
-            },
-          };
-        }),
-
-      markReviewed: (pageId, reviewed) =>
-        set((state): Partial<Store> => {
-          if (!state.manufacturingDashboard) return {};
-          return {
-            manufacturingDashboard: {
-              ...state.manufacturingDashboard,
-              reviewedPages: {
-                ...state.manufacturingDashboard.reviewedPages,
-                [pageId]: reviewed,
-              },
-            },
-          };
-        }),
-
-      addReviewComment: (comment) =>
-        set((state): Partial<Store> => {
-          if (!state.manufacturingDashboard) return {};
-          // Replace existing comment for the same pageId (1 comment per page)
-          const filtered = state.manufacturingDashboard.reviewComments.filter(
-            (c) => c.pageId !== comment.pageId
-          );
-          // Only add the comment if it has text (empty text = delete)
-          const updated = comment.text.trim() ? [...filtered, comment] : filtered;
-          return {
-            manufacturingDashboard: {
-              ...state.manufacturingDashboard,
-              reviewComments: updated,
-            },
-          };
-        }),
-
-      // setReviewComment is the same as addReviewComment (replaces per page)
-      setReviewComment: (comment) =>
-        set((state): Partial<Store> => {
-          if (!state.manufacturingDashboard) return {};
-          const filtered = state.manufacturingDashboard.reviewComments.filter(
-            (c) => c.pageId !== comment.pageId
-          );
-          const updated = comment.text.trim() ? [...filtered, comment] : filtered;
-          return {
-            manufacturingDashboard: {
-              ...state.manufacturingDashboard,
-              reviewComments: updated,
-            },
-          };
-        }),
-
-      setReviewComments: (comments) =>
-        set((state): Partial<Store> => {
-          if (!state.manufacturingDashboard) return {};
-          return {
-            manufacturingDashboard: {
-              ...state.manufacturingDashboard,
-              reviewComments: comments,
             },
           };
         }),
@@ -1276,8 +1211,16 @@ export const useStore = create<Store>()(
       setAvailableBuildTargets: (targets) =>
         set((state): Partial<Store> => {
           if (!state.manufacturingDashboard) return {};
+          // Auto-select all non-required targets except power-tree on first load
+          const current = state.manufacturingDashboard.selectedBuildTargets;
+          const isFirstLoad = state.manufacturingDashboard.availableBuildTargets.length === 0;
+          const selectedBuildTargets = isFirstLoad
+            ? targets
+                .filter((t) => t.category !== 'required' && t.name !== 'power-tree')
+                .map((t) => t.name)
+            : current;
           return {
-            manufacturingDashboard: { ...state.manufacturingDashboard, availableBuildTargets: targets },
+            manufacturingDashboard: { ...state.manufacturingDashboard, availableBuildTargets: targets, selectedBuildTargets },
           };
         }),
 

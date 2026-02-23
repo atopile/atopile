@@ -20,9 +20,12 @@ export function openManufacturingDashboard(
   target: string,
 ): void {
   const extensionPath = extensionUri.fsPath;
+  const config = vscode.workspace.getConfiguration('atopile');
+  const fullscreen = config.get<boolean>('views.openFullscreen', false);
+  const viewColumn = fullscreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside;
 
   if (panel) {
-    panel.reveal(vscode.ViewColumn.One);
+    panel.reveal(viewColumn);
     return;
   }
 
@@ -34,13 +37,12 @@ export function openManufacturingDashboard(
 
   panel = vscode.window.createWebviewPanel(
     'atopile.manufacturingDashboard',
-    'Review Dashboard',
-    vscode.ViewColumn.One,
+    'Manufacturing Dashboard',
+    viewColumn,
     webviewOptions,
   );
 
-  const config = vscode.workspace.getConfiguration('atopile');
-  if (config.get<boolean>('review.hideBars', true)) {
+  if (config.get<boolean>('views.hideBars', true)) {
     vscode.commands.executeCommand('workbench.action.closeSidebar');
     vscode.commands.executeCommand('workbench.action.closePanel');
   }
@@ -66,7 +68,7 @@ export function openManufacturingDashboard(
 
   panel.onDidDispose(() => {
     const cfg = vscode.workspace.getConfiguration('atopile');
-    if (cfg.get<boolean>('review.restoreBars', true)) {
+    if (cfg.get<boolean>('views.restoreBars', true)) {
       vscode.commands.executeCommand('workbench.action.focusSidebarPart');
       vscode.commands.executeCommand('workbench.action.focusPanel');
     }
@@ -139,7 +141,7 @@ function getProdHtml(
     img-src ${webview.cspSource} data: https: http:;
     connect-src ${apiUrl} ${wsOrigin};
   ">
-  <title>Review Dashboard</title>
+  <title>Manufacturing Dashboard</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">

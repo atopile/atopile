@@ -3,4 +3,4 @@
  */
 
 export { ManufacturingDashboard } from './ReviewDashboard';
-export { REVIEW_PAGES } from './reviewPages';
+export { VIEW_PAGES } from './viewPages';

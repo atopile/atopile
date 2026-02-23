@@ -174,6 +174,14 @@ MusterFuncType = Callable[[BuildStepContext], None]
 
 
 @dataclass
+class Artifact:
+    """A single build artifact produced by a target."""
+
+    base_name: str
+    file_extension: str | None = None
+
+
+@dataclass
 class MusterTarget:
     name: str
     aliases: list[str]
@@ -183,7 +191,7 @@ class MusterTarget:
     virtual: bool = False
     dependencies: list["MusterTarget"] = field(default_factory=list)
     tags: set[Tags] = field(default_factory=set)
-    produces_artifact: bool = False  # TODO: as list of file paths
+    produces_artifacts: list[Artifact] | None = None
     category: TargetCategory | None = None
     success: bool | None = None
 
@@ -335,7 +343,7 @@ class Muster:
         virtual: bool = False,
         dependencies: list["MusterTarget"] | None = None,
         tags: set[Tags] | None = None,
-        produces_artifact: bool = False,
+        produces_artifacts: list[Artifact] | None = None,
         category: TargetCategory | None = None,
     ) -> Callable[[MusterFuncType], MusterTarget]:
         """Register a target under a given name."""
@@ -350,7 +358,7 @@ class Muster:
                 dependencies=dependencies or [],
                 virtual=virtual,
                 tags=tags or set(),
-                produces_artifact=produces_artifact,
+                produces_artifacts=produces_artifacts,
                 category=category,
             )
             self.add_target(target)
@@ -371,8 +379,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -902,7 +914,7 @@ def build_design(ctx: BuildStepContext) -> None:
 @muster.register(
     "bom",
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("bom", ".csv"), Artifact("bom", ".json")],
     category=TargetCategory.MANUFACTURING,
 )
 def generate_bom(ctx: BuildStepContext) -> None:
@@ -933,7 +945,7 @@ def generate_bom(ctx: BuildStepContext) -> None:
     aliases=["3d-model"],
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("pcba", ".glb")],
     category=TargetCategory.VISUALS,
 )
 def generate_glb(ctx: BuildStepContext) -> None:
@@ -955,7 +967,7 @@ def generate_glb(ctx: BuildStepContext) -> None:
     aliases=["3d-model-only"],
     tags={Tags.REQUIRES_KICAD},
     dependencies=[],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("pcba", ".glb")],
 )
 def generate_glb_only(ctx: BuildStepContext) -> None:
     """Generate GLB from existing layout without rebuilding. For fast 3D preview."""
@@ -980,7 +992,7 @@ def generate_glb_only(ctx: BuildStepContext) -> None:
     name="step",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("pcba", ".step")],
     category=TargetCategory.VISUALS,
 )
 def generate_step(ctx: BuildStepContext) -> None:
@@ -1001,7 +1013,7 @@ def generate_step(ctx: BuildStepContext) -> None:
     "3d-models",
     dependencies=[generate_glb, generate_step],
     virtual=True,
-    produces_artifact=True,
+    produces_artifacts=[Artifact("pcba", ".glb"), Artifact("pcba", ".step")],
 )
 def generate_3d_models(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as GLB and STEP."""
@@ -1012,7 +1024,7 @@ def generate_3d_models(ctx: BuildStepContext) -> None:
     name="3d-image",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("pcba", ".png")],
     category=TargetCategory.VISUALS,
 )
 def generate_3d_render(ctx: BuildStepContext) -> None:
@@ -1033,7 +1045,7 @@ def generate_3d_render(ctx: BuildStepContext) -> None:
     name="2d-image",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("pcba", ".svg")],
     category=TargetCategory.VISUALS,
 )
 def generate_2d_render(ctx: BuildStepContext) -> None:
@@ -1055,7 +1067,14 @@ def generate_2d_render(ctx: BuildStepContext) -> None:
     "mfg-data",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[generate_glb, generate_step, post_pcb_checks],
-    produces_artifact=True,
+    produces_artifacts=[
+        Artifact("gerber", ".zip"),
+        Artifact("jlcpcb_pick_and_place", ".csv"),
+        Artifact("pcba", ".dxf"),
+        Artifact("testpoints", ".json"),
+        Artifact("", ".kicad_pcb"),
+        Artifact("pcb_summary", ".json"),
+    ],
     category=TargetCategory.MANUFACTURING,
 )
 def generate_manufacturing_data(ctx: BuildStepContext) -> None:
@@ -1129,7 +1148,7 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
 @muster.register(
     "manifest",
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("layouts", ".json")],
     category=TargetCategory.DOCUMENTATION,
 )
 def generate_manifest(ctx: BuildStepContext) -> None:
@@ -1158,7 +1177,7 @@ def generate_manifest(ctx: BuildStepContext) -> None:
 @muster.register(
     "variable-report",
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("variables", ".json")],
     category=TargetCategory.DOCUMENTATION,
 )
 def generate_variable_report(ctx: BuildStepContext) -> None:
@@ -1176,7 +1195,7 @@ def generate_variable_report(ctx: BuildStepContext) -> None:
 @muster.register(
     "power-tree",
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("power_tree", ".md")],
     category=TargetCategory.DOCUMENTATION,
 )
 def generate_power_tree(ctx: BuildStepContext) -> None:
@@ -1194,7 +1213,7 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
 @muster.register(
     "datasheets",
     dependencies=[build_design],
-    produces_artifact=True,
+    produces_artifacts=[Artifact("datasheets")],
     category=TargetCategory.DOCUMENTATION,
 )
 def generate_datasheets(ctx: BuildStepContext) -> None:

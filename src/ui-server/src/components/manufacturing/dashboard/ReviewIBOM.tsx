@@ -2,23 +2,26 @@
  * ReviewIBOM — Interactive BOM placeholder.
  */
 
-import { Table } from 'lucide-react';
-import type { ReviewPageProps, ReviewPageDefinition } from '../types';
+import { Table as TableIcon } from 'lucide-react';
+import { EmptyState } from '../../shared/EmptyState';
+import { Badge } from '../../shared/Badge';
+import type { ViewPageProps, ViewPageDefinition } from '../types';
 
-export const ReviewIBOMDefinition: ReviewPageDefinition = {
+export const ReviewIBOMDefinition: ViewPageDefinition = {
   id: 'ibom',
   label: 'Interactive BOM',
-  icon: Table,
+  icon: TableIcon,
   order: 30,
   isAvailable: () => true,
 };
 
-export function ReviewIBOM({ outputs }: ReviewPageProps) {
+export function ReviewIBOM({ outputs }: ViewPageProps) {
   return (
-    <div className="mfg-review-placeholder">
-      <Table size={48} />
-      <p>Interactive BOM viewer</p>
-      <span className="coming-soon">Coming Soon</span>
+    <EmptyState
+      icon={<TableIcon size={48} />}
+      title="Interactive BOM viewer"
+    >
+      <Badge variant="secondary">Coming Soon</Badge>
       {outputs.bomCsv && (
         <p style={{ marginTop: 16 }}>
           <a
@@ -31,6 +34,6 @@ export function ReviewIBOM({ outputs }: ReviewPageProps) {
           </a>
         </p>
       )}
-    </div>
+    </EmptyState>
   );
 }

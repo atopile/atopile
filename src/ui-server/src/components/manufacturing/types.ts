@@ -288,12 +288,17 @@ export const FILE_EXPORT_OPTIONS: FileExportOption[] = [
 // Muster Target Types (fetched from backend)
 // =============================================================================
 
+export interface Artifact {
+  baseName: string;
+  fileExtension: string;
+}
+
 export interface MusterTargetInfo {
   name: string;
   description: string | null;
   category: string | null;
   virtual: boolean;
-  producesArtifact: boolean;
+  producesArtifacts: Artifact[] | null;
   tags: string[];
   aliases: string[];
   dependencies: string[];
@@ -314,13 +319,7 @@ export const CATEGORY_CONFIG: Record<string, { label: string; order: number; alw
 
 export type DashboardStep = 'build' | 'review' | 'export';
 
-export interface ReviewComment {
-  pageId: string;
-  text: string;
-  timestamp: string;
-}
-
-export interface ReviewPageDefinition {
+export interface ViewPageDefinition {
   id: string;
   label: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -329,16 +328,12 @@ export interface ReviewPageDefinition {
   isAvailable: (outputs: BuildOutputs) => boolean;
 }
 
-export interface ReviewPageProps {
+export interface ViewPageProps {
   outputs: BuildOutputs;
   bomData: unknown;
   boardSummary: BoardSummary | null;
   projectRoot: string;
   targetName: string;
-  isReviewed: boolean;
-  onMarkReviewed: (reviewed: boolean) => void;
-  comments: ReviewComment[];
-  onAddComment: (text: string) => void;
 }
 
 export interface FabHouse {
@@ -353,8 +348,6 @@ export interface ManufacturingDashboardState {
   targetName: string;
   activeStep: DashboardStep;
   activeReviewPage: string | null;
-  reviewedPages: Record<string, boolean>;
-  reviewComments: ReviewComment[];
   outputs: BuildOutputs | null;
   buildStatus: ManufacturingBuildStatus;
   buildStages: string[];
@@ -375,6 +368,3 @@ export interface ManufacturingDashboardState {
   exportResult: { success: boolean; files: string[]; errors: string[] | null } | null;
   artifactVerification: Record<string, boolean>;
 }
-
-// BOMData is imported from '../../types/build' — dashboard components should
-// import it from there directly.

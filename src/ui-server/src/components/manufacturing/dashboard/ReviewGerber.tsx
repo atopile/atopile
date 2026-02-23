@@ -4,25 +4,26 @@
 
 import { Layers } from 'lucide-react';
 import GerberViewer from '../../GerberViewer';
-import type { ReviewPageProps, ReviewPageDefinition } from '../types';
+import { EmptyState } from '../../shared/EmptyState';
+import type { ViewPageProps, ViewPageDefinition } from '../types';
 import { API_URL } from '../../../api/config';
 
-export const ReviewGerberDefinition: ReviewPageDefinition = {
+export const ReviewGerberDefinition: ViewPageDefinition = {
   id: 'gerber',
   label: 'Gerber Viewer',
   icon: Layers,
-  order: 40,
+  order: 20,
   isAvailable: (outputs) => !!outputs.gerbers,
 };
 
-export function ReviewGerber({ outputs }: ReviewPageProps) {
+export function ReviewGerber({ outputs }: ViewPageProps) {
   if (!outputs.gerbers) {
     return (
-      <div className="mfg-review-placeholder">
-        <Layers size={48} />
-        <p>No Gerber files available.</p>
-        <p>Build the project to generate Gerber files.</p>
-      </div>
+      <EmptyState
+        icon={<Layers size={48} />}
+        title="No Gerber files available."
+        description="Build the project to generate Gerber files."
+      />
     );
   }
 

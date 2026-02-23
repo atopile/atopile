@@ -1109,12 +1109,12 @@ export function ActiveProjectPanel({
             disabled={!activeProject || !activeTargetName}
             title={
               activeProject && activeTargetName
-                ? `Open Review Dashboard for ${activeTargetName}`
+                ? `Open Manufacturing Dashboard for ${activeTargetName}`
                 : 'Select a build first'
             }
           >
             <ClipboardList size={12} />
-            <span className="action-label">Review</span>
+            <span className="action-label">Manufacture</span>
           </button>
         </div>
 

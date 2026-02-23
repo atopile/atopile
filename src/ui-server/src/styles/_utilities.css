@@ -23,13 +23,11 @@
   min-height: 120px;
 }
 
-/* Fixed-height icon container ensures consistent text positioning */
+/* Icon container — auto-sizes to the icon passed in */
 .panel-empty-state .empty-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
   flex-shrink: 0;
 }
 
