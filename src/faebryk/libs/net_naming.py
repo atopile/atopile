@@ -507,6 +507,79 @@ def _find_bus_role_in_hierarchy(
     return None
 
 
+def _find_power_parent(
+    electrical: F.Electrical,
+) -> tuple[str, str, int] | None:
+    """
+    Check if an electrical is a direct child of ElectricPower (hv/lv/vcc/gnd).
+
+    Returns:
+        Tuple of (power_instance_name, electrical_name, hierarchy_depth) or None.
+        The power_instance_name is the name of the ElectricPower's parent in the
+        hierarchy (e.g. "power"), and electrical_name is "hv" or "lv".
+    """
+    parent = electrical.get_parent()
+    if parent is None:
+        return None
+    parent_node, _ = parent
+    if not parent_node.isinstance(F.ElectricPower):
+        return None
+
+    elec_name = electrical.get_name(accept_no_parent=True)
+    hierarchy = parent_node.get_hierarchy()
+    depth = len(hierarchy)
+
+    # Get the name of the ElectricPower instance from its parent context
+    power_parent = parent_node.get_parent()
+    if power_parent is not None:
+        power_name = power_parent[1]  # name in parent's context
+    else:
+        power_name = parent_node.get_name(accept_no_parent=True)
+
+    return (power_name, elec_name, depth)
+
+
+def add_power_base_name(
+    processable_nets: list[ProcessableNet],
+) -> None:
+    """
+    Override base names for power nets (ElectricPower children).
+
+    When a net contains electricals that are direct children of ElectricPower
+    (hv, lv, vcc, gnd), this step overrides the base name with
+    "<power_instance_name>.<hv_or_lv>", picking the shallowest ElectricPower
+    parent for the most meaningful name.
+
+    This prevents power nets from inheriting signal names (e.g. "SDA") from
+    bus interface parents higher in the hierarchy.
+    """
+    # Canonical ElectricPower children; prefer these over deprecated vcc/gnd
+    _CANONICAL_POWER_NAMES = {"hv", "lv"}
+
+    for processable_net in processable_nets:
+        best: tuple[str, str, int] | None = None  # (power_name, elec_name, depth)
+
+        for ewn in processable_net.electricals:
+            result = _find_power_parent(ewn.electrical)
+            if result is None:
+                continue
+            power_name, elec_name, depth = result
+            if best is None:
+                best = result
+            elif depth < best[2]:
+                best = result
+            elif depth == best[2] and elec_name in _CANONICAL_POWER_NAMES:
+                # Prefer hv/lv over deprecated vcc/gnd at equal depth
+                best = result
+
+        if best is not None:
+            power_name, elec_name, _ = best
+            if filter_unpreferred_names(power_name):
+                processable_net.net_name.base_name = f"{power_name}.{elec_name}"
+            else:
+                processable_net.net_name.base_name = elec_name
+
+
 def add_bus_prefix(
     processable_nets: list[ProcessableNet],
 ) -> None:
@@ -809,6 +882,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
 
     process_required_and_suggested_names(processable_nets)
     add_base_name(processable_nets)
+    add_power_base_name(processable_nets)
     add_affixes(processable_nets)
     add_bus_prefix(processable_nets)
     conflicts_resolved = resolve_name_conflicts(processable_nets)
@@ -2143,3 +2217,105 @@ class TestNetNaming:
         bus_name, parent_name, roles = result
         assert bus_name == "my_bus"
         assert has_bus_role.BusRole.TARGET in roles
+
+    def test_bus_with_power_reference(self):
+        """
+        Test that an I2C-like bus with ElectricLogic (line + reference)
+        connected to a shared power rail produces correct net names:
+        - Signal nets get bus prefix: mcu.i2c.SCL, mcu.i2c.SDA
+        - Power nets get power names: power.hv, power.lv
+
+        Hierarchy:
+        - PowerBusApp
+          - power (ElectricPower: hv, lv)
+          - mcu (is_module)
+            - i2c (is_interface, has_bus_role=CONTROLLER)
+              - scl (ElectricLogic: line, reference → ElectricPower)
+              - sda (ElectricLogic: line, reference → ElectricPower)
+
+        Connections:
+          mcu.i2c.scl.reference ~ power
+          mcu.i2c.sda.reference ~ power
+        """
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class PwrBusI2C(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            _bus_role = fabll.Traits.MakeEdge(
+                has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER])
+            )
+            scl = F.ElectricLogic.MakeChild()
+            sda = F.ElectricLogic.MakeChild()
+            scl.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="SCL",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[scl],
+                )
+            )
+            sda.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="SDA",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[sda],
+                )
+            )
+
+        class PwrBusMCU(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            i2c = PwrBusI2C.MakeChild()
+
+        class PwrBusApp(fabll.Node):
+            power = F.ElectricPower.MakeChild()
+            mcu = PwrBusMCU.MakeChild()
+            # Connect scl.reference and sda.reference to power
+            _conn_scl_ref = fabll.MakeEdge(
+                [mcu, "i2c", "scl", "reference"],
+                [power],
+                edge=interface.build(shallow=False),
+            )
+            _conn_sda_ref = fabll.MakeEdge(
+                [mcu, "i2c", "sda", "reference"],
+                [power],
+                edge=interface.build(shallow=False),
+            )
+
+        app = PwrBusApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+        attach_net_names(nets)
+
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None],
+            key=lambda name: name.lower(),
+        )
+
+        print(f"net_names: {net_names}")
+
+        # Signal nets should get bus prefix from CONTROLLER
+        assert "mcu.i2c.SCL" in net_names
+        assert "mcu.i2c.SDA" in net_names
+
+        # Power nets should be named from ElectricPower, not from signal hierarchy
+        assert "power.hv" in net_names
+        assert "power.lv" in net_names
+
+        # No power net should be named "SDA" or "SCL"
+        for name in net_names:
+            if "power" not in name and "mcu" not in name:
+                assert name not in ("SDA", "SCL"), (
+                    f"Power net incorrectly named '{name}'"
+                )
