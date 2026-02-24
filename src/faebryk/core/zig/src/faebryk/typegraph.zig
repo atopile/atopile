@@ -655,8 +655,8 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "is_constructable").?;
     }
 
-    pub fn mark_constructable(self: *@This(), type_node: BoundNodeReference) void {
-        _ = Trait.add_trait_to(type_node, self.get_is_constructable()) catch {};
+    pub fn mark_constructable(self: *@This(), type_node: BoundNodeReference) !void {
+        _ = try Trait.add_trait_to(type_node, self.get_is_constructable());
     }
 
     pub fn is_constructable(self: *@This(), type_node: BoundNodeReference) bool {
@@ -864,13 +864,13 @@ pub const TypeGraph = struct {
         self: *@This(),
         target_type: BoundNodeReference,
         source_type: BoundNodeReference,
-    ) void {
+    ) !void {
         const allocator = self.self_node.g.allocator;
 
         // Collect source structure
         const source_children = self.collect_make_children(allocator, source_type);
         defer allocator.free(source_children);
-        const source_links = self.collect_make_links(allocator, source_type) catch return;
+        const source_links = try self.collect_make_links(allocator, source_type);
         defer {
             for (source_links) |info| {
                 allocator.free(info.lhs_path);
@@ -895,19 +895,19 @@ pub const TypeGraph = struct {
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
             var attrs = MakeChildNode.Attributes.of(info.make_child).extract_node_attributes();
-            const new_make_child = self.add_make_child(
+            const new_make_child = try self.add_make_child(
                 target_type,
                 child_type,
                 info.identifier,
                 &attrs,
-            ) catch continue;
+            );
             if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
                 _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null) catch unreachable;
             }
         }
 
         // Collect target's MakeLinks (after MakeChild copy so we see the full picture)
-        const target_links = self.collect_make_links(allocator, target_type) catch return;
+        const target_links = try self.collect_make_links(allocator, target_type);
         defer {
             for (target_links) |info| {
                 allocator.free(info.lhs_path);
@@ -935,8 +935,8 @@ pub const TypeGraph = struct {
             const lhs_path = if (link_info.lhs_path.len == 0) &self_ref_path else link_info.lhs_path;
             const rhs_path = if (link_info.rhs_path.len == 0) &self_ref_path else link_info.rhs_path;
 
-            const lhs_ref = ChildReferenceNode.create_and_insert(self, lhs_path) catch continue;
-            const rhs_ref = ChildReferenceNode.create_and_insert(self, rhs_path) catch continue;
+            const lhs_ref = try ChildReferenceNode.create_and_insert(self, lhs_path);
+            const rhs_ref = try ChildReferenceNode.create_and_insert(self, rhs_path);
 
             const attrs = MakeLinkNode.Attributes.of(link_info.make_link);
             const edge_attrs = EdgeCreationAttributes{
@@ -948,12 +948,12 @@ pub const TypeGraph = struct {
                 .dynamic = graph.DynamicAttributes.init_on_stack(),
             };
 
-            const new_make_link = self.add_make_link(
+            const new_make_link = try self.add_make_link(
                 target_type,
                 lhs_ref,
                 rhs_ref,
                 edge_attrs,
-            ) catch continue;
+            );
             if (EdgePointer.get_pointed_node_by_identifier(link_info.make_link, "source")) |source_chunk| {
                 _ = EdgePointer.point_to(new_make_link, source_chunk.node, "source", null) catch unreachable;
             }
@@ -2487,13 +2487,13 @@ test "basic instantiation" {
 
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
-    tg.mark_constructable(Electrical);
+    try tg.mark_constructable(Electrical);
     const Capacitor = try tg.add_type("Capacitor");
     _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
     _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
     var node_attrs = TypeGraph.MakeChildNode.build("test_string");
     _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs);
-    tg.mark_constructable(Capacitor);
+    try tg.mark_constructable(Capacitor);
     const Resistor = try tg.add_type("Resistor");
     // Test: add node attributes to p1 MakeChild
     var res_p1_attrs = TypeGraph.MakeChildNode.build(null);
@@ -2503,7 +2503,7 @@ test "basic instantiation" {
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
     _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
-    tg.mark_constructable(Resistor);
+    try tg.mark_constructable(Resistor);
 
     // Build instance graph
     const resistor = switch (tg.instantiate_node(Resistor)) {
@@ -2621,9 +2621,9 @@ test "typegraph iterators and mount chains" {
     var tg = TypeGraph.init(&g);
 
     const Inner = try tg.add_type("Inner");
-    tg.mark_constructable(Inner);
+    try tg.mark_constructable(Inner);
     const PointerSequence = try tg.add_type("PointerSequence");
-    tg.mark_constructable(PointerSequence);
+    try tg.mark_constructable(PointerSequence);
     const top = try tg.add_type("Top");
     const members = try tg.add_make_child(top, PointerSequence, "members", null);
     _ = try tg.add_make_child(top, Inner, "base", null);
@@ -2649,7 +2649,7 @@ test "typegraph iterators and mount chains" {
     _ = try tg.add_make_link(top, container_reference, element0_reference, ptr_link_attrs_0);
     const ptr_link_attrs_1 = EdgePointer.build(null, 1);
     _ = try tg.add_make_link(top, container_reference, element1_reference, ptr_link_attrs_1);
-    tg.mark_constructable(top);
+    try tg.mark_constructable(top);
 
     const children = tg.collect_make_children(a, top);
     defer a.free(children);
@@ -2725,15 +2725,15 @@ test "get_type_instance_overview" {
 
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
-    tg.mark_constructable(Electrical);
+    try tg.mark_constructable(Electrical);
     const Capacitor = try tg.add_type("Capacitor");
     _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
     _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
-    tg.mark_constructable(Capacitor);
+    try tg.mark_constructable(Capacitor);
     const Resistor = try tg.add_type("Resistor");
     _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
-    tg.mark_constructable(Resistor);
+    try tg.mark_constructable(Resistor);
 
     // Create some instances
     _ = switch (tg.instantiate_node(Capacitor)) {
@@ -2795,9 +2795,9 @@ test "resolve path through trait and pointer edges" {
 
     // 1. Build type graph: Electrical, CanBridge trait, Resistor
     const Electrical = try tg.add_type("Electrical");
-    tg.mark_constructable(Electrical);
+    try tg.mark_constructable(Electrical);
     const CanBridge = try tg.add_type("CanBridge");
-    tg.mark_constructable(CanBridge);
+    try tg.mark_constructable(CanBridge);
 
     // Mark CanBridge as a trait type
     const implements_trait_instance = switch (tg.instantiate_node(tg.get_ImplementsTrait())) {
@@ -2809,7 +2809,7 @@ test "resolve path through trait and pointer edges" {
     const Resistor = try tg.add_type("Resistor");
     _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
-    tg.mark_constructable(Resistor);
+    try tg.mark_constructable(Resistor);
 
     // 2. Create a Resistor instance with p1, p2 children
     const resistor_instance = switch (tg.instantiate_node(Resistor)) {
@@ -2839,7 +2839,7 @@ test "resolve path through trait and pointer edges" {
     // Create Pointer type if not exists
     const PointerType = tg.get_type_by_name("Pointer") orelse blk: {
         const pt = try tg.add_type("Pointer");
-        tg.mark_constructable(pt);
+        try tg.mark_constructable(pt);
         break :blk pt;
     };
     const in_ptr = switch (tg.instantiate_node(PointerType)) {
@@ -2907,7 +2907,7 @@ test "resolve path through trait and pointer edges" {
 
     const TopModule = try tg.add_type("TopModule");
     _ = try tg.add_make_child(TopModule, Resistor, "resistor", null);
-    tg.mark_constructable(TopModule);
+    try tg.mark_constructable(TopModule);
 
     // Create TopModule instance - this will auto-create resistor child
     const top_instance = switch (tg.instantiate_node(TopModule)) {
@@ -2993,7 +2993,7 @@ test "merge_types deduplicates MakeLink nodes" {
 
     // Create child types
     const Inner = try tg.add_type("Inner");
-    tg.mark_constructable(Inner);
+    try tg.mark_constructable(Inner);
 
     // Parent type with children "a" and "b", and a MakeLink a->b
     const Parent = try tg.add_type("Parent");
@@ -3035,7 +3035,7 @@ test "merge_types deduplicates MakeLink nodes" {
     try std.testing.expectEqual(@as(usize, 1), before.len);
 
     // Merge Parent into Child (simulating inheritance)
-    tg.merge_types(Child, Parent);
+    try tg.merge_types(Child, Parent);
 
     // After merge: Child should still have only 1 MakeLink (exact dup: same lhs+rhs, not copied)
     const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;
@@ -3060,7 +3060,7 @@ test "merge_types copies non-duplicate MakeLink nodes" {
     var tg = TypeGraph.init(&g);
 
     const Inner = try tg.add_type("Inner2");
-    tg.mark_constructable(Inner);
+    try tg.mark_constructable(Inner);
 
     // Parent type with children "x" and "y", and a MakeLink x->y
     const Parent = try tg.add_type("Parent2");
@@ -3093,7 +3093,7 @@ test "merge_types copies non-duplicate MakeLink nodes" {
     _ = try tg.add_make_link(Child, child_lhs, child_rhs, child_link_attrs);
 
     // Merge Parent into Child
-    tg.merge_types(Child, Parent);
+    try tg.merge_types(Child, Parent);
 
     // After merge: Child should have 2 MakeLinks (a->b from child + x->y from parent)
     const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;

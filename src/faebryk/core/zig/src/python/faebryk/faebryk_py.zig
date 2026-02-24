@@ -4251,7 +4251,10 @@ fn wrap_typegraph_merge_types() type {
                 wrapper.data,
                 kwarg_obj.target.*,
                 kwarg_obj.source.*,
-            );
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "merge_types failed");
+                return null;
+            };
 
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
@@ -4278,7 +4281,10 @@ fn wrap_typegraph_mark_constructable() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            faebryk.typegraph.TypeGraph.mark_constructable(wrapper.data, kwarg_obj.type_node.*);
+            faebryk.typegraph.TypeGraph.mark_constructable(wrapper.data, kwarg_obj.type_node.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "mark_constructable failed");
+                return null;
+            };
 
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
