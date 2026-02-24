@@ -1223,6 +1223,21 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     )
 
 
+@muster.register(
+    "testpoints",
+    dependencies=[build_design],
+    produces_artifacts=[Artifact("testpoints", ".json")],
+    category=TargetCategory.DOCUMENTATION,
+)
+def generate_testpoints(ctx: BuildStepContext) -> None:
+    """Generate testpoint locations as JSON."""
+    app = ctx.require_app()
+    export_testpoints(
+        app,
+        testpoints_file=config.build.paths.output_base.with_suffix(".testpoints.json"),
+    )
+
+
 # @muster.register(
 #     "i2c-tree",
 #     dependencies=[build_design],
