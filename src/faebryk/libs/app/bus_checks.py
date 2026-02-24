@@ -193,7 +193,7 @@ class needs_bus_check(fabll.Node):
                     friendly_controllers = ", ".join(
                         n.get_full_name() for n in controllers
                     )
-                    if not multi_controller:
+                    if multi_controller is False:
                         raise BusMultipleControllersError(
                             f"Multiple controllers on bus that doesn't support "
                             f"multi-controller: {friendly_controllers}",
