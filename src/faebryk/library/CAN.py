@@ -25,9 +25,9 @@ class CAN(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     bus_spec = fabll.Traits.MakeEdge(
-        F.bus.has_bus_spec.MakeChild(
-            topology=[F.bus.has_bus_spec.Topology.BUS],
-            data_flow=F.bus.has_bus_spec.DataFlow.HALF_DUPLEX,
+        F.DataBus.has_specification.MakeChild(
+            topology=[F.DataBus.has_specification.Topology.BUS],
+            data_flow=F.DataBus.has_specification.DataFlow.HALF_DUPLEX,
             multi_controller=False,
         )
     )

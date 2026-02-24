@@ -14,12 +14,11 @@ from faebryk.libs.util import once
 logger = logging.getLogger(__name__)
 
 
-class has_bus_spec(fabll.Node):
+class has_specification(fabll.Node):
     """
-    Type-level protocol spec for bus interfaces.
+    Type-level specification for data bus interfaces.
 
-    Describes the topology, data flow, and multi-controller support
-    of a bus protocol (e.g., I2C, SPI, UART).
+    Describes the topology, data flow, and multi-controller support of a data bus.
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -99,8 +98,8 @@ class has_bus_spec(fabll.Node):
         # Get all has_bus_spec traits from connected interfaces
         specs = []
         for iface in interfaces:
-            if iface.has_trait(has_bus_spec):
-                specs.append(iface.get_trait(has_bus_spec))
+            if iface.has_trait(has_specification):
+                specs.append(iface.get_trait(has_specification))
 
         if len(specs) < 2:
             return
@@ -134,21 +133,24 @@ class has_bus_spec(fabll.Node):
 
     @staticmethod
     @once
-    def resolve_bus_spec_parameters(g: graph.GraphView, tg: fbrk.TypeGraph):
+    def resolve_data_bus_specification_parameters(
+        g: graph.GraphView, tg: fbrk.TypeGraph
+    ):
         """
-        Find all has_bus_spec implementors, group interfaces into buses,
+        Find all DataBus.has_specification implementors, group interfaces into buses,
         and create Is constraints across each bus.
-        Called from build_steps.py during SETUP alongside resolve_bus_parameters().
+        Called from build_steps.py during SETUP alongside
+        resolve_data_bus_specification_parameters().
         """
         implementors = list(
-            fabll.Traits.get_implementors(has_bus_spec.bind_typegraph(tg), g=g)
+            fabll.Traits.get_implementors(has_specification.bind_typegraph(tg), g=g)
         )
 
         if not implementors:
             return
 
-        # Group implementors by their owner interface
-        interface_specs: dict[fabll.Node, has_bus_spec] = {}
+        # Group implementors by their owner interface type
+        interface_specs: dict[fabll.Node, has_specification] = {}
         for impl in implementors:
             owner = fabll.Traits(impl).get_obj_raw()
             interface_specs[owner] = impl
@@ -170,31 +172,31 @@ class has_bus_spec(fabll.Node):
                     break
 
 
-class has_bus_role(fabll.Node):
+class has_role(fabll.Node):
     """
-    Instance-level role marker for bus interfaces.
+    Role marker for data bus interfaces.
 
-    Marks an individual bus interface instance with its role
+    Marks an individual data bus interface instance with its role
     (e.g., CONTROLLER, TARGET, NODE).
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    class BusRole(Enum):
+    class Role(Enum):
         CONTROLLER = auto()
         TARGET = auto()
         NODE = auto()
         END_NODE = auto()
         PASSIVE = auto()
 
-    role_ = F.Parameters.EnumParameter.MakeChild(enum_t=BusRole)
+    role_ = F.Parameters.EnumParameter.MakeChild(enum_t=Role)
 
     @classmethod
-    def MakeChild(cls, role: str | list[BusRole]) -> fabll._ChildField[Any]:
+    def MakeChild(cls, role: str | list[Role]) -> fabll._ChildField[Any]:
         # From ato: role="CONTROLLER" or role="CONTROLLER,TARGET"
         # From Python: role=[BusRole.CONTROLLER]
         if isinstance(role, str):
-            role = [cls.BusRole[r.strip()] for r in role.split(",")]
+            role = [cls.Role[r.strip()] for r in role.split(",")]
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_SetSuperset(
@@ -204,11 +206,11 @@ class has_bus_role(fabll.Node):
         )
         return out
 
-    def get_roles(self) -> set[BusRole]:
+    def get_roles(self) -> set[Role]:
         lit = self.role_.get().try_extract_superset()
         if lit is None:
             return set()
-        return set(lit.get_values_typed(self.BusRole))
+        return set(lit.get_values_typed(self.Role))
 
 
 # ---------------------------------------------------------------------------
@@ -222,18 +224,18 @@ class Test:
         class _Host(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             bus_spec = fabll.Traits.MakeEdge(
-                has_bus_spec.MakeChild(
-                    topology=[has_bus_spec.Topology.BUS],
-                    data_flow=has_bus_spec.DataFlow.HALF_DUPLEX,
+                has_specification.MakeChild(
+                    topology=[has_specification.Topology.BUS],
+                    data_flow=has_specification.DataFlow.HALF_DUPLEX,
                     multi_controller=True,
                 )
             )
 
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
-        spec = inst.get_trait(has_bus_spec)
+        spec = inst.get_trait(has_specification)
 
-        assert spec.get_topology_values() == {has_bus_spec.Topology.BUS}
-        assert spec.get_data_flow() == has_bus_spec.DataFlow.HALF_DUPLEX
+        assert spec.get_topology_values() == {has_specification.Topology.BUS}
+        assert spec.get_data_flow() == has_specification.DataFlow.HALF_DUPLEX
         assert spec.get_multi_controller() is True
 
     def test_bus_spec_multi_topology(self):
@@ -243,21 +245,24 @@ class Test:
         class _Host(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             bus_spec = fabll.Traits.MakeEdge(
-                has_bus_spec.MakeChild(
-                    topology=[has_bus_spec.Topology.STAR, has_bus_spec.Topology.TREE],
-                    data_flow=has_bus_spec.DataFlow.FULL_DUPLEX,
+                has_specification.MakeChild(
+                    topology=[
+                        has_specification.Topology.STAR,
+                        has_specification.Topology.TREE,
+                    ],
+                    data_flow=has_specification.DataFlow.FULL_DUPLEX,
                     multi_controller=False,
                 )
             )
 
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
-        spec = inst.get_trait(has_bus_spec)
+        spec = inst.get_trait(has_specification)
 
         assert spec.get_topology_values() == {
-            has_bus_spec.Topology.STAR,
-            has_bus_spec.Topology.TREE,
+            has_specification.Topology.STAR,
+            has_specification.Topology.TREE,
         }
-        assert spec.get_data_flow() == has_bus_spec.DataFlow.FULL_DUPLEX
+        assert spec.get_data_flow() == has_specification.DataFlow.FULL_DUPLEX
         assert spec.get_multi_controller() is False
 
     def test_bus_role_roundtrip(self):
@@ -267,13 +272,13 @@ class Test:
         class _Host(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             _bus_role = fabll.Traits.MakeEdge(
-                has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER])
+                has_role.MakeChild(role=[has_role.Role.CONTROLLER])
             )
 
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
-        role = inst.get_trait(has_bus_role)
+        role = inst.get_trait(has_role)
 
-        assert role.get_roles() == {has_bus_role.BusRole.CONTROLLER}
+        assert role.get_roles() == {has_role.Role.CONTROLLER}
 
     def test_bus_role_multi_role(self):
         g = graph.GraphView.create()
@@ -282,17 +287,17 @@ class Test:
         class _Host(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             _bus_role = fabll.Traits.MakeEdge(
-                has_bus_role.MakeChild(
-                    role=[has_bus_role.BusRole.CONTROLLER, has_bus_role.BusRole.TARGET]
+                has_role.MakeChild(
+                    role=[has_role.Role.CONTROLLER, has_role.Role.TARGET]
                 )
             )
 
         inst = _Host.bind_typegraph(tg).create_instance(g=g)
-        role = inst.get_trait(has_bus_role)
+        role = inst.get_trait(has_role)
 
         assert role.get_roles() == {
-            has_bus_role.BusRole.CONTROLLER,
-            has_bus_role.BusRole.TARGET,
+            has_role.Role.CONTROLLER,
+            has_role.Role.TARGET,
         }
 
     def test_bus_spec_aliasing(self):
@@ -303,9 +308,9 @@ class Test:
             scl = F.Electrical.MakeChild()
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             bus_spec = fabll.Traits.MakeEdge(
-                has_bus_spec.MakeChild(
-                    topology=[has_bus_spec.Topology.BUS],
-                    data_flow=has_bus_spec.DataFlow.HALF_DUPLEX,
+                has_specification.MakeChild(
+                    topology=[has_specification.Topology.BUS],
+                    data_flow=has_specification.DataFlow.HALF_DUPLEX,
                     multi_controller=True,
                 )
             )
@@ -315,12 +320,12 @@ class Test:
 
         a._is_interface.get().connect_to(b)
 
-        has_bus_spec.resolve_bus_spec_parameters(g, tg)
+        has_specification.resolve_data_bus_specification_parameters(g, tg)
 
-        spec_a = a.get_trait(has_bus_spec)
-        spec_b = b.get_trait(has_bus_spec)
+        spec_a = a.get_trait(has_specification)
+        spec_b = b.get_trait(has_specification)
 
-        assert spec_a.get_topology_values() == {has_bus_spec.Topology.BUS}
-        assert spec_b.get_topology_values() == {has_bus_spec.Topology.BUS}
+        assert spec_a.get_topology_values() == {has_specification.Topology.BUS}
+        assert spec_b.get_topology_values() == {has_specification.Topology.BUS}
         assert spec_a.get_multi_controller() is True
         assert spec_b.get_multi_controller() is True
