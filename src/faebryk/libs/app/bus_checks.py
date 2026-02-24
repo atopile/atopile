@@ -79,8 +79,9 @@ class needs_bus_check(fabll.Node):
             BusCheckFault,
             F.implements_design_check.MaybeUnfulfilledCheckException,
         ) as accumulator:
-            self._check_topology_constraints(accumulator)
-            self._check_role_constraints(accumulator)
+            bus_groups = self._get_bus_groups()
+            self._check_topology_constraints(accumulator, bus_groups)
+            self._check_role_constraints(accumulator, bus_groups)
 
     def _get_bus_groups(
         self,
@@ -133,9 +134,13 @@ class needs_bus_check(fabll.Node):
 
         return result
 
-    def _check_topology_constraints(self, accumulator: accumulate) -> None:
+    def _check_topology_constraints(
+        self,
+        accumulator: accumulate,
+        bus_groups: list[tuple[has_databus_specification, set[fabll.Node]]],
+    ) -> None:
         """Check that point-to-point buses have at most 2 endpoints."""
-        for spec, bus_members in self._get_bus_groups():
+        for spec, bus_members in bus_groups:
             with accumulator.collect():
                 topologies = spec.get_topology_values()
 
@@ -151,9 +156,13 @@ class needs_bus_check(fabll.Node):
                         nodes=list(bus_members),
                     )
 
-    def _check_role_constraints(self, accumulator: accumulate) -> None:
+    def _check_role_constraints(
+        self,
+        accumulator: accumulate,
+        bus_groups: list[tuple[has_databus_specification, set[fabll.Node]]],
+    ) -> None:
         """Check controller/target role constraints on buses."""
-        for spec, bus_members in self._get_bus_groups():
+        for spec, bus_members in bus_groups:
             with accumulator.collect():
                 # Collect roles for members that have has_role
                 role_map: dict[fabll.Node, set[has_databus_role.Role]] = {}
