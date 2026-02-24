@@ -1,7 +1,6 @@
 import json
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,10 +16,6 @@ from atopile.telemetry import capture
 logger = get_logger(__name__)
 
 dev_app = typer.Typer(rich_markup_mode="rich")
-
-# On Windows, npm/npx are .cmd wrappers, not .exe files.
-# shutil.which() resolves the full path so subprocess can find them.
-_npm = shutil.which("npm") or "npm"
 
 
 def _spawn_shell_with_venv(worktree_path: Path) -> None:
@@ -42,38 +37,13 @@ def _spawn_shell_with_venv(worktree_path: Path) -> None:
 
 @dev_app.command()
 @capture("cli:dev_compile_start", "cli:dev_compile_end")
-def compile(
-    target: str = typer.Argument(
-        "all",
-        help="Build target: all, zig, or visualizer.",
-    ),
-):
-    target = target.lower()
-    valid_targets = {"all", "zig", "visualizer"}
-    if target not in valid_targets:
-        raise typer.BadParameter(
-            f"target must be one of: {', '.join(sorted(valid_targets))}"
-        )
+def compile():
+    """Compile Zig native extensions."""
+    print("compiling zig")
+    # import will trigger compilation
+    import faebryk.core.zig
 
-    if target in {"all", "zig"}:
-        print("compiling zig")
-        # import will trigger compilation
-        import faebryk.core.zig
-
-        _ = faebryk.core.zig
-
-    if target in {"all", "visualizer"}:
-        print("compiling visualizer")
-        repo_root = Path(__file__).resolve().parents[3]
-        viz_dir = repo_root / "src" / "atopile" / "visualizer" / "web"
-        if not viz_dir.exists():
-            raise FileNotFoundError(f"visualizer web directory not found: {viz_dir}")
-
-        node_modules = viz_dir / "node_modules"
-        if not node_modules.exists():
-            subprocess.run([_npm, "install"], cwd=viz_dir, check=True)
-
-        subprocess.run([_npm, "run", "build"], cwd=viz_dir, check=True)
+    _ = faebryk.core.zig
 
 
 @dev_app.command()
