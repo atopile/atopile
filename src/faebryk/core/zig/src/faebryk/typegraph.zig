@@ -853,10 +853,13 @@ pub const TypeGraph = struct {
         return true;
     }
 
-    /// Merge MakeChild and MakeLink nodes from source_type into target_type.
-    /// When a source child's identifier already exists on the target,
-    /// the target's child wins silently (source child is not copied).
-    /// Used for inheritance: flattens parent structure into derived type.
+    /// Flatten source_type's structure into target_type.
+    ///
+    ///  1. Copy MakeChild nodes. If a source child's identifier already exists
+    ///     on the target, the target's version wins (source child not copied).
+    ///  2. Copy MakeLink nodes. Target MakeLinks are collected *after* step 1,
+    ///     so the dedup check sees the full set including freshly copied children.
+    ///     Exact duplicates (same edge_type, lhs_path, rhs_path) are skipped.
     pub fn merge_types(
         self: *@This(),
         target_type: BoundNodeReference,
@@ -864,29 +867,33 @@ pub const TypeGraph = struct {
     ) void {
         const allocator = self.self_node.g.allocator;
 
-        // Collect ALL existing children on target (for deduplication)
-        var target_existing = std.StringHashMap(void).init(allocator);
-        defer target_existing.deinit();
-
-        const target_children = self.collect_make_children(allocator, target_type);
-        defer allocator.free(target_children);
-        for (target_children) |info| {
-            if (info.identifier) |id| {
-                target_existing.put(id, {}) catch @panic("OOM");
-            }
-        }
-
-        // Copy MakeChild nodes from source
+        // Collect source structure
         const source_children = self.collect_make_children(allocator, source_type);
         defer allocator.free(source_children);
+        const source_links = self.collect_make_links(allocator, source_type) catch return;
+        defer {
+            for (source_links) |info| {
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
+            }
+            allocator.free(source_links);
+        }
 
+        // Build set of target child identifiers for named MakeChild dedup
+        const target_children = self.collect_make_children(allocator, target_type);
+        defer allocator.free(target_children);
+        var target_existing = std.StringHashMap(void).init(allocator);
+        defer target_existing.deinit();
+        for (target_children) |info| {
+            if (info.identifier) |id| target_existing.put(id, {}) catch @panic("OOM");
+        }
+
+        // Copy MakeChild nodes from source, skipping named duplicates
         for (source_children) |info| {
             if (info.identifier) |id| {
-                // Target already has this identifier — target wins, skip source child
                 if (target_existing.contains(id)) continue;
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
-            // Extract attributes from source MakeChild (e.g., literal values)
             var attrs = MakeChildNode.Attributes.of(info.make_child).extract_node_attributes();
             const new_make_child = self.add_make_child(
                 target_type,
@@ -895,35 +902,34 @@ pub const TypeGraph = struct {
                 &attrs,
             ) catch continue;
             if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
-                // Both nodes are in the same graph, cannot fail
                 _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null) catch unreachable;
             }
         }
 
-        // Copy MakeLink nodes from source, dedup by (edge_type, lhs_path, rhs_path)
+        // Collect target's MakeLinks (after MakeChild copy so we see the full picture)
         const target_links = self.collect_make_links(allocator, target_type) catch return;
         defer {
-            for (target_links) |info| { allocator.free(info.lhs_path); allocator.free(info.rhs_path); }
+            for (target_links) |info| {
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
+            }
             allocator.free(target_links);
         }
-        const source_links = self.collect_make_links(allocator, source_type) catch return;
-        defer {
-            for (source_links) |link_info| {
-                allocator.free(link_info.lhs_path);
-                allocator.free(link_info.rhs_path);
-            }
-            allocator.free(source_links);
-        }
 
+        // Copy MakeLink nodes from source, skipping exact duplicates.
         for (source_links) |link_info| {
             const src_et = MakeLinkNode.Attributes.of(link_info.make_link).get_edge_type();
-            const dup = for (target_links) |t| {
-                if (src_et != MakeLinkNode.Attributes.of(t.make_link).get_edge_type()) continue;
-                if (!pathsEqual(link_info.lhs_path, t.lhs_path)) continue;
-                if (!pathsEqual(link_info.rhs_path, t.rhs_path)) continue;
-                break true;
-            } else false;
-            if (dup) continue;
+
+            var is_exact_dup = false;
+            for (target_links) |tgt_link| {
+                if (src_et != MakeLinkNode.Attributes.of(tgt_link.make_link).get_edge_type()) continue;
+                if (!pathsEqual(link_info.lhs_path, tgt_link.lhs_path)) continue;
+                if (pathsEqual(link_info.rhs_path, tgt_link.rhs_path)) {
+                    is_exact_dup = true;
+                    break;
+                }
+            }
+            if (is_exact_dup) continue;
 
             const self_ref_path = [_]ChildReferenceNode.EdgeTraversal{EdgeComposition.traverse("")};
             const lhs_path = if (link_info.lhs_path.len == 0) &self_ref_path else link_info.lhs_path;
@@ -949,7 +955,6 @@ pub const TypeGraph = struct {
                 edge_attrs,
             ) catch continue;
             if (EdgePointer.get_pointed_node_by_identifier(link_info.make_link, "source")) |source_chunk| {
-                // Both nodes are in the same graph, cannot fail
                 _ = EdgePointer.point_to(new_make_link, source_chunk.node, "source", null) catch unreachable;
             }
         }
@@ -3032,7 +3037,7 @@ test "merge_types deduplicates MakeLink nodes" {
     // Merge Parent into Child (simulating inheritance)
     tg.merge_types(Child, Parent);
 
-    // After merge: Child should still have only 1 MakeLink (target wins, parent's duplicate skipped)
+    // After merge: Child should still have only 1 MakeLink (exact dup: same lhs+rhs, not copied)
     const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;
     defer {
         for (after) |info| {
