@@ -338,75 +338,85 @@ def add_base_name(
 
     def _add_nice_base_name(processable_net: ProcessableNet) -> None:
         """
-        Add a nice base name to the net name if available.
+        Add a hierarchical base name: <parent_name>.<electrical_name>.
+
+        Walks up each electrical's hierarchy to find meaningful ancestors
+        (is_interface or is_module). If the electrical's own name is unpreferred,
+        climbs up one level to use the parent's name instead.
+
+        If there is no parent, uses just the electrical name if valid.
         """
+        from atopile.compiler.ast_visitor import is_ato_pin
 
-        def _nice_base_names(processable_net: ProcessableNet) -> list[str]:
-            """
-            Find nice base names and return them in order of preference.
-
-            Order of preference:
-            1. names from all nodes in the interface hierarchy
-                (leaf to root, so deeper/more-specific names come first)
-            2. signal name extracted from ato pin (via _try_extract_signal_name)
-            3. raw pin name (package pin name, e.g. "SD0")
-            4. default to "net"
-            """
-            from atopile.compiler.ast_visitor import is_ato_pin
-
-            nice_base_names: list[str] = []
-            pin_nodes: list[fabll.Node] = []
-            connected_interfaces = _get_all_connected_interfaces(
-                [e.electrical for e in processable_net.electricals]
-            )
-
-            # Collect ato pin nodes from the leaf of each interface hierarchy
-            for hierarchy in connected_interfaces:
-                if not hierarchy:
-                    continue
-                leaf_node, _ = hierarchy[-1]
-                if leaf_node.has_trait(is_ato_pin):
-                    pin_nodes.append(leaf_node)
-
-            # Priority 1: names from all nodes in the interface hierarchy
-            # (leaf to root, so deeper/more-specific names come first)
-            # Iterate longest hierarchies first — deeper paths are more
-            # semantically meaningful (e.g. "sda" from an I2C interface
-            # should rank above "SD0" from a bare pin).
-            for hierarchy in reversed(connected_interfaces):
-                for _, name in reversed(hierarchy):
-                    if name not in nice_base_names:
-                        nice_base_names.append(name)
-
-            # Priority 2: signal name extracted from ato pin
-            for pin_node in pin_nodes:
-                if signal_name := _try_extract_signal_name(pin_node):
-                    if signal_name not in nice_base_names:
-                        nice_base_names.append(signal_name)
-
-            # Priority 3: pin name extraction (raw package pin name)
-            for pin_node in pin_nodes:
-                if pin_name := pin_node.get_name(accept_no_parent=True):
-                    if pin_name not in nice_base_names:
-                        nice_base_names.append(pin_name)
-
-            # Priority 4: default to "net"
-
-            # remove unwanted names
-            logger.debug(f"nice base names before filtering: {nice_base_names}")
-            nice_base_names = [
-                name
-                for name in nice_base_names
-                if filter_unpreferred_names(name) is not None
+        # Collect meaningful hierarchies for all electricals, sorted for determinism
+        meaningful_hierarchies: list[list[tuple[fabll.Node, str]]] = []
+        for ewn in processable_net.electricals:
+            try:
+                hierarchy = ewn.electrical.get_hierarchy()
+            except fabll.NodeNoParent:
+                continue
+            meaningful = [
+                (node, name)
+                for node, name in hierarchy
+                if node.has_trait(fabll.is_interface) or node.has_trait(fabll.is_module)
             ]
+            if meaningful:
+                meaningful_hierarchies.append(meaningful)
 
-            return nice_base_names
+        # Sort by (length, path) for determinism; longest last
+        meaningful_hierarchies.sort(
+            key=lambda h: (len(h), ".".join(name for _, name in h))
+        )
 
-        names = _nice_base_names(processable_net)
-        logger.debug(f"nice names after filtering:  {names}")
-        if names:
-            # for now just use the first name (highest rank)
-            processable_net.net_name.base_name = names[0]
+        # Skip hierarchical prefix if net already has a prefix (e.g. from bus naming)
+        has_prefix = processable_net.net_name.prefix is not None
+
+        # Try hierarchies from deepest to shallowest
+        for hierarchy in reversed(meaningful_hierarchies):
+            _, leaf_name = hierarchy[-1]
+
+            if filter_unpreferred_names(leaf_name) is not None:
+                # Leaf name is preferred — use it, try to prefix with parent
+                candidate = leaf_name
+                prefix_idx = len(hierarchy) - 2
+            else:
+                # Leaf name is unpreferred — climb to parent
+                if len(hierarchy) < 2:
+                    continue
+                _, parent_name = hierarchy[-2]
+                if filter_unpreferred_names(parent_name) is None:
+                    continue  # parent also unpreferred, try next hierarchy
+                candidate = parent_name
+                prefix_idx = len(hierarchy) - 3
+
+            # Get prefix from the level above the candidate (skip if net
+            # already has a prefix from e.g. bus naming to avoid duplication)
+            if not has_prefix and prefix_idx >= 0:
+                _, prefix_name = hierarchy[prefix_idx]
+                if filter_unpreferred_names(prefix_name) is not None:
+                    processable_net.net_name.base_name = f"{prefix_name}.{candidate}"
+                else:
+                    processable_net.net_name.base_name = candidate
+            else:
+                processable_net.net_name.base_name = candidate
+            return
+
+        # Fallback: try signal name from ato pins, then raw pin name
+        connected_interfaces = _get_all_connected_interfaces(
+            [e.electrical for e in processable_net.electricals]
+        )
+        for hierarchy in connected_interfaces:
+            if not hierarchy:
+                continue
+            leaf_node, _ = hierarchy[-1]
+            if leaf_node.has_trait(is_ato_pin):
+                if signal_name := _try_extract_signal_name(leaf_node):
+                    processable_net.net_name.base_name = signal_name
+                    return
+                if pin_name := leaf_node.get_name(accept_no_parent=True):
+                    if filter_unpreferred_names(pin_name) is not None:
+                        processable_net.net_name.base_name = pin_name
+                        return
 
     logger.debug(f"trying to add nice base names to {len(processable_nets)} nets")
     for processable_net in processable_nets:
@@ -719,6 +729,7 @@ def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
 
     electrical = electricals[0].electrical
     base_name = (processable_net.net_name.base_name or "").lower()
+    base_name_parts = set(base_name.split("."))
 
     try:
         hierarchy = electrical.get_hierarchy()
@@ -732,14 +743,14 @@ def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
     for node, _ in reversed(parents):
         if node.has_trait(fabll.is_module):
             name = node.get_name(accept_no_parent=True)
-            if name.lower() != base_name and filter_unpreferred_names(name):
+            if name.lower() not in base_name_parts and filter_unpreferred_names(name):
                 return name
 
     # Priority 2: first distinct name from parents with is_interface trait
     for node, _ in reversed(parents):
         if node.has_trait(fabll.is_interface):
             name = node.get_name(accept_no_parent=True)
-            if name.lower() != base_name and filter_unpreferred_names(name):
+            if name.lower() not in base_name_parts and filter_unpreferred_names(name):
                 return name
 
     return None
@@ -1103,8 +1114,8 @@ class TestNetNaming:
 
         assert net_names == [
             "interface_a.no_name",
+            "interface_b.no_name_SUF",
             "no_name",
-            "no_name_SUF",
             "PRE_interface_a_SUF",
             "PRE_interface_b_SUF",
         ]
@@ -1209,22 +1220,22 @@ class TestNetNaming:
 
         assert net_names == [
             "app_interface",
+            "app_interface.level1_interface",
             "app_interface2",
             "app_interface2.level1_interface",
-            "base_interface",
+            "app_interface2.level1_interface.dup_name_suggested",
+            "app_interface2.level1_interface.level0_interface",
             "dup_name-0",
             "dup_name-1",
             "dup_name_suggested",
             "dup_with_affix_SUF",
-            "level0_interface",
             "level0_interface.base_interface",
             "level0_interface.dup_with_affix_SUF",
             "level0_interface.PRE_dup_with_affix",
-            "level1_interface",
             "level1_interface.dup_name_suggested-0",
             "level1_interface.dup_name_suggested-1",
-            "level1_interface.dup_name_suggested-2",
             "level1_interface.level0_interface",
+            "level1_interface.level0_interface.base_interface",
             "net",
             "PRE_dup_with_affix",
         ]
@@ -1290,15 +1301,15 @@ class TestNetNaming:
 
         print(f"net_names: {net_names}")
 
-        # Conflicts should be resolved using is_module parent (inner_module)
-        # not is_interface parents (base_a, base_b, second, inner_interface)
+        # Hierarchical base naming already disambiguates most conflicts
+        # using the immediate parent interface names
         assert net_names == [
-            "inner_module.sig_a-0",
-            "inner_module.sig_a-1",
-            "inner_module.sig_a-2",
-            "inner_module.sig_b-0",
-            "inner_module.sig_b-1",
-            "inner_module.sig_b-2",
+            "base_a.sig_a",
+            "base_a.sig_b",
+            "base_b.sig_a",
+            "base_b.sig_b",
+            "second.sig_a",
+            "second.sig_b",
             "sig_a",
             "sig_b",
         ]
@@ -1356,11 +1367,11 @@ class TestNetNaming:
         # With no is_module parents, conflicts should be resolved using
         # is_interface parents (inner_a, inner_b)
         assert net_names == [
-            "inner_a.sig-0",
-            "inner_a.sig-1",
-            "inner_b.sig-0",
-            "inner_b.sig-1",
+            "inner_a.sig",
+            "inner_b.sig",
             "outer_a.sig",
+            "outer_b.inner_a.sig",
+            "outer_b.inner_b.sig",
             "outer_b.sig",
             "sig",
         ]
@@ -1752,20 +1763,16 @@ class TestNetNaming:
         processable_nets = collect_unnamed_nets(nets)
         add_base_name(processable_nets)
 
-        # Both should have base_name "signal" before conflict resolution
-        for pn in processable_nets:
-            assert pn.net_name.base_name == "signal"
+        # With hierarchical naming, base_names are already unique
+        names = sorted([pn.net_name.base_name for pn in processable_nets])
+        assert names == ["interface_a.signal", "interface_b.signal"]
 
+        # No conflict resolution needed — names are already unique
         resolve_name_conflicts(processable_nets)
 
-        # After conflict resolution, names should be unique
-        names = [pn.net_name.name for pn in processable_nets]
-        assert len(set(names)) == 2  # All unique
-
-        # One should keep "signal", the other should have a prefix
-        assert "signal" in names
-        prefixed_names = [n for n in names if "." in n]
-        assert len(prefixed_names) == 1
+        final_names = sorted([pn.net_name.name for pn in processable_nets])
+        assert len(set(final_names)) == 2  # All unique
+        assert final_names == ["interface_a.signal", "interface_b.signal"]
 
     def test_resolve_name_conflicts_with_numeric_suffix(self):
         """Test resolve_name_conflicts adds numeric suffix when prefix insufficient"""
@@ -2420,8 +2427,8 @@ class TestNetNaming:
             for pn in processable_nets
             if any(e.name == "sda" for e in pn.electricals)
         )
-        assert sda_net.net_name.base_name == "sda", (
-            f"Expected hierarchy name 'sda' to win over pin name, "
+        assert sda_net.net_name.base_name == "bus.sda", (
+            f"Expected hierarchy name 'bus.sda' to win over pin name, "
             f"got '{sda_net.net_name.base_name}'"
         )
 
