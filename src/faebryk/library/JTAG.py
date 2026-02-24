@@ -25,13 +25,13 @@ class JTAG(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     bus_spec = fabll.Traits.MakeEdge(
-        F.bus.has_bus_spec.MakeChild(
+        F.DataBus.has_specification.MakeChild(
             topology=[
-                F.bus.has_bus_spec.Topology.POINT_TO_POINT,
-                F.bus.has_bus_spec.Topology.STAR,
-                F.bus.has_bus_spec.Topology.DAISY_CHAIN,
+                F.DataBus.has_specification.Topology.POINT_TO_POINT,
+                F.DataBus.has_specification.Topology.STAR,
+                F.DataBus.has_specification.Topology.DAISY_CHAIN,
             ],
-            data_flow=F.bus.has_bus_spec.DataFlow.HALF_DUPLEX,
+            data_flow=F.DataBus.has_specification.DataFlow.HALF_DUPLEX,
             multi_controller=False,
         )
     )

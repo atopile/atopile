@@ -12,7 +12,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserDesignCheckException, accumulate
-from faebryk.library.bus import has_bus_role, has_bus_spec
+from faebryk.library.DataBus import has_role, has_specification
 from faebryk.libs.app.checks import check_design
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class needs_bus_check(fabll.Node):
 
     def _get_bus_groups(
         self,
-    ) -> list[tuple[has_bus_spec, set[fabll.Node]]]:
+    ) -> list[tuple[has_specification, set[fabll.Node]]]:
         """
         Discover all bus types with has_bus_spec, get their instances,
         and group them into buses.
@@ -95,14 +95,14 @@ class needs_bus_check(fabll.Node):
         tg = self.tg
 
         implementors = list(
-            fabll.Traits.get_implementors(has_bus_spec.bind_typegraph(tg), g=g)
+            fabll.Traits.get_implementors(has_specification.bind_typegraph(tg), g=g)
         )
 
         if not implementors:
             return []
 
         # Group implementors by their owner type
-        type_to_spec: dict[type[fabll.Node], has_bus_spec] = {}
+        type_to_spec: dict[type[fabll.Node], has_specification] = {}
         type_to_instances: dict[type[fabll.Node], list[fabll.Node]] = {}
 
         for impl in implementors:
@@ -139,7 +139,7 @@ class needs_bus_check(fabll.Node):
 
                 # Only enforce for strictly point-to-point buses
                 if (
-                    topologies == {has_bus_spec.Topology.POINT_TO_POINT}
+                    topologies == {has_specification.Topology.POINT_TO_POINT}
                     and len(bus_members) > 2
                 ):
                     friendly = ", ".join(n.get_full_name() for n in bus_members)
@@ -153,11 +153,11 @@ class needs_bus_check(fabll.Node):
         """Check controller/target role constraints on buses."""
         for spec, bus_members in self._get_bus_groups():
             with accumulator.collect():
-                # Collect roles for members that have has_bus_role
-                role_map: dict[fabll.Node, set[has_bus_role.BusRole]] = {}
+                # Collect roles for members that have has_role
+                role_map: dict[fabll.Node, set[has_role.Role]] = {}
                 for member in bus_members:
-                    if member.has_trait(has_bus_role):
-                        role_trait = member.get_trait(has_bus_role)
+                    if member.has_trait(has_role):
+                        role_trait = member.get_trait(has_role)
                         role_map[member] = role_trait.get_roles()
 
                 if not role_map:
@@ -167,12 +167,10 @@ class needs_bus_check(fabll.Node):
                 controllers = [
                     n
                     for n, roles in role_map.items()
-                    if has_bus_role.BusRole.CONTROLLER in roles
+                    if has_role.Role.CONTROLLER in roles
                 ]
                 targets = [
-                    n
-                    for n, roles in role_map.items()
-                    if has_bus_role.BusRole.TARGET in roles
+                    n for n, roles in role_map.items() if has_role.Role.TARGET in roles
                 ]
 
                 multi_controller = spec.get_multi_controller()
@@ -217,7 +215,7 @@ class Test:
         app_type = self._App.bind_typegraph(tg)
         app = app_type.create_instance(g=g)
         fabll.Traits.create_and_add_instance_to(app, needs_bus_check)
-        has_bus_spec.resolve_bus_spec_parameters(g, tg)
+        has_specification.resolve_data_bus_specification_parameters(g, tg)
         check_design(
             app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
         )
@@ -277,21 +275,21 @@ class Test:
     class _I2CControllerModule(fabll.Node):
         i2c = F.I2C.MakeChild()
         _bus_role = fabll.Traits.MakeEdge(
-            has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER]),
+            has_role.MakeChild(role=[has_role.Role.CONTROLLER]),
             owner=[i2c],
         )
 
     class _I2CTargetModule(fabll.Node):
         i2c = F.I2C.MakeChild()
         _bus_role = fabll.Traits.MakeEdge(
-            has_bus_role.MakeChild(role=[has_bus_role.BusRole.TARGET]),
+            has_role.MakeChild(role=[has_role.Role.TARGET]),
             owner=[i2c],
         )
 
     class _SPIControllerModule(fabll.Node):
         spi = F.SPI.MakeChild()
         _bus_role = fabll.Traits.MakeEdge(
-            has_bus_role.MakeChild(role=[has_bus_role.BusRole.CONTROLLER]),
+            has_role.MakeChild(role=[has_role.Role.CONTROLLER]),
             owner=[spi],
         )
 

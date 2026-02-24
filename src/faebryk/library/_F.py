@@ -54,9 +54,9 @@ from faebryk.library.PCB import PCB
 from faebryk.library.has_default_constraint import has_default_constraint
 from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
+import faebryk.library.DataBus as DataBus
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-import faebryk.library.bus as bus
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
@@ -158,9 +158,9 @@ __all__ = [
     "has_default_constraint",
     "is_alias_bus_parameter",
     "is_sum_bus_parameter",
+    "DataBus",
     "Filter",
     "Lead",
-    "bus",
     "has_net_name_affix",
     "requires_external_usage",
     "XtalIF",
