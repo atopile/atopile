@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Number of parallel ngspice processes.  Defaults to CPU count; override
 # with the ``ATO_SIM_WORKERS`` environment variable.
 _MAX_WORKERS = int(os.environ.get("ATO_SIM_WORKERS", 0)) or os.cpu_count() or 4
-TMAX = 100e-9
+TMAX = 25e-9
 
 
 @dataclass
@@ -66,12 +66,16 @@ def _count_data_points(result: object) -> int:
 
 
 def _apply_spice_source(circuit: Circuit, spice_line: str) -> None:
-    """Parse 'V1 node+ node- SPEC' and call circuit.set_source(name, spec)."""
-    parts = spice_line.strip().split(None, 3)
-    if len(parts) >= 4:
-        circuit.set_source(parts[0], parts[3])
-    elif len(parts) >= 2:
-        circuit.set_source(parts[0], parts[1])
+    """Add voltage/current source element(s) to the circuit.
+
+    Supports pipe-separated multi-source strings (e.g.
+    ``"V1 n1 0 DC 12|Iload n2 0 PULSE(...)"``) where each segment
+    is a separate SPICE element line.
+    """
+    for part in spice_line.split("|"):
+        part = part.strip()
+        if part:
+            circuit.add_element(part)
 
 
 def _resolve_net_aliases(text: str, net_aliases: dict[str, str]) -> str:
@@ -164,14 +168,19 @@ def _run_ac_parallel(
     spice = sim_node.get_spice()
     if spice:
         resolved = _resolve_net_aliases(spice, net_aliases)
-        parts = resolved.strip().split(None, 3)
-        source_name = parts[0] if len(parts) >= 1 else None
+        # Add all source elements
+        source_name = None
+        for part in resolved.split("|"):
+            part = part.strip()
+            if part:
+                circuit.add_element(part)
+                if source_name is None:
+                    source_name = part.split(None, 1)[0]
+        # Append AC stimulus to the first source
         if source_name:
             existing_spec = circuit.get_source_spec(source_name)
             if existing_spec and "AC" not in existing_spec.upper():
                 circuit.set_source(source_name, f"{existing_spec} AC 1")
-            elif not existing_spec:
-                circuit.set_source(source_name, "DC 0 AC 1")
 
     start = sim_node.get_start_freq()
     stop = sim_node.get_stop_freq()
@@ -296,6 +305,8 @@ class MultiDutResult:
     # {dut_name: (sim_result, net_aliases)}
     dut_params: dict[str, dict[str, float]]
     # {dut_name: {"power_in.voltage": 12.0, "power_out.voltage": 5.0, ...}}
+    sweep_param_name: str = ""
+    sweep_param_unit: str = ""
 
 
 def _find_child_by_name(parent: fabll.Node, name: str) -> fabll.Node | None:
@@ -308,17 +319,20 @@ def _find_child_by_name(parent: fabll.Node, name: str) -> fabll.Node | None:
 
 
 def _resolve_dut_params(dut_node: fabll.Node) -> dict[str, float]:
-    """Extract parameter values from a DUT node's ElectricPower interfaces.
+    """Extract parameter values from a DUT node.
 
-    Walks the DUT's children to find ElectricPower interfaces and extracts
-    their nominal voltage values.
+    Extracts:
+    1. Voltages and max_current from ElectricPower interfaces
+       (e.g. ``power_in.voltage``, ``power_out.max_current``).
+    2. Direct NumericParameter children (e.g. ``switching_frequency``).
 
-    Returns a mapping like ``{"power_in.voltage": 12.0, "power_out.voltage": 5.0}``.
+    Returns a mapping like ``{"power_in.voltage": 12.0, "switching_frequency": 400000.0}``.
     """
     from faebryk.exporters.simulation.ngspice import _get_nominal_value
 
     params: dict[str, float] = {}
 
+    # --- ElectricPower parameters (voltage, max_current) ---
     power_interfaces = dut_node.get_children(
         direct_only=False, types=F.ElectricPower
     )
@@ -344,7 +358,53 @@ def _resolve_dut_params(dut_node: fabll.Node) -> dict[str, float]:
         except Exception:
             pass
 
+        try:
+            max_current = _get_nominal_value(power.max_current.get())
+            if max_current is not None:
+                params[f"{rel_path}.max_current"] = max_current
+        except Exception:
+            pass
+
+    # --- Direct NumericParameter children (e.g. switching_frequency) ---
+    for child in dut_node.get_children(
+        direct_only=True, types=F.Parameters.NumericParameter
+    ):
+        info = child.get_parent()
+        if info is None:
+            continue
+        name = info[1]
+        try:
+            value = _get_nominal_value(child)
+            if value is not None:
+                params[name] = value
+        except Exception:
+            pass
+
     return params
+
+
+def _resolve_sweep_param_binding(
+    dut_node: fabll.Node, ato_param_name: str
+) -> str | None:
+    """Find the SPICE parameter name that binds to an ato parameter.
+
+    Scans ``has_spice_model`` traits on the DUT and its descendants for
+    ``param_bindings`` entries whose ato-side name matches *ato_param_name*.
+
+    Returns the SPICE param name (e.g. ``"FS"``) or ``None``.
+    """
+    for node in dut_node.get_children(
+        direct_only=False,
+        types=fabll.Node,
+        include_root=True,
+        required_trait=F.has_spice_model,
+    ):
+        trait = node.get_trait(F.has_spice_model)
+        bindings = trait.get_param_bindings()
+        for spice_param, ato_name in bindings.items():
+            if ato_name == ato_param_name:
+                return spice_param
+    return None
 
 
 def _resolve_dut_references(
@@ -365,19 +425,27 @@ def _resolve_dut_references(
     to underscore format (net names).
     """
 
-    def _replace(match: re.Match) -> str:
-        ref = match.group(0)  # e.g., "dut.power_in.voltage"
-        # Strip the leading "dut." to get the relative path
+    def _replace_braced(match: re.Match) -> str:
+        """Replace {dut.X.Y} — always a parameter reference."""
+        ref = match.group(1)  # e.g., "dut.power_in.voltage"
         rel_path = ref[4:]  # everything after "dut."
-
-        # Check if it matches a known parameter
         if rel_path in dut_params:
             return str(dut_params[rel_path])
-
-        # It's a net reference — replace dut with dut_name, dots with underscores
+        # Unknown param — leave as underscore net name (shouldn't happen)
         return f"{dut_name}_{rel_path.replace('.', '_')}"
 
-    return re.sub(r"\bdut(?:\.\w+)+", _replace, text)
+    def _replace_bare(match: re.Match) -> str:
+        """Replace bare dut.X.Y — param or net reference."""
+        ref = match.group(0)
+        rel_path = ref[4:]
+        if rel_path in dut_params:
+            return str(dut_params[rel_path])
+        return f"{dut_name}_{rel_path.replace('.', '_')}"
+
+    # First pass: resolve {dut.X.Y} patterns (remove braces)
+    text = re.sub(r"\{(dut(?:\.\w+)+)\}", _replace_braced, text)
+    # Second pass: resolve bare dut.X.Y patterns
+    return re.sub(r"\bdut(?:\.\w+)+", _replace_bare, text)
 
 
 def _run_single_dut_transient_task(
@@ -432,13 +500,23 @@ def _run_single_dut_sweep_point_task(
     step: float,
     stop: float,
     start: float,
+    spice_param_override: str | None = None,
 ) -> tuple[float, object | None]:
     """Run one sweep point for one DUT (thread-safe).
 
     Returns ``(param_value, result)`` or ``(param_value, None)`` on failure.
+
+    When *spice_param_override* is set (e.g. ``"FS"``), the circuit's
+    subcircuit instance parameter is updated to *pval* before running.
+    This supports sweeping DUT-level parameters like switching_frequency
+    that are resolved via ``param_bindings`` at netlist generation time.
     """
     circuit = base_circuit.copy()
     try:
+        # Apply subcircuit param override for DUT parameter sweeps
+        if spice_param_override:
+            circuit.modify_instance_param(spice_param_override, pval)
+
         spice_line = sim_node.resolve_spice(pval)
         if spice_line:
             resolved = _resolve_dut_references(spice_line, dut_name, dut_params)
@@ -600,6 +678,25 @@ def _run_multi_dut_sweep(
     if step is None or stop is None:
         raise ValueError("Sweep simulation missing time_step or time_stop")
 
+    # Resolve subcircuit param override for DUT parameter sweeps
+    # (e.g. param_name="dut.switching_frequency" → SPICE param "FS")
+    spice_param_override: str | None = None
+    param_name = sim_node.get_param_name() or ""
+    if param_name.startswith("dut."):
+        ato_param = param_name[4:]  # e.g. "switching_frequency"
+        for dut_name_check in dut_names:
+            dut_node = _find_child_by_name(parent, dut_name_check)
+            if dut_node is not None:
+                spice_param_override = _resolve_sweep_param_binding(
+                    dut_node, ato_param
+                )
+                if spice_param_override:
+                    logger.info(
+                        f"Sweep '{param_name}' → SPICE param "
+                        f"'{spice_param_override}' override"
+                    )
+                    break
+
     # Phase 2: Submit all (DUT x sweep-point) combinations to thread pool
     # fut -> (dut_name, pval)
     future_map: dict = {}
@@ -610,6 +707,7 @@ def _run_multi_dut_sweep(
                 circuit, sim_node, dut_name,
                 all_dut_params[dut_name], net_aliases,
                 pval, step, stop, start,
+                spice_param_override,
             )
             future_map[fut] = (dut_name, pval)
 
@@ -632,7 +730,12 @@ def _run_multi_dut_sweep(
         results[dut_name] = (dut_sweep_results.get(dut_name, {}), net_aliases)
 
     elapsed = time.monotonic() - t0
-    return (elapsed, MultiDutResult(results=results, dut_params=all_dut_params))
+    return (elapsed, MultiDutResult(
+        results=results,
+        dut_params=all_dut_params,
+        sweep_param_name=sim_node.get_param_name() or "",
+        sweep_param_unit=sim_node.get_param_unit(),
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -695,52 +798,202 @@ def run_simulations_scoped(
     logger.info(f"Simulation thread pool: {_MAX_WORKERS} workers")
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        # 2.5 Run multi-DUT simulations (each generates its own per-DUT
-        # netlists sequentially, then runs DUT sims in parallel)
+        # 2.5 Multi-DUT simulations: pre-generate netlists (sequential),
+        # then submit ALL sim jobs across ALL sims to the thread pool.
+        #
+        # Phase A: Sequentially generate all netlists (solver not thread-safe)
+        # Cache base netlists per DUT — multiple sims sharing the same DUT
+        # only need one netlist generation.
+        _dut_cache: dict[str, tuple[Circuit, dict[str, str], dict[str, float]]] = {}
+        _prepared: list[dict] = []
         for sim_node in multi_dut_sims:
             sim_parent_info = sim_node.get_parent()
             sim_name = sim_parent_info[1] if sim_parent_info else None
             dut_names = sim_node.get_duts()
+            parent = sim_parent_info[0] if sim_parent_info is not None else app
+            is_sweep = isinstance(sim_node, SimulationSweep)
+            sim_type = "sweep" if is_sweep else "transient"
+
             logger.info(
-                f"Running multi-DUT simulation '{sim_name}' "
-                f"across DUTs: {dut_names}"
+                f"Preparing multi-DUT {sim_type} '{sim_name}' "
+                f"for DUTs: {dut_names}"
             )
 
+            dut_circuits: dict[str, tuple[Circuit, dict[str, str]]] = {}
+            all_dut_params: dict[str, dict[str, float]] = {}
+            for dut_name in dut_names:
+                if dut_name in _dut_cache:
+                    base_circuit, net_aliases, dut_params = _dut_cache[dut_name]
+                    all_dut_params[dut_name] = dut_params
+                    dut_circuits[dut_name] = (base_circuit, net_aliases)
+                    continue
+
+                dut_node = _find_child_by_name(parent, dut_name)
+                if dut_node is None:
+                    logger.warning(
+                        f"Multi-DUT: child '{dut_name}' not found in parent"
+                    )
+                    continue
+                try:
+                    netlist, net_aliases = generate_spice_netlist(
+                        app, solver, scope=dut_node
+                    )
+                    spice_path = output_dir / f"multidut_{dut_name}.spice"
+                    netlist.write(spice_path)
+                    circuit = Circuit.load(spice_path)
+                    dut_params = _resolve_dut_params(dut_node)
+                    all_dut_params[dut_name] = dut_params
+                    dut_circuits[dut_name] = (circuit, net_aliases)
+                    _dut_cache[dut_name] = (circuit, net_aliases, dut_params)
+                except Exception:
+                    logger.warning(
+                        f"  Multi-DUT '{dut_name}' netlist gen failed — skipping",
+                        exc_info=True,
+                    )
+
+            # Resolve sweep-specific metadata
+            spice_param_override: str | None = None
+            param_values: list[float] = []
+            step = stop = start = 0.0
+            if is_sweep:
+                param_values = sim_node.get_param_values()
+                step = sim_node.get_time_step() or 0
+                stop = sim_node.get_time_stop() or 0
+                start = sim_node.get_time_start() or 0
+                param_name = sim_node.get_param_name() or ""
+                if param_name.startswith("dut."):
+                    ato_param = param_name[4:]
+                    for dn in dut_names:
+                        dn_node = _find_child_by_name(parent, dn)
+                        if dn_node is not None:
+                            spice_param_override = _resolve_sweep_param_binding(
+                                dn_node, ato_param
+                            )
+                            if spice_param_override:
+                                logger.info(
+                                    f"  Sweep '{param_name}' → SPICE param "
+                                    f"'{spice_param_override}' override"
+                                )
+                                break
+
+            _prepared.append(dict(
+                sim_node=sim_node, sim_name=sim_name, sim_type=sim_type,
+                dut_circuits=dut_circuits, all_dut_params=all_dut_params,
+                is_sweep=is_sweep, spice_param_override=spice_param_override,
+                param_values=param_values, step=step, stop=stop, start=start,
+            ))
+
+        logger.info(
+            f"Prepared {len(_prepared)} multi-DUT sim(s), "
+            f"submitting all jobs to thread pool"
+        )
+
+        # Phase B: Submit ALL jobs from ALL multi-DUT sims to the pool
+        # Map: future -> (sim_index, dut_name, pval_or_None)
+        mdut_future_map: dict = {}
+        sim_submit_times: dict[int, float] = {}
+
+        for sim_idx, prep in enumerate(_prepared):
+            sim_submit_times[sim_idx] = time.monotonic()
+            if prep["is_sweep"]:
+                for dut_name, (circuit, _) in prep["dut_circuits"].items():
+                    for pval in prep["param_values"]:
+                        fut = executor.submit(
+                            _run_single_dut_sweep_point_task,
+                            circuit, prep["sim_node"], dut_name,
+                            prep["all_dut_params"][dut_name],
+                            prep["dut_circuits"][dut_name][1],
+                            pval, prep["step"], prep["stop"], prep["start"],
+                            prep["spice_param_override"],
+                        )
+                        mdut_future_map[fut] = (sim_idx, dut_name, pval)
+            else:
+                for dut_name, (circuit, net_aliases) in (
+                    prep["dut_circuits"].items()
+                ):
+                    fut = executor.submit(
+                        _run_single_dut_transient_task,
+                        circuit, prep["sim_node"], dut_name,
+                        prep["all_dut_params"][dut_name], net_aliases,
+                    )
+                    mdut_future_map[fut] = (sim_idx, dut_name, None)
+
+        # Phase C: Collect results as they complete
+        sim_last_complete: dict[int, float] = {}
+        sweep_results: dict[int, dict[str, dict[float, object]]] = (
+            defaultdict(lambda: defaultdict(dict))
+        )
+        tran_results: dict[int, dict[str, tuple[object, dict[str, str]]]] = (
+            defaultdict(dict)
+        )
+
+        for fut in as_completed(mdut_future_map):
+            sim_idx, dut_name, pval = mdut_future_map[fut]
+            sim_last_complete[sim_idx] = time.monotonic()
+            prep = _prepared[sim_idx]
             try:
-                if isinstance(sim_node, SimulationSweep):
-                    elapsed, multi_result = _run_multi_dut_sweep(
-                        app, solver, sim_node, output_dir, executor
-                    )
-                    sim_type = "sweep"
+                if pval is not None:
+                    _pval, result = fut.result()
+                    if result is not None:
+                        sweep_results[sim_idx][dut_name][_pval] = result
                 else:
-                    elapsed, multi_result = _run_multi_dut_transient(
-                        app, solver, sim_node, output_dir, executor
-                    )
-                    sim_type = "transient"
-
-                if sim_name:
-                    results_registry[sim_name] = (multi_result, {})
-                    logger.info(
-                        f"  Cached multi-DUT result for '{sim_name}' "
-                        f"({len(multi_result.results)} DUTs, {elapsed:.1f}s)"
-                    )
-
-                all_stats.append(
-                    SimStats(
-                        name=sim_name or "?",
-                        sim_type=f"multi_dut_{sim_type}",
-                        elapsed_s=elapsed,
-                        data_points=sum(
-                            _count_data_points(r)
-                            for r, _ in multi_result.results.values()
-                        ),
-                    )
-                )
-            except Exception as e:
+                    result = fut.result()
+                    net_aliases = prep["dut_circuits"][dut_name][1]
+                    tran_results[sim_idx][dut_name] = (result, net_aliases)
+            except Exception:
                 logger.warning(
-                    f"  Multi-DUT simulation '{sim_name or '?'}' failed: {e}",
+                    f"  Multi-DUT '{prep['sim_name']}' DUT '{dut_name}' "
+                    f"(pval={pval}) failed — skipping",
                     exc_info=True,
                 )
+
+        # Phase D: Assemble MultiDutResults and record stats
+        for sim_idx, prep in enumerate(_prepared):
+            sim_name = prep["sim_name"]
+            elapsed = (
+                sim_last_complete.get(sim_idx, time.monotonic())
+                - sim_submit_times[sim_idx]
+            )
+
+            if prep["is_sweep"]:
+                results: dict[str, tuple[object, dict[str, str]]] = {}
+                for dut_name, (_, net_aliases) in prep["dut_circuits"].items():
+                    results[dut_name] = (
+                        sweep_results[sim_idx].get(dut_name, {}),
+                        net_aliases,
+                    )
+                multi_result = MultiDutResult(
+                    results=results,
+                    dut_params=prep["all_dut_params"],
+                    sweep_param_name=(
+                        prep["sim_node"].get_param_name() or ""
+                    ),
+                    sweep_param_unit=prep["sim_node"].get_param_unit(),
+                )
+            else:
+                multi_result = MultiDutResult(
+                    results=tran_results.get(sim_idx, {}),
+                    dut_params=prep["all_dut_params"],
+                )
+
+            if sim_name:
+                results_registry[sim_name] = (multi_result, {})
+                logger.info(
+                    f"  Cached multi-DUT result for '{sim_name}' "
+                    f"({len(multi_result.results)} DUTs, {elapsed:.1f}s)"
+                )
+
+            all_stats.append(
+                SimStats(
+                    name=sim_name or "?",
+                    sim_type=f"multi_dut_{prep['sim_type']}",
+                    elapsed_s=elapsed,
+                    data_points=sum(
+                        _count_data_points(r)
+                        for r, _ in multi_result.results.values()
+                    ),
+                )
+            )
 
         # 3. For each scope: generate netlist, run simulations in parallel
         for scope, sim_nodes_in_scope in scope_groups.items():

@@ -552,6 +552,28 @@ class Circuit:
             if not l.upper().startswith(prefix)
         ]
 
+    def modify_instance_param(self, param_name: str, value: float) -> None:
+        """Modify a parameter on subcircuit instances (X elements).
+
+        Finds X instance lines with ``param_name=<old_value>`` and replaces
+        the value.  Used by sweep runners to override subcircuit parameters
+        (e.g. ``FS=400000.0`` → ``FS=800000.0``).
+        """
+        pattern = re.compile(
+            rf'\b{re.escape(param_name)}=[^\s]+',
+            re.IGNORECASE,
+        )
+        new_value_str = format_spice_value(value)
+        new_lines = []
+        for line in self._netlist._lines:
+            if line.upper().startswith("X"):
+                new_lines.append(
+                    pattern.sub(f"{param_name}={new_value_str}", line)
+                )
+            else:
+                new_lines.append(line)
+        self._netlist._lines = new_lines
+
     def save_state(self) -> list[str]:
         """Save the current netlist lines. Returns state for restore_state."""
         return list(self._netlist._lines)
@@ -620,6 +642,7 @@ class Circuit:
         Returns node voltages as v(name) and branch currents through
         inductors and voltage sources as i(name).  Only top-level elements
         are included (subcircuit-internal nodes/branches are excluded).
+        Note: ngspice does not support i() probes for current sources (I*).
         """
         nodes: set[str] = set()
         branch_elements: set[str] = set()
@@ -635,6 +658,7 @@ class Circuit:
                     if node != "0":
                         nodes.add(node)
                 # Record branch currents for inductors and voltage sources
+                # Note: current sources (I*) are NOT supported by ngspice i()
                 if first_char in "LV":
                     branch_elements.add(parts[0])
             elif first_char == "X":
@@ -881,6 +905,40 @@ def _get_nominal_value(param_node) -> float | None:
         return None
 
 
+def _resolve_param_bindings(
+    node, bindings: dict[str, str]
+) -> dict[str, str]:
+    """Resolve param_bindings by looking up NumericParameter values on node or ancestors.
+
+    For each binding (e.g. ``{"FS": "switching_frequency"}``), walks up from
+    *node* through its ancestors looking for a ``NumericParameter`` child whose
+    attribute name matches the ato param name.  Returns a dict of resolved
+    SPICE parameter overrides (e.g. ``{"FS": "400000.0"}``).
+    """
+    import faebryk.library._F as F
+
+    resolved: dict[str, str] = {}
+    for spice_param, ato_param_name in bindings.items():
+        current = node
+        while current is not None:
+            for child in current.get_children(
+                direct_only=True, types=F.Parameters.NumericParameter
+            ):
+                child_name = (
+                    child.get_full_name(include_uuid=False).rsplit(".", 1)[-1]
+                )
+                if child_name == ato_param_name:
+                    val = _get_nominal_value(child)
+                    if val is not None:
+                        resolved[spice_param] = str(val)
+                    break
+            if spice_param in resolved:
+                break
+            parent_info = current.get_parent()
+            current = parent_info[0] if parent_info else None
+    return resolved
+
+
 def generate_spice_netlist(
     app, solver, scope=None,
 ) -> tuple[SpiceNetlist, dict[str, str]]:
@@ -984,73 +1042,37 @@ def generate_spice_netlist(
     def _net(electrical) -> str:
         return electrical_to_net.get(electrical, "?")
 
-    # 4. Find ElectricPower interfaces with voltage constraints -> voltage sources
-    #    If any ElectricPower has the is_source trait, only those get V sources.
-    #    Otherwise fall back to all constrained ElectricPower (backward compat).
+    # 4. Detect ground net from ElectricPower interfaces with voltage constraints.
+    #    Users define all voltage sources explicitly via the simulation `spice` field,
+    #    so we only need to identify which net is ground and remap it to "0".
     ground_net_name: str | None = None
-    power_interfaces: list[tuple[str, float, str, str]] = []
 
-    v_counter = 1
     power_rails = root.get_children(
         direct_only=False,
         types=F.ElectricPower,
     )
 
-    # Check if any power rail has is_source
-    source_rails = [
-        p for p in power_rails if p.has_trait(F.is_source)
-    ]
-    use_source_filter = len(source_rails) > 0
-    candidate_rails = source_rails if use_source_filter else power_rails
-
-    for power in candidate_rails:
+    for power in power_rails:
         voltage_param = power.voltage.get()
         voltage = _get_nominal_value(voltage_param)
         if voltage is None or voltage == 0:
             continue
 
-        hv = power.hv.get()
         lv = power.lv.get()
-        hv_net = _net(hv)
         lv_net = _net(lv)
-
-        if hv_net == "?" or lv_net == "?":
-            continue
-
-        if ground_net_name is None:
+        if lv_net != "?":
             ground_net_name = lv_net
-
-        power_interfaces.append((f"V{v_counter}", voltage, hv_net, lv_net))
-        v_counter += 1
-
-    # If no source rails found ground from any constrained power rail
-    if ground_net_name is None and use_source_filter:
-        for power in power_rails:
-            voltage_param = power.voltage.get()
-            voltage = _get_nominal_value(voltage_param)
-            if voltage is None or voltage == 0:
-                continue
-            lv = power.lv.get()
-            lv_net = _net(lv)
-            if lv_net != "?":
-                ground_net_name = lv_net
-                break
+            break
 
     if ground_net_name is None:
         logger.warning("No ElectricPower with voltage constraint found; "
-                       "SPICE netlist will have no sources")
+                       "cannot determine ground net")
 
     # Remap ground net to "0"
     if ground_net_name is not None:
         for node_key in list(electrical_to_net.keys()):
             if electrical_to_net[node_key] == ground_net_name:
                 electrical_to_net[node_key] = "0"
-
-    # 5. Add voltage sources
-    for vs_name, voltage, hv_net, lv_net in power_interfaces:
-        actual_hv = "0" if hv_net == ground_net_name else hv_net
-        actual_lv = "0" if lv_net == ground_net_name else lv_net
-        netlist.add_voltage_source(vs_name, actual_hv, actual_lv, voltage)
 
     # 6. Find and add Resistors
     r_counter = 1
@@ -1129,6 +1151,11 @@ def generate_spice_netlist(
             subckt_name = trait.get_subcircuit_name()
             pin_map = trait.get_pin_map()
             param_overrides = trait.get_params()
+            # Resolve dynamic param_bindings (e.g. FS -> switching_frequency)
+            bindings = trait.get_param_bindings()
+            if bindings:
+                resolved = _resolve_param_bindings(node, bindings)
+                param_overrides.update(resolved)
         except Exception as e:
             logger.warning(
                 f"Skipping has_spice_model node "

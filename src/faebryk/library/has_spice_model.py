@@ -27,6 +27,7 @@ class has_spice_model(fabll.Node):
     subcircuit_name = F.Parameters.StringParameter.MakeChild()
     pin_map = F.Parameters.StringParameter.MakeChild()
     params = F.Parameters.StringParameter.MakeChild()
+    param_bindings = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(  # type: ignore[override]
@@ -35,6 +36,7 @@ class has_spice_model(fabll.Node):
         subcircuit_name: str = "",
         pin_map: str = "",
         params: str = "",
+        param_bindings: str = "",
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         if model_path:
@@ -61,6 +63,12 @@ class has_spice_model(fabll.Node):
                     [out, cls.params], params
                 )
             )
+        if param_bindings:
+            out.add_dependant(
+                F.Literals.Strings.MakeChild_SetSuperset(
+                    [out, cls.param_bindings], param_bindings
+                )
+            )
         return out
 
     def setup(
@@ -69,12 +77,15 @@ class has_spice_model(fabll.Node):
         subcircuit_name: str,
         pin_map: str,
         params: str = "",
+        param_bindings: str = "",
     ) -> Self:
         self.model_path.get().set_singleton(value=model_path)
         self.subcircuit_name.get().set_singleton(value=subcircuit_name)
         self.pin_map.get().set_singleton(value=pin_map)
         if params:
             self.params.get().set_singleton(value=params)
+        if param_bindings:
+            self.param_bindings.get().set_singleton(value=param_bindings)
         return self
 
     def get_model_path(self) -> str:
@@ -105,6 +116,23 @@ class has_spice_model(fabll.Node):
             if "=" in pair:
                 key, val = pair.split("=", 1)
                 result[key.strip()] = val.strip()
+        return result
+
+    def get_param_bindings(self) -> dict[str, str]:
+        """Parse param_bindings string into dict: spice_param -> ato_param_name.
+
+        Format: ``"FS:switching_frequency,GAIN:gain"``
+        Returns e.g. ``{"FS": "switching_frequency", "GAIN": "gain"}``.
+        """
+        raw = self.param_bindings.get().try_extract_singleton()
+        if not raw:
+            return {}
+        result: dict[str, str] = {}
+        for pair in raw.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                spice_param, ato_param = pair.split(":", 1)
+                result[spice_param.strip()] = ato_param.strip()
         return result
 
     def get_source_dir(self) -> Path:

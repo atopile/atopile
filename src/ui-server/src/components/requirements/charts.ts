@@ -32,46 +32,38 @@ function themeColors() {
     surface: get('--bg-tertiary', '#313244'),
     success: get('--success', '#a6e3a1'),
     error: get('--error', '#f38ba8'),
-    info: get('--info', '#89b4fa'),
+    info: get('--info', '#31688e'),
     accent: get('--accent', '#f95015'),
   };
 }
 
-const MAX_CHART_HEIGHT = 500;
-const MIN_CHART_HEIGHT = 300;
+/** Fixed 16:9 plot dimensions — matches the Python-side 960x540. */
+const PLOT_WIDTH = 960;
+const PLOT_HEIGHT = 540;
 
-/** Compute width/height for a 16:9 plot that fits inside the container.
- *  Reads dimensions from the parent wrapper (`.rdp-chart`), not the chart div itself.
- *  Never shrinks below MIN_CHART_HEIGHT — the container clips the overflow instead. */
-function fitDimensions(chartEl: HTMLElement): { width: number; height: number } {
-  const container = chartEl.parentElement ?? chartEl;
-  const style = getComputedStyle(container);
-  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-  const w = container.clientWidth - padX;
-  const targetH = Math.max(Math.min(w * 9 / 16, MAX_CHART_HEIGHT), MIN_CHART_HEIGHT);
-  const targetW = targetH * 16 / 9;
-  return { width: Math.min(w, targetW), height: targetH };
+function fixedDimensions(): { width: number; height: number } {
+  return { width: PLOT_WIDTH, height: PLOT_HEIGHT };
 }
 
 function baseLayout(colors: ReturnType<typeof themeColors>) {
   return {
     paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { family: '-apple-system, sans-serif', color: colors.text, size: 11 },
-    margin: { t: 40, r: 40, b: 100, l: 65 },
+    font: { family: '-apple-system, sans-serif', color: colors.text, size: 9 },
+    margin: { t: 18, r: 70, b: 24, l: 36 },
     xaxis: {
       gridcolor: `${colors.surface}66`,
       zerolinecolor: `${colors.surface}99`,
-      title: { text: '', font: { size: 11, color: colors.muted } },
-      tickfont: { size: 10 },
+      title: { text: '', font: { size: 9, color: colors.muted } },
+      tickfont: { size: 8 },
     },
     yaxis: {
       gridcolor: `${colors.surface}66`,
       zerolinecolor: `${colors.surface}99`,
-      title: { text: '', font: { size: 11, color: colors.muted } },
-      tickfont: { size: 10 },
+      title: { text: '', font: { size: 9, color: colors.muted } },
+      tickfont: { size: 8 },
     },
-    legend: { x: 0.5, xanchor: 'center' as const, y: -0.35, orientation: 'h' as const, font: { size: 10, color: colors.muted } },
+    legend: { x: 1.02, xanchor: 'left' as const, y: 1, yanchor: 'top' as const, font: { size: 8, color: colors.muted } },
     modebar: { bgcolor: 'rgba(0,0,0,0)', color: colors.muted, activecolor: colors.accent },
   };
 }
@@ -100,7 +92,8 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     line: { color: colors.info, width: 2 },
   });
 
-  const ctxColors = ['#fab387', '#a6e3a1', '#cba6f7', '#eba0ac'];
+  // Viridis-sampled context colors
+  const ctxColors = ['#440154', '#31688e', '#35ba6d', '#fde725'];
   (req.contextNets || []).forEach((cn, i) => {
     const ck = cn.startsWith('v(') || cn.startsWith('i(') ? cn : `v(${cn})`;
     if (ts.signals[ck]) {
@@ -116,22 +109,20 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     }
   });
 
-  const dim = size ?? fitDimensions(el);
+  const dim = size ?? fixedDimensions();
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
     width: dim.width,
     height: dim.height,
-    title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
-    xaxis: { ...baseLayout(colors).xaxis, title: { text: `Time (${tUnit})`, font: { size: 11, color: colors.muted } } },
+    title: { text: `<b>${req.name}</b>`, font: { size: 10, color: colors.text } },
+    xaxis: { ...baseLayout(colors).xaxis, title: { text: `Time (${tUnit})`, font: { size: 9, color: colors.muted } } },
     yaxis: { ...baseLayout(colors).yaxis, title: { text: (() => {
-      // For measurements where the result unit differs from the signal unit,
-      // show the signal unit (V/A) on the y-axis, not the measurement unit
       if (req.unit === '%' ) return '%';
       if (['frequency', 'settling_time'].includes(req.measurement)) {
         return req.net.startsWith('i(') ? 'A' : 'V';
       }
       return req.unit;
-    })(), font: { size: 11, color: colors.muted } } },
+    })(), font: { size: 9, color: colors.muted } } },
     shapes: [] as Record<string, unknown>[],
     annotations: [] as Record<string, unknown>[],
   };
@@ -139,11 +130,11 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
   if (req.contextNets && req.contextNets.length > 0) {
     layout.yaxis2 = {
       ...baseLayout(colors).yaxis,
-      title: { text: 'Context', font: { size: 11, color: colors.muted } },
+      title: { text: 'Context', font: { size: 9, color: colors.muted } },
       overlaying: 'y',
       side: 'right',
     };
-    (layout.margin as Record<string, number>).r = 60;
+    (layout.margin as Record<string, number>).r = 100;
   }
 
   const shapes = layout.shapes as Record<string, unknown>[];
@@ -165,9 +156,9 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       line: { color: req.passed ? colors.success : colors.error, width: 1.5, dash: 'dash' },
     });
     annotations.push(
-      { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
-      { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
-      { x: 0.98, y: req.actual ?? 0, xref: 'paper', yref: 'y', text: `${formatEng(req.actual ?? NaN, req.unit)}`, showarrow: false, font: { size: 10, color: req.passed ? colors.success : colors.error }, xanchor: 'right', yanchor: 'bottom' },
+      { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+      { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+      { x: 0.98, y: req.actual ?? 0, xref: 'paper', yref: 'y', text: `${formatEng(req.actual ?? NaN, req.unit)}`, showarrow: false, font: { size: 8, color: req.passed ? colors.success : colors.error }, xanchor: 'right', yanchor: 'bottom' },
     );
     const span = req.maxVal - req.minVal;
     const pad = span * 0.5;
@@ -196,7 +187,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     annotations.push({
       x: actualSettling * scale, y: 0.9, xref: 'x', yref: 'paper',
       text: `Settled @ ${formatEng(actualSettling, 's')}`,
-      showarrow: false, font: { size: 10, color: req.passed ? colors.success : colors.error },
+      showarrow: false, font: { size: 8, color: req.passed ? colors.success : colors.error },
       textangle: -90, xanchor: 'left', xshift: 6,
     });
     const pad = band * 2;
@@ -213,7 +204,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
     annotations.push({
       x: 0.95, y: (peak + trough) / 2, xref: 'paper', yref: 'y',
       text: `P-P: ${formatEng(req.actual ?? NaN, req.unit)}`,
-      showarrow: false, font: { size: 11, color: colors.text },
+      showarrow: false, font: { size: 8, color: colors.text },
       bgcolor: 'rgba(0,0,0,0.6)', borderpad: 3,
     });
     const span = peak - trough;
@@ -238,9 +229,9 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       line: { color: colors.muted, width: 1.5, dash: 'dash' },
     });
     annotations.push(
-      { x: 0.02, y: final, xref: 'paper', yref: 'y', text: `Final ${formatEng(final, 'V')}`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
-      { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 9, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
-      { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${(req.actual ?? 0).toFixed(2)}%`, showarrow: true, ay: -25, arrowcolor: colors.error, arrowwidth: 1.5, font: { size: 11, color: colors.error } },
+      { x: 0.02, y: final, xref: 'paper', yref: 'y', text: `Final ${formatEng(final, 'V')}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+      { x: 0.02, y: maxOsV, xref: 'paper', yref: 'y', text: `Max OS ${req.maxVal}%`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+      { x: peakTime, y: peak, xref: 'x', yref: 'y', text: `OS: ${(req.actual ?? 0).toFixed(2)}%`, showarrow: true, ay: -20, arrowcolor: colors.error, arrowwidth: 1.5, font: { size: 8, color: colors.error } },
     );
     const visibleTop = Math.max(peak, maxOsV);
     const span = visibleTop - final;
@@ -275,15 +266,15 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, siz
     name: 'Actual',
   }];
 
-  const dim = size ?? fitDimensions(el);
+  const dim = size ?? fixedDimensions();
   const layout = {
     ...baseLayout(colors),
     width: dim.width,
     height: dim.height,
-    title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
+    title: { text: `<b>${req.name}</b>`, font: { size: 10, color: colors.text } },
     xaxis: {
       ...baseLayout(colors).xaxis,
-      title: { text: req.unit, font: { size: 11, color: colors.muted } },
+      title: { text: req.unit, font: { size: 9, color: colors.muted } },
       range: [req.minVal - padding, req.maxVal + padding],
     },
     yaxis: { visible: false, fixedrange: true },
@@ -294,9 +285,9 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, siz
       { type: 'line', xref: 'x', yref: 'paper', x0: req.typical, x1: req.typical, y0: 0, y1: 1, line: { color: colors.muted, width: 1, dash: 'dash' } },
     ],
     annotations: [
-      { x: req.minVal, y: 1.05, xref: 'x', yref: 'paper', text: 'LSL', showarrow: false, font: { size: 9, color: colors.muted } },
-      { x: req.maxVal, y: 1.05, xref: 'x', yref: 'paper', text: 'USL', showarrow: false, font: { size: 9, color: colors.muted } },
-      { x: req.actual ?? 0, y: -0.15, xref: 'x', yref: 'paper', text: formatEng(req.actual ?? NaN, req.unit), showarrow: false, font: { size: 11, color: req.passed ? colors.success : colors.error } },
+      { x: req.minVal, y: 0.97, xref: 'x', yref: 'paper', text: 'LSL', showarrow: false, font: { size: 7, color: colors.muted }, yanchor: 'top' },
+      { x: req.maxVal, y: 0.97, xref: 'x', yref: 'paper', text: 'USL', showarrow: false, font: { size: 7, color: colors.muted }, yanchor: 'top' },
+      { x: req.actual ?? 0, y: 0.03, xref: 'x', yref: 'paper', text: formatEng(req.actual ?? NaN, req.unit), showarrow: false, font: { size: 8, color: req.passed ? colors.success : colors.error }, yanchor: 'bottom' },
     ],
   };
 
@@ -333,7 +324,7 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData, s
     type: 'scatter',
     mode: 'lines',
     name: 'Phase (deg)',
-    line: { color: '#fab387', width: 2 },
+    line: { color: '#5ec962', width: 2 },
     xaxis: 'x',
     yaxis: 'y2',
   });
@@ -367,31 +358,31 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData, s
     });
   }
 
-  const dim = size ?? fitDimensions(el);
+  const dim = size ?? fixedDimensions();
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
     width: dim.width,
     height: dim.height,
-    title: { text: `<b>${req.name}</b> — ${req.measurement.replace(/_/g, ' ')}`, font: { size: 13, color: colors.text } },
+    title: { text: `<b>${req.name}</b>`, font: { size: 10, color: colors.text } },
     xaxis: {
       ...baseLayout(colors).xaxis,
       type: 'log',
-      title: { text: 'Frequency (Hz)', font: { size: 11, color: colors.muted } },
+      title: { text: 'Frequency (Hz)', font: { size: 9, color: colors.muted } },
     },
     yaxis: {
       ...baseLayout(colors).yaxis,
-      title: { text: 'Gain (dB)', font: { size: 11, color: colors.info } },
+      title: { text: 'Gain (dB)', font: { size: 9, color: colors.info } },
     },
     yaxis2: {
       ...baseLayout(colors).yaxis,
-      title: { text: 'Phase (deg)', font: { size: 11, color: '#fab387' } },
+      title: { text: 'Phase (deg)', font: { size: 9, color: '#5ec962' } },
       overlaying: 'y',
       side: 'right',
     },
     shapes: [] as Record<string, unknown>[],
     annotations: [] as Record<string, unknown>[],
   };
-  (layout.margin as Record<string, number>).r = 60;
+  (layout.margin as Record<string, number>).r = 100;
 
   const shapes = layout.shapes as Record<string, unknown>[];
   const annotations = layout.annotations as Record<string, unknown>[];
@@ -409,8 +400,8 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData, s
       text: `-3 dB | ${bwFreq.toPrecision(3)} Hz`,
       showarrow: false,
       xanchor: 'left' as const, yanchor: 'top' as const,
-      xshift: 8, yshift: -4,
-      font: { size: 10, color: '#000' },
+      xshift: 6, yshift: -3,
+      font: { size: 7, color: '#000' },
     });
   }
 
@@ -429,14 +420,14 @@ export async function renderSweepPlot(el: HTMLDivElement, req: RequirementData, 
   const yVals = pts.map(p => p.actual);
   const ptColors = pts.map(p => p.passed ? colors.success : colors.error);
 
-  const dim = size ?? fitDimensions(el);
+  const dim = size ?? fixedDimensions();
   const layout: Record<string, unknown> = {
     ...baseLayout(colors),
     width: dim.width,
     height: dim.height,
-    title: { text: `<b>${req.name}</b> — sweep`, font: { size: 13, color: colors.text } },
-    xaxis: { ...baseLayout(colors).xaxis, title: { text: req.sweepParamName || 'Parameter', font: { size: 11, color: colors.muted } } },
-    yaxis: { ...baseLayout(colors).yaxis, title: { text: req.unit, font: { size: 11, color: colors.muted } } },
+    title: { text: `<b>${req.name}</b>`, font: { size: 10, color: colors.text } },
+    xaxis: { ...baseLayout(colors).xaxis, title: { text: req.sweepParamName || 'Parameter', font: { size: 9, color: colors.muted } } },
+    yaxis: { ...baseLayout(colors).yaxis, title: { text: req.unit, font: { size: 9, color: colors.muted } } },
     shapes: [
       { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
       { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
@@ -475,27 +466,40 @@ export async function renderSpecAtSize(
   const font = (layout.font ?? {}) as Record<string, unknown>;
   font.color = colors.text;
   font.family = '-apple-system, sans-serif';
+  font.size = 9;
   layout.font = font;
 
   layout.modebar = { bgcolor: 'rgba(0,0,0,0)', color: colors.muted, activecolor: colors.accent };
 
-  // Override legend: move to the right side
+  // Legend to the right side of the plot
   const legend = (layout.legend ?? {}) as Record<string, unknown>;
-  const legendFont = (legend.font ?? {}) as Record<string, unknown>;
-  legendFont.color = colors.muted;
-  legend.font = legendFont;
   legend.x = 1.02;
   legend.xanchor = 'left';
   legend.y = 1;
   legend.yanchor = 'top';
+  delete legend.bgcolor;
+  legend.font = { size: 8, color: colors.muted };
   layout.legend = legend;
 
-  // Ensure right margin has room for the legend
+  // Compact margins with room for side legend
+  const hasY2 = Object.keys(layout).some(k => k === 'yaxis2');
   const margin = (layout.margin ?? {}) as Record<string, unknown>;
-  margin.r = Math.max(Number(margin.r ?? 0), 140);
+  margin.t = 18;
+  margin.b = 24;
+  margin.l = 36;
+  margin.r = hasY2 ? 100 : 70;
   layout.margin = margin;
 
-  // Override axis colors for dark theme
+  // Small bold title
+  const title = layout.title as Record<string, unknown> | string | undefined;
+  if (title && typeof title === 'object') {
+    const titleFont = (title.font ?? {}) as Record<string, unknown>;
+    titleFont.size = 10;
+    titleFont.color = colors.text;
+    title.font = titleFont;
+  }
+
+  // Override axis colors and fonts for dark theme
   for (const key of Object.keys(layout)) {
     if (key.startsWith('xaxis') || key.startsWith('yaxis')) {
       const axis = layout[key] as Record<string, unknown> | undefined;
@@ -506,21 +510,21 @@ export async function renderSpecAtSize(
         if (axTitle && typeof axTitle === 'object') {
           const axTitleFont = (axTitle.font ?? {}) as Record<string, unknown>;
           axTitleFont.color = colors.muted;
+          axTitleFont.size = 9;
           axTitle.font = axTitleFont;
         }
-        const tickFont = (axis.tickfont ?? {}) as Record<string, unknown>;
-        tickFont.color = colors.muted;
-        axis.tickfont = tickFont;
+        axis.tickfont = { size: 8, color: colors.muted };
       }
     }
   }
 
-  // Override annotation colors
+  // Override annotation colors and sizes
   const annotations = layout.annotations as Record<string, unknown>[] | undefined;
   if (Array.isArray(annotations)) {
     for (const ann of annotations) {
       const annFont = (ann.font ?? {}) as Record<string, unknown>;
       if (!annFont.color) annFont.color = colors.text;
+      annFont.size = Math.min(Number(annFont.size ?? 8), 8);
       ann.font = annFont;
     }
   }
@@ -532,6 +536,28 @@ export async function renderSpecAtSize(
   });
 }
 
+/**
+ * Re-render a requirement plot with updated limits.
+ * Creates a modified copy of req with new min/max and re-evaluates pass/fail.
+ * Used for instant feedback when editing bounds — no simulation rerun needed.
+ */
+export async function rerenderWithLimits(
+  container: HTMLDivElement,
+  req: RequirementData,
+  newMin: number,
+  newMax: number,
+  dim: { width: number; height: number },
+): Promise<RequirementData> {
+  const updated = {
+    ...req,
+    minVal: newMin,
+    maxVal: newMax,
+    passed: req.actual !== null && isFinite(req.actual) && newMin <= req.actual && req.actual <= newMax,
+  };
+  await renderRequirementPlot(container, updated, dim);
+  return updated;
+}
+
 export async function purgePlot(el: HTMLDivElement) {
   const Plotly = await getPlotly();
   Plotly.purge(el);
@@ -539,6 +565,50 @@ export async function purgePlot(el: HTMLDivElement) {
 
 export async function resizePlot(el: HTMLDivElement) {
   const Plotly = await getPlotly();
-  const dim = fitDimensions(el);
+  const dim = fixedDimensions();
   Plotly.relayout(el, { width: dim.width, height: dim.height });
+}
+
+/**
+ * Unified plot renderer for a single requirement.
+ * Clears `container`, creates child wrappers, and renders using plotSpecs
+ * (preferred) or falls back to measurement-specific renderers.
+ * Used by both RequirementsAllPage and RequirementsDetailPage.
+ */
+export async function renderRequirementPlot(
+  container: HTMLDivElement,
+  req: RequirementData,
+  dim: { width: number; height: number },
+): Promise<void> {
+  // Clear previous content
+  const oldChildren = Array.from(container.children) as HTMLDivElement[];
+  for (const child of oldChildren) {
+    try { purgePlot(child); } catch { /* ignore */ }
+  }
+  container.innerHTML = '';
+
+  if (req.plotSpecs && req.plotSpecs.length > 0) {
+    for (const spec of req.plotSpecs) {
+      const wrapper = document.createElement('div');
+      wrapper.style.width = `${dim.width}px`;
+      wrapper.style.height = `${dim.height}px`;
+      container.appendChild(wrapper);
+      await renderSpecAtSize(wrapper as HTMLDivElement, spec, dim.width, dim.height);
+    }
+  } else {
+    const chartEl = document.createElement('div');
+    chartEl.style.width = `${dim.width}px`;
+    chartEl.style.height = `${dim.height}px`;
+    container.appendChild(chartEl);
+
+    if (req.sweepPoints && req.sweepPoints.length > 0) {
+      await renderSweepPlot(chartEl as HTMLDivElement, req, dim);
+    } else if (req.frequencySeries) {
+      await renderBodePlot(chartEl as HTMLDivElement, req, dim);
+    } else if (req.timeSeries) {
+      await renderTransientPlot(chartEl as HTMLDivElement, req, dim);
+    } else {
+      await renderDCPlot(chartEl as HTMLDivElement, req, dim);
+    }
+  }
 }

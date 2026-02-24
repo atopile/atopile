@@ -17,13 +17,44 @@ export interface RequirementData {
   settlingTolerance?: number;
   tranStart?: number;
   tranStop?: number;
+  tranStep?: number;
   timeSeries: TimeSeriesData | null;
   frequencySeries: FrequencySeriesData | null;
   sweepPoints?: SweepPointData[];
   sweepParamName?: string;
   sweepParamUnit?: string;
-  /** Pre-rendered Plotly figure specs from Python — each has data + layout */
-  plotSpecs?: Array<{ data: Record<string, unknown>[]; layout: Record<string, unknown> }>;
+  /** AC analysis configuration */
+  acStartFreq?: number;
+  acStopFreq?: number;
+  acPointsPerDec?: number;
+  acSourceName?: string;
+  acMeasureFreq?: number;
+  acRefNet?: string;
+  /** Pre-rendered Plotly figure specs from Python — each has data + layout + meta */
+  plotSpecs?: PlotSpec[];
+  /** Path to the .ato source file (for UI editing) */
+  sourceFile?: string;
+  /** Variable name of this requirement in the .ato source (for UI editing) */
+  varName?: string;
+}
+
+/** A single Plotly plot spec with optional editing metadata */
+export interface PlotSpec {
+  data: Record<string, unknown>[];
+  layout: Record<string, unknown>;
+  meta?: PlotMeta;
+}
+
+/** Metadata for an editable plot — matches LineChart fields in .ato */
+export interface PlotMeta {
+  varName?: string;
+  title?: string;
+  x?: string;
+  y?: string;
+  y_secondary?: string;
+  color?: string;
+  simulation?: string;
+  plot_limits?: string;
 }
 
 /** A single sweep data point */
@@ -46,10 +77,19 @@ export interface FrequencySeriesData {
   phase_deg: number[];
 }
 
+/** Per-simulation timing data */
+export interface SimStatData {
+  name: string;
+  simType: string;
+  elapsedS: number;
+  dataPoints: number;
+}
+
 /** Top-level container returned from backend */
 export interface RequirementsData {
   requirements: RequirementData[];
   buildTime: string;
+  simStats?: SimStatData[];
 }
 
 export type FilterType = 'all' | 'pass' | 'fail' | 'dc' | 'transient' | 'ac';

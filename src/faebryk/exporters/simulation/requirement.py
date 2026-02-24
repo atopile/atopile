@@ -31,6 +31,7 @@ class RequirementResult:
     resolved_net: str = ""  # canonical SPICE net (e.g. "package_8")
     resolved_diff_ref: str | None = None
     resolved_ctx_nets: list[str] | None = None
+    plot_specs: list[dict] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,8 @@ def _measure_tran(
     settling_tolerance: float | None = None,
     sim_result: TransientResult | None = None,
     context_nets: list[str] | None = None,
+    min_val: float | None = None,
+    max_val: float | None = None,
 ) -> float:
     """Compute measurement from transient data.
 
@@ -101,8 +104,31 @@ def _measure_tran(
                 return time_data[i] if i < len(time_data) else float("inf")
         return 0.0
 
+    if measurement == "max":
+        return max(signal_data)
+
+    if measurement == "min":
+        return min(signal_data)
+
     if measurement == "peak_to_peak":
         return max(signal_data) - min(signal_data)
+
+    if measurement == "duty_cycle":
+        # Fraction of time the signal is above the midpoint of its range.
+        # Works for square waves (SW voltage) and triangular waves (inductor current).
+        if len(signal_data) < 2 or len(time_data) < 2:
+            return float("nan")
+        sig_min = min(signal_data)
+        sig_max = max(signal_data)
+        threshold = (sig_min + sig_max) / 2.0
+        time_above = 0.0
+        for i in range(len(signal_data) - 1):
+            if signal_data[i] >= threshold:
+                time_above += time_data[i + 1] - time_data[i]
+        total_time = time_data[-1] - time_data[0]
+        if total_time <= 0:
+            return float("nan")
+        return time_above / total_time
 
     if measurement == "overshoot":
         final = signal_data[-1]
@@ -211,6 +237,24 @@ def _measure_tran(
 
         eff = (pout / pin) * 100.0
         return eff
+
+    if measurement == "envelope":
+        # Check that ALL samples stay within [min_val, max_val].
+        # Return the worst-case sample (furthest from being in-bounds).
+        sig_min = min(signal_data)
+        sig_max = max(signal_data)
+        if min_val is not None and max_val is not None:
+            # Return the extreme closest to (or past) a boundary
+            dist_low = sig_min - min_val    # negative = violation
+            dist_high = max_val - sig_max   # negative = violation
+            if dist_low < dist_high:
+                return sig_min
+            return sig_max
+        # Fallback without bounds: return extreme furthest from average
+        avg = sum(signal_data) / len(signal_data)
+        if abs(sig_max - avg) >= abs(sig_min - avg):
+            return sig_max
+        return sig_min
 
     # Default: final value
     return signal_data[-1]
@@ -726,7 +770,32 @@ def _format_eng(value: float, unit: str) -> str:
     return f"{value:.4g} {unit}"
 
 
-_CTX_COLORS = ["orange", "green", "purple", "brown"]
+def _viridis_hex(n: int) -> list[str]:
+    """Return *n* evenly-spaced hex colors from the Viridis colorscale."""
+    _LUT = [
+        (68, 1, 84), (72, 26, 108), (71, 47, 126), (65, 68, 135),
+        (57, 86, 140), (49, 104, 142), (42, 120, 142), (35, 137, 142),
+        (31, 154, 138), (34, 170, 127), (53, 186, 109), (86, 199, 83),
+        (122, 209, 55), (165, 218, 32), (210, 226, 27), (253, 231, 37),
+    ]
+    if n <= 0:
+        return []
+    if n == 1:
+        return [f"#{_LUT[8][0]:02x}{_LUT[8][1]:02x}{_LUT[8][2]:02x}"]
+    result: list[str] = []
+    for i in range(n):
+        t = i / (n - 1) * (len(_LUT) - 1)
+        lo = int(t)
+        hi = min(lo + 1, len(_LUT) - 1)
+        frac = t - lo
+        r = int(_LUT[lo][0] + frac * (_LUT[hi][0] - _LUT[lo][0]))
+        g = int(_LUT[lo][1] + frac * (_LUT[hi][1] - _LUT[lo][1]))
+        b = int(_LUT[lo][2] + frac * (_LUT[hi][2] - _LUT[lo][2]))
+        result.append(f"#{r:02x}{g:02x}{b:02x}")
+    return result
+
+
+_CTX_COLORS = _viridis_hex(4)
 
 
 def _setup_common_plot(
@@ -798,7 +867,7 @@ def _setup_common_plot(
             y=nut_signal,
             mode="lines",
             name=nut_label,
-            line=dict(color="royalblue", width=3),
+            line=dict(color="#31688e", width=3),
         ),
         secondary_y=False if has_secondary else None,
     )
@@ -903,27 +972,59 @@ def _add_time_limit_labels(
     )
 
 
+def _downsample_trace(trace_json: dict, max_points: int = 2000) -> dict:
+    """Downsample a Plotly trace dict to at most max_points for JSON size."""
+    x = trace_json.get("x")
+    y = trace_json.get("y")
+    if not isinstance(x, (list, tuple)) or len(x) <= max_points:
+        return trace_json
+    step = max(1, len(x) // max_points)
+    trace_json = dict(trace_json)
+    trace_json["x"] = x[::step]
+    trace_json["y"] = y[::step] if isinstance(y, (list, tuple)) else y
+    return trace_json
+
+
+def _extract_plot_specs(fig: "go.Figure") -> list[dict] | None:
+    """Extract Plotly figure specs (data + layout) for JSON embedding."""
+    try:
+        return [{
+            "data": [_downsample_trace(t.to_plotly_json()) for t in fig.data],
+            "layout": fig.layout.to_plotly_json(),
+        }]
+    except Exception:
+        return None
+
+
 def _finalize_plot(
     fig: "go.Figure",
     title: str,
     subtitle: str,
     time_scaled: list[float],
     path: Path,
-) -> Path:
-    """Apply layout, save as HTML."""
+    passed: bool | None = None,
+) -> list[dict] | None:
+    """Apply layout, save as HTML, and return Plotly specs for JSON embedding."""
     t_margin = 0.0
     if time_scaled:
         t_span = time_scaled[-1] - time_scaled[0]
         t_margin = 0.05 * t_span
 
+    # Build title with PASS/FAIL badge appended
+    badge = ""
+    if passed is not None:
+        badge_text = "PASS" if passed else "FAIL"
+        badge_color = "#2ecc71" if passed else "#e74c3c"
+        badge = f"  <span style='color:{badge_color};font-size:14px'>[{badge_text}]</span>"
+
     fig.update_layout(
         title=dict(
-            text=f"<b>{title}</b><br><span style='font-size:12px;color:gray'>"
+            text=f"<b>{title}</b>{badge}<br><span style='font-size:12px;color:gray'>"
                  f"{subtitle}</span>",
             x=0.5,
         ),
-        width=900,
-        height=500,
+        width=960,
+        height=540,
         template="plotly_white",
         showlegend=True,
         legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top"),
@@ -938,7 +1039,7 @@ def _finalize_plot(
         )
 
     fig.write_html(str(path))
-    return path
+    return _extract_plot_specs(fig)
 
 
 def _compute_settling_milestones(
@@ -1023,7 +1124,7 @@ def _plot_final_value(
     )
 
     subtitle = f"Measurement: final_value | Actual: {_format_eng(actual, nut_unit)}"
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 def _plot_average_value(
@@ -1052,12 +1153,12 @@ def _plot_average_value(
     _add_limit_labels(fig, min_val, max_val, nut_unit)
 
     # Average line
-    fig.add_hline(y=avg, line=dict(color="royalblue", dash="dash", width=1.5),
+    fig.add_hline(y=avg, line=dict(color="#31688e", dash="dash", width=1.5),
                   opacity=0.7)
     fig.add_annotation(
         x=time_scaled[len(time_scaled) // 2], y=avg,
         text=f"<b>Avg = {_format_eng(avg, nut_unit)}</b>",
-        showarrow=False, font=dict(color="royalblue", size=11),
+        showarrow=False, font=dict(color="#31688e", size=11),
         yshift=12,
     )
 
@@ -1083,7 +1184,7 @@ def _plot_average_value(
     )
 
     subtitle = f"Measurement: average | Actual: {_format_eng(avg, nut_unit)}"
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 def _plot_settling_time(
@@ -1150,7 +1251,7 @@ def _plot_settling_time(
     milestones = _compute_settling_milestones(
         nut_signal, [t / scale for t in time_scaled], final
     )
-    milestone_colors = ["#f39c12", "#e67e22", "#8e44ad"]
+    milestone_colors = _viridis_hex(3)
     milestone_symbols = ["diamond", "diamond", "diamond"]
     for idx, (m_time, m_pct, m_label) in enumerate(milestones):
         m_time_scaled = m_time * scale
@@ -1176,7 +1277,7 @@ def _plot_settling_time(
         )
 
     subtitle = f"Measurement: settling_time | Actual: {_format_eng(actual, 's')}"
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 def _plot_peak_to_peak(
@@ -1276,7 +1377,7 @@ def _plot_peak_to_peak(
     subtitle = (
         f"Measurement: peak_to_peak | Actual: {_format_eng(actual, nut_unit)}"
     )
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 def _plot_overshoot(
@@ -1372,7 +1473,7 @@ def _plot_overshoot(
     )
 
     subtitle = f"Measurement: overshoot | Actual: {actual:.2f}%"
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 def _plot_rms(
@@ -1404,12 +1505,12 @@ def _plot_rms(
     _add_limit_labels(fig, min_val, max_val, nut_unit)
 
     # RMS line
-    fig.add_hline(y=rms, line=dict(color="royalblue", dash="dash", width=1.5),
+    fig.add_hline(y=rms, line=dict(color="#31688e", dash="dash", width=1.5),
                   opacity=0.7)
     fig.add_annotation(
         x=time_scaled[len(time_scaled) // 2], y=rms,
         text=f"<b>RMS = {_format_eng(rms, nut_unit)}</b>",
-        showarrow=False, font=dict(color="royalblue", size=11),
+        showarrow=False, font=dict(color="#31688e", size=11),
         yshift=12,
     )
 
@@ -1438,7 +1539,7 @@ def _plot_rms(
     )
 
     subtitle = f"Measurement: rms | Actual: {_format_eng(rms, nut_unit)}"
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 def _plot_frequency(
@@ -1552,7 +1653,7 @@ def _plot_frequency(
     )
 
     subtitle = f"Measurement: frequency | Actual: {_format_eng(actual, 'Hz')}"
-    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path)
+    return _finalize_plot(fig, req.get_name(), subtitle, time_scaled, path, result.passed)
 
 
 # ---------------------------------------------------------------------------
@@ -1565,22 +1666,29 @@ def _finalize_ac_plot(
     title: str,
     subtitle: str,
     path: Path,
-) -> Path:
-    """Apply layout and save an AC plot as HTML."""
+    passed: bool | None = None,
+) -> list[dict] | None:
+    """Apply layout, save as HTML, and return Plotly specs for JSON embedding."""
+    badge = ""
+    if passed is not None:
+        badge_text = "PASS" if passed else "FAIL"
+        badge_color = "#2ecc71" if passed else "#e74c3c"
+        badge = f"  <span style='color:{badge_color};font-size:14px'>[{badge_text}]</span>"
+
     fig.update_layout(
         title=dict(
-            text=f"<b>{title}</b><br><span style='font-size:12px;color:gray'>"
+            text=f"<b>{title}</b>{badge}<br><span style='font-size:12px;color:gray'>"
                  f"{subtitle}</span>",
             x=0.5,
         ),
-        width=900,
-        height=600,
+        width=960,
+        height=540,
         template="plotly_white",
         showlegend=True,
         legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top"),
     )
     fig.write_html(str(path))
-    return path
+    return _extract_plot_specs(fig)
 
 
 def _plot_ac_gain_db(
@@ -1623,7 +1731,7 @@ def _plot_ac_gain_db(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=gain, mode="lines",
-            name="Gain", line=dict(color="royalblue", width=2),
+            name="Gain", line=dict(color="#31688e", width=2),
         ),
         row=1, col=1,
     )
@@ -1664,7 +1772,7 @@ def _plot_ac_gain_db(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=phase, mode="lines",
-            name="Phase", line=dict(color="orange", width=2),
+            name="Phase", line=dict(color="#5ec962", width=2),
         ),
         row=2, col=1,
     )
@@ -1675,7 +1783,7 @@ def _plot_ac_gain_db(
     fig.update_yaxes(title_text="Phase (deg)", row=2, col=1)
 
     subtitle = f"Measurement: gain_db | Actual: {result.actual:.2f} dB"
-    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path, result.passed)
 
 
 def _plot_ac_phase_deg(
@@ -1718,7 +1826,7 @@ def _plot_ac_phase_deg(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=gain, mode="lines",
-            name="Gain", line=dict(color="royalblue", width=2),
+            name="Gain", line=dict(color="#31688e", width=2),
         ),
         row=1, col=1,
     )
@@ -1727,7 +1835,7 @@ def _plot_ac_phase_deg(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=phase, mode="lines",
-            name="Phase", line=dict(color="orange", width=2),
+            name="Phase", line=dict(color="#5ec962", width=2),
         ),
         row=2, col=1,
     )
@@ -1770,7 +1878,7 @@ def _plot_ac_phase_deg(
     fig.update_yaxes(title_text="Phase (deg)", row=2, col=1)
 
     subtitle = f"Measurement: phase_deg | Actual: {result.actual:.1f} deg"
-    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path, result.passed)
 
 
 def _plot_ac_bandwidth_3db(
@@ -1820,7 +1928,7 @@ def _plot_ac_bandwidth_3db(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=gain, mode="lines",
-            name="Gain", line=dict(color="royalblue", width=2.5),
+            name="Gain", line=dict(color="#31688e", width=2.5),
         )
     )
 
@@ -1909,7 +2017,7 @@ def _plot_ac_bandwidth_3db(
     fig.update_yaxes(title_text="Gain (dB)")
 
     subtitle = f"Measurement: bandwidth_3db | -3dB BW = {actual:.3g} Hz"
-    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path, result.passed)
 
 
 def _plot_ac_bode_plot(
@@ -1951,7 +2059,7 @@ def _plot_ac_bode_plot(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=gain, mode="lines",
-            name="Gain (dB)", line=dict(color="royalblue", width=2),
+            name="Gain (dB)", line=dict(color="#31688e", width=2),
         ),
         row=1, col=1,
     )
@@ -1960,7 +2068,7 @@ def _plot_ac_bode_plot(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=phase, mode="lines",
-            name="Phase (deg)", line=dict(color="orange", width=2),
+            name="Phase (deg)", line=dict(color="#5ec962", width=2),
         ),
         row=2, col=1,
     )
@@ -2009,7 +2117,7 @@ def _plot_ac_bode_plot(
     subtitle = f"DC Gain: {dc_gain:.2f} dB"
     if bw_freq is not None:
         subtitle += f" | -3 dB BW: {bw_freq:.3g} Hz"
-    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path, result.passed)
 
 
 def _plot_sweep(
@@ -2048,7 +2156,7 @@ def _plot_sweep(
         x=list(sweep_signal), y=list(nut_signal),
         mode="lines",
         name=f"{net_key} vs {sweep_key}",
-        line=dict(color="royalblue", width=2.5),
+        line=dict(color="#31688e", width=2.5),
     ))
 
     # Pass band shading
@@ -2095,7 +2203,7 @@ def _plot_sweep(
     fig.update_yaxes(title_text=f"{net_key} — {nut_label}")
 
     subtitle = f"Measurement: sweep | Final: {_format_eng(actual, nut_unit)}"
-    return _finalize_ac_plot(fig, req.get_name(), subtitle, path)
+    return _finalize_ac_plot(fig, req.get_name(), subtitle, path, result.passed)
 
 
 # ---------------------------------------------------------------------------
@@ -2126,7 +2234,7 @@ def plot_requirement(
     tran_data: TransientResult | None,
     path: str | Path,
     ac_data: ACResult | None = None,
-) -> Path | None:
+) -> list[dict] | None:
     """Generate a per-requirement plot.
 
     Dispatches to a measurement-specific plot function based on the

@@ -11,8 +11,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.responses import Response
 
+from pydantic import BaseModel
+
 from atopile.dataclasses import AppContext
 from atopile.server.domains import artifacts as artifacts_domain
+from atopile.server.domains import requirements as requirements_domain
 from atopile.server.domains import resolve as resolve_domain
 from atopile.server.domains import stdlib as stdlib_domain
 from atopile.server.domains.deps import get_ctx
@@ -136,6 +139,84 @@ async def get_requirements(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class UpdateRequirementRequest(BaseModel):
+    source_file: str
+    var_name: str
+    updates: dict[str, str]
+
+
+@router.post("/api/requirements/update")
+async def update_requirement(request: UpdateRequirementRequest):
+    """Update requirement fields in the .ato source file."""
+    try:
+        applied = await asyncio.to_thread(
+            requirements_domain.handle_update_requirement,
+            request.source_file,
+            request.var_name,
+            request.updates,
+        )
+        return {"success": True, "applied": applied}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log.exception("Failed to update requirement")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class CreatePlotRequest(BaseModel):
+    source_file: str
+    req_var_name: str
+    plot_var_name: str
+    fields: dict[str, str]
+
+
+@router.post("/api/plots/create")
+async def create_plot(request: CreatePlotRequest):
+    """Create a new LineChart plot linked to a requirement."""
+    try:
+        result = await asyncio.to_thread(
+            requirements_domain.handle_create_plot,
+            request.source_file,
+            request.req_var_name,
+            request.plot_var_name,
+            request.fields,
+        )
+        return {"success": True, **result}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log.exception("Failed to create plot")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class RerunSimulationRequest(BaseModel):
+    project_root: str
+    target: str = "default"
+
+
+@router.post("/api/requirements/rerun")
+async def rerun_simulation(request: RerunSimulationRequest):
+    """Trigger a build to rerun simulations for the given target."""
+    try:
+        result = await asyncio.to_thread(
+            requirements_domain.handle_rerun_simulation,
+            request.project_root,
+            request.target,
+        )
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Failed to trigger simulation rerun")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

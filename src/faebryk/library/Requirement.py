@@ -132,8 +132,9 @@ class Requirement(fabll.Node):
     # Multi-DUT: auto-compute min/max from VOUT as vout*(1 +/- pct/100)
     vout_tolerance_pct = F.Parameters.StringParameter.MakeChild()
 
-    # Plot child for custom multi-DUT overlay rendering
-    plot = F.Plots.LineChart.MakeChild()
+    # Plot references (comma-separated ato variable names of LineChart siblings)
+    required_plot = F.Parameters.StringParameter.MakeChild()
+    supplementary_plot = F.Parameters.StringParameter.MakeChild()
 
     def setup(
         self,
@@ -246,40 +247,30 @@ class Requirement(fabll.Node):
         return self._sanitize_net_name(raw)
 
     def _get_limit_bounds(self) -> tuple[float, float] | None:
-        """Extract [min, max] from string params, limit NumericParameter, or operatable."""
+        """Extract [min, max] from the limit NumericParameter.
+
+        Tries force_extract_subset on the limit parameter first (works with
+        ato ``assert req.limit within X to Y``), then falls back to explicit
+        min_val/max_val string params for backward compatibility.
+        """
         import math
 
-        # 1) Try explicit min_val / max_val string params
+        # 1) Try limit NumericParameter via force_extract_subset
+        try:
+            numbers = self.limit.get().force_extract_subset()
+            mn = numbers.get_min_value()
+            mx = numbers.get_max_value()
+            if not math.isinf(mn) and not math.isinf(mx):
+                return (mn, mx)
+        except Exception:
+            pass
+
+        # 2) Fallback: explicit min_val / max_val string params
         try:
             mn_s = self.min_val.get().try_extract_singleton()
             mx_s = self.max_val.get().try_extract_singleton()
             if mn_s is not None and mx_s is not None:
                 return (float(mn_s), float(mx_s))
-        except Exception:
-            pass
-
-        # 2) Try limit NumericParameter superset
-        try:
-            numbers = self.limit.get().try_extract_superset()
-            if numbers is not None:
-                mn = numbers.get_min_value()
-                mx = numbers.get_max_value()
-                if not math.isinf(mn) and not math.isinf(mx):
-                    return (mn, mx)
-        except Exception:
-            pass
-
-        # 3) Fallback: operatable extraction
-        try:
-            from faebryk.library.Literals import Numbers
-
-            op = self.limit.get().is_parameter_operatable.get()
-            numbers = op.try_extract_superset(lit_type=Numbers)
-            if numbers is not None:
-                mn = numbers.get_min_value()
-                mx = numbers.get_max_value()
-                if not math.isinf(mn) and not math.isinf(mx):
-                    return (mn, mx)
         except Exception:
             pass
 
@@ -412,15 +403,33 @@ class Requirement(fabll.Node):
     def get_vout_tolerance_pct(self) -> float | None:
         return self._extract_float(self.vout_tolerance_pct)
 
+    def get_required_plot_names(self) -> list[str]:
+        """Get required plot variable names (comma-separated)."""
+        raw = self.required_plot.get().try_extract_singleton()
+        if raw is None:
+            return []
+        return [name.strip() for name in raw.split(",") if name.strip()]
+
+    def get_supplementary_plot_names(self) -> list[str]:
+        """Get supplementary plot variable names (comma-separated)."""
+        raw = self.supplementary_plot.get().try_extract_singleton()
+        if raw is None:
+            return []
+        return [name.strip() for name in raw.split(",") if name.strip()]
+
+    def get_all_plot_names(self) -> list[str]:
+        """Get all plot variable names (required + supplementary)."""
+        return self.get_required_plot_names() + self.get_supplementary_plot_names()
+
     def get_plots(self) -> list:
-        """Return all attached LineChart plot children (dynamically created)."""
+        """Return all attached plot children (direct children only)."""
         try:
             return [
                 p
                 for p in self.get_children(
-                    direct_only=True, types=F.Plots.LineChart
+                    direct_only=True, types=fabll.Node, required_trait=F.is_plot
                 )
-                if p.get_title() is not None or p.get_nets()
+                if p.get_trait(F.is_plot).get_title() is not None
             ]
         except Exception:
             return []

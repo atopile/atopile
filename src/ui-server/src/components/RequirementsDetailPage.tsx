@@ -1,7 +1,10 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import type { RequirementData, RequirementsData } from './requirements/types';
 import { formatEng, computeMargin, marginLevel, formatBuildTime } from './requirements/helpers';
-import { renderTransientPlot, renderDCPlot, renderBodePlot, purgePlot, resizePlot } from './requirements/charts';
+import { renderRequirementPlot, rerenderWithLimits, purgePlot } from './requirements/charts';
+import { EditableField, MEASUREMENT_OPTIONS, CAPTURE_OPTIONS } from './requirements/EditableField';
+import { updateRequirement, rerunSimulation } from './requirements/api';
+import { PlotToolbar } from './requirements/PlotToolbar';
 
 interface RequirementsDetailPageProps {
   requirementId: string;
@@ -15,113 +18,125 @@ type WindowGlobals = Window & {
   __ATOPILE_TARGET__?: string;
 };
 
+/** Fields that only change pass/fail bounds — no rerun needed */
+const LIMIT_FIELDS = new Set(['min_val', 'max_val']);
+
 export function RequirementsDetailPage({ requirementId, injectedData, injectedBuildTime }: RequirementsDetailPageProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [req, setReq] = useState<RequirementData | null>(injectedData ?? null);
   const [buildTime, setBuildTime] = useState<string>(injectedBuildTime ?? '');
   const [loading, setLoading] = useState(!injectedData);
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
+  const [chartDim, setChartDim] = useState<{ width: number; height: number } | null>(null);
 
-  // Only fetch from API if data wasn't injected
+  const canEdit = !!(req?.sourceFile && req?.varName);
+
+  const handleFieldChange = useCallback(async (field: string, value: string) => {
+    if (!req?.sourceFile || !req?.varName) return;
+    await updateRequirement({
+      source_file: req.sourceFile,
+      var_name: req.varName,
+      updates: { [field]: value },
+    });
+
+    if (LIMIT_FIELDS.has(field)) {
+      // Instant local re-evaluation: update pass/fail + re-render chart
+      const numVal = parseFloat(value);
+      if (!isNaN(numVal)) {
+        const newMin = field === 'min_val' ? numVal : req.minVal;
+        const newMax = field === 'max_val' ? numVal : req.maxVal;
+        const newPassed = req.actual !== null && isFinite(req.actual) && newMin <= req.actual && req.actual <= newMax;
+        const updated = { ...req, minVal: newMin, maxVal: newMax, passed: newPassed };
+        setReq(updated);
+
+        // Re-render plot with new limits
+        const chartEl = chartRef.current;
+        if (chartEl && chartDim) {
+          await rerenderWithLimits(chartEl, updated, newMin, newMax, chartDim);
+        }
+      }
+    } else {
+      // Simulation field changed — mark stale
+      setStale(true);
+    }
+  }, [req, chartDim]);
+
+  const handleRerun = useCallback(async () => {
+    setRerunning(true);
+    try {
+      await rerunSimulation();
+      setStale(false);
+    } catch { /* */ }
+    finally { setRerunning(false); }
+  }, []);
+
+  const handlePlotDirty = useCallback(() => {
+    setStale(true);
+  }, []);
+
+  // Fetch from API if data wasn't injected
   useEffect(() => {
     if (injectedData) return;
-
     const w = window as WindowGlobals;
     const apiUrl = w.__ATOPILE_API_URL__ || '';
     const projectRoot = w.__ATOPILE_PROJECT_ROOT__ || '';
     const target = w.__ATOPILE_TARGET__ || 'default';
-
-    if (!apiUrl || !projectRoot) {
-      setError('Missing API URL or project root');
-      setLoading(false);
-      return;
-    }
+    if (!apiUrl || !projectRoot) { setError('Missing API URL or project root'); setLoading(false); return; }
 
     const url = `${apiUrl}/api/requirements?project_root=${encodeURIComponent(projectRoot)}&target=${encodeURIComponent(target)}`;
-
     fetch(url)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<RequirementsData>;
-      })
-      .then(data => {
-        const found = data.requirements.find(r => r.id === requirementId) ?? null;
-        setReq(found);
-        setBuildTime(data.buildTime || '');
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err instanceof Error ? err.message : 'Failed to fetch requirements');
-        setLoading(false);
-      });
+      .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json() as Promise<RequirementsData>; })
+      .then(data => { setReq(data.requirements.find(r => r.id === requirementId) ?? null); setBuildTime(data.buildTime || ''); setLoading(false); })
+      .catch(err => { setError(err instanceof Error ? err.message : 'Failed to fetch requirements'); setLoading(false); });
   }, [requirementId, injectedData]);
 
-  // Render chart when req is loaded
+  // Render chart
   useEffect(() => {
-    if (!chartRef.current || !req) return;
-    const el = chartRef.current;
+    const chartEl = chartRef.current;
+    const cardEl = cardRef.current;
+    if (!chartEl || !cardEl || !req) return;
+    chartEl.style.display = '';
+    chartEl.style.gridTemplateColumns = '';
+    chartEl.style.gap = '';
 
-    if (req.frequencySeries) {
-      renderBodePlot(el, req);
-    } else if (req.timeSeries) {
-      renderTransientPlot(el, req);
-    } else {
-      renderDCPlot(el, req);
+    const cardH = cardEl.offsetHeight;
+    if (!cardH || !chartEl.clientWidth) return;
+
+    const plotCount = req.plotSpecs?.length || 1;
+    const plotH = cardH;
+    const plotW = Math.round(plotH * 16 / 9);
+    const dim = { width: plotW, height: plotH };
+    setChartDim(dim);
+
+    if (plotCount > 1) {
+      chartEl.style.display = 'grid';
+      chartEl.style.gridTemplateColumns = 'repeat(2, auto)';
+      chartEl.style.gap = '8px';
     }
 
-    const handleResize = () => { resizePlot(el); };
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      purgePlot(el);
-    };
+    renderRequirementPlot(chartEl, req, dim);
+    return () => { for (const c of Array.from(chartEl.children) as HTMLDivElement[]) { try { purgePlot(c); } catch { /* */ } } };
   }, [req?.id]);
 
-  if (loading) {
-    return (
-      <div className="rdp-empty">
-        <div className="rdp-empty-title">Loading requirement...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rdp-empty">
-        <div className="rdp-empty-title">Error loading requirement</div>
-        <div className="rdp-empty-desc">{error}</div>
-      </div>
-    );
-  }
-
-  if (!req) {
-    return (
-      <div className="rdp-empty">
-        <div className="rdp-empty-title">Requirement not found</div>
-        <div className="rdp-empty-desc">ID: {requirementId || '(none)'}</div>
-      </div>
-    );
-  }
+  if (loading) return <div className="rdp-empty"><div className="rdp-empty-title">Loading requirement...</div></div>;
+  if (error) return <div className="rdp-empty"><div className="rdp-empty-title">Error loading requirement</div><div className="rdp-empty-desc">{error}</div></div>;
+  if (!req) return <div className="rdp-empty"><div className="rdp-empty-title">Requirement not found</div><div className="rdp-empty-desc">ID: {requirementId || '(none)'}</div></div>;
 
   const actualVal = req.actual ?? NaN;
   const margin = computeMargin(actualVal, req.minVal, req.maxVal);
   const level = marginLevel(margin);
-  const measLabel = req.measurement.replace(/_/g, ' ');
-  const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : req.capture === 'ac' ? 'AC Analysis' : 'Transient';
-  const hasTransientConfig = req.capture === 'transient';
 
   return (
     <div className="rdp-root">
-      {/* Info card */}
       <div className="rdp-info">
-        <div className="req-info-card-outer">
+        <div className="req-info-card-outer" ref={cardRef}>
           <div className="ric-header">
             <div className="ric-name">{req.name}</div>
-            <div className={`ric-badge ${req.passed ? 'pass' : 'fail'}`}>
-              {req.passed ? 'PASS' : 'FAIL'}
-            </div>
+            <div className={`ric-badge ${req.passed ? 'pass' : 'fail'}`}>{req.passed ? 'PASS' : 'FAIL'}</div>
           </div>
-
           <div className="ric-body">
             {/* Result */}
             <div className="ric-section">
@@ -134,9 +149,7 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
               </div>
               <div className="ric-row">
                 <span className="ric-label">Margin</span>
-                <span className={`ric-value ${level === 'high' ? 'pass' : level === 'low' ? 'fail' : 'warn'}`}>
-                  {margin.toFixed(1)}%
-                </span>
+                <span className={`ric-value ${level === 'high' ? 'pass' : level === 'low' ? 'fail' : 'warn'}`}>{margin.toFixed(1)}%</span>
               </div>
               <div className="ric-margin-bar">
                 <div className="ric-margin-track">
@@ -145,100 +158,40 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
               </div>
             </div>
 
-            {/* Configuration */}
-            <div className="ric-section ric-right">
-              <div className="ric-section-title">Configuration</div>
-              <div className="ric-row">
-                <span className="ric-label">Net</span>
-                <span className="ric-value">{req.displayNet || req.net}</span>
-              </div>
-              <div className="ric-row">
-                <span className="ric-label">Capture</span>
-                <span className="ric-value">{captureLabel}</span>
-              </div>
-              <div className="ric-row">
-                <span className="ric-label">Measurement</span>
-                <span className="ric-value">{measLabel}</span>
-              </div>
-            </div>
-
             {/* Bounds */}
-            <div className="ric-section">
+            <div className="ric-section ric-right">
               <div className="ric-section-title">Bounds</div>
               <div className="ric-row">
                 <span className="ric-label">Min</span>
-                <span className="ric-value">{formatEng(req.minVal, req.unit)}</span>
-              </div>
-              <div className="ric-row">
-                <span className="ric-label">Typical</span>
-                <span className="ric-value">{formatEng(req.typical, req.unit)}</span>
+                <EditableField value={String(req.minVal ?? '')} displayValue={formatEng(req.minVal, req.unit)} className="ric-value" enabled={canEdit} onSave={v => handleFieldChange('min_val', v)} />
               </div>
               <div className="ric-row">
                 <span className="ric-label">Max</span>
-                <span className="ric-value">{formatEng(req.maxVal, req.unit)}</span>
+                <EditableField value={String(req.maxVal ?? '')} displayValue={formatEng(req.maxVal, req.unit)} className="ric-value" enabled={canEdit} onSave={v => handleFieldChange('max_val', v)} />
               </div>
             </div>
 
-            {/* Sim params */}
+            {/* Configuration */}
+            <div className="ric-section">
+              <div className="ric-section-title">Configuration</div>
+              <div className="ric-row">
+                <span className="ric-label">Net</span>
+                <EditableField value={req.net} displayValue={req.displayNet || req.net} className="ric-value" enabled={canEdit} onSave={v => handleFieldChange('net', v)} />
+              </div>
+              <div className="ric-row">
+                <span className="ric-label">Capture</span>
+                <EditableField value={req.capture} className="ric-value" enabled={canEdit} options={CAPTURE_OPTIONS} onSave={v => handleFieldChange('capture', v)} />
+              </div>
+              <div className="ric-row">
+                <span className="ric-label">Measurement</span>
+                <EditableField value={req.measurement} className="ric-value" enabled={canEdit} options={MEASUREMENT_OPTIONS} onSave={v => handleFieldChange('measurement', v)} />
+              </div>
+            </div>
+
+            {/* Simulation */}
             <div className="ric-section ric-right">
-              <div className="ric-section-title">{hasTransientConfig ? 'Transient Config' : 'Info'}</div>
-              {hasTransientConfig ? (
-                <>
-                  {req.tranStart != null && (
-                    <div className="ric-row">
-                      <span className="ric-label">Start</span>
-                      <span className="ric-value">{formatEng(req.tranStart, 's')}</span>
-                    </div>
-                  )}
-                  {req.tranStop != null && (
-                    <div className="ric-row">
-                      <span className="ric-label">Stop</span>
-                      <span className="ric-value">{formatEng(req.tranStop, 's')}</span>
-                    </div>
-                  )}
-                  {req.timeSeries && (
-                    <div className="ric-row">
-                      <span className="ric-label">Points</span>
-                      <span className="ric-value mono-muted">{req.timeSeries.time.length}</span>
-                    </div>
-                  )}
-                  {req.settlingTolerance != null && (
-                    <div className="ric-row">
-                      <span className="ric-label">Settling tol.</span>
-                      <span className="ric-value">{(req.settlingTolerance * 100).toFixed(1)}%</span>
-                    </div>
-                  )}
-                  {req.contextNets && req.contextNets.length > 0 && (
-                    <div className="ric-row">
-                      <span className="ric-label">Context</span>
-                      <span className="ric-value">{req.contextNets.join(', ')}</span>
-                    </div>
-                  )}
-                  {buildTime && (
-                    <div className="ric-row">
-                      <span className="ric-label">Built</span>
-                      <span className="ric-value mono-muted">{formatBuildTime(buildTime)}</span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="ric-row">
-                    <span className="ric-label">Unit</span>
-                    <span className="ric-value">{req.unit}</span>
-                  </div>
-                  <div className="ric-row">
-                    <span className="ric-label">Type</span>
-                    <span className="ric-value">Static</span>
-                  </div>
-                  {buildTime && (
-                    <div className="ric-row">
-                      <span className="ric-label">Built</span>
-                      <span className="ric-value mono-muted">{formatBuildTime(buildTime)}</span>
-                    </div>
-                  )}
-                </>
-              )}
+              <div className="ric-section-title">Simulation</div>
+              <SimConfigFields req={req} canEdit={canEdit} onFieldChange={handleFieldChange} buildTime={buildTime} />
             </div>
 
             {req.justification && (
@@ -247,14 +200,86 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
                 <div className="ric-justification-text">{req.justification}</div>
               </div>
             )}
+
+            {stale && (
+              <div className="ric-section ric-full ric-rerun-bar">
+                <span className="ric-dirty">Simulation config changed — rerun to see new results</span>
+                <button className={`ric-rerun-btn ${rerunning ? 'ric-saving' : ''}`} onClick={handleRerun} disabled={rerunning}>
+                  {rerunning ? 'Running...' : 'Rerun Simulation'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Chart — fills remaining space */}
+      {/* Chart area with plot toolbar */}
       <div className="rdp-chart">
-        <div ref={chartRef} />
+        <div className="plot-container">
+          <div ref={chartRef} />
+          {req.plotSpecs && req.plotSpecs.length > 0 && req.plotSpecs[0].meta && (
+            <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
+          )}
+          {/* Plus button when no plots exist yet */}
+          {(!req.plotSpecs || req.plotSpecs.length === 0) && canEdit && (
+            <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+/** Simulation config rows */
+function SimConfigFields({ req, canEdit, onFieldChange, buildTime }: {
+  req: RequirementData; canEdit: boolean;
+  onFieldChange: (field: string, value: string) => Promise<void>;
+  buildTime: string;
+}) {
+  const isTransient = req.capture === 'transient';
+  const isAC = req.capture === 'ac';
+
+  return (
+    <>
+      {isTransient && (
+        <>
+          <div className="ric-row">
+            <span className="ric-label">Start</span>
+            <EditableField value={String(req.tranStart ?? 0)} displayValue={formatEng(req.tranStart ?? 0, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_start', v)} />
+          </div>
+          {req.tranStop != null && (
+            <div className="ric-row">
+              <span className="ric-label">Stop</span>
+              <EditableField value={String(req.tranStop)} displayValue={formatEng(req.tranStop, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_stop', v)} />
+            </div>
+          )}
+          {req.tranStep != null && (
+            <div className="ric-row">
+              <span className="ric-label">Step</span>
+              <EditableField value={String(req.tranStep)} displayValue={formatEng(req.tranStep, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_step', v)} />
+            </div>
+          )}
+          {req.settlingTolerance != null && (
+            <div className="ric-row">
+              <span className="ric-label">Settling tol.</span>
+              <EditableField value={String(req.settlingTolerance)} displayValue={`${(req.settlingTolerance * 100).toFixed(1)}%`} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('settling_tolerance', v)} />
+            </div>
+          )}
+        </>
+      )}
+      {isAC && (
+        <>
+          {req.acStartFreq != null && <div className="ric-row"><span className="ric-label">Start freq</span><EditableField value={String(req.acStartFreq)} displayValue={formatEng(req.acStartFreq, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_start_freq', v)} /></div>}
+          {req.acStopFreq != null && <div className="ric-row"><span className="ric-label">Stop freq</span><EditableField value={String(req.acStopFreq)} displayValue={formatEng(req.acStopFreq, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_stop_freq', v)} /></div>}
+          {req.acPointsPerDec != null && <div className="ric-row"><span className="ric-label">Pts/decade</span><EditableField value={String(req.acPointsPerDec)} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_points_per_dec', v)} /></div>}
+          {req.acSourceName != null && <div className="ric-row"><span className="ric-label">AC source</span><EditableField value={req.acSourceName} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_source_name', v)} /></div>}
+          {req.acMeasureFreq != null && <div className="ric-row"><span className="ric-label">Meas. freq</span><EditableField value={String(req.acMeasureFreq)} displayValue={formatEng(req.acMeasureFreq, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_measure_freq', v)} /></div>}
+          {req.acRefNet != null && <div className="ric-row"><span className="ric-label">Ref net</span><EditableField value={req.acRefNet} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_ref_net', v)} /></div>}
+        </>
+      )}
+      {req.contextNets && req.contextNets.length > 0 && <div className="ric-row"><span className="ric-label">Context</span><span className="ric-value">{req.contextNets.join(', ')}</span></div>}
+      {req.timeSeries && <div className="ric-row"><span className="ric-label">Points</span><span className="ric-value mono-muted">{req.timeSeries.time.length}</span></div>}
+      {buildTime && <div className="ric-row"><span className="ric-label">Built</span><span className="ric-value mono-muted">{formatBuildTime(buildTime)}</span></div>}
+    </>
   );
 }

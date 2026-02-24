@@ -40,6 +40,7 @@ function App() {
       <RequirementsAllPage
         requirements={allData?.requirements ?? []}
         buildTime={allData?.buildTime ?? w.__ATOPILE_BUILD_TIME__ ?? ''}
+        simStats={allData?.simStats}
       />
     );
   }

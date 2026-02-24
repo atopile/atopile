@@ -260,6 +260,7 @@
   display: flex;
   flex-direction: row;
   height: 100vh;
+  min-height: 480px;
   overflow: hidden;
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -296,16 +297,17 @@
   overflow-y: auto;
 }
 
-/* Chart area — fills remaining space */
+/* Chart area — fills remaining space, plot height matches card */
 .rdp-chart {
   flex: 1;
   min-width: 0;
-  min-height: 0;
-  padding: var(--spacing-xl);
-  overflow: hidden;
+  padding: var(--spacing-lg);
+  overflow: visible;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  align-items: start;
+}
+.rdp-chart > div {
+  width: 100%;
 }
 
 /* --- Info card (shared between sidebar inline & detail page) --- */
@@ -351,7 +353,7 @@
 }
 
 .ric-section {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-md);
 }
 .ric-section:not(:last-child) {
   border-bottom: 1px solid var(--border-subtle);
@@ -374,7 +376,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  line-height: 1.6;
+  line-height: 1.8;
 }
 .ric-label {
   font-size: var(--font-size-xs);
@@ -559,11 +561,10 @@
 
 .rall-row {
   display: grid;
-  grid-template-columns: 2fr 4fr;
-  gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
-  align-items: start;
-  min-height: 280px;
+  grid-template-columns: 340px 1fr;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  /* align-items: stretch (default) — plot cell matches card row height */
 }
 
 .rall-card {
@@ -572,5 +573,304 @@
 
 .rall-plots {
   min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* ============================================
+   Simulation Timing Chart (collapsible)
+   ============================================ */
+
+.sim-timing {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.sim-timing-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.sim-timing-toggle:hover {
+  background: var(--bg-hover);
+}
+.sim-timing-toggle .chevron {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.sim-timing-toggle .chevron.open {
+  transform: rotate(180deg);
+}
+.sim-timing-total {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.sim-timing-count {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.sim-timing-body {
+  padding: 0 var(--spacing-lg) var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sim-timing-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 50px 70px 100px;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xxs);
+}
+
+.sim-timing-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sim-timing-bar-track {
+  height: 10px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sim-timing-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.sim-timing-value {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  text-align: right;
+}
+.sim-timing-pts {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-align: right;
+}
+.sim-timing-type {
+  color: var(--text-muted);
+  text-transform: capitalize;
+  text-align: right;
+}
+
+/* ---- Editable field inline controls ---- */
+
+/*
+ * All editable field states (display, input, select) use a shared
+ * .ric-edit-control base to keep height/font/padding identical,
+ * preventing layout shifts on click-to-edit transitions.
+ */
+.ric-editable {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.ric-editable:hover {
+  border-bottom-color: var(--accent);
+  background-color: var(--bg-hover, rgba(127, 127, 127, 0.06));
+}
+
+/* Shared base for input & select — matches .ric-value sizing exactly */
+.ric-edit-control {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  margin: -1px 0;
+  outline: none;
+  height: 22px;
+  box-sizing: border-box;
+}
+.ric-edit-input {
+  max-width: 120px;
+}
+.ric-edit-select {
+  max-width: 140px;
+  /* Ensure dropdown doesn't truncate labels */
+  text-overflow: ellipsis;
+}
+.ric-edit-control:focus {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ric-saving {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ---- Dirty state + Rerun bar ---- */
+.ric-rerun-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-xs);
+}
+.ric-dirty {
+  font-size: var(--font-size-xxs);
+  color: var(--warning, #e67e22);
+  font-style: italic;
+}
+.ric-rerun-btn {
+  font-size: var(--font-size-xxs);
+  font-weight: 500;
+  color: var(--bg-primary);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.ric-rerun-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.ric-rerun-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---- Plot container + toolbar ---- */
+.plot-container {
+  position: relative;
+}
+
+.plot-toolbar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  z-index: 10;
+}
+
+.plot-toolbar-icons {
+  display: flex;
+  gap: 2px;
+}
+
+.plot-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.plot-container:hover .plot-toolbar-btn {
+  opacity: 1;
+}
+.plot-toolbar-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Editable title overlay on plot */
+.plot-title-edit {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+  z-index: 10;
+  cursor: pointer;
+}
+.plot-title-edit-input {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ---- Plot settings popover ---- */
+.plot-popover {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  min-width: 280px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+}
+.plot-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.plot-popover-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.plot-popover-close:hover {
+  color: var(--text-primary);
+}
+.plot-popover-body {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plot-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plot-popover-label {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+.plot-popover-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
 }

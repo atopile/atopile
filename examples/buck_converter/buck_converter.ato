@@ -25,7 +25,7 @@ module TI_TPS54560:
     power_out = new ElectricPower
 
     switching_frequency: hertz
-    switching_frequency.default = 400kHz
+    switching_frequency.default = 400kHz +/- 5%
 
     uvlo_threshold: voltage
     uvlo_threshold.default = 6.5V
@@ -53,10 +53,10 @@ module TI_TPS54560:
     c_in.package = "0805"
 
     # Output caps — 3×47µF ≈ 141µF (DS Eq.31-33)
-    c_out = new MultiCapacitor<count=3>
+    c_out = new MultiCapacitor<count=4>
     for c in c_out.capacitors:
         c.capacitance = 47uF +/- 20%
-        c.max_voltage = 16V to 100V
+        c.max_voltage = 10V to 100V
         c.package = "1206"
 
     # Bootstrap cap (100nF)
@@ -82,7 +82,8 @@ module TI_TPS54560:
 
     # Switching frequency resistor (DS Eq.7, 400kHz → 243k)
     r_rt = new Resistor
-    r_rt.resistance = 243kohm +/- 5%
+    assert r_rt.resistance within (101756/((switching_frequency/1000)**1.008))*1000
+    # r_rt.resistance = 243kohm +/- 5%
     r_rt.package = "0402"
 
     # Power connections
@@ -129,6 +130,6 @@ module TPS54560_Reference from TI_TPS54560:
     r_top.resistance = 53.6kohm +/- 1%
 
     r_load = new Resistor
-    r_load.resistance = 1ohm +/- 5%
+    r_load.resistance = 1kohm +/- 5%
     r_load.package = "1210"
     power_out.hv ~> r_load ~> power_out.lv
