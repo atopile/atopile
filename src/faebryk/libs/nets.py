@@ -221,7 +221,7 @@ def test_bind_nets_from_electricals():
 
     assert len(nets_sorted) == 2
     print(nets_sorted)
-    assert nets_sorted[0].get_name() == "elec"
+    assert nets_sorted[0].get_name() == "elec-0"
     assert nets_sorted[1].get_name() == "elec-1"
     for i, net in enumerate(nets_sorted):
         assert len(net.get_connected_electricals()) == 2 + i

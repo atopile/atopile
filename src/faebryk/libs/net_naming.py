@@ -14,7 +14,7 @@ MAX_CONFLICT_RESOLUTION_ITERATIONS = 100
 
 # Pre-compiled regex for filtering unpreferred names
 _UNPREFERRED_NAMES_RE = re.compile(
-    r"^(net|\d+|0x[0-9A-Fa-f]+|part_of|output|line|unnamed\[\d+\]|package)$"
+    r"^(net|\d+|0x[0-9A-Fa-f]+|part_of|output|line|package)$"
 )
 
 # Characters that are invalid in net names (KiCad restrictions)
@@ -1499,8 +1499,6 @@ class TestNetNaming:
         assert filter_unpreferred_names("part_of") is None
         assert filter_unpreferred_names("output") is None
         assert filter_unpreferred_names("line") is None
-        assert filter_unpreferred_names("unnamed[0]") is None
-        assert filter_unpreferred_names("unnamed[42]") is None
 
         # Should pass through preferred names
         assert filter_unpreferred_names("GND") == "GND"
