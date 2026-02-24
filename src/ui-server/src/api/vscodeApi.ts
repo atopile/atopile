@@ -167,6 +167,12 @@ export interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+export interface OpenManufacturingDashboardMessage {
+  type: 'openManufacturingDashboard';
+  projectRoot: string;
+  target: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -190,7 +196,8 @@ export type ExtensionMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenManufacturingDashboardMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

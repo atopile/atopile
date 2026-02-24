@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["files"])
 
+ALLOWED_DIRECTORIES = ["build"]
+
 
 def _get_content_type(path: Path) -> str:
     """Determine content type based on file extension."""
@@ -83,11 +85,13 @@ def _is_path_allowed(file_path: Path) -> bool:
                 relative = resolved.relative_to(workspace_resolved)
                 parts = relative.parts
                 log.info(f"[files] Path is relative to workspace, parts: {parts}")
-                if "build" in parts:
+                if any(d in parts for d in ALLOWED_DIRECTORIES):
                     log.info(f"[files] Path allowed via workspace_paths: {resolved}")
                     return True
                 else:
-                    log.info("[files] Path rejected: 'build' not in parts")
+                    log.info(
+                        f"[files] Path rejected: none of {ALLOWED_DIRECTORIES} in parts"
+                    )
         except (OSError, ValueError) as e:
             log.warning(f"[files] Error checking workspace {workspace}: {e}")
             continue
@@ -104,7 +108,7 @@ def _is_path_allowed(file_path: Path) -> bool:
                 log.info(
                     f"[files] Path is relative to current workspace, parts: {parts}"
                 )
-                if "build" in parts:
+                if any(d in parts for d in ALLOWED_DIRECTORIES):
                     log.info(f"[files] Path allowed via workspace_path: {resolved}")
                     return True
         except (OSError, ValueError):

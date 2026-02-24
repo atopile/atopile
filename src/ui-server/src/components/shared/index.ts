@@ -3,7 +3,13 @@
  * Export all shared components from a single entry point
  */
 
+export { Badge, BadgeAsLink } from './Badge'
+export type { BadgeProps, BadgeAsLinkProps } from './Badge'
 export { CopyableCodeBlock } from './CopyableCodeBlock'
+export { Input } from './Input'
+export type { InputProps } from './Input'
+export { SearchBar, RegexSearchBar } from './SearchBar'
+export type { SearchBarProps, RegexSearchBarProps } from './SearchBar'
 export { EmptyState } from './EmptyState'
 export { VersionSelector } from './VersionSelector'
 export { PublisherBadge } from './PublisherBadge'

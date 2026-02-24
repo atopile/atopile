@@ -22,6 +22,7 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
+import { openManufacturingDashboard } from '../ui/review-webview';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -179,6 +180,12 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+interface OpenManufacturingDashboardMessage {
+  type: 'openManufacturingDashboard';
+  projectRoot: string;
+  target: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -209,7 +216,8 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenManufacturingDashboardMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -706,6 +714,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openMigrateTab':
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
+        break;
+      case 'openManufacturingDashboard':
+        traceInfo(`[SidebarProvider] Opening manufacturing dashboard for: ${message.projectRoot} / ${message.target}`);
+        openManufacturingDashboard(this._extensionUri, message.projectRoot, message.target);
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

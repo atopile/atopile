@@ -1,0 +1,94 @@
+/* ============================================
+   Badge — small status/label pill
+   Uses project CSS variables from _variables.css
+   ============================================ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  width: fit-content;
+  overflow: hidden;
+  cursor: default;
+}
+
+/* ---- Variant: default (solid primary fill, like shadcn) ---- */
+
+.badge-default {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-color: var(--text-primary);
+}
+
+/* ---- Variant: secondary ---- */
+
+.badge-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* ---- Variant: outline ---- */
+
+.badge-outline {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* ---- Variant: destructive ---- */
+
+.badge-destructive {
+  background: var(--error);
+  color: var(--text-on-status);
+}
+
+/* ---- Variant: success ---- */
+
+.badge-success {
+  background: var(--success);
+  color: var(--text-on-status);
+}
+
+/* ---- Variant: warning ---- */
+
+.badge-warning {
+  background: var(--warning);
+  color: var(--text-on-status);
+}
+
+/* ---- Variant: info ---- */
+
+.badge-info {
+  background: var(--info);
+  color: var(--text-on-status);
+}
+
+/* ---- BadgeAsLink ---- */
+
+.badge-as-link {
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+.badge-as-link:hover {
+  opacity: 0.8;
+}
+
+/* ---- SVG icons inside badges ---- */
+
+.badge > svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  pointer-events: none;
+}

@@ -96,6 +96,24 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": false
+                },
+                "atopile.views.openFullscreen": {
+                    "type": "boolean",
+                    "default": false,
+                    "scope": "resource",
+                    "description": "Open views as a full tab instead of side-by-side"
+                },
+                "atopile.views.hideBars": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Hide sidebar and bottom panel when opening a view"
+                },
+                "atopile.views.restoreBars": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "resource",
+                    "description": "Restore sidebar and bottom panel when closing a view"
                 }
             }
         },

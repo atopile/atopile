@@ -113,9 +113,9 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
     env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
 
     if build.include_targets:
-        env["ATO_TARGET"] = ",".join(build.include_targets)
+        env["ATO_TARGET"] = " ".join(build.include_targets)
     if build.exclude_targets:
-        env["ATO_EXCLUDE_TARGET"] = ",".join(build.exclude_targets)
+        env["ATO_EXCLUDE_TARGET"] = " ".join(build.exclude_targets)
     if build.frozen is not None:
         env["ATO_FROZEN"] = "1" if build.frozen else "0"
     if build.keep_picked_parts is not None:
