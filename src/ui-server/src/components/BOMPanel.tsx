@@ -4,7 +4,8 @@ import {
   ExternalLink, Copy, Check, AlertTriangle,
   RefreshCw
 } from 'lucide-react'
-import { PanelSearchBox, EmptyState } from './shared'
+import { PanelSearchBox } from './shared/PanelSearchBox'
+import { EmptyState } from './shared/EmptyState'
 import type {
   BOMComponent as BOMComponentAPI,
   BOMData,

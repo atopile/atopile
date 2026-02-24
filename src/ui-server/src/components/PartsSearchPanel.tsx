@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp, CheckCircle, Loader2, Package, PackageSearch, Searc
 import type { PartSearchItem, InstalledPartItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
-import { PanelSearchBox } from './shared'
+import { PanelSearchBox } from './shared/PanelSearchBox'
 import './PartsSearchPanel.css'
 
 interface PartsSearchPanelProps {
