@@ -10,7 +10,6 @@ from typing import Optional
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import (
-    AppContext,
     Build,
     BuildRequest,
     BuildResponse,
@@ -42,7 +41,7 @@ def _fix_interrupted_build(build: Build) -> Build:
     return build
 
 
-def handle_get_summary(_ctx: AppContext) -> dict:
+def handle_get_summary() -> dict:
     """Get build summary including active builds and build history from database."""
     all_builds: list[Build] = []
     totals = {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}

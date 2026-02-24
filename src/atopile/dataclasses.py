@@ -18,7 +18,6 @@ from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict
 
-from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
@@ -54,40 +53,6 @@ class StageStatus(str, Enum):
     FAILED = "failed"
     ERROR = "error"
     SKIPPED = "skipped"
-
-
-class EventType(StrEnum):
-    """Event types emitted to WebSocket clients."""
-
-    # Data state changes - client should refetch
-    PROJECTS_CHANGED = "projects_changed"
-    PACKAGES_CHANGED = "packages_changed"
-    PACKAGES_DOWNLOADS_UPDATED = "packages_downloads_updated"
-    PARTS_CHANGED = "parts_changed"
-    STDLIB_CHANGED = "stdlib_changed"
-    BOM_CHANGED = "bom_changed"
-    VARIABLES_CHANGED = "variables_changed"
-    BUILDS_CHANGED = "builds_changed"
-    PROBLEMS_CHANGED = "problems_changed"
-
-    # File watcher notifications
-    PROJECT_FILES_CHANGED = "project_files_changed"
-    PROJECT_MODULES_CHANGED = "project_modules_changed"
-    PROJECT_DEPENDENCIES_CHANGED = "project_dependencies_changed"
-
-    # Configuration changes
-    ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
-
-    # Package integrity
-    PACKAGE_MODIFIED = "package_modified"
-
-    # Shared UI state
-    LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
-
-    # Action requests (frontend should handle)
-    OPEN_LAYOUT = "open_layout"
-    OPEN_KICAD = "open_kicad"
-    OPEN_3D = "open_3d"
 
 
 # =============================================================================
@@ -561,14 +526,6 @@ class BuildTargetStatus(CamelModel):
     errors: int = 0
     stages: Optional[list[dict]] = None
     build_id: Optional[str] = None  # Build ID hash for reference
-
-
-class EventMessage(BaseModel):
-    """WebSocket event message payload."""
-
-    type: Literal["event"] = "event"
-    event: EventType
-    data: Optional[dict[str, Any]] = None
 
 
 class BuildTarget(CamelModel):
@@ -1168,92 +1125,6 @@ class AtopileConfig(BaseModel):
 
 
 # =============================================================================
-# WebSocket State Manager Dataclass
-# =============================================================================
-
-
-@dataclass
-class ConnectedClient:
-    """A connected WebSocket client."""
-
-    client_id: str
-    websocket: WebSocket
-    subscribed: bool = True  # Whether to receive state updates
-
-
-# =============================================================================
-# MCP-related Pydantic Models
-# =============================================================================
-
-
-class Language(StrEnum):
-    FABLL = "fabll(python)"
-    ATO = "ato"
-
-
-class NodeType(StrEnum):
-    MODULE = "Module"
-    INTERFACE = "Interface"
-
-
-class NodeInfo(BaseModel):
-    name: str
-    docstring: str
-    locator: str
-    language: Language
-    code: str
-
-
-class NodeInfoOverview(BaseModel):
-    name: str
-    docstring: str
-    language: Language
-    type: NodeType
-
-
-class Result(BaseModel):
-    success: bool
-    project_dir: str
-
-
-class ErrorResult(Result):
-    error: str
-    error_message: str
-
-
-class BuildResult(Result):
-    target: str
-    logs: str
-
-
-class PackageVerifyResult(Result):
-    logs: str
-
-
-class CreatePartResult(Result):
-    manufacturer: str
-    part_number: str
-    description: str
-    supplier_id: str
-    stock: int
-    path: str
-    import_statement: str
-
-
-class CreatePartError(ErrorResult):
-    error: str
-    error_message: str
-
-
-class InstallPackageResult(Result):
-    installed_packages: list[str]
-
-
-class InstallPackageError(ErrorResult):
-    pass
-
-
-# =============================================================================
 # Build Steps Dataclasses
 # =============================================================================
 
@@ -1275,7 +1146,6 @@ class BuildReport:
 @dataclass
 class AppContext:
     summary_file: Optional[Path] = None
-    workspace_paths: list[Path] = field(default_factory=list)
     # 'explicit-path', 'from-setting', or 'default'
     ato_source: Optional[str] = None
     # User's configured path (for explicit-path mode)
@@ -1286,21 +1156,6 @@ class AppContext:
     ato_from_branch: Optional[str] = None
     # The pip/uv spec (for from-setting mode)
     ato_from_spec: Optional[str] = None
-
-    @property
-    def workspace_path(self) -> Optional[Path]:
-        """Return the first workspace path, or None if no workspaces."""
-        return self.workspace_paths[0] if self.workspace_paths else None
-
-    @workspace_path.setter
-    def workspace_path(self, value: Optional[Path]) -> None:
-        """Set the first workspace path."""
-        if value is None:
-            self.workspace_paths = []
-        elif self.workspace_paths:
-            self.workspace_paths[0] = value
-        else:
-            self.workspace_paths = [value]
 
 
 @dataclass(frozen=True)

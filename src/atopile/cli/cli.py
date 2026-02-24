@@ -29,7 +29,6 @@ from atopile.cli import (
     install,
     kicad_ipc,
     lsp,
-    mcp,
     package,
     serve,
     view,
@@ -217,7 +216,6 @@ app.command(rich_help_panel="Shortcuts")(install.sync)
 app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
-app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 app.add_typer(dev.dev_app, name="dev", hidden=True)
 app.add_typer(serve.serve_app, name="serve")

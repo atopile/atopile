@@ -11,7 +11,6 @@ from typing import Optional
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
-from atopile.server.routes.logs import router as logs_router
 from test.runner.baselines import (
     fetch_remote_report,
     get_branch_base,
@@ -283,7 +282,3 @@ async def websocket_state_stub(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass
-
-
-# Include the logs WebSocket router from atopile.server
-router.include_router(logs_router)
