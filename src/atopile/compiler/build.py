@@ -450,8 +450,6 @@ class Linker:
                 stdlib=self._stdlib,
                 file_imports=self,  # Pass self as file import resolver
             ).execute()
-            for type_node in child_result.state.type_roots.values():
-                self._tg.mark_constructable(type_node=type_node)
         except DslRichException as ex:
             # Add import frame showing where this import was triggered
             import_node = self._find_import_node_for_ref(import_ref, build_state)
@@ -586,8 +584,6 @@ class Linker:
                             stdlib=self._stdlib,
                             file_imports=self,
                         ).execute()
-                        for type_node in child_result.state.type_roots.values():
-                            self._tg.mark_constructable(type_node=type_node)
                         self._linked_modules[stdlib_path] = (
                             child_result.state.type_roots
                         )
@@ -623,8 +619,6 @@ class Linker:
                         stdlib=self._stdlib,
                         file_imports=self,
                     ).execute()
-                    for type_node in child_result.state.type_roots.values():
-                        self._tg.mark_constructable(type_node=type_node)
                     self._linked_modules[stdlib_path] = child_result.state.type_roots
                     try:
                         target = child_result.state.type_roots[import_ref.name]
@@ -693,8 +687,6 @@ class Linker:
                         stdlib=self._stdlib,
                         file_imports=self,
                     ).execute()
-                    for type_node in child_result.state.type_roots.values():
-                        self._tg.mark_constructable(type_node=type_node)
                     self._linked_modules[stdlib_path] = child_result.state.type_roots
             else:
                 # Trigger the file build/link
@@ -787,8 +779,6 @@ def build_stage_2(
         stdlib=linker._stdlib,
         file_imports=linker,
     ).execute()
-    for type_node in result.state.type_roots.values():
-        tg.mark_constructable(type_node=type_node)
 
     if validate:
         with accumulate() as accumulator:

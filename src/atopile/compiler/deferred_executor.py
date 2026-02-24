@@ -75,6 +75,8 @@ class DeferredExecutor:
         self._resolve_inheritance()
         self._execute_retypes()
         self._visitor._execute_for_loops()
+        for type_node in self._type_roots.values():
+            self._tg.mark_constructable(type_node=type_node)
 
     def _resolve_inheritance(self) -> None:
         """
