@@ -13,6 +13,7 @@ import I2C
 import ElectricPower
 import ElectricLogic
 import Capacitor
+import Resistor
 import has_databus_role
 
 from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
