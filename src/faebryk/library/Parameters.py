@@ -933,7 +933,7 @@ class NumericParameter(fabll.Node):
                 base_unit_child = display_unit_child
             else:
                 base_unit_child = find_base_unit_type(unit).MakeChild()
-            out.add_dependant(base_unit_child)
+                out.add_dependant(base_unit_child)
             out.add_dependant(
                 fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
             )
