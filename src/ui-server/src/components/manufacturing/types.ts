@@ -296,6 +296,7 @@ export interface Artifact {
 export interface MusterTargetInfo {
   name: string;
   description: string | null;
+  docstring: string | null;
   category: string | null;
   virtual: boolean;
   producesArtifacts: Artifact[] | null;

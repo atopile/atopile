@@ -187,6 +187,7 @@ class MusterTarget:
     aliases: list[str]
     func: MusterFuncType
     description: str | None = None
+    docstring: str | None = None
     implicit: bool = True
     virtual: bool = False
     dependencies: list["MusterTarget"] = field(default_factory=list)
@@ -355,6 +356,7 @@ class Muster:
                 aliases=aliases or [],
                 func=func,
                 description=description,
+                docstring=func.__doc__.strip() if func.__doc__ else None,
                 dependencies=dependencies or [],
                 virtual=virtual,
                 tags=tags or set(),

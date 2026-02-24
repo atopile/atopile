@@ -1934,6 +1934,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 {
                     "name": t.name,
                     "description": t.description,
+                    "docstring": t.docstring,
                     "category": str(t.category),
                     "virtual": t.virtual,
                     "producesArtifacts": [

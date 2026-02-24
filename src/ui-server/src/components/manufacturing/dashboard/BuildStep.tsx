@@ -318,9 +318,9 @@ export function BuildStep() {
   // appear as extra columns on the right during/after a build.
   const renderTargetRow = (t: MusterTargetInfo, isRequired: boolean) => {
     const stageInfo = stageStatusMap[t.name];
-    const hasLogs = !!activeBuild?.buildId;
     const included = isTargetIncluded(t);
     const status: StepStatus = stageInfo?.status ?? (isBuilding && included ? 'pending' : 'idle');
+    const hasLogs = !!activeBuild?.buildId && status !== 'idle' && status !== 'pending';
     const checkboxDisabled = isRequired || isBuilding;
 
     return (
@@ -337,7 +337,7 @@ export function BuildStep() {
             postToExtension({ type: 'showBuildLogs' });
           }
         }}
-        title={hasLogs ? `View logs for ${t.description || t.name}` : (t.description || t.name)}
+        title={hasLogs ? `View logs for ${t.description || t.name}` : (t.docstring || t.description || t.name)}
       >
         <span onClick={(e) => e.stopPropagation()}>
           <Checkbox
