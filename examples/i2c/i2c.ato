@@ -13,7 +13,7 @@ import I2C
 import ElectricPower
 import ElectricLogic
 import Capacitor
-import has_bus_role
+import has_databus_role
 
 from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
 
@@ -45,7 +45,7 @@ module TI_TCA9548A:
     """
     Main I2C bus connection (upstream/master side)
     """
-    trait i2c has_bus_role<role = "CONTROLLER">
+    trait i2c has_databus_role<role = "CONTROLLER">
 
     reset = new ElectricLogic
     """
@@ -59,14 +59,14 @@ module TI_TCA9548A:
     Each channel is isolated and can be individually enabled via I2C commands.
     """
     # Traits in for loop are not supported yet
-    trait i2cs[0] has_bus_role<role = "CONTROLLER">
-    trait i2cs[1] has_bus_role<role = "CONTROLLER">
-    trait i2cs[2] has_bus_role<role = "CONTROLLER">
-    trait i2cs[3] has_bus_role<role = "CONTROLLER">
-    trait i2cs[4] has_bus_role<role = "CONTROLLER">
-    trait i2cs[5] has_bus_role<role = "CONTROLLER">
-    trait i2cs[6] has_bus_role<role = "CONTROLLER">
-    trait i2cs[7] has_bus_role<role = "CONTROLLER">
+    trait i2cs[0] has_databus_role<role = "CONTROLLER">
+    trait i2cs[1] has_databus_role<role = "CONTROLLER">
+    trait i2cs[2] has_databus_role<role = "CONTROLLER">
+    trait i2cs[3] has_databus_role<role = "CONTROLLER">
+    trait i2cs[4] has_databus_role<role = "CONTROLLER">
+    trait i2cs[5] has_databus_role<role = "CONTROLLER">
+    trait i2cs[6] has_databus_role<role = "CONTROLLER">
+    trait i2cs[7] has_databus_role<role = "CONTROLLER">
 
     # Package
     package = new Texas_Instruments_TCA9548APWR_package
