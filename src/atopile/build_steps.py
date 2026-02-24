@@ -608,7 +608,9 @@ def post_instantiation_setup(ctx: BuildStepContext) -> None:
 
     F.is_alias_bus_parameter.resolve_bus_parameters(app.g, app.tg)
     F.is_sum_bus_parameter.resolve_bus_parameters(app.g, app.tg)
-    F.DataBus.has_specification.resolve_data_bus_specification_parameters(app.g, app.tg)
+    F.DataBus.has_databus_specification.resolve_data_bus_specification_parameters(
+        app.g, app.tg
+    )
 
 
 @muster.register(

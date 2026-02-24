@@ -19,9 +19,9 @@ class RS485HalfDuplex(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     bus_spec = fabll.Traits.MakeEdge(
-        F.DataBus.has_specification.MakeChild(
-            topology=[F.DataBus.has_specification.Topology.BUS],
-            data_flow=F.DataBus.has_specification.DataFlow.HALF_DUPLEX,
+        F.DataBus.has_databus_specification.MakeChild(
+            topology=[F.DataBus.has_databus_specification.Topology.BUS],
+            data_flow=F.DataBus.has_databus_specification.DataFlow.HALF_DUPLEX,
             multi_controller=False,
         )
     )
