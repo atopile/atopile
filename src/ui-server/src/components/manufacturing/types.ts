@@ -304,7 +304,7 @@ export interface MusterTargetInfo {
   dependencies: string[];
 }
 
-export const DEFAULT_BUILD_TARGETS = ['bom', 'manifest', 'variable-report', 'datasheets'];
+export const DEFAULT_BUILD_TARGETS = ['glb', 'step', 'mfg-data', 'bom', 'manifest', 'variable-report', 'datasheets'];
 
 export const CATEGORY_CONFIG: Record<string, { label: string; order: number; alwaysIncluded: boolean }> = {
   required: { label: 'Required', order: 0, alwaysIncluded: true },
