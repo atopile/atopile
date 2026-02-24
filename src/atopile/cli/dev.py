@@ -1,7 +1,6 @@
 import json
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,22 +12,10 @@ import typer
 
 from atopile.logging import get_logger
 from atopile.telemetry import capture
-from faebryk.libs.util import ConfigFlag
 
 logger = get_logger(__name__)
 
-LOG_VIEWER = ConfigFlag(
-    "TEST_LOG_VIEWER",
-    default=True,
-    descr="Build and serve the log viewer UI during tests",
-)
-
-
 dev_app = typer.Typer(rich_markup_mode="rich")
-
-# On Windows, npm/npx are .cmd wrappers, not .exe files.
-# shutil.which() resolves the full path so subprocess can find them.
-_npm = shutil.which("npm") or "npm"
 
 
 def _spawn_shell_with_venv(worktree_path: Path) -> None:
@@ -49,280 +36,14 @@ def _spawn_shell_with_venv(worktree_path: Path) -> None:
 
 
 @dev_app.command()
-@capture("cli:dev_extension_start", "cli:dev_extension_end")
-def extension(
-    skip_install: bool = typer.Option(
-        False, "--skip-install", help="Skip npm install checks."
-    ),
-    launch: bool = typer.Option(
-        True,
-        "--launch/--no-launch",
-        help="Launch VS Code Extension Development Host.",
-    ),
-):
-    """
-    Start the fast VS Code extension development loop.
-
-    Runs:
-    - `npm run build -- --watch --outDir
-    ../vscode-atopile/resources/webviews` in `src/ui-server`
-    - `npm run watch` in `src/vscode-atopile` (extension bundle watch)
-    """
-    import time
-
-    repo_root = Path(__file__).resolve().parents[3]
-    ui_server_dir = repo_root / "src" / "ui-server"
-    vscode_dir = repo_root / "src" / "vscode-atopile"
-
-    if not ui_server_dir.exists():
-        raise FileNotFoundError(f"ui-server directory not found: {ui_server_dir}")
-    if not vscode_dir.exists():
-        raise FileNotFoundError(f"vscode extension directory not found: {vscode_dir}")
-
-    if not skip_install:
-        if not (ui_server_dir / "node_modules").exists():
-            print("installing ui-server dependencies")
-            subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
-        if not (vscode_dir / "node_modules").exists():
-            print("installing vscode-atopile dependencies")
-            subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
-
-    print("starting ui-server webview build watch")
-    ui_watch = subprocess.Popen(
-        [
-            _npm,
-            "run",
-            "build",
-            "--",
-            "--watch",
-            "--outDir",
-            "../vscode-atopile/resources/webviews",
-        ],
-        cwd=ui_server_dir,
-    )
-    print("starting vscode extension webpack watch")
-    ext_watch = subprocess.Popen([_npm, "run", "watch"], cwd=vscode_dir)
-
-    if launch:
-        vscode_cli = shutil.which("code") or "code"
-        try:
-            launch_env = os.environ.copy()
-            launch_env["ATOPILE_EXTENSION_DEV_UI"] = "1"
-            subprocess.Popen(
-                [
-                    vscode_cli,
-                    "--new-window",
-                    "--extensionDevelopmentPath",
-                    str(vscode_dir),
-                    str(Path.cwd()),
-                ],
-                env=launch_env,
-            )
-        except FileNotFoundError:
-            typer.secho(
-                "Could not find 'code' CLI. Install it from VS Code command palette.",
-                fg=typer.colors.YELLOW,
-            )
-
-    print("\nExtension dev loop is running.")
-    print("Press Ctrl+C to stop.")
-
-    exit_code = 0
-    try:
-        while True:
-            for name, process in (
-                ("ui-server", ui_watch),
-                ("vscode-atopile", ext_watch),
-            ):
-                code = process.poll()
-                if code is not None:
-                    typer.secho(
-                        f"{name} exited with code {code}. Stopping other processes.",
-                        fg=typer.colors.RED if code != 0 else typer.colors.YELLOW,
-                    )
-                    exit_code = code
-                    break
-            else:
-                time.sleep(0.5)
-                continue
-            break
-    except KeyboardInterrupt:
-        pass
-    finally:
-        for process in (ui_watch, ext_watch):
-            if process.poll() is None:
-                process.terminate()
-        for process in (ui_watch, ext_watch):
-            if process.poll() is None:
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-
-    if exit_code != 0:
-        raise typer.Exit(exit_code)
-
-
-@dev_app.command()
 @capture("cli:dev_compile_start", "cli:dev_compile_end")
-def compile(
-    target: str = typer.Argument(
-        "all",
-        help="Build target: all, zig, visualizer, or vscode.",
-    ),
-):
-    import sys
+def compile():
+    """Compile Zig native extensions."""
+    print("compiling zig")
+    # import will trigger compilation
+    import faebryk.core.zig
 
-    target = target.lower()
-    valid_targets = {"all", "zig", "visualizer", "vscode"}
-    if target not in valid_targets:
-        raise typer.BadParameter(
-            f"target must be one of: {', '.join(sorted(valid_targets))}"
-        )
-
-    if target in {"all", "vscode"}:
-        repo_root = Path(__file__).resolve().parents[3]
-        gen_script = repo_root / "scripts" / "generate_types.py"
-        ui_server_dir = repo_root / "src" / "ui-server"
-        if gen_script.exists() and ui_server_dir.exists():
-            print("generating typescript types from pydantic models")
-            result = subprocess.run(
-                [sys.executable, str(gen_script)], cwd=str(repo_root)
-            )
-            if result.returncode != 0:
-                raise typer.Exit(result.returncode)
-
-    if target in {"all", "zig"}:
-        print("compiling zig")
-        # import will trigger compilation
-        import faebryk.core.zig
-
-        _ = faebryk.core.zig
-
-    if target in {"all", "visualizer"}:
-        print("compiling visualizer")
-        repo_root = Path(__file__).resolve().parents[3]
-        viz_dir = repo_root / "src" / "atopile" / "visualizer" / "web"
-        if not viz_dir.exists():
-            raise FileNotFoundError(f"visualizer web directory not found: {viz_dir}")
-
-        node_modules = viz_dir / "node_modules"
-        if not node_modules.exists():
-            subprocess.run([_npm, "install"], cwd=viz_dir, check=True)
-
-        subprocess.run([_npm, "run", "build"], cwd=viz_dir, check=True)
-
-    if target in {"all", "vscode"}:
-        import time
-
-        print("compiling vscode extension")
-        repo_root = Path(__file__).resolve().parents[3]
-        vscode_dir = repo_root / "src" / "vscode-atopile"
-        if not vscode_dir.exists():
-            raise FileNotFoundError(
-                f"vscode extension directory not found: {vscode_dir}"
-            )
-
-        node_modules = vscode_dir / "node_modules"
-        package_lock = vscode_dir / "package-lock.json"
-        needs_install = not node_modules.exists() or (
-            package_lock.exists()
-            and package_lock.stat().st_mtime > node_modules.stat().st_mtime
-        )
-        if needs_install:
-            subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
-
-        # Update version with timestamp for dev builds
-        package_json_path = vscode_dir / "package.json"
-        package_json = json.loads(package_json_path.read_text())
-        original_version = package_json["version"]
-
-        # Create dev version: X.Y.Z -> X.Y.Z-dev.TIMESTAMP
-        timestamp = int(time.time())
-        dev_version = f"{original_version}-dev.{timestamp}"
-        package_json["version"] = dev_version
-        package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
-        print(f"version: {dev_version}")
-
-        try:
-            # Package the extension (vscode:prepublish builds dashboard + extension)
-            subprocess.run(
-                [_npm, "exec", "--", "vsce", "package", "--allow-missing-repository"],
-                cwd=vscode_dir,
-                check=True,
-            )
-        finally:
-            # Restore original version
-            package_json["version"] = original_version
-            package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
-
-        # Find and report the generated .vsix file
-        vsix_files = list(vscode_dir.glob("*.vsix"))
-        if vsix_files:
-            vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
-            print(f"\nExtension packaged: {vsix_file}")
-            print(f"Install with: code --install-extension {vsix_file}")
-
-
-@dev_app.command()
-@capture("cli:dev_install_start", "cli:dev_install_end")
-def install(
-    ide: str = typer.Argument(
-        None,
-        help="IDE to install the extension for: 'cursor' or 'vscode'",
-    ),
-):
-    """
-    Install the locally built VS Code extension.
-
-    Installs the latest .vsix built by 'ato dev compile vscode'.
-    """
-    if ide in ("vscode", "code"):
-        cli = shutil.which("code") or "code"
-    elif ide == "cursor":
-        cli = shutil.which("cursor") or "cursor"
-    else:
-        typer.secho(
-            "Usage: ato dev install <cursor|vscode>",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    repo_root = Path(__file__).resolve().parents[3]
-    vscode_dir = repo_root / "src" / "vscode-atopile"
-
-    if not vscode_dir.exists():
-        raise typer.BadParameter(f"vscode extension directory not found: {vscode_dir}")
-
-    # Find the latest .vsix file
-    vsix_files = list(vscode_dir.glob("*.vsix"))
-    if not vsix_files:
-        typer.secho(
-            "No .vsix file found. Run 'ato dev compile vscode' first.",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
-    print(f"Installing {vsix_file.name} using {cli}...")
-
-    # Install with --force to replace existing installation
-    # This triggers VS Code's "Reload Required" notification
-    result = subprocess.run(
-        [cli, "--install-extension", str(vsix_file), "--force"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        typer.secho(
-            f"Failed to install extension: {result.stderr}",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    typer.secho("Extension installed!", fg=typer.colors.GREEN)
-    print("Remember to reload your extension!")
+    _ = faebryk.core.zig
 
 
 @dev_app.command()
@@ -884,23 +605,6 @@ def test(
         return
 
     from test.runner.main import main
-
-    # Build the log viewer UI before starting tests
-    ui_server_dir = repo_root() / "src" / "ui-server"
-    if LOG_VIEWER and ui_server_dir.exists():
-        node_modules = ui_server_dir / "node_modules"
-        if not node_modules.exists():
-            typer.echo("Installing log viewer dependencies...")
-            subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
-        typer.echo("Building log viewer UI...")
-        result = subprocess.run(
-            [shutil.which("npx") or "npx", "vite", "build"],
-            cwd=ui_server_dir,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            typer.echo(f"Warning: Failed to build log viewer: {result.stderr[:200]}")
 
     args = ctx.args
 

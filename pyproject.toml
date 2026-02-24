@@ -120,7 +120,6 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 artifacts = [
     "**/viewer/dist",
-    "**/visualizer/web/dist",
     "**/dashboard/web/dist",
 ]
 packages = ["src/faebryk", "src/atopile"]
@@ -133,7 +132,6 @@ cmake.source-dir = "src/faebryk/core"
 [tool.hatch.build.targets.sdist]
 artifacts = [
     "**/viewer/dist",
-    "**/visualizer/web/dist",
     "**/dashboard/web/dist",
 ]
 

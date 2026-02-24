@@ -39,308 +39,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from atopile.dataclasses import AppContext, EventType
+from atopile.dataclasses import AppContext
 from atopile.model.build_queue import _build_queue
-from atopile.model.model_state import model_state
 from atopile.model.sqlite import BuildHistory
-from atopile.server.connections import server_state
-from atopile.server.domains import packages as packages_domain
-from atopile.server.domains import projects as projects_domain
-from atopile.server.events import event_bus
-from atopile.server.file_watcher import FileChangeResult, FileWatcher
 
 log = logging.getLogger(__name__)
-
-# Fixed port for the dashboard server - extension opens this directly
-UI_DEBOUNCE_S = float(os.getenv("ATOPILE_UI_DEBOUNCE_S", "0.5"))
-PACKAGES_REFRESH_MIN_INTERVAL_S = float(
-    os.getenv("ATOPILE_PACKAGES_REFRESH_MIN_INTERVAL_S", "30")
-)
-_debounce_tasks: dict[str, asyncio.Task] = {}
-_last_packages_registry_refresh: float = 0.0
-
-
-async def _load_initial_state(ctx: AppContext) -> None:
-    """Load startup state, emitting events as each piece becomes available."""
-    if not ctx.workspace_paths:
-        await server_state.emit_event("projects_changed")
-        return
-
-    log.info(f"Loading projects from {ctx.workspace_paths}")
-
-    async def _discover_projects() -> None:
-        t0 = time.perf_counter()
-        projects = await asyncio.to_thread(
-            projects_domain.discover_projects_in_paths, ctx.workspace_paths
-        )
-        log.info(
-            "[project discovery] found %d projects in %.1fms",
-            len(projects),
-            (time.perf_counter() - t0) * 1000,
-        )
-        await server_state.emit_event("projects_changed")
-        # Re-notify so the frontend picks up installed-package status.
-        await server_state.emit_event("packages_changed")
-
-    async def _fetch_registry() -> None:
-        await asyncio.to_thread(packages_domain.get_all_registry_packages)
-        await server_state.emit_event("packages_changed")
-
-    await asyncio.gather(_discover_projects(), _fetch_registry())
-
-
-async def _refresh_projects_state() -> None:
-    workspace_paths = model_state.workspace_paths
-    if not workspace_paths:
-        await server_state.emit_event("projects_changed")
-        return
-
-    # No try/except - let exceptions crash the server for visibility
-    await asyncio.to_thread(projects_domain.discover_projects_in_paths, workspace_paths)
-    await server_state.emit_event("projects_changed")
-
-
-async def _refresh_stdlib_state() -> None:
-    await server_state.emit_event("stdlib_changed")
-
-
-async def _refresh_bom_state() -> None:
-    await server_state.emit_event("bom_changed")
-
-
-async def _refresh_variables_state() -> None:
-    await server_state.emit_event("variables_changed")
-
-
-async def _watch_stdlib_background() -> None:
-    from atopile.server import stdlib as stdlib_domain
-
-    watcher = FileWatcher(
-        "stdlib",
-        paths=stdlib_domain.get_stdlib_watch_paths(),
-        on_change=lambda _result: _refresh_stdlib_state(),
-        glob="**/*.{py,ato}",
-    )
-    await watcher.run()
-
-
-async def _watch_bom_background() -> None:
-    watcher = FileWatcher(
-        "bom",
-        paths_provider=_get_workspace_roots_for_watcher,
-        on_change=lambda _result: _refresh_bom_state(),
-        glob="**/build/builds/*.bom.json",
-    )
-    await watcher.run()
-
-
-async def _watch_variables_background() -> None:
-    watcher = FileWatcher(
-        "variables",
-        paths_provider=_get_workspace_roots_for_watcher,
-        on_change=lambda _result: _refresh_variables_state(),
-        glob="**/build/builds/*.variables.json",
-    )
-    await watcher.run()
-
-
-def _debounce(key: str, delay_s: float, coro_factory) -> None:
-    """
-    Debounce a coroutine - cancel any pending task for this key and schedule a new one.
-
-    The task will run after delay_s seconds. If called again with the same key
-    before the delay expires, the previous task is cancelled and a new one is scheduled.
-    """
-    # Clean up any completed tasks to prevent unbounded growth
-    # This is O(n) but n is small (typically < 20 keys) and runs infrequently
-    done_keys = [k for k, t in _debounce_tasks.items() if t.done()]
-    for k in done_keys:
-        _debounce_tasks.pop(k, None)
-
-    existing = _debounce_tasks.get(key)
-    if existing and not existing.done():
-        existing.cancel()
-
-    async def _runner():
-        try:
-            await asyncio.sleep(delay_s)
-            await coro_factory()
-        except asyncio.CancelledError:
-            return
-        finally:
-            task = _debounce_tasks.get(key)
-            if task is asyncio.current_task():
-                _debounce_tasks.pop(key, None)
-
-    _debounce_tasks[key] = asyncio.create_task(_runner())
-
-
-def _get_workspace_roots_for_watcher() -> list[Path]:
-    """Get workspace roots as a list for file watcher compatibility."""
-    root = model_state.workspace_path
-    return [root] if root else []
-
-
-def _is_path_in_workspace(path: Path) -> bool:
-    """Check if a path is within the workspace root."""
-    root = model_state.workspace_path
-    if not root:
-        return False
-    try:
-        resolved_path = path.resolve()
-        resolved_root = root.resolve()
-        return resolved_path.is_relative_to(resolved_root)
-    except FileNotFoundError:
-        return False
-
-
-def _has_affected_paths(result: "FileChangeResult") -> bool:
-    """Check if any changed paths are within the workspace."""
-    changed_paths = result.created + result.changed + result.deleted
-    if not changed_paths:
-        return False
-    return any(_is_path_in_workspace(p) for p in changed_paths)
-
-
-async def _emit_project_files_changed() -> None:
-    root = model_state.workspace_path
-    if root:
-        await server_state.emit_event(
-            "project_files_changed", {"project_root": str(root)}
-        )
-
-
-async def _emit_project_modules_changed() -> None:
-    root = model_state.workspace_path
-    if root:
-        await server_state.emit_event(
-            "project_modules_changed", {"project_root": str(root)}
-        )
-
-
-async def _emit_project_dependencies_changed() -> None:
-    root = model_state.workspace_path
-    if root:
-        await server_state.emit_event(
-            "project_dependencies_changed", {"project_root": str(root)}
-        )
-
-
-async def _watch_projects_background() -> None:
-    watcher = FileWatcher(
-        "projects",
-        paths_provider=_get_workspace_roots_for_watcher,
-        on_change=lambda _result: _refresh_projects_state(),
-        glob="**/ato.yaml",
-    )
-    await watcher.run()
-
-
-async def _watch_project_sources_background() -> None:
-    watcher = FileWatcher(
-        "project-sources",
-        paths_provider=_get_workspace_roots_for_watcher,
-        on_change=lambda result: _handle_project_sources_change(result),
-        glob="**/*.ato",
-    )
-    await watcher.run()
-
-
-async def _watch_project_python_background() -> None:
-    watcher = FileWatcher(
-        "project-python",
-        paths_provider=_get_workspace_roots_for_watcher,
-        on_change=lambda result: _handle_project_python_change(result),
-        glob="**/*.py",
-    )
-    await watcher.run()
-
-
-async def _watch_project_dependencies_background() -> None:
-    watcher = FileWatcher(
-        "project-deps",
-        paths_provider=_get_workspace_roots_for_watcher,
-        on_change=lambda result: _handle_project_dependencies_change(result),
-        glob="**/ato.yaml",
-    )
-    await watcher.run()
-
-
-async def _handle_project_sources_change(
-    result: "FileChangeResult",
-) -> None:
-    if not _has_affected_paths(result):
-        return
-    _debounce("project-files", UI_DEBOUNCE_S, _emit_project_files_changed)
-    _debounce("project-modules", UI_DEBOUNCE_S, _emit_project_modules_changed)
-
-
-async def _handle_project_python_change(
-    result: "FileChangeResult",
-) -> None:
-    if not _has_affected_paths(result):
-        return
-    _debounce("project-files", UI_DEBOUNCE_S, _emit_project_files_changed)
-
-
-async def _handle_project_dependencies_change(
-    result: "FileChangeResult",
-) -> None:
-    if not _has_affected_paths(result):
-        return
-    _debounce("project-deps", UI_DEBOUNCE_S, _emit_project_dependencies_changed)
-    _debounce("packages-refresh", UI_DEBOUNCE_S, _refresh_packages_for_deps_change)
-
-
-async def _refresh_packages_for_deps_change() -> None:
-    from atopile.server.domains import packages as packages_domain
-
-    global _last_packages_registry_refresh
-    now = time.time()
-    if now - _last_packages_registry_refresh >= PACKAGES_REFRESH_MIN_INTERVAL_S:
-        await packages_domain.refresh_packages_state()
-        _last_packages_registry_refresh = time.time()
-    else:
-        await packages_domain.refresh_installed_packages_state()
-
-
-async def _load_atopile_install_options(ctx: AppContext) -> None:
-    """Background task to load atopile versions, branches, and detect installations."""
-    from atopile import version as ato_version
-
-    try:
-        log.info("[background] Loading atopile installation options")
-
-        # Emit the ACTUAL atopile status - this is the source of truth
-        # for what version/source the extension is using to build projects
-        try:
-            version_obj = ato_version.get_installed_atopile_version()
-            actual_version = str(version_obj)
-            actual_source = ctx.ato_source or "unknown"
-            # Derive UI source: 'explicit-path' means user configured a local binary
-            ui_source = "local" if actual_source == "explicit-path" else "release"
-            await server_state.emit_event(
-                "atopile_config_changed",
-                {
-                    "actual_version": actual_version,
-                    "actual_source": actual_source,
-                    "actual_binary_path": ctx.ato_binary_path,
-                    "source": ui_source,  # Sets the active toggle state
-                    "local_path": ctx.ato_local_path,
-                    "from_branch": ctx.ato_from_branch,
-                    "from_spec": ctx.ato_from_spec,
-                },
-            )
-            log.info(
-                f"[background] Actual atopile: {actual_version} from {actual_source} "
-                f"(binary: {ctx.ato_binary_path}"
-                f"{', branch: ' + ctx.ato_from_branch if ctx.ato_from_branch else ''})"
-            )
-        except Exception as e:
-            log.warning(f"[background] Could not detect actual version: {e}")
-
-    except Exception as exc:
-        log.error(f"[background] Failed to load atopile install options: {exc}")
 
 
 def cleanup_server(exc: BaseException | None = None) -> None:
@@ -445,7 +148,6 @@ def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -
 
 def create_app(
     summary_file: Optional[Path] = None,
-    workspace_paths: Optional[list[Path]] = None,
     ato_source: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
@@ -478,7 +180,6 @@ def create_app(
 
     ctx = AppContext(
         summary_file=summary_file,
-        workspace_paths=workspace_paths or [],
         ato_source=ato_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
@@ -505,106 +206,11 @@ def create_app(
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers (crash-on-error enabled)")
 
-        # Configure model_state with workspace paths
-        model_state.set_workspace_paths(ctx.workspace_paths)
-
-        # Configure event_bus with event loop and emitter
-        event_bus.set_event_loop(loop)
-        event_bus.register_emitter(server_state.emit_event)
-
-        from atopile.server.module_introspection import clear_module_cache
-
-        def _handle_build_change(_build_id: str, _event: str) -> None:
-            event_bus.emit_sync(EventType.BUILDS_CHANGED)
-
-        def _handle_build_completed(build) -> None:
-            clear_module_cache()
-            event_bus.emit_sync(
-                EventType.PROJECTS_CHANGED, {"project_root": build.project_root}
-            )
-            event_bus.emit_sync(
-                EventType.BOM_CHANGED, {"project_root": build.project_root}
-            )
-
-        _build_queue.on_change = _handle_build_change
-        _build_queue.on_completed = _handle_build_completed
-
-        asyncio.create_task(_refresh_stdlib_state())
-        asyncio.create_task(_watch_stdlib_background())
-        asyncio.create_task(_watch_bom_background())
-        asyncio.create_task(_watch_variables_background())
-        asyncio.create_task(_watch_projects_background())
-        asyncio.create_task(_watch_project_sources_background())
-        asyncio.create_task(_watch_project_python_background())
-        asyncio.create_task(_watch_project_dependencies_background())
-        asyncio.create_task(_load_atopile_install_options(ctx))
-
-        if not ctx.workspace_paths:
-            log.info("No workspace paths configured, skipping initial state population")
-            return
-
-        asyncio.create_task(_load_initial_state(ctx))
-        log.info("Server started - loading initial state in background")
-
     # Health check endpoint for extension to verify server is running
     @app.get("/health")
     async def health_check():
         """Simple health check endpoint."""
         return {"status": "ok"}
-
-    from atopile.server.routes import (
-        artifacts as artifacts_routes,
-    )
-    from atopile.server.routes import (
-        builds as builds_routes,
-    )
-    from atopile.server.routes import (
-        files as files_routes,
-    )
-    from atopile.server.routes import (
-        layout as layout_routes,
-    )
-    from atopile.server.routes import (
-        logs as logs_routes,
-    )
-    from atopile.server.routes import (
-        manufacturing as manufacturing_routes,
-    )
-    from atopile.server.routes import (
-        packages as packages_routes,
-    )
-    from atopile.server.routes import (
-        parts as parts_routes,
-    )
-    from atopile.server.routes import (
-        parts_search as parts_search_routes,
-    )
-    from atopile.server.routes import (
-        problems as problems_routes,
-    )
-    from atopile.server.routes import (
-        projects as projects_routes,
-    )
-    from atopile.server.routes import (
-        tests as tests_routes,
-    )
-    from atopile.server.routes import (
-        websocket as ws_routes,
-    )
-
-    app.include_router(ws_routes.router)
-    app.include_router(logs_routes.router)
-    app.include_router(projects_routes.router)
-    app.include_router(builds_routes.router)
-    app.include_router(artifacts_routes.router)
-    app.include_router(files_routes.router)
-    app.include_router(layout_routes.router)
-    app.include_router(parts_search_routes.router)
-    app.include_router(parts_routes.router)
-    app.include_router(problems_routes.router)
-    app.include_router(packages_routes.router)
-    app.include_router(tests_routes.router)
-    app.include_router(manufacturing_routes.router)
 
     return app
 
@@ -667,7 +273,6 @@ class DashboardServer:
     def __init__(
         self,
         port: Optional[int] = None,
-        workspace_paths: Optional[list[Path]] = None,
         ato_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
         ato_binary_path: Optional[str] = None,
@@ -675,9 +280,7 @@ class DashboardServer:
         ato_from_spec: Optional[str] = None,
     ):
         self.port = port or find_free_port()
-        self.workspace_paths = workspace_paths or []
         self.app = create_app(
-            workspace_paths=self.workspace_paths,
             ato_source=ato_source,
             ato_local_path=ato_local_path,
             ato_binary_path=ato_binary_path,
@@ -699,7 +302,6 @@ class DashboardServer:
             host="127.0.0.1",
             port=self.port,
             log_level="warning",
-            ws_max_size=2 * 1024 * 1024,
         )
         self._server = uvicorn.Server(config)
 
@@ -725,19 +327,17 @@ class DashboardServer:
 
 def start_dashboard_server(
     port: Optional[int] = None,
-    workspace_paths: Optional[list[Path]] = None,
 ) -> tuple[DashboardServer, str]:
     """
     Start the dashboard server.
 
     Args:
         port: Port to use (defaults to a free port)
-        workspace_paths: Workspace paths to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(port=port, workspace_paths=workspace_paths)
+    server = DashboardServer(port=port)
     server.start()
     return server, server.url
 
@@ -761,21 +361,18 @@ def is_atopile_server_running(port: int) -> bool:
 
 def run_server(
     port: int,
-    workspace_paths: Optional[list[Path]] = None,
     force: bool = False,
     ato_source: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
     ato_from_spec: Optional[str] = None,
-    no_gen: bool = False,
 ) -> None:
     """
     Run the dashboard server.
 
     Args:
         port: Port to run the server on
-        workspace_paths: Workspace paths to scan for projects
         force: Kill existing server on the port if True
         ato_source: Source of the atopile binary
             ('explicit-path', 'from-setting', 'default')
@@ -792,14 +389,12 @@ def run_server(
     try:
         _run_server_impl(
             port,
-            workspace_paths,
             force,
             ato_source=ato_source,
             ato_binary_path=ato_binary_path,
             ato_local_path=ato_local_path,
             ato_from_branch=ato_from_branch,
             ato_from_spec=ato_from_spec,
-            no_gen=no_gen,
         )
     except KeyboardInterrupt:
         print("\nShutting down...")
@@ -814,32 +409,14 @@ def run_server(
 
 def _run_server_impl(
     port: int,
-    workspace_paths: Optional[list[Path]],
     force: bool,
     ato_source: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
     ato_from_spec: Optional[str] = None,
-    no_gen: bool = False,
 ) -> None:
     """Server implementation (called by run_server with exception handling)."""
-    # Generate types if in dev environment (skip with --no-gen)
-    if not no_gen:
-        repo_root = Path(__file__).resolve().parents[3]
-        gen_script = repo_root / "scripts" / "generate_types.py"
-        ui_server_dir = repo_root / "src" / "ui-server"
-        if gen_script.exists() and ui_server_dir.exists():
-            result = subprocess.run(
-                [sys.executable, str(gen_script)], cwd=str(repo_root)
-            )
-            if result.returncode != 0:
-                sys.exit(result.returncode)
-
-    # Keep workspace list empty unless explicit paths were provided.
-    # This avoids scanning broad roots (for example "/") in empty-workspace sessions.
-    workspace_paths = workspace_paths or []
-
     # Check if port is already in use
     if is_port_in_use(port):
         if force:
@@ -868,7 +445,6 @@ def _run_server_impl(
     # Create and start server
     server = DashboardServer(
         port=port,
-        workspace_paths=workspace_paths,
         ato_source=ato_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
@@ -877,7 +453,6 @@ def _run_server_impl(
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")
-    print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
     print("Press Ctrl+C to stop")
 
     server.start()
