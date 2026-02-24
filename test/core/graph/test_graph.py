@@ -21,8 +21,8 @@ def _get_component_node_count_params():
         F.ElectricSignal: 678,
         F.ElectricPower: 665,
         F.Resistor: 950,
-        F.Capacitor: 1412,
-        F.I2C: 2428,
+        F.Capacitor: 1423,
+        F.I2C: 2500,
     }
 
     return [
