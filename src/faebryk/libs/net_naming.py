@@ -170,14 +170,17 @@ def _try_extract_signal_name(node: fabll.Node) -> str | None:
     if not (pin_electrical := node.try_cast(F.Electrical)):
         raise ValueError(
             f"Node {node} is not an electrical. "
-            "pins in ato components should always be a pin"
+            "pins in ato components should always be an electrical"
         )
     connected_electricals = pin_electrical._is_interface.get().get_connected()
     for electrical in connected_electricals:
         if (ato_component := electrical.get_parent()) and ato_component[0].has_trait(
             is_ato_component
         ):
-            return filter_unpreferred_names(electrical.get_name(accept_no_parent=True))
+            if name := filter_unpreferred_names(
+                electrical.get_name(accept_no_parent=True)
+            ):
+                return name
     return None
 
 
@@ -265,7 +268,7 @@ def filter_unpreferred_names(name: str) -> str | None:
     """
     Filter out unpreferred electrical names.
 
-    Names like "net", "power", and pure numeric strings are filtered out
+    Names like "net", "part_of", "line", and pure numeric strings are filtered out
     as they don't provide meaningful net identification.
 
     Returns:
