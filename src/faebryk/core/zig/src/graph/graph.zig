@@ -1880,6 +1880,105 @@ test "speed_insert_edge_simple" {
     //
 }
 
+test "speed_dumps_loads" {
+    const a = std.heap.c_allocator;
+
+    const BenchEdgeType = Edge.hash_edge_type(0xBEEF_CAFE);
+    Edge.register_type(BenchEdgeType) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    // Build a large graph: 1M nodes, 1M edges, 200k attributed nodes
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const num_nodes = 1_000_000;
+    const num_edges = 1_000_000;
+    const num_attributed = 200_000;
+
+    // Heap-allocate the node array (too large for stack)
+    const nodes = try a.alloc(NodeReference, num_nodes);
+    defer a.free(nodes);
+    {
+        var i: usize = 0;
+        while (i < num_nodes) : (i += 1) {
+            nodes[i] = g.create_and_insert_node().node;
+        }
+    }
+
+    // Add string/int/float/bool attributes to a subset of nodes
+    {
+        var i: usize = 0;
+        while (i < num_attributed) : (i += 1) {
+            nodes[i].put("name", .{ .String = "component_node" });
+            nodes[i].put("index", .{ .Int = @intCast(i) });
+            nodes[i].put("weight", .{ .Float = @as(f64, @floatFromInt(i)) * 0.1 });
+            nodes[i].put("active", .{ .Bool = i % 2 == 0 });
+        }
+    }
+
+    // Create edges between consecutive nodes
+    {
+        var i: usize = 0;
+        while (i < num_edges) : (i += 1) {
+            const src = nodes[i % num_nodes];
+            const tgt = nodes[(i + 1) % num_nodes];
+            const e = EdgeReference.init(src, tgt, BenchEdgeType);
+            _ = try g.insert_edge(e);
+        }
+    }
+
+    // Benchmark dumps
+    var timer = try std.time.Timer.start();
+    const data = try g.dumps(a);
+    const dumps_us = timer.read() / std.time.ns_per_us;
+    defer a.free(data);
+
+    const payload_kb = data.len / 1024;
+
+    std.debug.print("\n--- dumps/loads benchmark ({d} nodes, {d} edges, {d} attributed) ---\n", .{ num_nodes, num_edges, num_attributed });
+    std.debug.print("payload: {d} KB\n", .{payload_kb});
+    std.debug.print("dumps:      {d} us\n", .{dumps_us});
+
+    // Benchmark loads (creates a fresh graph from bytes)
+    timer.reset();
+    const loaded = try GraphView.loads(a, data);
+    const loads_us = timer.read() / std.time.ns_per_us;
+    defer {
+        loaded.deinit();
+        a.destroy(loaded);
+    }
+
+    std.debug.print("loads:      {d} us\n", .{loads_us});
+
+    // Benchmark merge_diff (merges into an existing graph)
+    var g2 = GraphView.init(a);
+    defer g2.deinit();
+    timer.reset();
+    try g2.merge_diff(data);
+    const merge_us = timer.read() / std.time.ns_per_us;
+
+    std.debug.print("merge_diff: {d} us\n", .{merge_us});
+
+    // Benchmark clone (dumps + loads combined)
+    timer.reset();
+    const cloned = try g.clone();
+    const clone_us = timer.read() / std.time.ns_per_us;
+    defer {
+        cloned.deinit();
+        a.destroy(cloned);
+    }
+
+    std.debug.print("clone:      {d} us\n", .{clone_us});
+
+    // Sanity checks
+    try std.testing.expectEqual(g.get_node_count(), loaded.get_node_count());
+    try std.testing.expectEqual(g.get_edge_count(), loaded.get_edge_count());
+    try std.testing.expectEqual(g.get_node_count(), cloned.get_node_count());
+    try std.testing.expectEqual(g.get_edge_count(), cloned.get_edge_count());
+}
+
 // =============================================================================
 // Serialization Tests
 // =============================================================================
