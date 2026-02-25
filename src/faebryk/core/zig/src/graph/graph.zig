@@ -1149,6 +1149,13 @@ pub const GraphView = struct {
     // Binary Serialization Methods
     // =========================================================================
 
+    /// Serialize this GraphView to a flat binary buffer.
+    ///
+    /// Iterates the sparse node_set and edge_set bitsets, packing active
+    /// entities into contiguous PackedNode/PackedEdge structs. Referenced
+    /// DynamicAttributes blocks are packed with their string values appended
+    /// to a trailing string table. The caller owns the returned slice and
+    /// must free it with the same allocator.
     pub fn dumps(g: *@This(), allocator: std.mem.Allocator) SerializationError![]u8 {
         var packed_nodes = std.array_list.Managed(PackedNode).init(allocator);
         defer packed_nodes.deinit();
@@ -1277,6 +1284,17 @@ pub const GraphView = struct {
         return buf;
     }
 
+    /// Deserialize a binary payload and merge it into this GraphView.
+    ///
+    /// Every node and attribute block in the payload is allocated a fresh
+    /// local UUID (translation tables remap original → new). Edge endpoints
+    /// are translated via the remap table, falling back to identity for
+    /// baseline entities already present in the graph. Adjacency maps are
+    /// rebuilt via insert_edge_unchecked(). The string table is copied into
+    /// graph-owned arena memory so strings outlive the input buffer.
+    ///
+    /// Security: validates magic, version, exact buffer size (overflow-safe),
+    /// value_tag bounds, string ref bounds, and rejects dangling node refs.
     pub fn merge_diff(g: *@This(), bytes: []const u8) SerializationError!void {
         // Step 1: Validate header
         if (bytes.len < @sizeOf(BinaryHeader)) return error.MalformedPayload;
@@ -1409,6 +1427,13 @@ pub const GraphView = struct {
         g.self_node = .{ .uuid = remap_nodes.get(header.self_node_uuid) orelse header.self_node_uuid };
     }
 
+    /// Create a new GraphView from a serialized binary payload.
+    ///
+    /// Unlike merge_diff (which merges into an existing graph), this creates
+    /// a fresh graph via init_bare() (no pre-existing self_node) and then
+    /// applies merge_diff so the resulting node count matches the original
+    /// exactly. The caller owns the returned pointer and must call deinit()
+    /// then allocator.destroy() to free it.
     pub fn loads(allocator: std.mem.Allocator, bytes: []const u8) SerializationError!*@This() {
         const g_ptr = allocator.create(@This()) catch return error.OutOfMemory;
         g_ptr.* = @This().init_bare(allocator);
@@ -1420,6 +1445,9 @@ pub const GraphView = struct {
         return g_ptr;
     }
 
+    /// Deep-copy this GraphView via dumps() + loads(). The returned graph
+    /// is fully independent — it has its own arena, node/edge sets, and
+    /// adjacency maps. Uses g.base_allocator for the new graph's storage.
     pub fn clone(g: *@This()) SerializationError!*@This() {
         const bytes = try g.dumps(std.heap.c_allocator);
         defer std.heap.c_allocator.free(bytes);
@@ -1429,6 +1457,45 @@ pub const GraphView = struct {
 
 // =============================================================================
 // Binary Serialization
+//
+// Flat binary format for transferring GraphView state across process boundaries
+// with UUID-remapped merging. All structs are `extern` (C-ABI) and padded to
+// 8-byte alignment. Strings are replaced with offset/length pairs into a
+// trailing string table. HashMaps and bitsets are omitted — the receiver
+// rebuilds adjacency structures via insert_edge_unchecked().
+//
+// Payload layout:
+//   [ BinaryHeader            (32 bytes)                ]
+//   [ Packed Nodes Array      (node_count × 8 bytes)    ]
+//   [ Packed Edges Array      (edge_count × 24 bytes)   ]
+//   [ Packed Attributes Array (attr_count × 152 bytes)  ]
+//   [ String Table            (string_table_size bytes) ]
+//
+// Serialization (dumps):
+//   1. Iterate node_set bitset → pack each active node as PackedNode,
+//      collecting referenced DynamicAttributes UUIDs.
+//   2. Iterate edge_set bitset → pack each active edge as PackedEdge,
+//      collecting referenced DynamicAttributes UUIDs.
+//   3. For each collected DA UUID, pack as PackedDynamicAttributes,
+//      appending identifier and string-value bytes to the string table.
+//   4. Write header + nodes + edges + attrs + string table contiguously.
+//
+// Deserialization (merge_diff):
+//   1. Validate header (magic, version) and exact buffer size using
+//      overflow-safe arithmetic.
+//   2. Copy string table into graph-owned arena memory (outlives IPC buffer).
+//   3. Restore attributes: validate value_tag bounds and string refs,
+//      swizzle PackedStringRef → []const u8 via arena copy, allocate new
+//      DA slots, record remap_attrs[original_uuid → new_uuid].
+//   4. Restore nodes: create_and_insert_node() for each PackedNode,
+//      record remap_nodes[original_uuid → new_uuid], resolve DA refs
+//      via remap_attrs (falling back to identity for baseline entities).
+//   5. Restore edges: translate source/target via remap_nodes (falling
+//      back to identity), validate both endpoints exist, allocate new
+//      edge in global arrays, register in edge_set and rebuild adjacency
+//      maps via insert_edge_unchecked().
+//   6. Set self_node from header's remapped UUID.
+//
 // =============================================================================
 
 pub const SerializationError = error{
@@ -1446,31 +1513,37 @@ pub const SerializationError = error{
 const MAGIC: u32 = 0x52494E53; // "RINS"
 const FORMAT_VERSION: u32 = 1;
 
+/// 32-byte header at the start of every serialized payload.
 const BinaryHeader = extern struct {
-    magic_number: u32,
-    version: u32,
-    self_node_uuid: u32,
-    node_count: u32,
-    edge_count: u32,
-    attr_count: u32,
-    string_table_size: u32,
+    magic_number: u32, // must be MAGIC (0x52494E53)
+    version: u32, // FORMAT_VERSION (1)
+    self_node_uuid: u32, // GraphView.self_node.uuid
+    node_count: u32, // number of PackedNode entries
+    edge_count: u32, // number of PackedEdge entries
+    attr_count: u32, // number of PackedDynamicAttributes entries
+    string_table_size: u32, // byte length of the trailing string table
     _pad: u32 = 0,
 };
 
+/// Reference into the string table: bytes[offset..offset+length].
 const PackedStringRef = extern struct {
     offset: u32,
     length: u32,
 };
 
+/// 8-byte union matching the Literal tagged union. The active field is
+/// determined by the sibling value_tag in PackedAttribute.
 const PackedLiteralValue = extern union {
     Int: i64,
     Uint: u64,
     Float: f64,
     String: PackedStringRef,
-    Bool: u8,
+    Bool: u8, // 0 or 1
     _pad: [8]u8,
 };
 
+/// A single key-value attribute within a PackedDynamicAttributes block.
+/// 24 bytes: 8 (identifier) + 1 (tag) + 7 (pad) + 8 (value).
 const PackedAttribute = extern struct {
     identifier: PackedStringRef,
     value_tag: u8,
@@ -1478,17 +1551,24 @@ const PackedAttribute = extern struct {
     value: PackedLiteralValue,
 };
 
+/// Serialized form of a DynamicAttributes block (up to 6 attributes).
+/// 152 bytes: 4 (uuid) + 4 (in_use) + 6 × 24 (values).
 const PackedDynamicAttributes = extern struct {
     original_uuid: u32,
     in_use: u32,
     values: [6]PackedAttribute,
 };
 
+/// 8 bytes per node: original UUID + reference to its DynamicAttributes block
+/// (0 if the node has no dynamic attributes).
 const PackedNode = extern struct {
     original_uuid: u32,
     dynamic_attr_uuid: u32,
 };
 
+/// 24 bytes per edge: original UUID, source/target node UUIDs, DA reference,
+/// and flags (@bitCast of Edge.Flags packed struct: edge_type, directional,
+/// order, edge_specific).
 const PackedEdge = extern struct {
     original_uuid: u32,
     source: u32,
@@ -1498,6 +1578,8 @@ const PackedEdge = extern struct {
     _pad: u32 = 0,
 };
 
+/// Stable tag mapping for Literal variants. Literal is union(enum) so we
+/// define an explicit u8 tag for binary stability.
 const ValueTag = enum(u8) {
     Int = 0,
     Uint = 1,
@@ -1516,12 +1598,14 @@ comptime {
     std.debug.assert(@sizeOf(PackedLiteralValue) == 8);
 }
 
+/// Append a string to the string table and return its offset/length reference.
 fn appendString(string_table: *std.array_list.Managed(u8), s: str) PackedStringRef {
     const offset: u32 = @intCast(string_table.items.len);
     string_table.appendSlice(s) catch @panic("OOM");
     return .{ .offset = offset, .length = @intCast(s.len) };
 }
 
+/// Convert a Literal to its packed tag + value, appending string data to the table.
 fn packLiteral(lit: Literal, string_table: *std.array_list.Managed(u8)) struct { tag: ValueTag, value: PackedLiteralValue } {
     return switch (lit) {
         .Int => |v| .{ .tag = .Int, .value = .{ .Int = v } },
@@ -1532,6 +1616,7 @@ fn packLiteral(lit: Literal, string_table: *std.array_list.Managed(u8)) struct {
     };
 }
 
+/// Compute the exact expected payload size from header fields, using overflow-safe math.
 fn computeExpectedSize(h: BinaryHeader) SerializationError!usize {
     var size: usize = @sizeOf(BinaryHeader);
     size = std.math.add(usize, size, std.math.mul(usize, h.node_count, @sizeOf(PackedNode)) catch return error.IntegerOverflow) catch return error.IntegerOverflow;
@@ -1541,11 +1626,13 @@ fn computeExpectedSize(h: BinaryHeader) SerializationError!usize {
     return size;
 }
 
+/// Validate that a PackedStringRef is within the string table bounds.
 fn validateStringRef(ref: PackedStringRef, string_table_size: u32) SerializationError!void {
     const end = std.math.add(u32, ref.offset, ref.length) catch return error.StringOutOfBounds;
     if (end > string_table_size) return error.StringOutOfBounds;
 }
 
+/// Swizzle a PackedStringRef into a slice of the arena-owned string memory.
 fn resolveString(ref: PackedStringRef, string_memory: []const u8) []const u8 {
     return string_memory[ref.offset..][0..ref.length];
 }
