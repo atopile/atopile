@@ -1174,16 +1174,18 @@ pub const GraphView = struct {
         else
             0;
 
-        // Pack node bitset + node array (lockstep), collect DA UUIDs
+        // Pack node bitset + node array in a single pass, collect DA UUIDs.
+        // Sets bits and collects node data simultaneously — O(capacity) once, not twice.
         var node_bitset_buf: []u8 = &.{};
         var max_attr_uuid: u32 = 0;
         if (node_bitset_byte_len > 0) {
             node_bitset_buf = allocator.alloc(u8, node_bitset_byte_len) catch return error.OutOfMemory;
-            packBitset(g.node_set.data, g.node_set.capacity, node_bitset_buf);
+            @memset(node_bitset_buf, 0);
 
             var i: u32 = 0;
             while (i < g.node_set.capacity) : (i += 1) {
                 if (g.node_set.data[i]) {
+                    node_bitset_buf[i / 8] |= @as(u8, 1) << @as(u3, @intCast(i % 8));
                     const da_uuid = Nodes[i].dynamic.uuid;
                     packed_nodes.append(.{ .dynamic_attr_uuid = da_uuid }) catch return error.OutOfMemory;
                     if (da_uuid != 0) {
@@ -1673,17 +1675,6 @@ comptime {
 /// Round up to the nearest 8-byte boundary.
 fn alignTo8(n: u32) u32 {
     return (n + 7) & ~@as(u32, 7);
-}
-
-/// Pack a bool-per-entry array into a real bitset. Bit i is set in byte i/8
-/// at position i%8. Buffer must be at least ceil(capacity/8) bytes.
-fn packBitset(data: []const bool, capacity: u32, buf: []u8) void {
-    @memset(buf, 0);
-    for (0..capacity) |i| {
-        if (data[i]) {
-            buf[i / 8] |= @as(u8, 1) << @as(u3, @intCast(i % 8));
-        }
-    }
 }
 
 /// Iterator over set bit indices in a packed byte buffer.
