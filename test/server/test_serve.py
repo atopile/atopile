@@ -78,9 +78,10 @@ def test_hub_and_core_server_start_and_respond():
             async with websockets.connect(
                 f"ws://localhost:{hub_port}/atopile-ui"
             ) as ws:
-                await ws.send(json.dumps({"type": "subscribe"}))
+                await ws.send(json.dumps({"type": "subscribe", "keys": ["core"]}))
                 msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
                 assert msg["type"] == "state"
+                assert msg["key"] == "core"
 
         asyncio.run(_ws_check())
     finally:

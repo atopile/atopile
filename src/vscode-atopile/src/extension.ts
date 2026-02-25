@@ -10,7 +10,7 @@ import {
 } from "./constants";
 
 const panels = [
-  { id: "panel-a", label: "Panel A" },
+  { id: "panel-developer", label: "Developer" },
   { id: "panel-b", label: "Panel B" },
 ];
 

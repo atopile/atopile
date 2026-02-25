@@ -32,6 +32,12 @@ export class WebviewManager implements vscode.WebviewViewProvider {
     };
 
     webviewView.webview.html = this._getHtml(webviewView.webview, "sidebar");
+
+    webviewView.webview.onDidReceiveMessage((msg) => {
+      if (msg.type === "openPanel" && typeof msg.panelId === "string") {
+        this.openPanel(msg.panelId);
+      }
+    });
   }
 
   /** Open or reveal an editor-tab webview panel. */

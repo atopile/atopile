@@ -6,3 +6,42 @@ body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+.panel {
+  padding: 1rem;
+}
+
+.logo {
+  width: 48px;
+  height: 48px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+}
+
+.status-dot--ok {
+  background-color: #4caf50;
+}
+
+.status-dot--error {
+  background-color: #f44336;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.connection-table {
+  border-collapse: collapse;
+}
+
+.connection-table td {
+  padding: 0.25rem 0.5rem;
+}
