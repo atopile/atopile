@@ -1,7 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { RequirementData, FilterType } from './requirements/types';
 import { RequirementItem } from './requirements/RequirementItem';
-import { ReqTooltip } from './requirements/ReqTooltip';
 import { postMessage } from '../api/vscodeApi';
 import { useStore } from '../store';
 
@@ -21,10 +20,6 @@ const FILTER_LABELS: Record<FilterType, string> = {
 export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
-  const [tooltip, setTooltip] = useState<{ req: RequirementData | null; rect: DOMRect | null }>({
-    req: null,
-    rect: null,
-  });
 
   const requirementsData = useStore((s) => s.requirementsData);
   const isLoading = useStore((s) => s.isLoadingRequirements);
@@ -75,13 +70,28 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
     });
   }, [selectedProjectRoot, selectedTargetNames, requirementsData]);
 
-  const handleHover = useCallback((req: RequirementData, rect: DOMRect) => {
-    setTooltip({ req, rect });
-  }, []);
+  // When requirements data or target changes, notify the detail webview
+  // so it can re-fetch with the current target. The extension silently
+  // drops the message if the panel isn't open.
+  const prevTarget = useRef(selectedTargetNames?.[0]);
+  const prevDataRef = useRef(requirementsData);
+  useEffect(() => {
+    const target = selectedTargetNames?.[0] ?? 'default';
+    const targetChanged = target !== prevTarget.current;
+    const dataChanged = requirementsData !== prevDataRef.current;
+    prevTarget.current = target;
+    prevDataRef.current = requirementsData;
 
-  const handleLeave = useCallback(() => {
-    setTooltip({ req: null, rect: null });
-  }, []);
+    // Only send if something actually changed (skip initial mount)
+    if (!targetChanged && !dataChanged) return;
+
+    postMessage({
+      type: 'updateRequirementsPanel',
+      target,
+      projectRoot: selectedProjectRoot ?? '',
+    });
+  }, [requirementsData, selectedTargetNames, selectedProjectRoot]);
+
 
   if (!isExpanded) return null;
 
@@ -171,8 +181,6 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
             req={req}
             selected={selectedId === req.id}
             onClick={() => handleSelect(req.id)}
-            onHover={handleHover}
-            onLeave={handleLeave}
           />
         ))}
         {filteredReqs.length === 0 && (
@@ -182,7 +190,6 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
         )}
       </div>
 
-      <ReqTooltip req={tooltip.req} rect={tooltip.rect} />
     </div>
   );
 }

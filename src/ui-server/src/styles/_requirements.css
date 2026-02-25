@@ -121,7 +121,7 @@
   transition: background var(--transition-fast);
   border-left: 2px solid transparent;
 }
-.req-item:hover { background: var(--bg-hover); }
+/* .req-item:hover { background: var(--bg-hover); } */
 .req-item.selected {
   background: var(--accent-subtle);
   border-left-color: var(--accent);
@@ -273,12 +273,21 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+.req-info-card-outer:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+/* Inside unified rall-row card, remove redundant border/radius */
+.rall-row .rall-card .ric-body {
+  border: none;
+  border-radius: 0;
 }
 
 .ric-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--spacing-xs);
   padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -291,13 +300,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Go-to-source button (inline icon, sits right next to the text) */
+.ric-goto-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  padding: 0;
+}
+.ric-goto-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
 .ric-badge {
   font-size: var(--font-size-xxs);
   font-weight: 700;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  margin-left: var(--spacing-sm);
+  margin-left: auto;
   letter-spacing: 0.4px;
 }
 .ric-badge.pass { background: var(--success); color: var(--text-on-status); }
@@ -353,6 +385,14 @@
 .ric-value.warn { color: var(--warning); }
 .ric-value.muted { color: var(--text-muted); font-family: var(--font-sans); font-style: italic; }
 .ric-value.mono-muted { color: var(--text-muted); }
+
+/* Value + action button grouped together (no gap from space-between) */
+.ric-value-with-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-align: right;
+}
 
 .ric-actual-row {
   display: flex;
@@ -511,32 +551,113 @@
 
 .rall-body {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: var(--spacing-md) var(--spacing-lg);
 }
 
 .rall-row {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--spacing-md);
+  transition: box-shadow 0.2s ease;
+}
+.rall-row:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* Full-width header across the top of the card */
+.rall-row-header {
+  border-bottom: 1px solid var(--border-subtle);
+}
+/* When collapsed (header is last child), hide the bottom border */
+.rall-row-header:last-child {
+  border-bottom: none;
+}
+
+/* Collapse/expand chevron */
+.rall-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.rall-collapse-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.rall-collapse-btn .chevron {
+  transition: transform var(--transition-fast);
+}
+.rall-collapse-btn .chevron.open {
+  transform: rotate(180deg);
+}
+
+/* Content area below the header: details left, plots right */
+.rall-row-content {
   display: grid;
   grid-template-columns: 340px 1fr;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-md);
-  /* align-items: stretch (default) — plot cell matches card row height */
+  gap: 0;
+  align-items: start;
 }
 
 .rall-card {
   min-width: 0;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .rall-plots {
   min-width: 0;
   min-height: 0;
   overflow: visible;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 400px);
   gap: 8px;
+  padding: var(--spacing-md);
 }
-.rall-plots .plot-container {
-  flex: 0 0 auto;
+
+/* List layout: single column, wider plots */
+.rall-plots.rall-plots-list {
+  grid-template-columns: 800px;
+}
+
+/* Layout toggle button group */
+.rall-layout-toggle {
+  display: flex;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.rall-layout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.rall-layout-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.rall-layout-btn.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* Editable name in card header */
@@ -744,12 +865,31 @@
 /* ---- Plot container + toolbar ---- */
 .plot-container {
   position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  transition: box-shadow 0.2s ease;
+}
+
+/* Shared hover shadow for plot containers */
+.plot-container:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* Prevent Plotly's own border from creating a double-outline */
+.plot-container .js-plotly-plot,
+.plot-container .plot-container,
+.plot-container .svg-container {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .plot-toolbar {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 8px;
+  right: 8px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -792,6 +932,42 @@
 .plot-toolbar-btn-disabled:hover {
   background: transparent;
   color: var(--text-muted);
+}
+
+/* ---- Fullscreen plot (CSS-based, works in VS Code webview iframes) ---- */
+.plot-container.plot-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: var(--bg-primary, #fff);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  border: none;
+  border-radius: 0;
+}
+
+.plot-container.plot-fullscreen > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plot-container.plot-fullscreen .plot-toolbar {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 10000;
+}
+
+.plot-container.plot-fullscreen .plot-toolbar-btn {
+  opacity: 1;
+  background: var(--bg-secondary);
 }
 
 /* ---- Plot settings popover ---- */

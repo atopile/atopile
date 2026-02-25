@@ -32,6 +32,7 @@ class RequirementResult:
     resolved_diff_ref: str | None = None
     resolved_ctx_nets: list[str] | None = None
     plot_specs: list[dict] | None = None
+    sweep_points: list[dict] | None = None  # [{paramValue, actual, passed}, ...]
 
 
 # ---------------------------------------------------------------------------

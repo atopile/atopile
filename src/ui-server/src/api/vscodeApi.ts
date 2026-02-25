@@ -176,6 +176,18 @@ export interface OpenRequirementDetailMessage {
   buildTime?: string;
 }
 
+export interface UpdateRequirementsPanelMessage {
+  type: 'updateRequirementsPanel';
+  target: string;
+  projectRoot: string;
+}
+
+export interface OpenSourceFileMessage {
+  type: 'openSourceFile';
+  filePath: string;
+  line?: number;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -200,7 +212,9 @@ export type ExtensionMessage =
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
   | OpenMigrateTabMessage
-  | OpenRequirementDetailMessage;
+  | OpenRequirementDetailMessage
+  | UpdateRequirementsPanelMessage
+  | OpenSourceFileMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

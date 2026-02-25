@@ -1,10 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import type { RequirementData, RequirementsData } from './requirements/types';
-import { formatEng, formatBuildTime, parseLimitExpr, reEvalPassFail } from './requirements/helpers';
+import { formatEng, formatBuildTime, parseLimitExpr, reEvalPassFail, measureTran, parseValueWithUnit, goToSource } from './requirements/helpers';
 import { renderSpecAtSize, renderTransientPlot, renderDCPlot, renderBodePlot, renderSweepPlot, purgePlot, injectLimitShapes, applyPlotFieldToSpec } from './requirements/charts';
 import { EditableField, MEASUREMENT_OPTIONS, CAPTURE_OPTIONS } from './requirements/EditableField';
 import { updateRequirement, rerunSimulation, rerunSingleSimulation } from './requirements/api';
-import { PlotToolbar } from './requirements/PlotToolbar';
+import { PlotToolbar, GoToSourceIcon } from './requirements/PlotToolbar';
 
 interface RequirementsDetailPageProps {
   requirementId: string;
@@ -24,9 +24,24 @@ const PLOT_FIELDS = new Set([
   'required_plot', 'supplementary_plot',
 ]);
 
+/** Find signal data in timeSeries by trying various key formats */
+function _findSignal(signals: Record<string, number[]>, netKey: string, rawNet: string): number[] | null {
+  if (signals[netKey]) return signals[netKey];
+  const underscored = netKey.replace(/\./g, '_');
+  if (signals[underscored]) return signals[underscored];
+  const vRaw = `v(${rawNet.replace(/\./g, '_')})`;
+  if (signals[vRaw]) return signals[vRaw];
+  const needle = rawNet.replace(/\./g, '_').toLowerCase();
+  for (const [k, v] of Object.entries(signals)) {
+    if (k.toLowerCase().includes(needle)) return v;
+  }
+  return null;
+}
+
 export function RequirementsDetailPage({ requirementId, injectedData, injectedBuildTime }: RequirementsDetailPageProps) {
   const plotContainerRef = useRef<HTMLDivElement>(null);
   const plotRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const containerRefs = useRef<({ current: HTMLDivElement | null })[]>([]);
   const [req, setReq] = useState<RequirementData | null>(injectedData ?? null);
   const [buildTime, setBuildTime] = useState<string>(injectedBuildTime ?? '');
   const [loading, setLoading] = useState(!injectedData);
@@ -35,6 +50,21 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
   const [rerunning, setRerunning] = useState(false);
   const [, setChartDim] = useState<{ width: number; height: number } | null>(null);
   const [limitVersion, setLimitVersion] = useState(0);
+
+  // Sync from fresh server data when build time changes (WebSocket refresh)
+  const prevBuildTime = useRef(injectedBuildTime);
+  useEffect(() => {
+    if (injectedBuildTime && injectedBuildTime !== prevBuildTime.current) {
+      prevBuildTime.current = injectedBuildTime;
+      if (injectedData) {
+        setReq(injectedData);
+        setStale(false);
+        setLimitVersion(v => v + 1);
+        setLoading(false);
+      }
+      setBuildTime(injectedBuildTime);
+    }
+  }, [injectedBuildTime, injectedData]);
 
   const canEdit = !!(req?.sourceFile && req?.varName);
   const hasResult = req?.actual !== null && req?.actual !== undefined && isFinite(req.actual);
@@ -53,12 +83,23 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
     }
   }, []);
 
+  // Map timing fields from requirement names to simulation names
+  const SIM_FIELD_MAP: Record<string, string> = {
+    tran_start: 'time_start', tran_stop: 'time_stop', tran_step: 'time_step',
+  };
+  const SIM_FIELDS = new Set(['tran_start', 'tran_stop', 'tran_step', 'param_values']);
+
   const handleFieldChange = useCallback(async (field: string, value: string) => {
     if (!req?.sourceFile || !req?.varName) return;
+    // Timing + sweep fields target the simulation node, not the requirement
+    const isSimField = SIM_FIELDS.has(field);
+    const varName = isSimField && req.simulationName
+      ? req.simulationName : req.varName;
+    const writeField = SIM_FIELD_MAP[field] || field;
     await updateRequirement({
       source_file: req.sourceFile,
-      var_name: req.varName,
-      updates: { [field]: value },
+      var_name: varName,
+      updates: { [writeField]: value },
     });
 
     if (field === 'limit_expr') {
@@ -91,6 +132,37 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
         });
         setLimitVersion(v => v + 1);
       }
+    } else if (field === 'measurement') {
+      // Client-side re-measurement from existing timeSeries data
+      setReq(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev, measurement: value };
+        if (prev.timeSeries) {
+          const netKey = prev.net.startsWith('v(') || prev.net.startsWith('i(') ? prev.net : `v(${prev.net})`;
+          const sigData = _findSignal(prev.timeSeries.signals, netKey, prev.net);
+          if (sigData) {
+            const newActual = measureTran(value, sigData, prev.timeSeries.time, {
+              settlingTolerance: prev.settlingTolerance,
+              minVal: prev.minVal, maxVal: prev.maxVal,
+            });
+            updated.actual = isFinite(newActual) ? newActual : null;
+            const pf = reEvalPassFail(updated.actual, prev.minVal, prev.maxVal, prev.sweepPoints);
+            Object.assign(updated, pf);
+          }
+        }
+        return updated;
+      });
+      setLimitVersion(v => v + 1);
+    } else if (field === 'tran_start' || field === 'tran_stop' || field === 'tran_step') {
+      const parsed = parseValueWithUnit(value);
+      if (parsed !== null) {
+        const key = field === 'tran_start' ? 'tranStart' : field === 'tran_stop' ? 'tranStop' : 'tranStep';
+        setReq(prev => prev ? { ...prev, [key]: parsed } : prev);
+      }
+      setStale(true);
+    } else if (field === 'param_values') {
+      setReq(prev => prev ? { ...prev, sweepParamValues: value } : prev);
+      setStale(true);
     } else if (!PLOT_FIELDS.has(field)) {
       setStale(true);
     }
@@ -100,9 +172,12 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
     if (!req) return;
     setRerunning(true);
     try {
-      if (req.netlistPath && req.capture === 'transient') {
+      const isSweep = req.sweepPoints && req.sweepPoints.length > 0;
+      const canSingleRerun = !isSweep && req.netlistPath && req.capture === 'transient'
+        && (req.spice || req.sourceSpec);
+      if (canSingleRerun) {
         const result = await rerunSingleSimulation({
-          netlist_path: req.netlistPath,
+          netlist_path: req.netlistPath!,
           spice_sources: req.spice || req.sourceSpec || '',
           sim_type: 'transient',
           net: req.net,
@@ -114,6 +189,9 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
           context_nets: req.contextNets || [],
           min_val: req.minVal,
           max_val: req.maxVal,
+          dut_name: req.dutName ?? null,
+          dut_params: req.dutParams ?? null,
+          remove_elements: req.removeElements ?? null,
         });
         setReq(prev => prev ? {
           ...prev,
@@ -126,7 +204,15 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
         await rerunSimulation();
       }
       setStale(false);
-    } catch { /* */ }
+    } catch (err) {
+      console.error('Rerun failed:', err);
+      try {
+        await rerunSimulation();
+        setStale(false);
+      } catch {
+        // Both failed — user should rebuild manually
+      }
+    }
     finally { setRerunning(false); }
   }, [req]);
 
@@ -202,6 +288,11 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
               <div className="ric-name">
                 <EditableField value={req.name} className="ric-name-edit" enabled={canEdit} onSave={v => handleFieldChange('req_name', v)} />
               </div>
+              {req.sourceFile && req.sourceLine && (
+                <button className="ric-goto-btn" onClick={() => goToSource(req.sourceFile, req.sourceLine)} title="Go to requirement definition">
+                  <GoToSourceIcon />
+                </button>
+              )}
               <div className={`ric-badge ${hasResult ? (req.passed ? 'pass' : 'fail') : 'pending'}`}>{hasResult ? (req.passed ? 'PASS' : 'FAIL') : '---'}</div>
             </div>
             <div className="ric-body">
@@ -258,12 +349,18 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
 
         {/* Plots — one toolbar per plot */}
         <div className="rall-plots" ref={plotContainerRef}>
-          {Array.from({ length: plotCount }, (_, i) => (
-            <div key={i} className="plot-container">
-              <div ref={el => { plotRefs.current[i] = el; }} />
-              <PlotToolbar req={req} specIndex={i} onDirty={handlePlotDirty} onPlotFieldChange={handlePlotFieldChange} />
-            </div>
-          ))}
+          {Array.from({ length: plotCount }, (_, i) => {
+            if (!containerRefs.current[i]) {
+              containerRefs.current[i] = { current: null };
+            }
+            const cRef = containerRefs.current[i];
+            return (
+              <div key={i} className="plot-container" ref={el => { cRef.current = el; }}>
+                <div ref={el => { plotRefs.current[i] = el; }} />
+                <PlotToolbar req={req} specIndex={i} onDirty={handlePlotDirty} onPlotFieldChange={handlePlotFieldChange} containerRef={cRef} />
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -285,7 +382,7 @@ function SimConfigFields({
 
   return (
     <>
-      {/* Sweep config (read-only) */}
+      {/* Sweep config */}
       {hasSweep && (
         <>
           {req.sweepParamName && (
@@ -295,20 +392,19 @@ function SimConfigFields({
             </div>
           )}
           <div className="ric-row">
-            <span className="ric-label">Sweep points</span>
-            <span className="ric-value">{req.sweepPoints!.length}</span>
-          </div>
-          <div className="ric-row">
-            <span className="ric-label">Range</span>
-            <span className="ric-value mono-muted">
-              {req.sweepPoints![0].paramValue} — {req.sweepPoints![req.sweepPoints!.length - 1].paramValue}
-            </span>
+            <span className="ric-label">Sweep values</span>
+            <EditableField
+              value={req.sweepParamValues ?? req.sweepPoints!.map(sp => sp.paramValue).join(',')}
+              className="ric-value"
+              enabled={canEdit}
+              onSave={v => onFieldChange('param_values', v)}
+            />
           </div>
         </>
       )}
 
       {/* Transient fields */}
-      {isTransient && !hasSweep && (
+      {isTransient && (
         <>
           {(req.tranStart != null && req.tranStart !== 0) && (
             <div className="ric-row">
@@ -457,7 +553,19 @@ function SimConfigFields({
           <span className="ric-value">{req.contextNets.join(', ')}</span>
         </div>
       )}
-      {req.simulationName && <div className="ric-row"><span className="ric-label">Simulation</span><span className="ric-value">{req.simulationName}</span></div>}
+      {req.simulationName && (
+        <div className="ric-row">
+          <span className="ric-label">Simulation</span>
+          <span className="ric-value-with-action">
+            <span className="ric-value">{req.simulationName}</span>
+            {req.sourceFile && req.simulationLine && (
+              <button className="ric-goto-btn" onClick={() => goToSource(req.sourceFile, req.simulationLine)} title="Go to simulation definition">
+                <GoToSourceIcon />
+              </button>
+            )}
+          </span>
+        </div>
+      )}
       {req.timeSeries && (
         <div className="ric-row">
           <span className="ric-label">Points</span>

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Number of parallel ngspice processes.  Defaults to CPU count; override
 # with the ``ATO_SIM_WORKERS`` environment variable.
 _MAX_WORKERS = int(os.environ.get("ATO_SIM_WORKERS", 0)) or os.cpu_count() or 4
-TMAX = 25e-9
+TMAX = 50e-9
 
 
 @dataclass

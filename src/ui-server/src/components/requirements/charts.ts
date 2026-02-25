@@ -1,7 +1,54 @@
-import type { RequirementData } from './types';
+import type { RequirementData, PlotMeta } from './types';
 import { formatEng, autoScaleTime } from './helpers';
 
 type Plotly = typeof import('plotly.js-basic-dist-min');
+
+/** Human-readable measurement labels */
+const MEASUREMENT_LABELS: Record<string, string> = {
+  final_value: 'Final Value',
+  average: 'Average',
+  settling_time: 'Settling Time',
+  peak_to_peak: 'Peak-to-Peak',
+  overshoot: 'Overshoot',
+  rms: 'RMS',
+  envelope: 'Envelope',
+  max: 'Max',
+  min: 'Min',
+  duty_cycle: 'Duty Cycle',
+  frequency: 'Frequency',
+  sweep: 'Sweep',
+  gain_db: 'Gain (dB)',
+  phase_deg: 'Phase (deg)',
+  bandwidth_3db: 'Bandwidth 3dB',
+  bode_plot: 'Bode Plot',
+  efficiency: 'Efficiency',
+};
+
+/**
+ * Clean up a raw SPICE signal key for display.
+ * "v(dut_power_out_hv)" → "dut.power_out.hv"
+ * "i(l1)" → "I(L1)"
+ * plain keys pass through with underscores → dots
+ */
+function formatSignalName(key: string): string {
+  const iMatch = key.match(/^i\((.+)\)$/i);
+  if (iMatch) return `I(${iMatch[1].toUpperCase()})`;
+  const vMatch = key.match(/^v\((.+)\)$/i);
+  const inner = vMatch ? vMatch[1] : key;
+  return inner.replace(/_/g, '.');
+}
+
+/**
+ * Build a legend label for a trace.
+ * Combines the signal name with an optional measurement descriptor.
+ * e.g. "power_out.hv — Final Value"
+ */
+function legendLabel(signalKey: string, measurement?: string): string {
+  const sig = formatSignalName(signalKey);
+  if (!measurement) return sig;
+  const mLabel = MEASUREMENT_LABELS[measurement] || measurement.replace(/_/g, ' ');
+  return `${sig} — ${mLabel}`;
+}
 
 let _plotly: Plotly | null = null;
 let _plotlyPromise: Promise<Plotly> | null = null;
@@ -63,7 +110,7 @@ function baseLayout(colors: ReturnType<typeof themeColors>) {
       title: { text: '', font: { size: 9, color: colors.muted } },
       tickfont: { size: 8 },
     },
-    legend: { x: 1.02, xanchor: 'left' as const, y: 1, yanchor: 'top' as const, font: { size: 8, color: colors.muted } },
+    legend: { x: 1.02, xanchor: 'left' as const, y: 1, yanchor: 'top' as const, traceorder: 'normal' as const, font: { size: 8, color: colors.muted } },
     modebar: { bgcolor: 'rgba(0,0,0,0)', color: colors.muted, activecolor: colors.accent },
   };
 }
@@ -82,7 +129,10 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
 
   const traces: Plotly.Data[] = [];
 
-  const nutLabel = (req as any).displayNet || netKey;
+  const nutLabel = legendLabel(
+    (req as any).displayNet || netKey,
+    req.measurement,
+  );
   traces.push({
     x: timeScaled,
     y: nutSignal,
@@ -102,8 +152,8 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
         y: ts.signals[ck],
         type: 'scatter',
         mode: 'lines',
-        name: ck,
-        line: { color: ctxColors[i % ctxColors.length], width: 1.5 },
+        name: formatSignalName(ck),
+        line: { color: ctxColors[i % ctxColors.length], width: 1, dash: 'dot' },
         yaxis: 'y2',
       });
     }
@@ -197,19 +247,37 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
   if (req.measurement === 'peak_to_peak') {
     const peak = Math.max(...nutSignal);
     const trough = Math.min(...nutSignal);
+    const center = (peak + trough) / 2;
+    // Show actual peak/trough as thin reference lines
     shapes.push(
-      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: peak, y1: peak, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
-      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: trough, y1: trough, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: peak, y1: peak, line: { color: colors.muted, width: 0.75 } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: trough, y1: trough, line: { color: colors.muted, width: 0.75 } },
     );
+    // Show P-P limit envelope centered on signal: ±limit/2
+    if (req.maxVal != null && isFinite(req.maxVal)) {
+      const halfMax = req.maxVal / 2;
+      shapes.push(
+        { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center - halfMax, y1: center + halfMax, fillcolor: `${colors.success}14`, line: { width: 0 } },
+        { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center + halfMax, y1: center + halfMax, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+        { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center - halfMax, y1: center - halfMax, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      );
+      annotations.push(
+        { x: 0.02, y: center + halfMax, xref: 'paper', yref: 'y', text: `USL ±${formatEng(halfMax, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+        { x: 0.02, y: center - halfMax, xref: 'paper', yref: 'y', text: `USL ±${formatEng(halfMax, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+      );
+    }
     annotations.push({
-      x: 0.95, y: (peak + trough) / 2, xref: 'paper', yref: 'y',
+      x: 0.95, y: center, xref: 'paper', yref: 'y',
       text: `P-P: ${formatEng(req.actual ?? NaN, req.unit)}`,
       showarrow: false, font: { size: 8, color: colors.text },
       bgcolor: 'rgba(0,0,0,0.6)', borderpad: 3,
     });
-    const span = peak - trough;
-    const pad = span * 0.2;
-    (layout.yaxis as Record<string, unknown>).range = [trough - pad, peak + pad];
+    const halfMax = (req.maxVal != null && isFinite(req.maxVal)) ? req.maxVal / 2 : (peak - trough) / 2;
+    const visibleTop = Math.max(peak, center + halfMax);
+    const visibleBot = Math.min(trough, center - halfMax);
+    const span = visibleTop - visibleBot;
+    const pad = span * 0.15;
+    (layout.yaxis as Record<string, unknown>).range = [visibleBot - pad, visibleTop + pad];
   }
 
   if (req.measurement === 'overshoot') {
@@ -252,6 +320,7 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, siz
   const range = req.maxVal - req.minVal;
   const padding = range * 0.3;
 
+  const dcLabel = legendLabel(req.displayNet || req.net, req.measurement);
   const traces: Plotly.Data[] = [{
     type: 'scatter',
     x: [req.actual],
@@ -263,7 +332,7 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, siz
       symbol: 'diamond',
       line: { width: 2, color: req.passed ? colors.success : colors.error },
     },
-    name: 'Actual',
+    name: dcLabel,
   }];
 
   const dim = size ?? fixedDimensions();
@@ -434,11 +503,12 @@ export async function renderSweepPlot(el: HTMLDivElement, req: RequirementData, 
     ],
   };
 
+  const sweepLabel = legendLabel(req.displayNet || req.net, req.measurement);
   Plotly.newPlot(el, [{
     x: xVals, y: yVals, type: 'scatter', mode: 'lines+markers',
     marker: { size: 8, color: ptColors },
     line: { color: colors.info, width: 2 },
-    name: 'Measured',
+    name: sweepLabel,
   }], layout as Partial<Plotly.Layout>, { responsive: true, displaylogo: false, displayModeBar: false });
 }
 
@@ -571,6 +641,15 @@ export function injectLimitShapes(
   if (req.minVal == null || req.maxVal == null) return spec;
   if (!isFinite(req.minVal) || !isFinite(req.maxVal)) return spec;
 
+  // Supplementary plots: no limits unless explicitly opted in via plot_limits
+  const meta = (spec as Record<string, unknown>).meta as PlotMeta | undefined;
+  if (meta?.role === 'supplementary') {
+    const pl = meta.plot_limits?.toLowerCase();
+    if (pl !== 'true' && pl !== '1' && pl !== 'yes' && pl !== 'on') {
+      return spec;
+    }
+  }
+
   const cloned: { data: Record<string, unknown>[]; layout: Record<string, unknown> } =
     JSON.parse(JSON.stringify(spec));
   const layout = cloned.layout;
@@ -604,17 +683,57 @@ export function injectLimitShapes(
   });
 
   const colors = themeColors();
+  const shapes = layout.shapes as Record<string, unknown>[];
+  const anns = layout.annotations as Record<string, unknown>[];
 
-  // Limits always apply to the y-axis (the measured value)
-  (layout.shapes as Record<string, unknown>[]).push(
-    { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.maxVal, fillcolor: `${colors.success}14`, line: { width: 0 } },
-    { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
-    { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+  // Detect if this is a bar/measurement chart vs a waveform
+  const isBarChart = cloned.data.some(
+    (t: Record<string, unknown>) => t.type === 'bar',
   );
-  (layout.annotations as Record<string, unknown>[]).push(
-    { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
-    { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
-  );
+
+  if (req.measurement === 'peak_to_peak' && !isBarChart) {
+    // P-P on waveform: draw envelope at center ± limit/2
+    let center = 0;
+    const mainTrace = cloned.data[0];
+    if (mainTrace && Array.isArray(mainTrace.y)) {
+      const yData = mainTrace.y as number[];
+      if (yData.length > 0) {
+        center = (Math.max(...yData) + Math.min(...yData)) / 2;
+      }
+    }
+    const halfMax = req.maxVal / 2;
+    shapes.push(
+      { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center - halfMax, y1: center + halfMax, fillcolor: `${colors.success}14`, line: { width: 0 } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center + halfMax, y1: center + halfMax, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center - halfMax, y1: center - halfMax, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+    );
+    anns.push(
+      { x: 0.02, y: center + halfMax, xref: 'paper', yref: 'y', text: `USL ±${formatEng(halfMax, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+      { x: 0.02, y: center - halfMax, xref: 'paper', yref: 'y', text: `USL ±${formatEng(halfMax, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+    );
+    if (req.minVal > 0 && Math.abs(req.minVal - req.maxVal) > 1e-12) {
+      const halfMin = req.minVal / 2;
+      shapes.push(
+        { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center + halfMin, y1: center + halfMin, line: { color: colors.muted, width: 1, dash: 'dot' } },
+        { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: center - halfMin, y1: center - halfMin, line: { color: colors.muted, width: 1, dash: 'dot' } },
+      );
+      anns.push(
+        { x: 0.02, y: center + halfMin, xref: 'paper', yref: 'y', text: `LSL ±${formatEng(halfMin, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+        { x: 0.02, y: center - halfMin, xref: 'paper', yref: 'y', text: `LSL ±${formatEng(halfMin, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+      );
+    }
+  } else {
+    // Standard: horizontal limits at min/max
+    shapes.push(
+      { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.maxVal, fillcolor: `${colors.success}14`, line: { width: 0 } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+      { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+    );
+    anns.push(
+      { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+      { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+    );
+  }
 
   return cloned;
 }
@@ -695,7 +814,7 @@ export function applyPlotFieldToSpec<T extends { data: Record<string, unknown>[]
           x: timeData,
           y: resolved.data,
           mode: 'lines',
-          name: resolved.key,
+          name: formatSignalName(resolved.key),
           type: 'scatter',
         });
       }
@@ -709,10 +828,10 @@ export function applyPlotFieldToSpec<T extends { data: Record<string, unknown>[]
           x: timeData,
           y: resolved.data,
           mode: 'lines',
-          name: resolved.key,
+          name: formatSignalName(resolved.key),
           type: 'scatter',
           yaxis: 'y2',
-          line: { dash: 'dash' },
+          line: { width: 0.75 },
         });
       }
     }

@@ -23,6 +23,8 @@ export interface RequirementData {
   sweepPoints?: SweepPointData[];
   sweepParamName?: string;
   sweepParamUnit?: string;
+  /** Raw comma-separated sweep values text (e.g. "400e3,800e3,1200e3") */
+  sweepParamValues?: string;
   /** AC analysis configuration */
   acStartFreq?: number;
   acStopFreq?: number;
@@ -40,8 +42,16 @@ export interface RequirementData {
   limitExpr?: string;
   /** Path to the .spice netlist file (for single-sim rerun) */
   netlistPath?: string;
+  /** DUT name for multi-DUT builds (e.g. "dut48") */
+  dutName?: string;
+  /** DUT parameter values for SPICE template resolution */
+  dutParams?: Record<string, number>;
   /** Simulation name override */
   simulationName?: string;
+  /** 1-indexed line number of this requirement in the .ato source */
+  sourceLine?: number;
+  /** 1-indexed line number of the simulation node in the .ato source */
+  simulationLine?: number;
   /** SPICE source override name (e.g. "V1") */
   sourceName?: string;
   /** SPICE source override spec (e.g. "PULSE(0 12 0 10u 10u 10 10)") */
@@ -50,6 +60,8 @@ export interface RequirementData {
   extraSpice?: string[];
   /** SPICE source definition from Simulation node */
   spice?: string;
+  /** Comma-separated element names to remove before rerun (e.g. "R5") */
+  removeElements?: string;
 }
 
 /** A single Plotly plot spec with optional editing metadata */
@@ -70,6 +82,9 @@ export interface PlotMeta {
   color?: string;
   simulation?: string;
   plot_limits?: string;
+  role?: 'required' | 'supplementary';
+  /** 1-indexed line number of this plot in the .ato source */
+  sourceLine?: number;
 }
 
 /** A single sweep data point */

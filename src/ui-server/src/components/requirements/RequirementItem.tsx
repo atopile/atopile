@@ -5,24 +5,18 @@ interface RequirementItemProps {
   req: RequirementData;
   selected: boolean;
   onClick: () => void;
-  onHover: (req: RequirementData, rect: DOMRect) => void;
-  onLeave: () => void;
 }
 
 export const RequirementItem = memo(function RequirementItem({
   req,
   selected,
   onClick,
-  onHover,
-  onLeave,
 }: RequirementItemProps) {
   const hasResult = req.actual !== null && isFinite(req.actual);
   return (
     <div
       className={`req-item ${selected ? 'selected' : ''}`}
       onClick={onClick}
-      onMouseEnter={(e) => onHover(req, e.currentTarget.getBoundingClientRect())}
-      onMouseLeave={onLeave}
     >
       <div className={`req-status-dot ${hasResult ? (req.passed ? 'pass' : 'fail') : 'pending'}`} />
       <div className="req-item-info">

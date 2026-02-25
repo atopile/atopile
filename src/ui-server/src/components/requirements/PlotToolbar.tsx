@@ -1,12 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { ExternalLink } from 'lucide-react';
 import type { PlotMeta, RequirementData } from './types';
-import { updateRequirement, createPlot } from './api';
+import { updateRequirement } from './api';
+import { goToSource } from './helpers';
 
 interface PlotToolbarProps {
   req: RequirementData;
   specIndex: number;
   onDirty: () => void;
   onPlotFieldChange?: (specIndex: number, field: string, value: string) => void;
+  /** Ref to the plot container element for fullscreen toggling */
+  containerRef?: { current: HTMLDivElement | null };
 }
 
 type PlotFieldDef = { key: string; label: string; placeholder: string };
@@ -37,34 +41,42 @@ const PLOT_TYPES = [
   { value: 'BarChart', label: 'Bar Chart' },
 ];
 
-/** Auto-populate sensible defaults based on requirement context */
-function defaultsForType(req: RequirementData, plotType: string): Record<string, string> {
-  const base: Record<string, string> = {
-    title: req.name,
-    y: req.net,
-  };
-  if (plotType === 'LineChart') {
-    if (req.capture === 'ac') {
-      base.x = 'frequency';
-    } else {
-      base.x = 'time';
+/** Relayout the Plotly chart inside a container to an explicit width/height */
+function relayoutPlotly(container: HTMLElement, width: number, height: number): void {
+  requestAnimationFrame(() => {
+    const plotEl = container.querySelector('.js-plotly-plot') as HTMLElement | null;
+    if (plotEl && (window as unknown as Record<string, unknown>).Plotly) {
+      const Plotly = (window as unknown as Record<string, unknown>).Plotly as {
+        relayout: (el: HTMLElement, update: { width: number; height: number }) => void;
+      };
+      Plotly.relayout(plotEl, { width, height });
     }
-  }
-  if (plotType === 'BarChart') {
-    base.x = 'dut';
-  }
-  return base;
+  });
 }
 
-export function PlotToolbar({ req, specIndex, onDirty, onPlotFieldChange }: PlotToolbarProps) {
+/** Compute the largest 16:9 box that fits within the given bounds (with padding) */
+function fitAspectRatio(viewW: number, viewH: number, padding: number): { width: number; height: number } {
+  const maxW = viewW - padding * 2;
+  const maxH = viewH - padding * 2;
+  let w = maxW;
+  let h = Math.round(w * 9 / 16);
+  if (h > maxH) {
+    h = maxH;
+    w = Math.round(h * 16 / 9);
+  }
+  return { width: w, height: h };
+}
+
+export function PlotToolbar({ req, specIndex, onDirty, onPlotFieldChange, containerRef }: PlotToolbarProps) {
   const [gearOpen, setGearOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  // Remember original plot size so we can restore on exit
+  const origSize = useRef<{ width: number; height: number } | null>(null);
 
   const spec = req.plotSpecs?.[specIndex];
   const meta = spec?.meta;
   const canEditPlot = !!(req.sourceFile && meta?.varName);
-  const canAdd = !!(req.sourceFile && req.varName);
 
   const handlePlotFieldChange = useCallback(async (field: string, value: string) => {
     if (!req.sourceFile || !meta?.varName) return;
@@ -80,15 +92,51 @@ export function PlotToolbar({ req, specIndex, onDirty, onPlotFieldChange }: Plot
     }
   }, [req.sourceFile, meta?.varName, onDirty, onPlotFieldChange, specIndex]);
 
-  const handleCreated = useCallback(() => {
-    setAddOpen(false);
-    onDirty();
-  }, [onDirty]);
+  /** Enter fullscreen: scale plot to fill viewport at 16:9 */
+  const enterFullscreen = useCallback(() => {
+    const el = containerRef?.current;
+    if (!el) return;
+    // Capture current plot size for restore
+    const plotEl = el.querySelector('.js-plotly-plot') as HTMLElement | null;
+    if (plotEl) {
+      origSize.current = { width: plotEl.clientWidth, height: plotEl.clientHeight };
+    }
+    setIsFullscreen(true);
+    el.classList.add('plot-fullscreen');
+    const dim = fitAspectRatio(window.innerWidth, window.innerHeight, 32);
+    relayoutPlotly(el, dim.width, dim.height);
+  }, [containerRef]);
+
+  /** Exit fullscreen: restore original plot size */
+  const exitFullscreen = useCallback(() => {
+    const el = containerRef?.current;
+    if (!el) return;
+    setIsFullscreen(false);
+    el.classList.remove('plot-fullscreen');
+    if (origSize.current) {
+      relayoutPlotly(el, origSize.current.width, origSize.current.height);
+    }
+  }, [containerRef]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (isFullscreen) exitFullscreen();
+    else enterFullscreen();
+  }, [isFullscreen, enterFullscreen, exitFullscreen]);
+
+  // Close fullscreen on Escape
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitFullscreen();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isFullscreen, exitFullscreen]);
 
   // Close popovers on Escape or click outside
   useEffect(() => {
-    if (!gearOpen && !addOpen) return;
-    const close = () => { setGearOpen(false); setAddOpen(false); };
+    if (!gearOpen) return;
+    const close = () => { setGearOpen(false); };
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     const handleClick = (e: MouseEvent) => {
       if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) close();
@@ -99,25 +147,36 @@ export function PlotToolbar({ req, specIndex, onDirty, onPlotFieldChange }: Plot
       document.removeEventListener('keydown', handleKey);
       document.removeEventListener('mousedown', handleClick);
     };
-  }, [gearOpen, addOpen]);
+  }, [gearOpen]);
 
   return (
     <div className="plot-toolbar" ref={toolbarRef}>
       <div className="plot-toolbar-icons">
+        {meta?.sourceLine && req.sourceFile && (
+          <button
+            className="plot-toolbar-btn"
+            onClick={() => goToSource(req.sourceFile, meta!.sourceLine)}
+            title="Go to plot definition"
+          >
+            <GoToSourceIcon />
+          </button>
+        )}
         <button
           className={`plot-toolbar-btn${!canEditPlot ? ' plot-toolbar-btn-disabled' : ''}`}
-          onClick={() => { if (canEditPlot) { setGearOpen(!gearOpen); setAddOpen(false); } }}
+          onClick={() => { if (canEditPlot) { setGearOpen(!gearOpen); } }}
           title={canEditPlot ? 'Plot settings' : 'No plot to configure'}
         >
           <GearIcon />
         </button>
-        <button
-          className={`plot-toolbar-btn${!canAdd ? ' plot-toolbar-btn-disabled' : ''}`}
-          onClick={() => { if (canAdd) { setAddOpen(!addOpen); setGearOpen(false); } }}
-          title="Add new plot"
-        >
-          <PlusIcon />
-        </button>
+        {containerRef && (
+          <button
+            className="plot-toolbar-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+          </button>
+        )}
       </div>
 
       {gearOpen && canEditPlot && (
@@ -125,14 +184,6 @@ export function PlotToolbar({ req, specIndex, onDirty, onPlotFieldChange }: Plot
           meta={meta!}
           onFieldChange={handlePlotFieldChange}
           onClose={() => setGearOpen(false)}
-        />
-      )}
-
-      {addOpen && canAdd && (
-        <AddPlotPopover
-          req={req}
-          onClose={() => setAddOpen(false)}
-          onCreated={handleCreated}
         />
       )}
     </div>
@@ -243,62 +294,6 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
   );
 }
 
-/* ---- Add plot popover — type selection first, then auto-populated fields ---- */
-
-function AddPlotPopover({ req, onClose, onCreated }: {
-  req: RequirementData;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSelectType = async (plotType: string) => {
-    if (!req.sourceFile || !req.varName) return;
-    setCreating(true);
-    setError(null);
-    const defaults = defaultsForType(req, plotType);
-    const plotVarName = `plot_${req.varName || 'new'}`;
-    try {
-      await createPlot({
-        source_file: req.sourceFile,
-        req_var_name: req.varName,
-        plot_var_name: plotVarName,
-        plot_type: plotType,
-        fields: defaults,
-      });
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Create failed');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  return (
-    <div className="plot-popover" onClick={e => e.stopPropagation()}>
-      <div className="plot-popover-header">
-        <span>New Plot</span>
-        <button className="plot-popover-close" onClick={onClose}>&times;</button>
-      </div>
-      <div className="plot-popover-body">
-        {PLOT_TYPES.map(pt => (
-          <button
-            key={pt.value}
-            className="plot-type-btn"
-            onClick={() => handleSelectType(pt.value)}
-            disabled={creating}
-          >
-            {pt.value === 'LineChart' ? <LineChartIcon /> : <BarChartIcon />}
-            <span>{pt.label}</span>
-          </button>
-        ))}
-        {error && <div className="plot-popover-error">{error}</div>}
-      </div>
-    </div>
-  );
-}
-
 /* ---- SVG Icons ---- */
 
 function GearIcon() {
@@ -310,29 +305,29 @@ function GearIcon() {
   );
 }
 
-function PlusIcon() {
+function FullscreenIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
     </svg>
   );
 }
 
-function LineChartIcon() {
+function ExitFullscreenIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 14 10 14 10 20" />
+      <polyline points="20 10 14 10 14 4" />
+      <line x1="14" y1="10" x2="21" y2="3" />
+      <line x1="3" y1="21" x2="10" y2="14" />
     </svg>
   );
 }
 
-function BarChartIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10" />
-      <line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" />
-    </svg>
-  );
+/** Re-export lucide ExternalLink as GoToSourceIcon for consistency */
+export function GoToSourceIcon() {
+  return <ExternalLink size={12} />;
 }

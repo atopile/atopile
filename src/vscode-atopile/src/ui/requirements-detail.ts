@@ -55,6 +55,24 @@ export function openRequirementDetail(extensionUri: vscode.Uri, options: Require
       case 'closeRequirementDetail':
         panel?.dispose();
         break;
+      case 'openSourceFile':
+        if (message.filePath) {
+          const uri = vscode.Uri.file(message.filePath);
+          vscode.workspace.openTextDocument(uri).then(
+            (doc) => {
+              const options: vscode.TextDocumentShowOptions = {};
+              if (message.line != null) {
+                const pos = new vscode.Position(Math.max(0, message.line - 1), 0);
+                options.selection = new vscode.Range(pos, pos);
+              }
+              vscode.window.showTextDocument(doc, options);
+            },
+            (err) => {
+              traceVerbose(`[RequirementDetail] Failed to open file ${message.filePath}: ${err}`);
+            }
+          );
+        }
+        break;
       default:
         traceVerbose(`[RequirementDetail] Unknown message type: ${message.type}`);
         break;
@@ -69,6 +87,18 @@ export function openRequirementDetail(extensionUri: vscode.Uri, options: Require
 export function closeRequirementDetail(): void {
   panel?.dispose();
   panel = undefined;
+}
+
+/** Send a message to the requirement detail webview (if open). */
+export function sendToRequirementPanel(message: unknown): void {
+  if (panel) {
+    panel.webview.postMessage(message);
+  }
+}
+
+/** Whether the requirement detail panel is currently open. */
+export function isRequirementPanelOpen(): boolean {
+  return panel !== undefined;
 }
 
 function getProdHtml(webview: vscode.Webview, extensionPath: string, options: RequirementDetailOptions): string {

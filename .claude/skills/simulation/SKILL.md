@@ -289,19 +289,223 @@ These can be used in `plot.y` or `plot.y_secondary`:
 | `min(net)` | Min measurement per sweep point | `"min(dut.power_out.hv)"` |
 | `i(element)` | Current through voltage source or inductor | `"i(l1)"`, `"i(v1)"` |
 
-### Plot best practices
+### Plot Design Principles
 
-Make sure each plot clearly shows the information needed to prove the requirement:
+Good plots follow the scientific standard: a reader who sees only the plot and its title should understand what was tested, what the result was, and whether it passed. Every element on the chart must earn its place.
 
-| Requirement type | Primary y | Secondary y | Notes |
-|---|---|---|---|
-| Load transient | `ac_coupled(dut.power_out.hv)` | `i(l1)` | AC-couple to see perturbation; show load current |
-| Line transient | `ac_coupled(dut.power_out.hv)` | `dut.power_in.hv` | AC-couple Vout; show VIN step |
-| Output/input ripple | `ac_coupled(dut.power_out.hv)` | `i(l1)` | AC-couple to see mV-scale ripple |
-| Startup | `dut.power_out.hv` | `i(l1)` | Raw voltage (need to see 0→5V); show inrush |
-| Low dropout | `dut.power_out.hv` | `i(l1)` | Raw voltage; show load current |
-| Switching frequency | `dut.package.8` (SW) | — | Raw SW node for period counting |
-| Load/line regulation | BarChart: `average(net)` | LineChart: `dut.power_out.hv` colored by sweep | Bar for measurement, line for waveforms |
+#### 1. Titles
+
+Titles describe the relationship being shown, not the requirement ID:
+
+| Bad | Good | Why |
+|-----|------|-----|
+| `"REQ_006: Average Inductor Current"` | `"Average Inductor Current vs Load"` | Tells reader what the axes mean |
+| `"Output Voltage"` | `"Output During VIN Drop (14V to 8V)"` | Explains the test condition |
+| `"Simulation Result 3"` | `"AC-Coupled Output Ripple vs Capacitance"` | Identifies what was measured and what was varied |
+
+**Pattern**: `"<Y-axis quantity> [during/vs] <X-axis quantity or test condition>"`
+
+#### 2. Choose the right chart type
+
+| Chart type | When to use | Example |
+|------------|-------------|---------|
+| **LineChart, x=time** | Show waveform shape, transient behavior, time-domain detail | Startup ramp, load step response, ripple waveform |
+| **LineChart, x=param** | Show trend of a measurement across sweep points (envelope, settling_time) | Settling time vs frequency, envelope vs load |
+| **BarChart, x=param** | Show a single scalar per sweep point with pass/fail coloring | Average voltage vs VIN, peak current vs load |
+
+**Rule of thumb**: If a human reviewer needs to see the *waveform shape* to be convinced the requirement is met, use a time-domain LineChart. If they only need to see that a *number is within bounds*, use a BarChart.
+
+#### 3. Required vs supplementary plots
+
+Each requirement should have:
+- **`required_plot`**: The primary evidence. This single plot should answer "did it pass and by how much margin?" at a glance. Typically a BarChart with limit bands or a key time-domain trace.
+- **`supplementary_plot`**: Supporting context. Shows the raw waveforms behind the measurement, or alternative views. A reviewer looks here only if they want to understand *why* a value is what it is.
+
+**Example**: For load regulation (average Vout vs load current):
+- `required_plot`: BarChart showing average Vout at each load current, with ±2% limit bands and pass/fail coloring
+- `supplementary_plot`: LineChart overlay of output voltage waveforms colored by load current — shows the raw time-domain data behind the averages
+
+#### 4. AC-coupling
+
+Use `ac_coupled(net)` whenever the interesting signal variation is small relative to its DC level:
+
+| Scenario | Without AC-coupling | With AC-coupling |
+|----------|--------------------|--------------------|
+| 50mV ripple on 5V output | Flat line at 5V — ripple invisible | Clear triangle/sawtooth showing ripple |
+| Load transient: 200mV dip on 5V | Small dip barely visible | Clear perturbation shape, recovery time visible |
+| Startup: 0V → 5V ramp | Perfect — full ramp visible | Bad — shows only the residual above the mean |
+
+**Rule**: AC-couple for ripple, perturbation, and transient analysis. Do NOT AC-couple for startup, regulation (absolute level matters), or envelope measurements.
+
+#### 5. Secondary y-axis
+
+The secondary y-axis adds physical context. It shows the *cause* alongside the *effect*:
+
+| Primary y (effect) | Secondary y (cause) | What it reveals |
+|--------------------|--------------------|-----------------|
+| `dut.power_out.hv` (output voltage) | `i(l1)` (inductor current) | How inductor current drives voltage |
+| `dut.power_out.hv` (output voltage) | `i(vsense)` (load current) | Load step timing vs voltage response |
+| `ac_coupled(dut.power_out.hv)` | `i(l1)` | Ripple correlation with switching current |
+| `dut.package.SW` (switch node) | `i(l1)` | PWM timing vs current waveform |
+
+**Guidelines**:
+- Secondary axis traces render with dashed lines for visual distinction
+- Keep to one secondary signal — two secondary axes create visual clutter
+- The secondary y-axis auto-labels as "Current (A)" or "Voltage (V)" based on the signal type
+- Don't add a secondary axis if the primary already tells the full story
+
+#### 6. Sweep color coding
+
+For sweep simulations rendered as time-domain overlays, the `color` field on LineChart colors each trace by sweep parameter value. A Viridis-derived palette is used automatically:
+
+```ato
+plot.color = "ILOAD"    # each load current gets a distinct color
+plot.color = "COUT"     # each capacitance value gets a distinct color
+plot.color = ""         # no coloring (default sequential colors)
+```
+
+Use `color` when the sweep has 3+ points and the reader needs to distinguish which trace belongs to which parameter value.
+
+#### 7. Limit band visualization
+
+When `plot_limits = "true"` (the default), the chart renders:
+- A green shaded rectangle between LSL and USL (light green, 8% opacity)
+- Dotted gray horizontal lines at LSL and USL with annotation labels
+- Bar charts also color individual bars green (pass) or red (fail)
+
+**Suppress limits** with `plot_limits = "false"` on supplementary or informational plots where the limit bands would be misleading or visually cluttered (e.g., inductor current waveform plots that support a voltage ripple requirement).
+
+#### 8. Y-axis range
+
+The auto-range logic:
+- Extends 10% below the data/limit envelope minimum, 20% above (extra headroom for bar chart text labels)
+- For non-negative measurements (`peak_to_peak`, `max`, `settling_time`, etc.), the lower bound clamps at 0
+- Override with `assert plot.y_range within 5V +/- 10%` for explicit control
+
+Use explicit y-range when:
+- Auto-range produces a misleading scale (e.g., zoomed in so far that small noise looks like large variation)
+- You want consistent y-axes across multiple related plots
+
+#### Requirement type → plot recipe table
+
+| Requirement type | Primary y | Secondary y | Chart | Notes |
+|---|---|---|---|---|
+| Load transient (envelope) | `dut.power_out.hv` | `i(vsense)` | LineChart, x=time | Show voltage with current context; limit bands on voltage |
+| Line transient (envelope) | `dut.power_out.hv` | `i(l1)` | LineChart, x=time | Shows control loop response to VIN step |
+| Startup settling time | `settling_time(dut.power_out.hv)` | — | LineChart, x=param | Scatter/line across sweep points |
+| Startup overshoot | `max(dut.power_out.hv)` | — | BarChart, x=param | One bar per sweep point with pass/fail color |
+| Output ripple (amplitude) | `ac_coupled(dut.power_out.hv)` | `i(l1)` | LineChart, x=time | AC-couple to see mV-scale ripple; color by sweep |
+| Output ripple (envelope) | `envelope(ac_coupled(dut.power_out.hv))` | — | LineChart, x=param | Min/max envelope across sweep points |
+| Load/line regulation | `average(dut.power_out.hv)` | — | BarChart, x=param | One bar per operating point, with ±tolerance band |
+| Switching node | `dut.package.SW` | `i(l1)` | LineChart, x=time | Raw SW node; shows PWM timing and current shape |
+| Inductor current (informational) | `i(l1)` | — | LineChart, x=time, color=param | Overlay waveforms; suppress limits on supplementary |
+| Inductor current (measurement) | `peak_to_peak(i(l1))` or `max(i(l1))` | — | BarChart, x=param | Scalar per sweep point; suppress limits if informational |
+
+### How to Review Generated Plots (LLM Procedure)
+
+After each build, verify plot quality programmatically by reading the generated HTML files. Do NOT trust that plots are correct just because the build succeeded — rendering bugs, wrong axis labels, and misleading scales are common.
+
+#### Step 1: Count and list plot files
+
+```bash
+ls build/builds/<name>/plot_*.html | wc -l
+ls build/builds/<name>/plot_*.html
+```
+
+Compare the count to the number of plot definitions in the `.ato` file. Extra files indicate stale artifacts from a previous build (the build directory is not cleaned automatically). Fewer files indicate plots that failed to render (check build warnings).
+
+**Always clean stale artifacts before a final build**:
+```bash
+rm -f build/builds/<name>/plot_*.html
+ato build -b <name>
+```
+
+#### Step 2: Extract axis labels and ranges from HTML
+
+Each plot is a self-contained Plotly HTML file. Extract key metadata with regex:
+
+```python
+import re
+with open("build/builds/<name>/plot_<title>.html") as f:
+    html = f.read()
+
+# Find all range values (y-axis bounds)
+for m in re.finditer(r'"range":\[([^\]]+)\]', html):
+    print(f"range: [{m.group(1)}]")
+
+# Find axis titles
+for m in re.finditer(r'"title":\{"text":"([^"]+)"', html):
+    print(f"title: {m.group(1)}")
+```
+
+#### Step 3: Check for these specific defects
+
+| Defect | How to detect | Fix |
+|--------|---------------|-----|
+| **Wrong y-axis unit** ("Voltage (A)" for current) | Extract yaxis title text | Fixed in build_steps.py — auto-detects from signal type |
+| **Stray text in title** (trailing numbers, "REQ_xxx:" prefix) | Read title from HTML | Fix the `plot.title` field in `.ato` |
+| **Negative y-range for non-negative quantity** | Check range lower bound < 0 when measurement is peak_to_peak/max/settling_time | Fixed in build_steps.py — clamps at 0 for non-negative measurements |
+| **Missing legend** | Check for `"showlegend":true` in layout | Legends render automatically for multi-trace charts |
+| **Limit bands on informational chart** | Check for `"fillcolor":"green"` shapes | Set `plot_limits = "false"` on the plot |
+| **X-axis raw param name** ("ILOAD" instead of "Iload (A)") | Extract xaxis title | BarChart auto-formats: `.replace("_"," ").title()` + unit. For scatter charts, same logic applies. |
+| **Unreasonably large point count** | Check trace data length (>50k points per trace) | Reduce simulation time window or increase time_step |
+
+#### Step 4: Verify data makes physical sense
+
+After extracting the plotted data, sanity-check against circuit physics:
+
+| Signal | Expected behavior | Red flag |
+|--------|------------------|----------|
+| Output voltage (startup) | Monotonic ramp from 0V to target | Oscillation, overshoot >10%, negative voltage |
+| Output voltage (regulation) | ~5V ± a few mV across sweep | Voltage increasing/decreasing with load by >2% |
+| Inductor current (CCM) | Triangle wave, average ≈ load current | Negative current (DCM expected at light load only) |
+| Inductor current (Eco-mode) | Burst pulses separated by zero intervals | Continuous conduction at 0.1A load |
+| Settling time vs parameter | Monotonic or smooth trend | Random scatter (measurement noise, wrong time window) |
+| Peak-to-peak ripple vs cap | Decreasing with increasing capacitance | Non-monotonic or increasing |
+| Duty cycle (on SW node) | ≈ Vout/Vin for CCM | Significantly above or below theoretical |
+
+#### Step 5: Check requirements.json for consistency
+
+```python
+import json
+with open("build/builds/<name>/<name>.requirements.json") as f:
+    data = json.load(f)
+for r in data["requirements"]:
+    name = r["name"]
+    passed = r["passed"]
+    actual = r["actual"]
+    min_val = r["minVal"]
+    max_val = r["maxVal"]
+    # Check margin: how close is actual to the limit?
+    if passed and max_val is not None and actual is not None:
+        margin = min(actual - min_val, max_val - actual) / (max_val - min_val)
+        if margin < 0.05:
+            print(f"WARNING: {name} passes with <5% margin: actual={actual}")
+```
+
+Tight margins (actual within 5% of a limit) warrant investigation — either the limit is too tight or the circuit is operating at the edge of its design space. Both are important to flag.
+
+### Requirement Limit Quality
+
+Limits must be *meaningful*. A requirement with limits so broad it can never fail proves nothing. A requirement with limits so tight it fails on noise is equally useless.
+
+#### Principles for setting good limits
+
+1. **Derive from physics or datasheet, not from measured values.** The limit should represent what the *application requires*, not what the simulator happens to produce. Example: output regulation ±2% comes from the downstream load's tolerance requirement, not from "the sim gives 5.003V so let's set ±2%."
+
+2. **Every limit should be falsifiable.** Ask: "Is there a realistic design change that could cause this to fail?" If the answer is "no, this can literally never fail," the limit is too broad:
+
+| Weak limit (always passes) | Strong limit (actually proves something) |
+|---|---|
+| `0 to 1` for duty cycle | `0.35 to 0.55` for 12V→5V buck |
+| `-1A to 7A` for min inductor current | `-0.5A to 5A` (diode clamp, rated current) |
+| `0V to 100V` for output voltage | `5V +/- 2%` (regulation spec) |
+
+3. **Match the measurement semantics.** `peak_to_peak` returns amplitude (always ≥ 0), not absolute voltage. `envelope` checks min/max against limits. `settling_time` returns seconds. Don't set voltage-like limits on a time measurement.
+
+4. **Account for operating modes.** A buck converter at 0.1A load operates in Eco-mode/DCM with very different waveform characteristics than at 5A CCM. If a sweep covers both modes, the limits must accommodate both. If you want to test only CCM, restrict the sweep to loads where CCM is guaranteed.
+
+5. **Flag measurements that don't measure what you think.** The `duty_cycle` measurement computes the fraction of time a signal is above its midpoint. For a symmetric triangular inductor current waveform, this is always ≈ 0.5 regardless of the actual PWM duty cycle. Apply `duty_cycle` only to square-wave signals (switch node voltage).
 
 ### Plot-Requirement binding
 

@@ -1,3 +1,4 @@
+// @ts-nocheck — three.js types incompatible with moduleResolution:"bundler"
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'

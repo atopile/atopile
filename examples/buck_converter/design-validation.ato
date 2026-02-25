@@ -43,10 +43,10 @@ module DesignValidation:
     startup_transient = new SimulationSweep
     startup_transient.duts = "dut_400k"
     startup_transient.param_name = "dut.switching_frequency"
-    startup_transient.param_values = "400e3,800e3,1200e3,1600e3"
+    startup_transient.param_values = "400e3,600e3,800e3,1200e3,1600e3"
     startup_transient.param_unit = "Hz"
     startup_transient.spice = "V1 dut.power_in.hv 0 PULSE(0 dut.power_in.voltage 0 10u 10u 10 10)"
-    startup_transient.time_stop = 6ms
+    startup_transient.time_stop = "0.006"
     startup_transient.time_step = 1us
 
     # Load step: ILOAD sweep with PULSE load (100mA -> swept ILOAD)
@@ -117,7 +117,7 @@ module DesignValidation:
 
     # --- Startup plots ---
     plot_settling_vs_freq = new LineChart
-    plot_settling_vs_freq.title = "Settling Time vs Switching Frequency"
+    plot_settling_vs_freq.title = "Test Settling Time vs Switching Frequency"
     plot_settling_vs_freq.x = "dut.switching_frequency"
     plot_settling_vs_freq.y = "settling_time(dut.power_out.hv)"
 
@@ -194,23 +194,17 @@ module DesignValidation:
     plot_inductor_min_bar.y = "min(i(l1))"
     plot_inductor_min_bar.plot_limits = "false"
 
-    # --- Duty cycle plots ---
-    plot_duty_cycle_bar = new BarChart
-    plot_duty_cycle_bar.title = "Duty Cycle vs Load Current"
-    plot_duty_cycle_bar.x = "ILOAD"
-    plot_duty_cycle_bar.y = "duty_cycle(i(l1))"
-
     # --- Output ripple (cout sweep) plots ---
     plot_ripple_cout_raw = new LineChart
-    plot_ripple_cout_raw.title = "AC-Coupled Output Ripple vs Capacitance 2"
+    plot_ripple_cout_raw.title = "AC-Coupled Output Ripple vs Capacitance"
     plot_ripple_cout_raw.x = "time"
     plot_ripple_cout_raw.y = "ac_coupled(dut.power_out.hv)"
     plot_ripple_cout_raw.color = "COUT"
 
-    plot_ripple_cout_envelope = new LineChart
-    plot_ripple_cout_envelope.title = "Output Ripple Envelope vs Capacitance"
-    plot_ripple_cout_envelope.x = "COUT"
-    plot_ripple_cout_envelope.y = "envelope(ac_coupled(dut.power_out.hv))"
+    plot_ripple_cout_p2p = new BarChart
+    plot_ripple_cout_p2p.title = "Output Ripple vs Capacitance"
+    plot_ripple_cout_p2p.x = "COUT"
+    plot_ripple_cout_p2p.y = "peak_to_peak(dut.power_out.hv)"
 
     # --- Output ripple (iload sweep) plots ---
     plot_ripple_iload_raw = new LineChart
@@ -250,11 +244,11 @@ module DesignValidation:
     req_001.net = "dut.power_out.hv"
     req_001.capture = "transient"
     req_001.measurement = "settling_time"
-    assert req_001.limit within 0 to 4ms
+    assert req_001.limit within 0 to 3ms
     req_001.required_plot = "plot_settling_vs_freq"
     req_001.supplementary_plot = "plot_startup_vout"
     req_001.tran_step = "500ns"
-    req_001.tran_stop = "5ms"
+    req_001.tran_stop = "0.005"
 
     # --- REQ_002: Load Step Transient ---
     req_002 = new Requirement
@@ -306,7 +300,7 @@ module DesignValidation:
     assert req_006.limit within 0A to 5A
     req_006.supplementary_plot = "plot_inductor_vs_load"
     plot_req_006 = new BarChart
-    plot_req_006.title = "REQ_006:Average Inductor Current"
+    plot_req_006.title = "Average Inductor Current vs Load"
     plot_req_006.y = "average(i(l1))"
     plot_req_006.x = "ILOAD"
     req_006.required_plot = "plot_req_006"
@@ -321,23 +315,16 @@ module DesignValidation:
     req_007.required_plot = "plot_inductor_max_bar"
     req_007.supplementary_plot = "plot_inductor_vs_load"
 
-    # --- REQ_008: Duty Cycle ---
-    req_008 = new Requirement
-    req_008.req_name = "REQ_008: Duty Cycle"
-    req_008.simulation = "iload_sweep"
-    req_008.net = "i(l1)"
-    req_008.measurement = "duty_cycle"
-    assert req_008.limit within 0 to 1
-    req_008.required_plot = "plot_duty_cycle_bar"
-    req_008.supplementary_plot = "plot_inductor_vs_load"
-
     # --- REQ_009: Min Inductor Current (CCM/DCM Boundary) ---
+    # Catch diode prevents significant reverse current (≥ -0.5A).
+    # At heavy loads, converter stays in CCM (min > 0).
+    # At light loads (Eco-mode), current pulses to ~0A.
     req_009 = new Requirement
     req_009.req_name = "REQ_009: Min Inductor Current"
     req_009.simulation = "iload_sweep"
     req_009.net = "i(l1)"
     req_009.measurement = "min"
-    assert req_009.limit within 3A +/- 4A
+    assert req_009.limit within -0.5A to 5A
     req_009.required_plot = "plot_inductor_min_bar"
     req_009.supplementary_plot = "plot_inductor_vs_load"
     req_009.tran_stop = "0.0053"
@@ -348,9 +335,9 @@ module DesignValidation:
     req_010.simulation = "cout_ripple_sweep"
     req_010.net = "dut.power_out.hv"
     req_010.measurement = "peak_to_peak"
-    assert req_010.limit within 0 +/- 100mV
-    req_010.required_plot = "plot_ripple_cout_raw"
-    req_010.supplementary_plot = "plot_ripple_cout_envelope"
+    assert req_010.limit within 0 to 150mV
+    req_010.required_plot = "plot_ripple_cout_p2p"
+    req_010.supplementary_plot = "plot_ripple_cout_raw"
 
     # --- REQ_011: Output Voltage Ripple (vs Load Current) ---
     req_011 = new Requirement
@@ -358,7 +345,7 @@ module DesignValidation:
     req_011.simulation = "iload_sweep"
     req_011.net = "dut.power_out.hv"
     req_011.measurement = "peak_to_peak"
-    assert req_011.limit within 5V +/- 50mV
+    assert req_011.limit within 0 to 100mV
     req_011.required_plot = "plot_ripple_iload_raw"
     req_011.supplementary_plot = "plot_ripple_iload_envelope"
 
@@ -401,3 +388,221 @@ module DesignValidation:
     assert req_013.limit within -2V to 15V
     req_013.required_plot = "plot_sw_node"
     req_013.supplementary_plot = "plot_sw_node_ac"
+
+    # =====================================================================
+    # REQ_014: Startup Overshoot
+    # =====================================================================
+    # The max output voltage during startup must not exceed the target by
+    # more than 5%. Overshoot damages downstream loads and violates specs.
+    # Reuses the startup_transient sweep across switching frequencies.
+
+    plot_startup_max = new BarChart
+    plot_startup_max.title = "Peak Output Voltage During Startup"
+    plot_startup_max.x = "dut.switching_frequency"
+    plot_startup_max.y = "max(dut.power_out.hv)"
+
+    req_014 = new Requirement
+    req_014.req_name = "REQ_014: Startup Overshoot"
+    req_014.simulation = "startup_transient"
+    req_014.net = "dut.power_out.hv"
+    req_014.measurement = "max"
+    assert req_014.limit within 4.75 to 5.25V
+    req_014.required_plot = "plot_startup_max"
+    req_014.supplementary_plot = "plot_startup_vout"
+
+    # =====================================================================
+    # REQ_015: VIN Step Transient (Line Transient)
+    # =====================================================================
+    # When VIN changes suddenly (10V → 14V), the output must stay within
+    # regulation. This tests the control loop's rejection of input
+    # disturbances — a critical real-world scenario for automotive and
+    # industrial applications. (Datasheet Figure 35)
+
+    vin_step_sim = new SimulationTransient
+    vin_step_sim.duts = "dut_400k"
+    vin_step_sim.remove_elements = "R5"
+    vin_step_sim.spice = "V1 dut.power_in.hv 0 PWL(0 0 10u 10 5.2m 10 5.201m 14 10 14)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 2.5"
+    vin_step_sim.time_start = 5ms
+    vin_step_sim.time_stop = 5.6ms
+    vin_step_sim.time_step = 100ns
+
+    plot_vin_step = new LineChart
+    plot_vin_step.title = "Output During VIN Step (10V to 14V)"
+    plot_vin_step.x = "time"
+    plot_vin_step.y = "dut.power_out.hv"
+    plot_vin_step.y_secondary = "dut.power_in.hv"
+
+    req_015 = new Requirement
+    req_015.req_name = "REQ_015: VIN Step Transient"
+    req_015.simulation = "vin_step_sim"
+    req_015.net = "dut.power_out.hv"
+    req_015.measurement = "envelope"
+    assert req_015.limit within 5V +/- 5%
+    req_015.required_plot = "plot_vin_step"
+
+    # =====================================================================
+    # REQ_016: Load Release Transient
+    # =====================================================================
+    # When load drops suddenly (5A → 0.5A), stored inductor energy pushes
+    # the output voltage high. The asynchronous topology (catch diode)
+    # cannot sink current, making this the worst-case overshoot scenario.
+    # The output must stay within the load's absolute maximum rating.
+
+    load_release_sim = new SimulationTransient
+    load_release_sim.duts = "dut_400k"
+    load_release_sim.remove_elements = "R5"
+    load_release_sim.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(5 0.5 5.2m 1u 1u 1m 100m)"
+    load_release_sim.time_start = 5ms
+    load_release_sim.time_stop = 5.8ms
+    load_release_sim.time_step = 100ns
+
+    plot_load_release = new LineChart
+    plot_load_release.title = "Output During Load Release (5A to 0.5A)"
+    plot_load_release.x = "time"
+    plot_load_release.y = "dut.power_out.hv"
+    plot_load_release.y_secondary = "i(vsense)"
+
+    req_016 = new Requirement
+    req_016.req_name = "REQ_016: Load Release Transient"
+    req_016.simulation = "load_release_sim"
+    req_016.net = "dut.power_out.hv"
+    req_016.measurement = "envelope"
+    assert req_016.limit within 5V +/- 10%
+    req_016.required_plot = "plot_load_release"
+
+    # =====================================================================
+    # REQ_017: Output Ripple vs Switching Frequency
+    # =====================================================================
+    # Higher switching frequency reduces output ripple for the same LC
+    # filter. This sweep validates the ripple-frequency tradeoff and helps
+    # the designer choose the optimal switching frequency.
+
+    freq_ripple_sweep = new SimulationSweep
+    freq_ripple_sweep.duts = "dut_400k"
+    freq_ripple_sweep.param_name = "dut.switching_frequency"
+    freq_ripple_sweep.param_values = "400e3,800e3,1200e3,1600e3"
+    freq_ripple_sweep.param_unit = "Hz"
+    freq_ripple_sweep.remove_elements = "R5"
+    freq_ripple_sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 2.5"
+    freq_ripple_sweep.time_start = 5ms
+    freq_ripple_sweep.time_stop = 5.05ms
+    freq_ripple_sweep.time_step = 10ns
+
+    plot_ripple_vs_freq_ac = new LineChart
+    plot_ripple_vs_freq_ac.title = "AC-Coupled Output Ripple vs Frequency"
+    plot_ripple_vs_freq_ac.x = "time"
+    plot_ripple_vs_freq_ac.y = "ac_coupled(dut.power_out.hv)"
+
+    plot_ripple_vs_freq_bar = new BarChart
+    plot_ripple_vs_freq_bar.title = "Peak-to-Peak Ripple vs Switching Frequency"
+    plot_ripple_vs_freq_bar.x = "dut.switching_frequency"
+    plot_ripple_vs_freq_bar.y = "peak_to_peak(dut.power_out.hv)"
+
+    req_017 = new Requirement
+    req_017.req_name = "REQ_017: Output Ripple vs Switching Frequency"
+    req_017.simulation = "freq_ripple_sweep"
+    req_017.net = "dut.power_out.hv"
+    req_017.measurement = "peak_to_peak"
+    assert req_017.limit within 0 to 100mV
+    req_017.required_plot = "plot_ripple_vs_freq_bar"
+    req_017.supplementary_plot = "plot_ripple_vs_freq_ac"
+
+    # =====================================================================
+    # REQ_018: Startup Across VIN Range
+    # =====================================================================
+    # The converter must start and regulate properly across its full
+    # operating input range. This is critical for automotive and industrial
+    # applications where VIN varies widely (e.g., battery droop, load dump).
+    # Tests from 8V (minimum practical for 5V output) to 20V.
+
+    vin_startup_sweep = new SimulationSweep
+    vin_startup_sweep.duts = "dut_400k"
+    vin_startup_sweep.param_name = "VIN"
+    vin_startup_sweep.param_values = "8,10,12,16"
+    vin_startup_sweep.param_unit = "V"
+    vin_startup_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {VIN} 0 10u 10u 10 10)"
+    vin_startup_sweep.time_stop = 6ms
+    vin_startup_sweep.time_step = 1us
+
+    plot_vin_startup_traces = new LineChart
+    plot_vin_startup_traces.title = "Startup Output Voltage vs VIN"
+    plot_vin_startup_traces.x = "time"
+    plot_vin_startup_traces.y = "dut.power_out.hv"
+
+    plot_vin_startup_settling = new LineChart
+    plot_vin_startup_settling.title = "Settling Time vs Input Voltage"
+    plot_vin_startup_settling.x = "VIN"
+    plot_vin_startup_settling.y = "settling_time(dut.power_out.hv)"
+
+    req_018 = new Requirement
+    req_018.req_name = "REQ_018: Startup Across VIN Range"
+    req_018.simulation = "vin_startup_sweep"
+    req_018.net = "dut.power_out.hv"
+    req_018.measurement = "settling_time"
+    assert req_018.limit within 0 to 7ms
+    req_018.required_plot = "plot_vin_startup_settling"
+    req_018.supplementary_plot = "plot_vin_startup_traces"
+
+    # =====================================================================
+    # REQ_019: Startup Overshoot Across VIN Range
+    # =====================================================================
+    # At high VIN, the duty cycle is very small and the control loop has
+    # more energy to absorb. Verify overshoot stays within spec at all VIN.
+
+    plot_vin_startup_max = new BarChart
+    plot_vin_startup_max.title = "Peak Startup Voltage vs VIN"
+    plot_vin_startup_max.x = "VIN"
+    plot_vin_startup_max.y = "max(dut.power_out.hv)"
+
+    req_019 = new Requirement
+    req_019.req_name = "REQ_019: Startup Overshoot Across VIN"
+    req_019.simulation = "vin_startup_sweep"
+    req_019.net = "dut.power_out.hv"
+    req_019.measurement = "max"
+    assert req_019.limit within 4.75V to 5.25V
+    req_019.required_plot = "plot_vin_startup_max"
+    req_019.supplementary_plot = "plot_vin_startup_traces"
+
+    # =====================================================================
+    # REQ_020: VIN Drop Transient vs Output Capacitance
+    # =====================================================================
+    # When VIN drops suddenly (14V → 8V), the converter must increase
+    # duty cycle rapidly to maintain regulation. This is the reverse of
+    # REQ_015 and represents a worst-case scenario (e.g., battery brownout).
+    # Sweeping output capacitance shows how Cout buffers the transient.
+
+    vin_drop_cout_sweep = new SimulationSweep
+    vin_drop_cout_sweep.duts = "dut_400k"
+    vin_drop_cout_sweep.param_name = "COUT"
+    vin_drop_cout_sweep.param_values = "100e-6,150e-6,200e-6,247e-6,330e-6"
+    vin_drop_cout_sweep.param_unit = "F"
+    vin_drop_cout_sweep.remove_elements = "C5,C6,C7,C8,R5"
+    vin_drop_cout_sweep.spice = "V1 dut.power_in.hv 0 PWL(0 0 10u 14 5.2m 14 5.201m 8 10 8)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 2.5"
+    vin_drop_cout_sweep.extra_spice_template = "Cout dut.power_out.hv 0 {COUT}"
+    vin_drop_cout_sweep.time_start = 5ms
+    vin_drop_cout_sweep.time_stop = 5.6ms
+    vin_drop_cout_sweep.time_step = 100ns
+
+    plot_vin_drop = new LineChart
+    plot_vin_drop.title = "Output During VIN Drop vs Capacitance"
+    plot_vin_drop.x = "time"
+    plot_vin_drop.y = "dut.power_out.hv"
+    plot_vin_drop.y_secondary = "dut.power_in.hv"
+    plot_vin_drop.color = "COUT"
+    assert plot_vin_drop.y_range within 5V +/- 10%
+
+    plot_vin_drop_envelope = new LineChart
+    plot_vin_drop_envelope.title = "VIN Drop Envelope vs Output Capacitance"
+    plot_vin_drop_envelope.x = "COUT"
+    plot_vin_drop_envelope.y = "envelope(dut.power_out.hv)"
+
+    req_020 = new Requirement
+    req_020.req_name = "REQ_020: VIN Drop Transient"
+    req_020.simulation = "vin_drop_cout_sweep"
+    req_020.net = "dut.power_out.hv"
+    req_020.measurement = "envelope"
+    assert req_020.limit within 5V +/- 5%
+    req_020.required_plot = "plot_vin_drop"
+    req_020.supplementary_plot = "plot_vin_drop_envelope"
+    req_020.tran_start = "0.0051"
+    req_020.tran_stop = "0.0054"

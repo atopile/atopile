@@ -117,6 +117,9 @@ export interface RerunSingleParams {
   context_nets: string[];
   min_val: number | null;
   max_val: number | null;
+  dut_name: string | null;
+  dut_params: Record<string, number> | null;
+  remove_elements: string | null;
 }
 
 export interface RerunSingleResponse {
@@ -126,6 +129,23 @@ export interface RerunSingleResponse {
     time: number[];
     signals: Record<string, number[]>;
   };
+}
+
+/** Fetch current requirements data from the backend. */
+export async function fetchRequirements(): Promise<{
+  requirements: Array<Record<string, unknown>>;
+  buildTime: string;
+  simStats?: Array<Record<string, unknown>>;
+} | null> {
+  const apiUrl = getApiUrl();
+  const projectRoot = getProjectRoot();
+  const target = getTarget();
+  if (!apiUrl || !projectRoot) return null;
+
+  const url = `${apiUrl}/api/requirements?project_root=${encodeURIComponent(projectRoot)}&target=${encodeURIComponent(target)}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
 }
 
 export async function rerunSingleSimulation(

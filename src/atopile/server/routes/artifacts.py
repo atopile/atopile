@@ -235,6 +235,9 @@ class RerunSingleRequest(BaseModel):
     context_nets: list[str] = []
     min_val: float | None = None
     max_val: float | None = None
+    dut_name: str | None = None
+    dut_params: dict[str, float] | None = None
+    remove_elements: str | None = None
 
 
 @router.post("/api/simulations/rerun-single")
@@ -255,6 +258,9 @@ async def rerun_single_simulation(request: RerunSingleRequest):
             request.context_nets,
             request.min_val,
             request.max_val,
+            request.dut_name,
+            request.dut_params,
+            request.remove_elements,
         )
         safe_result = _sanitize_floats(result)
         return Response(

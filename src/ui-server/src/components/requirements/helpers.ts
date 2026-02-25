@@ -57,7 +57,7 @@ const SI_MULTIPLIERS: Record<string, number> = {
  * Parse a numeric value with optional SI prefix and unit.
  * Examples: "12.5V" → 12.5, "150mV" → 0.15, "4ms" → 0.004, "5%" → 5
  */
-function parseValueWithUnit(s: string): number | null {
+export function parseValueWithUnit(s: string): number | null {
   s = s.trim();
   // Match: optional sign, number, optional SI prefix, optional unit letters
   const m = s.match(/^([+-]?\d+\.?\d*(?:e[+-]?\d+)?)\s*([fpnumkMG]?)([A-Za-z%]*)?$/);
@@ -113,6 +113,125 @@ export function parseLimitExpr(expr: string): { min: number; max: number } | nul
   return null;
 }
 
+/* ---- Client-side transient measurement ---- */
+
+/**
+ * Compute a transient measurement from signal data.
+ * TypeScript port of Python `_measure_tran` from requirement.py.
+ *
+ * Supports: final_value, average, settling_time, max, min, peak_to_peak,
+ * duty_cycle, overshoot, rms, envelope, sweep, frequency.
+ *
+ * Does NOT support: efficiency (requires multi-signal context).
+ */
+export function measureTran(
+  measurement: string,
+  signalData: number[],
+  timeData: number[],
+  opts?: { settlingTolerance?: number; minVal?: number; maxVal?: number },
+): number {
+  if (!signalData.length) return NaN;
+
+  switch (measurement) {
+    case 'final_value':
+    case 'sweep':
+      return signalData[signalData.length - 1];
+
+    case 'average': {
+      let sum = 0;
+      for (const v of signalData) sum += v;
+      return sum / signalData.length;
+    }
+
+    case 'settling_time': {
+      const tol = opts?.settlingTolerance ?? 0.01;
+      const final = signalData[signalData.length - 1];
+      if (final === 0) return Infinity;
+      const band = Math.abs(final * tol);
+      for (let i = signalData.length - 1; i >= 0; i--) {
+        if (Math.abs(signalData[i] - final) > band) {
+          return i < timeData.length ? timeData[i] : Infinity;
+        }
+      }
+      return 0;
+    }
+
+    case 'max':
+      return Math.max(...signalData);
+
+    case 'min':
+      return Math.min(...signalData);
+
+    case 'peak_to_peak':
+      return Math.max(...signalData) - Math.min(...signalData);
+
+    case 'duty_cycle': {
+      if (signalData.length < 2 || timeData.length < 2) return NaN;
+      const sigMin = Math.min(...signalData);
+      const sigMax = Math.max(...signalData);
+      const threshold = (sigMin + sigMax) / 2;
+      let timeAbove = 0;
+      for (let i = 0; i < signalData.length - 1; i++) {
+        if (signalData[i] >= threshold) {
+          timeAbove += timeData[i + 1] - timeData[i];
+        }
+      }
+      const totalTime = timeData[timeData.length - 1] - timeData[0];
+      return totalTime > 0 ? timeAbove / totalTime : NaN;
+    }
+
+    case 'overshoot': {
+      const final = signalData[signalData.length - 1];
+      if (final === 0) return Infinity;
+      const peak = Math.max(...signalData);
+      return ((peak - final) / Math.abs(final)) * 100;
+    }
+
+    case 'rms': {
+      let sumSq = 0;
+      for (const v of signalData) sumSq += v * v;
+      return Math.sqrt(sumSq / signalData.length);
+    }
+
+    case 'frequency': {
+      if (signalData.length < 3 || timeData.length < 3) return NaN;
+      const sigMin = Math.min(...signalData);
+      const sigMax = Math.max(...signalData);
+      const thresh = (sigMin + sigMax) / 2;
+      const crossings: number[] = [];
+      for (let i = 0; i < signalData.length - 1; i++) {
+        if (signalData[i] <= thresh && signalData[i + 1] > thresh) {
+          const frac = (thresh - signalData[i]) / (signalData[i + 1] - signalData[i]);
+          crossings.push(timeData[i] + frac * (timeData[i + 1] - timeData[i]));
+        }
+      }
+      if (crossings.length < 2) return NaN;
+      const totalT = crossings[crossings.length - 1] - crossings[0];
+      return (crossings.length - 1) / totalT;
+    }
+
+    case 'envelope': {
+      const sMin = Math.min(...signalData);
+      const sMax = Math.max(...signalData);
+      const minV = opts?.minVal;
+      const maxV = opts?.maxVal;
+      if (minV != null && maxV != null) {
+        const distLow = sMin - minV;
+        const distHigh = maxV - sMax;
+        return distLow < distHigh ? sMin : sMax;
+      }
+      let sum = 0;
+      for (const v of signalData) sum += v;
+      const avg = sum / signalData.length;
+      return Math.abs(sMax - avg) >= Math.abs(sMin - avg) ? sMax : sMin;
+    }
+
+    default:
+      // Unsupported measurement — return final value
+      return signalData[signalData.length - 1];
+  }
+}
+
 /**
  * Re-evaluate pass/fail for a requirement given new min/max limits.
  * Updates `passed` on the requirement and on each sweep point.
@@ -140,4 +259,12 @@ export function reEvalPassFail(
   }
 
   return { passed, sweepPoints: updatedSweep };
+}
+
+/** Post a message to the VS Code extension to open a source file at a line. */
+export function goToSource(filePath: string | undefined, line: number | undefined): void {
+  if (!filePath) return;
+  import('../../api/vscodeApi').then(({ postToExtension }) => {
+    postToExtension({ type: 'openSourceFile', filePath, line });
+  }).catch(() => {});
 }

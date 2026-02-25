@@ -22,7 +22,7 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
-import { openRequirementDetail } from '../ui/requirements-detail';
+import { openRequirementDetail, sendToRequirementPanel, isRequirementPanelOpen } from '../ui/requirements-detail';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -189,6 +189,12 @@ interface OpenRequirementDetailMessage {
   buildTime?: string;
 }
 
+interface UpdateRequirementsPanelMessage {
+  type: 'updateRequirementsPanel';
+  target: string;
+  projectRoot: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -220,7 +226,8 @@ type WebviewMessage =
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
   | OpenMigrateTabMessage
-  | OpenRequirementDetailMessage;
+  | OpenRequirementDetailMessage
+  | UpdateRequirementsPanelMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -727,6 +734,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           requirementData: message.requirementData,
           buildTime: message.buildTime,
         });
+        break;
+      case 'updateRequirementsPanel':
+        // Forward updated data/target to the already-open requirements detail webview
+        if (isRequirementPanelOpen()) {
+          traceVerbose(`[SidebarProvider] Forwarding requirements update to detail panel (target=${message.target})`);
+          sendToRequirementPanel({
+            type: 'requirementsUpdated',
+            target: message.target,
+            projectRoot: message.projectRoot,
+          });
+        }
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
