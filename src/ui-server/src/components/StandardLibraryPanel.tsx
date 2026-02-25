@@ -3,7 +3,8 @@ import {
   ChevronDown, ChevronRight, Box, Zap, Cpu,
   Cable, Hash, Search
 } from 'lucide-react'
-import { CopyableCodeBlock, PanelSearchBox } from './shared'
+import { CopyableCodeBlock } from './shared/CopyableCodeBlock'
+import { PanelSearchBox } from './shared/PanelSearchBox'
 
 // Standard library item types
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'

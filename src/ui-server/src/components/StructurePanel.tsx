@@ -3,7 +3,8 @@ import { FileCode, Loader2, RefreshCw } from 'lucide-react'
 import type { ModuleChild, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
-import { PanelSearchBox, EmptyState } from './shared'
+import { PanelSearchBox } from './shared/PanelSearchBox'
+import { EmptyState } from './shared/EmptyState'
 import './StructurePanel.css'
 
 interface StructurePanelProps {

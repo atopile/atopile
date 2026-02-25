@@ -13,7 +13,7 @@ import type { PackageInfo, PackageStatus, ProjectDependency } from '../types/bui
 
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
-import { PanelSearchBox } from './shared'
+import { PanelSearchBox } from './shared/PanelSearchBox'
 import './PackagesPanel.css'
 
 interface PackagesPanelProps {

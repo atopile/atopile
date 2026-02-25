@@ -1,0 +1,72 @@
+/* ============================================
+   Checkbox — standalone toggle control
+   Uses project CSS variables from _variables.css
+   ============================================ */
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  cursor: pointer;
+}
+
+.checkbox-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.checkbox-indicator {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.checkbox:hover .checkbox-indicator {
+  border-color: var(--accent);
+}
+
+.checkbox-input:focus-visible + .checkbox-indicator {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
+}
+
+.checkbox-input:checked + .checkbox-indicator {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox-input:checked + .checkbox-indicator .checkbox-icon {
+  color: var(--text-on-accent);
+}
+
+.checkbox-icon {
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkbox-input:disabled + .checkbox-indicator {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkbox:has(.checkbox-input:disabled) {
+  cursor: not-allowed;
+}
