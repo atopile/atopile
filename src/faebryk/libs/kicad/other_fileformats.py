@@ -225,9 +225,9 @@ class C_kicad_project_file(JSON_File):
                     arrow_length: int = 1270000
                     extension_offset: int = 500000
                     keep_text_aligned: bool = True
-                    suppress_zeroes: bool = False
+                    suppress_zeroes: bool = True
                     text_position: int = 0
-                    units_format: int = 1
+                    units_format: int = 0
                     unknown: CatchAll = None
 
                 dimensions: C_dimensions = field(default_factory=C_dimensions)
@@ -247,9 +247,9 @@ class C_kicad_project_file(JSON_File):
                 @dataclass_json(undefined=Undefined.INCLUDE)
                 @dataclass
                 class C_pads:
-                    drill: float = 0.762
-                    height: float = 1.524
-                    width: float = 1.524
+                    drill: float = 0.8
+                    height: float = 1.27
+                    width: float = 2.54
                     unknown: CatchAll = None
 
                 pads: C_pads = field(default_factory=C_pads)
@@ -306,19 +306,19 @@ class C_kicad_project_file(JSON_File):
                 copper_edge_clearance: str = "error"
                 copper_sliver: str = "warning"
                 courtyards_overlap: str = "error"
-                creepage: Optional[str] = None
+                creepage: str = "error"
                 diff_pair_gap_out_of_range: str = "error"
                 diff_pair_uncoupled_length_too_long: str = "error"
                 drill_out_of_range: str = "error"
                 duplicate_footprints: str = "warning"
                 extra_footprint: str = "warning"
                 footprint: str = "error"
-                footprint_filters_mismatch: Optional[str] = None
+                footprint_filters_mismatch: str = "ignore"
                 footprint_symbol_mismatch: str = "warning"
                 footprint_type_mismatch: str = "ignore"
                 hole_clearance: str = "error"
                 hole_near_hole: Optional[str] = None
-                hole_to_hole: Optional[str] = None
+                hole_to_hole: str = "warning"
                 holes_co_located: str = "warning"
                 invalid_outline: str = "error"
                 isolated_copper: str = "warning"
@@ -329,11 +329,11 @@ class C_kicad_project_file(JSON_File):
                 lib_footprint_mismatch: str = "warning"
                 malformed_courtyard: str = "error"
                 microvia_drill_out_of_range: str = "error"
-                mirrored_text_on_front_layer: Optional[str] = None
+                mirrored_text_on_front_layer: str = "warning"
                 missing_courtyard: str = "ignore"
                 missing_footprint: str = "warning"
                 net_conflict: str = "warning"
-                nonmirrored_text_on_back_layer: Optional[str] = None
+                nonmirrored_text_on_back_layer: str = "warning"
                 npth_inside_courtyard: str = "ignore"
                 overlapping_pads: Optional[str] = None
                 padstack: str = "warning"
@@ -347,13 +347,13 @@ class C_kicad_project_file(JSON_File):
                 solder_mask_bridge: str = "error"
                 starved_thermal: str = "error"
                 text_height: str = "warning"
-                text_on_edge_cuts: Optional[str] = None
+                text_on_edge_cuts: str = "error"
                 text_thickness: str = "warning"
                 through_hole_pad_without_hole: str = "error"
                 too_many_vias: str = "error"
-                track_angle: Optional[str] = None
+                track_angle: str = "error"
                 track_dangling: str = "warning"
-                track_segment_length: Optional[str] = None
+                track_segment_length: str = "error"
                 track_width: str = "error"
                 tracks_crossing: str = "error"
                 unconnected_items: str = "error"
@@ -375,7 +375,7 @@ class C_kicad_project_file(JSON_File):
                 min_clearance: float = 0.0
                 min_connection: float = 0.0
                 min_copper_edge_clearance: float = 0.5
-                min_groove_width: Optional[float] = None
+                min_groove_width: float = 0.0
                 min_hole_clearance: float = 0.25
                 min_hole_to_hole: float = 0.25
                 min_microvia_diameter: float = 0.2
@@ -397,14 +397,13 @@ class C_kicad_project_file(JSON_File):
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_teardrop_options:
-                # v8/v9 field names
+                # legacy field names (pre-v9)
                 td_onpadsmd: Optional[bool] = None
                 td_onviapad: Optional[bool] = None
-                # v9+ field names
-                td_onpthpad: Optional[bool] = None
-                td_onsmdpad: Optional[bool] = None
-                td_onvia: Optional[bool] = None
-                # common fields
+                # current field names
+                td_onpthpad: bool = True
+                td_onsmdpad: bool = True
+                td_onvia: bool = True
                 td_onroundshapesonly: bool = False
                 td_ontrackend: bool = False
                 unknown: CatchAll = None
@@ -608,7 +607,7 @@ class C_kicad_project_file(JSON_File):
     @dataclass
     class C_meta:
         filename: str = "example.kicad_pro"
-        version: int = 1
+        version: int = 3
         unknown: CatchAll = None
 
     meta: C_meta = field(default_factory=C_meta)
@@ -629,7 +628,7 @@ class C_kicad_project_file(JSON_File):
             microvia_drill: float = 0.1
             name: str = "Default"
             pcb_color: str = "rgba(0, 0, 0, 0.000)"
-            priority: Optional[int] = None
+            priority: int = 2147483647
             schematic_color: str = "rgba(0, 0, 0, 0.000)"
             track_width: float = 0.2
             via_diameter: float = 0.6
@@ -642,7 +641,7 @@ class C_kicad_project_file(JSON_File):
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
         class C_meta:
-            version: int = 3
+            version: int = 4
             unknown: CatchAll = None
 
         meta: C_meta = field(default_factory=C_meta)
