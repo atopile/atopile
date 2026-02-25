@@ -1326,9 +1326,10 @@ pub const GraphView = struct {
 
     /// Create a new GraphView from a serialized hybrid SoA binary payload.
     ///
-    /// Creates a fresh graph via init_bare() and deserializes inline:
-    /// node bitset + node array → base edges + attributed edges → attr stream.
-    /// Uses flat O(1) remap arrays (max UUIDs derived from bitset lengths).
+    /// Creates a fresh graph via init_bare(), pre-faults node/edge structures,
+    /// then deserializes: node bitset + node array → degree pre-pass →
+    /// base edges + attributed edges → attr stream.
+    /// Uses flat O(1) remap arrays and degree-aware neighbor list pre-allocation.
     pub fn loads(allocator: std.mem.Allocator, bytes: []const u8) SerializationError!*@This() {
         // Step 1: Validate header
         if (bytes.len < @sizeOf(BinaryHeader)) return error.MalformedPayload;
@@ -1351,13 +1352,13 @@ pub const GraphView = struct {
             allocator.destroy(g);
         }
 
-        // Pre-fault: size graph structures upfront to eliminate page faults in hot loops.
+        // Step 2: Pre-fault graph structures to eliminate page faults in hot loops.
         // node_set/edge_set will see UUIDs up to counter + count; pre-allocate backing arrays.
         g.nodes.ensureTotalCapacity(@intCast(header.node_count)) catch return error.OutOfMemory;
         g.node_set.ensureCapacity(Node.counter + header.node_count);
         g.edge_set.ensureCapacity(Edge.counter + header.edge_count);
 
-        // Step 2: Compute section offsets
+        // Step 3: Compute section offsets and copy string table
         const base_edge_count = header.edge_count - header.attributed_edge_count;
         const node_bitset_start: usize = @sizeOf(BinaryHeader);
         const edge_bitset_start: usize = node_bitset_start + header.node_bitset_len;
@@ -1371,34 +1372,20 @@ pub const GraphView = struct {
         const str_start: usize = bytes.len - header.string_table_size;
         const attr_stream_size: usize = str_start - attr_stream_start;
 
-        // Step 3: Copy string table into graph-owned memory
+        // Copy string table into graph-owned memory
         const string_memory = g.allocator.alloc(u8, header.string_table_size) catch return error.OutOfMemory;
         if (header.string_table_size > 0) {
             @memcpy(string_memory, bytes[str_start..][0..header.string_table_size]);
         }
 
-        // Step 4: Allocate flat remap arrays (O(1) direct indexing)
-        const remap_nodes = if (max_node_uuid > 0)
-            allocator.alloc(u32, max_node_uuid) catch return error.OutOfMemory
-        else
-            @as([]u32, &.{});
-        defer if (remap_nodes.len > 0) allocator.free(remap_nodes);
-        if (remap_nodes.len > 0) @memset(remap_nodes, 0xFFFFFFFF);
-
-        const remap_edges = if (max_edge_uuid > 0)
-            allocator.alloc(u32, max_edge_uuid) catch return error.OutOfMemory
-        else
-            @as([]u32, &.{});
-        defer if (remap_edges.len > 0) allocator.free(remap_edges);
-        if (remap_edges.len > 0) @memset(remap_edges, 0xFFFFFFFF);
-
+        // Step 4: Allocate flat remap arrays (O(1) direct indexing, max UUIDs from bitset_len*8)
+        const remap_nodes = try allocRemapArray(allocator, max_node_uuid);
+        defer freeRemapArray(allocator, remap_nodes);
+        const remap_edges = try allocRemapArray(allocator, max_edge_uuid);
+        defer freeRemapArray(allocator, remap_edges);
         const remap_attr_len: usize = if (header.max_attr_uuid > 0) @as(usize, header.max_attr_uuid) + 1 else 0;
-        const remap_attrs = if (remap_attr_len > 0)
-            allocator.alloc(u32, remap_attr_len) catch return error.OutOfMemory
-        else
-            @as([]u32, &.{});
-        defer if (remap_attr_len > 0) allocator.free(remap_attrs);
-        if (remap_attrs.len > 0) @memset(remap_attrs, 0xFFFFFFFF);
+        const remap_attrs = try allocRemapArray(allocator, remap_attr_len);
+        defer freeRemapArray(allocator, remap_attrs);
 
         // Step 5: Read node bitset + node array in lockstep
         if (header.node_bitset_len > 0) {
@@ -1425,7 +1412,7 @@ pub const GraphView = struct {
             }
         }
 
-        // Step 6: Pre-pass to count node degrees for pre-allocated neighbor lists.
+        // Step 6: Degree pre-pass — count edges per node for pre-allocated neighbor lists.
         // Scans both base and attributed edge arrays (pure array increments, zero hashing).
         const max_new_node = Node.counter;
         const node_degrees = if (max_new_node > 0 and header.edge_count > 0)
@@ -1440,8 +1427,8 @@ pub const GraphView = struct {
             for (0..base_edge_count) |ei| {
                 const e_off = base_edges_start + ei * @sizeOf(BasePackedEdge);
                 const pe: BasePackedEdge = @bitCast(bytes[e_off..][0..@sizeOf(BasePackedEdge)].*);
-                const src = if (pe.source < remap_nodes.len and remap_nodes[pe.source] != 0xFFFFFFFF) remap_nodes[pe.source] else pe.source;
-                const tgt = if (pe.target < remap_nodes.len and remap_nodes[pe.target] != 0xFFFFFFFF) remap_nodes[pe.target] else pe.target;
+                const src = remapUuid(remap_nodes, pe.source);
+                const tgt = remapUuid(remap_nodes, pe.target);
                 if (src < node_degrees.len) node_degrees[src] += 1;
                 if (tgt < node_degrees.len) node_degrees[tgt] += 1;
             }
@@ -1449,8 +1436,8 @@ pub const GraphView = struct {
             for (0..header.attributed_edge_count) |ei| {
                 const e_off = attr_edges_start + ei * @sizeOf(AttributedPackedEdge);
                 const pe: AttributedPackedEdge = @bitCast(bytes[e_off..][0..@sizeOf(AttributedPackedEdge)].*);
-                const src = if (pe.source < remap_nodes.len and remap_nodes[pe.source] != 0xFFFFFFFF) remap_nodes[pe.source] else pe.source;
-                const tgt = if (pe.target < remap_nodes.len and remap_nodes[pe.target] != 0xFFFFFFFF) remap_nodes[pe.target] else pe.target;
+                const src = remapUuid(remap_nodes, pe.source);
+                const tgt = remapUuid(remap_nodes, pe.target);
                 if (src < node_degrees.len) node_degrees[src] += 1;
                 if (tgt < node_degrees.len) node_degrees[tgt] += 1;
             }
@@ -1500,7 +1487,7 @@ pub const GraphView = struct {
             }
         };
 
-        // Step 6b: Read base edges (12B) via edge bitset lockstep
+        // Step 7: Read base edges (12B) then attributed edges (16B) via edge bitset lockstep
         if (header.edge_bitset_len > 0) {
             const edge_bitset = bytes[edge_bitset_start..][0..header.edge_bitset_len];
             var it = SetBitIterator.init(edge_bitset);
@@ -1514,8 +1501,8 @@ pub const GraphView = struct {
                     const e_off = base_edges_start + @as(usize, base_idx) * @sizeOf(BasePackedEdge);
                     const pe: BasePackedEdge = @bitCast(bytes[e_off..][0..@sizeOf(BasePackedEdge)].*);
 
-                    const local_source = if (pe.source < remap_nodes.len and remap_nodes[pe.source] != 0xFFFFFFFF) remap_nodes[pe.source] else pe.source;
-                    const local_target = if (pe.target < remap_nodes.len and remap_nodes[pe.target] != 0xFFFFFFFF) remap_nodes[pe.target] else pe.target;
+                    const local_source = remapUuid(remap_nodes, pe.source);
+                    const local_target = remapUuid(remap_nodes, pe.target);
                     if (!g.contains_node(.{ .uuid = local_source })) return error.InvalidNodeReference;
                     if (!g.contains_node(.{ .uuid = local_target })) return error.InvalidNodeReference;
 
@@ -1526,8 +1513,8 @@ pub const GraphView = struct {
                     const e_off = attr_edges_start + @as(usize, attr_idx) * @sizeOf(AttributedPackedEdge);
                     const pe: AttributedPackedEdge = @bitCast(bytes[e_off..][0..@sizeOf(AttributedPackedEdge)].*);
 
-                    const local_source = if (pe.source < remap_nodes.len and remap_nodes[pe.source] != 0xFFFFFFFF) remap_nodes[pe.source] else pe.source;
-                    const local_target = if (pe.target < remap_nodes.len and remap_nodes[pe.target] != 0xFFFFFFFF) remap_nodes[pe.target] else pe.target;
+                    const local_source = remapUuid(remap_nodes, pe.source);
+                    const local_target = remapUuid(remap_nodes, pe.target);
                     if (!g.contains_node(.{ .uuid = local_source })) return error.InvalidNodeReference;
                     if (!g.contains_node(.{ .uuid = local_target })) return error.InvalidNodeReference;
 
@@ -1546,7 +1533,7 @@ pub const GraphView = struct {
             }
         }
 
-        // Step 7: Read attribute stream — variable-length blocks
+        // Step 8: Read attribute stream — variable-length blocks
         {
             var stream_offset: usize = 0;
             while (stream_offset + 5 <= attr_stream_size) {
@@ -1560,8 +1547,8 @@ pub const GraphView = struct {
                 const local_da = if (original_attr_uuid < remap_attrs.len)
                     remap_attrs[original_attr_uuid]
                 else
-                    0xFFFFFFFF;
-                if (local_da == 0xFFFFFFFF) return error.MalformedPayload;
+                    REMAP_SENTINEL;
+                if (local_da == REMAP_SENTINEL) return error.MalformedPayload;
 
                 const da = &Attrs[local_da];
                 da.in_use = @intCast(in_use);
@@ -1596,8 +1583,8 @@ pub const GraphView = struct {
             }
         }
 
-        // Step 8: Set self_node
-        const remapped_self = if (header.self_node_uuid < remap_nodes.len and remap_nodes[header.self_node_uuid] != 0xFFFFFFFF)
+        // Step 9: Set self_node
+        const remapped_self = if (header.self_node_uuid < remap_nodes.len and remap_nodes[header.self_node_uuid] != REMAP_SENTINEL)
             remap_nodes[header.self_node_uuid]
         else
             header.self_node_uuid;
@@ -1647,16 +1634,18 @@ pub const GraphView = struct {
 //
 // Deserialization (loads):
 //   1. Validate header (magic, version, buffer >= fixed size).
-//   2. Copy string table into arena-owned memory.
-//   3. Allocate flat remap arrays (max UUIDs from bitset_len*8) for O(1).
-//   4. Read node bitset + node array (lockstep): create nodes,
+//   2. Pre-fault graph structures (nodes HashMap, node_set/edge_set
+//      bitsets) to eliminate page faults in hot loops.
+//   3. Compute section offsets + copy string table into arena memory.
+//   4. Allocate flat remap arrays (max UUIDs from bitset_len*8) for O(1).
+//   5. Read node bitset + node array (lockstep): create nodes,
 //      pre-allocate DA blocks, populate remap_nodes[] and remap_attrs[].
-//   5. Degree pre-pass over both edge arrays (flat []u32 increments).
-//   6. Read base edges (12B) then attributed edges (16B) via bitset
+//   6. Degree pre-pass over both edge arrays (flat []u32 increments).
+//   7. Read base edges (12B) then attributed edges (16B) via bitset
 //      lockstep with degree-aware neighbor list pre-allocation.
-//   6. Read attribute stream: for each block, direct-write into
+//   8. Read attribute stream: for each block, direct-write into
 //      pre-allocated Attrs[] storage (no ref.put() overhead).
-//   7. Set self_node from header's remapped UUID.
+//   9. Set self_node from header's remapped UUID.
 //
 // =============================================================================
 
@@ -1674,6 +1663,7 @@ pub const SerializationError = error{
 
 const MAGIC: u32 = 0x52494E53; // "RINS"
 const FORMAT_VERSION: u32 = 1;
+const REMAP_SENTINEL: u32 = 0xFFFFFFFF; // "unmapped" marker for flat remap arrays
 
 /// 64-byte header (one cache line) with reserved slots for forward compatibility.
 /// max_node_uuid and max_edge_uuid are derived from bitset_len * 8.
@@ -1885,6 +1875,27 @@ fn validateStringRef(ref: PackedStringRef, string_table_size: u32) Serialization
 /// Swizzle a PackedStringRef into a slice of the arena-owned string memory.
 fn resolveString(ref: PackedStringRef, string_memory: []const u8) []const u8 {
     return string_memory[ref.offset..][0..ref.length];
+}
+
+/// Translate a serialized UUID through a flat remap array. Returns the
+/// remapped value, or the original if out-of-bounds or unmapped (REMAP_SENTINEL).
+fn remapUuid(remap: []const u32, original: u32) u32 {
+    if (original < remap.len and remap[original] != REMAP_SENTINEL) return remap[original];
+    return original;
+}
+
+/// Allocate a flat remap array of `len` u32 entries, initialized to the
+/// the REMAP_SENTINEL value. Returns an empty slice if len is 0.
+fn allocRemapArray(alloc: std.mem.Allocator, len: usize) SerializationError![]u32 {
+    if (len == 0) return @as([]u32, &.{});
+    const arr = alloc.alloc(u32, len) catch return error.OutOfMemory;
+    @memset(arr, REMAP_SENTINEL);
+    return arr;
+}
+
+/// Free a remap array if it was heap-allocated (len > 0).
+fn freeRemapArray(alloc: std.mem.Allocator, arr: []u32) void {
+    if (arr.len > 0) alloc.free(arr);
 }
 
 // =============================================================================
