@@ -1216,7 +1216,7 @@ pub const GraphView = struct {
             }
         }
 
-        // Pack attribute stream — 5-byte block header + in_use PackedAttribute entries per DA
+        // Pack attribute stream — 5-byte block header + in_use packed attribute entries (17B each) per DA
         for (da_uuids.items) |da_uuid| {
             const attrs = &Attrs[da_uuid];
             const in_use = attrs.in_use;
@@ -1227,17 +1227,16 @@ pub const GraphView = struct {
             hdr_buf[4] = in_use;
             attr_stream.appendSlice(&hdr_buf) catch return error.OutOfMemory;
 
-            // Write in_use PackedAttribute entries
+            // Write in_use packed attribute entries (17 bytes each, no padding)
             for (0..in_use) |j| {
                 const attr = &attrs.values[j];
                 const ident_ref = internString(&string_table, &intern_map, attr.identifier);
                 const lit = packLiteral(attr.value, &string_table, &intern_map);
-                const pa = PackedAttribute{
-                    .value_tag = @intFromEnum(lit.tag),
-                    .identifier = ident_ref,
-                    .value = lit.value,
-                };
-                attr_stream.appendSlice(std.mem.asBytes(&pa)) catch return error.OutOfMemory;
+                var attr_buf: [PACKED_ATTR_SIZE]u8 = undefined;
+                attr_buf[0] = @intFromEnum(lit.tag);
+                @memcpy(attr_buf[1..][0..8], std.mem.asBytes(&ident_ref));
+                @memcpy(attr_buf[9..][0..8], std.mem.asBytes(&lit.value));
+                attr_stream.appendSlice(&attr_buf) catch return error.OutOfMemory;
             }
         }
 
@@ -1481,28 +1480,31 @@ pub const GraphView = struct {
                 const da = &Attrs[local_da];
                 da.in_use = @intCast(in_use);
 
-                // Read in_use PackedAttribute entries directly into DA storage
+                // Read in_use packed attribute entries (17 bytes each) directly into DA storage
                 for (0..in_use) |j| {
-                    if (stream_offset + @sizeOf(PackedAttribute) > attr_stream_size) return error.MalformedPayload;
+                    if (stream_offset + PACKED_ATTR_SIZE > attr_stream_size) return error.MalformedPayload;
                     const pa_offset = attr_stream_start + stream_offset;
-                    const pa: PackedAttribute = @bitCast(bytes[pa_offset..][0..@sizeOf(PackedAttribute)].*);
-                    stream_offset += @sizeOf(PackedAttribute);
+                    stream_offset += PACKED_ATTR_SIZE;
 
-                    if (pa.value_tag > @intFromEnum(ValueTag.Bool)) return error.InvalidValueTag;
-                    const tag: ValueTag = @enumFromInt(pa.value_tag);
+                    const value_tag = bytes[pa_offset];
+                    const ident_ref: PackedStringRef = @bitCast(bytes[pa_offset + 1 ..][0..8].*);
+                    const raw_value: PackedLiteralValue = @bitCast(bytes[pa_offset + 9 ..][0..8].*);
 
-                    try validateStringRef(pa.identifier, header.string_table_size);
-                    const ident = resolveString(pa.identifier, string_memory);
+                    if (value_tag > @intFromEnum(ValueTag.Bool)) return error.InvalidValueTag;
+                    const tag: ValueTag = @enumFromInt(value_tag);
+
+                    try validateStringRef(ident_ref, header.string_table_size);
+                    const ident = resolveString(ident_ref, string_memory);
 
                     const value: Literal = switch (tag) {
-                        .Int => .{ .Int = pa.value.Int },
-                        .Uint => .{ .Uint = pa.value.Uint },
-                        .Float => .{ .Float = pa.value.Float },
+                        .Int => .{ .Int = raw_value.Int },
+                        .Uint => .{ .Uint = raw_value.Uint },
+                        .Float => .{ .Float = raw_value.Float },
                         .String => blk: {
-                            try validateStringRef(pa.value.String, header.string_table_size);
-                            break :blk .{ .String = resolveString(pa.value.String, string_memory) };
+                            try validateStringRef(raw_value.String, header.string_table_size);
+                            break :blk .{ .String = resolveString(raw_value.String, string_memory) };
                         },
-                        .Bool => .{ .Bool = pa.value.Bool != 0 },
+                        .Bool => .{ .Bool = raw_value.Bool != 0 },
                     };
 
                     // Direct write into pre-allocated DA block
@@ -1553,7 +1555,7 @@ pub const GraphView = struct {
 //   2. Pack edges into a flat PackedEdge array (sequential scan of
 //      edge_set), collecting DA UUIDs for attributed edges.
 //   3. For each DA UUID, emit a 5-byte block header (original_attr_uuid +
-//      in_use count) followed by in_use PackedAttribute entries.
+//      in_use count) followed by in_use packed attribute entries (17 bytes each).
 //      Strings are deduplicated via an intern map.
 //   4. Write header + node_bitset + nodes + edges + attr_stream + strings.
 //
@@ -1613,7 +1615,7 @@ const PackedStringRef = extern struct {
 };
 
 /// 8-byte union matching the Literal tagged union. The active field is
-/// determined by the sibling value_tag in PackedAttribute.
+/// determined by the sibling value_tag byte in packed attribute entries.
 const PackedLiteralValue = extern union {
     Int: i64,
     Uint: u64,
@@ -1637,19 +1639,16 @@ const PackedEdge = extern struct {
 };
 
 /// 5-byte packed attribute block header (read/written manually to avoid alignment).
-/// Precedes a run of `in_use` PackedAttribute entries for a single DA block.
+/// Precedes a run of `in_use` packed attribute entries (17 bytes each) for a single DA block.
 const PackedAttrBlockHeader = packed struct {
     original_attr_uuid: u32,
     in_use: u8,
 };
 
-/// 24-byte attribute entry (no owner info — ownership via attr stream structure).
-const PackedAttribute = extern struct {
-    value_tag: u8, // 0-4 (ValueTag enum)
-    _pad: [7]u8 = .{0} ** 7,
-    identifier: PackedStringRef, // 8 bytes
-    value: PackedLiteralValue, // 8 bytes
-};
+/// Packed attribute entry size: 17 bytes (no padding).
+/// Layout: [value_tag: u8][identifier: PackedStringRef (8B)][value: PackedLiteralValue (8B)]
+/// Read/written manually to avoid alignment padding (saves 7 bytes per attribute vs extern struct).
+const PACKED_ATTR_SIZE: usize = 1 + @sizeOf(PackedStringRef) + @sizeOf(PackedLiteralValue); // 17
 
 /// Stable tag mapping for Literal variants. Literal is union(enum) so we
 /// define an explicit u8 tag for binary stability.
@@ -1665,7 +1664,7 @@ comptime {
     std.debug.assert(@sizeOf(BinaryHeader) == 64);
     std.debug.assert(@sizeOf(PackedNode) == 4);
     std.debug.assert(@sizeOf(PackedEdge) == 16);
-    std.debug.assert(@sizeOf(PackedAttribute) == 24);
+    std.debug.assert(PACKED_ATTR_SIZE == 17);
     std.debug.assert(@sizeOf(PackedStringRef) == 8);
     std.debug.assert(@sizeOf(PackedLiteralValue) == 8);
     std.debug.assert(@bitSizeOf(PackedAttrBlockHeader) == 40); // 5 bytes
@@ -2238,15 +2237,12 @@ test "serialization: string table bounds and swizzling" {
             @as(usize, hdr.node_count) * @sizeOf(PackedNode) +
             @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
-        // First attr block: 5-byte header + first PackedAttribute
+        // First attr block: 5-byte header + first packed attribute (17 bytes)
         const first_attr_offset = attr_stream_start + 5; // skip block header
-        var first_attr: PackedAttribute = @bitCast(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)].*);
-
-        // Corrupt the identifier offset
-        first_attr.identifier.offset = hdr.string_table_size + 100;
-
-        // Write corrupted attr back
-        @memcpy(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)], std.mem.asBytes(&first_attr));
+        // Corrupt the identifier offset (bytes 1..5 of the 17-byte packed attr = PackedStringRef.offset)
+        const ident_offset_pos = first_attr_offset + 1; // skip value_tag byte
+        const corrupt_offset: u32 = hdr.string_table_size + 100;
+        @memcpy(good_data[ident_offset_pos..][0..4], std.mem.asBytes(&corrupt_offset));
 
         const result = GraphView.loads(a, good_data);
         try std.testing.expectError(error.StringOutOfBounds, result);
@@ -2360,9 +2356,8 @@ test "serialization: malicious payload rejection" {
             @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
         const first_attr_offset = attr_stream_start + 5;
-        var first_attr: PackedAttribute = @bitCast(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)].*);
-        first_attr.value_tag = 255; // invalid
-        @memcpy(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)], std.mem.asBytes(&first_attr));
+        // Corrupt value_tag (byte 0 of the 17-byte packed attr)
+        good_data[first_attr_offset] = 255; // invalid
 
         try std.testing.expectError(error.InvalidValueTag, GraphView.loads(a, good_data));
     }
