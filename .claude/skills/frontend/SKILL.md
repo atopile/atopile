@@ -266,21 +266,22 @@ Apply across all surfaces:
 Example tokenized control:
 
 ```css
-.btn-primary {
-  background: var(--color-brand-500);
-  color: var(--color-text-on-brand, #fff);
-  border: 1px solid var(--color-brand-500);
+.btn-default {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
+  padding: 0 var(--spacing-md);
 }
-.btn-primary:hover {
-  background: var(--color-brand-600);
+.btn-default:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
-.btn-primary:focus-visible {
-  outline: 2px solid var(--color-info);
-  outline-offset: 2px;
+.btn-default:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
 }
-.btn-primary:disabled {
+.btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
