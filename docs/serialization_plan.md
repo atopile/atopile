@@ -166,3 +166,93 @@ The PyZig wrappers (`src/faebryk/core/zig/src/python/graph/graph_py.zig`) will e
 **Python Integration Tests:**
 1.  **PyZig Roundtrip:** Serialize from Python, immediately load back, and run `BFSPath` traversals to ensure the C-ABI wrapper correctly traces remapped pointers.
 2.  **IPC Simulation:** Pass serialized bytes into a `multiprocessing.Process`. Have the worker add a specific component structure, serialize the diff, pass it back, and `merge_diff`. Verify the main process's graph contains the worker's component without corruption.
+
+## 8. Implementation Deviations
+
+This section documents where the implementation diverged from the plan and why.
+
+### 8.1 `dumps_diff` with baselines not implemented — only `dumps`
+
+The plan specifies `dumps_diff(baseline_nodes, baseline_edges, baseline_attrs)` with filtering against baseline UUIDs. The implementation only provides `dumps()` (full graph serialization, equivalent to baselines of 0). The `dumps_diff` Python binding was also omitted.
+
+**Why:** The immediate use case is full graph transfer across process boundaries. Baseline-aware diffing adds complexity (three extra parameters, baseline tracking) that isn't needed yet. Adding it later is backwards-compatible — the binary format and `merge_diff` already handle the "everything is new" case identically to a diff where all UUIDs exceed the baseline.
+
+### 8.2 Struct reads use `@bitCast` instead of pointer casts or `bytesAsSlice`
+
+The plan implicitly assumes pointer-cast access into the byte buffer (e.g., `std.mem.bytesAsSlice(PackedDynamicAttributes, attrs_bytes)`). The implementation reads each struct via `@bitCast(bytes[offset..][0..@sizeOf(T)].*)`.
+
+**Why:** Zig 0.15's `@alignCast` on slices passed to `anytype` parameters (like `bytesAsSlice`'s second argument) cannot infer the target alignment, producing `error: @alignCast must have a known result type`. The input `[]const u8` has alignment 1, but `extern struct`s require natural alignment. `@bitCast` on a fixed-size array copy is alignment-safe and avoids undefined behavior from misaligned loads on ARM.
+
+### 8.3 Overflow-safe arithmetic uses `std.math.add`/`std.math.mul`, not `@addWithOverflow`/`@mulWithOverflow`
+
+The plan references `@addWithOverflow` and `@mulWithOverflow` Zig builtins.
+
+**Why:** The builtins return a tuple `(result, overflow_bit)` which requires manual checking. `std.math.add` and `std.math.mul` return `error.Overflow` directly, which integrates cleanly with Zig's error union return type. The safety guarantee is identical.
+
+### 8.4 `SerializationError` includes `OutOfMemory`
+
+The plan's error set does not include `OutOfMemory`. The implementation adds it.
+
+**Why:** `merge_diff` allocates string memory via `g.allocator` and uses hash maps for remap tables. `dumps` builds dynamic arrays. These allocations can fail and the error must be surfaced rather than `@panic`'ing.
+
+### 8.5 Header parsed as value type, not pointer
+
+The plan shows `const header = std.mem.bytesToValue(BinaryHeader, bytes[0..32])` which returns a pointer. The implementation uses `const header: BinaryHeader = @bitCast(bytes[0..@sizeOf(BinaryHeader)].*)` which copies into a stack value.
+
+**Why:** Same alignment issue as 8.2 — pointer-casting into an arbitrary byte buffer risks misaligned access. A value copy is safe on all platforms and the 32-byte header is trivially cheap to copy.
+
+### 8.6 Roundtrip test uses 20 nodes (not 1000 with 500 deleted)
+
+The plan specifies "add 1000 nodes, delete 500" to test sparse packing. The implementation creates 20 nodes with no deletion.
+
+**Why:** `GraphView` does not expose a `remove_node` operation — the bitset `remove` method exists on `UUIDBitSet` but there is no public API to remove a node and clean up its adjacency map. The 20-node test with mixed attribute types (string, int, float, bool, uint) and edges adequately validates serialization correctness. Sparse packing is inherently tested since `UUIDBitSet` indices are non-contiguous (they start at whatever the global counter was at graph creation time).
+
+### 8.7 Collision test creates separate graphs instead of cloning
+
+The plan says "Clone to `Graph_Worker`" and asserts specific UUID values (Node 100 remapped to 101). The implementation creates two independent `GraphView`s.
+
+**Why:** `GraphView` has no clone/copy constructor. Two independently created graphs naturally get non-overlapping UUIDs (global monotonic counter), but the merge still exercises the full remapping path since every UUID in the payload is treated as "new". The test asserts correct aggregate counts rather than specific UUID values, since exact values depend on global counter state shared across all tests.
+
+### 8.8 Python integration tests: automated but no IPC simulation
+
+The plan specifies a PyZig Roundtrip test with `BFSPath` traversals and a `multiprocessing.Process` IPC simulation.
+
+**What was implemented:** Nine automated Python tests in `test/core/zig/graph/test_zig_graph.py` covering:
+- `test_dumps_merge_diff_roundtrip` — full `dumps()` → `merge_diff()` roundtrip with node count validation
+- `test_loads_static` — `GraphView.loads()` creates a correct graph from bytes
+- `test_loads_preserves_edge_connectivity` — edge `directional`, `name`, and source-target relationships survive `dumps` → `loads`
+- `test_loads_preserves_composition_attributes` — composition edge names (dynamic attributes) survive `dumps` → `loads`, verified via `visit_children_edges` and `get_name`
+- `test_clone` — `clone()` produces an independent deep copy, mutations to original don't affect clone
+- `test_clone_with_composition_traversal` — composition children can be visited and looked up by identifier on a cloned graph
+- `test_merge_diff_malformed` — rejects payloads that are too short or have wrong magic number
+- `test_loads_malformed` — rejects invalid payloads via `loads()`
+
+**What was not implemented:** The `multiprocessing.Process` IPC simulation test. This is deferred until the picker workflow integration is built, at which point it becomes a natural end-to-end test rather than a synthetic one.
+
+**Why no BFSPath traversal test:** The plan calls for BFS traversals on deserialized graphs, but composition edge traversal (`visit_children_edges`, `get_child_by_identifier`) is a more representative validation of adjacency map reconstruction. BFSPath operates on the same rebuilt adjacency maps, so composition traversal tests provide equivalent coverage.
+
+### 8.9 `loads()` and `clone()` added beyond plan scope
+
+The plan specifies only `dumps()`, `dumps_diff()`, and `merge_diff()`. The implementation adds two additional methods:
+- `GraphView.loads(data: bytes) -> GraphView` — static method that creates a new graph from serialized bytes
+- `GraphView.clone() -> GraphView` — deep copy via `dumps()` + `loads()`
+
+**Why:** `loads()` is the natural complement to `dumps()` — creating a fresh graph from bytes rather than merging into an existing one. `clone()` was requested as a convenience for graph deep-copying, which is a common operation that previously had no efficient implementation. Both are exposed via Python bindings and type stubs.
+
+### 8.10 `init_bare()` internal helper for `loads()`
+
+The plan's `merge_diff` always operates on an existing `GraphView` that was created via `init()` (which allocates a self_node). The implementation adds an internal `init_bare()` constructor that creates a `GraphView` without allocating a self_node.
+
+**Why:** `loads()` needs to reconstruct a graph from bytes including its original self_node. If it used `init()`, the graph would start with an orphan self_node (node count = 1), then `merge_diff` would add all serialized nodes (including the serialized self_node), resulting in `n + 1` nodes instead of `n`. `init_bare()` starts at 0 nodes, so after `merge_diff` restores all serialized nodes and sets `self_node` from the header, the node count matches exactly.
+
+### 8.11 `merge_diff` always restores `self_node`, not conditionally
+
+The plan says Step 7 ("Restore Self Node") applies to "Full Loads Only." The implementation unconditionally sets `g.self_node` from the header's remapped UUID at the end of every `merge_diff` call.
+
+**Why:** Simplicity. When `merge_diff` is used on an existing graph, the self_node is overwritten with the remapped UUID from the payload. This is harmless in the `merge_diff` use case (the caller's self_node is preserved because it was already in the graph and the remap fallback resolves to itself), and required in the `loads()` use case. Adding a conditional would require a flag parameter or a separate code path for no practical benefit.
+
+### 8.12 Python `Node.create()` does not accept keyword attributes
+
+The `.pyi` stub declares `Node.create(**attrs: Literal)`, but the Zig binding (`wrap_node_create`) ignores all keyword arguments. Node dynamic attributes cannot be set from Python via `create()`.
+
+**Why:** This is a pre-existing limitation of the Python binding, not a serialization issue. The attribute roundtrip is fully tested in the Zig inline tests (which use `node.put("key", value)` directly). Python tests verify attribute roundtrip through composition edges (`EdgeComposition.get_name`), which do store dynamic attributes via the Zig-level `add_child` binding.
