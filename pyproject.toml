@@ -122,7 +122,7 @@ artifacts = [
     "**/viewer/dist",
     "**/dashboard/web/dist",
 ]
-packages = ["src/faebryk", "src/atopile"]
+packages = ["src/faebryk", "src/atopile", "src/ui"]
 exclude = ["**/.zig-cache", "**/.zig-cache/**", "**/zig-out", "**/zig-out/**"]
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]

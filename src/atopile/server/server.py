@@ -1,5 +1,5 @@
 """
-FastAPI server for the build dashboard API.
+atopile core server.
 
 Provides API endpoints for build data. The React frontend is served
 directly by VS Code webview for better IDE integration.
@@ -19,7 +19,6 @@ Exit Codes:
 """
 
 import asyncio
-import atexit
 import logging
 import os
 import signal
@@ -29,12 +28,11 @@ import sys
 import threading
 import time
 import traceback
-from pathlib import Path
 from typing import Optional
 
 import requests
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -147,7 +145,6 @@ def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -
 
 
 def create_app(
-    summary_file: Optional[Path] = None,
     ato_source: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
@@ -155,14 +152,14 @@ def create_app(
     ato_from_spec: Optional[str] = None,
 ) -> FastAPI:
     """
-    Create the FastAPI application with API routes for the dashboard.
+    Create the FastAPI application for the core server.
 
     Exception Handling:
         - Unhandled exceptions in routes → server crashes (not HTTP 500)
         - Unhandled exceptions in background tasks → server crashes
         - HTTPException → proper HTTP error response (intentional)
     """
-    app = FastAPI(title="atopile Build Server")
+    app = FastAPI(title="atopile Core Server")
 
     # Add crash-on-error middleware FIRST (innermost)
     app.add_middleware(CrashOnErrorMiddleware)
@@ -179,7 +176,6 @@ def create_app(
     )
 
     ctx = AppContext(
-        summary_file=summary_file,
         ato_source=ato_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
@@ -212,14 +208,28 @@ def create_app(
         """Simple health check endpoint."""
         return {"status": "ok"}
 
+    @app.websocket("/atopile-core")
+    async def websocket_endpoint(websocket: WebSocket):
+        """WebSocket endpoint for the VS Code extension hub."""
+        await websocket.accept()
+        # Send initial state
+        await websocket.send_json({"type": "state", "data": {}})
+        try:
+            while True:
+                msg = await websocket.receive_json()
+                # Echo back action_result for any action
+                if msg.get("type") == "action":
+                    await websocket.send_json(
+                        {
+                            "type": "action_result",
+                            "action": msg.get("action", ""),
+                            "result": {"success": True},
+                        }
+                    )
+        except WebSocketDisconnect:
+            pass
+
     return app
-
-
-def find_free_port() -> int:
-    """Find a free port to use."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
 
 
 def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
@@ -267,19 +277,19 @@ def kill_process_on_port(port: int, host: str = "127.0.0.1") -> bool:
         return False
 
 
-class DashboardServer:
-    """Manages the dashboard server lifecycle."""
+class CoreServer:
+    """Manages the core server lifecycle."""
 
     def __init__(
         self,
-        port: Optional[int] = None,
+        port: int,
         ato_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
         ato_binary_path: Optional[str] = None,
         ato_from_branch: Optional[str] = None,
         ato_from_spec: Optional[str] = None,
     ):
-        self.port = port or find_free_port()
+        self.port = port
         self.app = create_app(
             ato_source=ato_source,
             ato_local_path=ato_local_path,
@@ -292,7 +302,7 @@ class DashboardServer:
 
     @property
     def url(self) -> str:
-        """Get the dashboard URL."""
+        """Get the server URL."""
         return f"http://localhost:{self.port}"
 
     def start(self) -> None:
@@ -316,6 +326,8 @@ class DashboardServer:
             if self._server.started:
                 break
             time.sleep(0.1)
+        else:
+            raise RuntimeError("Core server failed to start within 5 seconds")
 
     def shutdown(self) -> None:
         """Shutdown the server (cleanup handled by cleanup_server via atexit)."""
@@ -325,29 +337,9 @@ class DashboardServer:
                 self._thread.join(timeout=2.0)
 
 
-def start_dashboard_server(
-    port: Optional[int] = None,
-) -> tuple[DashboardServer, str]:
-    """
-    Start the dashboard server.
-
-    Args:
-        port: Port to use (defaults to a free port)
-
-    Returns:
-        Tuple of (DashboardServer, url)
-    """
-    server = DashboardServer(port=port)
-    server.start()
-    return server, server.url
-
-
 # =============================================================================
 # Server Entry Point
 # =============================================================================
-
-# Register cleanup for any exit path
-atexit.register(cleanup_server)
 
 
 def is_atopile_server_running(port: int) -> bool:
@@ -369,7 +361,7 @@ def run_server(
     ato_from_spec: Optional[str] = None,
 ) -> None:
     """
-    Run the dashboard server.
+    Run the core server.
 
     Args:
         port: Port to run the server on
@@ -427,23 +419,17 @@ def _run_server_impl(
                 print(f"Failed to stop process on port {port}")
                 sys.exit(1)
         elif is_atopile_server_running(port):
-            print(f"atopile server already running on port {port}")
-            print(f"Dashboard available at http://localhost:{port}")
-            print("Use --force to restart, or --port to use a different port")
+            print(f"Core server already running on port {port}")
+            print(f"Server available at http://localhost:{port}")
+            print("Use --force to restart")
             sys.exit(0)
         else:
             print(f"Port {port} is already in use by another application")
-            print("Options:")
-            print("  1. Use --force to kill the process: ato serve backend --force")
-            print("  2. Use a specific port: ato serve backend --port <PORT>")
+            print("Use --force to kill the process: ato serve core --force")
             sys.exit(1)
 
-    # Output port early for programmatic discovery (before logging starts)
-    # This line is parsed by the VS Code extension and other tools
-    print(f"ATOPILE_SERVER_PORT={port}", flush=True)
-
     # Create and start server
-    server = DashboardServer(
+    server = CoreServer(
         port=port,
         ato_source=ato_source,
         ato_local_path=ato_local_path,
@@ -452,10 +438,13 @@ def _run_server_impl(
         ato_from_spec=ato_from_spec,
     )
 
-    print(f"Starting dashboard server on http://localhost:{port}")
-    print("Press Ctrl+C to stop")
+    print(f"Starting core server on http://localhost:{port}")
 
     server.start()
+
+    # Output ready marker AFTER server is listening — this is parsed by the
+    # VS Code extension to know the server is ready.
+    print("ATOPILE_SERVER_READY", flush=True)
 
     # Handle SIGTERM for clean shutdown (e.g., from process manager)
     def sigterm_handler(_signum, _frame):

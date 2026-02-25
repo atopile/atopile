@@ -1,0 +1,17 @@
+{
+  "name": "atopile-webview-ui",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "build": "bun build sidebar/main.tsx panel-a/main.tsx panel-b/main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --minify && node -e \"fs=require('fs');fs.mkdirSync('../../vscode-atopile/webview-dist',{recursive:true});fs.copyFileSync('shared/logo.png','../../vscode-atopile/webview-dist/logo.png')\"",
+    "watch": "bun build sidebar/main.tsx panel-a/main.tsx panel-b/main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --watch"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0"
+  }
+}

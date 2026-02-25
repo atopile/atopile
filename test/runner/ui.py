@@ -268,7 +268,7 @@ async def websocket_state_stub(websocket: WebSocket):
     """
     Stub WebSocket endpoint for /ws/state.
 
-    The log viewer UI (shared with the main build server) tries to connect to
+    The log viewer UI (shared with the core server) tries to connect to
     /ws/state for app state updates. In the test runner context, we don't need
     this connection, so we accept and immediately close it gracefully.
 

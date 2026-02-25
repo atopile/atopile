@@ -1145,7 +1145,6 @@ class BuildReport:
 
 @dataclass
 class AppContext:
-    summary_file: Optional[Path] = None
     # 'explicit-path', 'from-setting', or 'default'
     ato_source: Optional[str] = None
     # User's configured path (for explicit-path mode)

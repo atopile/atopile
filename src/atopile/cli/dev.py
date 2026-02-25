@@ -1,9 +1,12 @@
 import json
 import os
 import shlex
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import webbrowser
 from collections import Counter
 from pathlib import Path
@@ -44,6 +47,118 @@ def compile():
     import faebryk.core.zig
 
     _ = faebryk.core.zig
+
+
+@dev_app.command()
+@capture("cli:dev_extension_start", "cli:dev_extension_end")
+def extension(
+    no_install: bool = typer.Option(
+        False, "--no-install", help="Skip bun install step"
+    ),
+):
+    """Launch VS Code Extension Development Host with webview watcher.
+
+    Starts esbuild watch + bun build watch, then opens a new VS Code
+    window in Extension Development Host mode loading the atopile extension.
+    """
+    from faebryk.libs.util import repo_root
+
+    root = repo_root()
+    ext_dir = root / "src" / "vscode-atopile"
+    webview_dir = root / "src" / "ui" / "webview"
+
+    # Validate directories exist
+    if not ext_dir.is_dir():
+        raise typer.BadParameter(f"Extension directory not found: {ext_dir}")
+
+    # Check bun is available (also check ~/.bun/bin for fresh installs)
+    bun = shutil.which("bun")
+    if not bun:
+        home_bun = Path.home() / ".bun" / "bin" / "bun"
+        if home_bun.is_file():
+            bun = str(home_bun)
+        else:
+            typer.secho(
+                "bun not found. Install with: curl -fsSL https://bun.sh/install | bash",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
+    # Check code CLI is available
+    code_bin = shutil.which("code")
+    if not code_bin:
+        typer.secho(
+            "VS Code 'code' CLI not found. Install from VS Code command palette: "
+            "'Shell Command: Install code command in PATH'",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    # Install dependencies
+    if not no_install:
+        typer.echo("Installing extension dependencies...")
+        subprocess.run([bun, "install"], cwd=ext_dir, check=True)
+        typer.echo("Installing webview dependencies...")
+        subprocess.run([bun, "install"], cwd=webview_dir, check=True)
+
+    # Build extension + webview so there are dist/ files to load
+    typer.echo("Building extension...")
+    subprocess.run([bun, "run", "build:extension"], cwd=ext_dir, check=True)
+    typer.echo("Building webview...")
+    subprocess.run([bun, "run", "build:webview"], cwd=ext_dir, check=True)
+
+    procs: list[subprocess.Popen] = []
+
+    def cleanup(_signum=None, _frame=None):
+        for p in procs:
+            try:
+                p.terminate()
+            except OSError:
+                pass
+        for p in procs:
+            try:
+                p.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                p.kill()
+
+    signal.signal(signal.SIGTERM, cleanup)
+
+    try:
+        # Start esbuild watch (rebuilds dist/extension.js on changes)
+        typer.echo("Starting extension watcher...")
+        procs.append(subprocess.Popen([bun, "run", "watch:extension"], cwd=ext_dir))
+
+        # Start bun build watch (rebuilds webview-ui/dist on changes)
+        typer.echo("Starting webview watcher...")
+        procs.append(subprocess.Popen([bun, "run", "watch:webview"], cwd=ext_dir))
+
+        # Give watchers a moment to produce initial output
+        time.sleep(2)
+
+        # Launch VS Code Extension Development Host
+        typer.echo("Launching VS Code Extension Development Host...")
+        subprocess.Popen(
+            [code_bin, "--extensionDevelopmentPath", str(ext_dir), str(root)],
+        )
+
+        typer.echo(
+            "\nDev environment running:\n"
+            "  - esbuild watch  (extension host)\n"
+            "  - bun watch      (webview-ui)\n"
+            "\nPress Ctrl+C to stop all watchers."
+        )
+
+        # Block until a watcher exits or user interrupts
+        while True:
+            for p in procs:
+                if p.poll() is not None:
+                    raise typer.Exit(p.returncode or 0)
+            time.sleep(0.5)
+
+    except KeyboardInterrupt:
+        typer.echo("\nShutting down...")
+    finally:
+        cleanup()
 
 
 @dev_app.command()

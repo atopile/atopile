@@ -1,5 +1,5 @@
 """
-atopile Server - FastAPI backend for atopile.
+atopile core server.
 
 This package provides:
 - REST API endpoints for projects, builds, packages
@@ -14,10 +14,9 @@ Directory Structure:
 Note: All data classes and Pydantic models are defined in atopile.dataclasses
 """
 
-from .server import DashboardServer, create_app, start_dashboard_server
+from .server import CoreServer, create_app
 
 __all__ = [
     "create_app",
-    "DashboardServer",
-    "start_dashboard_server",
+    "CoreServer",
 ]

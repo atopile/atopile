@@ -1,0 +1,6 @@
+src/
+out/
+*.ts
+*.map
+!dist/**/*.js
+!webview-dist/**
