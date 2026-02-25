@@ -138,7 +138,7 @@
 	(net 17 "RT_CLK")
 	(net 2 "c_in-power-hv")
 	(net 1 "EN")
-	(net 3 "capacitors[2]-power-hv")
+	(net 3 "capacitors[3]-power-hv")
 	(net 6 "FB")
 	(footprint "Texas_Instruments_TPS54560DDAR:SOIC-8_L5.0-W4.0-P1.27-LS6.0-BL-EP2.0"
 		(layer "F.Cu")
@@ -702,7 +702,7 @@
 			(at -3.33 0 270)
 			(size 3.02 7.5)
 			(layers "F.Cu" "F.Paste" "F.Mask")
-			(net 3 "capacitors[2]-power-hv")
+			(net 3 "capacitors[3]-power-hv")
 			(uuid "0ef6f7e0-7ec4-42fb-b3eb-aff0ac1023c8")
 		)
 		(embedded_fonts no)
@@ -2673,7 +2673,7 @@
 			)
 		)
 	)
-	(footprint "UNI_ROYAL_1210W2F100KT5E:R1210"
+	(footprint "UNI_ROYAL_1210W2J0102T5E:R1210"
 		(layer "F.Cu")
 		(uuid "0bb1b0fb-e860-4eef-9db4-1b454642524b")
 		(at 0 -10 0)
@@ -2689,7 +2689,7 @@
 				)
 			)
 		)
-		(property "Value" "1Ω"
+		(property "Value" "1000Ω"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "3ee034d1-b22c-436a-b820-b37bb0468ac7")
@@ -2700,7 +2700,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C78022"
+		(property "LCSC" "C270888"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2724,25 +2724,25 @@
 			(hide yes)
 			(uuid "54bd7e84-9abd-4c08-8056-7b064642524b")
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 0.9900000002235174, \"max\": 1.0099999997764826}}]}}, \"unit\": \"ohm\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 949.9999992549419, \"max\": 1050.000000745058}}]}}, \"unit\": \"ohm\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "a87926b8-3f9f-49b7-b5a2-c14f4642524b")
 		)
-		(property "Partnumber" "1210W2F100KT5E"
+		(property "Partnumber" "1210W2J0102T5E"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "5f548073-3347-4cd7-892f-71014642524b")
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2205312316_UNI-ROYAL-Uniroyal-Elec-1210W2F100KT5E_C78022.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2205312300_UNI-ROYAL-Uniroyal-Elec-1210W2J0102T5E_C270888.pdf"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
 			(uuid "e3ca52ab-d418-4d02-8939-d0324642524b")
 		)
-		(property "resistance" "1±1.0%Ω"
+		(property "resistance" "1000±5.0%Ω"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2766,7 +2766,7 @@
 			(hide yes)
 			(uuid "a7898784-f812-4379-a907-0d714642524b")
 		)
-		(property "lcsc_id" "C78022"
+		(property "lcsc_id" "C270888"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -2884,11 +2884,11 @@
 			(at -1.44 0 0)
 			(size 1.28 2.81)
 			(layers "F.Cu" "F.Paste" "F.Mask")
-			(net 3 "capacitors[2]-power-hv")
+			(net 3 "capacitors[3]-power-hv")
 			(uuid "1bcd74c7-4577-409f-a276-5f281a4c4bfe")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_1210W2F100KT5E/R1210_L3.2-W2.6-H0.6.step"
+		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_1210W2J0102T5E/R1210_L3.2-W2.6-H0.6.step"
 			(offset
 				(xyz 0 0 -0)
 			)
@@ -3565,7 +3565,7 @@
 			(at -0.43 0 0)
 			(size 0.57 0.54)
 			(layers "F.Cu" "F.Paste" "F.Mask")
-			(net 3 "capacitors[2]-power-hv")
+			(net 3 "capacitors[3]-power-hv")
 			(uuid "2a571d2b-a812-41d9-92f3-8ef7063ed982")
 		)
 		(embedded_fonts no)

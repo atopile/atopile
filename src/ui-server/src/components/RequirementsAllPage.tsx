@@ -188,6 +188,20 @@ function SimConfigFields({
         </>
       )}
 
+      {/* SPICE source override */}
+      {req.sourceSpec && (
+        <div className="ric-row">
+          <span className="ric-label">Source</span>
+          <EditableField value={req.sourceSpec} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('spice', v)} />
+        </div>
+      )}
+      {/* Extra SPICE */}
+      {req.extraSpice && req.extraSpice.length > 0 && (
+        <div className="ric-row">
+          <span className="ric-label">Extra SPICE</span>
+          <span className="ric-value mono-muted">{req.extraSpice.join(' | ')}</span>
+        </div>
+      )}
       {/* Common fields */}
       {req.contextNets && req.contextNets.length > 0 && (
         <div className="ric-row">
@@ -195,6 +209,7 @@ function SimConfigFields({
           <span className="ric-value">{req.contextNets.join(', ')}</span>
         </div>
       )}
+      {req.simulationName && <div className="ric-row"><span className="ric-label">Simulation</span><span className="ric-value">{req.simulationName}</span></div>}
       {req.timeSeries && (
         <div className="ric-row">
           <span className="ric-label">Points</span>
@@ -215,7 +230,11 @@ function SimConfigFields({
 /*  Single requirement row: card (left) + plot(s) (right)             */
 /* ------------------------------------------------------------------ */
 
-const LIMIT_FIELDS = new Set(['min_val', 'max_val']);
+const LIMIT_FIELDS = new Set(['min_val', 'max_val', 'limit_expr']);
+const PLOT_FIELDS = new Set([
+  'title', 'x', 'y', 'y_secondary', 'color', 'plot_limits', 'simulation',
+  'required_plot', 'supplementary_plot',
+]);
 
 function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; buildTime: string }) {
   const plotsRef = useRef<HTMLDivElement>(null);
@@ -246,9 +265,11 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
           await rerenderWithLimits(container, updated, newMin, newMax, plotDim);
         }
       }
-    } else {
+    } else if (!PLOT_FIELDS.has(field)) {
+      // Simulation field changed — mark stale
       setStale(true);
     }
+    // Plot fields: saved to .ato but don't mark stale (no new simulation needed)
   }, [req, plotDim]);
 
   const handleRerun = useCallback(async () => {
@@ -257,21 +278,26 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
     finally { setRerunning(false); }
   }, []);
 
-  const handlePlotDirty = useCallback(() => { setStale(true); }, []);
+  const handlePlotDirty = useCallback(() => {
+    // Plot config changes don't need a new simulation — no stale marker
+  }, []);
 
-  // Render plots — container is stretched by CSS grid to match card row height
+  // Render plots — outer div is stretched by CSS grid to match card row height
   useEffect(() => {
     const container = plotsRef.current;
     if (!container) return;
+    // plotsRef is an inner div; the outer .rall-plots div gets height from CSS grid stretch
+    const outer = container.parentElement as HTMLElement | null;
+    if (!outer) return;
 
     // Reset layout from any previous render
     container.style.display = '';
     container.style.gridTemplateColumns = '';
     container.style.gap = '';
 
-    // Container dimensions are set by the CSS grid row (= card height)
-    const w = container.clientWidth;
-    const h = container.clientHeight;
+    // Use outer div dimensions (CSS grid stretch gives us the card height)
+    const w = outer.clientWidth;
+    const h = outer.clientHeight;
     if (!w || !h) return;
 
     const plotCount = req.plotSpecs?.length || 1;
@@ -325,6 +351,15 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
                 </span>
               </div>
               <div className="ric-row">
+                <span className="ric-label">Limit</span>
+                <EditableField
+                  value={req.limitExpr ?? `${formatEng(req.minVal, req.unit)} to ${formatEng(req.maxVal, req.unit)}`}
+                  className="ric-value"
+                  enabled={canEdit}
+                  onSave={v => handleFieldChange('limit_expr', v)}
+                />
+              </div>
+              <div className="ric-row">
                 <span className="ric-label">Margin</span>
                 <span className={`ric-value ${level === 'high' ? 'pass' : level === 'low' ? 'fail' : 'warn'}`}>
                   {margin.toFixed(1)}%
@@ -334,31 +369,6 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
                 <div className="ric-margin-track">
                   <div className={`ric-margin-fill ${level}`} style={{ width: `${Math.min(100, margin)}%` }} />
                 </div>
-              </div>
-            </div>
-
-            {/* Bounds */}
-            <div className="ric-section ric-right">
-              <div className="ric-section-title">Bounds</div>
-              <div className="ric-row">
-                <span className="ric-label">Min</span>
-                <EditableField
-                  value={String(req.minVal ?? '')}
-                  displayValue={formatEng(req.minVal, req.unit)}
-                  className="ric-value"
-                  enabled={canEdit}
-                  onSave={v => handleFieldChange('min_val', v)}
-                />
-              </div>
-              <div className="ric-row">
-                <span className="ric-label">Max</span>
-                <EditableField
-                  value={String(req.maxVal ?? '')}
-                  displayValue={formatEng(req.maxVal, req.unit)}
-                  className="ric-value"
-                  enabled={canEdit}
-                  onSave={v => handleFieldChange('max_val', v)}
-                />
               </div>
             </div>
 
@@ -398,13 +408,13 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
             </div>
 
             {/* Simulation Config */}
-            <div className="ric-section ric-right">
+            <div className="ric-section">
               <div className="ric-section-title">Simulation</div>
               <SimConfigFields req={req} canEdit={canEdit} onFieldChange={handleFieldChange} buildTime={buildTime} />
             </div>
 
             {req.justification && (
-              <div className="ric-section ric-full">
+              <div className="ric-section">
                 <div className="ric-section-title">Justification</div>
                 <div className="ric-justification-text">{req.justification}</div>
               </div>
@@ -412,7 +422,7 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
 
             {/* Stale / Rerun bar */}
             {stale && (
-              <div className="ric-section ric-full ric-rerun-bar">
+              <div className="ric-section ric-rerun-bar">
                 <span className="ric-dirty">Simulation config changed — rerun to see new results</span>
                 <button className={`ric-rerun-btn ${rerunning ? 'ric-saving' : ''}`} onClick={handleRerun} disabled={rerunning}>
                   {rerunning ? 'Running...' : 'Rerun Simulation'}
@@ -426,9 +436,7 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
       {/* Plots with toolbar */}
       <div className="rall-plots plot-container">
         <div ref={plotsRef} />
-        {req.plotSpecs && req.plotSpecs.length > 0 && req.plotSpecs[0].meta && (
-          <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
-        )}
+        <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
       </div>
     </div>
   );

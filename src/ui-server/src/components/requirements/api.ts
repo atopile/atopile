@@ -53,6 +53,7 @@ export interface CreatePlotParams {
   source_file: string;
   req_var_name: string;
   plot_var_name: string;
+  plot_type?: string;
   fields: Record<string, string>;
 }
 

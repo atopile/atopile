@@ -172,12 +172,13 @@ class CreatePlotRequest(BaseModel):
     source_file: str
     req_var_name: str
     plot_var_name: str
+    plot_type: str = "LineChart"
     fields: dict[str, str]
 
 
 @router.post("/api/plots/create")
 async def create_plot(request: CreatePlotRequest):
-    """Create a new LineChart plot linked to a requirement."""
+    """Create a new plot linked to a requirement."""
     try:
         result = await asyncio.to_thread(
             requirements_domain.handle_create_plot,
@@ -185,6 +186,7 @@ async def create_plot(request: CreatePlotRequest):
             request.req_var_name,
             request.plot_var_name,
             request.fields,
+            request.plot_type,
         )
         return {"success": True, **result}
     except FileNotFoundError as exc:

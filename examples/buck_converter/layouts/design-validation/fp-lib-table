@@ -266,4 +266,11 @@
 		(options "")
 		(descr "atopile: part lib: FOJAN_FRC0402F8202TS")
 	)
+	(lib
+		(name "UNI_ROYAL_1210W2J0102T5E")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/UNI_ROYAL_1210W2J0102T5E")
+		(options "")
+		(descr "atopile: part lib: UNI_ROYAL_1210W2J0102T5E")
+	)
 )

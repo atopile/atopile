@@ -36,6 +36,16 @@ export interface RequirementData {
   sourceFile?: string;
   /** Variable name of this requirement in the .ato source (for UI editing) */
   varName?: string;
+  /** Original limit expression from .ato source, e.g. "5V +/- 10%" or "0s to 5ms" */
+  limitExpr?: string;
+  /** Simulation name override */
+  simulationName?: string;
+  /** SPICE source override name (e.g. "V1") */
+  sourceName?: string;
+  /** SPICE source override spec (e.g. "PULSE(0 12 0 10u 10u 10 10)") */
+  sourceSpec?: string;
+  /** Extra SPICE commands */
+  extraSpice?: string[];
 }
 
 /** A single Plotly plot spec with optional editing metadata */

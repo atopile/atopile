@@ -18,6 +18,10 @@ ALLOWED_FIELDS = frozenset({
     "settling_tolerance", "net", "capture",
     "ac_start_freq", "ac_stop_freq", "ac_points_per_dec",
     "ac_source_name", "ac_measure_freq", "ac_ref_net",
+    # Limit assertion (replaces the whole "assert X.limit within ..." line)
+    "limit_expr",
+    # Simulation fields
+    "spice", "spice_template",
     # Plot (LineChart) fields
     "title", "x", "y", "y_secondary", "color",
     "simulation", "plot_limits",
@@ -50,6 +54,19 @@ def handle_update_requirement(
     applied: dict[str, str] = {}
 
     for field, new_value in updates.items():
+        if field == "limit_expr":
+            # Special: replace the assertion expression after "within"
+            content, did_replace = _replace_limit_expr(
+                content, var_name, new_value
+            )
+            if did_replace:
+                applied[field] = new_value
+            else:
+                log.warning(
+                    "Could not find assert %s.limit in %s", var_name, path
+                )
+            continue
+
         content, did_replace = _replace_field(content, var_name, field, new_value)
         if did_replace:
             applied[field] = new_value
@@ -68,6 +85,18 @@ def handle_update_requirement(
         log.info("Updated %s in %s: %s", var_name, path.name, applied)
 
     return applied
+
+
+def _replace_limit_expr(
+    content: str, var_name: str, new_expr: str,
+) -> tuple[str, bool]:
+    """Replace the expression after 'within' in ``assert var.limit within <expr>``."""
+    pattern = re.compile(
+        rf'^(\s*assert\s+{re.escape(var_name)}\.limit\s+within\s+).+$',
+        re.MULTILINE,
+    )
+    result, count = pattern.subn(rf'\g<1>{new_expr}', content)
+    return result, count > 0
 
 
 def _replace_field(
@@ -119,11 +148,12 @@ def handle_create_plot(
     req_var_name: str,
     plot_var_name: str,
     fields: dict[str, str],
+    plot_type: str = "LineChart",
 ) -> dict[str, str]:
-    """Create a new LineChart plot and link it to a requirement in .ato source.
+    """Create a new plot and link it to a requirement in .ato source.
 
     Inserts:
-        plot_var_name = new LineChart
+        plot_var_name = new <plot_type>
         plot_var_name.title = "..."
         plot_var_name.x = "..."
         ...
@@ -149,7 +179,7 @@ def handle_create_plot(
     insert_pos = last_match.end()
 
     # Build the new plot block
-    lines = [f"\n{indent}{plot_var_name} = new LineChart"]
+    lines = [f"\n{indent}{plot_var_name} = new {plot_type}"]
     for fld, val in fields.items():
         lines.append(f'{indent}{plot_var_name}.{fld} = "{val}"')
     # Link to requirement

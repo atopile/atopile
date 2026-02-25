@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PlotMeta, RequirementData } from './types';
 import { updateRequirement, createPlot } from './api';
 
@@ -18,13 +18,39 @@ const PLOT_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: 'simulation', label: 'Simulation', placeholder: 'Override simulation name' },
 ];
 
+const PLOT_TYPES = [
+  { value: 'LineChart', label: 'Line Chart' },
+  { value: 'BarChart', label: 'Bar Chart' },
+];
+
+/** Auto-populate sensible defaults based on requirement context */
+function defaultsForType(req: RequirementData, plotType: string): Record<string, string> {
+  const base: Record<string, string> = {
+    title: req.name,
+    y: req.net,
+  };
+  if (plotType === 'LineChart') {
+    if (req.capture === 'ac') {
+      base.x = 'frequency';
+    } else {
+      base.x = 'time';
+    }
+  }
+  if (plotType === 'BarChart') {
+    base.x = 'dut';
+  }
+  return base;
+}
+
 export function PlotToolbar({ req, specIndex, onDirty }: PlotToolbarProps) {
   const [gearOpen, setGearOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   const spec = req.plotSpecs?.[specIndex];
   const meta = spec?.meta;
-  const canEdit = !!(req.sourceFile && meta?.varName);
+  const canEditPlot = !!(req.sourceFile && meta?.varName);
+  const canAdd = !!(req.sourceFile && req.varName);
 
   const handlePlotFieldChange = useCallback(async (field: string, value: string) => {
     if (!req.sourceFile || !meta?.varName) return;
@@ -36,41 +62,47 @@ export function PlotToolbar({ req, specIndex, onDirty }: PlotToolbarProps) {
     onDirty();
   }, [req.sourceFile, meta?.varName, onDirty]);
 
-  return (
-    <div className="plot-toolbar">
-      {/* Editable title overlay */}
-      {canEdit && meta?.title && (
-        <PlotInlineEdit
-          value={meta.title}
-          className="plot-title-edit"
-          onSave={v => handlePlotFieldChange('title', v)}
-        />
-      )}
+  const handleCreated = useCallback(() => {
+    setAddOpen(false);
+    onDirty();
+  }, [onDirty]);
 
-      {/* Icon bar */}
+  // Close popovers on Escape or click outside
+  useEffect(() => {
+    if (!gearOpen && !addOpen) return;
+    const close = () => { setGearOpen(false); setAddOpen(false); };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const handleClick = (e: MouseEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('mousedown', handleClick);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('mousedown', handleClick);
+    };
+  }, [gearOpen, addOpen]);
+
+  return (
+    <div className="plot-toolbar" ref={toolbarRef}>
       <div className="plot-toolbar-icons">
-        {canEdit && (
-          <button
-            className="plot-toolbar-btn"
-            onClick={() => { setGearOpen(!gearOpen); setAddOpen(false); }}
-            title="Plot settings"
-          >
-            <GearIcon />
-          </button>
-        )}
-        {req.sourceFile && req.varName && (
-          <button
-            className="plot-toolbar-btn"
-            onClick={() => { setAddOpen(!addOpen); setGearOpen(false); }}
-            title="Add new plot"
-          >
-            <PlusIcon />
-          </button>
-        )}
+        <button
+          className={`plot-toolbar-btn${!canEditPlot ? ' plot-toolbar-btn-disabled' : ''}`}
+          onClick={() => { if (canEditPlot) { setGearOpen(!gearOpen); setAddOpen(false); } }}
+          title={canEditPlot ? 'Plot settings' : 'No plot to configure'}
+        >
+          <GearIcon />
+        </button>
+        <button
+          className={`plot-toolbar-btn${!canAdd ? ' plot-toolbar-btn-disabled' : ''}`}
+          onClick={() => { if (canAdd) { setAddOpen(!addOpen); setGearOpen(false); } }}
+          title="Add new plot"
+        >
+          <PlusIcon />
+        </button>
       </div>
 
-      {/* Gear popover — edit all plot fields */}
-      {gearOpen && canEdit && (
+      {gearOpen && canEditPlot && (
         <PlotFieldsPopover
           meta={meta!}
           onFieldChange={handlePlotFieldChange}
@@ -78,59 +110,14 @@ export function PlotToolbar({ req, specIndex, onDirty }: PlotToolbarProps) {
         />
       )}
 
-      {/* Add plot popover */}
-      {addOpen && req.sourceFile && req.varName && (
+      {addOpen && canAdd && (
         <AddPlotPopover
           req={req}
           onClose={() => setAddOpen(false)}
-          onCreated={onDirty}
+          onCreated={handleCreated}
         />
       )}
     </div>
-  );
-}
-
-/* ---- Inline text edit (for title overlay) ---- */
-
-function PlotInlineEdit({ value, className, onSave }: {
-  value: string;
-  className: string;
-  onSave: (v: string) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const [saving, setSaving] = useState(false);
-
-  const commit = async () => {
-    if (draft === value) { setEditing(false); return; }
-    setSaving(true);
-    try { await onSave(draft); } catch { setDraft(value); }
-    setSaving(false);
-    setEditing(false);
-  };
-
-  if (!editing) {
-    return (
-      <span className={`${className} ric-editable`} onClick={() => setEditing(true)} title="Click to edit">
-        {value}
-      </span>
-    );
-  }
-
-  return (
-    <input
-      className={`${className}-input ric-edit-control ric-edit-input`}
-      autoFocus
-      value={draft}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={() => { if (!saving) commit(); }}
-      onKeyDown={e => {
-        if (e.key === 'Enter') commit();
-        if (e.key === 'Escape') { setDraft(value); setEditing(false); }
-      }}
-      disabled={saving}
-      style={{ maxWidth: '250px' }}
-    />
   );
 }
 
@@ -185,31 +172,29 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
   );
 }
 
-/* ---- Add plot popover ---- */
+/* ---- Add plot popover — type selection first, then auto-populated fields ---- */
 
 function AddPlotPopover({ req, onClose, onCreated }: {
   req: RequirementData;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [plotName, setPlotName] = useState(`plot_${req.varName || 'new'}`);
-  const [title, setTitle] = useState(req.name);
-  const [x, setX] = useState('time');
-  const [y, setY] = useState(req.net);
   const [creating, setCreating] = useState(false);
 
-  const handleCreate = async () => {
+  const handleSelectType = async (plotType: string) => {
     if (!req.sourceFile || !req.varName) return;
     setCreating(true);
+    const defaults = defaultsForType(req, plotType);
+    const plotVarName = `plot_${req.varName || 'new'}`;
     try {
       await createPlot({
         source_file: req.sourceFile,
         req_var_name: req.varName,
-        plot_var_name: plotName,
-        fields: { title, x, y },
+        plot_var_name: plotVarName,
+        plot_type: plotType,
+        fields: defaults,
       });
       onCreated();
-      onClose();
     } catch {
       // error
     } finally {
@@ -220,31 +205,21 @@ function AddPlotPopover({ req, onClose, onCreated }: {
   return (
     <div className="plot-popover" onClick={e => e.stopPropagation()}>
       <div className="plot-popover-header">
-        <span>Add Plot</span>
+        <span>New Plot</span>
         <button className="plot-popover-close" onClick={onClose}>&times;</button>
       </div>
       <div className="plot-popover-body">
-        <div className="plot-popover-row">
-          <label className="plot-popover-label">Var name</label>
-          <input className="ric-edit-control ric-edit-input" value={plotName} onChange={e => setPlotName(e.target.value)} style={{ flex: 1, maxWidth: '200px' }} />
-        </div>
-        <div className="plot-popover-row">
-          <label className="plot-popover-label">Title</label>
-          <input className="ric-edit-control ric-edit-input" value={title} onChange={e => setTitle(e.target.value)} style={{ flex: 1, maxWidth: '200px' }} />
-        </div>
-        <div className="plot-popover-row">
-          <label className="plot-popover-label">X axis</label>
-          <input className="ric-edit-control ric-edit-input" value={x} onChange={e => setX(e.target.value)} placeholder="time" style={{ flex: 1, maxWidth: '200px' }} />
-        </div>
-        <div className="plot-popover-row">
-          <label className="plot-popover-label">Y axis</label>
-          <input className="ric-edit-control ric-edit-input" value={y} onChange={e => setY(e.target.value)} placeholder="dut.net" style={{ flex: 1, maxWidth: '200px' }} />
-        </div>
-      </div>
-      <div className="plot-popover-footer">
-        <button className={`ric-rerun-btn ${creating ? 'ric-saving' : ''}`} onClick={handleCreate} disabled={creating}>
-          {creating ? 'Creating...' : 'Create Plot'}
-        </button>
+        {PLOT_TYPES.map(pt => (
+          <button
+            key={pt.value}
+            className="plot-type-btn"
+            onClick={() => handleSelectType(pt.value)}
+            disabled={creating}
+          >
+            {pt.value === 'LineChart' ? <LineChartIcon /> : <BarChartIcon />}
+            <span>{pt.label}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -266,6 +241,24 @@ function PlusIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function LineChartIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
+
+function BarChartIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   );
 }

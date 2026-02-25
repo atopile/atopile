@@ -55,6 +55,7 @@ export function Sidebar() {
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
+  const requirementsData = useStore((s) => s.requirementsData);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
   const installError = useStore((s) => s.installError);
   const stdlibItems = useStore((s) => s.stdlibItems);
@@ -470,7 +471,21 @@ export function Sidebar() {
           </button>
           <button
             className={`tab-button ${activeTab === 'requirements' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('requirements'); void refreshRequirements(); }}
+            onClick={() => {
+              setActiveTab('requirements');
+              void refreshRequirements();
+              // Open all-requirements view if data is already loaded
+              if (requirementsData?.requirements?.length) {
+                postMessage({
+                  type: 'openRequirementDetail',
+                  requirementId: '__ALL__',
+                  projectRoot: selectedProjectRoot ?? '',
+                  target: selectedTargetNames?.[0] ?? 'default',
+                  requirementData: requirementsData,
+                  buildTime: requirementsData?.buildTime ?? '',
+                });
+              }
+            }}
             data-tooltip="Requirements"
           >
             <CheckSquare size={14} />

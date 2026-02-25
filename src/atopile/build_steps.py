@@ -718,6 +718,34 @@ def _lttb_downsample(
     return new_x, new_ys
 
 
+_limit_expr_cache: dict[str, dict[str, str]] = {}
+
+
+def _extract_limit_expr(source_file: str, var_name: str) -> str | None:
+    """Extract the limit expression from an assertion like
+    ``assert req_001.limit within 5V +/- 10%`` in the .ato source file.
+    Returns the expression after 'within', e.g. ``5V +/- 10%``.
+    """
+    import re
+
+    # Cache per file to avoid re-reading for every requirement
+    if source_file not in _limit_expr_cache:
+        try:
+            content = Path(source_file).read_text(encoding="utf-8")
+        except Exception:
+            return None
+        cache: dict[str, str] = {}
+        for m in re.finditer(
+            r"assert\s+(\w+)\.limit\s+within\s+(.+?)$",
+            content,
+            re.MULTILINE,
+        ):
+            cache[m.group(1)] = m.group(2).strip()
+        _limit_expr_cache[source_file] = cache
+
+    return _limit_expr_cache.get(source_file, {}).get(var_name)
+
+
 def _write_requirements_json(
     results, tran_data, group_key_fn, ac_data=None, ac_group_key_fn=None,
     multi_dut_data=None, sim_stats=None, source_file=None,
@@ -804,6 +832,13 @@ def _write_requirements_json(
         if source_file is not None:
             entry["sourceFile"] = str(source_file)
 
+            # Extract original limit assertion text from .ato source
+            var_name = entry.get("varName")
+            if var_name:
+                limit_expr = _extract_limit_expr(source_file, var_name)
+                if limit_expr:
+                    entry["limitExpr"] = limit_expr
+
         # Attach plot specs from render_multi_dut
         if r.plot_specs:
             entry["plotSpecs"] = r.plot_specs
@@ -818,6 +853,22 @@ def _write_requirements_json(
         settling_tol = req.get_settling_tolerance()
         if settling_tol is not None:
             entry["settlingTolerance"] = settling_tol
+
+        # Simulation name (override)
+        sim_name = req.get_simulation()
+        if sim_name:
+            entry["simulationName"] = sim_name
+
+        # SPICE source override
+        src_override = req.get_source_override()
+        if src_override:
+            entry["sourceName"] = src_override[0]
+            entry["sourceSpec"] = src_override[1]
+
+        # Extra SPICE commands
+        extra = req.get_extra_spice()
+        if extra:
+            entry["extraSpice"] = extra
 
         # Attach transient config and time-series
         if capture == "transient":

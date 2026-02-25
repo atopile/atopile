@@ -177,7 +177,7 @@ module DesignValidation:
     plot_vin_transient.simulation = "vin_sweep"
 
     plot_vin_bar = new BarChart
-    plot_vin_bar.title = "Average Output vs Input Voltage"
+    plot_vin_bar.title = "Average Output vs Input Voltage 2"
     plot_vin_bar.x = "VIN"
     plot_vin_bar.y = "average(dut.power_out.hv)"
     plot_vin_bar.simulation = "vin_sweep"
@@ -286,8 +286,7 @@ module DesignValidation:
     req_001.net = "dut.power_out.hv"
     req_001.capture = "transient"
     req_001.measurement = "settling_time"
-    req_001.min_val = "0"
-    req_001.max_val = "0.005"
+    assert req_001.limit within 0s to 5ms
     req_001.required_plot = "plot_settling_vs_freq"
     req_001.supplementary_plot = "plot_startup_vout"
 
@@ -297,8 +296,7 @@ module DesignValidation:
     req_002.simulation = "iload_sweep"
     req_002.net = "dut.power_out.hv"
     req_002.measurement = "envelope"
-    req_002.min_val = "4.5"
-    req_002.max_val = "5.5"
+    assert req_002.limit within 5V +/- 10%
     req_002.required_plot = "plot_iload_transient"
     req_002.supplementary_plot = "plot_iload_ptp_bar,plot_cout_transient,plot_cout_envelope"
 
@@ -308,8 +306,7 @@ module DesignValidation:
     req_003.simulation = "vin_sweep"
     req_003.net = "dut.power_out.hv"
     req_003.measurement = "average"
-    req_003.min_val = "4.9"
-    req_003.max_val = "5.1"
+    assert req_003.limit within 5V +/- 2%
     req_003.required_plot = "plot_vin_bar"
     req_003.supplementary_plot = "plot_vin_transient"
 
@@ -319,8 +316,7 @@ module DesignValidation:
     req_004.simulation = "iload_sweep"
     req_004.net = "dut.power_out.hv"
     req_004.measurement = "average"
-    req_004.min_val = "4.9"
-    req_004.max_val = "5.1"
+    assert req_004.limit within 5V +/- 2%
     req_004.required_plot = "plot_iload_avg_bar"
     req_004.supplementary_plot = "plot_iload_transient"
 
@@ -330,8 +326,7 @@ module DesignValidation:
     req_005.simulation = "ss_inductor"
     req_005.net = "i(l1)"
     req_005.measurement = "peak_to_peak"
-    req_005.min_val = "0"
-    req_005.max_val = "5.0"
+    assert req_005.limit within 0A to 5A
     req_005.required_plot = "plot_inductor_vs_load"
     req_005.supplementary_plot = "plot_inductor_ripple_vs_load"
 
@@ -341,8 +336,7 @@ module DesignValidation:
     req_006.simulation = "ss_inductor"
     req_006.net = "i(l1)"
     req_006.measurement = "average"
-    req_006.min_val = "0"
-    req_006.max_val = "2.0"
+    assert req_006.limit within 0A to 2A
     req_006.required_plot = "plot_inductor_vs_load"
     req_006.supplementary_plot = "plot_inductor_avg_vs_load"
 
@@ -352,8 +346,7 @@ module DesignValidation:
     req_007.simulation = "ss_inductor"
     req_007.net = "i(l1)"
     req_007.measurement = "max"
-    req_007.min_val = "0"
-    req_007.max_val = "6.0"
+    assert req_007.limit within 0A to 6A
     req_007.required_plot = "plot_inductor_vs_load"
     req_007.supplementary_plot = "plot_inductor_max_vs_load"
 
@@ -363,10 +356,14 @@ module DesignValidation:
     req_009.simulation = "ss_inductor"
     req_009.net = "i(l1)"
     req_009.measurement = "min"
-    req_009.min_val = "-0.1"
-    req_009.max_val = "6.0"
+    assert req_009.limit within -100mA to 6A
     req_009.required_plot = "plot_inductor_min_vs_load"
     req_009.supplementary_plot = "plot_inductor_vs_load"
+    plot_req_009 = new LineChart
+    plot_req_009.title = "REQ_009: Min Inductor Current"
+    plot_req_009.y = "i(l1)"
+    plot_req_009.x = "time"
+    req_009.required_plot = "plot_req_009"
 
     # --- REQ_010: Output Voltage Ripple ---
     req_010 = new Requirement
@@ -374,8 +371,7 @@ module DesignValidation:
     req_010.simulation = "iload_sweep"
     req_010.net = "dut.power_out.hv"
     req_010.measurement = "peak_to_peak"
-    req_010.min_val = "-0.1"
-    req_010.max_val = "0.1"
+    assert req_010.limit within 0V to 100mV
     req_010.required_plot = "plot_ripple_cout_raw"
     req_010.supplementary_plot = "plot_ripple_cout_envelope,plot_ripple_iload_raw,plot_ripple_iload_envelope"
 
@@ -385,7 +381,6 @@ module DesignValidation:
     req_008.simulation = "iload_sweep"
     req_008.net = "i(l1)"
     req_008.measurement = "duty_cycle"
-    req_008.min_val = "0.0"
-    req_008.max_val = "1.0"
+    assert req_008.limit within 0 to 1
     req_008.required_plot = "plot_duty_cycle_vs_load"
     req_008.supplementary_plot = "plot_inductor_vs_load"

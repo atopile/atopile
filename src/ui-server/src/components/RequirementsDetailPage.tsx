@@ -18,8 +18,14 @@ type WindowGlobals = Window & {
   __ATOPILE_TARGET__?: string;
 };
 
-/** Fields that only change pass/fail bounds — no rerun needed */
-const LIMIT_FIELDS = new Set(['min_val', 'max_val']);
+/** Fields that only change pass/fail bounds — instant local re-eval, no rerun */
+const LIMIT_FIELDS = new Set(['min_val', 'max_val', 'limit_expr']);
+
+/** Fields that change plot rendering but don't need a new simulation */
+const PLOT_FIELDS = new Set([
+  'title', 'x', 'y', 'y_secondary', 'color', 'plot_limits', 'simulation',
+  'required_plot', 'supplementary_plot',
+]);
 
 export function RequirementsDetailPage({ requirementId, injectedData, injectedBuildTime }: RequirementsDetailPageProps) {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -58,10 +64,11 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
           await rerenderWithLimits(chartEl, updated, newMin, newMax, chartDim);
         }
       }
-    } else {
+    } else if (!PLOT_FIELDS.has(field)) {
       // Simulation field changed — mark stale
       setStale(true);
     }
+    // Plot fields: saved to .ato but don't mark stale (no new simulation needed)
   }, [req, chartDim]);
 
   const handleRerun = useCallback(async () => {
@@ -74,7 +81,7 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
   }, []);
 
   const handlePlotDirty = useCallback(() => {
-    setStale(true);
+    // Plot config changes don't need a new simulation — no stale marker
   }, []);
 
   // Fetch from API if data wasn't injected
@@ -148,6 +155,15 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
                 </span>
               </div>
               <div className="ric-row">
+                <span className="ric-label">Limit</span>
+                <EditableField
+                  value={req.limitExpr ?? `${formatEng(req.minVal, req.unit)} to ${formatEng(req.maxVal, req.unit)}`}
+                  className="ric-value"
+                  enabled={canEdit}
+                  onSave={v => handleFieldChange('limit_expr', v)}
+                />
+              </div>
+              <div className="ric-row">
                 <span className="ric-label">Margin</span>
                 <span className={`ric-value ${level === 'high' ? 'pass' : level === 'low' ? 'fail' : 'warn'}`}>{margin.toFixed(1)}%</span>
               </div>
@@ -155,19 +171,6 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
                 <div className="ric-margin-track">
                   <div className={`ric-margin-fill ${level}`} style={{ width: `${Math.min(100, margin)}%` }} />
                 </div>
-              </div>
-            </div>
-
-            {/* Bounds */}
-            <div className="ric-section ric-right">
-              <div className="ric-section-title">Bounds</div>
-              <div className="ric-row">
-                <span className="ric-label">Min</span>
-                <EditableField value={String(req.minVal ?? '')} displayValue={formatEng(req.minVal, req.unit)} className="ric-value" enabled={canEdit} onSave={v => handleFieldChange('min_val', v)} />
-              </div>
-              <div className="ric-row">
-                <span className="ric-label">Max</span>
-                <EditableField value={String(req.maxVal ?? '')} displayValue={formatEng(req.maxVal, req.unit)} className="ric-value" enabled={canEdit} onSave={v => handleFieldChange('max_val', v)} />
               </div>
             </div>
 
@@ -189,20 +192,20 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
             </div>
 
             {/* Simulation */}
-            <div className="ric-section ric-right">
+            <div className="ric-section">
               <div className="ric-section-title">Simulation</div>
               <SimConfigFields req={req} canEdit={canEdit} onFieldChange={handleFieldChange} buildTime={buildTime} />
             </div>
 
             {req.justification && (
-              <div className="ric-section ric-full">
+              <div className="ric-section">
                 <div className="ric-section-title">Justification</div>
                 <div className="ric-justification-text">{req.justification}</div>
               </div>
             )}
 
             {stale && (
-              <div className="ric-section ric-full ric-rerun-bar">
+              <div className="ric-section ric-rerun-bar">
                 <span className="ric-dirty">Simulation config changed — rerun to see new results</span>
                 <button className={`ric-rerun-btn ${rerunning ? 'ric-saving' : ''}`} onClick={handleRerun} disabled={rerunning}>
                   {rerunning ? 'Running...' : 'Rerun Simulation'}
@@ -217,13 +220,7 @@ export function RequirementsDetailPage({ requirementId, injectedData, injectedBu
       <div className="rdp-chart">
         <div className="plot-container">
           <div ref={chartRef} />
-          {req.plotSpecs && req.plotSpecs.length > 0 && req.plotSpecs[0].meta && (
-            <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
-          )}
-          {/* Plus button when no plots exist yet */}
-          {(!req.plotSpecs || req.plotSpecs.length === 0) && canEdit && (
-            <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
-          )}
+          <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
         </div>
       </div>
     </div>
@@ -277,7 +274,22 @@ function SimConfigFields({ req, canEdit, onFieldChange, buildTime }: {
           {req.acRefNet != null && <div className="ric-row"><span className="ric-label">Ref net</span><EditableField value={req.acRefNet} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_ref_net', v)} /></div>}
         </>
       )}
+      {/* SPICE source override */}
+      {req.sourceSpec && (
+        <div className="ric-row">
+          <span className="ric-label">Source</span>
+          <EditableField value={req.sourceSpec} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('spice', v)} />
+        </div>
+      )}
+      {/* Extra SPICE */}
+      {req.extraSpice && req.extraSpice.length > 0 && (
+        <div className="ric-row">
+          <span className="ric-label">Extra SPICE</span>
+          <span className="ric-value mono-muted">{req.extraSpice.join(' | ')}</span>
+        </div>
+      )}
       {req.contextNets && req.contextNets.length > 0 && <div className="ric-row"><span className="ric-label">Context</span><span className="ric-value">{req.contextNets.join(', ')}</span></div>}
+      {req.simulationName && <div className="ric-row"><span className="ric-label">Simulation</span><span className="ric-value">{req.simulationName}</span></div>}
       {req.timeSeries && <div className="ric-row"><span className="ric-label">Points</span><span className="ric-value mono-muted">{req.timeSeries.time.length}</span></div>}
       {buildTime && <div className="ric-row"><span className="ric-label">Built</span><span className="ric-value mono-muted">{formatBuildTime(buildTime)}</span></div>}
     </>
