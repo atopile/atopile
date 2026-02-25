@@ -250,9 +250,9 @@ def test_typegraph_instantiate():
     assert e.get_attr(key="test_key") == "test_value"
 
 
-def test_dumps_merge_diff_roundtrip():
+def test_dumps_loads_roundtrip():
     """
-    Serialize a graph with nodes, edges, and attributes, then merge into a new graph.
+    Serialize a graph with nodes, edges, and attributes, then loads into a new graph.
     """
     g = graph.GraphView.create()
 
@@ -271,13 +271,12 @@ def test_dumps_merge_diff_roundtrip():
 
     data = g.dumps()
     assert isinstance(data, bytes)
-    assert len(data) > 32  # at least header
+    assert len(data) > 64  # at least header (64 bytes in v2)
 
-    g2 = graph.GraphView.create()
-    g2.merge_diff(data=data)
+    g2 = graph.GraphView.loads(data=data)
 
-    # g2 had 1 self node, then merged g's nodes (4 = self + n1 + n2 + n3)
-    assert g2.get_node_count() == g.get_node_count() + 1
+    # loads creates a fresh graph — counts must match exactly
+    assert g2.get_node_count() == g.get_node_count()
 
 
 def test_loads_static():
@@ -467,17 +466,15 @@ def test_clone_with_composition_traversal():
     assert False, "No node with 2 composition children found in cloned graph"
 
 
-def test_merge_diff_malformed():
-    """Test that merge_diff rejects invalid payloads."""
+def test_loads_rejects_malformed():
+    """Test that loads rejects invalid payloads."""
     import pytest
 
-    g = graph.GraphView.create()
+    with pytest.raises(ValueError):
+        graph.GraphView.loads(data=b"too short")
 
     with pytest.raises(ValueError):
-        g.merge_diff(data=b"too short")
-
-    with pytest.raises(ValueError):
-        g.merge_diff(data=b"\x00" * 32)  # wrong magic
+        graph.GraphView.loads(data=b"\x00" * 64)  # wrong magic (64 bytes = v2 header)
 
 
 def test_loads_malformed():
@@ -498,13 +495,13 @@ if __name__ == "__main__":
     test_edge_next()
     test_typegraph_add_type_collision()
     test_typegraph_instantiate()
-    test_dumps_merge_diff_roundtrip()
+    test_dumps_loads_roundtrip()
     test_loads_static()
     test_loads_preserves_edge_connectivity()
     test_loads_preserves_composition_attributes()
     test_clone()
     test_clone_with_composition_traversal()
-    test_merge_diff_malformed()
+    test_loads_rejects_malformed()
     test_loads_malformed()
 
     print("-" * 80)

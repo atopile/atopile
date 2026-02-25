@@ -1464,47 +1464,6 @@ fn wrap_graphview_dumps() type {
     };
 }
 
-fn wrap_graphview_merge_diff() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "merge_diff",
-            .doc = "Deserialize and merge a binary payload into this graph",
-            .args_def = struct {
-                data: ?*py.PyObject,
-            },
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
-            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-
-            const data_obj = kwarg_obj.data orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "data argument is required");
-                return null;
-            };
-
-            const data_ptr = py.PyBytes_AsString(data_obj);
-            if (data_ptr == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "data must be bytes");
-                return null;
-            }
-            const data_len = py.PyBytes_Size(data_obj);
-            if (data_len < 0) {
-                py.PyErr_SetString(py.PyExc_ValueError, "Invalid bytes object");
-                return null;
-            }
-            const data_slice: []const u8 = data_ptr.?[0..@intCast(data_len)];
-
-            wrapper.data.merge_diff(data_slice) catch |err| {
-                py.PyErr_SetString(py.PyExc_ValueError, @errorName(err));
-                return null;
-            };
-            return bind.wrap_none();
-        }
-    };
-}
-
 fn wrap_graphview_loads() type {
     return struct {
         pub const descr = method_descr{
@@ -1610,7 +1569,6 @@ fn wrap_graphview(root: *py.PyObject) void {
         wrap_graphview_destroy(),
         wrap_graphview_create_and_insert_node(),
         wrap_graphview_dumps(),
-        wrap_graphview_merge_diff(),
         wrap_graphview_loads(),
         wrap_graphview_clone(),
     };
