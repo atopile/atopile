@@ -1,0 +1,18 @@
+/* ============================================
+   Separator — horizontal / vertical divider
+   ============================================ */
+
+.separator {
+  flex-shrink: 0;
+  background: var(--border-subtle);
+}
+
+.separator-horizontal {
+  height: 1px;
+  width: 100%;
+}
+
+.separator-vertical {
+  width: 1px;
+  align-self: stretch;
+}
