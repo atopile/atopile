@@ -1,0 +1,171 @@
+/* ============================================
+   DataTable — feature-rich table wrapper
+   Sorting, filtering, pagination, selection
+   ============================================ */
+
+.data-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* ---- Toolbar ---- */
+
+.data-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.data-table-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.data-table-filter input {
+  width: 150px;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 var(--spacing-md);
+  background: var(--vscode-input-background, var(--bg-tertiary));
+  border: 1px solid var(--vscode-input-border, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  color: var(--vscode-input-foreground, var(--text-primary));
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+}
+
+.data-table-filter input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+}
+
+.data-table-filter input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, var(--accent));
+}
+
+/* ---- Sortable header ---- */
+
+.data-table-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.data-table-sort-btn:hover {
+  color: var(--text-primary);
+}
+
+.data-table-sort-btn .sort-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.data-table-sort-btn .sort-icon.active {
+  color: var(--accent);
+}
+
+/* ---- Footer / pagination ---- */
+
+.data-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.data-table-selection-info {
+  flex: 1;
+}
+
+.data-table-page-info {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.data-table-page-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.data-table-page-size {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.data-table-page-select {
+  width: 64px;
+  height: 26px;
+}
+
+/* ---- Empty state ---- */
+
+.data-table-empty {
+  text-align: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  color: var(--text-muted);
+}
+
+/* ---- Column visibility dropdown ---- */
+
+.data-table-view-options {
+  position: relative;
+}
+
+.data-table-view-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background, var(--bg-secondary)));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-color));
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  z-index: var(--z-dropdown);
+  padding: var(--spacing-xs) 0;
+}
+
+.data-table-view-title {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.data-table-view-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  text-transform: capitalize;
+}
+
+.data-table-view-item:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}

@@ -1,8 +1,18 @@
 import { render, AppProps } from "../shared/render";
 import { useWebSocket } from "../shared/webSocket";
+import { Separator } from "../shared/components";
+import { ComponentShowcase } from "../shared/components/ComponentShowcase";
 
-function StatusDot({ ok }: { ok: boolean }) {
-  return <span className={`status-dot ${ok ? "status-dot--ok" : "status-dot--error"}`} />;
+function GraphEdge({ connected }: { connected: boolean }) {
+  return (
+    <div
+      className={`graph-edge ${connected ? "is-connected" : "is-disconnected"}`}
+      aria-label={connected ? "Connected link" : "Disconnected link"}
+    >
+      <span className="graph-edge-line" aria-hidden="true" />
+      <span className="graph-edge-label">{connected ? "Connected" : "Disconnected"}</span>
+    </div>
+  );
 }
 
 function App({ hubUrl }: AppProps) {
@@ -14,24 +24,17 @@ function App({ hubUrl }: AppProps) {
     <div className="panel">
       <h2>Developer</h2>
       <h3>Connections</h3>
-      <table className="connection-table">
-        <tbody>
-          <tr>
-            <td>Webview &rarr; Hub</td>
-            <td>
-              <StatusDot ok={connected} />
-              {connected ? "Connected" : "Disconnected"}
-            </td>
-          </tr>
-          <tr>
-            <td>Hub &rarr; Core Server</td>
-            <td>
-              <StatusDot ok={coreConnected} />
-              {coreConnected ? "Connected" : "Disconnected"}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div className="graph">
+        <div className="graph-node">Webviews</div>
+        <GraphEdge connected={connected} />
+        <div className="graph-node">UI Hub</div>
+        <GraphEdge connected={coreConnected} />
+        <div className="graph-node">Core Server</div>
+      </div>
+
+      <Separator className="showcase-divider" />
+
+      <ComponentShowcase />
     </div>
   );
 }
