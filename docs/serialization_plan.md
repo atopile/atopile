@@ -370,3 +370,101 @@ This layout makes `loads()` incredibly fast:
 1.  **Read Node Bitsets:** Iterate the set bits (via fast trailing-zero CPU instructions). For each active bit, allocate a new local UUID via `create_and_insert_node()`. This builds the `remap_nodes` translation table natively.
 2.  **Read Edges (Lockstep Iteration):** Because `PackedEdge` lacks an `original_uuid`, it must be read in lockstep with the Edge Bitset. Iterate the set bits of the Edge Bitset. For the *n*th active bit (the `original_uuid`), read `PackedEdgesArray[n]`. Translate `source`/`target` using `remap_nodes`, allocate the new local edge, and store the mapping in `remap_edges`.
 3.  **Read Attributes:** `memcpy` the 24-byte `PackedAttribute` array into a temporary buffer. Iterate through it. Look up the `owner_uuid` in the respective `remap_nodes` or `remap_edges` table (using the `is_node_owner` flag). Call `ref.put(identifier, value)` on the translated reference. This implicitly and safely rebuilds the 256-byte `DynamicAttributes` blocks in the receiver's memory pool *only when needed*.
+
+## 11. Follow-up Work: Resolving Compaction Bottlenecks
+
+While the Structure of Arrays (SoA) compaction (Section 10) successfully reduced payload sizes by ~43%, profiling revealed a regression in CPU performance: `dumps()` became ~12% slower, and `loads()` became ~25% slower. 
+
+These regressions stem from destroyed CPU cache locality and the overhead of reverse-lookup hash maps. The following architectural adjustments resolve these bottlenecks, restoring the original speed while preserving ~38% of the payload compaction.
+
+### 11.1 The "Hybrid SoA" Attribute Layout
+
+**The Problem:** In the ultra-dense SoA layout, `PackedAttribute` stored the `owner_uuid` (the Node or Edge). During `loads()`, the parser had to perform millions of expensive hash map lookups to find the owner, and then call the high-level `ref.put()` API, which caused severe cache thrashing and function-call overhead.
+
+**The Solution:** We return attribute ownership mapping to the Entities, but keep the Attributes themselves densely packed by eliminating the empty cache-line slots.
+
+1.  **Edges Regain Attribute UUIDs:** `PackedEdge` restores the `dynamic_attr_uuid` field, bringing its size from 12 bytes back to 16 bytes (perfectly 64-bit aligned).
+2.  **Dense Attribute Blocks:** We introduce a `PackedAttrBlockHeader` (5 bytes) that precedes a variable-length sequence of densely packed attributes. We no longer serialize the empty slots of a 256-byte block.
+
+```zig
+const PackedAttrBlockHeader = packed struct {
+    original_attr_uuid: u32,  // 4 bytes
+    in_use: u8,               // 1 byte
+}; // 5 bytes
+
+const PackedAttribute = extern struct {
+    value_tag: u8,               
+    _pad: [7]u8,                 
+    identifier: PackedStringRef, 
+    value: PackedLiteralValue,   
+}; // 24 bytes (owner_uuid is removed)
+```
+**Impact:** `loads()` no longer needs to query Node/Edge hash maps to place attributes. It reads the 5-byte header, resolves the local attribute block, and executes a blazing-fast linear loop over the active attributes. 
+
+### 11.2 Direct-Indexed Array Translation (O(1) Remapping)
+
+**The Problem:** Building and querying `std.AutoHashMap(u32, u32)` for `remap_nodes`, `remap_edges`, and `remap_attrs` during `loads()` requires calculating millions of hashes, managing bucket collisions, and dynamic memory reallocation. This is the primary CPU bottleneck in `loads()`.
+
+**The Solution:** Because Data-Oriented UUIDs are strictly monotonic integers, we can completely eliminate hash maps by using **Flat Translation Arrays**.
+
+1.  **Determine Max Bounds:** Add `max_node_uuid`, `max_edge_uuid`, and `max_attr_uuid` fields to the binary header (the 64-byte padded layout easily accommodates this).
+2.  **Allocate Flat Maps:** During `loads()`, allocate a raw contiguous array sized to the max UUID and initialize it with a sentinel value (e.g., `0xFFFFFFFF`).
+    ```zig
+    const node_remap_array = try allocator.alloc(u32, header.max_node_uuid + 1);
+    @memset(node_remap_array, 0xFFFFFFFF);
+    ```
+3.  **O(1) Zero-Overhead Indexing:** When translating a UUID, we bypass hashing entirely and execute a single memory dereference:
+    ```zig
+    const local_source = node_remap_array[packed_edge.source];
+    ```
+
+**Impact:** This bypasses the overhead of Wyhash calculations, load-factor resizing, and linked-list collision traversal. It guarantees perfectly deterministic O(1) lookups and significantly improves CPU cache locality during edge reconstruction. Even on highly sparse graphs where the flat array allocates MBs of unused indices, the linear allocation from the Arena and immediate deallocation makes it vastly faster than Hash Map overhead.
+
+### 11.3 The Final Optimized Payload Layout
+
+Integrating the "Hybrid SoA" attribute stream and the "Flat Array" max bounds fields requires one final correction to the SoA compaction plan: **Nodes cannot be 0 bytes.**
+
+If Nodes exist purely as bits in a bitset, and the Attribute Stream lacks "reverse lookup" pointers (to maintain fast linear writes), there is no way for `loads()` to know which Node owns which Attribute block. Therefore, the Entities (Nodes and Edges) *must* explicitly declare their `dynamic_attr_uuid`.
+
+A Node is serialized as exactly 4 bytes, parsed in lockstep with the Node Bitset (identically to how Edges are parsed).
+
+```zig
+const PackedNode = extern struct {
+    dynamic_attr_uuid: u32,
+}; // Exactly 4 bytes
+
+const BinaryHeader = extern struct {
+    magic_number: u32,       // 0x52494E53 ("RINS")
+    version: u32,            // e.g., 3 (Hybrid SoA)
+    self_node_uuid: u32,     
+    node_count: u32,         
+    edge_count: u32,         
+    attr_count: u32,         // Total number of INDIVIDUAL attributes
+    node_bitset_len: u32,    // Padded to 8 bytes
+    edge_bitset_len: u32,    // Padded to 8 bytes
+    string_table_size: u32,  
+    max_node_uuid: u32,      // For flat array allocation
+    max_edge_uuid: u32,      // For flat array allocation
+    max_attr_uuid: u32,      // For flat array allocation
+    _reserved: [4]u32,       // 16 bytes reserved to hit 64-byte alignment
+}; // Exactly 64 bytes (One L1 Cache Line)
+```
+
+**Payload Structure:**
+```text
+[ Header (64 bytes) ]
+
+[ Node UUIDBitSet (node_bitset_len) ]
+[ Edge UUIDBitSet (edge_bitset_len) ]
+
+[ Packed Nodes Array (node_count * 4 bytes) ]
+[ Packed Edges Array (edge_count * 16 bytes) ]
+
+[ Variable-Length Attribute Stream ]
+    // A contiguous sequence of blocks:
+    // [PackedAttrBlockHeader (5 bytes)]
+    // [PackedAttribute (24 bytes)] * in_use
+    // [PackedAttrBlockHeader (5 bytes)] ...
+
+[ String Table (string_table_size bytes) ]
+```

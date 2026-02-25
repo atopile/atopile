@@ -1149,23 +1149,23 @@ pub const GraphView = struct {
     // Binary Serialization Methods
     // =========================================================================
 
-    /// Serialize this GraphView to a flat SoA binary buffer.
+    /// Serialize this GraphView to a hybrid SoA binary buffer.
     ///
-    /// Packs node/edge membership as real bitsets (1 bit per entry), edges as
-    /// a dense 12-byte array, and attributes as a flat 24-byte-per-entry array
-    /// with explicit owner_uuid references. The caller owns the returned slice
-    /// and must free it with the same allocator.
+    /// Packs node/edge membership as real bitsets (1 bit per entry), nodes as
+    /// a dense 4-byte array (DA UUID ref), edges as 16-byte structs (with DA
+    /// UUID ref), and attributes as a variable-length stream of 5-byte block
+    /// headers followed by 24-byte attribute entries.
     pub fn dumps(g: *@This(), allocator: std.mem.Allocator) SerializationError![]u8 {
-        const DaOwner = struct { owner_uuid: u32, is_node: bool };
-
+        var packed_nodes = std.array_list.Managed(PackedNode).init(allocator);
+        defer packed_nodes.deinit();
         var packed_edges = std.array_list.Managed(PackedEdge).init(allocator);
         defer packed_edges.deinit();
-        var packed_attrs = std.array_list.Managed(PackedAttribute).init(allocator);
-        defer packed_attrs.deinit();
+        var da_uuids = std.array_list.Managed(u32).init(allocator);
+        defer da_uuids.deinit();
         var string_table = std.array_list.Managed(u8).init(allocator);
         defer string_table.deinit();
-        var da_owner_map = std.AutoHashMap(u32, DaOwner).init(allocator);
-        defer da_owner_map.deinit();
+        var attr_stream = std.array_list.Managed(u8).init(allocator);
+        defer attr_stream.deinit();
 
         // Compute bitset sizes
         const node_bitset_byte_len: u32 = if (g.node_set.capacity > 0)
@@ -1177,8 +1177,10 @@ pub const GraphView = struct {
         else
             0;
 
-        // Pack node bitset and collect DA owners
+        // Pack node bitset + node array (lockstep), collect DA UUIDs
         var node_bitset_buf: []u8 = &.{};
+        var max_node_uuid: u32 = 0;
+        var max_attr_uuid: u32 = 0;
         if (node_bitset_byte_len > 0) {
             node_bitset_buf = allocator.alloc(u8, node_bitset_byte_len) catch return error.OutOfMemory;
             packBitset(g.node_set.data, g.node_set.capacity, node_bitset_buf);
@@ -1186,17 +1188,21 @@ pub const GraphView = struct {
             var i: u32 = 0;
             while (i < g.node_set.capacity) : (i += 1) {
                 if (g.node_set.data[i]) {
+                    max_node_uuid = i;
                     const da_uuid = Nodes[i].dynamic.uuid;
+                    packed_nodes.append(.{ .dynamic_attr_uuid = da_uuid }) catch return error.OutOfMemory;
                     if (da_uuid != 0) {
-                        da_owner_map.put(da_uuid, .{ .owner_uuid = i, .is_node = true }) catch return error.OutOfMemory;
+                        da_uuids.append(da_uuid) catch return error.OutOfMemory;
+                        if (da_uuid > max_attr_uuid) max_attr_uuid = da_uuid;
                     }
                 }
             }
         }
         defer if (node_bitset_byte_len > 0) allocator.free(node_bitset_buf);
 
-        // Pack edge bitset, edge array, and collect DA owners
+        // Pack edge bitset + edge array (lockstep), collect DA UUIDs
         var edge_bitset_buf: []u8 = &.{};
+        var max_edge_uuid: u32 = 0;
         if (edge_bitset_byte_len > 0) {
             edge_bitset_buf = allocator.alloc(u8, edge_bitset_byte_len) catch return error.OutOfMemory;
             packBitset(g.edge_set.data, g.edge_set.capacity, edge_bitset_buf);
@@ -1204,50 +1210,57 @@ pub const GraphView = struct {
             var i: u32 = 0;
             while (i < g.edge_set.capacity) : (i += 1) {
                 if (g.edge_set.data[i]) {
+                    max_edge_uuid = i;
                     const edge = &Edges[i];
+                    const da_uuid = edge.dynamic.uuid;
                     packed_edges.append(.{
                         .source = edge.source.uuid,
                         .target = edge.target.uuid,
                         .flags = @bitCast(edge.flags),
+                        .dynamic_attr_uuid = da_uuid,
                     }) catch return error.OutOfMemory;
-
-                    const da_uuid = edge.dynamic.uuid;
                     if (da_uuid != 0) {
-                        da_owner_map.put(da_uuid, .{ .owner_uuid = i, .is_node = false }) catch return error.OutOfMemory;
+                        da_uuids.append(da_uuid) catch return error.OutOfMemory;
+                        if (da_uuid > max_attr_uuid) max_attr_uuid = da_uuid;
                     }
                 }
             }
         }
         defer if (edge_bitset_byte_len > 0) allocator.free(edge_bitset_buf);
 
-        // Pack flat attributes — one PackedAttribute per in-use slot
-        {
-            var da_it = da_owner_map.iterator();
-            while (da_it.next()) |entry| {
-                const da_uuid = entry.key_ptr.*;
-                const owner_info = entry.value_ptr.*;
-                const attrs = &Attrs[da_uuid];
+        // Pack attribute stream — 5-byte block header + in_use PackedAttribute entries per DA
+        var total_attr_count: u32 = 0;
+        for (da_uuids.items) |da_uuid| {
+            const attrs = &Attrs[da_uuid];
+            const in_use = attrs.in_use;
 
-                for (0..attrs.in_use) |j| {
-                    const attr = &attrs.values[j];
-                    const ident_ref = appendString(&string_table, attr.identifier);
-                    const lit = packLiteral(attr.value, &string_table);
-                    packed_attrs.append(.{
-                        .owner_uuid = owner_info.owner_uuid,
-                        .is_node_owner = if (owner_info.is_node) 1 else 0,
-                        .value_tag = @intFromEnum(lit.tag),
-                        .identifier = ident_ref,
-                        .value = lit.value,
-                    }) catch return error.OutOfMemory;
-                }
+            // Write 5-byte header manually: u32 original_attr_uuid + u8 in_use
+            var hdr_buf: [5]u8 = undefined;
+            std.mem.writeInt(u32, hdr_buf[0..4], da_uuid, .little);
+            hdr_buf[4] = in_use;
+            attr_stream.appendSlice(&hdr_buf) catch return error.OutOfMemory;
+
+            // Write in_use PackedAttribute entries
+            for (0..in_use) |j| {
+                const attr = &attrs.values[j];
+                const ident_ref = appendString(&string_table, attr.identifier);
+                const lit = packLiteral(attr.value, &string_table);
+                const pa = PackedAttribute{
+                    .value_tag = @intFromEnum(lit.tag),
+                    .identifier = ident_ref,
+                    .value = lit.value,
+                };
+                attr_stream.appendSlice(std.mem.asBytes(&pa)) catch return error.OutOfMemory;
             }
+            total_attr_count += in_use;
         }
 
         // Assemble buffer
+        const nodes_size = packed_nodes.items.len * @sizeOf(PackedNode);
         const edges_size = packed_edges.items.len * @sizeOf(PackedEdge);
-        const attrs_size = packed_attrs.items.len * @sizeOf(PackedAttribute);
+        const attr_stream_size = attr_stream.items.len;
         const str_size = string_table.items.len;
-        const total_size = @sizeOf(BinaryHeader) + node_bitset_byte_len + edge_bitset_byte_len + edges_size + attrs_size + str_size;
+        const total_size = @sizeOf(BinaryHeader) + node_bitset_byte_len + edge_bitset_byte_len + nodes_size + edges_size + attr_stream_size + str_size;
 
         const buf = allocator.alloc(u8, total_size) catch return error.OutOfMemory;
         var offset: usize = 0;
@@ -1258,10 +1271,13 @@ pub const GraphView = struct {
             .self_node_uuid = g.self_node.uuid,
             .node_count = g.node_set.get_count(),
             .edge_count = @intCast(packed_edges.items.len),
-            .attr_count = @intCast(packed_attrs.items.len),
+            .attr_count = total_attr_count,
             .node_bitset_len = node_bitset_byte_len,
             .edge_bitset_len = edge_bitset_byte_len,
             .string_table_size = @intCast(str_size),
+            .max_node_uuid = max_node_uuid,
+            .max_edge_uuid = max_edge_uuid,
+            .max_attr_uuid = max_attr_uuid,
         };
         @memcpy(buf[offset..][0..@sizeOf(BinaryHeader)], std.mem.asBytes(&header));
         offset += @sizeOf(BinaryHeader);
@@ -1276,14 +1292,19 @@ pub const GraphView = struct {
             offset += edge_bitset_byte_len;
         }
 
+        if (nodes_size > 0) {
+            @memcpy(buf[offset..][0..nodes_size], std.mem.sliceAsBytes(packed_nodes.items));
+            offset += nodes_size;
+        }
+
         if (edges_size > 0) {
             @memcpy(buf[offset..][0..edges_size], std.mem.sliceAsBytes(packed_edges.items));
             offset += edges_size;
         }
 
-        if (attrs_size > 0) {
-            @memcpy(buf[offset..][0..attrs_size], std.mem.sliceAsBytes(packed_attrs.items));
-            offset += attrs_size;
+        if (attr_stream_size > 0) {
+            @memcpy(buf[offset..][0..attr_stream_size], attr_stream.items);
+            offset += attr_stream_size;
         }
 
         if (str_size > 0) {
@@ -1293,16 +1314,11 @@ pub const GraphView = struct {
         return buf;
     }
 
-    /// Create a new GraphView from a serialized SoA binary payload.
+    /// Create a new GraphView from a serialized hybrid SoA binary payload.
     ///
     /// Creates a fresh graph via init_bare() and deserializes inline:
-    /// node bitset → edge bitset + edge array → flat attributes.
-    /// The caller owns the returned pointer and must call deinit()
-    /// then allocator.destroy() to free it.
-    ///
-    /// Security: validates magic, version, exact buffer size (overflow-safe),
-    /// value_tag bounds, is_node_owner bounds, string ref bounds, and
-    /// rejects dangling node references.
+    /// node bitset + node array → edge bitset + edge array → attr stream.
+    /// Uses flat O(1) remap arrays instead of hash maps.
     pub fn loads(allocator: std.mem.Allocator, bytes: []const u8) SerializationError!*@This() {
         // Step 1: Validate header
         if (bytes.len < @sizeOf(BinaryHeader)) return error.MalformedPayload;
@@ -1310,8 +1326,8 @@ pub const GraphView = struct {
         if (header.magic_number != MAGIC) return error.InvalidMagic;
         if (header.version != FORMAT_VERSION) return error.VersionMismatch;
 
-        const expected = try computeExpectedSize(header);
-        if (bytes.len != expected) return error.BufferSizeMismatch;
+        const fixed_size = try computeFixedSize(header);
+        if (bytes.len < fixed_size) return error.BufferSizeMismatch;
 
         // Create empty graph
         const g = allocator.create(@This()) catch return error.OutOfMemory;
@@ -1324,11 +1340,13 @@ pub const GraphView = struct {
         // Step 2: Compute section offsets
         const node_bitset_start: usize = @sizeOf(BinaryHeader);
         const edge_bitset_start: usize = node_bitset_start + header.node_bitset_len;
-        const edges_start: usize = edge_bitset_start + header.edge_bitset_len;
+        const nodes_start: usize = edge_bitset_start + header.edge_bitset_len;
+        const nodes_size: usize = @as(usize, header.node_count) * @sizeOf(PackedNode);
+        const edges_start: usize = nodes_start + nodes_size;
         const edges_size: usize = @as(usize, header.edge_count) * @sizeOf(PackedEdge);
-        const attrs_start: usize = edges_start + edges_size;
-        const attrs_size: usize = @as(usize, header.attr_count) * @sizeOf(PackedAttribute);
-        const str_start: usize = attrs_start + attrs_size;
+        const attr_stream_start: usize = edges_start + edges_size;
+        const str_start: usize = bytes.len - header.string_table_size;
+        const attr_stream_size: usize = str_start - attr_stream_start;
 
         // Step 3: Copy string table into graph-owned memory
         const string_memory = g.allocator.alloc(u8, header.string_table_size) catch return error.OutOfMemory;
@@ -1336,19 +1354,53 @@ pub const GraphView = struct {
             @memcpy(string_memory, bytes[str_start..][0..header.string_table_size]);
         }
 
-        // Step 4: Translation tables
-        var remap_nodes = std.AutoHashMap(u32, u32).init(g.allocator);
-        defer remap_nodes.deinit();
-        var remap_edges = std.AutoHashMap(u32, u32).init(g.allocator);
-        defer remap_edges.deinit();
+        // Step 4: Allocate flat remap arrays (O(1) direct indexing)
+        const remap_node_len: usize = if (header.max_node_uuid > 0) @as(usize, header.max_node_uuid) + 1 else 0;
+        const remap_nodes = if (remap_node_len > 0)
+            allocator.alloc(u32, remap_node_len) catch return error.OutOfMemory
+        else
+            @as([]u32, &.{});
+        defer if (remap_node_len > 0) allocator.free(remap_nodes);
+        if (remap_nodes.len > 0) @memset(remap_nodes, 0xFFFFFFFF);
 
-        // Step 5: Read node bitset — for each set bit, create a node
+        const remap_edge_len: usize = if (header.max_edge_uuid > 0) @as(usize, header.max_edge_uuid) + 1 else 0;
+        const remap_edges = if (remap_edge_len > 0)
+            allocator.alloc(u32, remap_edge_len) catch return error.OutOfMemory
+        else
+            @as([]u32, &.{});
+        defer if (remap_edge_len > 0) allocator.free(remap_edges);
+        if (remap_edges.len > 0) @memset(remap_edges, 0xFFFFFFFF);
+
+        const remap_attr_len: usize = if (header.max_attr_uuid > 0) @as(usize, header.max_attr_uuid) + 1 else 0;
+        const remap_attrs = if (remap_attr_len > 0)
+            allocator.alloc(u32, remap_attr_len) catch return error.OutOfMemory
+        else
+            @as([]u32, &.{});
+        defer if (remap_attr_len > 0) allocator.free(remap_attrs);
+        if (remap_attrs.len > 0) @memset(remap_attrs, 0xFFFFFFFF);
+
+        // Step 5: Read node bitset + node array in lockstep
         if (header.node_bitset_len > 0) {
             const node_bitset = bytes[node_bitset_start..][0..header.node_bitset_len];
             var it = SetBitIterator.init(node_bitset);
+            var node_idx: u32 = 0;
             while (it.next()) |original_uuid| {
+                const n_offset = nodes_start + @as(usize, node_idx) * @sizeOf(PackedNode);
+                const pn: PackedNode = @bitCast(bytes[n_offset..][0..@sizeOf(PackedNode)].*);
+
                 const bound = g.create_and_insert_node();
-                remap_nodes.put(@intCast(original_uuid), bound.node.uuid) catch return error.OutOfMemory;
+                if (original_uuid < remap_nodes.len) {
+                    remap_nodes[original_uuid] = bound.node.uuid;
+                }
+
+                // Pre-allocate DA block if node has attributes
+                if (pn.dynamic_attr_uuid != 0) {
+                    _ = Nodes[bound.node.uuid].dynamic.ensure();
+                    if (pn.dynamic_attr_uuid < remap_attrs.len) {
+                        remap_attrs[pn.dynamic_attr_uuid] = Nodes[bound.node.uuid].dynamic.uuid;
+                    }
+                }
+                node_idx += 1;
             }
         }
 
@@ -1361,8 +1413,15 @@ pub const GraphView = struct {
                 const e_offset = edges_start + @as(usize, edge_idx) * @sizeOf(PackedEdge);
                 const pe: PackedEdge = @bitCast(bytes[e_offset..][0..@sizeOf(PackedEdge)].*);
 
-                const local_source = remap_nodes.get(pe.source) orelse pe.source;
-                const local_target = remap_nodes.get(pe.target) orelse pe.target;
+                // O(1) flat array remap
+                const local_source = if (pe.source < remap_nodes.len and remap_nodes[pe.source] != 0xFFFFFFFF)
+                    remap_nodes[pe.source]
+                else
+                    pe.source;
+                const local_target = if (pe.target < remap_nodes.len and remap_nodes[pe.target] != 0xFFFFFFFF)
+                    remap_nodes[pe.target]
+                else
+                    pe.target;
 
                 if (!g.contains_node(.{ .uuid = local_source })) return error.InvalidNodeReference;
                 if (!g.contains_node(.{ .uuid = local_target })) return error.InvalidNodeReference;
@@ -1377,56 +1436,80 @@ pub const GraphView = struct {
 
                 g.edge_set.add(new_edge.uuid);
                 g.insert_edge_unchecked(new_edge);
-                remap_edges.put(@intCast(original_uuid), new_edge.uuid) catch return error.OutOfMemory;
+                if (original_uuid < remap_edges.len) {
+                    remap_edges[original_uuid] = new_edge.uuid;
+                }
+
+                // Pre-allocate DA block if edge has attributes
+                if (pe.dynamic_attr_uuid != 0) {
+                    _ = Edges[new_edge.uuid].dynamic.ensure();
+                    if (pe.dynamic_attr_uuid < remap_attrs.len) {
+                        remap_attrs[pe.dynamic_attr_uuid] = Edges[new_edge.uuid].dynamic.uuid;
+                    }
+                }
                 edge_idx += 1;
             }
         }
 
-        // Step 7: Read flat attributes
+        // Step 7: Read attribute stream — variable-length blocks
         {
-            var attr_idx: u32 = 0;
-            while (attr_idx < header.attr_count) : (attr_idx += 1) {
-                const a_offset = attrs_start + @as(usize, attr_idx) * @sizeOf(PackedAttribute);
-                const pa: PackedAttribute = @bitCast(bytes[a_offset..][0..@sizeOf(PackedAttribute)].*);
+            var stream_offset: usize = 0;
+            var total_attrs_read: u32 = 0;
+            while (stream_offset + 5 <= attr_stream_size) {
+                const abs_offset = attr_stream_start + stream_offset;
+                // Read 5-byte header manually
+                const original_attr_uuid = std.mem.readInt(u32, bytes[abs_offset..][0..4], .little);
+                const in_use = bytes[abs_offset + 4];
+                stream_offset += 5;
 
-                // Validate
-                if (pa.value_tag > @intFromEnum(ValueTag.Bool)) return error.InvalidValueTag;
-                if (pa.is_node_owner > 1) return error.MalformedPayload;
-                const tag: ValueTag = @enumFromInt(pa.value_tag);
-
-                try validateStringRef(pa.identifier, header.string_table_size);
-                const ident = resolveString(pa.identifier, string_memory);
-
-                const value: Literal = switch (tag) {
-                    .Int => .{ .Int = pa.value.Int },
-                    .Uint => .{ .Uint = pa.value.Uint },
-                    .Float => .{ .Float = pa.value.Float },
-                    .String => blk: {
-                        try validateStringRef(pa.value.String, header.string_table_size);
-                        break :blk .{ .String = resolveString(pa.value.String, string_memory) };
-                    },
-                    .Bool => .{ .Bool = pa.value.Bool != 0 },
-                };
-
-                // Look up owner in the appropriate remap table
-                const remapped_uuid = if (pa.is_node_owner == 1)
-                    remap_nodes.get(pa.owner_uuid) orelse pa.owner_uuid
+                // Look up remapped DA UUID
+                const local_da = if (original_attr_uuid < remap_attrs.len)
+                    remap_attrs[original_attr_uuid]
                 else
-                    remap_edges.get(pa.owner_uuid) orelse pa.owner_uuid;
+                    0xFFFFFFFF;
+                if (local_da == 0xFFFFFFFF) return error.MalformedPayload;
 
-                // Put attribute on the owner (lazily allocates DA blocks)
-                if (pa.is_node_owner == 1) {
-                    const node_ref = NodeReference{ .uuid = remapped_uuid };
-                    node_ref.put(ident, value);
-                } else {
-                    const edge_ref = EdgeReference{ .uuid = remapped_uuid };
-                    edge_ref.put(ident, value);
+                const da = &Attrs[local_da];
+                da.in_use = @intCast(in_use);
+
+                // Read in_use PackedAttribute entries directly into DA storage
+                for (0..in_use) |j| {
+                    if (stream_offset + @sizeOf(PackedAttribute) > attr_stream_size) return error.MalformedPayload;
+                    const pa_offset = attr_stream_start + stream_offset;
+                    const pa: PackedAttribute = @bitCast(bytes[pa_offset..][0..@sizeOf(PackedAttribute)].*);
+                    stream_offset += @sizeOf(PackedAttribute);
+
+                    if (pa.value_tag > @intFromEnum(ValueTag.Bool)) return error.InvalidValueTag;
+                    const tag: ValueTag = @enumFromInt(pa.value_tag);
+
+                    try validateStringRef(pa.identifier, header.string_table_size);
+                    const ident = resolveString(pa.identifier, string_memory);
+
+                    const value: Literal = switch (tag) {
+                        .Int => .{ .Int = pa.value.Int },
+                        .Uint => .{ .Uint = pa.value.Uint },
+                        .Float => .{ .Float = pa.value.Float },
+                        .String => blk: {
+                            try validateStringRef(pa.value.String, header.string_table_size);
+                            break :blk .{ .String = resolveString(pa.value.String, string_memory) };
+                        },
+                        .Bool => .{ .Bool = pa.value.Bool != 0 },
+                    };
+
+                    // Direct write into pre-allocated DA block
+                    da.values[j] = .{ .identifier = ident, .value = value };
                 }
+                total_attrs_read += in_use;
             }
+            if (total_attrs_read != header.attr_count) return error.MalformedPayload;
         }
 
         // Step 8: Set self_node
-        g.self_node = .{ .uuid = remap_nodes.get(header.self_node_uuid) orelse header.self_node_uuid };
+        const remapped_self = if (header.self_node_uuid < remap_nodes.len and remap_nodes[header.self_node_uuid] != 0xFFFFFFFF)
+            remap_nodes[header.self_node_uuid]
+        else
+            header.self_node_uuid;
+        g.self_node = .{ .uuid = remapped_self };
 
         return g;
     }
@@ -1442,39 +1525,44 @@ pub const GraphView = struct {
 };
 
 // =============================================================================
-// Binary Serialization — SoA (Structure of Arrays) Format v2
+// Binary Serialization — Hybrid SoA + O(1) Remapping Format
 //
-// Ultra-dense binary format for transferring GraphView state across process
-// boundaries. Nodes are represented purely as bitset membership (0 bytes each),
-// edges as 12-byte structs, and attributes as a flat 24-byte-per-entry array
-// with explicit owner references. All structs are `extern` (C-ABI).
+// Dense binary format for transferring GraphView state across process
+// boundaries. Nodes as 4-byte structs (DA UUID ref), edges as 16-byte structs
+// (with DA UUID ref), and attributes as a variable-length stream of 5-byte
+// block headers followed by 24-byte entries. All struct types are `extern`
+// (C-ABI) except PackedAttrBlockHeader which is `packed` (5 bytes).
 //
 // Payload layout:
-//   [ Header         (64 bytes)                         ]
-//   [ Node Bitset    (node_bitset_len bytes, 8-aligned) ]
-//   [ Edge Bitset    (edge_bitset_len bytes, 8-aligned) ]
-//   [ Packed Edges   (edge_count × 12 bytes)            ]
-//   [ Packed Attrs   (attr_count × 24 bytes)            ]
-//   [ String Table   (string_table_size bytes)          ]
+//   [ Header              (64 bytes)                       ]
+//   [ Node Bitset         (node_bitset_len, 8-aligned)     ]
+//   [ Edge Bitset         (edge_bitset_len, 8-aligned)     ]
+//   [ Packed Nodes        (node_count × 4 bytes)           ]
+//   [ Packed Edges        (edge_count × 16 bytes)          ]
+//   [ Attribute Stream    (variable-length)                ]
+//   [ String Table        (string_table_size bytes)        ]
 //
 // Serialization (dumps):
-//   1. Pack node_set into a real bitset, collecting DA owner mappings.
-//   2. Pack edge_set into a real bitset + contiguous PackedEdge array,
-//      collecting DA owner mappings.
-//   3. For each DA entry, emit one PackedAttribute per in-use slot
-//      with the owner_uuid and is_node_owner from the map.
-//   4. Write header + node_bitset + edge_bitset + edges + attrs + strings.
+//   1. Pack node_set into a real bitset + PackedNode array (lockstep),
+//      collecting DA UUIDs into an ArrayList.
+//   2. Pack edge_set into a real bitset + PackedEdge array (lockstep),
+//      collecting DA UUIDs into the same ArrayList.
+//   3. For each DA UUID, emit a 5-byte block header (original_attr_uuid +
+//      in_use count) followed by in_use PackedAttribute entries.
+//   4. Write header + node_bitset + edge_bitset + nodes + edges +
+//      attr_stream + strings.
 //
 // Deserialization (loads):
-//   1. Validate header (magic, version, exact buffer size).
+//   1. Validate header (magic, version, buffer >= fixed size).
 //   2. Copy string table into arena-owned memory.
-//   3. Read node bitset: for each set bit, create_and_insert_node(),
-//      record remap_nodes[original → new].
-//   4. Read edge bitset + edge array in lockstep: for the n-th set bit,
-//      read PackedEdge[n], translate endpoints, allocate edge.
-//   5. Read flat attributes: look up owner in remap_nodes/remap_edges,
-//      call put(identifier, value) which lazily allocates DA blocks.
-//   6. Set self_node from header's remapped UUID.
+//   3. Allocate flat remap arrays (max_uuid+1 each) for O(1) lookups.
+//   4. Read node bitset + node array (lockstep): create nodes,
+//      pre-allocate DA blocks, populate remap_nodes[] and remap_attrs[].
+//   5. Read edge bitset + edge array (lockstep): translate endpoints via
+//      remap_nodes[], pre-allocate DA blocks, populate remap_edges[].
+//   6. Read attribute stream: for each block, direct-write into
+//      pre-allocated Attrs[] storage (no ref.put() overhead).
+//   7. Set self_node from header's remapped UUID.
 //
 // =============================================================================
 
@@ -1500,11 +1588,14 @@ const BinaryHeader = extern struct {
     self_node_uuid: u32, // GraphView.self_node.uuid
     node_count: u32, // set bits in node bitset
     edge_count: u32, // PackedEdge entries
-    attr_count: u32, // total individual flat attributes
+    attr_count: u32, // total individual attributes
     node_bitset_len: u32, // byte size of node bitset (padded to 8)
     edge_bitset_len: u32, // byte size of edge bitset (padded to 8)
     string_table_size: u32, // byte size of string table
-    _reserved: [7]u32 = .{0} ** 7, // 28 bytes reserved
+    max_node_uuid: u32, // for flat remap array sizing
+    max_edge_uuid: u32, // for flat remap array sizing
+    max_attr_uuid: u32, // for flat remap array sizing
+    _reserved: [4]u32 = .{0} ** 4, // 16 bytes reserved
 };
 
 /// Reference into the string table: bytes[offset..offset+length].
@@ -1524,21 +1615,30 @@ const PackedLiteralValue = extern union {
     _pad: [8]u8,
 };
 
-/// 12-byte edge: source, target, flags. No original_uuid (recovered from
-/// edge bitset position) and no DA reference (attributes store owner_uuid).
+/// 4-byte packed node: DA UUID reference only (node identity from bitset position).
+const PackedNode = extern struct {
+    dynamic_attr_uuid: u32, // 0 = no attributes
+};
+
+/// 16-byte edge: source, target, flags, DA UUID reference.
 const PackedEdge = extern struct {
     source: u32,
     target: u32,
     flags: u32,
+    dynamic_attr_uuid: u32, // 0 = no attributes
 };
 
-/// 24-byte flat attribute with explicit owner reference. Replaces the old
-/// 152-byte PackedDynamicAttributes block — no wasted empty slots.
+/// 5-byte packed attribute block header (read/written manually to avoid alignment).
+/// Precedes a run of `in_use` PackedAttribute entries for a single DA block.
+const PackedAttrBlockHeader = packed struct {
+    original_attr_uuid: u32,
+    in_use: u8,
+};
+
+/// 24-byte attribute entry (no owner info — ownership via attr stream structure).
 const PackedAttribute = extern struct {
-    owner_uuid: u32, // original node or edge UUID
-    is_node_owner: u8, // 1 = node, 0 = edge
     value_tag: u8, // 0-4 (ValueTag enum)
-    _pad: u16 = 0,
+    _pad: [7]u8 = .{0} ** 7,
     identifier: PackedStringRef, // 8 bytes
     value: PackedLiteralValue, // 8 bytes
 };
@@ -1555,10 +1655,12 @@ const ValueTag = enum(u8) {
 
 comptime {
     std.debug.assert(@sizeOf(BinaryHeader) == 64);
-    std.debug.assert(@sizeOf(PackedEdge) == 12);
+    std.debug.assert(@sizeOf(PackedNode) == 4);
+    std.debug.assert(@sizeOf(PackedEdge) == 16);
     std.debug.assert(@sizeOf(PackedAttribute) == 24);
     std.debug.assert(@sizeOf(PackedStringRef) == 8);
     std.debug.assert(@sizeOf(PackedLiteralValue) == 8);
+    std.debug.assert(@bitSizeOf(PackedAttrBlockHeader) == 40); // 5 bytes
 }
 
 /// Round up to the nearest 8-byte boundary.
@@ -1645,13 +1747,14 @@ fn packLiteral(lit: Literal, string_table: *std.array_list.Managed(u8)) struct {
     };
 }
 
-/// Compute the exact expected payload size from header fields, using overflow-safe math.
-fn computeExpectedSize(h: BinaryHeader) SerializationError!usize {
+/// Compute the fixed (non-attr-stream) portion of the payload size, using overflow-safe math.
+/// The attr stream is variable-length and its size is computed by subtraction.
+fn computeFixedSize(h: BinaryHeader) SerializationError!usize {
     var size: usize = @sizeOf(BinaryHeader);
     size = std.math.add(usize, size, h.node_bitset_len) catch return error.IntegerOverflow;
     size = std.math.add(usize, size, h.edge_bitset_len) catch return error.IntegerOverflow;
+    size = std.math.add(usize, size, std.math.mul(usize, h.node_count, @sizeOf(PackedNode)) catch return error.IntegerOverflow) catch return error.IntegerOverflow;
     size = std.math.add(usize, size, std.math.mul(usize, h.edge_count, @sizeOf(PackedEdge)) catch return error.IntegerOverflow) catch return error.IntegerOverflow;
-    size = std.math.add(usize, size, std.math.mul(usize, h.attr_count, @sizeOf(PackedAttribute)) catch return error.IntegerOverflow) catch return error.IntegerOverflow;
     size = std.math.add(usize, size, h.string_table_size) catch return error.IntegerOverflow;
     return size;
 }
@@ -1964,7 +2067,7 @@ test "speed_dumps_loads" {
 
     const payload_kb = data.len / 1024;
 
-    std.debug.print("\n--- SoA v2 dumps/loads benchmark ({d} nodes, {d} edges, {d} attributed) ---\n", .{ num_nodes, num_edges, num_attributed });
+    std.debug.print("\n--- Hybrid SoA + O(1) remap benchmark ({d} nodes, {d} edges, {d} attributed) ---\n", .{ num_nodes, num_edges, num_attributed });
     std.debug.print("payload: {d} KB\n", .{payload_kb});
     std.debug.print("dumps:      {d} us\n", .{dumps_us});
 
@@ -2088,20 +2191,22 @@ test "serialization: string table bounds and swizzling" {
 
     const hdr: BinaryHeader = @bitCast(good_data[0..@sizeOf(BinaryHeader)].*);
     if (hdr.attr_count > 0) {
-        // Compute offset to the first PackedAttribute
-        const a_start = @sizeOf(BinaryHeader) +
+        // Compute offset to the attr stream (after nodes + edges)
+        const attr_stream_start = @sizeOf(BinaryHeader) +
             @as(usize, hdr.node_bitset_len) +
             @as(usize, hdr.edge_bitset_len) +
+            @as(usize, hdr.node_count) * @sizeOf(PackedNode) +
             @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
-        // Read the first PackedAttribute
-        var first_attr: PackedAttribute = @bitCast(good_data[a_start..][0..@sizeOf(PackedAttribute)].*);
+        // First attr block: 5-byte header + first PackedAttribute
+        const first_attr_offset = attr_stream_start + 5; // skip block header
+        var first_attr: PackedAttribute = @bitCast(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)].*);
 
         // Corrupt the identifier offset
         first_attr.identifier.offset = hdr.string_table_size + 100;
 
         // Write corrupted attr back
-        @memcpy(good_data[a_start..][0..@sizeOf(PackedAttribute)], std.mem.asBytes(&first_attr));
+        @memcpy(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)], std.mem.asBytes(&first_attr));
 
         const result = GraphView.loads(a, good_data);
         try std.testing.expectError(error.StringOutOfBounds, result);
@@ -2124,6 +2229,9 @@ test "serialization: malicious payload rejection" {
             .node_bitset_len = 0,
             .edge_bitset_len = 0,
             .string_table_size = 0,
+            .max_node_uuid = 0,
+            .max_edge_uuid = 0,
+            .max_attr_uuid = 0,
         };
         @memcpy(&buf, std.mem.asBytes(&bad_header));
         try std.testing.expectError(error.InvalidMagic, GraphView.loads(a, &buf));
@@ -2142,6 +2250,9 @@ test "serialization: malicious payload rejection" {
             .node_bitset_len = 0,
             .edge_bitset_len = 0,
             .string_table_size = 0,
+            .max_node_uuid = 0,
+            .max_edge_uuid = 0,
+            .max_attr_uuid = 0,
         };
         @memcpy(&buf, std.mem.asBytes(&bad_header));
         try std.testing.expectError(error.VersionMismatch, GraphView.loads(a, &buf));
@@ -2160,6 +2271,9 @@ test "serialization: malicious payload rejection" {
             .node_bitset_len = 128, // claims 128 bytes but buffer is only header
             .edge_bitset_len = 0,
             .string_table_size = 0,
+            .max_node_uuid = 0,
+            .max_edge_uuid = 0,
+            .max_attr_uuid = 0,
         };
         @memcpy(&buf, std.mem.asBytes(&bad_header));
         try std.testing.expectError(error.BufferSizeMismatch, GraphView.loads(a, &buf));
@@ -2172,7 +2286,6 @@ test "serialization: malicious payload rejection" {
 
     // Test 5: Dangling edge reference
     {
-        // Build a payload with an edge bitset (1 bit set) + one PackedEdge with bad endpoints
         const header_size = @sizeOf(BinaryHeader);
         const edge_bitset_len: u32 = 8; // minimum aligned
         const edge_size = @sizeOf(PackedEdge);
@@ -2190,6 +2303,9 @@ test "serialization: malicious payload rejection" {
             .node_bitset_len = 0,
             .edge_bitset_len = edge_bitset_len,
             .string_table_size = 0,
+            .max_node_uuid = 0,
+            .max_edge_uuid = 0,
+            .max_attr_uuid = 0,
         };
         @memcpy(buf[0..header_size], std.mem.asBytes(&hdr));
 
@@ -2200,74 +2316,58 @@ test "serialization: malicious payload rejection" {
             .source = 0xFFFFFF,
             .target = 0xFFFFFE,
             .flags = 0,
+            .dynamic_attr_uuid = 0,
         };
         @memcpy(buf[header_size + edge_bitset_len ..][0..edge_size], std.mem.asBytes(&dangling_edge));
 
         try std.testing.expectError(error.InvalidNodeReference, GraphView.loads(a, &buf));
     }
 
-    // Test 6: Invalid value tag
+    // Test 6: Invalid value tag in attr stream
     {
-        const header_size = @sizeOf(BinaryHeader);
-        const attr_size = @sizeOf(PackedAttribute);
-        const total = header_size + attr_size;
-        var buf: [total]u8 = undefined;
-        @memset(&buf, 0);
+        // Build a graph with one attributed node, serialize, then corrupt the attr stream
+        var g2 = GraphView.init(a);
+        defer g2.deinit();
+        const bn = g2.create_and_insert_node();
+        bn.node.put("key", .{ .Int = 1 });
 
-        const hdr = BinaryHeader{
-            .magic_number = MAGIC,
-            .version = FORMAT_VERSION,
-            .self_node_uuid = 0,
-            .node_count = 0,
-            .edge_count = 0,
-            .attr_count = 1,
-            .node_bitset_len = 0,
-            .edge_bitset_len = 0,
-            .string_table_size = 0,
-        };
-        @memcpy(buf[0..header_size], std.mem.asBytes(&hdr));
+        const good_data = try g2.dumps(a);
+        defer a.free(good_data);
 
-        var bad_attr: PackedAttribute = undefined;
-        @memset(std.mem.asBytes(&bad_attr), 0);
-        bad_attr.owner_uuid = 1;
-        bad_attr.is_node_owner = 1;
-        bad_attr.value_tag = 255; // invalid
-        bad_attr.identifier = .{ .offset = 0, .length = 0 };
-        @memcpy(buf[header_size..][0..attr_size], std.mem.asBytes(&bad_attr));
+        const hdr: BinaryHeader = @bitCast(good_data[0..@sizeOf(BinaryHeader)].*);
+        // Attr stream starts after fixed sections
+        const attr_stream_start = @sizeOf(BinaryHeader) +
+            @as(usize, hdr.node_bitset_len) +
+            @as(usize, hdr.edge_bitset_len) +
+            @as(usize, hdr.node_count) * @sizeOf(PackedNode) +
+            @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
-        try std.testing.expectError(error.InvalidValueTag, GraphView.loads(a, &buf));
+        // First attr: skip 5-byte block header, then PackedAttribute starts
+        const first_attr_offset = attr_stream_start + 5;
+        var first_attr: PackedAttribute = @bitCast(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)].*);
+        first_attr.value_tag = 255; // invalid
+        @memcpy(good_data[first_attr_offset..][0..@sizeOf(PackedAttribute)], std.mem.asBytes(&first_attr));
+
+        try std.testing.expectError(error.InvalidValueTag, GraphView.loads(a, good_data));
     }
 
-    // Test 7: Invalid is_node_owner
+    // Test 7: Attr count mismatch (stream says 1 attr but header says 0)
     {
-        const header_size = @sizeOf(BinaryHeader);
-        const attr_size = @sizeOf(PackedAttribute);
-        const total = header_size + attr_size;
-        var buf: [total]u8 = undefined;
-        @memset(&buf, 0);
+        // Build a graph with one attributed node, serialize, then corrupt the header attr_count
+        var g3 = GraphView.init(a);
+        defer g3.deinit();
+        const bn = g3.create_and_insert_node();
+        bn.node.put("key", .{ .Int = 1 });
 
-        const hdr = BinaryHeader{
-            .magic_number = MAGIC,
-            .version = FORMAT_VERSION,
-            .self_node_uuid = 0,
-            .node_count = 0,
-            .edge_count = 0,
-            .attr_count = 1,
-            .node_bitset_len = 0,
-            .edge_bitset_len = 0,
-            .string_table_size = 0,
-        };
-        @memcpy(buf[0..header_size], std.mem.asBytes(&hdr));
+        const good_data = try g3.dumps(a);
+        defer a.free(good_data);
 
-        var bad_attr: PackedAttribute = undefined;
-        @memset(std.mem.asBytes(&bad_attr), 0);
-        bad_attr.owner_uuid = 1;
-        bad_attr.is_node_owner = 5; // invalid — must be 0 or 1
-        bad_attr.value_tag = 0;
-        bad_attr.identifier = .{ .offset = 0, .length = 0 };
-        @memcpy(buf[header_size..][0..attr_size], std.mem.asBytes(&bad_attr));
+        // Corrupt header.attr_count to 0 (but stream still has 1 attr)
+        var hdr: BinaryHeader = @bitCast(good_data[0..@sizeOf(BinaryHeader)].*);
+        hdr.attr_count = 0;
+        @memcpy(good_data[0..@sizeOf(BinaryHeader)], std.mem.asBytes(&hdr));
 
-        try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, &buf));
+        try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, good_data));
     }
 }
 
