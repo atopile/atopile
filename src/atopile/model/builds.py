@@ -12,10 +12,7 @@ from atopile.config import ProjectConfig
 from atopile.dataclasses import (
     Build,
     BuildRequest,
-    BuildResponse,
     BuildStatus,
-    BuildTargetInfo,
-    BuildTargetResponse,
     MaxConcurrentRequest,
 )
 from atopile.model import build_history
@@ -81,7 +78,7 @@ def handle_get_summary() -> dict:
 
     # Convert to dicts for JSON serialization
     return {
-        "builds": [b.model_dump(by_alias=True) for b in all_builds],
+        "builds": [b.model_dump() for b in all_builds],
         "totals": totals,
     }
 
@@ -129,11 +126,11 @@ def _resolve_request_targets(request: BuildRequest) -> list[str]:
         return ["default"]
 
 
-def handle_start_build(request: BuildRequest) -> BuildResponse:
-    """Start a new build."""
+def handle_start_build(request: BuildRequest) -> None:
+    """Validate and enqueue a build. Raises ValueError on invalid request."""
     error = validate_build_request(request)
     if error:
-        return BuildResponse(success=False, message=error)
+        raise ValueError(error)
 
     targets = _resolve_request_targets(request)
     if request.standalone and len(targets) > 1:
@@ -143,74 +140,28 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
         )
         targets = targets[:1]
 
-    build_label = request.entry if request.standalone else "project"
-    build_targets: list[BuildTargetInfo] = []
-    new_build_ids: list[str] = []
+    if not targets:
+        raise ValueError("No build targets resolved")
+
     timestamp = generate_build_timestamp()
 
     for target in targets:
-        existing_build_id = _build_queue.is_duplicate(
-            request.project_root, target, request.entry
-        )
-        if existing_build_id:
-            build_id = existing_build_id
-        else:
-            build_id = generate_build_id(request.project_root, target, timestamp)
-            _build_queue.enqueue(
-                Build(
-                    build_id=build_id,
-                    project_root=request.project_root,
-                    target=target,
-                    timestamp=timestamp,
-                    entry=request.entry,
-                    standalone=request.standalone,
-                    frozen=request.frozen,
-                    status=BuildStatus.QUEUED,
-                    started_at=time.time(),
-                )
+        if _build_queue.is_duplicate(request.project_root, target, request.entry):
+            continue
+        build_id = generate_build_id(request.project_root, target, timestamp)
+        _build_queue.enqueue(
+            Build(
+                build_id=build_id,
+                project_root=request.project_root,
+                target=target,
+                timestamp=timestamp,
+                entry=request.entry,
+                standalone=request.standalone,
+                frozen=request.frozen,
+                status=BuildStatus.QUEUED,
+                started_at=time.time(),
             )
-            new_build_ids.append(build_id)
-
-        build_targets.append(BuildTargetInfo(target=target, build_id=build_id))
-
-    if not build_targets:
-        return BuildResponse(
-            success=False,
-            message="No build targets resolved",
         )
-
-    if not new_build_ids:
-        message = (
-            "Build already in progress"
-            if len(build_targets) == 1
-            else "Builds already in progress"
-        )
-    elif len(build_targets) == 1:
-        message = f"Build queued for {build_label}"
-    else:
-        message = f"Queued {len(new_build_ids)} builds for {build_label}"
-
-    return BuildResponse(
-        success=True,
-        message=message,
-        build_targets=build_targets,
-    )
-
-
-def handle_get_build_status(build_id: str) -> BuildTargetResponse | None:
-    """Get status of a specific build target. Returns None if not found."""
-    build = _build_queue.find_build(build_id)
-    if not build:
-        return None
-
-    return BuildTargetResponse(
-        build_id=build_id,
-        target=build.target or "default",
-        status=build.status,
-        project_root=build.project_root,
-        return_code=build.return_code,
-        error=build.error,
-    )
 
 
 def handle_cancel_build(build_id: str) -> dict:
@@ -320,7 +271,7 @@ def handle_get_build_history(
     # Fix interrupted builds for consistent API response
     fixed_builds = [_fix_interrupted_build(b) for b in builds]
     return {
-        "builds": [b.model_dump(by_alias=True) for b in fixed_builds],
+        "builds": [b.model_dump() for b in fixed_builds],
         "total": len(fixed_builds),
     }
 
@@ -339,12 +290,12 @@ def handle_get_build_info(build_id: str) -> dict | None:
         history = BuildHistory.get(build_id) if build_id else None
         elapsed = history.elapsed_seconds if history else None
         updates: dict = {"elapsed_seconds": elapsed or 0.0}
-        return build.model_copy(update=updates).model_dump(by_alias=True)
+        return build.model_copy(update=updates).model_dump()
 
     # Fall back to build history database
     historical = BuildHistory.get(build_id)
     if historical:
-        return _fix_interrupted_build(historical).model_dump(by_alias=True)
+        return _fix_interrupted_build(historical).model_dump()
     return None
 
 
@@ -366,7 +317,7 @@ def handle_get_builds_by_project(
     # Fix interrupted builds for consistent API response
     fixed_builds = [_fix_interrupted_build(b) for b in builds]
     return {
-        "builds": [b.model_dump(by_alias=True) for b in fixed_builds],
+        "builds": [b.model_dump() for b in fixed_builds],
         "total": len(fixed_builds),
     }
 
@@ -375,7 +326,6 @@ __all__ = [
     "MaxConcurrentRequest",
     "handle_get_summary",
     "handle_start_build",
-    "handle_get_build_status",
     "handle_cancel_build",
     "handle_get_active_builds",
     "handle_get_build_queue_status",

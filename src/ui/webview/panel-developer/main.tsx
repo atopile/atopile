@@ -16,8 +16,8 @@ function GraphEdge({ connected }: { connected: boolean }) {
 }
 
 function App({ hubUrl }: AppProps) {
-  const { connected, state } = useWebSocket(hubUrl, ["core"]);
-  const core = state.core as { connected?: boolean } | undefined;
+  const { connected, state } = useWebSocket(hubUrl, ["core_status"]);
+  const core = state.core_status as { connected?: boolean } | undefined;
   const coreConnected = Boolean(core?.connected);
 
   return (

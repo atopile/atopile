@@ -27,10 +27,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const hubPort = await findFreePort();
   const coreServerPort = await findFreePort();
 
-  // Shared env — both processes know both ports
+  // Shared port env — both processes know both ports
+  const workspaceFolders =
+    vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath).join(":") ?? "";
   const portEnv = {
     [HUB_PORT_ENV]: String(hubPort),
     [CORE_SERVER_PORT_ENV]: String(coreServerPort),
+  };
+  // Hub owns workspace abstraction — core server doesn't need it
+  const hubEnv = {
+    ...portEnv,
+    ATOPILE_WORKSPACE_FOLDERS: workspaceFolders,
   };
 
   // 2. Start hub (fast Python process)
@@ -39,7 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command: "ato",
     args: ["serve", "hub"],
     readyMarker: HUB_READY_MARKER,
-    env: portEnv,
+    env: hubEnv,
     timeoutMs: 10_000,
   });
   await hub.start();

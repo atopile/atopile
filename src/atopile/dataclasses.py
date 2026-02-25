@@ -390,6 +390,7 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=_to_camel,
         populate_by_name=True,
+        serialize_by_alias=True,
     )
 
 
@@ -490,53 +491,6 @@ class BuildRequest(CamelModel):
     exclude_targets: list[str] = []
 
 
-class BuildTargetInfo(CamelModel):
-    """Build target queued by a build request."""
-
-    target: str
-    build_id: str
-
-
-class BuildResponse(CamelModel):
-    """Response from build request."""
-
-    success: bool
-    message: str
-    build_targets: list[BuildTargetInfo] = Field(default_factory=list)
-
-
-class BuildTargetResponse(CamelModel):
-    """Response for build target status (one build_id = one target)."""
-
-    build_id: str
-    target: str
-    status: BuildStatus
-    project_root: str
-    return_code: Optional[int] = None
-    error: Optional[str] = None
-
-
-class BuildTargetStatus(CamelModel):
-    """Persisted status from last build of a target."""
-
-    status: BuildStatus
-    timestamp: str  # ISO format
-    elapsed_seconds: Optional[float] = None
-    warnings: int = 0
-    errors: int = 0
-    stages: Optional[list[dict]] = None
-    build_id: Optional[str] = None  # Build ID hash for reference
-
-
-class BuildTarget(CamelModel):
-    """A build target from ato.yaml."""
-
-    name: str
-    entry: str
-    root: str
-    last_build: Optional[BuildTargetStatus] = None
-
-
 class BuildsResponse(CamelModel):
     """Response for /api/builds endpoints."""
 
@@ -559,7 +513,7 @@ class Project(CamelModel):
 
     root: str
     name: str
-    targets: list[BuildTarget]
+    targets: list[str]
     display_path: Optional[str] = (
         None  # Relative path for display (e.g., "packages/proj")
     )
@@ -667,7 +621,7 @@ class AddBuildTargetRequest(BaseModel):
 class AddBuildTargetResponse(BaseModel):
     success: bool
     message: str
-    target: Optional[dict] = None
+    target: Optional[str] = None
 
 
 class UpdateBuildTargetRequest(BaseModel):
@@ -680,7 +634,7 @@ class UpdateBuildTargetRequest(BaseModel):
 class UpdateBuildTargetResponse(BaseModel):
     success: bool
     message: str
-    target: Optional[dict] = None
+    target: Optional[str] = None
 
 
 class DeleteBuildTargetRequest(BaseModel):

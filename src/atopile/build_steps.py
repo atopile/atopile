@@ -216,8 +216,8 @@ class MusterTarget:
                     status=BuildStatus.BUILDING,
                     started_at=build_started_at,
                     elapsed_seconds=time.time() - build_started_at,
-                    stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages]
-                    + [running_stage.model_dump(by_alias=True)],
+                    stages=[s.model_dump() for s in ctx.completed_stages]
+                    + [running_stage.model_dump()],
                 )
             )
 
@@ -283,9 +283,7 @@ class MusterTarget:
                         status=BuildStatus.BUILDING,
                         started_at=started_at,
                         elapsed_seconds=time.time() - started_at,
-                        stages=[
-                            s.model_dump(by_alias=True) for s in ctx.completed_stages
-                        ],
+                        stages=[s.model_dump() for s in ctx.completed_stages],
                     )
                 )
             self.success = succeeded

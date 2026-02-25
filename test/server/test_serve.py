@@ -11,7 +11,6 @@ import subprocess
 import sys
 import time
 
-import requests
 import websockets
 
 
@@ -66,10 +65,6 @@ def test_hub_and_core_server_start_and_respond():
                     found = True
                     break
             assert found, f"{name} did not print {marker}"
-
-        # Core server: HTTP health check
-        resp = requests.get(f"http://127.0.0.1:{core_port}/health", timeout=5)
-        assert resp.json()["status"] == "ok"
 
         # Hub: WS subscribe returns state
         async def _ws_check():

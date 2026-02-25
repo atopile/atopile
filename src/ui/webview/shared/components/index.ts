@@ -47,4 +47,5 @@ export {
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './Tooltip'
 export { TreeRowHeader } from './TreeRowHeader'
 export type { TreeRowHeaderProps } from './TreeRowHeader'
+export { useResizeHandle } from './useResizeHandle'
 export { VersionSelector } from './VersionSelector'

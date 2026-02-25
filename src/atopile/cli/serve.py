@@ -76,16 +76,16 @@ def core(
     ),
 ) -> None:
     """Start the core server in the current terminal."""
-    from atopile.server.server import run_server
+    from atopile.dataclasses import AppContext
+    from atopile.server.server import CoreServer
 
     port = _require_env_port(CORE_SERVER_PORT_ENV)
-
-    run_server(
-        port=port,
-        force=force,
+    ctx = AppContext(
         ato_source=ato_source,
-        ato_binary_path=ato_binary_path,
         ato_local_path=ato_local_path,
+        ato_binary_path=ato_binary_path,
         ato_from_branch=ato_from_branch,
         ato_from_spec=ato_from_spec,
     )
+
+    CoreServer(port=port, force=force, ctx=ctx).run()

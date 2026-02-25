@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -15,10 +14,6 @@ from atopile import config
 from atopile.dataclasses import (
     AddBuildTargetRequest,
     AddBuildTargetResponse,
-    Build,
-    BuildStatus,
-    BuildTarget,
-    BuildTargetStatus,
     CreateProjectRequest,
     CreateProjectResponse,
     DeleteBuildTargetRequest,
@@ -36,7 +31,6 @@ from atopile.dataclasses import (
     UpdateDependencyVersionRequest,
     UpdateDependencyVersionResponse,
 )
-from atopile.model import build_history
 from atopile.model import packages as packages_domain
 from atopile.version import needs_migration
 from faebryk.libs.package.meta import get_package_state
@@ -47,46 +41,6 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Low-level helpers (previously in core/projects.py)
 # ---------------------------------------------------------------------------
-
-
-def load_last_build_for_target(
-    project_root: Path, target_name: str
-) -> Optional[BuildTargetStatus]:
-    """Load the last build status for a target from build history database."""
-    try:
-        build: Optional[Build] = build_history.get_latest_build_for_target(
-            str(project_root), target_name
-        )
-
-        if not build:
-            return None
-
-        # Convert started_at timestamp to ISO format
-        if build.started_at:
-            timestamp = datetime.fromtimestamp(build.started_at).isoformat()
-        else:
-            timestamp = ""
-
-        status = build.status
-
-        # If status is "building" or "queued", the build was interrupted
-        # (server crashed/restarted while build was in progress)
-        # Treat as "failed" so UI doesn't show stale "building" status
-        if status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
-            status = BuildStatus.FAILED
-
-        return BuildTargetStatus(
-            status=status,
-            timestamp=timestamp,
-            elapsed_seconds=build.elapsed_seconds,
-            warnings=build.warnings,
-            errors=build.errors,
-            stages=build.stages,
-            build_id=build.build_id,
-        )
-    except Exception as e:
-        log.debug(f"Failed to load build summary for {target_name}: {e}")
-        return None
 
 
 def extract_modules_from_file(
@@ -249,16 +203,11 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 if not data or "builds" not in data:
                     continue
 
-                targets: list[BuildTarget] = []
-                for name, cfg in data.get("builds", {}).items():
-                    if isinstance(cfg, dict):
-                        targets.append(
-                            BuildTarget(
-                                name=name,
-                                entry=cfg.get("entry", ""),
-                                root=root_str,
-                            )
-                        )
+                targets: list[str] = [
+                    name
+                    for name, cfg in data.get("builds", {}).items()
+                    if isinstance(cfg, dict)
+                ]
 
                 if targets:
                     try:
@@ -380,7 +329,7 @@ def save_ato_yaml(ato_file: Path, data: dict) -> None:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
 
-def add_build_target(project_root: Path, name: str, entry: str) -> BuildTarget:
+def add_build_target(project_root: Path, name: str, entry: str) -> str:
     """
     Add a new build target to ato.yaml.
 
@@ -397,7 +346,7 @@ def add_build_target(project_root: Path, name: str, entry: str) -> BuildTarget:
     data["builds"][name] = {"entry": entry}
     save_ato_yaml(ato_file, data)
 
-    return BuildTarget(name=name, entry=entry, root=str(project_root))
+    return name
 
 
 def update_build_target(
@@ -405,7 +354,7 @@ def update_build_target(
     old_name: str,
     new_name: Optional[str] = None,
     new_entry: Optional[str] = None,
-) -> BuildTarget:
+) -> str:
     """
     Update a build target in ato.yaml.
 
@@ -438,15 +387,7 @@ def update_build_target(
     data["builds"][final_name] = target_data
     save_ato_yaml(ato_file, data)
 
-    # Load last build status for the target
-    last_build = load_last_build_for_target(project_root, final_name)
-
-    return BuildTarget(
-        name=final_name,
-        entry=target_data.get("entry", ""),
-        root=str(project_root),
-        last_build=last_build,
-    )
+    return final_name
 
 
 def delete_build_target(project_root: Path, name: str) -> bool:
@@ -850,12 +791,8 @@ def handle_add_build_target(
         target = add_build_target(project_path, request.name, request.entry)
         return AddBuildTargetResponse(
             success=True,
-            message=f"Added build target '{request.name}'",
-            target={
-                "name": target.name,
-                "entry": target.entry,
-                "root": target.root,
-            },
+            message=f"Added build target '{target}'",
+            target=target,
         )
     except ValueError as exc:
         raise exc
@@ -881,12 +818,8 @@ def handle_update_build_target(
         )
         return UpdateBuildTargetResponse(
             success=True,
-            message=f"Updated build target '{target.name}'",
-            target={
-                "name": target.name,
-                "entry": target.entry,
-                "root": target.root,
-            },
+            message=f"Updated build target '{target}'",
+            target=target,
         )
     except ValueError as exc:
         raise exc

@@ -9,6 +9,7 @@ interface ServerMessage {
 interface UseWebSocketResult {
   connected: boolean;
   state: Record<string, unknown>;
+  sendAction: (action: string, payload?: Record<string, unknown>) => void;
 }
 
 /**
@@ -83,5 +84,16 @@ export function useWebSocket(hubUrl: string, keys: string[]): UseWebSocketResult
     };
   }, [connect]);
 
-  return { connected, state };
+  const sendAction = useCallback(
+    (action: string, payload?: Record<string, unknown>) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: "action", action, ...payload })
+        );
+      }
+    },
+    []
+  );
+
+  return { connected, state, sendAction };
 }

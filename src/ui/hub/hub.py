@@ -14,7 +14,8 @@ import logging
 import os
 import signal
 import sys
-from typing import Optional
+from dataclasses import replace
+from typing import Any, Optional
 
 import websockets
 
@@ -29,19 +30,69 @@ CORE_SERVER_PORT_ENV = "ATOPILE_CORE_SERVER_PORT"
 
 
 class Hub:
-    def __init__(self, port: int, core_server_port: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        port: int,
+        core_server_port: Optional[int] = None,
+        workspace_folders: Optional[list[str]] = None,
+    ) -> None:
         self.port = port
+        self._workspace_folders = workspace_folders or []
         self._shutdown_event = asyncio.Event()
 
         self._webview_socket = WebviewSocket()
-        store.on_change = self._webview_socket.on_store_change
+        self._webview_socket.on_action = self._handle_action
+        store.on_change = self._on_store_change
 
         self._core_socket: Optional[CoreSocket] = None
         if core_server_port is not None:
             self._core_socket = CoreSocket(
                 port=core_server_port,
-                shutdown_event=self._shutdown_event,
+                on_connected=self._on_core_connected,
             )
+
+    # -- Store change handling ---------------------------------------------
+
+    async def _on_store_change(self, key: str, value: Any) -> None:
+        """Called when any store field changes."""
+        await self._webview_socket.on_store_change(key, value)
+
+    # -- Core connection handling ------------------------------------------
+
+    async def _on_core_connected(self) -> None:
+        """Called when the core server WebSocket connects."""
+        # Ask core to discover projects using our workspace paths
+        await self._core_socket.send_action(
+            {
+                "type": "action",
+                "action": "discover_projects",
+                "paths": self._workspace_folders,
+            }
+        )
+
+    # -- Action routing ----------------------------------------------------
+
+    async def _handle_action(self, msg: dict) -> None:
+        """Route an action from a webview client."""
+        s = store.store
+        match msg.get("action"):
+            case "select_project":
+                s.project_state = replace(
+                    s.project_state,
+                    selected_project=msg.get("projectRoot"),
+                    selected_target=None,
+                )
+                return
+            case "select_target":
+                s.project_state = replace(
+                    s.project_state, selected_target=msg.get("target")
+                )
+                return
+            case "discover_projects":
+                msg = {**msg, "paths": self._workspace_folders}
+        # Everything else goes to the core server
+        if self._core_socket is not None:
+            await self._core_socket.send_action(msg)
 
     # -- Lifecycle ---------------------------------------------------------
 
@@ -90,7 +141,15 @@ def run_hub(port: int) -> None:
     raw = os.environ.get(CORE_SERVER_PORT_ENV)
     core_server_port = int(raw) if raw else None
 
-    hub = Hub(port=port, core_server_port=core_server_port)
+    workspace_folders = [
+        p for p in os.environ.get("ATOPILE_WORKSPACE_FOLDERS", "").split(":") if p
+    ]
+
+    hub = Hub(
+        port=port,
+        core_server_port=core_server_port,
+        workspace_folders=workspace_folders,
+    )
 
     loop = asyncio.new_event_loop()
 

@@ -22,6 +22,7 @@ class WebviewSocket:
 
     def __init__(self) -> None:
         self._subscriptions: dict[ServerConnection, set[str]] = {}
+        self.on_action: Any = None  # async callback for action messages
 
     async def handle_client(self, ws: ServerConnection) -> None:
         """WebSocket handler passed to ``websockets.serve``."""
@@ -42,20 +43,22 @@ class WebviewSocket:
             log.info("Client disconnected (%d total)", len(self._subscriptions))
 
     async def _on_message(self, ws: ServerConnection, msg: dict) -> None:
-        msg_type = msg.get("type")
-        if msg_type == "subscribe":
-            keys = msg.get("keys")
-            if isinstance(keys, list):
-                self._subscriptions[ws] = set(keys)
-                # Send the full current value for each subscribed key
-                for key in keys:
-                    try:
-                        value = store.get(key)
-                        await self._send(
-                            ws, {"type": "state", "key": key, "data": value}
-                        )
-                    except AttributeError:
-                        log.warning("Client subscribed to unknown key: %s", key)
+        match msg.get("type"):
+            case "subscribe":
+                keys = msg.get("keys")
+                if isinstance(keys, list):
+                    self._subscriptions[ws] = set(keys)
+                    for key in keys:
+                        try:
+                            value = store.get(key)
+                            await self._send(
+                                ws, {"type": "state", "key": key, "data": value}
+                            )
+                        except AttributeError:
+                            log.warning("Client subscribed to unknown key: %s", key)
+            case "action":
+                if self.on_action:
+                    await self.on_action(msg)
 
     async def on_store_change(self, key: str, value: Any) -> None:
         """Called when a store field changes. Sends to subscribed clients."""

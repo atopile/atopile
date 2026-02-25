@@ -2,8 +2,8 @@
 
 Single-instance module. Import and mutate fields directly:
 
-    from .store import store, CoreStatus
-    store.core = CoreStatus(connected=True)
+    from .store import store
+    store.projects = ({"root": "/a", "name": "myproj", "targets": []},)
 
 Assigning to a field automatically notifies subscribers.
 """
@@ -27,21 +27,28 @@ class CoreStatus:
     connected: bool = False
 
 
+@dataclass(frozen=True)
+class ProjectState:
+    projects: tuple = ()
+    builds: tuple = ()
+    selected_project: str | None = None
+    selected_target: str | None = None
+
+
 @dataclass
 class Store:
     """In-memory shared UI state. Notifies on change automatically.
 
     Top-level fields are reactive — assigning to them notifies subscribers.
-    Nested state should use frozen dataclasses, replaced wholesale on update.
     """
 
-    core: CoreStatus = CoreStatus()
+    core_status: CoreStatus = CoreStatus()
+    project_state: ProjectState = ProjectState()
 
     def __setattr__(self, name: str, value: Any) -> None:
         try:
             old = getattr(self, name)
         except AttributeError:
-            # Field doesn't exist yet (initial dataclass setup)
             object.__setattr__(self, name, value)
             return
         object.__setattr__(self, name, value)
