@@ -558,6 +558,182 @@ export async function rerenderWithLimits(
   return updated;
 }
 
+/**
+ * Inject/replace limit shapes in a pre-built plotSpec using req.minVal/maxVal.
+ * Strips existing Python-generated limit shapes (red lines, green rects) and
+ * adds fresh ones matching the current requirement bounds.
+ * Returns a new spec object (does not mutate the original).
+ */
+export function injectLimitShapes(
+  spec: { data: Record<string, unknown>[]; layout: Record<string, unknown> },
+  req: RequirementData,
+): { data: Record<string, unknown>[]; layout: Record<string, unknown> } {
+  if (req.minVal == null || req.maxVal == null) return spec;
+  if (!isFinite(req.minVal) || !isFinite(req.maxVal)) return spec;
+
+  const cloned: { data: Record<string, unknown>[]; layout: Record<string, unknown> } =
+    JSON.parse(JSON.stringify(spec));
+  const layout = cloned.layout;
+
+  // Helper: check if an xref/yref is a "spanning" ref that indicates a limit shape.
+  // Plotly uses 'paper' (older) or 'x domain'/'y domain' (newer) for full-span refs.
+  const isSpanRef = (ref: unknown): boolean =>
+    ref === 'paper' || (typeof ref === 'string' && ref.endsWith(' domain'));
+
+  // Strip ALL existing limit shapes: pass-band rects, dotted limit lines, and
+  // legacy red limit lines.
+  const existingShapes = (layout.shapes ?? []) as Record<string, unknown>[];
+  layout.shapes = existingShapes.filter((s: Record<string, unknown>) => {
+    const line = s.line as Record<string, unknown> | undefined;
+    const dash = line?.dash;
+    // Pass-band rect: rect with a spanning ref on either axis
+    if (s.type === 'rect' && (isSpanRef(s.xref) || isSpanRef(s.yref))) return false;
+    // Dotted limit lines with a spanning ref
+    if (s.type === 'line' && (isSpanRef(s.xref) || isSpanRef(s.yref)) && dash === 'dot') return false;
+    // Legacy red limit lines
+    if (s.type === 'line' && line?.color === 'red' && (isSpanRef(s.xref) || isSpanRef(s.yref))) return false;
+    return true;
+  });
+
+  // Strip ALL limit annotations (LSL/USL labels)
+  const existingAnns = (layout.annotations ?? []) as Record<string, unknown>[];
+  layout.annotations = existingAnns.filter((a: Record<string, unknown>) => {
+    const txt = typeof a.text === 'string' ? a.text : '';
+    if (txt.includes('LSL') || txt.includes('USL')) return false;
+    return true;
+  });
+
+  const colors = themeColors();
+
+  // Limits always apply to the y-axis (the measured value)
+  (layout.shapes as Record<string, unknown>[]).push(
+    { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.maxVal, fillcolor: `${colors.success}14`, line: { width: 0 } },
+    { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.minVal, y1: req.minVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+    { type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: req.maxVal, y1: req.maxVal, line: { color: colors.muted, width: 1.5, dash: 'dot' } },
+  );
+  (layout.annotations as Record<string, unknown>[]).push(
+    { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
+    { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
+  );
+
+  return cloned;
+}
+
+/**
+ * Apply a plot field change to a PlotSpec's layout/meta.
+ * Returns a deep-cloned spec with the change applied, suitable for re-rendering.
+ *
+ * For `y` / `y_secondary` changes, rebuilds traces from timeSeries data if available.
+ * For `title`, updates layout.title.text directly.
+ */
+export function applyPlotFieldToSpec<T extends { data: Record<string, unknown>[]; layout: Record<string, unknown> }>(
+  spec: T,
+  field: string,
+  value: string,
+  timeSeries?: { time: number[]; signals: Record<string, number[]> } | null,
+): T {
+  const cloned: T = JSON.parse(JSON.stringify(spec));
+
+  // Update meta if present
+  const meta = (cloned as Record<string, unknown>).meta as Record<string, unknown> | undefined;
+  if (meta) {
+    meta[field] = value;
+  }
+
+  // Apply to layout where possible
+  if (field === 'title') {
+    const layout = cloned.layout;
+    const existing = layout.title as Record<string, unknown> | undefined;
+    if (existing && typeof existing === 'object') {
+      const oldText = typeof existing.text === 'string' ? existing.text : '';
+      const badgeMatch = oldText.match(/(\s*<span style='color:#[0-9a-f]+.*?\[(?:PASS|FAIL)\]<\/span>.*)/i);
+      existing.text = `<b>${value}</b>${badgeMatch ? badgeMatch[1] : ''}`;
+    } else {
+      layout.layout = { text: `<b>${value}</b>`, x: 0.5, font: { size: 16 } };
+    }
+  }
+
+  // Rebuild traces from timeSeries when y-axis changes
+  if ((field === 'y' || field === 'y_secondary') && timeSeries && value) {
+    const allY = meta?.y as string | undefined;
+    const allYSec = meta?.y_secondary as string | undefined;
+
+    // Determine which signals to show on primary and secondary axes
+    const primarySignals = field === 'y' ? value : (allY ?? '');
+    const secondarySignals = field === 'y_secondary' ? value : (allYSec ?? '');
+
+    // Rebuild the data traces array from timeSeries
+    const newTraces: Record<string, unknown>[] = [];
+    const timeData = timeSeries.time;
+
+    // Helper to resolve a signal spec to a timeSeries key
+    const resolveSignal = (sigSpec: string): { key: string; data: number[] } | null => {
+      // Direct match: v(net) or i(element)
+      if (sigSpec in timeSeries.signals) return { key: sigSpec, data: timeSeries.signals[sigSpec] };
+      // Try wrapping in v()
+      const vKey = `v(${sigSpec})`;
+      if (vKey in timeSeries.signals) return { key: vKey, data: timeSeries.signals[vKey] };
+      // Try with dots replaced by underscores (net alias convention)
+      const underscored = sigSpec.replace(/\./g, '_');
+      const vKeyU = `v(${underscored})`;
+      if (vKeyU in timeSeries.signals) return { key: vKeyU, data: timeSeries.signals[vKeyU] };
+      // Try as current probe
+      const iKey = `i(${sigSpec})`;
+      if (iKey in timeSeries.signals) return { key: iKey, data: timeSeries.signals[iKey] };
+      // Fuzzy: find a signal key containing the spec
+      for (const [k, d] of Object.entries(timeSeries.signals)) {
+        if (k.includes(sigSpec) || k.includes(underscored)) return { key: k, data: d };
+      }
+      return null;
+    };
+
+    // Add primary traces
+    for (const sig of primarySignals.split(',').map(s => s.trim()).filter(Boolean)) {
+      const resolved = resolveSignal(sig);
+      if (resolved) {
+        newTraces.push({
+          x: timeData,
+          y: resolved.data,
+          mode: 'lines',
+          name: resolved.key,
+          type: 'scatter',
+        });
+      }
+    }
+
+    // Add secondary traces (dashed, on yaxis2)
+    for (const sig of secondarySignals.split(',').map(s => s.trim()).filter(Boolean)) {
+      const resolved = resolveSignal(sig);
+      if (resolved) {
+        newTraces.push({
+          x: timeData,
+          y: resolved.data,
+          mode: 'lines',
+          name: resolved.key,
+          type: 'scatter',
+          yaxis: 'y2',
+          line: { dash: 'dash' },
+        });
+      }
+    }
+
+    if (newTraces.length > 0) {
+      cloned.data = newTraces as T['data'];
+
+      // Ensure yaxis2 exists in layout if we have secondary traces
+      if (secondarySignals) {
+        cloned.layout.yaxis2 = {
+          overlaying: 'y',
+          side: 'right',
+          showgrid: false,
+        };
+      }
+    }
+  }
+
+  return cloned;
+}
+
 export async function purgePlot(el: HTMLDivElement) {
   const Plotly = await getPlotly();
   Plotly.purge(el);

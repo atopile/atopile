@@ -222,6 +222,54 @@ async def rerun_simulation(request: RerunSimulationRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+class RerunSingleRequest(BaseModel):
+    netlist_path: str
+    spice_sources: str = ""
+    sim_type: str = "transient"
+    net: str
+    measurement: str
+    tran_start: float = 0
+    tran_stop: float = 100e-6
+    tran_step: float = 1e-9
+    settling_tolerance: float | None = None
+    context_nets: list[str] = []
+    min_val: float | None = None
+    max_val: float | None = None
+
+
+@router.post("/api/simulations/rerun-single")
+async def rerun_single_simulation(request: RerunSingleRequest):
+    """Rerun a single simulation using an existing netlist file."""
+    try:
+        result = await asyncio.to_thread(
+            requirements_domain.handle_rerun_single,
+            request.netlist_path,
+            request.spice_sources,
+            request.sim_type,
+            request.net,
+            request.measurement,
+            request.tran_start,
+            request.tran_stop,
+            request.tran_step,
+            request.settling_tolerance,
+            request.context_nets,
+            request.min_val,
+            request.max_val,
+        )
+        safe_result = _sanitize_floats(result)
+        return Response(
+            content=json.dumps(safe_result, separators=(",", ":")),
+            media_type="application/json",
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log.exception("Failed to rerun single simulation")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/api/resolve-location")
 async def resolve_location(
     address: str = Query(

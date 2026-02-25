@@ -10,17 +10,8 @@ import Resistor
 from "buck_converter.ato" import TI_TPS54560
 
 # =============================================================================
-# Design Validation — Switching Frequency Sweep
-#
-# Four DUT instances of TI_TPS54560, each at 12V input / 5V output but with
-# different switching frequencies (400kHz, 800kHz, 1200kHz, 1800kHz).
-# The behavioral SPICE model uses FS parameter directly (not R_RT), so only
-# switching_frequency needs to vary per DUT.
-#
-# `dut.switching_frequency` → resolves to Hz value per DUT (e.g., 400000.0)
-# `dut.power_in.hv` → resolves to net name per DUT
+# Design Validation
 # =============================================================================
-
 
 # Test bench wrapper: TI_TPS54560 + load resistor in same scope
 module TPS54560_DV from TI_TPS54560:
@@ -32,9 +23,9 @@ module TPS54560_DV from TI_TPS54560:
 
 
 module DesignValidation:
-    """Design validation: switching frequency sweep at 12V input."""
+    """Design validation: comprehensive analysis of TPS54560 buck converter."""
 
-    #  DUT Instances (all 12V in, 5V out, varying switching frequency) ---
+    # DUT Instance
     dut_400k = new TPS54560_DV
     dut_400k.r_top.resistance = 53.6kohm +/- 1%
     assert dut_400k.switching_frequency within 400kHz +/- 5%
@@ -42,56 +33,60 @@ module DesignValidation:
     dut_400k.power_out.max_current = 5A
     assert dut_400k.power_in.voltage within 12V +/- 5%
 
-    # dut_800k = new TPS54560_DV
-    # dut_800k.r_top.resistance = 53.6kohm +/- 1%
-    # assert dut_800k.switching_frequency within 800kHz +/- 5%
-    # assert dut_800k.power_out.voltage within 5V +/- 5%
-    # dut_800k.power_out.max_current = 5A
-    # assert dut_800k.power_in.voltage within 12V +/- 5%
-
-    # dut_1200k = new TPS54560_DV
-    # dut_1200k.r_top.resistance = 53.6kohm +/- 1%
-    # assert dut_1200k.switching_frequency within 1200kHz +/- 5%
-    # assert dut_1200k.power_out.voltage within 5V +/- 5%
-    # assert dut_1200k.power_in.voltage within 12V +/- 5%
-
-    # dut_1800k = new TPS54560_DV
-    # dut_1800k.r_top.resistance = 53.6kohm +/- 1%
-    # assert dut_1800k.switching_frequency within 1800kHz +/- 5%
-    # assert dut_1800k.power_out.voltage within 5V +/- 5%
-    # assert dut_1800k.power_in.voltage within 12V +/- 5%
-
-    dut_list = "dut_400k"#,dut_800k,dut_1200k,dut_1800k""
+    dut_list = "dut_400k"
 
     # =====================================================================
-    # Simulations
+    # Simulations (shared, referenced by requirements)
     # =====================================================================
 
-    # --- Startup Transient (shared across all DUTs) ---
+    # Startup: frequency sweep for settling time analysis
     startup_transient = new SimulationSweep
     startup_transient.duts = "dut_400k"
     startup_transient.param_name = "dut.switching_frequency"
     startup_transient.param_values = "400e3,800e3,1200e3,1600e3"
     startup_transient.param_unit = "Hz"
-    startup_transient.duts = "dut_400k"
     startup_transient.spice = "V1 dut.power_in.hv 0 PULSE(0 dut.power_in.voltage 0 10u 10u 10 10)"
     startup_transient.time_stop = 6ms
     startup_transient.time_step = 1us
 
-    # --- Output Capacitance Sweep (dut_400k only) ---
-    cout_sweep = new SimulationSweep
-    cout_sweep.duts = "dut_400k"
-    cout_sweep.param_name = "COUT"
-    cout_sweep.param_values = "100e-6,150e-6,200e-6,247e-6,330e-6"
-    cout_sweep.param_unit = "F"
-    cout_sweep.remove_elements = "C5,C6,C7,C8,R5"
-    cout_sweep.spice = "V1 dut.power_in.hv 0 {dut.power_in.voltage}|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(100m {dut.power_out.max_current} 5.2m 1u 1u 0.4m 100m)"
-    cout_sweep.extra_spice_template = "Cout dut.power_out.hv 0 {COUT}"
-    cout_sweep.time_start = 4.5ms
-    cout_sweep.time_stop = 7ms
-    cout_sweep.time_step = 100ns
+    # Load step: ILOAD sweep with PULSE load (100mA -> swept ILOAD)
+    iload_step = new SimulationSweep
+    iload_step.duts = "dut_400k"
+    iload_step.param_name = "ILOAD"
+    iload_step.param_values = "0.5,1,2,3,4,5"
+    iload_step.param_unit = "A"
+    iload_step.remove_elements = "R5"
+    iload_step.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(100m {ILOAD} 5.2m 1u 1u 0.4m 100m)"
+    iload_step.time_start = 5ms
+    iload_step.time_stop = 6ms
+    iload_step.time_step = 100ns
 
-    # --- Output Capacitance Ripple Sweep (steady-state DC load) ---
+    # Load sweep: DC ILOAD for steady-state metrics
+    iload_sweep = new SimulationSweep
+    iload_sweep.duts = "dut_400k"
+    iload_sweep.param_name = "ILOAD"
+    iload_sweep.param_values = "0.1,1,2,3,4,5"
+    iload_sweep.param_unit = "A"
+    iload_sweep.remove_elements = "R5"
+    iload_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC {ILOAD}"
+    iload_sweep.time_start = 5ms
+    iload_sweep.time_stop = 5.2ms
+    iload_sweep.time_step = 100ns
+
+    # Cout load step: COUT sweep with PULSE load (fixed at max_current)
+    cout_step = new SimulationSweep
+    cout_step.duts = "dut_400k"
+    cout_step.param_name = "COUT"
+    cout_step.param_values = "100e-6,150e-6,200e-6,247e-6,330e-6"
+    cout_step.param_unit = "F"
+    cout_step.remove_elements = "C5,C6,C7,C8,R5"
+    cout_step.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(100m {dut.power_out.max_current} 5.2m 1u 1u 0.4m 100m)"
+    cout_step.extra_spice_template = "Cout dut.power_out.hv 0 {COUT}"
+    cout_step.time_start = 5ms
+    cout_step.time_stop = 6.5ms
+    cout_step.time_step = 100ns
+
+    # Cout ripple: COUT sweep with DC load (steady-state ripple)
     cout_ripple_sweep = new SimulationSweep
     cout_ripple_sweep.duts = "dut_400k"
     cout_ripple_sweep.param_name = "COUT"
@@ -104,7 +99,7 @@ module DesignValidation:
     cout_ripple_sweep.time_stop = 5.2ms
     cout_ripple_sweep.time_step = 10ns
 
-    # --- Input Voltage Sweep — Line Regulation (dut_400k only) ---
+    # VIN sweep: line regulation
     vin_sweep = new SimulationSweep
     vin_sweep.duts = "dut_400k"
     vin_sweep.param_name = "VIN"
@@ -116,164 +111,133 @@ module DesignValidation:
     vin_sweep.time_stop = 5.2ms
     vin_sweep.time_step = 100ns
 
-    # --- Load Current Sweep — Load Regulation (dut_400k only) ---
-    iload_sweep = new SimulationSweep
-    iload_sweep.duts = "dut_400k"
-    iload_sweep.param_name = "ILOAD"
-    iload_sweep.param_values = "0.1,1,2,3,4,5"
-    iload_sweep.param_unit = "A"
-    iload_sweep.remove_elements = "R5"
-    iload_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC {ILOAD}"
-    iload_sweep.time_start = 5ms
-    iload_sweep.time_stop = 5.2ms
-    iload_sweep.time_step = 100ns
-
-    # --- Steady-State Inductor Current (dut_400k, nominal 1A load) ---
-    ss_inductor = new SimulationTransient
-    ss_inductor.duts = "dut_400k"
-    ss_inductor.remove_elements = "R5"
-    ss_inductor.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Iload dut.power_out.hv 0 DC 1"
-    ss_inductor.time_start = 4.5ms
-    ss_inductor.time_stop = 4.6ms
-    ss_inductor.time_step = 10ns
-
     # =====================================================================
-    # Plots
+    # Plots (no simulation field — inherit from requirement)
     # =====================================================================
 
-    # --- REQ_001 plots ---
-    plot_startup_vout = new LineChart
-    plot_startup_vout.title = "Output Voltage Startup"
-    plot_startup_vout.x = "time"
-    plot_startup_vout.y = "dut.power_out.hv"
-    plot_startup_vout.simulation = "startup_transient"
-
+    # --- Startup plots ---
     plot_settling_vs_freq = new LineChart
     plot_settling_vs_freq.title = "Settling Time vs Switching Frequency"
     plot_settling_vs_freq.x = "dut.switching_frequency"
     plot_settling_vs_freq.y = "settling_time(dut.power_out.hv)"
-    plot_settling_vs_freq.simulation = "startup_transient"
 
-    # --- REQ_002 plots ---
-    plot_cout_transient = new LineChart
-    plot_cout_transient.title = "Output Voltage vs Capacitance"
-    plot_cout_transient.x = "time"
-    plot_cout_transient.y = "dut.power_out.hv"
-    plot_cout_transient.y_secondary = "i(vsense)"
-    plot_cout_transient.simulation = "cout_sweep"
-    assert plot_cout_transient.y_range within 5V +/- 10%
+    plot_startup_vout = new LineChart
+    plot_startup_vout.title = "Output Voltage Startup"
+    plot_startup_vout.x = "time"
+    plot_startup_vout.y = "dut.power_out.hv"
 
-    plot_cout_envelope = new LineChart
-    plot_cout_envelope.title = "Output Voltage Envelope vs Capacitance"
-    plot_cout_envelope.x = "COUT"
-    plot_cout_envelope.y = "envelope(dut.power_out.hv)"
-    plot_cout_envelope.simulation = "cout_sweep"
+    # --- Load step (ILOAD PULSE) plots ---
+    plot_loadstep_vout = new LineChart
+    plot_loadstep_vout.title = "Load Step Transient"
+    plot_loadstep_vout.x = "time"
+    plot_loadstep_vout.y = "dut.power_out.hv"
+    plot_loadstep_vout.y_secondary = "i(vsense)"
+    plot_loadstep_vout.color = "ILOAD"
 
-    # --- REQ_003 plots (line regulation) ---
+    plot_loadstep_envelope = new LineChart
+    plot_loadstep_envelope.title = "Load Step Envelope vs Load Current"
+    plot_loadstep_envelope.x = "ILOAD"
+    plot_loadstep_envelope.y = "envelope(dut.power_out.hv)"
+
+    # --- Line regulation plots ---
+    plot_vin_bar = new BarChart
+    plot_vin_bar.title = "Average Output vs Input Voltage"
+    plot_vin_bar.x = "VIN"
+    plot_vin_bar.y = "average(dut.power_out.hv)"
+    plot_vin_bar.plot_limits = "true"
+
     plot_vin_transient = new LineChart
     plot_vin_transient.title = "Output Voltage vs Input Voltage"
     plot_vin_transient.x = "time"
     plot_vin_transient.y = "dut.power_out.hv"
-    plot_vin_transient.simulation = "vin_sweep"
 
-    plot_vin_bar = new BarChart
-    plot_vin_bar.title = "Average Output vs Input Voltage 2"
-    plot_vin_bar.x = "VIN"
-    plot_vin_bar.y = "average(dut.power_out.hv)"
-    plot_vin_bar.simulation = "vin_sweep"
+    # --- Load regulation (DC) plots ---
+    plot_iload_avg_bar = new BarChart
+    plot_iload_avg_bar.title = "Average Output vs Load Current"
+    plot_iload_avg_bar.x = "ILOAD"
+    plot_iload_avg_bar.y = "average(dut.power_out.hv)"
 
-    # --- REQ_002 primary: load current sweep ---
     plot_iload_transient = new LineChart
     plot_iload_transient.title = "Output Voltage vs Load Current"
     plot_iload_transient.x = "time"
     plot_iload_transient.y = "dut.power_out.hv"
     plot_iload_transient.color = "ILOAD"
-    plot_iload_transient.simulation = "iload_sweep"
 
-    plot_iload_ptp_bar = new BarChart
-    plot_iload_ptp_bar.title = "Peak-to-Peak Voltage vs Load Current"
-    plot_iload_ptp_bar.x = "ILOAD"
-    plot_iload_ptp_bar.y = "peak_to_peak(dut.power_out.hv)"
-    plot_iload_ptp_bar.plot_limits = "false"
-    plot_iload_ptp_bar.simulation = "iload_sweep"
-
-    # --- REQ_004 plots (load regulation) ---
-    plot_iload_avg_bar = new BarChart
-    plot_iload_avg_bar.title = "Average Output vs Load Current"
-    plot_iload_avg_bar.x = "ILOAD"
-    plot_iload_avg_bar.y = "average(dut.power_out.hv)"
-    plot_iload_avg_bar.simulation = "iload_sweep"
-
-    # --- REQ_005/006/007 plots (inductor current) ---
-    plot_inductor_ripple_vs_load = new BarChart
-    plot_inductor_ripple_vs_load.title = "Inductor Current Ripple vs Load"
-    plot_inductor_ripple_vs_load.x = "ILOAD"
-    plot_inductor_ripple_vs_load.y = "peak_to_peak(i(l1))"
-    plot_inductor_ripple_vs_load.plot_limits = "false"
-    plot_inductor_ripple_vs_load.simulation = "iload_sweep"
-
-    plot_inductor_avg_vs_load = new BarChart
-    plot_inductor_avg_vs_load.title = "Average Inductor Current vs Load"
-    plot_inductor_avg_vs_load.x = "ILOAD"
-    plot_inductor_avg_vs_load.y = "average(i(l1))"
-    plot_inductor_avg_vs_load.plot_limits = "false"
-    plot_inductor_avg_vs_load.simulation = "iload_sweep"
-
-    plot_inductor_max_vs_load = new BarChart
-    plot_inductor_max_vs_load.title = "Peak Inductor Current vs Load"
-    plot_inductor_max_vs_load.x = "ILOAD"
-    plot_inductor_max_vs_load.y = "max(i(l1))"
-    plot_inductor_max_vs_load.plot_limits = "false"
-    plot_inductor_max_vs_load.simulation = "iload_sweep"
-
-    plot_inductor_min_vs_load = new BarChart
-    plot_inductor_min_vs_load.title = "Min Inductor Current vs Load"
-    plot_inductor_min_vs_load.x = "ILOAD"
-    plot_inductor_min_vs_load.y = "min(i(l1))"
-    plot_inductor_min_vs_load.plot_limits = "false"
-    plot_inductor_min_vs_load.simulation = "iload_sweep"
-
+    # --- Inductor current plots ---
     plot_inductor_vs_load = new LineChart
     plot_inductor_vs_load.title = "Inductor Current vs Load"
     plot_inductor_vs_load.x = "time"
     plot_inductor_vs_load.y = "i(l1)"
     plot_inductor_vs_load.color = "ILOAD"
-    plot_inductor_vs_load.simulation = "iload_sweep"
 
-    # --- REQ_010 plots (output voltage ripple) ---
+    plot_inductor_ripple_bar = new BarChart
+    plot_inductor_ripple_bar.title = "Inductor Current Ripple vs Load"
+    plot_inductor_ripple_bar.x = "ILOAD"
+    plot_inductor_ripple_bar.y = "peak_to_peak(i(l1))"
+    plot_inductor_ripple_bar.plot_limits = "false"
+
+    plot_inductor_avg_bar = new BarChart
+    plot_inductor_avg_bar.title = "Average Inductor Current vs Load"
+    plot_inductor_avg_bar.x = "ILOAD"
+    plot_inductor_avg_bar.y = "average(i(l1))"
+    plot_inductor_avg_bar.plot_limits = "false"
+
+    plot_inductor_max_bar = new BarChart
+    plot_inductor_max_bar.title = "Peak Inductor Current vs Load"
+    plot_inductor_max_bar.x = "ILOAD"
+    plot_inductor_max_bar.y = "max(i(l1))"
+    plot_inductor_max_bar.plot_limits = "false"
+
+    plot_inductor_min_bar = new BarChart
+    plot_inductor_min_bar.title = "Min Inductor Current vs Load"
+    plot_inductor_min_bar.x = "ILOAD"
+    plot_inductor_min_bar.y = "min(i(l1))"
+    plot_inductor_min_bar.plot_limits = "false"
+
+    # --- Duty cycle plots ---
+    plot_duty_cycle_bar = new BarChart
+    plot_duty_cycle_bar.title = "Duty Cycle vs Load Current"
+    plot_duty_cycle_bar.x = "ILOAD"
+    plot_duty_cycle_bar.y = "duty_cycle(i(l1))"
+
+    # --- Output ripple (cout sweep) plots ---
     plot_ripple_cout_raw = new LineChart
-    plot_ripple_cout_raw.title = "AC-Coupled Output Ripple vs Capacitance"
+    plot_ripple_cout_raw.title = "AC-Coupled Output Ripple vs Capacitance 2"
     plot_ripple_cout_raw.x = "time"
     plot_ripple_cout_raw.y = "ac_coupled(dut.power_out.hv)"
     plot_ripple_cout_raw.color = "COUT"
-    plot_ripple_cout_raw.simulation = "cout_ripple_sweep"
 
     plot_ripple_cout_envelope = new LineChart
     plot_ripple_cout_envelope.title = "Output Ripple Envelope vs Capacitance"
     plot_ripple_cout_envelope.x = "COUT"
     plot_ripple_cout_envelope.y = "envelope(ac_coupled(dut.power_out.hv))"
-    plot_ripple_cout_envelope.simulation = "cout_ripple_sweep"
 
+    # --- Output ripple (iload sweep) plots ---
     plot_ripple_iload_raw = new LineChart
     plot_ripple_iload_raw.title = "AC-Coupled Output Ripple vs Load Current"
     plot_ripple_iload_raw.x = "time"
     plot_ripple_iload_raw.y = "ac_coupled(dut.power_out.hv)"
     plot_ripple_iload_raw.color = "ILOAD"
     plot_ripple_iload_raw.plot_limits = "false"
-    plot_ripple_iload_raw.simulation = "iload_sweep"
 
     plot_ripple_iload_envelope = new LineChart
     plot_ripple_iload_envelope.title = "Output Ripple Envelope vs Load Current"
     plot_ripple_iload_envelope.x = "ILOAD"
     plot_ripple_iload_envelope.y = "envelope(ac_coupled(dut.power_out.hv))"
-    plot_ripple_iload_envelope.simulation = "iload_sweep"
 
-    # --- REQ_008 plots (duty cycle) ---
-    plot_duty_cycle_vs_load = new BarChart
-    plot_duty_cycle_vs_load.title = "Duty Cycle vs Load Current"
-    plot_duty_cycle_vs_load.x = "ILOAD"
-    plot_duty_cycle_vs_load.y = "duty_cycle(i(l1))"
-    plot_duty_cycle_vs_load.simulation = "iload_sweep"
+    # --- Cout load step plots ---
+    plot_cout_step_vout = new LineChart
+    plot_cout_step_vout.title = "Output Voltage vs Capacitance (Load Step)"
+    plot_cout_step_vout.x = "time"
+    plot_cout_step_vout.y = "dut.power_out.hv"
+    plot_cout_step_vout.y_secondary = "i(vsense)"
+    plot_cout_step_vout.color = ""
+    assert plot_cout_step_vout.y_range within 5V +/- 10%
+
+    plot_cout_step_envelope = new LineChart
+    plot_cout_step_envelope.title = "Load Step Envelope vs Capacitance"
+    plot_cout_step_envelope.x = "COUT"
+    plot_cout_step_envelope.y = "envelope(dut.power_out.hv)"
 
     # =====================================================================
     # Requirements
@@ -286,19 +250,21 @@ module DesignValidation:
     req_001.net = "dut.power_out.hv"
     req_001.capture = "transient"
     req_001.measurement = "settling_time"
-    assert req_001.limit within 0s to 5ms
+    assert req_001.limit within 0 to 4ms
     req_001.required_plot = "plot_settling_vs_freq"
     req_001.supplementary_plot = "plot_startup_vout"
+    req_001.tran_step = "500ns"
+    req_001.tran_stop = "5ms"
 
-    # --- REQ_002: Load Step Envelope ---
+    # --- REQ_002: Load Step Transient ---
     req_002 = new Requirement
     req_002.req_name = "REQ_002: Load Step"
-    req_002.simulation = "iload_sweep"
+    req_002.simulation = "iload_step"
     req_002.net = "dut.power_out.hv"
     req_002.measurement = "envelope"
     assert req_002.limit within 5V +/- 10%
-    req_002.required_plot = "plot_iload_transient"
-    req_002.supplementary_plot = "plot_iload_ptp_bar,plot_cout_transient,plot_cout_envelope"
+    req_002.required_plot = "plot_loadstep_vout"
+    req_002.supplementary_plot = "plot_loadstep_envelope"
 
     # --- REQ_003: Line Regulation ---
     req_003 = new Requirement
@@ -319,68 +285,119 @@ module DesignValidation:
     assert req_004.limit within 5V +/- 2%
     req_004.required_plot = "plot_iload_avg_bar"
     req_004.supplementary_plot = "plot_iload_transient"
+    req_004.tran_stop = "5.3ms"
 
     # --- REQ_005: Inductor Current Ripple ---
     req_005 = new Requirement
     req_005.req_name = "REQ_005: Inductor Current Ripple"
-    req_005.simulation = "ss_inductor"
+    req_005.simulation = "iload_sweep"
     req_005.net = "i(l1)"
     req_005.measurement = "peak_to_peak"
     assert req_005.limit within 0A to 5A
-    req_005.required_plot = "plot_inductor_vs_load"
-    req_005.supplementary_plot = "plot_inductor_ripple_vs_load"
+    req_005.required_plot = "plot_inductor_ripple_bar"
+    req_005.supplementary_plot = "plot_inductor_vs_load"
 
     # --- REQ_006: Average Inductor Current ---
     req_006 = new Requirement
     req_006.req_name = "REQ_006: Average Inductor Current"
-    req_006.simulation = "ss_inductor"
+    req_006.simulation = "iload_sweep"
     req_006.net = "i(l1)"
     req_006.measurement = "average"
-    assert req_006.limit within 0A to 2A
-    req_006.required_plot = "plot_inductor_vs_load"
-    req_006.supplementary_plot = "plot_inductor_avg_vs_load"
+    assert req_006.limit within 0A to 5A
+    req_006.supplementary_plot = "plot_inductor_vs_load"
+    plot_req_006 = new BarChart
+    plot_req_006.title = "REQ_006:Average Inductor Current"
+    plot_req_006.y = "average(i(l1))"
+    plot_req_006.x = "ILOAD"
+    req_006.required_plot = "plot_req_006"
 
     # --- REQ_007: Max Inductor Current ---
     req_007 = new Requirement
     req_007.req_name = "REQ_007: Max Inductor Current"
-    req_007.simulation = "ss_inductor"
+    req_007.simulation = "iload_sweep"
     req_007.net = "i(l1)"
     req_007.measurement = "max"
     assert req_007.limit within 0A to 6A
-    req_007.required_plot = "plot_inductor_vs_load"
-    req_007.supplementary_plot = "plot_inductor_max_vs_load"
+    req_007.required_plot = "plot_inductor_max_bar"
+    req_007.supplementary_plot = "plot_inductor_vs_load"
 
-    # --- REQ_009: Min Inductor Current (CCM/DCM Boundary) ---
-    req_009 = new Requirement
-    req_009.req_name = "REQ_009: Min Inductor Current"
-    req_009.simulation = "ss_inductor"
-    req_009.net = "i(l1)"
-    req_009.measurement = "min"
-    assert req_009.limit within -100mA to 6A
-    req_009.required_plot = "plot_inductor_min_vs_load"
-    req_009.supplementary_plot = "plot_inductor_vs_load"
-    plot_req_009 = new LineChart
-    plot_req_009.title = "REQ_009: Min Inductor Current"
-    plot_req_009.y = "i(l1)"
-    plot_req_009.x = "time"
-    req_009.required_plot = "plot_req_009"
-
-    # --- REQ_010: Output Voltage Ripple ---
-    req_010 = new Requirement
-    req_010.req_name = "REQ_010: Output Voltage Ripple"
-    req_010.simulation = "iload_sweep"
-    req_010.net = "dut.power_out.hv"
-    req_010.measurement = "peak_to_peak"
-    assert req_010.limit within 0V to 100mV
-    req_010.required_plot = "plot_ripple_cout_raw"
-    req_010.supplementary_plot = "plot_ripple_cout_envelope,plot_ripple_iload_raw,plot_ripple_iload_envelope"
-
-    # --- REQ_008: Duty Cycle vs Load ---
+    # --- REQ_008: Duty Cycle ---
     req_008 = new Requirement
     req_008.req_name = "REQ_008: Duty Cycle"
     req_008.simulation = "iload_sweep"
     req_008.net = "i(l1)"
     req_008.measurement = "duty_cycle"
     assert req_008.limit within 0 to 1
-    req_008.required_plot = "plot_duty_cycle_vs_load"
+    req_008.required_plot = "plot_duty_cycle_bar"
     req_008.supplementary_plot = "plot_inductor_vs_load"
+
+    # --- REQ_009: Min Inductor Current (CCM/DCM Boundary) ---
+    req_009 = new Requirement
+    req_009.req_name = "REQ_009: Min Inductor Current"
+    req_009.simulation = "iload_sweep"
+    req_009.net = "i(l1)"
+    req_009.measurement = "min"
+    assert req_009.limit within 3A +/- 4A
+    req_009.required_plot = "plot_inductor_min_bar"
+    req_009.supplementary_plot = "plot_inductor_vs_load"
+    req_009.tran_stop = "0.0053"
+
+    # --- REQ_010: Output Voltage Ripple (vs Capacitance) ---
+    req_010 = new Requirement
+    req_010.req_name = "REQ_010: Output Voltage Ripple vs Capacitance"
+    req_010.simulation = "cout_ripple_sweep"
+    req_010.net = "dut.power_out.hv"
+    req_010.measurement = "peak_to_peak"
+    assert req_010.limit within 0 +/- 100mV
+    req_010.required_plot = "plot_ripple_cout_raw"
+    req_010.supplementary_plot = "plot_ripple_cout_envelope"
+
+    # --- REQ_011: Output Voltage Ripple (vs Load Current) ---
+    req_011 = new Requirement
+    req_011.req_name = "REQ_011: Output Voltage Ripple vs Load Current"
+    req_011.simulation = "iload_sweep"
+    req_011.net = "dut.power_out.hv"
+    req_011.measurement = "peak_to_peak"
+    assert req_011.limit within 5V +/- 50mV
+    req_011.required_plot = "plot_ripple_iload_raw"
+    req_011.supplementary_plot = "plot_ripple_iload_envelope"
+
+    # --- REQ_012: Load Step vs Capacitance ---
+    req_012 = new Requirement
+    req_012.req_name = "REQ_012: Load Step vs Capacitance"
+    req_012.simulation = "cout_step"
+    req_012.net = "dut.power_out.hv"
+    req_012.measurement = "envelope"
+    assert req_012.limit within 5V +/- 10%
+    req_012.required_plot = "plot_cout_step_vout"
+    req_012.supplementary_plot = "plot_cout_step_envelope"
+
+    # --- REQ_013: Switching Node Waveform ---
+    sw_node_sim = new SimulationTransient
+    sw_node_sim.duts = "dut_400k"
+    sw_node_sim.remove_elements = "R5"
+    sw_node_sim.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5"
+    sw_node_sim.time_start = 5ms
+    sw_node_sim.time_stop = 5.02ms
+    sw_node_sim.time_step = 10ns
+
+    plot_sw_node = new LineChart
+    plot_sw_node.title = "Switching Node vs Inductor Current"
+    plot_sw_node.x = "time"
+    plot_sw_node.y = "dut.package.SW"
+    plot_sw_node.y_secondary = "i(l1)"
+
+    plot_sw_node_ac = new LineChart
+    plot_sw_node_ac.title = "Switching Node AC-Coupled"
+    plot_sw_node_ac.x = "time"
+    plot_sw_node_ac.y = "ac_coupled(dut.package.SW)"
+    plot_sw_node_ac.y_secondary = "i(l1)"
+
+    req_013 = new Requirement
+    req_013.req_name = "REQ_013: Switching Node Waveform"
+    req_013.simulation = "sw_node_sim"
+    req_013.net = "dut.package.SW"
+    req_013.measurement = "envelope"
+    assert req_013.limit within -2V to 15V
+    req_013.required_plot = "plot_sw_node"
+    req_013.supplementary_plot = "plot_sw_node_ac"

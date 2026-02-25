@@ -12,6 +12,8 @@ export interface EditableFieldProps {
   enabled?: boolean;
   /** Unit suffix shown after value */
   unit?: string;
+  /** If true, renders a multiline textarea instead of single-line input */
+  multiline?: boolean;
 }
 
 export const MEASUREMENT_OPTIONS = [
@@ -48,11 +50,12 @@ export function EditableField({
   className = '',
   enabled = true,
   unit,
+  multiline = false,
 }: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(null);
 
   useEffect(() => { setDraft(value); }, [value]);
 
@@ -61,9 +64,20 @@ export function EditableField({
       inputRef.current.focus();
       if (inputRef.current instanceof HTMLInputElement) {
         inputRef.current.select();
+      } else if (inputRef.current instanceof HTMLTextAreaElement) {
+        inputRef.current.select();
       }
     }
   }, [editing]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (editing && multiline && inputRef.current instanceof HTMLTextAreaElement) {
+      const ta = inputRef.current;
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+    }
+  }, [editing, draft, multiline]);
 
   if (!enabled) {
     return <span className={className}>{displayValue ?? value}{unit ? ` ${unit}` : ''}</span>;
@@ -122,6 +136,25 @@ export function EditableField({
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
+    );
+  }
+
+  if (multiline) {
+    return (
+      <textarea
+        ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+        className={`ric-edit-control ric-edit-textarea ${saving ? 'ric-saving' : ''}`}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => { if (!saving) commit(draft); }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+          // Ctrl/Cmd+Enter to save (Enter alone inserts newline)
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit(draft);
+        }}
+        disabled={saving}
+        rows={Math.max(2, draft.split('\n').length)}
+      />
     );
   }
 

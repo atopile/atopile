@@ -55,7 +55,7 @@ export function Sidebar() {
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
-  const requirementsData = useStore((s) => s.requirementsData);
+
   const installingPackageIds = useStore((s) => s.installingPackageIds);
   const installError = useStore((s) => s.installError);
   const stdlibItems = useStore((s) => s.stdlibItems);
@@ -473,18 +473,20 @@ export function Sidebar() {
             className={`tab-button ${activeTab === 'requirements' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('requirements');
-              void refreshRequirements();
-              // Open all-requirements view if data is already loaded
-              if (requirementsData?.requirements?.length) {
-                postMessage({
-                  type: 'openRequirementDetail',
-                  requirementId: '__ALL__',
-                  projectRoot: selectedProjectRoot ?? '',
-                  target: selectedTargetNames?.[0] ?? 'default',
-                  requirementData: requirementsData,
-                  buildTime: requirementsData?.buildTime ?? '',
-                });
-              }
+              // Refresh then open all-requirements view once data is ready
+              refreshRequirements().then(() => {
+                const data = useStore.getState().requirementsData;
+                if (data?.requirements?.length) {
+                  postMessage({
+                    type: 'openRequirementDetail',
+                    requirementId: '__ALL__',
+                    projectRoot: selectedProjectRoot ?? '',
+                    target: selectedTargetNames?.[0] ?? 'default',
+                    requirementData: data,
+                    buildTime: data.buildTime ?? '',
+                  });
+                }
+              });
             }}
             data-tooltip="Requirements"
           >

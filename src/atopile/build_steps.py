@@ -721,6 +721,11 @@ def _lttb_downsample(
 _limit_expr_cache: dict[str, dict[str, str]] = {}
 
 
+def _clear_limit_expr_cache() -> None:
+    """Clear the limit expression cache — call at the start of each build."""
+    _limit_expr_cache.clear()
+
+
 def _extract_limit_expr(source_file: str, var_name: str) -> str | None:
     """Extract the limit expression from an assertion like
     ``assert req_001.limit within 5V +/- 10%`` in the .ato source file.
@@ -746,14 +751,35 @@ def _extract_limit_expr(source_file: str, var_name: str) -> str | None:
     return _limit_expr_cache.get(source_file, {}).get(var_name)
 
 
+def _find_netlist_path(output_dir, sim_name: str, entry: dict) -> None:
+    """Find and store the .spice netlist path for a simulation in the entry dict."""
+    from pathlib import Path
+
+    out = Path(output_dir)
+    # Multi-DUT netlists: multidut_<dut_name>.spice
+    # Regular netlists: <scope_slug>.spice
+    # Try common patterns
+    candidates = list(out.glob("*.spice"))
+    if not candidates:
+        return
+
+    # For multi-DUT sims, look for any multidut_*.spice (they share the same base)
+    # For regular sims, the scope slug matches the sim's parent scope
+    for c in candidates:
+        entry["netlistPath"] = str(c.resolve())
+        return  # Use the first match — single-scope builds have one netlist
+
+
 def _write_requirements_json(
     results, tran_data, group_key_fn, ac_data=None, ac_group_key_fn=None,
     multi_dut_data=None, sim_stats=None, source_file=None,
+    sim_nodes_by_name=None, output_dir=None,
 ) -> None:
     """Serialize requirement results + time-series to a JSON artifact."""
     from datetime import datetime, timezone
 
     import math
+
 
     from faebryk.exporters.simulation.simulation_runner import MultiDutResult
 
@@ -810,6 +836,24 @@ def _write_requirements_json(
             typical = None
             max_val = None
 
+        # Fallback: parse limit expression from .ato source
+        if min_val is None or max_val is None:
+            try:
+                from faebryk.library.Requirement import _parse_limit_expr
+                parent_info = req.get_parent()
+                if parent_info is not None:
+                    expr = _extract_limit_expr(
+                        str(source_file) if source_file else "",
+                        parent_info[1],
+                    )
+                    if expr:
+                        parsed = _parse_limit_expr(expr)
+                        if parsed is not None:
+                            min_val, max_val = parsed
+                            typical = (min_val + max_val) / 2
+            except Exception:
+                pass
+
         entry: dict = {
             "id": req.get_name().replace(" ", "_").replace(":", ""),
             "name": req.get_name(),
@@ -859,6 +903,10 @@ def _write_requirements_json(
         if sim_name:
             entry["simulationName"] = sim_name
 
+        # Netlist file path (for single-sim rerun from UI)
+        if output_dir and sim_name:
+            _find_netlist_path(output_dir, sim_name, entry)
+
         # SPICE source override
         src_override = req.get_source_override()
         if src_override:
@@ -870,12 +918,41 @@ def _write_requirements_json(
         if extra:
             entry["extraSpice"] = extra
 
+        # Attach simulation config from the Simulation node
+        sim_name = req.get_simulation()
+        sim_node = (
+            sim_nodes_by_name.get(sim_name) if sim_nodes_by_name and sim_name else None
+        )
+
+        # SPICE source from Simulation node (for display in UI and single-sim rerun)
+        if sim_node is not None and "sourceSpec" not in entry:
+            # Try resolved spice first (handles both spice and spice_template)
+            spice_src = None
+            if hasattr(sim_node, "resolve_spice"):
+                spice_src = sim_node.resolve_spice(0)
+            if spice_src is None and hasattr(sim_node, "get_spice"):
+                spice_src = sim_node.get_spice()
+            if spice_src:
+                entry["spice"] = spice_src
+
         # Attach transient config and time-series
         if capture == "transient":
-            tran_start = req.get_tran_start() or 0
+            # Requirement overrides take precedence, then Simulation node defaults
+            tran_start = req.get_tran_start()
             tran_stop = req.get_tran_stop()
             tran_step = req.get_tran_step()
-            entry["tranStart"] = tran_start
+
+            # Fall back to Simulation node params
+            if sim_node is not None and hasattr(sim_node, "get_time_stop"):
+                if tran_stop is None:
+                    tran_stop = sim_node.get_time_stop()
+                if tran_step is None:
+                    tran_step = sim_node.get_time_step()
+                if tran_start is None:
+                    tran_start = sim_node.get_time_start()
+
+            if tran_start is not None:
+                entry["tranStart"] = tran_start
             if tran_stop is not None:
                 entry["tranStop"] = tran_stop
             if tran_step is not None:
@@ -884,22 +961,12 @@ def _write_requirements_json(
             key = group_key_fn(req)
             td = tran_data.get(key)
             if td is not None:
-                # Collect relevant signals: primary + context
-                # (ngspice already limits data to [start, stop])
-                sig_keys = [net_key]
-                for ctx_net in context_nets:
-                    ctx_key = (
-                        f"v({ctx_net})"
-                        if not ctx_net.startswith(("v(", "i("))
-                        else ctx_net
-                    )
-                    if ctx_key in td.signals:
-                        sig_keys.append(ctx_key)
-
+                # Include ALL available signals so the frontend can
+                # re-render plots with different y-axis selections
+                # without needing a rebuild.
                 signals = {}
-                for sk in sig_keys:
-                    if sk in td.signals:
-                        signals[sk] = list(td.signals[sk])
+                for sk, sv in td.signals.items():
+                    signals[sk] = list(sv)
 
                 time_list = list(td.time)
                 time_list, signals = _lttb_downsample(
@@ -911,7 +978,7 @@ def _write_requirements_json(
                     "signals": signals,
                 }
 
-        # Attach AC config
+        # Attach AC config (requirement overrides, then sim node fallback)
         if capture == "ac":
             ac_start = req.get_ac_start_freq()
             ac_stop = req.get_ac_stop_freq()
@@ -919,6 +986,16 @@ def _write_requirements_json(
             ac_src = req.get_ac_source_name()
             ac_mf = req.get_ac_measure_freq()
             ac_ref = req.get_ac_ref_net()
+
+            # Fall back to SimulationAC node params
+            if sim_node is not None and hasattr(sim_node, "get_start_freq"):
+                if ac_start is None:
+                    ac_start = sim_node.get_start_freq()
+                if ac_stop is None:
+                    ac_stop = sim_node.get_stop_freq()
+                if ac_ppd is None:
+                    ac_ppd = sim_node.get_points_per_dec()
+
             if ac_start is not None:
                 entry["acStartFreq"] = ac_start
             if ac_stop is not None:
@@ -1222,22 +1299,25 @@ def _plot_multi_dut_requirement(
 
     # Add pass band if applicable
     try:
-        vout_pct = req.get_vout_tolerance_pct()
-        if vout_pct is None:
-            min_val = req.get_min_val()
-            max_val = req.get_max_val()
-            fig.add_hrect(
-                y0=min_val, y1=max_val,
-                fillcolor="green", opacity=0.08, line_width=0,
-            )
-            fig.add_hline(
-                y=min_val, line=dict(color="red", dash="dot", width=1.5),
-            )
-            fig.add_hline(
-                y=max_val, line=dict(color="red", dash="dot", width=1.5),
-            )
+        min_val = req.get_min_val()
+        max_val = req.get_max_val()
     except Exception:
-        pass
+        min_val = max_val = None
+    if min_val is not None and max_val is not None:
+        fig.add_hrect(
+            y0=min_val, y1=max_val,
+            fillcolor="green", opacity=0.08, line_width=0,
+        )
+        fig.add_hline(
+            y=min_val, line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"LSL {min_val:.4g}",
+            annotation_position="bottom right",
+        )
+        fig.add_hline(
+            y=max_val, line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"USL {max_val:.4g}",
+            annotation_position="top right",
+        )
 
     # Title with PASS/FAIL badge appended
     status = "PASS" if result.passed else "FAIL"
@@ -1333,9 +1413,16 @@ def _plot_sweep_requirement(
     if not x_vals:
         return
 
-    min_val = req.get_min_val()
-    max_val = req.get_max_val()
-    colors = ["#2ecc71" if min_val <= y <= max_val else "#e74c3c" for y in y_vals]
+    try:
+        min_val = req.get_min_val()
+        max_val = req.get_max_val()
+    except Exception:
+        min_val = max_val = None
+
+    if min_val is not None and max_val is not None:
+        colors = ["#2ecc71" if min_val <= y <= max_val else "#e74c3c" for y in y_vals]
+    else:
+        colors = ["#31688e"] * len(y_vals)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -1347,16 +1434,21 @@ def _plot_sweep_requirement(
     ))
 
     # Pass band
-    fig.add_hrect(
-        y0=min_val, y1=max_val,
-        fillcolor="green", opacity=0.08, line_width=0,
-    )
-    fig.add_hline(
-        y=min_val, line=dict(color="red", dash="dot", width=1.5),
-    )
-    fig.add_hline(
-        y=max_val, line=dict(color="red", dash="dot", width=1.5),
-    )
+    if min_val is not None and max_val is not None:
+        fig.add_hrect(
+            y0=min_val, y1=max_val,
+            fillcolor="green", opacity=0.08, line_width=0,
+        )
+        fig.add_hline(
+            y=min_val, line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"LSL {min_val:.4g}",
+            annotation_position="bottom right",
+        )
+        fig.add_hline(
+            y=max_val, line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"USL {max_val:.4g}",
+            annotation_position="top right",
+        )
 
     # Unit for Y axis
     if measurement == "efficiency":
@@ -1372,7 +1464,10 @@ def _plot_sweep_requirement(
     else:
         y_unit = "V"
 
-    n_pass = sum(1 for y in y_vals if min_val <= y <= max_val)
+    if min_val is not None and max_val is not None:
+        n_pass = sum(1 for y in y_vals if min_val <= y <= max_val)
+    else:
+        n_pass = len(y_vals)
     status = "ALL PASS" if n_pass == len(y_vals) else f"{len(y_vals) - n_pass} FAIL"
     status_color = "#2ecc71" if n_pass == len(y_vals) else "#e74c3c"
     badge = f"  <span style='color:{status_color};font-size:14px'>[{status}]</span>"
@@ -1492,6 +1587,7 @@ def _render_chart(
     req,
     output_dir,
     net_aliases: dict,
+    limit_bounds: tuple[float, float] | None = None,
 ) -> list[dict] | None:
     """Render a LineChart node attached to a requirement.
 
@@ -1606,6 +1702,10 @@ def _render_chart(
                 else "V"
             )
 
+        # Collect (time, signal, label, color) for primary traces —
+        # used later to annotate measurements on raw-net plots.
+        _primary_traces: list[tuple[list, list, str, str]] = []
+
         if isinstance(sim_result, MultiDutResult):
             n_duts = len(sim_result.results)
             dut_colors = _viridis_hex(n_duts)
@@ -1673,6 +1773,9 @@ def _render_chart(
                             line=dict(color=trace_color, width=2),
                         ),
                         **{"secondary_y": False} if has_secondary else {},
+                    )
+                    _primary_traces.append(
+                        (time_data, list(signal_data), label, trace_color)
                     )
 
                     # Secondary y-axis trace (same color, dashed)
@@ -1757,6 +1860,10 @@ def _render_chart(
                             if has_secondary
                             else {},
                         )
+                        _primary_traces.append(
+                            (time_data, list(signal_data), label,
+                             sweep_colors[sp_idx])
+                        )
 
                         # Secondary y-axis trace per sweep point
                         if has_secondary:
@@ -1832,6 +1939,9 @@ def _render_chart(
                 ),
                 **{"secondary_y": False} if has_secondary else {},
             )
+            _primary_traces.append(
+                (time_data, list(signal_data), y_net, trace_color)
+            )
 
             # Secondary y-axis trace for single-DUT
             if has_secondary:
@@ -1869,43 +1979,123 @@ def _render_chart(
         else:
             return None
 
-        # Add pass band from requirement limits
+        # ---------------------------------------------------------------
+        # Measurement annotations + limit lines
+        #
+        # Limits are drawn when the plot relates to the requirement:
+        #  (a) y-axis IS the measurement  → horizontal limit band
+        #  (b) y-axis is the raw net      → annotate measurement on data
+        #      + limits oriented by measurement domain
+        # ---------------------------------------------------------------
+        # Measurements whose result is in the TIME domain (x-axis)
+        _TIME_MEAS = {"settling_time"}
+        # Measurements whose result is in the SIGNAL domain (y-axis)
+        _SIGNAL_MEAS = {
+            "average", "max", "min", "rms", "final_value", "envelope",
+            "peak_to_peak", "overshoot", "duty_cycle",
+        }
+
         if show_limits:
-            try:
-                vout_pct = req.get_vout_tolerance_pct()
-                if vout_pct is None:
-                    min_val = req.get_min_val()
-                    max_val = req.get_max_val()
-                    measurement = req.get_measurement()
-                    if measurement in ("settling_time",):
-                        min_scaled = min_val * scale
-                        max_scaled = max_val * scale
+            if limit_bounds is not None:
+                lim_min, lim_max = limit_bounds
+            else:
+                try:
+                    lim_min = req.get_min_val()
+                    lim_max = req.get_max_val()
+                except Exception:
+                    lim_min = lim_max = None
+
+            if lim_min is not None and lim_max is not None:
+                req_measurement = req.get_measurement()
+                req_net = req.get_net()
+                req_net_norm = req_net.replace(".", "_")
+                y_net_norm = y_net.replace(".", "_")
+
+                # Check if y_net matches the requirement net (after
+                # stripping common DUT prefixes like "dut_400k_")
+                def _nets_match(a: str, b: str) -> bool:
+                    a_l, b_l = a.lower(), b.lower()
+                    if a_l == b_l:
+                        return True
+                    # Strip dut prefix: "dut_400k_power_out_hv" → "power_out_hv"
+                    def _strip_dut(n: str) -> str:
+                        if n.startswith("dut_"):
+                            parts = n.split("_", 2)
+                            return parts[2] if len(parts) > 2 else n
+                        if n.startswith("dut."):
+                            return n[4:].replace(".", "_")
+                        return n
+                    return _strip_dut(a_l) == _strip_dut(b_l)
+
+                is_raw_net_plot = (
+                    measurement_fn is None
+                    and _nets_match(y_net_norm, req_net_norm)
+                )
+                is_measurement_plot = (
+                    measurement_fn is not None
+                    and measurement_fn == req_measurement
+                )
+
+                _LIMIT_COLOR = "#888888"
+                if is_measurement_plot:
+                    # (a) Y-axis IS the measurement — horizontal LSL/USL
+                    fig.add_hrect(
+                        y0=lim_min, y1=lim_max,
+                        fillcolor="green", opacity=0.08, line_width=0,
+                    )
+                    fig.add_hline(
+                        y=lim_min,
+                        line=dict(color=_LIMIT_COLOR, dash="dot", width=1.5),
+                        annotation_text=f"LSL {lim_min:.4g}",
+                        annotation_position="bottom right",
+                    )
+                    fig.add_hline(
+                        y=lim_max,
+                        line=dict(color=_LIMIT_COLOR, dash="dot", width=1.5),
+                        annotation_text=f"USL {lim_max:.4g}",
+                        annotation_position="top right",
+                    )
+
+                elif is_raw_net_plot:
+                    # (b) Y-axis is the raw net — draw LSL/USL limits
+                    if req_measurement in _TIME_MEAS:
+                        lim_min_s = lim_min * scale
+                        lim_max_s = lim_max * scale
+                        fig.add_vrect(
+                            x0=lim_min_s, x1=lim_max_s,
+                            fillcolor="green", opacity=0.08, line_width=0,
+                        )
+                        _lsl_label = "LSL 0" if lim_min == 0 else f"LSL {format_eng(lim_min, 's')}"
                         fig.add_vline(
-                            x=min_scaled,
-                            line=dict(color="red", dash="dot", width=2),
+                            x=lim_min_s,
+                            line=dict(color=_LIMIT_COLOR, dash="dot", width=1.5),
+                            annotation_text=_lsl_label,
+                            annotation_position="top left",
                         )
                         fig.add_vline(
-                            x=max_scaled,
-                            line=dict(color="red", dash="dot", width=2),
+                            x=lim_max_s,
+                            line=dict(color=_LIMIT_COLOR, dash="dot", width=1.5),
+                            annotation_text=f"USL {format_eng(lim_max, 's')}",
+                            annotation_position="top right",
                         )
-                    else:
+
+                    elif req_measurement in _SIGNAL_MEAS:
                         fig.add_hrect(
-                            y0=min_val,
-                            y1=max_val,
-                            fillcolor="green",
-                            opacity=0.08,
-                            line_width=0,
+                            y0=lim_min, y1=lim_max,
+                            fillcolor="green", opacity=0.08, line_width=0,
                         )
                         fig.add_hline(
-                            y=min_val,
-                            line=dict(color="red", dash="dot", width=1.5),
+                            y=lim_min,
+                            line=dict(color=_LIMIT_COLOR, dash="dot", width=1.5),
+                            annotation_text=f"LSL {lim_min:.4g}",
+                            annotation_position="bottom right",
                         )
                         fig.add_hline(
-                            y=max_val,
-                            line=dict(color="red", dash="dot", width=1.5),
+                            y=lim_max,
+                            line=dict(color=_LIMIT_COLOR, dash="dot", width=1.5),
+                            annotation_text=f"USL {lim_max:.4g}",
+                            annotation_position="top right",
                         )
-            except Exception:
-                pass
 
         legend_kwargs = dict(
             font=dict(size=10),
@@ -1947,8 +2137,11 @@ def _render_chart(
         # is bigger.  Overridden by explicit y_range from the plot node.
         if show_limits and y_range_min is None and y_range_max is None:
             try:
-                req_min = req.get_min_val()
-                req_max = req.get_max_val()
+                if limit_bounds is not None:
+                    req_min, req_max = limit_bounds
+                else:
+                    req_min = req.get_min_val()
+                    req_max = req.get_max_val()
                 meas = req.get_measurement()
                 # Only auto-range for non-time measurements (hrect limits)
                 if meas not in ("settling_time",):
@@ -2076,12 +2269,15 @@ def _render_chart(
     if not x_vals:
         return None
 
-    try:
-        min_val = req.get_min_val()
-        max_val = req.get_max_val()
-    except Exception:
-        min_val = None
-        max_val = None
+    if limit_bounds is not None:
+        min_val, max_val = limit_bounds
+    else:
+        try:
+            min_val = req.get_min_val()
+            max_val = req.get_max_val()
+        except Exception:
+            min_val = None
+            max_val = None
 
     if is_envelope:
         # Envelope plot: upper/lower smooth lines with shaded fill
@@ -2142,10 +2338,16 @@ def _render_chart(
             line_width=0,
         )
         fig.add_hline(
-            y=min_val, line=dict(color="red", dash="dot", width=1.5)
+            y=min_val,
+            line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"LSL {min_val:.4g}",
+            annotation_position="bottom right",
         )
         fig.add_hline(
-            y=max_val, line=dict(color="red", dash="dot", width=1.5)
+            y=max_val,
+            line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"USL {max_val:.4g}",
+            annotation_position="top right",
         )
 
     # Infer axis units
@@ -2209,6 +2411,7 @@ def _render_bar_chart(
     req,
     output_dir,
     net_aliases: dict,
+    limit_bounds: tuple[float, float] | None = None,
 ) -> list[dict] | None:
     """Render a BarChart node: measurement vs sweep parameter as bars.
 
@@ -2255,12 +2458,15 @@ def _render_bar_chart(
     settling_tol = req.get_settling_tolerance()
     tran_start = req.get_tran_start()
 
-    try:
-        min_val = req.get_min_val()
-        max_val = req.get_max_val()
-    except Exception:
-        min_val = None
-        max_val = None
+    if limit_bounds is not None:
+        min_val, max_val = limit_bounds
+    else:
+        try:
+            min_val = req.get_min_val()
+            max_val = req.get_max_val()
+        except Exception:
+            min_val = None
+            max_val = None
 
     x_vals: list[float] = []
     y_vals: list[float] = []
@@ -2378,10 +2584,16 @@ def _render_bar_chart(
             line_width=0,
         )
         fig.add_hline(
-            y=min_val, line=dict(color="red", dash="dot", width=1.5)
+            y=min_val,
+            line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"LSL {min_val:.4g}",
+            annotation_position="bottom right",
         )
         fig.add_hline(
-            y=max_val, line=dict(color="red", dash="dot", width=1.5)
+            y=max_val,
+            line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"USL {max_val:.4g}",
+            annotation_position="top right",
         )
 
     # Infer y-axis unit
@@ -2443,6 +2655,7 @@ def _render_plots_for_requirement(
     default_net_aliases: dict,
     output_dir,
     plot_nodes: list | None = None,
+    limit_bounds: tuple[float, float] | None = None,
 ) -> list[dict] | None:
     """Render all chart plots (LineChart or BarChart) for a Requirement node.
 
@@ -2482,6 +2695,10 @@ def _render_plots_for_requirement(
             pn_parent = plot_node.get_parent()
             if pn_parent is not None:
                 plot_meta["varName"] = pn_parent[1]
+            if isinstance(plot_node, BarChart):
+                plot_meta["plotType"] = "BarChart"
+            else:
+                plot_meta["plotType"] = "LineChart"
             for fld in ("title", "x", "y", "y_secondary", "color",
                         "simulation", "plot_limits"):
                 val = _read_str(plot_node, fld)
@@ -2490,11 +2707,13 @@ def _render_plots_for_requirement(
 
             if isinstance(plot_node, BarChart):
                 specs = _render_bar_chart(
-                    plot_node, use_result, req, output_dir, use_aliases
+                    plot_node, use_result, req, output_dir, use_aliases,
+                    limit_bounds=limit_bounds,
                 )
             else:
                 specs = _render_chart(
-                    plot_node, use_result, req, output_dir, use_aliases
+                    plot_node, use_result, req, output_dir, use_aliases,
+                    limit_bounds=limit_bounds,
                 )
             if specs:
                 for s in specs:
@@ -2519,6 +2738,7 @@ def _render_plots_for_requirement(
 )
 def verify_requirements_step(ctx: BuildStepContext) -> None:
     """Phase 2: Verify requirements against cached simulation results."""
+    _clear_limit_expr_cache()
     try:
         from faebryk.exporters.simulation.requirement import (
             RequirementResult,
@@ -2539,10 +2759,31 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
         # Get cached simulation results from Phase 1
         sim_results = getattr(ctx, "_simulation_results", {})
 
+        # Build sim_node lookup: name → node (for extracting sim config params)
+        from faebryk.library.Simulations import (
+            SimulationAC,
+            SimulationDCOP,
+            SimulationSweep,
+            SimulationTransient,
+        )
+        sim_nodes_by_name: dict[str, object] = {}
+        try:
+            all_sim_nodes = app.get_children(
+                direct_only=False,
+                types=(SimulationTransient, SimulationSweep, SimulationAC, SimulationDCOP),
+            )
+            for sn in all_sim_nodes:
+                sn_parent = sn.get_parent()
+                if sn_parent is not None:
+                    sim_nodes_by_name[sn_parent[1]] = sn
+        except Exception:
+            pass
+
         # Find all Requirement nodes
         reqs = app.get_children(direct_only=False, types=F.Requirement)
         if not reqs:
             return
+
 
         # Build a lookup: plot attr name → plot node (for resolving
         # requirement.required_plot / supplementary_plot references).
@@ -2560,6 +2801,28 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
             pass
 
         results: list[RequirementResult] = []
+
+        def _safe_get_bounds(req) -> tuple[float | None, float | None]:
+            try:
+                return (req.get_min_val(), req.get_max_val())
+            except (ValueError, Exception):
+                pass
+            # Fallback: parse limit expression from .ato source
+            try:
+                from faebryk.library.Requirement import _parse_limit_expr
+                parent_info = req.get_parent()
+                if parent_info is not None:
+                    var_name = parent_info[1]
+                    expr = _extract_limit_expr(
+                        str(config.build.entry_file_path.resolve()), var_name
+                    )
+                    if expr:
+                        parsed = _parse_limit_expr(expr)
+                        if parsed is not None:
+                            return parsed
+            except Exception:
+                pass
+            return (None, None)
 
         for req in reqs:
             try:
@@ -2631,6 +2894,11 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                     time_data, signal_data = _slice_from(
                                         time_data, signal_data, tran_start
                                     )
+                                env_min, env_max = (
+                                    _safe_get_bounds(req)
+                                    if measurement == "envelope"
+                                    else (None, None)
+                                )
                                 val = _measure_tran(
                                     measurement,
                                     signal_data,
@@ -2638,13 +2906,18 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                     settling_tolerance=settling_tol,
                                     sim_result=dut_result,
                                     context_nets=dut_ctx,
-                                    min_val=req.get_min_val() if measurement == "envelope" else None,
-                                    max_val=req.get_max_val() if measurement == "envelope" else None,
+                                    min_val=env_min,
+                                    max_val=env_max,
                                 )
                                 actuals_per_dut[dut_name] = val
                             elif isinstance(dut_result, dict):
                                 # Sweep result per DUT: dict[float, TransientResult]
                                 sweep_actuals = []
+                                s_env_min, s_env_max = (
+                                    _safe_get_bounds(req)
+                                    if measurement == "envelope"
+                                    else (None, None)
+                                )
                                 for pval, point_result in dut_result.items():
                                     if not isinstance(point_result, TransientResult):
                                         continue
@@ -2662,20 +2935,22 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                             settling_tolerance=settling_tol,
                                             sim_result=point_result,
                                             context_nets=dut_ctx,
-                                            min_val=req.get_min_val() if measurement == "envelope" else None,
-                                            max_val=req.get_max_val() if measurement == "envelope" else None,
+                                            min_val=s_env_min,
+                                            max_val=s_env_max,
                                         )
                                     except Exception:
                                         continue
                                     sweep_actuals.append(v)
                                 if sweep_actuals:
-                                    min_v = req.get_min_val()
-                                    max_v = req.get_max_val()
-                                    mid = (min_v + max_v) / 2
-                                    actuals_per_dut[dut_name] = max(
-                                        sweep_actuals,
-                                        key=lambda v: abs(v - mid),
-                                    )
+                                    s_min, s_max = _safe_get_bounds(req)
+                                    if s_min is not None and s_max is not None:
+                                        mid = (s_min + s_max) / 2
+                                        actuals_per_dut[dut_name] = max(
+                                            sweep_actuals,
+                                            key=lambda v: abs(v - mid),
+                                        )
+                                    else:
+                                        actuals_per_dut[dut_name] = sweep_actuals[-1]
                         except Exception:
                             logger.warning(
                                 f"  Multi-DUT '{dut_name}' measurement failed "
@@ -2687,56 +2962,24 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         actual = float("nan")
                         passed = False
                     else:
-                        # Determine bounds and pass/fail
-                        vout_pct = req.get_vout_tolerance_pct()
-                        if vout_pct is not None:
-                            # Per-DUT bounds based on VOUT
-                            all_passed = True
-                            worst_actual = None
-                            worst_dist = -1.0
-                            for dn, act in actuals_per_dut.items():
-                                dp = sim_result.dut_params.get(dn, {})
-                                vout = next(
-                                    (
-                                        v
-                                        for k, v in dp.items()
-                                        if "power_out" in k
-                                        and "voltage" in k
-                                    ),
-                                    None,
-                                )
-                                if vout is None:
-                                    all_passed = False
-                                    continue
-                                mn = vout * (1 - vout_pct / 100)
-                                mx = vout * (1 + vout_pct / 100)
-                                dut_pass = mn <= act <= mx
-                                all_passed &= dut_pass
-                                dist = abs(act - (mn + mx) / 2)
-                                if dist > worst_dist:
-                                    worst_dist = dist
-                                    worst_actual = act
-                            actual = (
-                                worst_actual
-                                if worst_actual is not None
-                                else float("nan")
-                            )
-                            passed = all_passed
-                        else:
-                            # Shared bounds — worst case
-                            min_v = req.get_min_val()
-                            max_v = req.get_max_val()
+                        # Pass/fail: compare measurement scalar to bounds
+                        import math
+                        min_v, max_v = _safe_get_bounds(req)
+                        if min_v is not None and max_v is not None:
                             mid = (min_v + max_v) / 2
                             actual = max(
                                 actuals_per_dut.values(),
                                 key=lambda v: abs(v - mid),
                             )
-                            import math
-
                             passed = (
                                 not math.isnan(actual)
                                 and min_v <= actual <= max_v
                             )
+                        else:
+                            actual = next(iter(
+                                actuals_per_dut.values()
+                            ), float("nan"))
+                            passed = False
 
                     r = RequirementResult(
                         requirement=req,
@@ -2755,10 +2998,12 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         plot_by_attr[n] for n in plot_names
                         if n in plot_by_attr
                     ]
+                    _bounds = (min_v, max_v) if min_v is not None and max_v is not None else None
                     explicit_specs = _render_plots_for_requirement(
                         req, sim_results, sim_result, net_aliases,
                         output_dir,
                         plot_nodes=req_plot_nodes or None,
+                        limit_bounds=_bounds,
                     )
                     if explicit_specs:
                         r.plot_specs = explicit_specs
@@ -2800,6 +3045,8 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                 if raw_diff:
                     resolved_diff = net_aliases.get(raw_diff, raw_diff)
 
+                signal_data = None  # set for transient, used by all-points check
+
                 if isinstance(sim_result, TransientResult):
                     # Construct signal key
                     sig_key = (
@@ -2831,6 +3078,11 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                             time_data, signal_data, tran_start
                         )
 
+                    env_min, env_max = (
+                        _safe_get_bounds(req)
+                        if measurement == "envelope"
+                        else (None, None)
+                    )
                     actual = _measure_tran(
                         measurement,
                         signal_data,
@@ -2838,8 +3090,8 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         settling_tolerance=settling_tol,
                         sim_result=sim_result,
                         context_nets=resolved_ctx,
-                        min_val=req.get_min_val() if measurement == "envelope" else None,
-                        max_val=req.get_max_val() if measurement == "envelope" else None,
+                        min_val=env_min,
+                        max_val=env_max,
                     )
                 elif isinstance(sim_result, ACResult):
                     ref_net = req.get_ac_ref_net()
@@ -2873,6 +3125,11 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                 time_data, signal_data, tran_start
                             )
 
+                        s_env_min, s_env_max = (
+                            _safe_get_bounds(req)
+                            if measurement == "envelope"
+                            else (None, None)
+                        )
                         try:
                             val = _measure_tran(
                                 measurement,
@@ -2881,18 +3138,20 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                 settling_tolerance=settling_tol,
                                 sim_result=point_result,
                                 context_nets=resolved_ctx,
-                                min_val=req.get_min_val() if measurement == "envelope" else None,
-                                max_val=req.get_max_val() if measurement == "envelope" else None,
+                                min_val=s_env_min,
+                                max_val=s_env_max,
                             )
                         except Exception:
                             continue
                         actuals.append(val)
                     if actuals:
                         # For sweep: use worst-case (furthest from bounds)
-                        min_v = req.get_min_val()
-                        max_v = req.get_max_val()
-                        mid = (min_v + max_v) / 2
-                        actual = max(actuals, key=lambda v: abs(v - mid))
+                        s_min, s_max = _safe_get_bounds(req)
+                        if s_min is not None and s_max is not None:
+                            mid = (s_min + s_max) / 2
+                            actual = max(actuals, key=lambda v: abs(v - mid))
+                        else:
+                            actual = actuals[-1]
                     else:
                         actual = float("nan")
                 else:
@@ -2904,10 +3163,14 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
 
                 import math
 
-                passed = (
-                    not math.isnan(actual)
-                    and req.get_min_val() <= actual <= req.get_max_val()
-                )
+                min_v, max_v = _safe_get_bounds(req)
+                if min_v is not None and max_v is not None:
+                    passed = (
+                        not math.isnan(actual)
+                        and min_v <= actual <= max_v
+                    )
+                else:
+                    passed = False
                 r = RequirementResult(
                     requirement=req,
                     actual=actual,
@@ -2925,10 +3188,12 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                     plot_by_attr[n] for n in plot_names
                     if n in plot_by_attr
                 ]
+                _bounds = (min_v, max_v) if min_v is not None and max_v is not None else None
                 explicit_specs = _render_plots_for_requirement(
                     req, sim_results, sim_result, net_aliases,
                     output_dir,
                     plot_nodes=req_plot_nodes or None,
+                    limit_bounds=_bounds,
                 )
                 if explicit_specs:
                     r.plot_specs = explicit_specs
@@ -2967,11 +3232,16 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
         if passed < total:
             for r in results:
                 if not r.passed:
-                    logger.warning(
-                        f"FAIL: {r.requirement.get_name()} = {r.actual:.4g} "
-                        f"[{r.requirement.get_min_val()}, "
-                        f"{r.requirement.get_max_val()}]"
-                    )
+                    try:
+                        logger.warning(
+                            f"FAIL: {r.requirement.get_name()} = {r.actual:.4g} "
+                            f"[{r.requirement.get_min_val()}, "
+                            f"{r.requirement.get_max_val()}]"
+                        )
+                    except Exception:
+                        logger.warning(
+                            f"FAIL: {r.requirement.get_name()} = {r.actual}"
+                        )
 
         # Build tran_data/ac_data maps keyed by simulation name for JSON export
         def _sim_name_key(req):
@@ -2998,6 +3268,8 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
             multi_dut_data=multi_dut_data,
             sim_stats=getattr(ctx, "_simulation_stats", []),
             source_file=str(config.build.entry_file_path.resolve()),
+            sim_nodes_by_name=sim_nodes_by_name,
+            output_dir=output_dir,
         )
     except Exception:
         logger.warning(

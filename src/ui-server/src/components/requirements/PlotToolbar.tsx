@@ -6,17 +6,31 @@ interface PlotToolbarProps {
   req: RequirementData;
   specIndex: number;
   onDirty: () => void;
+  onPlotFieldChange?: (specIndex: number, field: string, value: string) => void;
 }
 
-const PLOT_FIELDS: { key: string; label: string; placeholder: string }[] = [
+type PlotFieldDef = { key: string; label: string; placeholder: string };
+
+const LINE_CHART_FIELDS: PlotFieldDef[] = [
   { key: 'title', label: 'Title', placeholder: 'Chart Title' },
   { key: 'x', label: 'X Axis', placeholder: 'time, frequency, or dut.param' },
   { key: 'y', label: 'Y Axis', placeholder: 'dut.net or measurement(net)' },
   { key: 'y_secondary', label: 'Y Secondary', placeholder: 'Optional secondary signal' },
-  { key: 'color', label: 'Color by', placeholder: 'dut (for multi-DUT)' },
+  { key: 'color', label: 'Color by', placeholder: 'Sweep param or dut' },
   { key: 'plot_limits', label: 'Show Limits', placeholder: 'true or false' },
-  { key: 'simulation', label: 'Simulation', placeholder: 'Override simulation name' },
 ];
+
+const BAR_CHART_FIELDS: PlotFieldDef[] = [
+  { key: 'title', label: 'Title', placeholder: 'Chart Title' },
+  { key: 'x', label: 'X Axis', placeholder: 'Sweep param name (e.g. COUT)' },
+  { key: 'y', label: 'Y Axis', placeholder: 'measurement(net)' },
+  { key: 'plot_limits', label: 'Show Limits', placeholder: 'true or false' },
+];
+
+function fieldsForType(plotType: string | undefined): PlotFieldDef[] {
+  if (plotType === 'BarChart') return BAR_CHART_FIELDS;
+  return LINE_CHART_FIELDS;
+}
 
 const PLOT_TYPES = [
   { value: 'LineChart', label: 'Line Chart' },
@@ -42,7 +56,7 @@ function defaultsForType(req: RequirementData, plotType: string): Record<string,
   return base;
 }
 
-export function PlotToolbar({ req, specIndex, onDirty }: PlotToolbarProps) {
+export function PlotToolbar({ req, specIndex, onDirty, onPlotFieldChange }: PlotToolbarProps) {
   const [gearOpen, setGearOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -59,8 +73,12 @@ export function PlotToolbar({ req, specIndex, onDirty }: PlotToolbarProps) {
       var_name: meta.varName,
       updates: { [field]: value },
     });
-    onDirty();
-  }, [req.sourceFile, meta?.varName, onDirty]);
+    if (onPlotFieldChange) {
+      onPlotFieldChange(specIndex, field, value);
+    } else {
+      onDirty();
+    }
+  }, [req.sourceFile, meta?.varName, onDirty, onPlotFieldChange, specIndex]);
 
   const handleCreated = useCallback(() => {
     setAddOpen(false);
@@ -121,17 +139,24 @@ export function PlotToolbar({ req, specIndex, onDirty }: PlotToolbarProps) {
   );
 }
 
-/* ---- Gear popover — all plot fields ---- */
+/* ---- Gear popover — type-aware plot fields ---- */
 
 function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
   meta: PlotMeta;
   onFieldChange: (field: string, value: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const [currentType, setCurrentType] = useState(meta.plotType || 'LineChart');
   const [saving, setSaving] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fields = fieldsForType(currentType);
+
   const [drafts, setDrafts] = useState<Record<string, string>>(() => {
     const d: Record<string, string> = {};
-    for (const f of PLOT_FIELDS) {
+    // Initialize from all possible fields
+    for (const f of [...LINE_CHART_FIELDS, ...BAR_CHART_FIELDS]) {
       d[f.key] = (meta as Record<string, string | undefined>)[f.key] ?? '';
     }
     return d;
@@ -141,7 +166,29 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
     const orig = (meta as Record<string, string | undefined>)[key] ?? '';
     if (drafts[key] === orig) return;
     setSaving(key);
-    try { await onFieldChange(key, drafts[key]); } catch { /* */ }
+    setError(null);
+    try {
+      await onFieldChange(key, drafts[key]);
+      setSaved(key);
+      setTimeout(() => setSaved(prev => prev === key ? null : prev), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    }
+    setSaving(null);
+  };
+
+  const handleTypeChange = async (newType: string) => {
+    if (newType === currentType) return;
+    setSaving('plot_type');
+    setError(null);
+    try {
+      await onFieldChange('plot_type', newType);
+      setCurrentType(newType);
+      setSaved('plot_type');
+      setTimeout(() => setSaved(prev => prev === 'plot_type' ? null : prev), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to change type');
+    }
     setSaving(null);
   };
 
@@ -149,24 +196,48 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
     <div className="plot-popover" onClick={e => e.stopPropagation()}>
       <div className="plot-popover-header">
         <span>Plot Settings</span>
+        <span className="plot-popover-varname">{meta.varName}</span>
         <button className="plot-popover-close" onClick={onClose}>&times;</button>
       </div>
       <div className="plot-popover-body">
-        {PLOT_FIELDS.map(f => (
+        {/* Plot type selector */}
+        <div className="plot-popover-row">
+          <label className="plot-popover-label">Type</label>
+          <div className="plot-popover-input-wrap">
+            <select
+              className="ric-edit-control ric-edit-select"
+              value={currentType}
+              onChange={e => handleTypeChange(e.target.value)}
+              disabled={saving === 'plot_type'}
+            >
+              {PLOT_TYPES.map(pt => (
+                <option key={pt.value} value={pt.value}>{pt.label}</option>
+              ))}
+            </select>
+            {saving === 'plot_type' && <span className="plot-popover-status saving">...</span>}
+            {saved === 'plot_type' && <span className="plot-popover-status saved">ok</span>}
+          </div>
+        </div>
+        {/* Type-specific fields */}
+        {fields.map(f => (
           <div className="plot-popover-row" key={f.key}>
             <label className="plot-popover-label">{f.label}</label>
-            <input
-              className="ric-edit-control ric-edit-input"
-              value={drafts[f.key]}
-              placeholder={f.placeholder}
-              onChange={e => setDrafts(d => ({ ...d, [f.key]: e.target.value }))}
-              onBlur={() => save(f.key)}
-              onKeyDown={e => { if (e.key === 'Enter') save(f.key); }}
-              disabled={saving === f.key}
-              style={{ maxWidth: '200px', flex: 1 }}
-            />
+            <div className="plot-popover-input-wrap">
+              <input
+                className="ric-edit-control ric-edit-input"
+                value={drafts[f.key]}
+                placeholder={f.placeholder}
+                onChange={e => setDrafts(d => ({ ...d, [f.key]: e.target.value }))}
+                onBlur={() => save(f.key)}
+                onKeyDown={e => { if (e.key === 'Enter') save(f.key); }}
+                disabled={saving === f.key}
+              />
+              {saving === f.key && <span className="plot-popover-status saving">...</span>}
+              {saved === f.key && <span className="plot-popover-status saved">ok</span>}
+            </div>
           </div>
         ))}
+        {error && <div className="plot-popover-error">{error}</div>}
       </div>
     </div>
   );
@@ -180,10 +251,12 @@ function AddPlotPopover({ req, onClose, onCreated }: {
   onCreated: () => void;
 }) {
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSelectType = async (plotType: string) => {
     if (!req.sourceFile || !req.varName) return;
     setCreating(true);
+    setError(null);
     const defaults = defaultsForType(req, plotType);
     const plotVarName = `plot_${req.varName || 'new'}`;
     try {
@@ -195,8 +268,8 @@ function AddPlotPopover({ req, onClose, onCreated }: {
         fields: defaults,
       });
       onCreated();
-    } catch {
-      // error
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Create failed');
     } finally {
       setCreating(false);
     }
@@ -220,6 +293,7 @@ function AddPlotPopover({ req, onClose, onCreated }: {
             <span>{pt.label}</span>
           </button>
         ))}
+        {error && <div className="plot-popover-error">{error}</div>}
       </div>
     </div>
   );

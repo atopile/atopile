@@ -18,281 +18,437 @@ ngspice must be installed on the build machine:
 | File | Role |
 |------|------|
 | `src/faebryk/library/Requirement.py` | The `Requirement` node class — defines all fields and getters |
-| `src/faebryk/exporters/simulation/requirement.py` | Verification engine — scoped netlist generation, simulation dispatch, plotting |
-| `src/faebryk/exporters/simulation/ngspice.py` | SPICE netlist generator and ngspice runner (`Circuit`, `generate_spice_netlist`) |
-| `src/atopile/build_steps.py` | Build step registration (`verify-requirements`, `spice-netlist`) |
+| `src/faebryk/library/Simulations.py` | Simulation node classes: `SimulationTransient`, `SimulationSweep`, `SimulationAC`, `SimulationDCOP` |
+| `src/faebryk/library/Plots.py` | Plot node classes: `LineChart`, `BarChart` |
+| `src/faebryk/exporters/simulation/ngspice.py` | SPICE netlist generator and ngspice runner |
+| `src/atopile/build_steps.py` | Build step registration, requirement verification, plot rendering |
 
-## How It Works
+## Architecture
 
-1. `ato build` finds all `Requirement` nodes in the app tree
-2. Groups them by the nearest ancestor that has electrical components (auto-scoping)
-3. Generates a scoped SPICE netlist per group (only components in that subtree)
-4. Runs DCOP, transient, and/or AC analysis via ngspice
-5. Computes measurements, checks against bounds, generates plots
-6. Writes `<build>.requirements.json` artifact with pass/fail results
+Requirements reference simulations by name. Two patterns:
 
-## Step-by-Step: Adding Requirements to a Design
-
-### 1. Create a requirements file
-
-Create a `requirements.ato` file alongside your main `.ato` file:
+1. **1:1 Sim-Per-Requirement** (model-validation style): Each requirement has its own dedicated simulation. Best for independent validation tests.
+2. **Shared Simulations** (design-validation style): Multiple requirements reference the same simulation. Best when measuring different aspects of the same circuit state (e.g., inductor current ripple, average current, and duty cycle from one sweep).
 
 ```ato
+import SimulationTransient
+import LineChart
 import Requirement
 
-module Requirements:
-    "Requirements for my circuit."
+module MyValidation:
+    dut = new MyCircuit
 
-    req_output_voltage = new Requirement
-    req_output_voltage.req_name = "REQ-001: Output voltage"
-    req_output_voltage.net = "output"
-    req_output_voltage.min_val = "3.2"
-    req_output_voltage.typical = "3.3"
-    req_output_voltage.max_val = "3.4"
-    req_output_voltage.capture = "dcop"
-    req_output_voltage.measurement = "final_value"
-    req_output_voltage.justification = "LDO must regulate to 3.3V"
+    # --- REQ_001: Output Voltage ---
+    sim_001 = new SimulationTransient
+    sim_001.duts = "dut"
+    sim_001.spice = "V1 dut.power_in.hv 0 DC 12"
+    sim_001.time_stop = 10ms
+    sim_001.time_step = 1us
+
+    plot_001 = new LineChart
+    plot_001.title = "Output Voltage"
+    plot_001.x = "time"
+    plot_001.y = "dut.power_out.hv"
+    plot_001.simulation = "sim_001"
+
+    req_001 = new Requirement
+    req_001.req_name = "REQ_001: Output Voltage"
+    req_001.simulation = "sim_001"
+    req_001.net = "dut.power_out.hv"
+    req_001.measurement = "final_value"
+    assert req_001.limit within 4.75V to 5.25V
+    req_001.required_plot = "plot_001"
 ```
 
-### 2. Import and instantiate in the main module
+### Pattern structure
+
+Each requirement block has three parts:
+1. **Simulation**: defines the circuit stimulus and time window
+2. **Plots**: declares visualizations (LineChart, BarChart)
+3. **Requirement**: specifies what to measure and the pass/fail bounds
+
+## Simulation Types
+
+### SimulationTransient
+
+Single transient analysis.
 
 ```ato
-from "requirements.ato" import Requirements
-
-module App:
-    # ... circuit definition ...
-    reqs = new Requirements
+sim = new SimulationTransient
+sim.duts = "dut"                    # DUT instance name (enables dot notation)
+sim.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
+sim.time_start = 5ms                # measurement window start (sim still runs from t=0)
+sim.time_stop = 10ms                # simulation stop time
+sim.time_step = 100ns               # timestep
+sim.remove_elements = "R5"          # comma-separated elements to remove from netlist
+sim.extra_spice = "Iload dut.power_out.hv 0 DC 5"  # pipe-separated extra SPICE lines
 ```
 
-### 3. Build
+### SimulationSweep
 
-Run `ato build`. The `verify-requirements` step runs automatically as part of the default target.
+Parametric sweep — runs transient analysis N times, varying a parameter.
 
-### 4. Read results
-
-Results are in `build/builds/<name>/<name>.requirements.json`:
-
-```json
-{
-  "id": "REQ-001_Output_voltage",
-  "name": "REQ-001: Output voltage",
-  "net": "output",
-  "capture": "dcop",
-  "measurement": "final_value",
-  "minVal": 3.2,
-  "typical": 3.3,
-  "maxVal": 3.4,
-  "actual": 3.298,
-  "passed": true,
-  "unit": "V",
-  "justification": "LDO must regulate to 3.3V"
-}
+```ato
+sweep = new SimulationSweep
+sweep.duts = "dut"
+sweep.param_name = "ILOAD"                    # parameter name
+sweep.param_values = "0.5,1,2,3,4,5"          # comma-separated values
+sweep.param_unit = "A"                         # unit for display
+sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"  # fixed source
+sweep.remove_elements = "R5"
+sweep.extra_spice_template = "I_LOAD dut.power_out.hv 0 DC {ILOAD}"  # {PARAM} substituted
+sweep.time_start = 5ms
+sweep.time_stop = 5.5ms
+sweep.time_step = 100ns
 ```
 
-Transient and AC requirements also generate interactive HTML plots (Bode plots for AC) in the build output directory.
+**Key distinction: `spice` vs `spice_template`, `extra_spice` vs `extra_spice_template`**
+- `spice` / `extra_spice`: used as-is (no parameter substitution)
+- `spice_template` / `extra_spice_template`: `{PARAM}` placeholders are replaced with sweep values
+- Use `_template` variants when the sweep parameter appears in the SPICE source definition
+- Pipe `|` separates multiple SPICE lines in any of these fields
 
-## Requirement Fields Reference
+You can also sweep ato design parameters:
 
-All fields are strings (the `Requirement` node uses `StringParameter` internally).
+```ato
+sweep.param_name = "dut.switching_frequency"  # ato parameter path
+sweep.param_values = "400e3,800e3,1200e3"
+sweep.param_unit = "Hz"
+```
 
-### Required fields
+### SimulationAC
+
+AC small-signal analysis (Bode plots).
+
+```ato
+ac_sim = new SimulationAC
+ac_sim.duts = "dut"
+ac_sim.spice = "V1 dut.power_in.hv 0 DC 12 AC 0"
+ac_sim.start_freq = 100
+ac_sim.stop_freq = 10e6
+ac_sim.points_per_dec = 100
+```
+
+### SimulationDCOP
+
+DC operating point analysis.
+
+```ato
+dc_sim = new SimulationDCOP
+dc_sim.duts = "dut"
+dc_sim.spice = "V1 dut.power_in.hv 0 DC 12"
+```
+
+### Common Simulation Fields
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `req_name` | Human-readable identifier | `"REQ-001: Output voltage"` |
-| `net` | Net name to measure (matches SPICE netlist node names) | `"output"`, `"i(v1)"` |
-| `min_val` | Lower bound (inclusive) | `"3.2"` |
-| `max_val` | Upper bound (inclusive) | `"3.4"` |
-| `capture` | Simulation type: `"dcop"`, `"transient"`, or `"ac"` | `"dcop"` |
+| `duts` | DUT instance name(s), comma-separated. Enables dot notation in SPICE lines. | `"dut"`, `"dut_400k"` |
+| `spice` | Fixed SPICE source definition (pipe-separated for multiple lines) | `"V1 net 0 DC 12"` |
+| `extra_spice` | Additional fixed SPICE elements (pipe-separated) | `"Iload net 0 DC 5"` |
+| `remove_elements` | Comma-separated element names to remove from auto-generated netlist | `"R5,R3"` |
+| `time_start` | Measurement window start time (simulation runs from t=0) | `5ms` |
+| `time_stop` | Simulation stop time | `10ms` |
+| `time_step` | Simulation timestep | `100ns` |
+
+### The `duts` Field
+
+When `duts` is set, the system:
+1. Generates a SPICE netlist scoped to the DUT subtree
+2. Resolves `dut.power_in.hv` in SPICE lines to actual net names (e.g., `dut_power_in_hv`)
+3. Resolves `{dut.power_in.voltage}` to the parameter value (e.g., `12`)
+4. Resolves SPICE model parameters via `param_bindings` (e.g., `FS=400000.0`)
+
+**Always use `duts` when your circuit has a DUT wrapper module.**
+
+## Requirement Fields
+
+### Limits — `assert req.limit within X to Y`
+
+Use `assert` with the `limit` NumericParameter for pass/fail bounds:
+
+```ato
+assert req.limit within 4.75V to 5.25V       # absolute range
+assert req.limit within 5V +/- 10%            # percentage tolerance
+assert req.limit within 0s to 5ms             # time range
+assert req.limit within 0A to 6A              # current range
+```
+
+This replaces the deprecated `min_val`/`max_val`/`typical` string fields.
+
+### Required Fields
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `req_name` | Human-readable identifier | `"REQ_001: Output voltage"` |
+| `simulation` | Name of the simulation node (ato variable name) | `"sim_001"` |
+| `net` | Net name to measure (dot notation or SPICE expression) | `"dut.power_out.hv"`, `"i(l1)"` |
+| `limit` | Pass/fail bounds via `assert ... within` | See above |
 | `measurement` | What to compute from simulation data | `"final_value"` |
 
-### Optional fields
+### Optional Fields
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `typical` | Expected nominal value (informational) | `"3.3"` |
-| `justification` | Why this requirement exists | `"LDO regulation spec"` |
-| `context_nets` | Comma-separated nets to include in plots | `"power_hv,input"` |
+| `justification` | Why this requirement exists | `"DS Table 1: Vout +/-5%"` |
+| `required_plot` | Comma-separated plot variable names (shown prominently) | `"plot_001"` |
+| `supplementary_plot` | Comma-separated plot variable names (shown secondary) | `"plot_001b,plot_001c"` |
 
-### Transient-only fields (required when `capture = "transient"`)
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `tran_step` | Simulation timestep in seconds | `"1e-4"` |
-| `tran_stop` | Simulation stop time in seconds | `"1.0"` |
-| `tran_start` | Measurement window start time in seconds (optional, default 0). Simulation still runs from t=0, but measurements only use data from `tran_start` onward. Use this to skip startup transients. | `"0.5"` |
-| `source_name` | Voltage source to override for transient stimulus | `"V1"` |
-| `source_spec` | SPICE source specification | `"PULSE(0 10 0 1n 1n 10 10)"` |
-
-### Settling time field
+### Transient-specific fields (on Requirement)
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `settling_tolerance` | Fraction of final value for settling band (default 0.01 = 1%) | `"0.02"` |
+| `tran_step` | Override simulation timestep | `"1e-4"` |
+| `tran_stop` | Override simulation stop time | `"1.0"` |
+| `tran_start` | Measurement window start (skip startup transient) | `"0.5"` |
+| `settling_tolerance` | Fraction of final value for settling band (default 1%) | `"0.02"` |
 
-### AC-only fields (required when `capture = "ac"`)
+### AC-specific fields (on Requirement)
 
 | Field | Description | Example |
 |-------|-------------|---------|
 | `ac_start_freq` | Start frequency in Hz | `"0.01"` |
 | `ac_stop_freq` | Stop frequency in Hz | `"1000"` |
-| `ac_points_per_dec` | Frequency points per decade (default 100) | `"100"` |
-| `ac_source_name` | Voltage source to apply `AC 1` stimulus to | `"V1"` |
-| `ac_measure_freq` | Frequency at which to evaluate gain_db/phase_deg (required for those measurements) | `"10"` |
-| `ac_ref_net` | Optional input net for Vout/Vin transfer function. If omitted, absolute gain is used. | `"input"` |
+| `ac_points_per_dec` | Points per decade | `"100"` |
+| `ac_source_name` | Source to apply `AC 1` to | `"V1"` |
+| `ac_measure_freq` | Evaluation frequency for gain_db/phase_deg | `"10"` |
+| `ac_ref_net` | Input net for transfer function (Vout/Vin) | `"input"` |
+| `diff_ref_net` | Differential reference net | `"ref_neg"` |
+
+### Circuit modification fields (on Requirement or Simulation)
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `extra_spice` | Pipe-separated SPICE lines to inject | `"R_LOAD out 0 50"` |
+| `remove_elements` | Comma-separated elements to remove | `"R5,C3"` |
 
 ## Measurement Types
 
-### Time-domain measurements (DCOP / transient)
+### Time-domain measurements (transient/DCOP)
 
-| Value | Description | Bounds are |
-|-------|-------------|-----------|
-| `"final_value"` | Last data point (transient) or operating point (DCOP) | Voltage/current |
-| `"average"` | Mean of signal over simulation window | Voltage/current |
-| `"settling_time"` | Time for signal to settle within tolerance of final value | Time in seconds |
-| `"peak_to_peak"` | Max minus min of signal | Voltage/current |
-| `"overshoot"` | Peak above final value as percentage | Percentage |
-| `"rms"` | Root mean square of signal | Voltage/current |
-| `"frequency"` | Signal frequency via rising-edge counting | Frequency in Hz |
+| Value | Description | Bounds |
+|-------|-------------|--------|
+| `"final_value"` | Last data point or operating point | V or A |
+| `"average"` | Mean over measurement window | V or A |
+| `"settling_time"` | Time to settle within tolerance of final value | seconds |
+| `"peak_to_peak"` | Max minus min | V or A |
+| `"overshoot"` | Peak above final value as percentage | % |
+| `"rms"` | Root mean square | V or A |
+| `"frequency"` | Signal frequency via rising-edge counting | Hz |
+| `"max"` | Maximum value in measurement window | V or A |
+| `"min"` | Minimum value in measurement window | V or A |
+| `"envelope"` | Min/max envelope across sweep points | V or A |
 
 ### Frequency-domain measurements (AC)
 
-| Value | Description | Bounds are |
-|-------|-------------|-----------|
+| Value | Description | Bounds |
+|-------|-------------|--------|
 | `"gain_db"` | Gain in dB at `ac_measure_freq` | dB |
-| `"phase_deg"` | Phase in degrees at `ac_measure_freq` | Degrees |
-| `"bandwidth_3db"` | Frequency where gain drops 3dB below DC gain | Hz |
-| `"bode_plot"` | Full Bode plot (gain + phase); actual = DC gain, bounds check DC gain | dB |
+| `"phase_deg"` | Phase in degrees at `ac_measure_freq` | degrees |
+| `"bandwidth_3db"` | Frequency where gain drops 3dB | Hz |
+| `"bode_plot"` | Full Bode plot; bounds check DC gain | dB |
+
+## Plot Types
+
+### LineChart
+
+```ato
+plot = new LineChart
+plot.title = "Output Voltage Startup"
+plot.x = "time"                           # "time", "frequency", or sweep param name
+plot.y = "dut.power_out.hv"               # net, SPICE probe, or signal transform
+plot.y_secondary = "i(l1)"               # optional secondary y-axis (dashed)
+plot.color = "ILOAD"                      # optional: color by sweep param
+plot.simulation = "sim_001"               # which simulation's data to use
+plot.plot_limits = "false"                # "true" (default) or "false" to hide limit bands
+```
+
+### BarChart
+
+```ato
+bar = new BarChart
+bar.title = "Peak-to-Peak vs Load"
+bar.x = "ILOAD"                           # sweep parameter name
+bar.y = "peak_to_peak(dut.power_out.hv)"  # measurement(net)
+bar.simulation = "sim_001"
+bar.plot_limits = "false"                  # hide limit bands for informational plots
+```
+
+### Y-axis signal transforms
+
+These can be used in `plot.y` or `plot.y_secondary`:
+
+| Transform | Description | Example |
+|-----------|-------------|---------|
+| `ac_coupled(net)` | Strip DC component from signal | `"ac_coupled(dut.power_out.hv)"` |
+| `envelope(net)` | Min/max envelope across sweep points | `"envelope(ac_coupled(dut.power_out.hv))"` |
+| `settling_time(net)` | Settling time measurement per sweep point | `"settling_time(dut.power_out.hv)"` |
+| `peak_to_peak(net)` | Peak-to-peak measurement per sweep point | `"peak_to_peak(dut.power_out.hv)"` |
+| `average(net)` | Average measurement per sweep point | `"average(dut.power_out.hv)"` |
+| `max(net)` | Max measurement per sweep point | `"max(dut.power_out.hv)"` |
+| `min(net)` | Min measurement per sweep point | `"min(dut.power_out.hv)"` |
+| `i(element)` | Current through voltage source or inductor | `"i(l1)"`, `"i(v1)"` |
+
+### Plot best practices
+
+Make sure each plot clearly shows the information needed to prove the requirement:
+
+| Requirement type | Primary y | Secondary y | Notes |
+|---|---|---|---|
+| Load transient | `ac_coupled(dut.power_out.hv)` | `i(l1)` | AC-couple to see perturbation; show load current |
+| Line transient | `ac_coupled(dut.power_out.hv)` | `dut.power_in.hv` | AC-couple Vout; show VIN step |
+| Output/input ripple | `ac_coupled(dut.power_out.hv)` | `i(l1)` | AC-couple to see mV-scale ripple |
+| Startup | `dut.power_out.hv` | `i(l1)` | Raw voltage (need to see 0→5V); show inrush |
+| Low dropout | `dut.power_out.hv` | `i(l1)` | Raw voltage; show load current |
+| Switching frequency | `dut.package.8` (SW) | — | Raw SW node for period counting |
+| Load/line regulation | BarChart: `average(net)` | LineChart: `dut.power_out.hv` colored by sweep | Bar for measurement, line for waveforms |
+
+### Plot-Requirement binding
+
+Plots are top-level siblings of requirements. Requirements reference plots by ato variable name:
+
+```ato
+plot_vout = new LineChart       # ato variable name = "plot_vout"
+plot_bar = new BarChart
+
+req.required_plot = "plot_vout"              # shown prominently
+req.supplementary_plot = "plot_bar"          # shown secondary
+```
 
 ## Net Names
 
-Use **atopile addresses** as net names in requirements. The `Requirement` getters (`get_net()`, `get_context_nets()`) automatically sanitize them to match the SPICE netlist — the same transform applied by `ngspice._sanitize_net_name()` during netlist generation:
+Use **dot notation** in requirement `net` fields and SPICE lines. The system sanitizes them automatically:
 
-| Sanitization rule | Example input | SPICE net name |
-|-------------------|---------------|----------------|
-| Dots → underscores | `"power.hv"` | `power_hv` |
-| Brackets → underscores | `"unnamed[0]"` | `unnamed_0` |
-| Spaces → underscores | `"my net"` | `my_net` |
-| Consecutive replaced chars collapse | `"a.[0]"` | `a_0` |
-| Leading/trailing underscores stripped | `".output."` | `output` |
-| Lowercased | `"Power.HV"` | `power_hv` |
-| SPICE expressions unchanged | `"i(v1)"` | `i(v1)` |
+| Input | SPICE net name |
+|-------|---------------|
+| `dut.power_out.hv` | `dut_power_out_hv` |
+| `dut.power_in.hv` | `dut_power_in_hv` |
+| `dut.package.SW` | `dut_package_sw` |
+| `i(l1)` | `i(l1)` (unchanged) |
+| `i(v1)` | `i(v1)` (unchanged) |
 
-**How net names are derived from the ato hierarchy:**
+**Current probes**: `i()` only works for voltage sources (`V*`) and inductors (`L*`). Do NOT probe current sources (`I*`) — this causes ngspice `wrdata` failures.
 
-- An `Electrical` interface named `output` → net `output`
-- `ElectricPower` children: `.hv` → `power_hv`, `.lv` → `power_lv`
-- `Resistor` unnamed pins: `r_top.unnamed[0]` → `r_top_unnamed_0`
-- Connected nets pick the **shortest** sanitized name among all bus members
-- Current through a voltage source: `i(v1)` (SPICE convention — negative = current into circuit)
+### CRITICAL: Case sensitivity in SPICE source strings
 
-**In practice**, write the atopile address you'd use to refer to the interface (e.g. `power.hv`, `output`) and the sanitization handles the rest. To verify net names, inspect the generated `.spice` file in `build/builds/<name>/`.
+Net aliases are keyed **lowercase** (from `_sanitize_net_name()`), but `_resolve_dut_references()` preserves original case. This means uppercase pin names in `spice`/`extra_spice` create **ghost nets** that aren't connected to anything.
+
+| Bad (creates ghost net) | Good (resolves correctly) |
+|---|---|
+| `dut.package.EN` → `dut_package_EN` ≠ alias `dut_package_en` | `dut.enable.line` → `dut_enable_line` ✓ |
+| `dut.package.SW` in spice strings | `dut.package.8` or lowercase alternatives |
+
+**Rule**: In `spice`, `extra_spice`, and `extra_spice_template` strings, use lowercase net paths. The `Requirement.net` field is safe because `_sanitize_net_name()` lowercases it.
+
+### Finding element names
+
+To discover SPICE element names (R1, C5, L1, X1, etc.):
+1. Run `ato build` once
+2. Check `build/builds/<name>/circuit.spice` (or `multidut_<dut>.spice` for multi-DUT)
+3. Element names are assigned by component type and traversal order
 
 ## SPICE Source Specifications
 
-For transient requirements, `source_spec` overrides a voltage source to apply stimulus:
-
 | Pattern | Description |
 |---------|-------------|
-| `DC 10` | Constant 10V |
-| `PULSE(0 10 0 1n 1n 10 10)` | Step from 0V to 10V (V1 V2 delay rise fall width period) |
-| `PULSE(0 5 0 0.1 0.1 1 2)` | Slow ramp 0-5V with 100ms rise/fall |
+| `DC 12` | Constant 12V |
+| `PULSE(0 12 0 10u 10u 10 10)` | Step from 0V to 12V (V1 V2 delay rise fall width period) |
+| `PULSE(8 40 15e-3 1u 1u 5e-3 20e-3)` | VIN step 8V to 40V at 15ms |
+| `DC 0 AC 1` | AC analysis stimulus (0V DC bias, 1V AC amplitude) |
 
-## Auto-Scoping
+Multiple SPICE lines are pipe-separated: `"V1 net 0 DC 12|Iload net 0 DC 5"`
 
-Requirements are automatically scoped to the nearest ancestor module that contains electrical components. This means:
-
-- Requirements inside a `Requirements` grouping module are scoped up to the parent that has actual R/C/L/power
-- Requirements placed directly in a circuit module scope to that module
-- For submodule-level requirements, only that submodule's components are simulated (smaller, faster netlists)
-
-## LLM Design Iteration Workflow
-
-When designing a circuit, use simulation requirements to close the feedback loop:
-
-### 1. Define requirements FIRST
-
-Before building the circuit, define what "correct" means. For a voltage divider:
-- What output voltage do you expect? (DCOP final_value)
-- What current budget? (DCOP final_value on `i(v_source)`)
-- How fast must it settle? (transient settling_time)
-
-### 2. Build and read the JSON
-
-After `ato build`, read `<build>.requirements.json`. Each entry has:
-- `"passed": true/false` — did the actual value fall within [minVal, maxVal]?
-- `"actual"` — the simulated value
-
-### 3. Diagnose failures
-
-If a requirement fails:
-
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| `actual` far from `typical` | Wrong component values | Recalculate R/C/L values |
-| `actual` close but outside bounds | Tolerances too tight or component values slightly off | Widen bounds or adjust values |
-| `actual = NaN` | Net name doesn't exist in netlist | Check `.spice` file for correct net names |
-| Simulation timeout | Circuit too large or convergence issue | Check for floating nodes, add small load resistors |
-| `actual` current has wrong sign | SPICE convention: current direction | Negate bounds (SPICE current is negative into circuit) |
-
-### 4. Iterate
-
-Modify component values in the `.ato` file, re-run `ato build`, re-read the JSON. Repeat until all requirements pass.
-
-### Example: fixing a failing voltage divider
-
-```
-FAIL: REQ-001: Output voltage = 5.0 [3.2, 3.4]
-```
-
-The output is 5V instead of 3.3V. For a divider with Vin=10V:
-- Vout = Vin * R_bottom / (R_top + R_bottom)
-- Need: 3.3 = 10 * R_bottom / (R_top + R_bottom)
-- Ratio: R_bottom/R_top = 3.3/6.7 ~ 0.49
-
-Fix: adjust resistor values to achieve the correct ratio.
-
-## AC Analysis Example
+## Complete Example — Buck Converter Validation
 
 ```ato
+import SimulationTransient
+import SimulationSweep
+import LineChart
+import BarChart
 import Requirement
 
-module ACRequirements:
-    "Frequency response requirements for an RC lowpass filter."
+from "buck_converter.ato" import TPS54560_Reference
 
-    req_gain = new Requirement
-    req_gain.req_name = "REQ-005: Low-frequency gain"
-    req_gain.net = "output"
-    req_gain.min_val = "-3"
-    req_gain.typical = "-2.5"
-    req_gain.max_val = "-2"
-    req_gain.capture = "ac"
-    req_gain.measurement = "gain_db"
-    req_gain.ac_start_freq = "0.01"
-    req_gain.ac_stop_freq = "1000"
-    req_gain.ac_points_per_dec = "100"
-    req_gain.ac_source_name = "V1"
-    req_gain.ac_measure_freq = "0.01"
+module ModelValidation:
+    dut = new TPS54560_Reference
 
-    req_bw = new Requirement
-    req_bw.req_name = "REQ-006: 3dB bandwidth"
-    req_bw.net = "output"
-    req_bw.min_val = "1.5"
-    req_bw.typical = "2.12"
-    req_bw.max_val = "3.0"
-    req_bw.capture = "ac"
-    req_bw.measurement = "bandwidth_3db"
-    req_bw.ac_start_freq = "0.01"
-    req_bw.ac_stop_freq = "1000"
-    req_bw.ac_points_per_dec = "100"
-    req_bw.ac_source_name = "V1"
+    # --- MV_001: Output Ripple CCM ---
+    sim_001 = new SimulationTransient
+    sim_001.duts = "dut"
+    sim_001.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_001.remove_elements = "R5"
+    sim_001.extra_spice = "Iload dut.power_out.hv 0 DC 5"
+    sim_001.time_start = 10ms
+    sim_001.time_stop = 10.1ms
+    sim_001.time_step = 25ns
+
+    plot_001 = new LineChart
+    plot_001.title = "Output Ripple CCM"
+    plot_001.x = "time"
+    plot_001.y = "ac_coupled(dut.power_out.hv)"
+    plot_001.y_secondary = "i(l1)"
+    plot_001.simulation = "sim_001"
+
+    req_001 = new Requirement
+    req_001.req_name = "MV_001: Output Ripple CCM"
+    req_001.simulation = "sim_001"
+    req_001.net = "dut.power_out.hv"
+    req_001.measurement = "peak_to_peak"
+    assert req_001.limit within 0V to 25mV
+    req_001.required_plot = "plot_001"
+
+    # --- MV_002: Load Regulation ---
+    sim_002 = new SimulationSweep
+    sim_002.duts = "dut"
+    sim_002.param_name = "ILOAD"
+    sim_002.param_values = "0.5,1,2,3,4,5"
+    sim_002.param_unit = "A"
+    sim_002.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    sim_002.remove_elements = "R5"
+    sim_002.extra_spice_template = "I_LOAD dut.power_out.hv 0 DC {ILOAD}"
+    sim_002.time_start = 10ms
+    sim_002.time_stop = 10.5ms
+    sim_002.time_step = 500ns
+
+    plot_002_bar = new BarChart
+    plot_002_bar.title = "Vout vs Load Current"
+    plot_002_bar.x = "ILOAD"
+    plot_002_bar.y = "average(dut.power_out.hv)"
+    plot_002_bar.simulation = "sim_002"
+
+    plot_002_vout = new LineChart
+    plot_002_vout.title = "Output Voltage vs Load"
+    plot_002_vout.x = "time"
+    plot_002_vout.y = "dut.power_out.hv"
+    plot_002_vout.color = "ILOAD"
+    plot_002_vout.simulation = "sim_002"
+
+    req_002 = new Requirement
+    req_002.req_name = "MV_002: Load Regulation"
+    req_002.simulation = "sim_002"
+    req_002.net = "dut.power_out.hv"
+    req_002.measurement = "average"
+    assert req_002.limit within 4.85V to 5.15V
+    req_002.required_plot = "plot_002_bar"
+    req_002.supplementary_plot = "plot_002_vout"
 ```
 
-AC requirements generate Bode plots (gain + phase) as interactive HTML files.
+## Build & Iterate Workflow
 
-## Complete Example
+1. **Define requirements first** — before building, define what "correct" means
+2. **`ato build`** — runs simulations and checks requirements
+3. **Read results** — check `<build>.requirements.json` for pass/fail
+4. **Diagnose failures**:
+   - `actual` far from expected → wrong component values
+   - `actual` close but out of bounds → widen bounds or adjust values
+   - `actual = NaN` → net name doesn't exist (check `.spice` file)
+   - Simulation timeout → check for floating nodes, add small load
+5. **Iterate** — modify `.ato`, rebuild, repeat
+6. **Check plots** — open generated HTML files in `build/builds/<name>/`
 
-See `examples/ngspice/` for a working resistor divider with 7 requirements:
-- `resistor_divider.ato` — circuit + requirements import
-- `requirements.ato` — 7 requirements (2 DCOP, 2 transient, 3 AC)
-- `ato.yaml` — build config
+## Known Limitations
+
+- Behavioral SPICE models can't validate power efficiency (ideal switches)
+- Input ripple = 0 with ideal voltage source (no source impedance)
+- `i()` probes only work for V-sources and inductors, not current sources (I*)
+- Solver may widen `assert within` bounds slightly (e.g., 100mV → 200mV)

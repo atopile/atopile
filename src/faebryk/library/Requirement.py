@@ -62,6 +62,81 @@ MeasurementType = (
 )
 
 
+# SI prefix multipliers for parsing limit expressions
+_SI_PREFIXES = {
+    "f": 1e-15, "p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6,
+    "m": 1e-3, "k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12,
+}
+
+# Regex for a number with optional SI prefix and unit
+_NUM_RE = r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*([fpnuµmkKMGT]?)\s*[A-Za-z%]*"
+
+
+def _parse_si_number(s: str) -> float:
+    """Parse a number string with optional SI prefix, e.g. '200mV' → 0.2"""
+    m = re.match(_NUM_RE, s.strip())
+    if not m:
+        raise ValueError(f"Cannot parse number: {s!r}")
+    val = float(m.group(1))
+    prefix = m.group(2)
+    if prefix:
+        val *= _SI_PREFIXES.get(prefix, 1.0)
+    return val
+
+
+def _parse_limit_expr(expr: str) -> tuple[float, float] | None:
+    """Parse ato limit expressions like '5V +/- 10%', '0A to 5A', '3A +/- 4A'.
+
+    Returns (min_val, max_val) or None if unparseable.
+    """
+    expr = expr.strip()
+
+    # Pattern 1: "X to Y" → (X, Y)
+    m = re.match(
+        r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*[fpnuµmkKMGT]?\s*[A-Za-z]*)"
+        r"\s+to\s+"
+        r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*[fpnuµmkKMGT]?\s*[A-Za-z]*)",
+        expr,
+    )
+    if m:
+        try:
+            return (_parse_si_number(m.group(1)), _parse_si_number(m.group(2)))
+        except ValueError:
+            pass
+
+    # Pattern 2: "X +/- Y%" → (X*(1-Y/100), X*(1+Y/100))
+    m = re.match(
+        r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*[fpnuµmkKMGT]?\s*[A-Za-z]*)"
+        r"\s*\+/-\s*"
+        r"(\d+(?:\.\d+)?)\s*%",
+        expr,
+    )
+    if m:
+        try:
+            center = _parse_si_number(m.group(1))
+            pct = float(m.group(2))
+            return (center * (1 - pct / 100), center * (1 + pct / 100))
+        except ValueError:
+            pass
+
+    # Pattern 3: "X +/- Y<unit>" → (X-Y, X+Y)
+    m = re.match(
+        r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*[fpnuµmkKMGT]?\s*[A-Za-z]*)"
+        r"\s*\+/-\s*"
+        r"([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*[fpnuµmkKMGT]?\s*[A-Za-z]*)",
+        expr,
+    )
+    if m:
+        try:
+            center = _parse_si_number(m.group(1))
+            delta = _parse_si_number(m.group(2))
+            return (center - delta, center + delta)
+        except ValueError:
+            pass
+
+    return None
+
+
 class Requirement(fabll.Node):
     """A simulation requirement node.
 
@@ -249,23 +324,34 @@ class Requirement(fabll.Node):
     def _get_limit_bounds(self) -> tuple[float, float] | None:
         """Extract [min, max] from the limit NumericParameter.
 
-        Tries force_extract_subset on the limit parameter first (works with
-        ato ``assert req.limit within X to Y``), then falls back to explicit
-        min_val/max_val string params for backward compatibility.
+        ``assert req.limit within X to Y`` uses constrain_superset(),
+        so we try try_extract_superset first, then subset as fallback.
         """
         import math
 
-        # 1) Try limit NumericParameter via force_extract_subset
+        # 1) Try superset (set by "assert req.limit within X to Y")
         try:
-            numbers = self.limit.get().force_extract_subset()
-            mn = numbers.get_min_value()
-            mx = numbers.get_max_value()
-            if not math.isinf(mn) and not math.isinf(mx):
-                return (mn, mx)
+            numbers = self.limit.get().try_extract_superset()
+            if numbers is not None:
+                mn = numbers.get_min_value()
+                mx = numbers.get_max_value()
+                if not math.isinf(mn) and not math.isinf(mx):
+                    return (mn, mx)
         except Exception:
             pass
 
-        # 2) Fallback: explicit min_val / max_val string params
+        # 2) Try subset (in case constraint was set differently)
+        try:
+            numbers = self.limit.get().try_extract_subset()
+            if numbers is not None:
+                mn = numbers.get_min_value()
+                mx = numbers.get_max_value()
+                if not math.isinf(mn) and not math.isinf(mx):
+                    return (mn, mx)
+        except Exception:
+            pass
+
+        # 3) Fallback: explicit min_val / max_val string params
         try:
             mn_s = self.min_val.get().try_extract_singleton()
             mx_s = self.max_val.get().try_extract_singleton()

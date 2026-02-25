@@ -38,6 +38,8 @@ export interface RequirementData {
   varName?: string;
   /** Original limit expression from .ato source, e.g. "5V +/- 10%" or "0s to 5ms" */
   limitExpr?: string;
+  /** Path to the .spice netlist file (for single-sim rerun) */
+  netlistPath?: string;
   /** Simulation name override */
   simulationName?: string;
   /** SPICE source override name (e.g. "V1") */
@@ -46,6 +48,8 @@ export interface RequirementData {
   sourceSpec?: string;
   /** Extra SPICE commands */
   extraSpice?: string[];
+  /** SPICE source definition from Simulation node */
+  spice?: string;
 }
 
 /** A single Plotly plot spec with optional editing metadata */
@@ -55,9 +59,10 @@ export interface PlotSpec {
   meta?: PlotMeta;
 }
 
-/** Metadata for an editable plot — matches LineChart fields in .ato */
+/** Metadata for an editable plot — matches LineChart/BarChart fields in .ato */
 export interface PlotMeta {
   varName?: string;
+  plotType?: string;
   title?: string;
   x?: string;
   y?: string;

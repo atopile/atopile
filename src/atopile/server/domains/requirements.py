@@ -22,12 +22,18 @@ ALLOWED_FIELDS = frozenset({
     "limit_expr",
     # Simulation fields
     "spice", "spice_template",
-    # Plot (LineChart) fields
+    # Plot (LineChart/BarChart) fields
     "title", "x", "y", "y_secondary", "color",
     "simulation", "plot_limits",
+    # Plot type change (replaces "new LineChart" / "new BarChart")
+    "plot_type",
     # Requirement → plot link
     "required_plot", "supplementary_plot",
+    # Requirement name
+    "req_name",
 })
+
+VALID_PLOT_TYPES = frozenset({"LineChart", "BarChart"})
 
 
 def handle_update_requirement(
@@ -67,6 +73,22 @@ def handle_update_requirement(
                 )
             continue
 
+        if field == "plot_type":
+            # Special: replace "new LineChart" / "new BarChart" on the declaration line
+            if new_value not in VALID_PLOT_TYPES:
+                log.warning("Invalid plot type: %s", new_value)
+                continue
+            content, did_replace = _replace_plot_type(
+                content, var_name, new_value
+            )
+            if did_replace:
+                applied[field] = new_value
+            else:
+                log.warning(
+                    "Could not find %s = new ... in %s", var_name, path
+                )
+            continue
+
         content, did_replace = _replace_field(content, var_name, field, new_value)
         if did_replace:
             applied[field] = new_value
@@ -96,6 +118,18 @@ def _replace_limit_expr(
         re.MULTILINE,
     )
     result, count = pattern.subn(rf'\g<1>{new_expr}', content)
+    return result, count > 0
+
+
+def _replace_plot_type(
+    content: str, var_name: str, new_type: str,
+) -> tuple[str, bool]:
+    """Replace ``var = new LineChart`` with ``var = new BarChart`` (or vice versa)."""
+    pattern = re.compile(
+        rf'^(\s*{re.escape(var_name)}\s*=\s*new\s+)\w+',
+        re.MULTILINE,
+    )
+    result, count = pattern.subn(rf'\g<1>{new_type}', content)
     return result, count > 0
 
 
@@ -214,10 +248,162 @@ def handle_rerun_simulation(
         "success": response.success,
         "message": response.message,
         "buildTargets": [
-            {"buildId": bt.build_id, "target": bt.target, "status": bt.status}
+            {"buildId": bt.build_id, "target": bt.target}
             for bt in (response.build_targets or [])
         ],
     }
+
+
+def handle_rerun_single(
+    netlist_path: str,
+    spice_sources: str,
+    sim_type: str,
+    net: str,
+    measurement: str,
+    tran_start: float = 0,
+    tran_stop: float = 100e-6,
+    tran_step: float = 1e-9,
+    settling_tolerance: float | None = None,
+    context_nets: list[str] | None = None,
+    min_val: float | None = None,
+    max_val: float | None = None,
+) -> dict:
+    """Rerun a single simulation using an existing netlist and return fresh results.
+
+    This skips the full build pipeline (graph, solver, netlist generation) and
+    directly invokes ngspice on the saved netlist with the specified sources.
+    """
+    import math
+
+    from faebryk.exporters.simulation.ngspice import Circuit
+    from faebryk.exporters.simulation.requirement import _measure_tran
+    from faebryk.exporters.simulation.simulation_runner import (
+        _apply_spice_source,
+        _resolve_net_aliases,
+    )
+
+    spice_path = Path(netlist_path)
+    if not spice_path.is_file():
+        raise FileNotFoundError(f"Netlist not found: {netlist_path}")
+
+    # Load net aliases from companion file
+    alias_path = spice_path.with_suffix(".aliases.txt")
+    net_aliases = _parse_alias_file(alias_path) if alias_path.is_file() else {}
+
+    # Load circuit and apply sources
+    circuit = Circuit.load(spice_path)
+    if spice_sources:
+        resolved = _resolve_net_aliases(spice_sources, net_aliases)
+        _apply_spice_source(circuit, resolved)
+
+    # Resolve the net name to its canonical SPICE name
+    net_key = f"v({net})" if not net.startswith(("v(", "i(")) else net
+    resolved_net = net_key
+    # Try alias resolution on the inner net name
+    inner = net_key[2:-1] if net_key.startswith(("v(", "i(")) else net_key
+    if inner in net_aliases:
+        prefix = net_key[:2]
+        resolved_net = f"{prefix}{net_aliases[inner]})"
+
+    # Run simulation
+    if sim_type == "transient":
+        tmax = tran_step * 25 if tran_step else None
+        result = circuit.tran(
+            step=tran_step,
+            stop=tran_stop,
+            start=0,
+            uic=True,
+            tmax=tmax,
+        )
+
+        # Slice from tran_start
+        if tran_start and tran_start > 0:
+            start_idx = 0
+            for i, t in enumerate(result.time):
+                if t >= tran_start:
+                    start_idx = i
+                    break
+            result_time = result.time[start_idx:]
+            result_signals = {
+                k: v[start_idx:] for k, v in result.signals.items()
+            }
+        else:
+            result_time = result.time
+            result_signals = result.signals
+
+        # Find the signal data
+        signal_data = result_signals.get(resolved_net)
+        if signal_data is None:
+            # Try without alias
+            signal_data = result_signals.get(net_key)
+
+        # Measure
+        actual = float("nan")
+        if signal_data:
+            actual = _measure_tran(
+                measurement, list(signal_data), list(result_time),
+                settling_tolerance=settling_tolerance,
+                min_val=min_val, max_val=max_val,
+            )
+
+        # Pass/fail
+        passed = False
+        if math.isfinite(actual) and min_val is not None and max_val is not None:
+            passed = min_val <= actual <= max_val
+
+        # Build time series for the UI (downsampled)
+        MAX_POINTS = 2000
+        time_list = list(result_time)
+        signals_out: dict[str, list[float]] = {}
+        # Include primary net + context nets
+        all_nets = [net_key]
+        for cn in (context_nets or []):
+            cnk = f"v({cn})" if not cn.startswith(("v(", "i(")) else cn
+            all_nets.append(cnk)
+
+        for nk in all_nets:
+            # Try resolved alias
+            inner_n = nk[2:-1] if nk.startswith(("v(", "i(")) else nk
+            resolved_nk = nk
+            if inner_n in net_aliases:
+                resolved_nk = f"{nk[:2]}{net_aliases[inner_n]})"
+            sd = result_signals.get(resolved_nk) or result_signals.get(nk)
+            if sd:
+                signals_out[nk] = list(sd)
+
+        # Simple downsampling
+        if len(time_list) > MAX_POINTS:
+            step_ds = len(time_list) // MAX_POINTS
+            time_list = time_list[::step_ds]
+            signals_out = {k: v[::step_ds] for k, v in signals_out.items()}
+
+        return {
+            "actual": actual if math.isfinite(actual) else None,
+            "passed": passed,
+            "timeSeries": {
+                "time": time_list,
+                "signals": signals_out,
+            },
+        }
+
+    raise ValueError(f"Unsupported simulation type: {sim_type}")
+
+
+def _parse_alias_file(path: Path) -> dict[str, str]:
+    """Parse a .aliases.txt file into a dict of alias → canonical name."""
+    aliases: dict[str, str] = {}
+    in_aliases = False
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line == "=== Net Aliases ===":
+            in_aliases = True
+            continue
+        if in_aliases and "->" in line:
+            parts = line.split("->", 1)
+            alias = parts[0].strip()
+            canon = parts[1].strip()
+            aliases[alias] = canon
+    return aliases
 
 
 def _atomic_write(path: Path, content: str) -> None:

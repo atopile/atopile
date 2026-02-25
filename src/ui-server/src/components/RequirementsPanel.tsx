@@ -35,18 +35,21 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
     [requirementsData],
   );
 
+  const hasResult = (r: RequirementData) => r.actual !== null && isFinite(r.actual);
+
   const filteredReqs = useMemo(() => {
     if (filter === 'all') return requirements;
-    if (filter === 'pass') return requirements.filter(r => r.passed);
-    if (filter === 'fail') return requirements.filter(r => !r.passed);
+    if (filter === 'pass') return requirements.filter(r => hasResult(r) && r.passed);
+    if (filter === 'fail') return requirements.filter(r => hasResult(r) && !r.passed);
     if (filter === 'dc') return requirements.filter(r => r.capture === 'dcop');
     if (filter === 'transient') return requirements.filter(r => r.capture === 'transient');
     if (filter === 'ac') return requirements.filter(r => r.capture === 'ac');
     return requirements;
   }, [filter, requirements]);
 
-  const passCount = useMemo(() => requirements.filter(r => r.passed).length, [requirements]);
-  const failCount = useMemo(() => requirements.filter(r => !r.passed).length, [requirements]);
+  const passCount = useMemo(() => requirements.filter(r => hasResult(r) && r.passed).length, [requirements]);
+  const failCount = useMemo(() => requirements.filter(r => hasResult(r) && !r.passed).length, [requirements]);
+  const pendingCount = useMemo(() => requirements.filter(r => !hasResult(r)).length, [requirements]);
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
@@ -131,6 +134,10 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
           <span>{passCount} passed</span>
           <span className="dot fail" />
           <span>{failCount} failed</span>
+          {pendingCount > 0 && (<>
+            <span className="dot pending" />
+            <span>{pendingCount} pending</span>
+          </>)}
           <button className="req-view-all-btn" onClick={handleViewAll}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" />

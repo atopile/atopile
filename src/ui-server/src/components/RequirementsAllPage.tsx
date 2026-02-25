@@ -1,9 +1,9 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import type { RequirementData, FilterType, SimStatData } from './requirements/types';
-import { formatEng, computeMargin, marginLevel, formatBuildTime } from './requirements/helpers';
-import { renderRequirementPlot, rerenderWithLimits, purgePlot } from './requirements/charts';
+import { formatEng, formatBuildTime, parseLimitExpr, reEvalPassFail } from './requirements/helpers';
+import { renderSpecAtSize, renderTransientPlot, renderDCPlot, renderBodePlot, renderSweepPlot, purgePlot, injectLimitShapes, applyPlotFieldToSpec } from './requirements/charts';
 import { EditableField, MEASUREMENT_OPTIONS, CAPTURE_OPTIONS } from './requirements/EditableField';
-import { updateRequirement, rerunSimulation } from './requirements/api';
+import { updateRequirement, rerunSimulation, rerunSingleSimulation } from './requirements/api';
 import { PlotToolbar } from './requirements/PlotToolbar';
 
 interface RequirementsAllPageProps {
@@ -64,16 +64,18 @@ function SimConfigFields({
       {/* Transient fields */}
       {isTransient && !hasSweep && (
         <>
-          <div className="ric-row">
-            <span className="ric-label">Start</span>
-            <EditableField
-              value={String(req.tranStart ?? 0)}
-              displayValue={formatEng(req.tranStart ?? 0, 's')}
-              className="ric-value"
-              enabled={canEdit}
-              onSave={v => onFieldChange('tran_start', v)}
-            />
-          </div>
+          {(req.tranStart != null && req.tranStart !== 0) && (
+            <div className="ric-row">
+              <span className="ric-label">Start</span>
+              <EditableField
+                value={String(req.tranStart)}
+                displayValue={formatEng(req.tranStart, 's')}
+                className="ric-value"
+                enabled={canEdit}
+                onSave={v => onFieldChange('tran_start', v)}
+              />
+            </div>
+          )}
           {req.tranStop != null && (
             <div className="ric-row">
               <span className="ric-label">Stop</span>
@@ -189,10 +191,10 @@ function SimConfigFields({
       )}
 
       {/* SPICE source override */}
-      {req.sourceSpec && (
-        <div className="ric-row">
-          <span className="ric-label">Source</span>
-          <EditableField value={req.sourceSpec} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('spice', v)} />
+      {(req.sourceSpec || req.spice) && (
+        <div className="ric-row ric-row-top">
+          <span className="ric-label">Spice</span>
+          <EditableField value={req.sourceSpec || req.spice || ''} className="ric-value" enabled={canEdit} multiline onSave={v => onFieldChange('spice', v)} />
         </div>
       )}
       {/* Extra SPICE */}
@@ -230,19 +232,36 @@ function SimConfigFields({
 /*  Single requirement row: card (left) + plot(s) (right)             */
 /* ------------------------------------------------------------------ */
 
-const LIMIT_FIELDS = new Set(['min_val', 'max_val', 'limit_expr']);
 const PLOT_FIELDS = new Set([
   'title', 'x', 'y', 'y_secondary', 'color', 'plot_limits', 'simulation',
   'required_plot', 'supplementary_plot',
 ]);
 
 function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; buildTime: string }) {
-  const plotsRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const plotRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [req, setReq] = useState(initialReq);
   const [stale, setStale] = useState(false);
   const [rerunning, setRerunning] = useState(false);
-  const [plotDim, setPlotDim] = useState<{ width: number; height: number } | null>(null);
+  const [, setPlotDim] = useState<{ width: number; height: number } | null>(null);
+  // Track limit version to trigger plot re-renders on limit changes
+  const [limitVersion, setLimitVersion] = useState(0);
   const canEdit = !!(req.sourceFile && req.varName);
+  const hasResult = req.actual !== null && isFinite(req.actual);
+  const plotCount = req.plotSpecs?.length || 1;
+
+  /** Render a single requirement into one of the per-plot ref divs */
+  const renderSinglePlot = useCallback((el: HTMLDivElement, r: RequirementData, dim: { width: number; height: number }, specIndex: number) => {
+    if (r.plotSpecs && r.plotSpecs[specIndex]) {
+      const specWithLimits = injectLimitShapes(r.plotSpecs[specIndex], r);
+      renderSpecAtSize(el, specWithLimits, dim.width, dim.height);
+    } else if (specIndex === 0) {
+      if (r.sweepPoints && r.sweepPoints.length > 0) renderSweepPlot(el, r, dim);
+      else if (r.frequencySeries) renderBodePlot(el, r, dim);
+      else if (r.timeSeries) renderTransientPlot(el, r, dim);
+      else renderDCPlot(el, r, dim);
+    }
+  }, []);
 
   const handleFieldChange = useCallback(async (field: string, value: string) => {
     if (!req.sourceFile || !req.varName) return;
@@ -252,82 +271,113 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
       updates: { [field]: value },
     });
 
-    if (LIMIT_FIELDS.has(field)) {
-      const numVal = parseFloat(value);
-      if (!isNaN(numVal)) {
-        const newMin = field === 'min_val' ? numVal : req.minVal;
-        const newMax = field === 'max_val' ? numVal : req.maxVal;
-        const newPassed = req.actual !== null && isFinite(req.actual) && newMin <= req.actual && req.actual <= newMax;
-        const updated = { ...req, minVal: newMin, maxVal: newMax, passed: newPassed };
-        setReq(updated);
-        const container = plotsRef.current;
-        if (container && plotDim) {
-          await rerenderWithLimits(container, updated, newMin, newMax, plotDim);
-        }
+    if (field === 'limit_expr') {
+      const parsed = parseLimitExpr(value);
+      if (parsed) {
+        setReq(prev => {
+          const pf = reEvalPassFail(prev.actual, parsed.min, parsed.max, prev.sweepPoints);
+          return { ...prev, minVal: parsed.min, maxVal: parsed.max, limitExpr: value, ...pf };
+        });
+        setLimitVersion(v => v + 1);
+      }
+    } else if (field === 'min_val') {
+      const num = parseFloat(value);
+      if (isFinite(num)) {
+        setReq(prev => {
+          const pf = reEvalPassFail(prev.actual, num, prev.maxVal, prev.sweepPoints);
+          return { ...prev, minVal: num, ...pf };
+        });
+        setLimitVersion(v => v + 1);
+      }
+    } else if (field === 'max_val') {
+      const num = parseFloat(value);
+      if (isFinite(num)) {
+        setReq(prev => {
+          const pf = reEvalPassFail(prev.actual, prev.minVal, num, prev.sweepPoints);
+          return { ...prev, maxVal: num, ...pf };
+        });
+        setLimitVersion(v => v + 1);
       }
     } else if (!PLOT_FIELDS.has(field)) {
-      // Simulation field changed — mark stale
       setStale(true);
     }
-    // Plot fields: saved to .ato but don't mark stale (no new simulation needed)
-  }, [req, plotDim]);
+  }, [req.sourceFile, req.varName]);
 
   const handleRerun = useCallback(async () => {
     setRerunning(true);
-    try { await rerunSimulation(); setStale(false); } catch { /* */ }
+    try {
+      if (req.netlistPath && req.capture === 'transient') {
+        const result = await rerunSingleSimulation({
+          netlist_path: req.netlistPath,
+          spice_sources: req.spice || req.sourceSpec || '',
+          sim_type: 'transient',
+          net: req.net,
+          measurement: req.measurement,
+          tran_start: req.tranStart ?? 0,
+          tran_stop: req.tranStop ?? 100e-6,
+          tran_step: req.tranStep ?? 1e-9,
+          settling_tolerance: req.settlingTolerance ?? null,
+          context_nets: req.contextNets || [],
+          min_val: req.minVal,
+          max_val: req.maxVal,
+        });
+        setReq(prev => ({
+          ...prev,
+          actual: result.actual,
+          passed: result.passed,
+          timeSeries: result.timeSeries,
+        }));
+        setLimitVersion(v => v + 1);
+      } else {
+        await rerunSimulation();
+      }
+      setStale(false);
+    } catch { /* */ }
     finally { setRerunning(false); }
+  }, [req]);
+
+  const handlePlotFieldChange = useCallback((specIdx: number, field: string, value: string) => {
+    setReq(prev => {
+      if (!prev.plotSpecs || !prev.plotSpecs[specIdx]) return prev;
+      const newSpecs = [...prev.plotSpecs];
+      newSpecs[specIdx] = applyPlotFieldToSpec(newSpecs[specIdx], field, value, prev.timeSeries);
+      return { ...prev, plotSpecs: newSpecs };
+    });
+    setLimitVersion(v => v + 1);
   }, []);
 
   const handlePlotDirty = useCallback(() => {
-    // Plot config changes don't need a new simulation — no stale marker
+    setStale(true);
   }, []);
 
-  // Render plots — outer div is stretched by CSS grid to match card row height
+  // Render plots — outerRef gets height from CSS grid stretch
+  // Re-render when limitVersion changes (limit edits)
   useEffect(() => {
-    const container = plotsRef.current;
-    if (!container) return;
-    // plotsRef is an inner div; the outer .rall-plots div gets height from CSS grid stretch
-    const outer = container.parentElement as HTMLElement | null;
+    const outer = outerRef.current;
     if (!outer) return;
 
-    // Reset layout from any previous render
-    container.style.display = '';
-    container.style.gridTemplateColumns = '';
-    container.style.gap = '';
-
-    // Use outer div dimensions (CSS grid stretch gives us the card height)
-    const w = outer.clientWidth;
     const h = outer.clientHeight;
-    if (!w || !h) return;
+    const w = outer.clientWidth;
+    if (!h || !w) return;
 
-    const plotCount = req.plotSpecs?.length || 1;
-    const gap = plotCount > 1 ? 8 : 0;
-
-    // Each plot is full container height, 16:9 wide — overflow for >2 plots
-    const plotH = h;
-    const plotW = Math.round(plotH * 16 / 9);
+    // All plots same size: 2-column layout width regardless of plot count
+    const gap = 8;
+    const plotW = Math.floor((w - gap) / 2);
+    const plotH = Math.round(plotW * 9 / 16);
     const dim = { width: plotW, height: plotH };
     setPlotDim(dim);
 
-    if (plotCount > 1) {
-      container.style.display = 'grid';
-      container.style.gridTemplateColumns = 'repeat(2, auto)';
-      container.style.gap = `${gap}px`;
+    for (let i = 0; i < plotCount; i++) {
+      const el = plotRefs.current[i];
+      if (el) renderSinglePlot(el, req, dim, i);
     }
 
-    renderRequirementPlot(container, req, dim);
-
     return () => {
-      const children = Array.from(container.children) as HTMLDivElement[];
-      for (const child of children) {
-        try { purgePlot(child); } catch { /* ignore */ }
+      for (const ref of plotRefs.current) {
+        if (ref) purgePlot(ref).catch(() => {});
       }
     };
-  }, [req.id]);
-
-  const actualVal = req.actual ?? NaN;
-  const margin = computeMargin(actualVal, req.minVal, req.maxVal);
-  const level = marginLevel(margin);
+  }, [req.id, plotCount, limitVersion, renderSinglePlot]);
 
   return (
     <div className="rall-row">
@@ -335,21 +385,17 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
       <div className="rall-card">
         <div className="req-info-card-outer">
           <div className="ric-header">
-            <div className="ric-name">{req.name}</div>
-            <div className={`ric-badge ${req.passed ? 'pass' : 'fail'}`}>
-              {req.passed ? 'PASS' : 'FAIL'}
+            <div className="ric-name">
+              <EditableField value={req.name} className="ric-name-edit" enabled={canEdit} onSave={v => handleFieldChange('req_name', v)} />
+            </div>
+            <div className={`ric-badge ${hasResult ? (req.passed ? 'pass' : 'fail') : 'pending'}`}>
+              {hasResult ? (req.passed ? 'PASS' : 'FAIL') : '---'}
             </div>
           </div>
           <div className="ric-body">
-            {/* Result */}
+            {/* Configuration (includes limit) */}
             <div className="ric-section">
-              <div className="ric-section-title">Result</div>
-              <div className="ric-actual-row">
-                <span className="ric-label">Actual</span>
-                <span className={`ric-actual-value ${req.passed ? 'pass' : 'fail'}`}>
-                  {req.actual !== null ? formatEng(req.actual, req.unit) : 'N/A'}
-                </span>
-              </div>
+              <div className="ric-section-title">Configuration</div>
               <div className="ric-row">
                 <span className="ric-label">Limit</span>
                 <EditableField
@@ -359,22 +405,6 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
                   onSave={v => handleFieldChange('limit_expr', v)}
                 />
               </div>
-              <div className="ric-row">
-                <span className="ric-label">Margin</span>
-                <span className={`ric-value ${level === 'high' ? 'pass' : level === 'low' ? 'fail' : 'warn'}`}>
-                  {margin.toFixed(1)}%
-                </span>
-              </div>
-              <div className="ric-margin-bar">
-                <div className="ric-margin-track">
-                  <div className={`ric-margin-fill ${level}`} style={{ width: `${Math.min(100, margin)}%` }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Configuration */}
-            <div className="ric-section">
-              <div className="ric-section-title">Configuration</div>
               <div className="ric-row">
                 <span className="ric-label">Net</span>
                 <EditableField
@@ -407,7 +437,7 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
               </div>
             </div>
 
-            {/* Simulation Config */}
+            {/* Simulation */}
             <div className="ric-section">
               <div className="ric-section-title">Simulation</div>
               <SimConfigFields req={req} canEdit={canEdit} onFieldChange={handleFieldChange} buildTime={buildTime} />
@@ -433,10 +463,14 @@ function RequirementRow({ req: initialReq, buildTime }: { req: RequirementData; 
         </div>
       </div>
 
-      {/* Plots with toolbar */}
-      <div className="rall-plots plot-container">
-        <div ref={plotsRef} />
-        <PlotToolbar req={req} specIndex={0} onDirty={handlePlotDirty} />
+      {/* Plots — one toolbar per plot */}
+      <div className="rall-plots" ref={outerRef}>
+        {Array.from({ length: plotCount }, (_, i) => (
+          <div key={i} className="plot-container">
+            <div ref={el => { plotRefs.current[i] = el; }} />
+            <PlotToolbar req={req} specIndex={i} onDirty={handlePlotDirty} onPlotFieldChange={handlePlotFieldChange} />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -503,10 +537,12 @@ export function RequirementsAllPage({ requirements, buildTime, simStats }: Requi
     [requirements],
   );
 
+  const hasResult = (r: RequirementData) => r.actual !== null && isFinite(r.actual);
+
   const filtered = useMemo(() => {
     let reqs = sorted;
-    if (filter === 'pass') reqs = reqs.filter(r => r.passed);
-    else if (filter === 'fail') reqs = reqs.filter(r => !r.passed);
+    if (filter === 'pass') reqs = reqs.filter(r => hasResult(r) && r.passed);
+    else if (filter === 'fail') reqs = reqs.filter(r => hasResult(r) && !r.passed);
     else if (filter === 'dc') reqs = reqs.filter(r => r.capture === 'dcop');
     else if (filter === 'transient') reqs = reqs.filter(r => r.capture === 'transient');
     else if (filter === 'ac') reqs = reqs.filter(r => r.capture === 'ac');
@@ -522,8 +558,9 @@ export function RequirementsAllPage({ requirements, buildTime, simStats }: Requi
     return reqs;
   }, [sorted, filter, search]);
 
-  const passCount = useMemo(() => sorted.filter(r => r.passed).length, [sorted]);
-  const failCount = useMemo(() => sorted.filter(r => !r.passed).length, [sorted]);
+  const passCount = useMemo(() => sorted.filter(r => hasResult(r) && r.passed).length, [sorted]);
+  const failCount = useMemo(() => sorted.filter(r => hasResult(r) && !r.passed).length, [sorted]);
+  const pendingCount = useMemo(() => sorted.filter(r => !hasResult(r)).length, [sorted]);
 
   return (
     <div className="rall-root">
@@ -538,6 +575,10 @@ export function RequirementsAllPage({ requirements, buildTime, simStats }: Requi
           <span>{passCount} passed</span>
           <span className="dot fail" />
           <span>{failCount} failed</span>
+          {pendingCount > 0 && (<>
+            <span className="dot pending" />
+            <span>{pendingCount} pending</span>
+          </>)}
         </div>
       </div>
 

@@ -1,6 +1,5 @@
 import { memo } from 'react';
 import type { RequirementData } from './types';
-import { formatEng } from './helpers';
 
 interface RequirementItemProps {
   req: RequirementData;
@@ -17,6 +16,7 @@ export const RequirementItem = memo(function RequirementItem({
   onHover,
   onLeave,
 }: RequirementItemProps) {
+  const hasResult = req.actual !== null && isFinite(req.actual);
   return (
     <div
       className={`req-item ${selected ? 'selected' : ''}`}
@@ -24,18 +24,14 @@ export const RequirementItem = memo(function RequirementItem({
       onMouseEnter={(e) => onHover(req, e.currentTarget.getBoundingClientRect())}
       onMouseLeave={onLeave}
     >
-      <div className={`req-status-dot ${req.passed ? 'pass' : 'fail'}`} />
+      <div className={`req-status-dot ${hasResult ? (req.passed ? 'pass' : 'fail') : 'pending'}`} />
       <div className="req-item-info">
         <div className="req-item-name">{req.name}</div>
-        <div className="req-item-bounds">
-          <span className="lsl">{formatEng(req.minVal, req.unit)}</span>
-          <span className={`actual ${req.passed ? 'pass' : 'fail'}`}>
-            {req.actual !== null ? formatEng(req.actual, req.unit) : 'N/A'}
-          </span>
-          <span className="usl">{formatEng(req.maxVal, req.unit)}</span>
+        <div className="req-item-limit">
+          {req.limitExpr || `${req.measurement}`}
         </div>
       </div>
-      <div className="req-item-tag">{req.capture === 'dcop' ? 'DC' : 'AC'}</div>
+      <div className="req-item-tag">{req.capture === 'transient' ? 'Tran' : req.capture === 'ac' ? 'AC' : 'DC'}</div>
     </div>
   );
 });

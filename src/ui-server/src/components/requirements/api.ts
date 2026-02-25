@@ -80,7 +80,7 @@ export async function createPlot(
 export interface RerunResponse {
   success: boolean;
   message: string;
-  buildTargets: Array<{ buildId: string; target: string; status: string }>;
+  buildTargets: Array<{ buildId: string; target: string }>;
 }
 
 export async function rerunSimulation(): Promise<RerunResponse> {
@@ -99,6 +99,50 @@ export async function rerunSimulation(): Promise<RerunResponse> {
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(`Rerun failed (${res.status}): ${detail}`);
+  }
+
+  return res.json();
+}
+
+export interface RerunSingleParams {
+  netlist_path: string;
+  spice_sources: string;
+  sim_type: string;
+  net: string;
+  measurement: string;
+  tran_start: number;
+  tran_stop: number;
+  tran_step: number;
+  settling_tolerance: number | null;
+  context_nets: string[];
+  min_val: number | null;
+  max_val: number | null;
+}
+
+export interface RerunSingleResponse {
+  actual: number | null;
+  passed: boolean;
+  timeSeries: {
+    time: number[];
+    signals: Record<string, number[]>;
+  };
+}
+
+export async function rerunSingleSimulation(
+  params: RerunSingleParams,
+): Promise<RerunSingleResponse> {
+  const apiUrl = getApiUrl();
+  if (!apiUrl) throw new Error('API URL not configured');
+
+  const res = await fetch(`${apiUrl}/api/simulations/rerun-single`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Single rerun failed (${res.status}): ${detail}`);
   }
 
   return res.json();

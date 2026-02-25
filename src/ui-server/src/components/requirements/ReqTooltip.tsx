@@ -1,5 +1,5 @@
 import type { RequirementData } from './types';
-import { formatEng, computeMargin, marginLevel } from './helpers';
+import { formatEng } from './helpers';
 
 interface ReqTooltipProps {
   req: RequirementData | null;
@@ -8,9 +8,8 @@ interface ReqTooltipProps {
 
 export function ReqTooltip({ req, rect }: ReqTooltipProps) {
   if (!req || !rect) return null;
-  const margin = computeMargin(req.actual ?? NaN, req.minVal, req.maxVal);
-  const level = marginLevel(margin);
-  const captureLabel = req.capture === 'dcop' ? 'DC Operating Point' : 'Transient';
+  const hasResult = req.actual !== null && isFinite(req.actual);
+  const captureLabel = req.capture === 'transient' ? 'Transient' : req.capture === 'ac' ? 'AC' : 'DC Operating Point';
   const measLabel = req.measurement.replace(/_/g, ' ');
 
   // Position below the hovered item (sidebar is narrow)
@@ -21,29 +20,24 @@ export function ReqTooltip({ req, rect }: ReqTooltipProps) {
     <div className="req-tooltip" style={{ top, left }}>
       <div className="req-tooltip-row">
         <span className="tt-label">Status</span>
-        <span className="tt-value" style={{ color: req.passed ? 'var(--success)' : 'var(--error)' }}>
-          {req.passed ? 'PASS' : 'FAIL'}
+        <span className="tt-value" style={{ color: hasResult ? (req.passed ? 'var(--success)' : 'var(--error)') : 'var(--text-muted)' }}>
+          {hasResult ? (req.passed ? 'PASS' : 'FAIL') : 'Pending'}
         </span>
       </div>
       <div className="req-tooltip-row">
-        <span className="tt-label">Actual</span>
-        <span className="tt-value">{req.actual !== null ? formatEng(req.actual, req.unit) : 'N/A'}</span>
+        <span className="tt-label">Limit</span>
+        <span className="tt-value">{req.limitExpr || `${formatEng(req.minVal, req.unit)} to ${formatEng(req.maxVal, req.unit)}`}</span>
       </div>
-      <div className="req-tooltip-row">
-        <span className="tt-label">Margin</span>
-        <span
-          className="tt-value"
-          style={{
-            color: level === 'high' ? 'var(--success)' : level === 'low' ? 'var(--error)' : 'var(--warning)',
-          }}
-        >
-          {margin.toFixed(1)}%
-        </span>
-      </div>
+      {hasResult && (
+        <div className="req-tooltip-row">
+          <span className="tt-label">Actual</span>
+          <span className="tt-value">{formatEng(req.actual!, req.unit)}</span>
+        </div>
+      )}
       <div className="req-tooltip-divider" />
       <div className="req-tooltip-row">
         <span className="tt-label">Net</span>
-        <span className="tt-value">{req.net}</span>
+        <span className="tt-value">{req.displayNet || req.net}</span>
       </div>
       <div className="req-tooltip-row">
         <span className="tt-label">Capture</span>
@@ -52,19 +46,6 @@ export function ReqTooltip({ req, rect }: ReqTooltipProps) {
       <div className="req-tooltip-row">
         <span className="tt-label">Measurement</span>
         <span className="tt-value">{measLabel}</span>
-      </div>
-      <div className="req-tooltip-divider" />
-      <div className="req-tooltip-row">
-        <span className="tt-label">Min</span>
-        <span className="tt-value">{formatEng(req.minVal, req.unit)}</span>
-      </div>
-      <div className="req-tooltip-row">
-        <span className="tt-label">Typical</span>
-        <span className="tt-value">{formatEng(req.typical, req.unit)}</span>
-      </div>
-      <div className="req-tooltip-row">
-        <span className="tt-label">Max</span>
-        <span className="tt-value">{formatEng(req.maxVal, req.unit)}</span>
       </div>
       {req.justification && (
         <>

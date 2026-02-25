@@ -135,6 +135,7 @@
 }
 .req-status-dot.pass { background: var(--success); }
 .req-status-dot.fail { background: var(--error); }
+.req-status-dot.pending { background: var(--text-muted); opacity: 0.5; }
 
 .req-item-info {
   flex: 1;
@@ -148,35 +149,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.req-item-meta {
+.req-item-limit {
   font-size: var(--font-size-xxs);
   color: var(--text-muted);
-  display: flex;
-  gap: var(--spacing-sm);
-  margin-top: 1px;
-}
-.req-item-bounds {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items: center;
-  font-size: var(--font-size-xxs);
   margin-top: 2px;
   font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.req-item-bounds .lsl {
-  color: var(--text-muted);
-  text-align: left;
-}
-.req-item-bounds .usl {
-  color: var(--text-muted);
-  text-align: right;
-}
-.req-item-bounds .actual {
-  font-weight: 600;
-  text-align: center;
-}
-.req-item-bounds .actual.pass { color: var(--success); }
-.req-item-bounds .actual.fail { color: var(--error); }
 .req-item-tag {
   font-size: var(--font-size-xxs);
   padding: 0 4px;
@@ -257,14 +238,13 @@
    ============================================ */
 
 .rdp-root {
-  display: flex;
-  flex-direction: row;
   height: 100vh;
   min-height: 480px;
-  overflow: hidden;
+  overflow-y: auto;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
+  padding: var(--spacing-md) var(--spacing-lg);
 }
 
 .rdp-empty {
@@ -285,29 +265,6 @@
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
-}
-
-/* Info card area — left column */
-.rdp-info {
-  flex: 0 0 auto;
-  width: 360px;
-  padding: var(--spacing-lg);
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
-  overflow-y: auto;
-}
-
-/* Chart area — fills remaining space, plot height matches card */
-.rdp-chart {
-  flex: 1;
-  min-width: 0;
-  padding: var(--spacing-lg);
-  overflow: visible;
-  display: flex;
-  align-items: start;
-}
-.rdp-chart > div {
-  width: 100%;
 }
 
 /* --- Info card (shared between sidebar inline & detail page) --- */
@@ -345,6 +302,7 @@
 }
 .ric-badge.pass { background: var(--success); color: var(--text-on-status); }
 .ric-badge.fail { background: var(--error); color: var(--text-on-status); }
+.ric-badge.pending { background: var(--bg-tertiary); color: var(--text-muted); }
 
 .ric-body {
   display: flex;
@@ -573,6 +531,20 @@
   min-width: 0;
   min-height: 0;
   overflow: visible;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rall-plots .plot-container {
+  flex: 0 0 auto;
+}
+
+/* Editable name in card header */
+.ric-name-edit {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  font-family: inherit;
 }
 
 /* ============================================
@@ -712,8 +684,23 @@
   /* Ensure dropdown doesn't truncate labels */
   text-overflow: ellipsis;
 }
+.ric-edit-textarea {
+  max-width: 100%;
+  width: 100%;
+  resize: vertical;
+  min-height: 40px;
+  height: auto;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .ric-edit-control:focus {
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Align label to top when the value is multiline */
+.ric-row-top {
+  align-items: flex-start;
 }
 
 .ric-saving {
@@ -888,4 +875,42 @@
 .plot-type-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ---- Plot popover status indicators ---- */
+.plot-popover-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.plot-popover-input-wrap .ric-edit-input,
+.plot-popover-input-wrap .ric-edit-select {
+  flex: 1;
+  max-width: none;
+}
+.plot-popover-status {
+  font-size: var(--font-size-xxs);
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+.plot-popover-status.saving {
+  color: var(--text-muted);
+}
+.plot-popover-status.saved {
+  color: var(--success);
+}
+.plot-popover-varname {
+  font-size: var(--font-size-xxs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-left: auto;
+  margin-right: 8px;
+}
+.plot-popover-error {
+  font-size: var(--font-size-xxs);
+  color: var(--error);
+  padding: 4px 0 0;
 }
