@@ -135,8 +135,8 @@ pub const UUIDBitSet = struct {
         }
     }
 
-    /// Ensure capacity for the given uuid
-    fn ensureCapacity(self: *@This(), uuid: u32) void {
+    /// Ensure capacity for the given uuid. Public for pre-faulting.
+    pub fn ensureCapacity(self: *@This(), uuid: u32) void {
         if (uuid < self.capacity) return;
 
         // Grow to next power of 2, minimum 1024
@@ -1350,6 +1350,12 @@ pub const GraphView = struct {
             g.deinit();
             allocator.destroy(g);
         }
+
+        // Pre-fault: size graph structures upfront to eliminate page faults in hot loops.
+        // node_set/edge_set will see UUIDs up to counter + count; pre-allocate backing arrays.
+        g.nodes.ensureTotalCapacity(@intCast(header.node_count)) catch return error.OutOfMemory;
+        g.node_set.ensureCapacity(Node.counter + header.node_count);
+        g.edge_set.ensureCapacity(Edge.counter + header.edge_count);
 
         // Step 2: Compute section offsets
         const base_edge_count = header.edge_count - header.attributed_edge_count;
