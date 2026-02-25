@@ -1,9 +1,6 @@
 import { useTreeStore } from '../stores/treeStore';
 import { useTheme } from '../utils/theme';
 
-const WARN_COLOR = '#f9e2af';
-const WARN_BG = 'rgba(249, 226, 175, 0.08)';
-
 function getWarning(node: { type: string; resolved?: boolean; meta?: Record<string, string> }): string | null {
   if (node.resolved === false) return 'Address unresolved — device may not communicate on the bus';
   return null;
@@ -38,12 +35,12 @@ export function Inspector() {
             padding: 8,
             borderRadius: 4,
             fontSize: 12,
-            background: WARN_BG,
-            border: `1px solid ${WARN_COLOR}33`,
+            background: `${theme.warning}14`,
+            border: `1px solid ${theme.warning}33`,
           }}
         >
-          <span style={{ color: WARN_COLOR, fontSize: 14, lineHeight: 1 }}>{'\u26A0'}</span>
-          <span style={{ color: WARN_COLOR, lineHeight: 1.4 }}>{warning}</span>
+          <span style={{ color: theme.warning, fontSize: 14, lineHeight: 1 }}>{'\u26A0'}</span>
+          <span style={{ color: theme.warning, lineHeight: 1.4 }}>{warning}</span>
         </div>
       )}
 
@@ -89,10 +86,10 @@ export function Inspector() {
             <span
               style={{
                 width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
-                backgroundColor: node.resolved ? theme.nodeSource : WARN_COLOR,
+                backgroundColor: node.resolved ? theme.nodeSource : theme.warning,
               }}
             />
-            <span style={{ color: node.resolved ? theme.textMuted : WARN_COLOR }}>
+            <span style={{ color: node.resolved ? theme.textMuted : theme.warning }}>
               {node.resolved ? 'Address resolved' : 'Address unresolved'}
             </span>
           </div>

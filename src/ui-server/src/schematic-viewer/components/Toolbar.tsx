@@ -46,16 +46,16 @@ function buildStatusStyle(
     case 'success':
       return {
         text: 'Built',
-        bg: '#3c6f3b33',
-        fg: '#9fe29b',
-        border: '#4f8e4d99',
+        bg: `${theme.accent}18`,
+        fg: theme.textPrimary,
+        border: `${theme.accent}55`,
       };
     case 'failed':
       return {
         text: 'Failed',
-        bg: '#7d2b3e33',
-        fg: '#f5a7ba',
-        border: '#a8455f99',
+        bg: `${theme.error}22`,
+        fg: theme.error,
+        border: `${theme.error}55`,
       };
     case 'idle':
     default:
@@ -150,6 +150,8 @@ export function Toolbar({
     '--st-secondary': theme.textSecondary,
     '--st-muted': theme.textMuted,
     '--st-accent': theme.accent,
+    '--st-error': theme.error,
+    '--st-warning': theme.warning,
     '--st-status-bg': statusPill.bg,
     '--st-status-fg': statusPill.fg,
     '--st-status-border': statusPill.border,
@@ -164,7 +166,7 @@ export function Toolbar({
       <div className="schematic-toolbar-brand">SCH</div>
       <div className="schematic-toolbar-divider" />
 
-      <div className="schematic-toolbar-breadcrumbs">
+      <nav className="schematic-toolbar-breadcrumbs" aria-label="Schematic breadcrumb">
         <BreadcrumbItem
           label="Root"
           isActive={currentPath.length === 0}
@@ -190,11 +192,12 @@ export function Toolbar({
             onClick={navigateUp}
             className="schematic-toolbar-button subtle"
             title="Go up one level (Backspace)"
+            aria-label="Navigate up one level"
           >
             Up
           </button>
         )}
-      </div>
+      </nav>
 
       <div className="schematic-toolbar-spacer" />
 
@@ -216,6 +219,7 @@ export function Toolbar({
           onClick={resetLayout}
           className="schematic-toolbar-button"
           title="Reset symbol layout positions"
+          aria-label="Reset symbol layout positions"
         >
           Reset layout
         </button>
@@ -225,6 +229,7 @@ export function Toolbar({
         onClick={onToggleSidebar}
         className={`schematic-toolbar-button ${sidebarCollapsed ? 'active' : ''}`}
         title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+        aria-label={sidebarCollapsed ? 'Show inspector sidebar' : 'Hide inspector sidebar'}
       >
         {sidebarCollapsed ? 'Show inspector' : 'Hide inspector'}
       </button>

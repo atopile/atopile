@@ -57,6 +57,11 @@
   background: var(--sv-hover);
 }
 
+.schematic-sidebar-collapse-btn:focus-visible {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: -2px;
+}
+
 .schematic-sidebar-summary {
   display: flex;
   flex-direction: column;
@@ -170,6 +175,11 @@
 .schematic-sidebar-tab:hover {
   color: var(--sv-text);
   background: var(--sv-hover);
+}
+
+.schematic-sidebar-tab:focus-visible {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: -2px;
 }
 
 .schematic-sidebar-tab:hover .schematic-sidebar-tab-icon {
@@ -402,6 +412,11 @@
   cursor: default;
 }
 
+.selection-action-btn:focus-visible {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: -2px;
+}
+
 .selection-enter-btn {
   width: calc(100% + 24px);
   margin: 4px -12px -2px;
@@ -426,6 +441,11 @@
   color: var(--sv-text);
 }
 
+.selection-enter-btn:focus-visible {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: -2px;
+}
+
 .selection-inline-btn {
   margin-top: 6px;
   display: inline-flex;
@@ -445,6 +465,11 @@
 .selection-inline-btn:hover {
   color: var(--sv-text);
   background: var(--sv-hover);
+}
+
+.selection-inline-btn:focus-visible {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: -2px;
 }
 
 .selection-inline-btn.active {
@@ -641,6 +666,11 @@
   color: var(--sv-text);
 }
 
+.selection-pin-net-btn:focus-visible {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: -2px;
+}
+
 .selection-pin-net-btn.active {
   color: var(--sv-text);
   background: color-mix(in srgb, var(--sv-accent) 16%, transparent);
@@ -720,7 +750,7 @@
 }
 
 .selection-parameter-row.error .selection-parameter-value:last-child {
-  color: #f5a7ba;
+  color: var(--sv-error, #f5a7ba);
 }
 
 .selection-parameter-name {

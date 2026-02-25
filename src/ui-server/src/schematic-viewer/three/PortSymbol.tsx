@@ -7,7 +7,7 @@
  */
 
 import { useMemo, memo } from 'react';
-import { Text, Line, RoundedBox } from '@react-three/drei';
+import { Text, Line } from '@react-three/drei';
 import type { SchematicPort } from '../types/schematic';
 import {
   getPortGridAlignmentOffset,
@@ -27,6 +27,7 @@ import {
   getInterfaceStrokeStyle,
 } from './interfaceVisuals';
 import { getConnectionColor } from './connectionColor';
+import { RoundedRect } from './RoundedRect';
 
 const BREAKOUT_RADIUS = 0.32;
 const NO_RAYCAST = () => {};
@@ -85,51 +86,42 @@ const PortFrame = memo(function PortFrame({
   return (
     <>
       {isActive && (
-        <RoundedBox
-          args={[width + 0.9, height + 0.9, 0.001]}
+        <RoundedRect
+          width={width + 0.9}
+          height={height + 0.9}
           radius={radius + 0.18}
-          smoothness={4}
+          color={color}
+          opacity={isSelected ? 0.16 : 0.09}
           position={[0, 0, -0.003]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={isSelected ? 0.16 : 0.09}
-            depthWrite={false}
-          />
-        </RoundedBox>
+        />
       )}
 
-      <RoundedBox
-        args={[width + 0.12, height + 0.12, 0.001]}
+      <RoundedRect
+        width={width + 0.12}
+        height={height + 0.12}
         radius={radius + 0.04}
-        smoothness={4}
+        color={borderColor}
+        opacity={borderOpacity}
         position={[0, 0, -0.002]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={borderColor} transparent opacity={borderOpacity} depthWrite={false} />
-      </RoundedBox>
+      />
 
-      <RoundedBox
-        args={[width, height, 0.001]}
+      <RoundedRect
+        width={width}
+        height={height}
         radius={radius}
-        smoothness={4}
+        color={theme.bodyFill}
+        opacity={fillOpacity}
         position={[0, 0, -0.001]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={theme.bodyFill} transparent opacity={fillOpacity} depthWrite={false} />
-      </RoundedBox>
+      />
 
-      <RoundedBox
-        args={[width, height, 0.001]}
+      <RoundedRect
+        width={width}
+        height={height}
         radius={radius}
-        smoothness={4}
+        color={color}
+        opacity={tintOpacity}
         position={[0, 0, 0]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={color} transparent opacity={tintOpacity} depthWrite={false} />
-      </RoundedBox>
+      />
 
       <mesh
         position={[

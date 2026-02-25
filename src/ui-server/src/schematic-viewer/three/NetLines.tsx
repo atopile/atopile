@@ -32,18 +32,20 @@ import {
   transformPinSide,
 } from '../types/schematic';
 import { useCurrentPorts, useCurrentPowerPorts } from '../stores/schematicStore';
-import { type ThemeColors } from '../utils/theme';
+import { type ThemeColors, isThemeLight } from '../utils/theme';
 import { useSchematicStore, liveDrag } from '../stores/schematicStore';
 import {
   computeOrthogonalRoute,
   routeOrthogonalWithHeuristics,
   segmentsFromRoute,
   findCrossings,
+  findJunctions,
   generateJumpArc,
   writeRouteToLine2,
   JUMP_RADIUS,
   type RouteSegment,
   type Crossing,
+  type Junction,
 } from '../utils/orthoRouter';
 import {
   detectBuses,
@@ -95,13 +97,14 @@ const TRACK_WIDTH_ACTIVE_DELTA = 0.08;
 const BUS_ENTRY_WIDTH = 0.3;
 const BUS_ENTRY_WIDTH_ACTIVE = 0.36;
 const JUMP_TRACK_WIDTH = 0.3;
+const JUNCTION_DOT_RADIUS = 0.2;
 
 // ── Helpers ────────────────────────────────────────────────────
 
 function netColor(net: SchematicNet, theme: ThemeColors): string {
-  if (net.type === 'power') return getSemanticConnectionColor('power') || neutralConnectionColor(theme);
-  if (net.type === 'ground') return getSemanticConnectionColor('ground') || neutralConnectionColor(theme);
-  return protocolColorForName(net.name) ?? neutralConnectionColor(theme);
+  if (net.type === 'power') return getSemanticConnectionColor('power', theme) || neutralConnectionColor(theme);
+  if (net.type === 'ground') return getSemanticConnectionColor('ground', theme) || neutralConnectionColor(theme);
+  return protocolColorForName(net.name, theme) ?? neutralConnectionColor(theme);
 }
 
 function endpointCategoryPriority(category: string): number {
@@ -149,7 +152,7 @@ function resolvedNetColor(
 ): string {
   const dominantCategory = dominantEndpointCategory(categories);
   if (dominantCategory) {
-    const semanticColor = getSemanticConnectionColor(dominantCategory);
+    const semanticColor = getSemanticConnectionColor(dominantCategory, theme);
     if (semanticColor) return semanticColor;
   }
   return netColor(net, theme);
@@ -161,6 +164,10 @@ function extractVoltageToken(raw: string): string | null {
   return m[1].replace(/[^a-z0-9]/g, '');
 }
 
+const GENERIC_POWER_NAMES = new Set([
+  'power', 'power.hv', 'power.lv', 'hv', 'lv', 'ground',
+]);
+
 function netStubLabel(
   net: SchematicNet,
   worldPins: WorldPin[],
@@ -170,6 +177,10 @@ function netStubLabel(
     // Electrical/component-level power wiring should retain canonical net
     // naming (hv/lv) for schematic readability.
     if (!interfaceTrack) return net.name;
+
+    // If the net already has a meaningful (non-generic) name from the graph
+    // pipeline, use it directly (e.g. "VCC_3V3", "GND").
+    if (!GENERIC_POWER_NAMES.has(net.name.toLowerCase())) return net.name;
 
     // Block-level/interface wiring should read as power rails so we avoid
     // exposing hv/lv internals; include voltage token when available.
@@ -182,7 +193,7 @@ function netStubLabel(
       const voltage = extractVoltageToken(value);
       if (voltage) return `power${voltage}`;
     }
-    return 'power';
+    return net.type === 'ground' ? 'GND' : 'power';
   }
   return net.name;
 }
@@ -270,8 +281,8 @@ function protocolTypeForName(name: string): string | null {
   return resolveStandardInterfaceId(name);
 }
 
-function protocolColorForName(name: string): string | null {
-  return getStandardInterfaceColor(name);
+function protocolColorForName(name: string, theme: ThemeColors): string | null {
+  return getStandardInterfaceColor(name, isThemeLight(theme));
 }
 
 function oppositeSide(side: string): string {
@@ -815,6 +826,7 @@ function computeNetRenderData(params: {
   stubNets: StubNetData[];
   busGroups: BusGroup[];
   crossings: Crossing[];
+  junctions: Junction[];
 } {
   const {
     sheet,
@@ -1266,11 +1278,15 @@ function computeNetRenderData(params: {
   // ── Crossing detection ──────────────────────────────────
   const cx = findCrossings(allSegments);
 
+  // ── Junction detection (same-net T-junctions) ──────────
+  const jx = findJunctions(allSegments);
+
   return {
     directNets: directs,
     stubNets: stubs,
     busGroups: buses,
     crossings: cx,
+    junctions: jx,
   };
 }
 
@@ -1324,13 +1340,14 @@ export const NetLines = memo(function NetLines({
 
   // ── Compute routes, detect buses, find crossings ──────────
 
-  const { directNets, stubNets, busGroups, crossings } = useMemo(() => {
+  const { directNets, stubNets, busGroups, crossings, junctions } = useMemo(() => {
     if (!sheet || !lookup) {
       return {
         directNets: [] as DirectNetData[],
         stubNets: [] as StubNetData[],
         busGroups: [] as BusGroup[],
         crossings: [] as Crossing[],
+        junctions: [] as Junction[],
       };
     }
     return computeNetRenderData({
@@ -1418,6 +1435,15 @@ export const NetLines = memo(function NetLines({
       {/* Crossing jump arcs */}
       <CrossingJumps
         crossings={crossings}
+        netColorMap={netColorMap}
+        theme={theme}
+        selectedNetId={selectedNetId}
+        highlightedNetIds={highlightedNetIds}
+      />
+
+      {/* Same-net T-junction dots */}
+      <JunctionDots
+        junctions={junctions}
         netColorMap={netColorMap}
         theme={theme}
         selectedNetId={selectedNetId}
@@ -2284,6 +2310,49 @@ const CrossingJump = memo(function CrossingJump({
         opacity={hOpacity}
         raycast={NO_RAYCAST}
       />
+    </group>
+  );
+});
+
+// ════════════════════════════════════════════════════════════════
+// ── Junction dots (same-net T-junctions)
+// ════════════════════════════════════════════════════════════════
+
+const JunctionDots = memo(function JunctionDots({
+  junctions,
+  netColorMap,
+  theme,
+  selectedNetId,
+  highlightedNetIds,
+}: {
+  junctions: Junction[];
+  netColorMap: Map<string, string>;
+  theme: ThemeColors;
+  selectedNetId: string | null;
+  highlightedNetIds: Set<string>;
+}) {
+  if (junctions.length === 0) return null;
+
+  const hasEmphasis = hasAnyNetEmphasis(selectedNetId, highlightedNetIds);
+
+  return (
+    <group raycast={NO_RAYCAST}>
+      {junctions.map((j, i) => {
+        const color = netColorMap.get(j.netId) || neutralConnectionColor(theme);
+        const active = isNetEmphasized(j.netId, selectedNetId, highlightedNetIds);
+        const opacity = active ? 1 : hasEmphasis ? 0.25 : 0.8;
+        return (
+          <mesh key={i} position={[j.x, j.y, 0.005]}>
+            <circleGeometry args={[JUNCTION_DOT_RADIUS, 12]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={opacity}
+              toneMapped={false}
+            />
+          </mesh>
+        );
+      })}
     </group>
   );
 });

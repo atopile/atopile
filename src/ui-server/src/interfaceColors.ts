@@ -21,7 +21,7 @@ export type StandardInterfaceId =
   | 'lin'
   | 'onewire';
 
-export const STANDARD_INTERFACE_COLORS: Readonly<Record<StandardInterfaceId, string>> = {
+const DARK_COLORS: Readonly<Record<StandardInterfaceId, string>> = {
   i2c: '#89b4fa',
   spi: '#cba6f7',
   uart: '#a6e3a1',
@@ -37,6 +37,26 @@ export const STANDARD_INTERFACE_COLORS: Readonly<Record<StandardInterfaceId, str
   lin: '#f2cdcd',
   onewire: '#fab387',
 };
+
+const LIGHT_COLORS: Readonly<Record<StandardInterfaceId, string>> = {
+  i2c: '#1e66f5',
+  spi: '#8839ef',
+  uart: '#40a02b',
+  i2s: '#209fb5',
+  qspi: '#fe640b',
+  usb: '#179299',
+  can: '#d20f39',
+  jtag: '#df8e1d',
+  swd: '#04a5e5',
+  sdio: '#7287fd',
+  ethernet: '#179299',
+  pcie: '#8839ef',
+  lin: '#dd7878',
+  onewire: '#fe640b',
+};
+
+/** @deprecated Use getStandardInterfaceColor(raw, light) instead */
+export const STANDARD_INTERFACE_COLORS = DARK_COLORS;
 
 interface AliasSpec {
   id: StandardInterfaceId;
@@ -128,11 +148,14 @@ export function resolveStandardInterfaceId(
 
 /**
  * Returns semantic bus/interface color, or null if the input is non-protocol.
+ * Pass `light = true` to get the light-theme variant.
  */
 export function getStandardInterfaceColor(
   raw: string | null | undefined,
+  light?: boolean,
 ): string | null {
   const id = resolveStandardInterfaceId(raw);
   if (!id) return null;
-  return STANDARD_INTERFACE_COLORS[id];
+  const palette = light ? LIGHT_COLORS : DARK_COLORS;
+  return palette[id];
 }

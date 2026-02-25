@@ -108,6 +108,9 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.TestPoint,
         F.MountingHole,
         F.NetTie,
+        F.OpAmp,
+        F.Comparator,
+        F.Battery,
     }
 ) | (
     # Traits

@@ -117,6 +117,23 @@ function colinearOverlap(a: RouteSegment, b: RouteSegment): boolean {
   return Math.min(aMax, bMax) > Math.max(aMin, bMin);
 }
 
+type Point3 = [number, number, number];
+
+function enforceOrthogonal(route: Point3[]): Point3[] {
+  if (route.length < 2) return route;
+  const result: Point3[] = [route[0]];
+  for (let i = 1; i < route.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = route[i];
+    if (Math.abs(prev[0] - curr[0]) > 1e-6 && Math.abs(prev[1] - curr[1]) > 1e-6) {
+      // Break diagonal into horizontal-then-vertical
+      result.push([curr[0], prev[1], 0]);
+    }
+    result.push(curr);
+  }
+  return result;
+}
+
 function routeQuality(route: [number, number, number][], existing: RouteSegment[]): RouteQuality {
   const ours = segmentsFromRoute(route, '__candidate__');
   let overlaps = 0;
@@ -145,7 +162,7 @@ function routeQuality(route: [number, number, number][], existing: RouteSegment[
     overlaps,
     crossings,
     closeParallel,
-    score: overlaps * 100 + crossings * 25 + closeParallel * 6 + Math.max(route.length - 4, 0) * 2,
+    score: overlaps * 100 + crossings * 25 + closeParallel * 6 + Math.max(route.length - 4, 0) * 4,
   };
 }
 
@@ -205,19 +222,20 @@ export function routeOrthogonalWithHeuristics(
     ]);
   }
 
-  let best = candidates[0];
+  let best = enforceOrthogonal(candidates[0]);
   let bestQ = routeQuality(best, existing);
   let bestBlocked = routeIntersectsObstacles(best, obstacles, ignored);
 
   for (const candidate of candidates.slice(1)) {
-    const blocked = routeIntersectsObstacles(candidate, obstacles, ignored);
-    const q = routeQuality(candidate, existing);
+    const fixed = enforceOrthogonal(candidate);
+    const blocked = routeIntersectsObstacles(fixed, obstacles, ignored);
+    const q = routeQuality(fixed, existing);
     const better =
       (bestBlocked && !blocked) ||
       (bestBlocked === blocked && q.score < bestQ.score);
 
     if (better) {
-      best = candidate;
+      best = fixed;
       bestQ = q;
       bestBlocked = blocked;
     }
@@ -273,6 +291,59 @@ export function findCrossings(segments: RouteSegment[]): Crossing[] {
     }
   }
   return out;
+}
+
+export interface Junction {
+  x: number;
+  y: number;
+  netId: string;
+}
+
+export function findJunctions(segments: RouteSegment[]): Junction[] {
+  // Group segments by netId
+  const byNet = new Map<string, RouteSegment[]>();
+  for (const seg of segments) {
+    let arr = byNet.get(seg.netId);
+    if (!arr) {
+      arr = [];
+      byNet.set(seg.netId, arr);
+    }
+    arr.push(seg);
+  }
+
+  const junctions: Junction[] = [];
+
+  for (const [netId, netSegments] of byNet) {
+    if (netSegments.length < 2) continue;
+
+    // Count how many segment endpoints share each (x,y) coordinate
+    const pointCounts = new Map<string, { x: number; y: number; count: number }>();
+    for (const seg of netSegments) {
+      const k1 = `${seg.x1.toFixed(4)},${seg.y1.toFixed(4)}`;
+      const k2 = `${seg.x2.toFixed(4)},${seg.y2.toFixed(4)}`;
+      const e1 = pointCounts.get(k1);
+      if (e1) {
+        e1.count++;
+      } else {
+        pointCounts.set(k1, { x: seg.x1, y: seg.y1, count: 1 });
+      }
+      const e2 = pointCounts.get(k2);
+      if (e2) {
+        e2.count++;
+      } else {
+        pointCounts.set(k2, { x: seg.x2, y: seg.y2, count: 1 });
+      }
+    }
+
+    // A T-junction has 3+ segment endpoints meeting; a 4-way crossing has 4
+    for (const [, pt] of pointCounts) {
+      if (pt.count >= 3) {
+        junctions.push({ x: pt.x, y: pt.y, netId });
+      }
+    }
+  }
+
+  return junctions;
 }
 
 export function generateJumpArc(x: number, y: number): [number, number][] {

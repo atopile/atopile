@@ -51,6 +51,7 @@ interface EdgeRenderData {
   key: string;
   points: THREE.Vector3[];
   weight: number;
+  kind: 'power' | 'i2c';
 }
 
 /** Single animated dot that pulses along the path. */
@@ -104,6 +105,7 @@ export function TreeEdgeLines({ edges, positions, theme }: TreeEdgeLinesProps) {
           key: edge.id,
           points: buildEdgeCurve(from, to),
           weight: currentWeight(edge.currentAmps),
+          kind: edge.id.startsWith('i2c:') ? 'i2c' : 'power',
         };
       })
       .filter(Boolean) as EdgeRenderData[];
@@ -117,11 +119,14 @@ export function TreeEdgeLines({ edges, positions, theme }: TreeEdgeLinesProps) {
     <group>
       {edgeData.map((edge) => {
         const w = edge.weight;
-        const color = lerpColor(lowColor, highColor, w);
-        const lineWidth = 1 + w * 3;        // 1..4
-        const opacity = 0.2 + w * 0.4;      // 0.2..0.6
-        const dotSpeed = 0.2 + w * 0.4;     // gentle
-        const dotRadius = 0.01 + w * 0.015;
+        const isI2C = edge.kind === 'i2c';
+        const color = isI2C
+          ? lerpColor(theme.nodeController, theme.nodeTarget, 0.35)
+          : lerpColor(lowColor, highColor, w);
+        const lineWidth = isI2C ? 2.6 : 1 + w * 3;     // I2C needs stronger contrast
+        const opacity = isI2C ? 0.75 : 0.2 + w * 0.4;
+        const dotSpeed = isI2C ? 0.35 : 0.2 + w * 0.4;
+        const dotRadius = isI2C ? 0.015 : 0.01 + w * 0.015;
 
         return (
           <group key={edge.key}>

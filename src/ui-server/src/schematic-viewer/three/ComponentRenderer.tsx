@@ -6,7 +6,7 @@
  */
 
 import { memo, useCallback, useMemo, useRef } from 'react';
-import { Html, Line, RoundedBox, Text } from '@react-three/drei';
+import { Html, Line, Text } from '@react-three/drei';
 import { Shape, type Camera, type Object3D, Vector3 } from 'three';
 import type {
   SchematicComponent,
@@ -31,6 +31,7 @@ import {
   getTunedPinGeometry,
   transformCanonicalBodyPoint,
 } from './symbolRenderGeometry';
+import { RoundedRect } from './RoundedRect';
 
 const SMALL_AREA = 40;
 const NO_RAYCAST = () => {};
@@ -39,9 +40,8 @@ const DIODE_FILL_OPACITY = 0.28;
 const LED_FILL_OPACITY = 0.42;
 const POLARIZED_CAP_NEGATIVE_PLATE_FILL_OPACITY = 0.72;
 const HOVER_CARD_MAX_WIDTH_PX = 260;
-const HOVER_CARD_MIN_WIDTH_PX = 140;
 const HOVER_CARD_MARGIN_PX = 14;
-const HOVER_CARD_MAX_HEIGHT_PX = 62;
+const HOVER_CARD_HEIGHT_PX = 26;
 
 function circlePoints(
   cx: number,
@@ -524,7 +524,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
   const pinDotRadius = hasCustomSymbol ? symbolVisualTuning.connectionDotRadius : 0.15;
   const bodyRefMaxWidth = hasCustomSymbol ? W * 0.72 : W * 0.84;
 
-  const showHoverCard = (isHovered || isSelected) && component.name.trim().length > 0;
+  const showHoverCard = isHovered && !isDragging && component.name.trim().length > 0;
   const hoverCardTitle = useMemo(() => {
     const name = component.name.trim();
     if (!name) return component.designator;
@@ -537,11 +537,12 @@ export const ComponentRenderer = memo(function ComponentRenderer({
     return meta.join(' \u00b7 ');
   }, [component.designator, component.packageCode]);
   const hoverCardWidthPx = useMemo(() => {
-    const charWidthPx = 7.1;
-    const paddingPx = 28;
-    const desired = hoverCardTitle.length * charWidthPx + paddingPx;
-    return Math.max(HOVER_CARD_MIN_WIDTH_PX, Math.min(HOVER_CARD_MAX_WIDTH_PX, desired));
-  }, [hoverCardTitle]);
+    const charWidthPx = 6.6;
+    const paddingPx = 20;
+    const textLen = hoverCardTitle.length + (hoverCardMeta ? hoverCardMeta.length + 1 : 0);
+    const desired = textLen * charWidthPx + paddingPx;
+    return Math.min(HOVER_CARD_MAX_WIDTH_PX, desired);
+  }, [hoverCardTitle, hoverCardMeta]);
   const hoverCardAnchorY = H / 2 + (hasCustomSymbol ? 1.9 : 1.35);
   const hoverProjectRef = useRef(new Vector3());
   const calculateHoverCardPosition = useCallback(
@@ -555,7 +556,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
       const rawX = (hoverProjectRef.current.x * 0.5 + 0.5) * size.width;
       const rawY = (-hoverProjectRef.current.y * 0.5 + 0.5) * size.height;
       const halfW = hoverCardWidthPx * 0.5;
-      const halfH = HOVER_CARD_MAX_HEIGHT_PX * 0.5;
+      const halfH = HOVER_CARD_HEIGHT_PX * 0.5;
       const x = Math.min(
         size.width - HOVER_CARD_MARGIN_PX - halfW,
         Math.max(HOVER_CARD_MARGIN_PX + halfW, rawX),
@@ -587,53 +588,44 @@ export const ComponentRenderer = memo(function ComponentRenderer({
       </mesh>
 
       {isSelected && (
-        <RoundedBox
-          args={[W + 1.2, H + 1.2, 0.001]}
+        <RoundedRect
+          width={W + 1.2}
+          height={H + 1.2}
           radius={RADIUS + 0.2}
-          smoothness={4}
+          color={theme.textSecondary}
+          opacity={0.14}
           position={[0, 0, -0.06]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial color={theme.textSecondary} transparent opacity={0.14} depthWrite={false} />
-        </RoundedBox>
+        />
       )}
 
       {isHovered && !isSelected && (
-        <RoundedBox
-          args={[W + 0.6, H + 0.6, 0.001]}
+        <RoundedRect
+          width={W + 0.6}
+          height={H + 0.6}
           radius={RADIUS + 0.08}
-          smoothness={4}
+          color={theme.textMuted}
+          opacity={0.08}
           position={[0, 0, -0.06]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial color={theme.textMuted} transparent opacity={0.08} depthWrite={false} />
-        </RoundedBox>
+        />
       )}
 
       {!hasCustomSymbol && (
         <>
-          <RoundedBox
-            args={[W + 0.12, H + 0.12, 0.001]}
+          <RoundedRect
+            width={W + 0.12}
+            height={H + 0.12}
             radius={RADIUS + 0.02}
-            smoothness={4}
+            color={isSelected ? accent : theme.bodyBorder}
             position={[0, 0, -0.04]}
-            raycast={NO_RAYCAST}
-          >
-            <meshBasicMaterial
-              color={isSelected ? accent : theme.bodyBorder}
-              depthWrite={false}
-            />
-          </RoundedBox>
+          />
 
-          <RoundedBox
-            args={[W, H, 0.001]}
+          <RoundedRect
+            width={W}
+            height={H}
             radius={RADIUS}
-            smoothness={4}
+            color={theme.bodyFill}
             position={[0, 0, -0.02]}
-            raycast={NO_RAYCAST}
-          >
-            <meshBasicMaterial color={theme.bodyFill} depthWrite={false} />
-          </RoundedBox>
+          />
         </>
       )}
 
@@ -731,65 +723,24 @@ export const ComponentRenderer = memo(function ComponentRenderer({
           >
             <div
               style={{
-                minWidth: `${HOVER_CARD_MIN_WIDTH_PX}px`,
                 maxWidth: `${hoverCardWidthPx}px`,
-                padding: '8px 10px',
-                borderRadius: '10px',
-                border: `1px solid ${isSelected ? `${accent}99` : `${theme.borderColor}cc`}`,
-                background: `linear-gradient(180deg, ${theme.bgSecondary}f2 0%, ${theme.bgPrimary}f0 100%)`,
-                boxShadow: '0 10px 24px rgba(0,0,0,0.34)',
-                backdropFilter: 'blur(5px)',
-                WebkitBackdropFilter: 'blur(5px)',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                background: `${theme.bgSecondary}e8`,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
                 color: theme.textPrimary,
-                lineHeight: 1.2,
+                lineHeight: 1.3,
+                fontSize: 11,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  minWidth: 0,
-                }}
-              >
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: 999,
-                    background: accent,
-                    opacity: 0.92,
-                    flex: '0 0 auto',
-                    boxShadow: `0 0 0 1px ${theme.bgPrimary}99`,
-                  }}
-                />
-                <span
-                  style={{
-                    display: 'block',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    minWidth: 0,
-                  }}
-                >
-                  {hoverCardTitle}
-                </span>
-              </div>
+              <span style={{ fontWeight: 600 }}>{hoverCardTitle}</span>
               {hoverCardMeta && (
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: 11,
-                    color: theme.textMuted,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
+                <span style={{ color: theme.textMuted, marginLeft: 6 }}>
                   {hoverCardMeta}
-                </div>
+                </span>
               )}
             </div>
           </Html>

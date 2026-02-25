@@ -65,7 +65,7 @@ function App() {
               zIndex: 10,
             }}>
               <div style={{ textAlign: 'center', maxWidth: 400, padding: '0 16px' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#f38ba8' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.error }}>
                   Failed to load data
                 </div>
                 <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 8 }}>

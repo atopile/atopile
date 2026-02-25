@@ -1,5 +1,5 @@
 import { useMemo, memo } from 'react';
-import { Text, RoundedBox, Line } from '@react-three/drei';
+import { Text, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
 import type { ThemeColors } from '../utils/theme';
 import { isThemeLight } from '../utils/theme';
@@ -21,6 +21,7 @@ import {
   getOrderedModuleInterfacePins,
 } from '../utils/moduleInterfaces';
 import { getConnectionColor } from './connectionColor';
+import { RoundedRect } from './RoundedRect';
 
 const NO_RAYCAST = () => {};
 const MODULE_INSET = 0.72;
@@ -124,73 +125,62 @@ export const ModuleBlock = memo(function ModuleBlock({
       </mesh>
 
       {isSelected && (
-        <RoundedBox
-          args={[W + 1.26, H + 1.26, 0.001]}
+        <RoundedRect
+          width={W + 1.26}
+          height={H + 1.26}
           radius={RADIUS + 0.22}
-          smoothness={4}
+          color={accent}
+          opacity={0.2}
           position={[0, 0, -0.06]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial color={accent} transparent opacity={0.2} depthWrite={false} />
-        </RoundedBox>
+        />
       )}
 
       {isHovered && !isSelected && (
-        <RoundedBox
-          args={[W + 0.62, H + 0.62, 0.001]}
+        <RoundedRect
+          width={W + 0.62}
+          height={H + 0.62}
           radius={RADIUS + 0.1}
-          smoothness={4}
+          color={accent}
+          opacity={0.09}
           position={[0, 0, -0.06]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial color={accent} transparent opacity={0.09} depthWrite={false} />
-        </RoundedBox>
+        />
       )}
 
-      <RoundedBox
-        args={[W + 0.14, H + 0.14, 0.001]}
+      <RoundedRect
+        width={W + 0.14}
+        height={H + 0.14}
         radius={RADIUS + 0.03}
-        smoothness={4}
+        color={isSelected ? accent : theme.bodyBorder}
+        opacity={isSelected ? 0.96 : 0.86}
         position={[0, 0, -0.04]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial
-          color={isSelected ? accent : theme.bodyBorder}
-          transparent
-          opacity={isSelected ? 0.96 : 0.86}
-          depthWrite={false}
-        />
-      </RoundedBox>
+      />
 
-      <RoundedBox
-        args={[W, H, 0.001]}
+      <RoundedRect
+        width={W}
+        height={H}
         radius={RADIUS}
-        smoothness={4}
+        color={theme.bodyFill}
+        opacity={0.97}
         position={[0, 0, -0.03]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={theme.bodyFill} transparent opacity={0.97} depthWrite={false} />
-      </RoundedBox>
+      />
 
-      <RoundedBox
-        args={[Math.max(2, W - MODULE_INSET), Math.max(2, H - MODULE_INSET), 0.001]}
+      <RoundedRect
+        width={Math.max(2, W - MODULE_INSET)}
+        height={Math.max(2, H - MODULE_INSET)}
         radius={Math.max(0.22, RADIUS * 0.76)}
-        smoothness={4}
+        color={theme.bgPrimary}
+        opacity={0.2}
         position={[0, 0, -0.02]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={theme.bgPrimary} transparent opacity={0.2} depthWrite={false} />
-      </RoundedBox>
+      />
 
-      <RoundedBox
-        args={[Math.max(2, W - MODULE_INSET), Math.max(2, H - MODULE_INSET), 0.001]}
+      <RoundedRect
+        width={Math.max(2, W - MODULE_INSET)}
+        height={Math.max(2, H - MODULE_INSET)}
         radius={Math.max(0.22, RADIUS * 0.76)}
-        smoothness={4}
+        color={accent}
+        opacity={0.1}
         position={[0, 0, -0.01]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={accent} transparent opacity={0.1} depthWrite={false} />
-      </RoundedBox>
+      />
 
       <group position={[0, 0, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
         <Text
@@ -229,9 +219,13 @@ export const ModuleBlock = memo(function ModuleBlock({
         rotation={[0, 0, textTf.rotationZ]}
         scale={[textTf.scaleX, textTf.scaleY, 1]}
       >
-        <RoundedBox args={[partBadgeW, partBadgeH, 0.001]} radius={0.26} smoothness={4} raycast={NO_RAYCAST}>
-          <meshBasicMaterial color={accent} transparent opacity={0.17} depthWrite={false} />
-        </RoundedBox>
+        <RoundedRect
+          width={partBadgeW}
+          height={partBadgeH}
+          radius={0.26}
+          color={accent}
+          opacity={0.17}
+        />
         <Text
           position={[0, 0, 0.001]}
           fontSize={0.6}
@@ -441,7 +435,7 @@ const InterfacePinElement = memo(function InterfacePinElement({
           font={undefined}
           raycast={NO_RAYCAST}
         >
-          {pin.name}
+          {pin.displayName ?? pin.name}
         </Text>
       </group>
     </group>

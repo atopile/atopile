@@ -1,0 +1,91 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+# Standard library imports
+import Resistor
+import Capacitor
+import CapacitorPolarized
+import Inductor
+import Diode
+import LED
+import BJT
+import MOSFET
+import Fuse
+import Crystal
+import TestPoint
+import OpAmp
+import Comparator
+import Battery
+import ElectricPower
+
+module ComponentGallery:
+    """
+    Component gallery for testing schematic symbol rendering.
+    Instantiates one of each standard library component type.
+    """
+
+    # Shared power rail for components that need it
+    power = new ElectricPower
+    assert power.voltage within 3.3V +/- 5%
+
+    # ── Passives ──────────────────────────────────────────────
+
+    resistor = new Resistor
+    resistor.resistance = 10kohm +/- 5%
+    resistor.package = "0402"
+
+    capacitor = new Capacitor
+    capacitor.capacitance = 100nF +/- 10%
+    capacitor.package = "0402"
+
+    cap_polarized = new CapacitorPolarized
+    cap_polarized.capacitance = 10uF +/- 20%
+
+    inductor = new Inductor
+    inductor.inductance = 10uH +/- 20%
+
+    fuse = new Fuse
+    fuse.trip_current = 500mA +/- 10%
+
+    crystal = new Crystal
+    crystal.frequency = 16MHz +/- 0.1%
+
+    # ── Diodes ────────────────────────────────────────────────
+
+    diode = new Diode
+    assert diode.forward_voltage within 0.5V to 0.8V
+
+    led = new LED
+    led.color = "RED"
+
+    # ── Transistors ───────────────────────────────────────────
+
+    npn = new BJT
+    npn.doping_type = "NPN"
+
+    pnp = new BJT
+    pnp.doping_type = "PNP"
+
+    nmos = new MOSFET
+    nmos.channel_type = "N_CHANNEL"
+    nmos.saturation_type = "ENHANCEMENT"
+
+    pmos = new MOSFET
+    pmos.channel_type = "P_CHANNEL"
+    pmos.saturation_type = "ENHANCEMENT"
+
+    # ── Active / Analog ───────────────────────────────────────
+
+    opamp = new OpAmp
+    opamp.power ~ power
+
+    comparator = new Comparator
+    comparator.power ~ power
+
+    # ── Power / Energy ────────────────────────────────────────
+
+    battery = new Battery
+    battery.voltage = 3.7V +/- 10%
+
+    # ── Test infrastructure ───────────────────────────────────
+
+    test_point = new TestPoint

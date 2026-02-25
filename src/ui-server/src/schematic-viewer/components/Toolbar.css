@@ -60,6 +60,11 @@
   background: var(--st-hover);
 }
 
+.schematic-toolbar-crumb:focus-visible {
+  outline: 2px solid var(--st-accent);
+  outline-offset: -2px;
+}
+
 .schematic-toolbar-crumb.active {
   color: var(--st-text);
   font-weight: 600;
@@ -91,7 +96,7 @@
 }
 
 .schematic-toolbar-freshness.stale {
-  color: #f5a7ba;
+  color: var(--st-error, #f5a7ba);
 }
 
 .schematic-toolbar-freshness.muted {
@@ -126,6 +131,11 @@
 .schematic-toolbar-button:hover {
   background: var(--st-hover);
   color: var(--st-text);
+}
+
+.schematic-toolbar-button:focus-visible {
+  outline: 2px solid var(--st-accent);
+  outline-offset: -2px;
 }
 
 .schematic-toolbar-button.subtle {

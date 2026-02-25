@@ -29,6 +29,8 @@
   --warning: var(--vscode-notificationsWarningIcon-foreground, #f9e2af);
   --error: var(--vscode-notificationsErrorIcon-foreground, #f38ba8);
   --info: var(--vscode-editorInfo-foreground, #89b4fa);
+  --warning-bg: rgba(249, 226, 175, 0.08);
+  --error-bg: rgba(243, 139, 168, 0.08);
 
   /* Node type colors - same as sidebar accent palette */
   --node-source: #a6e3a1;       /* green - power source */
@@ -86,4 +88,92 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--bg-hover);
+}
+
+/* ── Focus-visible for interactive elements ── */
+
+button:focus-visible,
+[role="tab"]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent, #f95015);
+  outline-offset: -2px;
+}
+
+/* ============================================
+   Light Theme — VSCode webview
+   ============================================ */
+
+body.vscode-light,
+body.vscode-high-contrast-light {
+  --bg-primary: var(--vscode-editor-background, #eff1f5);
+  --bg-secondary: var(--vscode-sideBar-background, #e6e9ef);
+  --bg-tertiary: var(--vscode-input-background, #ccd0da);
+  --bg-hover: var(--vscode-list-hoverBackground, #bcc0cc);
+
+  --text-primary: var(--vscode-foreground, #4c4f69);
+  --text-secondary: var(--vscode-descriptionForeground, #5c5f77);
+  --text-muted: var(--vscode-disabledForeground, #8c8fa1);
+
+  --border-color: var(--vscode-panel-border, #bcc0cc);
+  --border-subtle: var(--vscode-widget-border, #ccd0da);
+
+  --accent: var(--ato-orange, #d94410);
+
+  --success: var(--vscode-testing-iconPassed, #40a02b);
+  --warning: var(--vscode-notificationsWarningIcon-foreground, #df8e1d);
+  --error: var(--vscode-notificationsErrorIcon-foreground, #d20f39);
+  --info: var(--vscode-editorInfo-foreground, #1e66f5);
+  --warning-bg: rgba(223, 142, 29, 0.08);
+  --error-bg: rgba(210, 15, 57, 0.08);
+
+  --node-source: #40a02b;
+  --node-source-bg: rgba(64, 160, 43, 0.12);
+  --node-sink: #fe640b;
+  --node-sink-bg: rgba(254, 100, 11, 0.12);
+  --node-controller: #1e66f5;
+  --node-controller-bg: rgba(30, 102, 245, 0.12);
+  --node-target: #179299;
+  --node-target-bg: rgba(23, 146, 153, 0.12);
+  --node-bus: #8839ef;
+  --node-bus-bg: rgba(136, 57, 239, 0.12);
+}
+
+/* ============================================
+   Light Theme — dev mode (no VSCode classes)
+   ============================================ */
+
+@media (prefers-color-scheme: light) {
+  :root:not(body.vscode-dark):not(body.vscode-light) {
+    --bg-primary: var(--vscode-editor-background, #eff1f5);
+    --bg-secondary: var(--vscode-sideBar-background, #e6e9ef);
+    --bg-tertiary: var(--vscode-input-background, #ccd0da);
+    --bg-hover: var(--vscode-list-hoverBackground, #bcc0cc);
+
+    --text-primary: var(--vscode-foreground, #4c4f69);
+    --text-secondary: var(--vscode-descriptionForeground, #5c5f77);
+    --text-muted: var(--vscode-disabledForeground, #8c8fa1);
+
+    --border-color: var(--vscode-panel-border, #bcc0cc);
+    --border-subtle: var(--vscode-widget-border, #ccd0da);
+
+    --accent: var(--ato-orange, #d94410);
+
+    --success: var(--vscode-testing-iconPassed, #40a02b);
+    --warning: var(--vscode-notificationsWarningIcon-foreground, #df8e1d);
+    --error: var(--vscode-notificationsErrorIcon-foreground, #d20f39);
+    --info: var(--vscode-editorInfo-foreground, #1e66f5);
+    --warning-bg: rgba(223, 142, 29, 0.08);
+    --error-bg: rgba(210, 15, 57, 0.08);
+
+    --node-source: #40a02b;
+    --node-source-bg: rgba(64, 160, 43, 0.12);
+    --node-sink: #fe640b;
+    --node-sink-bg: rgba(254, 100, 11, 0.12);
+    --node-controller: #1e66f5;
+    --node-controller-bg: rgba(30, 102, 245, 0.12);
+    --node-target: #179299;
+    --node-target-bg: rgba(23, 146, 153, 0.12);
+    --node-bus: #8839ef;
+    --node-bus-bg: rgba(136, 57, 239, 0.12);
+  }
 }

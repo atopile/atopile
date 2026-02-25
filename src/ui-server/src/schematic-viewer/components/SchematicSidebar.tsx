@@ -79,6 +79,8 @@ export function SchematicSidebar({
     '--sv-muted': theme.textMuted,
     '--sv-secondary': theme.textSecondary,
     '--sv-accent': theme.accent,
+    '--sv-error': theme.error,
+    '--sv-warning': theme.warning,
     '--sv-mono': 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace)',
   } as React.CSSProperties;
 
@@ -104,6 +106,7 @@ export function SchematicSidebar({
             className="schematic-sidebar-collapse-btn"
             onClick={() => onSetCollapsed(true)}
             title="Collapse sidebar"
+            aria-label="Collapse sidebar"
           >
             <ChevronRight size={16} />
           </button>
@@ -129,11 +132,13 @@ export function SchematicSidebar({
         </div>
       )}
 
-      <div className="schematic-sidebar-tabs">
+      <div className="schematic-sidebar-tabs" role="tablist" aria-label="Sidebar view">
         <button
           className={`schematic-sidebar-tab ${activeTab === 'structure' ? 'active' : ''}`}
           onClick={() => updateTab('structure')}
           style={{ '--tab-accent': moduleColor('sensor') } as CSSProperties}
+          role="tab"
+          aria-selected={activeTab === 'structure'}
         >
           <GitBranch size={14} className="schematic-sidebar-tab-icon" />
           <span>Structure</span>
@@ -142,6 +147,8 @@ export function SchematicSidebar({
           className={`schematic-sidebar-tab ${activeTab === 'selection' ? 'active' : ''}`}
           onClick={() => updateTab('selection')}
           style={{ '--tab-accent': componentColor('R') } as CSSProperties}
+          role="tab"
+          aria-selected={activeTab === 'selection'}
         >
           <Target size={14} className="schematic-sidebar-tab-icon" />
           <span>Selection</span>

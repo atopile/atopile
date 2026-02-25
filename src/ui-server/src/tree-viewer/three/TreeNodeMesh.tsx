@@ -7,9 +7,6 @@ import type { NodePosition } from '../utils/layoutEngine';
 import { useTreeStore } from '../stores/treeStore';
 import type { ThemeColors } from '../utils/theme';
 
-// ── Warning color (Catppuccin yellow) ──
-const WARN_COLOR = '#f9e2af';
-
 interface TypeStyle { accent: string; icon: string; tag: string }
 
 function getStyle(type: TreeNodeType, t: ThemeColors): TypeStyle {
@@ -46,7 +43,7 @@ function hasWarning(node: TreeNode): string | null {
 }
 
 /** Pulsing warning ring that breathes gently. */
-function WarningPulse({ w, h, active }: { w: number; h: number; active: boolean }) {
+function WarningPulse({ w, h, active, color }: { w: number; h: number; active: boolean; color: string }) {
   const matRef = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame(({ clock }) => {
@@ -65,16 +62,16 @@ function WarningPulse({ w, h, active }: { w: number; h: number; active: boolean 
       smoothness={4}
       position={[0, 0, -0.004]}
     >
-      <meshBasicMaterial ref={matRef} color={WARN_COLOR} transparent opacity={0.1} />
+      <meshBasicMaterial ref={matRef} color={color} transparent opacity={0.1} />
     </RoundedBox>
   );
 }
 
 /** Small warning triangle icon. */
-function WarningBadge({ x, y }: { x: number; y: number; theme: ThemeColors }) {
+function WarningBadge({ x, y, color }: { x: number; y: number; color: string }) {
   return (
     <group position={[x, y, 0.015]}>
-      <Text fontSize={0.09} color={WARN_COLOR} anchorX="center" anchorY="middle" font={undefined}>
+      <Text fontSize={0.09} color={color} anchorX="center" anchorY="middle" font={undefined}>
         {'\u26A0'}
       </Text>
     </group>
@@ -91,6 +88,7 @@ export function TreeNodeMesh({ node, position, theme }: { node: TreeNode; positi
   const warning = useMemo(() => hasWarning(node), [node]);
 
   const accent = isSelected ? theme.accent : s.accent;
+  const warnColor = theme.warning;
 
   const W = position.width / 100;
   const H = position.height / 100;
@@ -107,7 +105,7 @@ export function TreeNodeMesh({ node, position, theme }: { node: TreeNode; positi
     >
       {/* ── Warning pulse ring (always visible if warning, brighter when selected) ── */}
       {warning && (
-        <WarningPulse w={W} h={H} active={isSelected || isHovered} />
+        <WarningPulse w={W} h={H} active={isSelected || isHovered} color={warnColor} />
       )}
 
       {/* ── Hover/select glow (only if no warning, to not conflict) ── */}
@@ -119,7 +117,7 @@ export function TreeNodeMesh({ node, position, theme }: { node: TreeNode; positi
 
       {/* ── Border ring ── */}
       <RoundedBox args={[W + 0.012, H + 0.012, 0.002]} radius={0.038} smoothness={4} position={[0, 0, -0.001]}>
-        <meshBasicMaterial color={warning ? WARN_COLOR : accent} transparent opacity={warning ? 0.25 : 0.3} />
+        <meshBasicMaterial color={warning ? warnColor : accent} transparent opacity={warning ? 0.25 : 0.3} />
       </RoundedBox>
 
       {/* ── Card body ── */}
@@ -130,11 +128,11 @@ export function TreeNodeMesh({ node, position, theme }: { node: TreeNode; positi
       {/* ── Accent bar (yellow if warning) ── */}
       <mesh position={[-W / 2 + BAR / 2 + 0.004, 0, 0.007]}>
         <planeGeometry args={[BAR, H * 0.6]} />
-        <meshBasicMaterial color={warning ? WARN_COLOR : accent} transparent opacity={warning ? 0.7 : 0.9} />
+        <meshBasicMaterial color={warning ? warnColor : accent} transparent opacity={warning ? 0.7 : 0.9} />
       </mesh>
 
       {/* ── Tag + Name ── */}
-      <Text position={[L, detail ? 0.06 : 0, 0.01]} fontSize={0.065} color={warning ? WARN_COLOR : accent} anchorX="left" anchorY="middle" letterSpacing={0.06} font={undefined}>
+      <Text position={[L, detail ? 0.06 : 0, 0.01]} fontSize={0.065} color={warning ? warnColor : accent} anchorX="left" anchorY="middle" letterSpacing={0.06} font={undefined}>
         {s.tag}
       </Text>
       <Text position={[L + s.tag.length * 0.04 + 0.06, detail ? 0.06 : 0, 0.01]} fontSize={0.1} color={theme.textPrimary} anchorX="left" anchorY="middle" maxWidth={W - 0.5} font={undefined}>
@@ -143,14 +141,14 @@ export function TreeNodeMesh({ node, position, theme }: { node: TreeNode; positi
 
       {/* ── Detail line ── */}
       {detail && (
-        <Text position={[L, -0.1, 0.01]} fontSize={0.075} color={warning ? WARN_COLOR : accent} anchorX="left" anchorY="middle" maxWidth={W - 0.2} font={undefined}>
+        <Text position={[L, -0.1, 0.01]} fontSize={0.075} color={warning ? warnColor : accent} anchorX="left" anchorY="middle" maxWidth={W - 0.2} font={undefined}>
           {detail}
         </Text>
       )}
 
       {/* ── Warning badge (top-right corner) ── */}
       {warning && (
-        <WarningBadge x={W / 2 - 0.08} y={H / 2 - 0.06} theme={theme} />
+        <WarningBadge x={W / 2 - 0.08} y={H / 2 - 0.06} color={warnColor} />
       )}
     </group>
   );

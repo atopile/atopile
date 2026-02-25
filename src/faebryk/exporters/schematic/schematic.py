@@ -1826,6 +1826,8 @@ def _infer_interface_type_and_category(
 def _build_interface_pins(
     interfaces: dict[str, dict],
     source_ref: dict[str, str] | None = None,
+    iface_net_name_map: dict[tuple[str, str, str], str] | None = None,
+    module_id: str | None = None,
 ) -> tuple[list[dict], float, float]:
     """
     Build interface-level port dicts for a module and compute body dimensions.
@@ -1866,6 +1868,22 @@ def _build_interface_pins(
         real_signals = sorted(s for s in iface_info.get("signals", set()) if s)
         if len(real_signals) >= 2:
             pin_data["signals"] = real_signals
+
+        # Enrich with graph net names when the lookup map is available
+        if iface_net_name_map and module_id:
+            signal_names: dict[str, str] = {}
+            for sig in real_signals:
+                key = (module_id, iface_name, sig)
+                mapped = iface_net_name_map.get(key)
+                if mapped:
+                    signal_names[sig] = mapped
+            if signal_names:
+                pin_data["signalNetNames"] = signal_names
+                display = _derive_interface_display_name(
+                    iface_name, category, signal_names
+                )
+                if display and display != iface_name:
+                    pin_data["displayName"] = display
 
         if side == "left":
             left_pins.append(pin_data)
@@ -1918,6 +1936,10 @@ def _build_interface_pins(
                 entry["passThrough"] = True
             if "source" in p:
                 entry["source"] = p["source"]
+            if "signalNetNames" in p:
+                entry["signalNetNames"] = p["signalNetNames"]
+            if "displayName" in p:
+                entry["displayName"] = p["displayName"]
             final_pins.append(entry)
 
     _place(left_pins, "left")
@@ -2190,8 +2212,6 @@ def _scope_nets(
                 }
                 scoped[None].append(root_net)
 
-    _add_missing_interface_nets(scoped, module_interfaces)
-
     return dict(scoped)
 
 
@@ -2239,9 +2259,80 @@ def _net_has_all_refs(net: dict, refs: set[tuple[str, str]]) -> bool:
     return refs.issubset(net_refs)
 
 
+def _is_generic_net_name(name: str) -> bool:
+    """Return True for net names that are structural/generic rather than meaningful."""
+    return name.lower() in {
+        "hv", "lv", "power", "power.hv", "power.lv", "gnd", "vcc",
+    }
+
+
+def _build_iface_net_name_map(
+    scoped_nets: dict[str | None, list[dict]],
+    module_interfaces: dict[str, dict[str, dict]],
+) -> dict[tuple[str, str, str], str]:
+    """Map (module_id, iface_name, signal_suffix) → graph net name.
+
+    Scans scoped nets for pins that reference module interface ports and records
+    the net name.  Prefers non-generic names (e.g. "VCC_3V3" over "hv").
+    """
+    result: dict[tuple[str, str, str], str] = {}
+
+    for module_id, nets in scoped_nets.items():
+        if module_id is None:
+            # Root-level nets: componentId is a module_id, pinNumber is iface name
+            for net in nets:
+                for pin in net.get("pins", []):
+                    comp_id = pin.get("componentId", "")
+                    pin_number = pin.get("pinNumber", "")
+                    if comp_id in module_interfaces and pin_number:
+                        iface_map = module_interfaces[comp_id]
+                        if pin_number in iface_map:
+                            key = (comp_id, pin_number, "")
+                            existing = result.get(key)
+                            if existing is None or _is_generic_net_name(existing):
+                                result[key] = net["name"]
+        else:
+            # Internal nets: componentId is iface name, pinNumber is signal
+            iface_map = module_interfaces.get(module_id, {})
+            if not iface_map:
+                continue
+            for net in nets:
+                for pin in net.get("pins", []):
+                    comp_id = pin.get("componentId", "")
+                    pin_number = pin.get("pinNumber", "")
+                    if comp_id in iface_map:
+                        signal = pin_number if pin_number != "1" else ""
+                        key = (module_id, comp_id, signal)
+                        existing = result.get(key)
+                        if existing is None or _is_generic_net_name(existing):
+                            result[key] = net["name"]
+
+    return result
+
+
+def _derive_interface_display_name(
+    iface_name: str, category: str, signal_names: dict[str, str]
+) -> str | None:
+    """Derive a user-friendly display name for an interface pin.
+
+    For power interfaces, extracts a voltage token from the HV net name
+    (e.g. "VCC_3V3" → "power_3v3").  Returns None when no enrichment is possible.
+    """
+    if category in ("power", "ground"):
+        hv_name = signal_names.get("hv", "")
+        if hv_name and not _is_generic_net_name(hv_name):
+            m = re.search(r"(\d+(?:[._]?\d+)?)\s*[vV]", hv_name)
+            if m:
+                voltage = m.group(0).lower().replace(".", "v")
+                return f"{iface_name}_{voltage}"
+            return hv_name
+    return None
+
+
 def _add_missing_interface_nets(
     scoped: dict[str | None, list[dict]],
     module_interfaces: dict[str, dict[str, dict]],
+    iface_net_name_map: dict[tuple[str, str, str], str] | None = None,
 ) -> None:
     """Synthesize internal port↔component nets absent from pad-derived netlist.
 
@@ -2302,7 +2393,14 @@ def _add_missing_interface_nets(
                     if port_pin_number and port_pin_number != "1"
                     else ""
                 )
-                net_name = f"{iface_name}{suffix}"
+                # Use graph net name when available (e.g. "VCC_3V3" vs "power.hv")
+                lookup_signal = port_pin_number if port_pin_number != "1" else ""
+                lookup_key = (module_id, iface_name, lookup_signal)
+                net_name = (
+                    iface_net_name_map.get(lookup_key, f"{iface_name}{suffix}")
+                    if iface_net_name_map
+                    else f"{iface_name}{suffix}"
+                )
                 net_id = re.sub(
                     r"[^a-zA-Z0-9_]",
                     "_",
@@ -2829,6 +2927,7 @@ def _build_module_json(
     module_by_fullname: dict[str, _ModInfo],
     scoped_nets: dict[str | None, list[dict]],
     comp_by_id: dict[str, _CompInfo],
+    iface_net_name_map: dict[tuple[str, str, str], str] | None = None,
 ) -> dict | None:
     """Recursively build module JSON payload for the schematic output."""
     mod = all_modules.get(mod_id)
@@ -2843,6 +2942,8 @@ def _build_module_json(
     interface_pins, body_w, body_h = _build_interface_pins(
         mod.interfaces,
         module_source,
+        iface_net_name_map=iface_net_name_map,
+        module_id=mod_id,
     )
 
     child_modules = []
@@ -2853,6 +2954,7 @@ def _build_module_json(
             module_by_fullname,
             scoped_nets,
             comp_by_id,
+            iface_net_name_map=iface_net_name_map,
         )
         if child:
             child_modules.append(child)
@@ -3286,6 +3388,12 @@ def export_schematic_json(
 
     scoped_nets = _scope_nets(raw_nets, comp_to_owner, module_interfaces)
 
+    # Build interface→net-name lookup from scoped nets before synthesizing
+    # missing nets, so synthesized nets can use graph net names
+    # (e.g. "VCC_3V3" instead of "power.hv").
+    iface_net_name_map = _build_iface_net_name_map(scoped_nets, module_interfaces)
+    _add_missing_interface_nets(scoped_nets, module_interfaces, iface_net_name_map)
+
     # ═══════════════════════════════════════════════════════════════
     # Phase 7: Build hierarchical output
     # ═══════════════════════════════════════════════════════════════
@@ -3306,6 +3414,7 @@ def export_schematic_json(
             module_by_fullname,
             scoped_nets,
             comp_by_id,
+            iface_net_name_map=iface_net_name_map,
         )
         if module_json:
             root_modules.append(module_json)

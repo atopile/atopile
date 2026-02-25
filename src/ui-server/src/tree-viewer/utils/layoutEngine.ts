@@ -26,6 +26,9 @@ function nodeSize(type: string): { width: number; height: number } {
 }
 
 export function computeTreeLayout(graph: TreeGraphData): LayoutResult {
+  const COLUMN_SPACING = 280;
+  const ROW_SPACING = 140;
+
   const positions = new Map<string, NodePosition>();
   const outgoing = new Map<string, string[]>();
   const incoming = new Map<string, string[]>();
@@ -75,13 +78,14 @@ export function computeTreeLayout(graph: TreeGraphData): LayoutResult {
 
   for (const [rank, ids] of columns.entries()) {
     ids.sort((a, b) => a.localeCompare(b));
+    const centerOffset = ((ids.length - 1) * ROW_SPACING) / 2;
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       const node = graph.nodes.find((n) => n.id === id)!;
       const size = nodeSize(node.type);
       positions.set(id, {
-        x: rank * 230,
-        y: -i * 140,
+        x: rank * COLUMN_SPACING,
+        y: centerOffset - i * ROW_SPACING,
         z: 0,
         width: size.width,
         height: size.height,

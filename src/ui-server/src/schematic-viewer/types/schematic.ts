@@ -107,6 +107,10 @@ export interface SchematicInterfacePin {
   signals?: string[];
   /** Single-signal GPIO/control bridge with explicit front/back anchors. */
   passThrough?: boolean;
+  /** Map from signal name to resolved graph net name. */
+  signalNetNames?: Record<string, string>;
+  /** Display-friendly name (e.g., "power_3v3" instead of "power"). */
+  displayName?: string;
   /** Optional source location for go-to-source actions. */
   source?: SchematicSourceRef;
 }

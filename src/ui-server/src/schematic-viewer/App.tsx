@@ -678,8 +678,8 @@ function SchematicApp() {
           style={{
             padding: '8px 12px',
             borderBottom: `1px solid ${theme.borderColor}`,
-            background: '#53202f44',
-            color: '#f5a7ba',
+            background: `${theme.error}18`,
+            color: theme.error,
             display: 'flex',
             alignItems: 'flex-start',
             gap: 10,
@@ -798,7 +798,7 @@ function SchematicApp() {
                   style={{
                     fontSize: 14,
                     fontWeight: 600,
-                    color: '#f38ba8',
+                    color: theme.error,
                     marginBottom: 8,
                   }}
                 >
