@@ -256,3 +256,117 @@ The plan says Step 7 ("Restore Self Node") applies to "Full Loads Only." The imp
 The `.pyi` stub declares `Node.create(**attrs: Literal)`, but the Zig binding (`wrap_node_create`) ignores all keyword arguments. Node dynamic attributes cannot be set from Python via `create()`.
 
 **Why:** This is a pre-existing limitation of the Python binding, not a serialization issue. The attribute roundtrip is fully tested in the Zig inline tests (which use `node.put("key", value)` directly). Python tests verify attribute roundtrip through composition edges (`EdgeComposition.get_name`), which do store dynamic attributes via the Zig-level `add_child` binding.
+
+## 9. Performance Benchmarks (Pre-Optimization)
+
+The following benchmarks demonstrate the raw throughput of the initial AoS sparse serialization engine on a graph populated with 1,000,000 nodes and roughly 1,000,000 edges.
+
+**At 1M Scale:**
+*   **Payload Size:** 66 MB
+*   **dumps:** 41 ms
+*   **loads:** 198 ms
+*   **merge_diff:** 196 ms
+*   **clone:** 252 ms
+
+**Analysis:**
+The `dumps()` operation is blistering fast (~1.6 GB/s), demonstrating the value of avoiding text-based JSON parsers. The `loads` and `merge_diff` operations (~200ms) are dominated by the sheer volume of 1,000,000 `create_and_insert_node()` calls and `insert_edge_unchecked()` calls required to safely reconstruct the local UUID remapping tables and adjacency HashMaps. While incredibly fast for 1M nodes, the SoA compaction (detailed in Section 10) aims to further reduce the payload size and instantiation overhead.
+
+## 10. Follow-up Work
+
+This section details architectural evolutions and optimizations to be implemented in the next phase of work.
+
+### 10.1 Architectural Pivot: Deprecating `dumps_diff` and `merge_diff`
+
+Following the initial implementation of the serialization engine, the parallel picker architecture was drastically simplified. The complexities of `dumps_diff`, UUID collision remapping, and the associated `self_node` overwrite bugs in `merge_diff` have been entirely deprecated in favor of a "Read-Only Worker" paradigm.
+
+#### 10.1.1 The "Read-Only Worker" Paradigm
+
+Instead of workers mutating the graph and returning binary diffs, workers treat the graph as **strictly read-only**.
+
+1.  **Full Snapshot:** The orchestrator dispatches a full binary snapshot of the graph (`dumps()`) to the worker processes.
+2.  **Stateless Rehydration:** The worker process creates a fresh, identical graph locally using `loads()`.
+3.  **Heavy Lifting:** The worker runs the CPU-bound `Solver` to narrow parameter constraints and queries the external LCSC API to fetch valid component candidates.
+4.  **Lightweight Python Returns:** Rather than mutating its local graph and sending back a complex binary diff, the worker returns a lightweight, standard Python dictionary containing:
+    *   The `module_uuid` of the component it chose to pick.
+    *   The serialized JSON data of the picked `Component` (the LCSC data).
+    *   A serialized list of **Derived Bounds** (Parameter UUIDs mapped to narrowed `Interval`s discovered by the solver).
+5.  **Centralized Mutation:** The main orchestrator process receives this JSON payload. It sequentially attaches the picked part to the global graph (`c.attach(module)`) and injects the derived bounds as new, explicit constraints in the main thread.
+
+#### 10.1.2 Why `merge_diff` was Deprecated
+
+*   **Zero UUID Collisions:** Because workers no longer create new nodes or edges, UUID collisions are impossible. We do not need a translation table.
+*   **Perfect Consistency:** All mutations to the graph happen serially in the main process, ensuring the mathematical structure of the graph is never corrupted by disjoint parallel merges.
+*   **Massive Simplification:** The Zig C-ABI boundary is radically simplified. Zig acts solely as a high-speed snapshot engine (`dumps` and `loads`), entirely divorcing the complex business logic of applying constraints from the low-level memory management.
+*   **Solver State Extraction:** By returning the solver's derived bounds as lightweight JSON constraints, the orchestrator can inject them into the main graph. This immediately prunes the search space, drastically accelerating subsequent parallel solver runs.
+
+### 10.2 Structure of Arrays (SoA) Compaction
+
+An architectural review identified that the standard Array of Structs (AoS) serialization leaves significant room for compaction. The format will be evolved to an ultra-dense Structure of Arrays (SoA) layout.
+
+#### 10.2.1 The Compaction Strategy
+
+By decoupling the "View" (the bitsets) from the "Data" (the structs), we can achieve mathematically optimal payload sizes and blazing fast, branchless `memcpy` loads.
+
+1.  **Nodes drop to 0 bytes:** In-memory, a `Node` is just a 4-byte `DynamicAttributesReference`. By moving attribute ownership mapping into the attribute array itself, a Node requires zero data fields in the payload. The `Node UUIDBitSet` *is* the entire node payload; if bit 5 is active, Node 5 exists.
+2.  **Edges drop to 12 bytes:** Edges also strip their `DynamicAttributesReference`. They serialize strictly as `[source, target, flags]`.
+3.  **Attributes drop the 256-byte cache line:** In-memory `DynamicAttributes` blocks are fixed at 6 slots (256 bytes) to fit cache lines. Serializing empty slots wastes massive bandwidth. We discard the block struct entirely. Instead, we serialize a perfectly dense, flat array of `PackedAttribute`.
+
+#### 10.2.2 The Dense Columnar Layout
+
+To link attributes to nodes/edges without storing the 4-byte `DynamicAttributesReference` in every entity, we invert the relationship. Every `PackedAttribute` explicitly stores its `owner_uuid`.
+
+```zig
+const PackedAttribute = extern struct {
+    owner_uuid: u32,
+    is_node_owner: u8,           // 1 if Node, 0 if Edge
+    value_tag: u8,               // Literal enum tag
+    _pad: u16,                   // Pad to 8 bytes for alignment
+    identifier: PackedStringRef, // 8 bytes
+    value: PackedLiteralValue,   // 8 bytes
+}; // Exactly 24 bytes. 100% dense. No empty slots.
+
+const PackedEdge = extern struct {
+    source: u32,       
+    target: u32,       
+    flags: u32,        
+}; // Exactly 12 bytes. 
+// Note: Aligned to 4 bytes. Because it contains no 64-bit fields, 
+// it does not require 8-byte padding and is safe for dense arrays.
+```
+
+#### 10.2.3 The Optimal Payload Structure
+
+Because there is no Node array, and all arrays are fixed-size and contiguous, parsing is a sequence of highly pipelined operations. 
+
+To maximize forward compatibility and ensure the header fits perfectly into a single standard CPU cache line fetch, the header is expanded to exactly 64 bytes. The bitset byte lengths must also be padded to the nearest 8-byte boundary to prevent C-ABI misalignment crashes when reading the subsequent arrays.
+
+```text
+[ Header (64 bytes) ]
+    magic_number
+    version                  // e.g., 2 (for SoA format)
+    self_node_uuid
+    node_count
+    edge_count
+    attr_count               // Total number of INDIVIDUAL attributes
+    node_bitset_len          // Size of node bitset (padded to 8 bytes)
+    edge_bitset_len          // Size of edge bitset (padded to 8 bytes)
+    string_table_size
+    _reserved[7]             // 28 bytes reserved for future format additions
+                             // (Total header size: exactly 64 bytes)
+
+[ Node UUIDBitSet (node_bitset_len) ]
+[ Edge UUIDBitSet (edge_bitset_len) ]
+
+// NO NODES ARRAY! (Nodes exist strictly as set bits in the bitset)
+
+[ Packed Edges Array (edge_count * 12 bytes) ]
+[ Packed Attributes Array (attr_count * 24 bytes) ]
+[ String Table (string_table_size) ]
+```
+
+#### 10.2.4 Deserialization Performance Miracle
+
+This layout makes `loads()` incredibly fast:
+1.  **Read Node Bitsets:** Iterate the set bits (via fast trailing-zero CPU instructions). For each active bit, allocate a new local UUID via `create_and_insert_node()`. This builds the `remap_nodes` translation table natively.
+2.  **Read Edges (Lockstep Iteration):** Because `PackedEdge` lacks an `original_uuid`, it must be read in lockstep with the Edge Bitset. Iterate the set bits of the Edge Bitset. For the *n*th active bit (the `original_uuid`), read `PackedEdgesArray[n]`. Translate `source`/`target` using `remap_nodes`, allocate the new local edge, and store the mapping in `remap_edges`.
+3.  **Read Attributes:** `memcpy` the 24-byte `PackedAttribute` array into a temporary buffer. Iterate through it. Look up the `owner_uuid` in the respective `remap_nodes` or `remap_edges` table (using the `is_node_owner` flag). Call `ref.put(identifier, value)` on the translated reference. This implicitly and safely rebuilds the 256-byte `DynamicAttributes` blocks in the receiver's memory pool *only when needed*.
