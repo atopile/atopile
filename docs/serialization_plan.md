@@ -509,3 +509,52 @@ We introduce a fast, temporary String Interning Map (`std.StringHashMap(u32)`) d
 1.  **Massive Size Reduction:** The String Table is compressed from megabytes of repetitive keys down to just a few kilobytes of unique semantic vocabulary.
 2.  **Zero-Cost Loads:** The `loads()` deserializer remains completely unchanged. It blindly reads the `offset` and `length` from the `PackedAttribute`. If a million attributes all point to the exact same `"name"` offset in the String Table, `loads()` natively supports it.
 3.  **Cache Locality:** By forcing repetitive string slices to point to the exact same memory address in the `GraphView`'s arena, `loads()` benefits from extreme L1 CPU cache locality during downstream pointer resolutions.
+
+### 11.6 Fixing Edge Bitset Lockstep Corruption
+
+During the implementation of the Implicit-Structure Edge Compaction (Section 11.4), a mechanical bug was discovered: because `dumps()` splits the naturally ordered edges into two separate arrays (`BasePackedEdge` and `AttributedPackedEdge`), the correlation between the single `edge_bitset`'s sequential bits and the output arrays is destroyed. Iterating a single bitset in lockstep with two arrays causes `loads()` to assign the wrong structural data to the wrong original UUID.
+
+While reverting to a single 16-byte `PackedEdge` array resolves the corruption, profiling revealed that abandoning the optimization costs a **~10% CPU performance regression** and an **11% payload size regression** (due to memory bandwidth saturation from copying 4MB of zeroes).
+
+Therefore, the optimization must be preserved by explicitly **splitting the edge bitset**.
+
+#### The Dual-Bitset Fix
+
+1.  **Update the Header:**
+    Replace the single `edge_bitset_len` with two length fields (claiming one slot from the `_reserved` block).
+    ```zig
+    node_bitset_len: u32,
+    base_edge_bitset_len: u32,
+    attr_edge_bitset_len: u32,
+    ```
+
+2.  **Update `dumps()`:**
+    Do not directly copy `g.edge_set.data`. Instead, calculate the required capacity and allocate two temporary byte arrays (`base_edge_bitset_buf` and `attr_edge_bitset_buf`). 
+    Iterate `g.edge_set.data`:
+    *   If `edge.dynamic.uuid == 0`: Write to `packed_base_edges` AND set bit `i` in `base_edge_bitset_buf`.
+    *   If `edge.dynamic.uuid != 0`: Write to `packed_attr_edges` AND set bit `i` in `attr_edge_bitset_buf`.
+    Write both bitset buffers to the final payload.
+
+3.  **Update `loads()`:**
+    Execute two completely independent lockstep loops.
+    ```zig
+    // Loop 1: Base Edges
+    var it_base = SetBitIterator.init(base_edge_bitset);
+    var base_idx: u32 = 0;
+    while (it_base.next()) |original_uuid| {
+        // Read base_edges_start + (base_idx * 12)
+        // Allocate local edge & map remap_edges[original_uuid]
+        base_idx += 1;
+    }
+
+    // Loop 2: Attributed Edges
+    var it_attr = SetBitIterator.init(attr_edge_bitset);
+    var attr_idx: u32 = 0;
+    while (it_attr.next()) |original_uuid| {
+        // Read attr_edges_start + (attr_idx * 16)
+        // Allocate local edge & map remap_edges[original_uuid]
+        attr_idx += 1;
+    }
+    ```
+
+This structural split perfectly preserves the 12-byte compaction optimization, eliminates the memory bandwidth bottleneck, and completely resolves the UUID translation corruption.
