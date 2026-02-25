@@ -50,6 +50,7 @@ Command reference:
 - `./dev.sh`: run backend + Vite for integration testing in browser.
 - `ato dev compile`: build extension artifacts (default target `all`).
 - `ato dev install cursor|vscode`: install latest built extension `.vsix`.
+- `ato dev ui`: open a webpage for the user showing the shared component library components.
 
 ## Relevant Files
 
@@ -209,15 +210,9 @@ Promote to shared when:
 
 ### Shared Components (ui-server)
 
-Prefer reusing these before creating equivalents:
-
-- `src/ui-server/src/components/shared/CopyableCodeBlock.tsx`
-- `src/ui-server/src/components/shared/EmptyState.tsx`
-- `src/ui-server/src/components/shared/MetadataBar.tsx`
-- `src/ui-server/src/components/shared/PanelSearchBox.tsx`
-- `src/ui-server/src/components/shared/PublisherBadge.tsx`
-- `src/ui-server/src/components/shared/TreeRowHeader.tsx`
-- `src/ui-server/src/components/shared/VersionSelector.tsx`
+Prefer reusing the components in `src/ui-server/src/components/shared/` before creating equivalents.
+If a new component is needed, create it in `src/ui-server/src/components/shared/` and reuse it in the feature.
+If possible, compose complex components from existing shared components.
 
 ### Shared Utilities (ui-server)
 
