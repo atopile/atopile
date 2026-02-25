@@ -2428,3 +2428,306 @@ test "serialization: loads and clone" {
     try std.testing.expectEqual(g.get_node_count(), cloned.get_node_count());
     try std.testing.expectEqual(g.get_edge_count(), cloned.get_edge_count());
 }
+
+test "serialization: minimal graph roundtrip (self_node only)" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // init() creates one self_node automatically
+    try std.testing.expectEqual(@as(usize, 1), g.get_node_count());
+    try std.testing.expectEqual(@as(usize, 0), g.get_edge_count());
+
+    const data = try g.dumps(a);
+    defer a.free(data);
+
+    const loaded = try GraphView.loads(a, data);
+    defer {
+        loaded.deinit();
+        a.destroy(loaded);
+    }
+    try std.testing.expectEqual(@as(usize, 1), loaded.get_node_count());
+    try std.testing.expectEqual(@as(usize, 0), loaded.get_edge_count());
+    try std.testing.expect(loaded.contains_node(loaded.self_node));
+}
+
+test "serialization: nodes only, no edges" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    _ = g.create_and_insert_node();
+    _ = g.create_and_insert_node();
+    _ = g.create_and_insert_node();
+
+    // 3 user nodes + 1 self_node = 4
+    try std.testing.expectEqual(@as(usize, 4), g.get_node_count());
+    try std.testing.expectEqual(@as(usize, 0), g.get_edge_count());
+
+    const data = try g.dumps(a);
+    defer a.free(data);
+
+    const loaded = try GraphView.loads(a, data);
+    defer {
+        loaded.deinit();
+        a.destroy(loaded);
+    }
+    try std.testing.expectEqual(@as(usize, 4), loaded.get_node_count());
+    try std.testing.expectEqual(@as(usize, 0), loaded.get_edge_count());
+}
+
+test "serialization: attribute value integrity" {
+    const a = std.testing.allocator;
+
+    const AttrEdgeType = Edge.hash_edge_type(0xBEEF_0010);
+    Edge.register_type(AttrEdgeType) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // Node with all value types including edge cases
+    const n1 = g.create_and_insert_node();
+    n1.node.put("pos_int", .{ .Int = 42 });
+    n1.node.put("neg_int", .{ .Int = -999 });
+    n1.node.put("big_uint", .{ .Uint = 0xFFFFFFFFFFFFFFFF });
+    n1.node.put("pi", .{ .Float = 3.141592653589793 });
+    n1.node.put("flag_true", .{ .Bool = true });
+    n1.node.put("flag_false", .{ .Bool = false });
+
+    // Node with string values
+    const n2 = g.create_and_insert_node();
+    n2.node.put("name", .{ .String = "hello world" });
+    n2.node.put("empty", .{ .String = "" });
+
+    // Node with no attributes
+    const n3 = g.create_and_insert_node();
+
+    // Edge with attributes
+    const e = EdgeReference.init(n1.node, n2.node, AttrEdgeType);
+    e.put("weight", .{ .Float = 1.5 });
+    e.put("label", .{ .String = "edge_label" });
+    _ = try g.insert_edge(e);
+
+    // Edge without attributes
+    const e2 = EdgeReference.init(n2.node, n3.node, AttrEdgeType);
+    _ = try g.insert_edge(e2);
+
+    const data = try g.dumps(a);
+    defer a.free(data);
+
+    const loaded = try GraphView.loads(a, data);
+    defer {
+        loaded.deinit();
+        a.destroy(loaded);
+    }
+
+    // 3 user nodes + 1 self_node = 4
+    try std.testing.expectEqual(@as(usize, 4), loaded.get_node_count());
+    try std.testing.expectEqual(@as(usize, 2), loaded.get_edge_count());
+
+    // Find each node by scanning the loaded graph and checking attributes.
+    // After roundtrip, UUIDs are different, so we identify nodes by their attrs.
+    // Note: there are 4 nodes total (3 user + 1 self_node from init).
+    var found_n1: ?NodeReference = null;
+    var found_n2: ?NodeReference = null;
+    var bare_nodes: [2]?NodeReference = .{ null, null };
+    var bare_count: usize = 0;
+    var n_it = loaded.nodes.keyIterator();
+    while (n_it.next()) |key| {
+        const node = key.*;
+        if (node.get("pos_int") != null) {
+            found_n1 = node;
+        } else if (node.get("name") != null) {
+            found_n2 = node;
+        } else {
+            if (bare_count < 2) {
+                bare_nodes[bare_count] = node;
+                bare_count += 1;
+            }
+        }
+    }
+    // Two bare nodes: self_node and n3
+    try std.testing.expectEqual(@as(usize, 2), bare_count);
+
+    const ln1 = found_n1 orelse return error.TestUnexpectedResult;
+    const ln2 = found_n2 orelse return error.TestUnexpectedResult;
+    // Pick the bare node that isn't self_node as n3
+    const ln3 = if (bare_nodes[0].?.uuid == loaded.self_node.uuid)
+        bare_nodes[1].?
+    else
+        bare_nodes[0].?;
+
+    // Verify n1 attributes — all value types
+    try std.testing.expectEqual(@as(i64, 42), ln1.get("pos_int").?.Int);
+    try std.testing.expectEqual(@as(i64, -999), ln1.get("neg_int").?.Int);
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFFFFFFFFFF), ln1.get("big_uint").?.Uint);
+    try std.testing.expectEqual(@as(f64, 3.141592653589793), ln1.get("pi").?.Float);
+    try std.testing.expectEqual(true, ln1.get("flag_true").?.Bool);
+    try std.testing.expectEqual(false, ln1.get("flag_false").?.Bool);
+
+    // Verify n2 attributes — strings
+    try std.testing.expectEqualStrings("hello world", ln2.get("name").?.String);
+    try std.testing.expectEqualStrings("", ln2.get("empty").?.String);
+
+    // Verify n3 has no attributes
+    try std.testing.expectEqual(@as(?Literal, null), ln3.get("pos_int"));
+    try std.testing.expectEqual(@as(?Literal, null), ln3.get("name"));
+
+    // Verify edge connectivity and attributes by checking edges from ln1
+    const edges_from_n1 = loaded.get_edges_of_type(ln1, AttrEdgeType) orelse return error.TestUnexpectedResult;
+    var found_attr_edge = false;
+    for (edges_from_n1.items) |edge_ref| {
+        const src = edge_ref.get_source_node();
+        const tgt = edge_ref.get_target_node();
+        if (src.uuid == ln1.uuid and tgt.uuid == ln2.uuid) {
+            // This is the attributed edge — verify values
+            try std.testing.expectEqual(@as(f64, 1.5), edge_ref.get("weight").?.Float);
+            try std.testing.expectEqualStrings("edge_label", edge_ref.get("label").?.String);
+            found_attr_edge = true;
+        }
+    }
+    try std.testing.expect(found_attr_edge);
+
+    // Verify edge from n2 → n3 exists (non-attributed)
+    const edges_from_n2 = loaded.get_edges_of_type(ln2, AttrEdgeType) orelse return error.TestUnexpectedResult;
+    var found_plain_edge = false;
+    for (edges_from_n2.items) |edge_ref| {
+        const src = edge_ref.get_source_node();
+        const tgt = edge_ref.get_target_node();
+        if (src.uuid == ln2.uuid and tgt.uuid == ln3.uuid) {
+            // Non-attributed edge — no attributes
+            try std.testing.expectEqual(@as(?Literal, null), edge_ref.get("weight"));
+            found_plain_edge = true;
+        }
+    }
+    try std.testing.expect(found_plain_edge);
+}
+
+test "serialization: self_node preservation" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // self_node is created by init(), mark it with an attribute
+    g.self_node.put("marker", .{ .String = "self" });
+    _ = g.create_and_insert_node();
+
+    const data = try g.dumps(a);
+    defer a.free(data);
+
+    const loaded = try GraphView.loads(a, data);
+    defer {
+        loaded.deinit();
+        a.destroy(loaded);
+    }
+
+    // self_node must point to a valid node in the loaded graph
+    try std.testing.expect(loaded.contains_node(loaded.self_node));
+
+    // That node must have the marker attribute
+    try std.testing.expectEqualStrings("self", loaded.self_node.get("marker").?.String);
+}
+
+test "serialization: edge flag preservation" {
+    const a = std.testing.allocator;
+
+    const FlagEdgeType = Edge.hash_edge_type(0xBEEF_0011);
+    Edge.register_type(FlagEdgeType) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // Use self_node as source so we can find it after roundtrip
+    const n1 = g.self_node;
+    const n2 = g.create_and_insert_node();
+    const n3 = g.create_and_insert_node();
+
+    // Create a directional edge
+    const e = EdgeReference.init(n1, n2.node, FlagEdgeType);
+    e.set_attribute_directional(true);
+    _ = try g.insert_edge(e);
+
+    // Create a non-directional edge
+    const e2 = EdgeReference.init(n1, n3.node, FlagEdgeType);
+    _ = try g.insert_edge(e2);
+
+    const data = try g.dumps(a);
+    defer a.free(data);
+
+    const loaded = try GraphView.loads(a, data);
+    defer {
+        loaded.deinit();
+        a.destroy(loaded);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), loaded.get_edge_count());
+
+    // self_node maps to n1
+    const ln1 = loaded.self_node;
+    const edges_from = loaded.get_edges_of_type(ln1, FlagEdgeType) orelse return error.TestUnexpectedResult;
+
+    var found_directional = false;
+    var found_nondirectional = false;
+    for (edges_from.items) |edge_ref| {
+        if (edge_ref.get_source_node().uuid == ln1.uuid) {
+            if (edge_ref.get_attribute_directional()) {
+                found_directional = true;
+            } else {
+                found_nondirectional = true;
+            }
+        }
+    }
+    try std.testing.expect(found_directional);
+    try std.testing.expect(found_nondirectional);
+}
+
+test "serialization: corrupt attr block header" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const bn = g.create_and_insert_node();
+    bn.node.put("key", .{ .Int = 1 });
+
+    const good_data = try g.dumps(a);
+    defer a.free(good_data);
+
+    const hdr: BinaryHeader = @bitCast(good_data[0..@sizeOf(BinaryHeader)].*);
+    const attr_stream_start = @sizeOf(BinaryHeader) +
+        @as(usize, hdr.node_bitset_len) +
+        @as(usize, hdr.node_count) * @sizeOf(PackedNode) +
+        @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
+
+    // Corrupt the original_attr_uuid in the 5-byte block header to a value
+    // that won't be in remap_attrs — should trigger MalformedPayload
+    const bad_uuid: u32 = 0xFFFFFFFE; // not the sentinel but won't be mapped
+    @memcpy(good_data[attr_stream_start..][0..4], std.mem.asBytes(&bad_uuid));
+
+    try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, good_data));
+}
+
+test "serialization: truncated attr stream" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const bn = g.create_and_insert_node();
+    bn.node.put("key", .{ .Int = 1 });
+
+    const good_data = try g.dumps(a);
+    defer a.free(good_data);
+
+    // Truncate the payload mid-attribute by cutting off the last few bytes.
+    // The attr stream has a 5-byte header + 17-byte attribute = 22 bytes min.
+    // Cutting 10 bytes means the attribute entry is incomplete.
+    const truncated = good_data[0 .. good_data.len - 10];
+
+    // This should fail because the attr stream is cut short
+    try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, truncated));
+}
