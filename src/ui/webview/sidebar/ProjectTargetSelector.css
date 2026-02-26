@@ -1,0 +1,243 @@
+/* ============================================
+   Project + Target Selector
+   ============================================ */
+
+.selector-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) 8px;
+  container-type: inline-size;
+  --project-row-label-width: 72px;
+}
+
+.project-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-selector-row {
+  display: grid;
+  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
+}
+
+.builds-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.build-targets {
+  display: grid;
+  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
+  padding-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+}
+
+.section-label {
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+}
+
+.project-selector-row .section-label,
+.build-targets .section-label {
+  flex: 0 0 auto;
+  justify-self: start;
+}
+
+.new-project-btn.btn-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+/* ---- Project Combobox ---- */
+
+.project-combobox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.combobox-input-wrapper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  min-height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.combobox-input-wrapper:hover { background: var(--bg-hover); }
+.combobox-input-wrapper.open,
+.combobox-input-wrapper:focus-within { background: var(--bg-tertiary); }
+
+.combobox-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+}
+
+.combobox-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  outline: none;
+}
+
+.combobox-input::placeholder { color: var(--text-muted); }
+
+.combobox-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.combobox-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chevron { transition: transform 0.15s ease; }
+.chevron.open { transform: rotate(180deg); }
+
+/* Combobox dropdown */
+.combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-background, #1e1e2e);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 2px;
+}
+
+.combobox-empty {
+  padding: var(--spacing-sm);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.combobox-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.1s ease;
+}
+
+.combobox-option:hover,
+.combobox-option.highlighted { background: var(--bg-tertiary); }
+.combobox-option.active { background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary)); }
+.combobox-option.highlighted.active { background: color-mix(in srgb, var(--ctp-blue) 25%, var(--bg-tertiary)); }
+
+.option-icon { flex-shrink: 0; color: var(--text-muted); }
+
+.combobox-option-name {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combobox-option-path {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.check-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+}
+
+/* ---- Target Select (inline-select overrides) ---- */
+
+.inline-select.select-root { flex: 1; min-width: 0; }
+
+.inline-select .select-trigger {
+  border: none;
+  background: transparent;
+  padding: 0 var(--spacing-xs);
+  min-height: 26px;
+  height: auto;
+  gap: var(--spacing-xs);
+  justify-content: flex-start;
+  font-size: var(--font-size-xs);
+  transition: background-color 0.15s ease;
+}
+
+.inline-select .select-trigger:hover { background: var(--bg-hover); border-color: transparent; }
+.inline-select .select-trigger .select-chevron { margin-left: auto; }
+
+.inline-select .select-content {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 2px;
+  top: calc(100% + 2px);
+  background: var(--vscode-dropdown-background, #1e1e2e);
+  border-color: var(--border-subtle);
+}
+
+.inline-select .select-item {
+  gap: 6px;
+  padding: 5px 6px;
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-sm);
+  transition: background-color 0.1s ease;
+}
+
+.inline-select .select-item:hover,
+.inline-select .select-item[data-highlighted="true"] { background: var(--bg-tertiary); }
+.inline-select .select-item[data-selected="true"] { background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary)); }
+.inline-select .select-item[data-highlighted="true"][data-selected="true"] { background: color-mix(in srgb, var(--ctp-blue) 25%, var(--bg-tertiary)); }
+.inline-select .select-item .select-item-check { color: var(--ctp-blue); width: 12px; }
+
+.target-trigger-icon { color: var(--ctp-blue); flex-shrink: 0; }
+.target-item-icon { color: var(--text-muted); flex-shrink: 0; }

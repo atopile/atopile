@@ -1,0 +1,76 @@
+/* ============================================
+   Action Button Bar
+   ============================================ */
+
+.action-bar-wrapper {
+  container-type: inline-size;
+}
+
+.build-actions-row {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  height: 28px;
+  min-height: 28px;
+  width: 100%;
+}
+
+/* Overrides on shared Button ghost for action-bar layout */
+.action-btn {
+  flex: 1 1 auto;
+  min-width: fit-content;
+  height: 100%;
+  border-radius: 0;
+  color: var(--text-muted);
+  gap: 4px;
+}
+
+.action-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.action-btn .action-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.action-btn.primary {
+  color: var(--ato-orange);
+}
+
+.action-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ato-orange) 12%, transparent);
+  color: var(--ato-orange);
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+}
+
+/* Vertical divider between buttons */
+.action-divider {
+  width: 1px;
+  height: 12px;
+  align-self: center;
+  background: var(--border-subtle);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+
+/* Hide labels when container is narrow */
+@container (max-width: 280px) {
+  .action-btn .action-label {
+    display: none;
+  }
+
+  .action-btn {
+    padding: 0 8px;
+  }
+}

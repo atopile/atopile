@@ -137,7 +137,8 @@
   transition: background var(--transition-fast);
 }
 
-.select-item:hover {
+.select-item:hover,
+.select-item[data-highlighted="true"] {
   background: var(--vscode-list-hoverBackground, var(--bg-hover));
 }
 

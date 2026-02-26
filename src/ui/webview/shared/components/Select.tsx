@@ -1,5 +1,3 @@
-// TODO: Add keyboard navigation (arrow keys, type-ahead) if used in
-//       VS Code extension webviews where keyboard accessibility matters.
 import {
   createContext,
   useContext,
@@ -29,6 +27,8 @@ interface SelectContextValue {
   onValueChange: (v: string | null) => void
   items: SelectItem[]
   disabled: boolean
+  highlightedIndex: number
+  setHighlightedIndex: (v: number | ((prev: number) => number)) => void
 }
 
 const SelectCtx = createContext<SelectContextValue | null>(null)
@@ -38,6 +38,9 @@ function useSelectCtx() {
   if (!ctx) throw new Error('Select.* must be used inside <Select>')
   return ctx
 }
+
+/** Public hook — use from custom triggers that compose Select */
+export const useSelectContext = useSelectCtx
 
 /* ---- Select (root) ---- */
 
@@ -52,6 +55,8 @@ export interface SelectProps {
   onValueChange?: (value: string | null) => void
   /** Disable the entire select */
   disabled?: boolean
+  /** Extra class appended to root div */
+  className?: string
   children: ReactNode
 }
 
@@ -61,13 +66,29 @@ export function Select({
   defaultValue = null,
   onValueChange,
   disabled = false,
+  className,
   children,
 }: SelectProps) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpenRaw] = useState(false)
   const [internalValue, setInternalValue] = useState(defaultValue)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
 
   const isControlled = valueProp !== undefined
   const value = isControlled ? valueProp : internalValue
+
+  // Sync highlight to selected item on open, reset on close
+  const setOpen = useCallback(
+    (v: boolean) => {
+      setOpenRaw(v)
+      if (v) {
+        const idx = items.findIndex((i) => i.value === (isControlled ? valueProp : internalValue))
+        setHighlightedIndex(idx >= 0 ? idx : 0)
+      } else {
+        setHighlightedIndex(-1)
+      }
+    },
+    [items, isControlled, valueProp, internalValue],
+  )
 
   const handleChange = useCallback(
     (v: string | null) => {
@@ -77,9 +98,18 @@ export function Select({
     [isControlled, onValueChange],
   )
 
+  // Clamp highlightedIndex when the item list shrinks (e.g. filtered combobox)
+  useEffect(() => {
+    if (items.length > 0 && highlightedIndex >= items.length) {
+      setHighlightedIndex(items.length - 1)
+    }
+  }, [items.length, highlightedIndex])
+
+  const rootClass = className ? `select-root ${className}` : 'select-root'
+
   return (
-    <SelectCtx.Provider value={{ open, setOpen, value, onValueChange: handleChange, items, disabled }}>
-      <div className="select-root">{children}</div>
+    <SelectCtx.Provider value={{ open, setOpen, value, onValueChange: handleChange, items, disabled, highlightedIndex, setHighlightedIndex }}>
+      <div className={rootClass}>{children}</div>
     </SelectCtx.Provider>
   )
 }
@@ -140,7 +170,7 @@ export interface SelectContentProps {
 }
 
 export function SelectContent({ children, className = '' }: SelectContentProps) {
-  const { open, setOpen } = useSelectCtx()
+  const { open, setOpen, items, highlightedIndex, setHighlightedIndex, onValueChange } = useSelectCtx()
   const ref = useRef<HTMLDivElement>(null)
 
   // Close on outside click
@@ -155,15 +185,43 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open, setOpen])
 
-  // Close on Escape
+  // Keyboard navigation
   useEffect(() => {
     if (!open) return
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
+      switch (e.key) {
+        case 'Escape':
+          setOpen(false)
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          setHighlightedIndex((i: number) => Math.min(i + 1, items.length - 1))
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          setHighlightedIndex((i: number) => Math.max(i - 1, 0))
+          break
+        case 'Enter': {
+          e.preventDefault()
+          const item = items[highlightedIndex]
+          if (item) {
+            onValueChange(item.value)
+            setOpen(false)
+          }
+          break
+        }
+      }
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [open, setOpen])
+  }, [open, setOpen, items, highlightedIndex, setHighlightedIndex, onValueChange])
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (!open || highlightedIndex < 0 || !ref.current) return
+    const el = ref.current.querySelector('[data-highlighted="true"]') as HTMLElement
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [open, highlightedIndex])
 
   if (!open) return null
 
@@ -202,8 +260,10 @@ export interface SelectItemProps {
 }
 
 export function SelectItem({ value, disabled = false, children, className = '' }: SelectItemProps) {
-  const { value: selected, onValueChange, setOpen } = useSelectCtx()
+  const { value: selected, onValueChange, setOpen, items, highlightedIndex, setHighlightedIndex } = useSelectCtx()
   const isSelected = value === selected
+  const itemIndex = items.findIndex((i) => i.value === value)
+  const isHighlighted = itemIndex === highlightedIndex
 
   return (
     <button
@@ -211,12 +271,16 @@ export function SelectItem({ value, disabled = false, children, className = '' }
       role="option"
       aria-selected={isSelected}
       data-selected={isSelected ? 'true' : undefined}
+      data-highlighted={isHighlighted ? 'true' : undefined}
       data-disabled={disabled ? 'true' : undefined}
       className={`select-item ${className}`.trim()}
       onClick={() => {
         if (disabled) return
         onValueChange(value)
         setOpen(false)
+      }}
+      onMouseEnter={() => {
+        if (!disabled) setHighlightedIndex(itemIndex)
       }}
     >
       <span className="select-item-check">

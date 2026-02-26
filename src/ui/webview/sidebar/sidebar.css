@@ -7,78 +7,75 @@
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  padding: var(--spacing-md);
+  padding: 0;
+  background: var(--bg-primary);
 }
 
-/* Header: logo left, title right */
+/* Header — matches mainline .panel-header */
 .sidebar-header {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
   flex-shrink: 0;
+  height: 35px;
+  min-height: 35px;
+  padding: 0 var(--spacing-xs);
+  border-bottom: 1px solid var(--accent);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  position: relative;
+}
+
+.sidebar-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
 }
 
 .sidebar-logo {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .sidebar-title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
   color: var(--text-primary);
+  letter-spacing: 0;
 }
 
-/* Top section: scrollable controls area */
+.version-badge {
+  margin-left: 0;
+  font-size: var(--font-size-xxs);
+  padding: 1px 5px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+/* Top section: project/target selectors + action bar — fixed at top
+   Matches mainline .projects-section-fixed */
 .sidebar-top {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Tab content area: scrollable panel between tab bar and build queue */
+.sidebar-tab-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-/* Inline field: label left, control right */
-.sidebar-field {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.sidebar-field-label {
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  width: 52px;
-}
-
-.sidebar-field-control {
-  flex: 1;
-  min-width: 0;
-}
-
-.sidebar-field-control .select-root {
-  width: 100%;
-}
-
-.sidebar-field-control .select-trigger {
-  width: 100%;
-}
-
-/* Action buttons row */
-.sidebar-actions {
-  display: flex;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-xs);
-}
-
-.sidebar-actions > .btn {
-  flex: 1;
-  min-width: 0;
+  overflow-x: hidden;
 }
 
 .sidebar-label {
@@ -93,7 +90,7 @@
 .sidebar-empty {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
-  padding: var(--spacing-sm) 0;
+  padding: var(--spacing-sm) 8px;
 }
 
 .sidebar-status {
@@ -102,7 +99,7 @@
   gap: var(--spacing-sm);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  padding: var(--spacing-md) 0;
+  padding: var(--spacing-md) 8px;
 }
 
 /* ============================================
