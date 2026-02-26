@@ -208,6 +208,12 @@ _ENUM_PARAMETER_OVERRIDES: dict[str, EnumParameterOverrideSpec] = {
     "response_type": EnumParameterOverrideSpec(
         enum_type=F.Fuse.ResponseType,
     ),
+    "layer_type": EnumParameterOverrideSpec(
+        enum_type=F.PCBManu.PCBLayer.LayerType,
+    ),
+    "material": EnumParameterOverrideSpec(
+        enum_type=F.PCBManu.PCBLayer.Material,
+    ),
 }
 
 
