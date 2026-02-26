@@ -1,0 +1,800 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "atopile",
+    "scopeName": "source.ato",
+    "patterns": [
+        {
+            "name": "meta.pragma.ato",
+            "match": "^\\s*(#pragma)\\s+([a-zA-Z_][a-zA-Z_0-9]*)(?:\\s*(\\()(.*?)(\\)))?",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.directive.pragma.ato"
+                },
+                "2": {
+                    "name": "entity.name.function.pragma.ato"
+                },
+                "3": {
+                    "name": "punctuation.definition.arguments.begin.bracket.round.pragma.ato"
+                },
+                "4": {
+                    "patterns": [
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#numbers"
+                        }
+                    ]
+                },
+                "5": {
+                    "name": "punctuation.definition.arguments.end.bracket.round.pragma.ato"
+                }
+            }
+        },
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "name": "meta.trait.definition.simple.ato",
+            "match": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b(?!\\s*::)(?!\\s*<)",
+            "captures": {
+                "1": {
+                    "name": "keyword.other.trait.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                }
+            }
+        },
+        {
+            "name": "meta.trait.definition.constructor.ato",
+            "match": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\b(?!\\s*<)",
+            "captures": {
+                "1": {
+                    "name": "keyword.other.trait.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "3": {
+                    "name": "punctuation.separator.double-colon.ato"
+                },
+                "4": {
+                    "name": "entity.name.function.constructor.ato"
+                }
+            }
+        },
+        {
+            "name": "meta.trait.definition.template.ato",
+            "begin": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(<)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.other.trait.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "3": {
+                    "name": "punctuation.definition.template.begin.bracket.angle.ato"
+                }
+            },
+            "end": "(>)",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.template.end.bracket.angle.ato"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#template_parameters"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        {
+            "name": "meta.trait.definition.constructor.template.ato",
+            "begin": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\s*(<)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.other.trait.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "3": {
+                    "name": "punctuation.separator.double-colon.ato"
+                },
+                "4": {
+                    "name": "entity.name.function.constructor.ato"
+                },
+                "5": {
+                    "name": "punctuation.definition.template.begin.bracket.angle.ato"
+                }
+            },
+            "end": "(>)",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.template.end.bracket.angle.ato"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#template_parameters"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        {
+            "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\b",
+            "captures": {
+                "1": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "2": {
+                    "name": "punctuation.separator.double-colon.ato"
+                },
+                "3": {
+                    "name": "entity.name.function.constructor.ato"
+                }
+            }
+        },
+        {
+            "name": "meta.import.deprecated.ato",
+            "match": "(?:^|;)\\s*(import)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s+(from)\\s+(\"[^\"]*\")",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.import.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "3": {
+                    "name": "keyword.control.import.ato"
+                },
+                "4": {
+                    "name": "string.quoted.double.ato"
+                }
+            }
+        },
+        {
+            "name": "meta.import.from.ato",
+            "begin": "(?:^|;)\\s*(from)\\s+(\"[^\"]*\")\\s+(import)\\b\\s+",
+            "end": "(?=;|\\n|$)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.import.ato"
+                },
+                "2": {
+                    "name": "string.quoted.double.ato"
+                },
+                "3": {
+                    "name": "keyword.control.import.ato"
+                }
+            },
+            "patterns": [
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.class.ato"
+                        }
+                    }
+                },
+                {
+                    "match": ",",
+                    "name": "punctuation.separator.comma.ato"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        {
+            "name": "meta.import.standard.ato",
+            "begin": "(?:^|;)\\s*(import)\\b\\s+",
+            "end": "(?=;|\\n|$)(?!\\s*from\\s+\"[^\"]*\")",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.import.ato"
+                }
+            },
+            "patterns": [
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.class.ato"
+                        }
+                    }
+                },
+                {
+                    "match": ",",
+                    "name": "punctuation.separator.comma.ato"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        {
+            "name": "meta.instantiation.template.ato",
+            "begin": "\\b(new)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(<)",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.operator.new.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "3": {
+                    "name": "punctuation.definition.template.begin.bracket.angle.ato"
+                }
+            },
+            "end": "(>)",
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.template.end.bracket.angle.ato"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#template_parameters"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        {
+            "name": "meta.instantiation.ato",
+            "begin": "\\b(new)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(\\[)?",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.operator.new.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                },
+                "3": {
+                    "name": "punctuation.definition.array.begin.bracket.square.ato"
+                }
+            },
+            "end": "(?<=\\])|(?=;)|(?=\\n)|($)",
+            "patterns": [
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#references"
+                },
+                {
+                    "include": "#operators"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        {
+            "include": "#block_definitions"
+        },
+        {
+            "include": "#declarations"
+        },
+        {
+            "match": "(->)\\s*([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.operator.retype.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                }
+            }
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#references"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#operators"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.number-sign.ato",
+                    "match": "(#(?!pragma\\b).*)$"
+                }
+            ]
+        },
+        "strings": {
+            "name": "string.quoted.double.ato",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.ato",
+                    "match": "\\\\."
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.import.ato",
+                    "match": "\\b(import|from)\\b"
+                },
+                {
+                    "name": "keyword.control.flow.ato",
+                    "match": "\\b(for|in|pass)\\b"
+                },
+                {
+                    "name": "keyword.operator.word.ato",
+                    "match": "\\b(assert|within|is|to)\\b"
+                },
+                {
+                    "name": "storage.type.declaration.ato",
+                    "match": "\\b(pin|signal)\\b"
+                },
+                {
+                    "name": "storage.type.definition.ato",
+                    "match": "\\b(component|module|interface)\\b"
+                },
+                {
+                    "name": "keyword.operator.new.ato",
+                    "match": "\\b(new)\\b"
+                },
+                {
+                    "name": "keyword.other.trait.ato",
+                    "match": "\\b(trait)\\b"
+                },
+                {
+                    "name": "constant.language.boolean.ato",
+                    "match": "\\b(True|False)\\b"
+                }
+            ]
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.retype.ato",
+                    "match": "->"
+                },
+                {
+                    "name": "keyword.operator.connection.directed.ato",
+                    "match": "(~>|<~)"
+                },
+                {
+                    "name": "keyword.operator.cumulative.assignment.ato",
+                    "match": "(\\+=|-=)"
+                },
+                {
+                    "name": "keyword.operator.set.assignment.ato",
+                    "match": "(\\|=|&=)"
+                },
+                {
+                    "name": "keyword.operator.exponentiation.ato",
+                    "match": "\\*\\*"
+                },
+                {
+                    "name": "keyword.operator.comparison.ato",
+                    "match": "(<=|>=)"
+                },
+                {
+                    "name": "punctuation.separator.double-colon.ato",
+                    "match": "::"
+                },
+                {
+                    "name": "keyword.operator.assignment.ato",
+                    "match": "="
+                },
+                {
+                    "name": "keyword.operator.connection.undirected.ato",
+                    "match": "~"
+                },
+                {
+                    "name": "keyword.operator.comparison.ato",
+                    "match": "(<|>)"
+                },
+                {
+                    "name": "keyword.operator.arithmetic.ato",
+                    "match": "([\\+\\-\\*\\/])"
+                },
+                {
+                    "name": "keyword.operator.logical.ato",
+                    "match": "([\\|&])"
+                },
+                {
+                    "name": "punctuation.accessor.dot.ato",
+                    "match": "\\."
+                },
+                {
+                    "name": "punctuation.separator.colon.ato",
+                    "match": ":"
+                },
+                {
+                    "name": "punctuation.separator.comma.ato",
+                    "match": ","
+                },
+                {
+                    "name": "punctuation.separator.semicolon.ato",
+                    "match": ";"
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.value.ato",
+                    "match": "\\b0[xX][0-9a-fA-F]+\\b"
+                },
+                {
+                    "name": "constant.numeric.value.ato",
+                    "match": "\\b0[bB][01]+\\b"
+                },
+                {
+                    "name": "constant.numeric.value.ato",
+                    "match": "\\b0[oO][0-7]+\\b"
+                },
+                {
+                    "name": "constant.numeric.physical.bilateral.percentage.ato",
+                    "match": "\\b((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-Z%Ωµμ°]+)?\\s*(\\+/-)\\s*((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*(%)",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.value.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.tag.unit.ato"
+                        },
+                        "3": {
+                            "name": "keyword.operator.tolerance.ato"
+                        },
+                        "4": {
+                            "name": "constant.numeric.tolerance.ato"
+                        },
+                        "5": {
+                            "name": "entity.name.tag.unit.percentage.ato"
+                        }
+                    }
+                },
+                {
+                    "name": "constant.numeric.physical.bilateral.absolute.ato",
+                    "match": "\\b((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-Z%Ωµμ°]+)?\\s*(\\+/-)\\s*((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-ZΩµμ°]+)?\\b",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.value.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.tag.unit.ato"
+                        },
+                        "3": {
+                            "name": "keyword.operator.tolerance.ato"
+                        },
+                        "4": {
+                            "name": "constant.numeric.tolerance.ato"
+                        },
+                        "5": {
+                            "name": "entity.name.tag.unit.tolerance.ato"
+                        }
+                    }
+                },
+                {
+                    "name": "constant.numeric.physical.range.ato",
+                    "match": "\\b((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-Z%Ωµμ°]+)?\\s+\\b(to)\\b\\s+((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-Z%Ωµμ°]+)?\\b",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.value.lower.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.tag.unit.ato"
+                        },
+                        "3": {
+                            "name": "keyword.operator.range.ato"
+                        },
+                        "4": {
+                            "name": "constant.numeric.value.upper.ato"
+                        },
+                        "5": {
+                            "name": "entity.name.tag.unit.ato"
+                        }
+                    }
+                },
+                {
+                    "name": "constant.numeric.physical.simple.ato",
+                    "match": "\\b((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-Z%Ωµμ°]+)?\\b(?!\\s*(?:\\+/-|\\bto\\b))",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.value.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.tag.unit.ato"
+                        }
+                    }
+                }
+            ]
+        },
+        "template_parameters": {
+            "patterns": [
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*)\\s*(?=(=))",
+                    "captures": {
+                        "1": {
+                            "name": "variable.parameter.template.ato"
+                        }
+                    }
+                },
+                {
+                    "match": "(=\\s*)(\"[^\"]*\")",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.operator.assignment.template.ato"
+                        },
+                        "2": {
+                            "name": "string.quoted.double.template.ato"
+                        }
+                    }
+                },
+                {
+                    "match": "(=\\s*)([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.operator.assignment.template.ato"
+                        },
+                        "2": {
+                            "name": "constant.numeric.template.ato"
+                        }
+                    }
+                },
+                {
+                    "match": "(=\\s*)(True|False)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.operator.assignment.template.ato"
+                        },
+                        "2": {
+                            "name": "constant.language.boolean.template.ato"
+                        }
+                    }
+                },
+                {
+                    "match": ",",
+                    "name": "punctuation.separator.comma.template.ato"
+                }
+            ]
+        },
+        "inheritance_clause": {
+            "match": "\\s*\\b(from)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.inheritance.ato"
+                },
+                "2": {
+                    "name": "entity.name.type.class.ato"
+                }
+            }
+        },
+        "block_definitions": {
+            "patterns": [
+                {
+                    "name": "meta.definition.block.templated.header.ato",
+                    "begin": "^\\s*(module|component|interface)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(<)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "storage.type.definition.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.type.class.ato"
+                        },
+                        "3": {
+                            "name": "punctuation.definition.template.begin.bracket.angle.ato"
+                        }
+                    },
+                    "end": "(:)",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.separator.colon.ato"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#template_parameters"
+                        },
+                        {
+                            "match": "\\s*(>)",
+                            "captures": {
+                                "1": {
+                                    "name": "punctuation.definition.template.end.bracket.angle.ato"
+                                }
+                            }
+                        },
+                        {
+                            "include": "#inheritance_clause"
+                        },
+                        {
+                            "include": "#comments"
+                        }
+                    ]
+                },
+                {
+                    "name": "meta.definition.block.simple.header.ato",
+                    "begin": "^\\s*(module|component|interface)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)(?!\\s*<)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "storage.type.definition.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.type.class.ato"
+                        }
+                    },
+                    "end": "(:)",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.separator.colon.ato"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#inheritance_clause"
+                        },
+                        {
+                            "include": "#comments"
+                        }
+                    ]
+                }
+            ]
+        },
+        "declarations": {
+            "patterns": [
+                {
+                    "match": "\\b(pin)\\s+(?:([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)|(\\d+)|(\"[^\"]*\"))",
+                    "captures": {
+                        "1": {
+                            "name": "storage.type.declaration.pin.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.variable.pin.ato"
+                        },
+                        "3": {
+                            "name": "constant.numeric.integer.pin.ato"
+                        },
+                        "4": {
+                            "name": "string.quoted.double.pin.name.ato"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b(signal)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
+                    "captures": {
+                        "1": {
+                            "name": "storage.type.declaration.signal.ato"
+                        },
+                        "2": {
+                            "name": "entity.name.variable.signal.ato"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)*)\\s*(:)\\s*([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
+                    "captures": {
+                        "1": {
+                            "name": "variable.other.declaration.annotated.ato"
+                        },
+                        "2": {
+                            "name": "punctuation.separator.colon.ato"
+                        },
+                        "3": {
+                            "name": "entity.name.type.class.ato"
+                        }
+                    }
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        },
+        "traits": {
+            "patterns": [
+                {
+                    "begin": "<",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.template.begin.bracket.angle.ato"
+                        }
+                    },
+                    "end": ">",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.template.end.bracket.angle.ato"
+                        }
+                    },
+                    "name": "meta.template.parameters.ato",
+                    "patterns": [
+                        {
+                            "include": "#template_parameters"
+                        },
+                        {
+                            "include": "#comments"
+                        }
+                    ]
+                }
+            ]
+        },
+        "references": {
+            "patterns": [
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.class.ato"
+                        },
+                        "2": {
+                            "name": "punctuation.separator.double-colon.ato"
+                        },
+                        "3": {
+                            "name": "entity.name.function.constructor.ato"
+                        }
+                    }
+                },
+                {
+                    "begin": "([a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)\\s*(\\[)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "variable.other.indexed.ato"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.array.begin.bracket.square.ato"
+                        }
+                    },
+                    "end": "(\\])",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.array.end.bracket.square.ato"
+                        }
+                    },
+                    "name": "meta.array.access.ato",
+                    "patterns": [
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#numbers"
+                        },
+                        {
+                            "include": "#references"
+                        },
+                        {
+                            "include": "#operators"
+                        },
+                        {
+                            "include": "#comments"
+                        }
+                    ]
+                },
+                {
+                    "match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)\\b",
+                    "name": "variable.other.ato"
+                },
+                {
+                    "include": "#comments"
+                }
+            ]
+        }
+    }
+}
