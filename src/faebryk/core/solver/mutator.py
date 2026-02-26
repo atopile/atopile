@@ -1105,13 +1105,28 @@ class MutationMap:
             tg_out
         ).get_instances(g=g_out)
 
-        return {
+        forward_mapping: ParameterOperatableMappingOneToOne = {
             F.Parameters.is_parameter_operatable.bind_instance(bound): po
             for po in out_pos
             if fbrk.EdgeTrait.get_owner_node_of(
                 bound_node=(bound := g.bind(node=po.instance.node()))
             )
         }
+
+        # Preserve parameter names: copy has_name_override if present, otherwise set
+        # the name from the source's composition-based name
+        for p_old, p_new in forward_mapping.items():
+            if (p_new_p := p_new.as_parameter.try_get()) is not None:
+                p_old_p = p_old.as_parameter.force_get()
+                if not MutatorUtils.try_copy_trait(
+                    from_op=p_old_p.as_operand.get(),
+                    to_op=p_new_p.as_operand.get(),
+                    trait_t=F.has_name_override,
+                ):
+                    p_old_obj = fabll.Traits(p_old_p).get_obj_raw()
+                    p_new_p.set_name(p_old_obj.get_full_name())
+
+        return forward_mapping
 
     @classmethod
     def _with_relevance_set(
