@@ -1,7 +1,7 @@
-import { render, AppProps } from "../shared/render";
+import { render, panelId, logoUrl } from "../shared/render";
 import { Badge } from "../shared/components";
 
-function App({ panelId, logoUrl }: AppProps) {
+function App() {
   return (
     <div className="panel">
       {logoUrl && <img src={logoUrl} alt="atopile" className="logo" />}

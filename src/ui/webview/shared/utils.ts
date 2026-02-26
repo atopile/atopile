@@ -1,4 +1,4 @@
-import type { Build, BuildStage } from "./types";
+import type { Build, BuildStage } from "../../shared/types";
 
 /** Format seconds into a compact human-readable duration. */
 export function formatDuration(seconds: number): string {

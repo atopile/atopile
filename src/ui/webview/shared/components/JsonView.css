@@ -1,0 +1,44 @@
+/* -- JSON tree view ------------------------------------------------------- */
+
+.json-tree {
+  font-family: var(--font-mono);
+}
+
+.json-entries {
+  list-style: none;
+  margin: 0;
+  padding-left: var(--spacing-lg);
+}
+
+.json-entry {
+  line-height: 1.6;
+}
+
+.json-key { color: var(--ctp-blue); }
+.json-string { color: var(--ctp-green); }
+.json-number { color: var(--ctp-peach); }
+.json-bool { color: var(--ctp-mauve); }
+.json-null { color: var(--text-muted); }
+.json-bracket { color: var(--text-muted); }
+
+.json-chevron,
+.json-chevron-spacer {
+  display: inline-block;
+  width: 1em;
+  user-select: none;
+}
+
+.json-chevron {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.json-chevron:hover {
+  color: var(--accent);
+}
+
+.json-ellipsis {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: var(--font-size-xs);
+}

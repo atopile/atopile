@@ -1,6 +1,6 @@
-import { render, AppProps } from "../shared/render";
-import { useWebSocket } from "../shared/webSocket";
-import { Separator } from "../shared/components";
+import { render } from "../shared/render";
+import { useSubscribe } from "../shared/webSocketProvider";
+import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../shared/components";
 import { ComponentShowcase } from "../shared/components/ComponentShowcase";
 
 function GraphEdge({ connected }: { connected: boolean }) {
@@ -15,10 +15,39 @@ function GraphEdge({ connected }: { connected: boolean }) {
   );
 }
 
-function App({ hubUrl }: AppProps) {
-  const { connected, state } = useWebSocket(hubUrl, ["core_status"]);
-  const core = state.core_status as { connected?: boolean } | undefined;
-  const coreConnected = Boolean(core?.connected);
+function StoreTable() {
+  const hubStatus = useSubscribe("hub_status");
+  const coreStatus = useSubscribe("core_status");
+  const projectState = useSubscribe("project_state");
+  const entries: [string, unknown][] = [
+    ["HubStatus", hubStatus],
+    ["CoreStatus", coreStatus],
+    ["ProjectState", projectState],
+  ];
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead style={{ width: "1%", whiteSpace: "nowrap" }}>Key</TableHead>
+          <TableHead>Value</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {entries.map(([key, value]) => (
+          <TableRow key={key}>
+            <TableCell><code>{key}</code></TableCell>
+            <TableCell><JsonView value={value} defaultOpen={true} /></TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function App() {
+  const hubStatus = useSubscribe("hub_status");
+  const coreStatus = useSubscribe("core_status");
 
   return (
     <div className="panel">
@@ -26,11 +55,16 @@ function App({ hubUrl }: AppProps) {
       <h3>Connections</h3>
       <div className="graph">
         <div className="graph-node">Webviews</div>
-        <GraphEdge connected={connected} />
+        <GraphEdge connected={hubStatus.connected} />
         <div className="graph-node">UI Hub</div>
-        <GraphEdge connected={coreConnected} />
+        <GraphEdge connected={coreStatus.connected} />
         <div className="graph-node">Core Server</div>
       </div>
+
+      <Separator className="showcase-divider" />
+
+      <h3>Store State</h3>
+      <StoreTable />
 
       <Separator className="showcase-divider" />
 

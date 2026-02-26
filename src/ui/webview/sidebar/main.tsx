@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { render, AppProps } from "../shared/render";
-import { useWebSocket } from "../shared/webSocket";
+import { render, logoUrl } from "../shared/render";
+import { useSubscribe, ws } from "../shared/webSocketProvider";
+import { sendAction } from "../../shared/webSocketUtils";
 import { useResizeHandle } from "../shared/components";
-import type { Project, Build, ProjectState } from "../shared/types";
 import { getLatestPerTarget } from "../shared/utils";
 import { BuildQueueItem } from "./BuildQueueItem";
 import "./sidebar.css";
@@ -23,28 +23,32 @@ function openPanel(panelId: string) {
   vscode.postMessage({ type: "openPanel", panelId });
 }
 
-function App({ hubUrl, logoUrl }: AppProps) {
-  const { connected, state, sendAction } = useWebSocket(hubUrl, [
-    "core_status",
-    "project_state",
-  ]);
-
-  const project = state.project_state as ProjectState | undefined;
-  const projects = project?.projects ?? [];
-  const builds = project?.builds ?? [];
-  const selectedProject = project?.selected_project ?? null;
-  const selectedTarget = project?.selected_target ?? null;
+function App() {
+  const projectState = useSubscribe("project_state");
+  const hubStatus = useSubscribe("hub_status");
 
   const resize = useResizeHandle(200, 60);
 
   const targets = useMemo(() => {
-    const match = projects.find((p) => p.root === selectedProject);
+    const match = projectState.projects.find(
+      (p) => p.root === projectState.selected_project,
+    );
     return match?.targets ?? [];
-  }, [projects, selectedProject]);
+  }, [
+    projectState.projects,
+    projectState.selected_project,
+  ]);
 
   const projectBuilds = useMemo(
-    () => getLatestPerTarget(builds, selectedProject),
-    [builds, selectedProject],
+    () =>
+      getLatestPerTarget(
+        projectState.builds,
+        projectState.selected_project,
+      ),
+    [
+      projectState.builds,
+      projectState.selected_project,
+    ],
   );
 
   const isBuilding = useMemo(
@@ -52,12 +56,12 @@ function App({ hubUrl, logoUrl }: AppProps) {
       projectBuilds.some(
         (b) =>
           (b.status === "queued" || b.status === "building") &&
-          b.target === selectedTarget,
+          b.target === projectState.selected_target,
       ),
-    [projectBuilds, selectedTarget],
+    [projectBuilds, projectState.selected_target],
   );
 
-  const projectItems = projects.map((p) => ({
+  const projectItems = projectState.projects.map((p) => ({
     label: p.name,
     value: p.root,
   }));
@@ -67,7 +71,7 @@ function App({ hubUrl, logoUrl }: AppProps) {
     value: t,
   }));
 
-  if (!connected) {
+  if (!hubStatus.connected) {
     return (
       <div className="sidebar">
         <div className="sidebar-header">
@@ -100,14 +104,14 @@ function App({ hubUrl, logoUrl }: AppProps) {
         <div className="sidebar-field">
           <label className="sidebar-field-label">Project</label>
           <div className="sidebar-field-control">
-            {projects.length === 0 ? (
+            {projectState.projects.length === 0 ? (
               <span className="sidebar-empty">No projects found</span>
             ) : (
               <Select
                 items={projectItems}
-                value={selectedProject}
+                value={projectState.selected_project}
                 onValueChange={(v) =>
-                  sendAction("select_project", { projectRoot: v })
+                  sendAction(ws,"select_project", { projectRoot: v })
                 }
               >
                 <SelectTrigger>
@@ -126,7 +130,7 @@ function App({ hubUrl, logoUrl }: AppProps) {
         </div>
 
         {/* Target selector */}
-        {selectedProject && (
+        {projectState.selected_project && (
           <div className="sidebar-field">
             <label className="sidebar-field-label">Target</label>
             <div className="sidebar-field-control">
@@ -135,9 +139,9 @@ function App({ hubUrl, logoUrl }: AppProps) {
               ) : (
                 <Select
                   items={targetItems}
-                  value={selectedTarget}
+                  value={projectState.selected_target}
                   onValueChange={(v) =>
-                    sendAction("select_target", { target: v })
+                    sendAction(ws,"select_target", { target: v })
                   }
                 >
                   <SelectTrigger>
@@ -160,12 +164,16 @@ function App({ hubUrl, logoUrl }: AppProps) {
         <div className="sidebar-actions">
           <Button
             onClick={() =>
-              sendAction("start_build", {
-                projectRoot: selectedProject,
-                targets: [selectedTarget],
+              sendAction(ws,"start_build", {
+                projectRoot: projectState.selected_project,
+                targets: [projectState.selected_target],
               })
             }
-            disabled={!selectedProject || !selectedTarget || isBuilding}
+            disabled={
+              !projectState.selected_project ||
+              !projectState.selected_target ||
+              isBuilding
+            }
           >
             {isBuilding ? (
               <>
@@ -187,7 +195,7 @@ function App({ hubUrl, logoUrl }: AppProps) {
       </div>
 
       {/* Resizable builds pane at bottom */}
-      {selectedProject && (
+      {projectState.selected_project && (
         <div className="sidebar-builds-pane">
           <div
             className="sidebar-resize-handle"

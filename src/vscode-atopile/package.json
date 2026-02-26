@@ -45,10 +45,12 @@
   "scripts": {
     "build:extension": "node esbuild.js --production",
     "build:webview": "cd ../ui/webview && bun run build",
+    "build:hub": "cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs",
     "watch:extension": "node esbuild.js --watch",
     "watch:webview": "cd ../ui/webview && bun run watch",
-    "watch": "concurrently \"bun run watch:extension\" \"bun run watch:webview\"",
-    "vscode:prepublish": "bun run build:extension && bun run build:webview",
+    "watch:hub": "cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --watch",
+    "watch": "concurrently \"bun run watch:extension\" \"bun run watch:webview\" \"bun run watch:hub\"",
+    "vscode:prepublish": "bun run build:extension && bun run build:webview && bun run build:hub",
     "package": "vsce package"
   },
   "devDependencies": {

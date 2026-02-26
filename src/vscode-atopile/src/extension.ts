@@ -1,3 +1,4 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { ProcessManager } from "./processManager";
 import { WebviewManager } from "./webviewManager";
@@ -40,11 +41,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ATOPILE_WORKSPACE_FOLDERS: workspaceFolders,
   };
 
-  // 2. Start hub (fast Python process)
+  // 2. Start hub (Node process)
   hub = new ProcessManager(output, {
     name: "Hub",
-    command: "ato",
-    args: ["serve", "hub"],
+    command: "node",
+    args: [path.join(context.extensionPath, "hub-dist", "main.js")],
     readyMarker: HUB_READY_MARKER,
     env: hubEnv,
     timeoutMs: 10_000,

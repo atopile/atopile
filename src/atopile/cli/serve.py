@@ -1,10 +1,8 @@
 """
-Serve commands for the core server and hub.
+Serve commands for the core server.
 
-Both commands read their port assignments from environment variables
-set by the VS Code extension:
-  ATOPILE_HUB_PORT         — port the hub listens on
-  ATOPILE_CORE_SERVER_PORT — port the core server listens on
+The core server reads its port from ATOPILE_CORE_SERVER_PORT,
+set by the VS Code extension.
 """
 
 from __future__ import annotations
@@ -14,7 +12,6 @@ from typing import Optional
 
 import typer
 
-HUB_PORT_ENV = "ATOPILE_HUB_PORT"
 CORE_SERVER_PORT_ENV = "ATOPILE_CORE_SERVER_PORT"
 
 serve_app = typer.Typer(no_args_is_help=True)
@@ -29,15 +26,6 @@ def _require_env_port(name: str) -> int:
         return int(raw)
     except ValueError:
         raise typer.BadParameter(f"{name}={raw!r} is not a valid port number")
-
-
-@serve_app.command()
-def hub() -> None:
-    """Start the WebSocket hub (relays between webviews and core server)."""
-    from ui.hub import run_hub
-
-    port = _require_env_port(HUB_PORT_ENV)
-    run_hub(port=port)
 
 
 @serve_app.command()

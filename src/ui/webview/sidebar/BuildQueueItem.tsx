@@ -8,7 +8,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Spinner } from "../shared/components";
-import type { Build } from "../shared/types";
+import type { Build } from "../../shared/types";
 import { formatDuration, formatTimeAgo } from "../shared/utils";
 
 function stageStatusIcon(status: string) {
