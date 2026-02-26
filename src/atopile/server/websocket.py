@@ -33,11 +33,8 @@ class CoreSocket:
         log.info("Core WS client connected (%d total)", len(self._clients))
 
         try:
-            # Send both channels on connect
-            latest, previous, _ = handle_get_builds()
-            await ws.send(
-                json.dumps({"type": "state", "key": "latestBuilds", "data": latest})
-            )
+            # Send history on connect; active builds will arrive via on_change callbacks
+            _, previous = handle_get_builds()
             await ws.send(
                 json.dumps({"type": "state", "key": "previousBuilds", "data": previous})
             )
@@ -99,10 +96,9 @@ class CoreSocket:
         build_queue.start()
 
     async def _push_builds(self) -> None:
-        latest, previous, previous_changed = handle_get_builds()
-        await self.broadcast_state("latestBuilds", latest)
-        if previous_changed:
-            await self.broadcast_state("previousBuilds", previous)
+        current, previous = handle_get_builds()
+        await self.broadcast_state("currentBuilds", current)
+        await self.broadcast_state("previousBuilds", previous)
 
     # -- Broadcasting ------------------------------------------------------
 

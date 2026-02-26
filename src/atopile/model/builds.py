@@ -38,32 +38,20 @@ def _fix_interrupted_build(build: Build) -> Build:
     return build
 
 
-_latest_build_ids: set[str] = set()
+def handle_get_builds() -> tuple[dict, dict]:
+    """Query current (active) + previous (finished) builds from DB.
 
-
-def handle_get_builds() -> tuple[dict, dict, bool]:
-    """Query latest + previous builds from DB.
-
-    Returns (latest_msg, previous_msg, previous_changed).
-    ``previous_changed`` is True when the set of latest build IDs has
-    shifted since the last call (i.e. a build was displaced), signalling
-    that the caller should also broadcast ``previous_msg``.
+    Returns (current_msg, previous_msg).
+    ``currentBuilds`` contains only in-flight builds (queued/building).
+    ``previousBuilds`` contains finished builds.
     """
-    global _latest_build_ids
+    active = BuildHistory.get_active()
+    finished = BuildHistory.get_finished()
 
-    latest = BuildHistory.get_latest_per_target()
-    latest_msg = {"latestBuilds": [b.model_dump() for b in latest]}
+    current_msg = {"currentBuilds": [b.model_dump() for b in active]}
+    previous_msg = {"previousBuilds": [b.model_dump() for b in finished]}
 
-    new_ids = {b.build_id for b in latest if b.build_id}
-    previous_changed = new_ids != _latest_build_ids
-    _latest_build_ids = new_ids
-
-    previous_msg: dict = {}
-    if previous_changed:
-        previous = BuildHistory.get_previous()
-        previous_msg = {"previousBuilds": [b.model_dump() for b in previous]}
-
-    return latest_msg, previous_msg, previous_changed
+    return current_msg, previous_msg
 
 
 def validate_build_request(request: BuildRequest) -> str | None:

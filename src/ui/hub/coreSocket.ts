@@ -51,8 +51,8 @@ export class CoreSocket {
       if (msg.type === MSG_TYPE.STATE) {
         const payload = (msg.data as Record<string, unknown>) ?? {};
         switch (msg.key) {
-          case "latestBuilds":
-            store.setArray("latestBuilds", (payload.latestBuilds ?? []) as Build[]);
+          case "currentBuilds":
+            store.setArray("currentBuilds", (payload.currentBuilds ?? []) as Build[]);
             break;
           case "previousBuilds":
             store.setArray("previousBuilds", (payload.previousBuilds ?? []) as Build[]);

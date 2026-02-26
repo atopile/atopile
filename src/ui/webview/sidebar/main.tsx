@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { render, logoUrl } from "../shared/render";
 import { useSubscribe, ws } from "../shared/webSocketProvider";
 import { sendAction } from "../../shared/webSocketUtils";
+import type { Build } from "../../shared/types";
 import { Spinner } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
 import { BuildQueuePane } from "./BuildQueuePane";
@@ -22,7 +23,8 @@ import "./sidebar.css";
 function App() {
   const projectState = useSubscribe("projectState");
   const hubStatus = useSubscribe("hubStatus");
-  const latestBuilds = useSubscribe("latestBuilds");
+  const currentBuilds = useSubscribe("currentBuilds");
+  const previousBuilds = useSubscribe("previousBuilds");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
 
@@ -36,13 +38,25 @@ function App() {
     projectState.selectedProject,
   ]);
 
-  const projectBuilds = useMemo(
-    () =>
-      latestBuilds
-        .filter((b) => b.projectRoot === projectState.selectedProject)
-        .map((b) => ({ ...b, currentStage: getCurrentStage(b) })),
-    [latestBuilds, projectState.selectedProject],
-  );
+  const projectBuilds = useMemo(() => {
+    const project = projectState.selectedProject;
+    // Active builds for this project
+    const active = currentBuilds.filter((b) => b.projectRoot === project);
+    const activeTargets = new Set(active.map((b) => b.name));
+
+    // For targets without an active build, pick the latest previous build
+    const latestPrevious = new Map<string, Build>();
+    for (const b of previousBuilds) {
+      if (b.projectRoot === project && !activeTargets.has(b.name) && !latestPrevious.has(b.name)) {
+        latestPrevious.set(b.name, b);
+      }
+    }
+
+    return [...active, ...latestPrevious.values()].map((b) => ({
+      ...b,
+      currentStage: getCurrentStage(b),
+    }));
+  }, [currentBuilds, previousBuilds, projectState.selectedProject]);
 
   const isBuilding = useMemo(
     () =>

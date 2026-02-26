@@ -8,7 +8,7 @@ export class StoreState {
   hubStatus = new HubStatus();
   coreStatus = new CoreStatus();
   projectState = new ProjectState();
-  latestBuilds: Build[] = [];
+  currentBuilds: Build[] = [];
   previousBuilds: Build[] = [];
 }
 
