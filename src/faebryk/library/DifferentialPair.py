@@ -37,6 +37,17 @@ class DifferentialPair(fabll.Node):
         ),
     ]
 
+    transmission_lines = [
+        fabll.Traits.MakeEdge(
+            F.TransmissionLine.is_transmissionline.MakeChild(),
+            owner=[p],
+        ),
+        fabll.Traits.MakeEdge(
+            F.TransmissionLine.is_transmissionline.MakeChild(),
+            owner=[n],
+        ),
+    ]
+
     def terminated(self) -> "DifferentialPair":
         terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(
             g=self.g

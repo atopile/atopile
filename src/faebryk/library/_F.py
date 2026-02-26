@@ -18,6 +18,7 @@ This way we can add new modules without changing this file
 import faebryk.library.Collections as Collections
 from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.has_part_removed import has_part_removed
+import faebryk.library.TransmissionLine as TransmissionLine
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
@@ -121,6 +122,7 @@ __all__ = [
     "Collections",
     "NumberDomain",
     "has_part_removed",
+    "TransmissionLine",
     "is_sink",
     "is_source",
     "Logic",
