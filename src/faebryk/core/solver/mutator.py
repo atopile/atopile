@@ -863,46 +863,6 @@ class MutationStage:
         )
 
 
-def _seed_superset_bounds(
-    initial_state: "MutationMap",
-    forward_mapping: dict[
-        F.Parameters.is_parameter_operatable,
-        F.Parameters.is_parameter_operatable,
-    ],
-    g_out: graph.GraphView,
-) -> None:
-    """
-    Seed superset bounds from a previous solve into a new working graph.
-
-    When the solver bootstraps a new relevance set, it starts from scratch.
-    By copying solved bounds from the previous state, the solver converges
-    in fewer iterations.
-    """
-    # Only seed parameters that exist in both the old and new relevance sets
-    shared_params = {
-        po
-        for po in (initial_state.input_operables & forward_mapping.keys())
-        if po.as_parameter.try_get()
-    }
-
-    seeded = 0
-    for po in shared_params:
-        if (
-            ss_lit := initial_state.try_extract_superset(po, domain_default=False)
-        ) is None:
-            continue
-
-        copied = fabll.Traits(ss_lit).get_obj_raw().copy_into(g_out)
-        new_po = forward_mapping[po]
-        new_po.set_superset(
-            g=g_out, value=copied.get_trait(F.Literals.is_literal).switch_cast()
-        )
-        seeded += 1
-
-    if seeded:
-        logger.debug(f"Seeded {seeded} superset bounds from previous solve")
-
-
 class MutationMap:
     @dataclass
     class LookupResult:
@@ -1140,7 +1100,6 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand],
         iteration: int = 0,
-        initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
         relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
         if S_LOG:
@@ -1174,18 +1133,6 @@ class MutationMap:
             )
         }
 
-        for p_old, p_new in forward_mapping.items():
-            if (p_new_p := p_new.as_parameter.try_get()) is not None:
-                p_old_p = p_old.as_parameter.force_get()
-                if not MutatorUtils.try_copy_trait(
-                    from_op=p_old_p.as_operand.get(),
-                    to_op=p_new_p.as_operand.get(),
-                    trait_t=F.has_name_override,
-                ):
-                    # Preserve the location-based name before it's lost
-                    p_old_obj = fabll.Traits(p_old_p).get_obj_raw()
-                    p_new_p.set_name(p_old_obj.get_full_name())
-
         for pred in relevant_root_predicates:
             mapped = forward_mapping[
                 pred.as_expression.get().as_parameter_operatable.get()
@@ -1193,9 +1140,6 @@ class MutationMap:
             fabll.Traits.create_and_add_instance_to(
                 fabll.Traits(mapped).get_obj_raw(), is_relevant
             )
-
-        if initial_state:
-            _seed_superset_bounds(initial_state, forward_mapping, g_out)
 
         if S_LOG:
             expr_count = len(
@@ -1240,15 +1184,148 @@ class MutationMap:
         initial_state: "MutationMap",
         iteration: int = 0,
     ) -> "MutationMap":
-        # "resume_with_new_preds(g_in)" algo
-        # unmark relevance in g_out
-        #  algo to filter out traits
-        # map relevant params through
-        # oeprands automatically mapped to new graph
-        # mark in target as relevant (if mapped through)
-        # else create with mapped operands (and mark relevant)
-        # action relevance markers
-        raise NotImplementedError("_with_relevance_set_resume is not yet implemented")
+        """
+        Bootstrap a solver working graph from initial_state's G_out.
+
+        Algorithm:
+        1. Walk source predicates transitively from `relevant` to find all
+           connected source predicates. Classify each as "existing" (expression
+           PO in initial_state.input_operables) or "new" (added since last solve).
+        2. Collect leaf params from those predicates. Map each to its G_out
+           counterpart via compressed_mapping_forwards_complete.
+        3. Walk G_out predicates from those seeds. Copy them into a fresh g_out,
+           skipping Is (flatten_expressions artifacts).
+        4. Build forward_mapping (source PO → g_out PO) from compressed_fwd,
+           checking which G_out nodes landed in g_out via copy_into. Copy any
+           directly-relevant params missing from forward_mapping from source.
+        5. Recreate new predicates in g_out with operands remapped via
+           forward_mapping. Literals are copied as-is (canonicalization
+           handles unit stripping after bootstrap).
+        6. Mark relevance on g_out predicates.
+        """
+        compressed_fwd = initial_state.compressed_mapping_forwards_complete
+        initial_input_ops = initial_state.input_operables
+
+        # --- Discover all transitively-relevant source predicates ---
+        source_preds = MutatorUtils.get_relevant_predicates(*relevant)
+
+        # New = predicate expression node didn't exist in the previous solve
+        new_preds = [
+            p
+            for p in source_preds
+            if p.as_expression.get().as_parameter_operatable.get()
+            not in initial_input_ops
+        ]
+
+        # --- Map all transitively-discovered source params → G_out ---
+        # We seed the G_out BFS from ALL source params, not just the
+        # directly-relevant ones. Bridge predicates may have been marked
+        # irrelevant in G_out, so the G_out BFS alone can't reach params
+        # on the far side. Explicit seeding ensures their bounds are copied.
+        all_source_params = {
+            leaf
+            for pred in source_preds
+            for leaf in pred.as_expression.get().get_operand_leaves_operatable()
+            if leaf.as_parameter.try_get() is not None
+        }
+        gout_seeds: dict[int, F.Parameters.can_be_operand] = {}
+        for po in all_source_params:
+            if (gout_po := compressed_fwd.get(po)) is not None:
+                gout_seeds.setdefault(id(gout_po), gout_po.as_operand.get())
+
+        # --- Copy solved G_out predicates into fresh graph (skip Is) ---
+        gout_preds = (
+            MutatorUtils.get_relevant_predicates(*gout_seeds.values())
+            if gout_seeds
+            else []
+        )
+        g_out, tg_out = cls._bootstrap_copy(g, tg)
+        for pred in gout_preds:
+            if (
+                MutatorUtils.hack_get_expr_type(pred.as_expression.get())
+                is not F.Expressions.Is
+            ):
+                pred.copy_into(g_out)
+
+        # --- Build source → g_out forward mapping ---
+        forward_mapping: dict[
+            F.Parameters.is_parameter_operatable,
+            F.Parameters.is_parameter_operatable,
+        ] = {}
+        for source_po, gout_po in compressed_fwd.items():
+            g_new_bound = g_out.bind(node=gout_po.instance.node())
+            if fbrk.EdgeTrait.get_owner_node_of(bound_node=g_new_bound):
+                forward_mapping[source_po] = (
+                    F.Parameters.is_parameter_operatable.bind_instance(g_new_bound)
+                )
+
+        # Copy directly-relevant params not in previous solve from source
+        for op in relevant:
+            po = op.as_parameter_operatable.force_get()
+            if po not in forward_mapping:
+                copied = fabll.Traits(po).get_obj_raw().copy_into(g_out)
+                forward_mapping[po] = copied.get_trait(
+                    F.Parameters.is_parameter_operatable
+                )
+
+        # --- Add new predicates with remapped operands ---
+        # Literals are copied as-is; convert_to_canonical_operations
+        # handles unit stripping after bootstrap.
+        for pred in new_preds:
+            expr = pred.as_expression.get()
+            remapped: list[F.Parameters.can_be_operand] = []
+            for op in expr.get_operands():
+                if (lit := op.as_literal.try_get()) is not None:
+                    copied = fabll.Traits(lit).get_obj_raw().copy_into(g_out)
+                    remapped.append(
+                        copied.get_trait(F.Literals.is_literal).as_operand.get()
+                    )
+                else:
+                    po = op.as_parameter_operatable.force_get()
+                    if po not in forward_mapping:
+                        copied = fabll.Traits(po).get_obj_raw().copy_into(g_out)
+                        forward_mapping[po] = copied.get_trait(
+                            F.Parameters.is_parameter_operatable
+                        )
+                    remapped.append(forward_mapping[po].as_operand.get())
+
+            expr_type = MutatorUtils.hack_get_expr_type(expr)
+            expr_type.from_operands(
+                *remapped,
+                g=g_out,
+                tg=tg_out,
+                assert_=bool(expr.try_get_sibling_trait(F.Expressions.is_predicate)),
+            )
+
+        # --- Relevance marking ---
+        g_new_relevant = [
+            forward_mapping[op.as_parameter_operatable.force_get()].as_operand.get()
+            for op in relevant
+        ]
+        for pred in MutatorUtils.get_relevant_predicates(*g_new_relevant):
+            po = pred.as_expression.get().as_parameter_operatable.get()
+            fabll.Traits.create_and_add_instance_to(
+                fabll.Traits(po).get_obj_raw(), is_relevant
+            )
+
+        if S_LOG:
+            logger.debug(
+                f"Resume: {len(source_preds) - len(new_preds)} existing"
+                f", {len(new_preds)} new predicates"
+                f", {len(gout_seeds)} G_out seeds"
+            )
+
+        return MutationMap(
+            MutationStage(
+                tg_in=tg,
+                tg_out=tg_out,
+                algorithm="bootstrap_relevant_resume",
+                iteration=iteration,
+                transformations=Transformations(mutated=forward_mapping),
+                G_in=g,
+                G_out=g_out,
+            )
+        )
 
     @staticmethod
     def bootstrap(
@@ -1263,8 +1340,8 @@ class MutationMap:
             flatten_expressions,
         )
 
-        if relevant:
-            if invalid_ops := [
+        if relevant and (
+            invalid_ops := [
                 op
                 for op in relevant
                 if (
@@ -1274,15 +1351,19 @@ class MutationMap:
                     is None
                     and po.try_get_sibling_trait(F.Expressions.is_predicate) is None
                 )
-            ]:
-                raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
+            ]
+        ):
+            raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
 
-        if relevant:
-            mut_map = MutationMap._with_relevance_set(
-                g, tg, relevant, iteration, initial_state=initial_state
-            )
-        else:
-            mut_map = MutationMap._identity(tg, g, iteration)
+        match relevant, initial_state:
+            case (None, _):
+                mut_map = MutationMap._identity(tg, g, iteration)
+            case (relevant, None):
+                mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+            case (relevant, initial_state):
+                mut_map = MutationMap._with_relevance_set_resume(
+                    g, tg, relevant, initial_state, iteration
+                )
 
         if S_LOG:
             mut_map.last_stage.print_graph_contents()
