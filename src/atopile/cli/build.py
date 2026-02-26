@@ -105,7 +105,7 @@ def _run_build_queue(
 
         def on_update() -> None:
             for build_id in build_ids:
-                build = queue.find_build(build_id)
+                build = BuildHistory.get(build_id)
                 if not build:
                     continue
 
@@ -143,9 +143,7 @@ def _run_build_queue(
 
         # Print build summary boxes after all builds complete
         completed_builds = [
-            queue.find_build(build_id)
-            for build_id in build_ids
-            if queue.find_build(build_id)
+            b for build_id in build_ids if (b := BuildHistory.get(build_id))
         ]
         printer.print_summary(completed_builds)
 

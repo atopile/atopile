@@ -229,6 +229,67 @@ class BuildHistory:
             raise e
 
     @staticmethod
+    def get_latest_per_target(limit: int = 100) -> list[Build]:
+        """Get the latest build per (project_root, name)."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT * FROM build_history
+                    WHERE rowid IN (
+                        SELECT rowid FROM (
+                            SELECT rowid, ROW_NUMBER() OVER (
+                                PARTITION BY project_root, name
+                                ORDER BY started_at DESC
+                            ) AS rn
+                            FROM build_history
+                        ) WHERE rn = 1
+                    )
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception as e:
+            logger.exception(
+                "Failed to get latest builds per target. "
+                "Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def get_previous(limit: int = 100) -> list[Build]:
+        """Get historical builds excluding the latest per (project_root, name)."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT * FROM build_history
+                    WHERE rowid NOT IN (
+                        SELECT rowid FROM (
+                            SELECT rowid, ROW_NUMBER() OVER (
+                                PARTITION BY project_root, name
+                                ORDER BY started_at DESC
+                            ) AS rn
+                            FROM build_history
+                        ) WHERE rn = 1
+                    )
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception as e:
+            logger.exception(
+                "Failed to get previous builds. Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
     def get_latest_for_target(project_root: str, target: str) -> Build | None:
         """Get the most recent build for a specific project/target."""
         try:

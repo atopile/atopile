@@ -232,6 +232,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.bq-item-elapsed-inline {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .bq-item-ago {
   font-size: var(--font-size-xxs);
   color: var(--text-muted);

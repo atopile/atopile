@@ -62,6 +62,9 @@ export function BuildQueueItem({ build }: { build: Build }) {
           {stageProgress && (
             <span className="bq-item-progress">{stageProgress}</span>
           )}
+          <span className="bq-item-elapsed-inline">
+            {formatDuration(build.elapsedSeconds)}
+          </span>
           {!isActive && build.startedAt && (
             <span className="bq-item-ago">
               {formatTimeAgo(build.startedAt)}
@@ -72,11 +75,6 @@ export function BuildQueueItem({ build }: { build: Build }) {
 
       {expanded && (
         <div className="bq-item-details">
-          {build.elapsedSeconds > 0 && (
-            <div className="bq-item-elapsed">
-              <Clock size={11} /> {formatDuration(build.elapsedSeconds)}
-            </div>
-          )}
           {(build.warnings ?? 0) > 0 && (
             <div className="bq-item-warnings">
               <AlertTriangle size={11} /> {build.warnings} warning
@@ -96,11 +94,9 @@ export function BuildQueueItem({ build }: { build: Build }) {
                   <span className="bq-stage-name">
                     {stage.name}
                   </span>
-                  {stage.elapsedSeconds > 0 && (
-                    <span className="bq-stage-time">
-                      {formatDuration(stage.elapsedSeconds)}
-                    </span>
-                  )}
+                  <span className="bq-stage-time">
+                    {formatDuration(stage.elapsedSeconds)}
+                  </span>
                   {(stage.warnings ?? 0) > 0 && (
                     <span className="bq-stage-badge bq-stage-badge-warning">
                       {stage.warnings}

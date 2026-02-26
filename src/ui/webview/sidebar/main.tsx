@@ -3,7 +3,7 @@ import { render, logoUrl } from "../shared/render";
 import { useSubscribe, ws } from "../shared/webSocketProvider";
 import { sendAction } from "../../shared/webSocketUtils";
 import { useResizeHandle } from "../shared/components";
-import { getLatestPerTarget } from "../shared/utils";
+import { getCurrentStage } from "../shared/utils";
 import { BuildQueueItem } from "./BuildQueueItem";
 import "./sidebar.css";
 import { Hammer, Code } from "lucide-react";
@@ -24,8 +24,9 @@ function openPanel(panelId: string) {
 }
 
 function App() {
-  const projectState = useSubscribe("project_state");
-  const hubStatus = useSubscribe("hub_status");
+  const projectState = useSubscribe("projectState");
+  const hubStatus = useSubscribe("hubStatus");
+  const latestBuilds = useSubscribe("latestBuilds");
 
   const resize = useResizeHandle(200, 60);
 
@@ -41,14 +42,10 @@ function App() {
 
   const projectBuilds = useMemo(
     () =>
-      getLatestPerTarget(
-        projectState.builds,
-        projectState.selectedProject,
-      ),
-    [
-      projectState.builds,
-      projectState.selectedProject,
-    ],
+      latestBuilds
+        .filter((b) => b.projectRoot === projectState.selectedProject)
+        .map((b) => ({ ...b, currentStage: getCurrentStage(b) })),
+    [latestBuilds, projectState.selectedProject],
   );
 
   const isBuilding = useMemo(

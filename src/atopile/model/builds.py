@@ -38,48 +38,32 @@ def _fix_interrupted_build(build: Build) -> Build:
     return build
 
 
-def handle_get_summary() -> dict:
-    """Get build summary including active builds and build history from database."""
-    all_builds: list[Build] = []
-    totals = {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}
-    active_build_ids: set[str] = set()
+_latest_build_ids: set[str] = set()
 
-    # First, add all active builds (in-memory) with computed elapsed
-    for build in _build_queue.get_all_builds():
-        active_build_ids.add(build.build_id)
-        history = BuildHistory.get(build.build_id) if build.build_id else None
-        elapsed = history.elapsed_seconds if history else None
-        all_builds.append(
-            build.model_copy(
-                update={
-                    "elapsed_seconds": elapsed or 0.0,
-                }
-            )
-        )
 
-    # Then add historical builds from database (not currently active)
-    history_builds = BuildHistory.get_all(limit=100)
-    for build in history_builds:
-        # Skip if this build is currently active
-        if build.build_id in active_build_ids:
-            continue
+def handle_get_builds() -> tuple[dict, dict, bool]:
+    """Query latest + previous builds from DB.
 
-        build = _fix_interrupted_build(build)
-        all_builds.append(build)
-        totals["warnings"] += build.warnings
-        totals["errors"] += build.errors
+    Returns (latest_msg, previous_msg, previous_changed).
+    ``previous_changed`` is True when the set of latest build IDs has
+    shifted since the last call (i.e. a build was displaced), signalling
+    that the caller should also broadcast ``previous_msg``.
+    """
+    global _latest_build_ids
 
-    # Sort by most recent first (started_at descending)
-    all_builds.sort(key=lambda b: b.started_at or 0, reverse=True)
+    latest = BuildHistory.get_latest_per_target()
+    latest_msg = {"latestBuilds": [b.model_dump() for b in latest]}
 
-    # Limit to 100 builds
-    all_builds = all_builds[:100]
+    new_ids = {b.build_id for b in latest if b.build_id}
+    previous_changed = new_ids != _latest_build_ids
+    _latest_build_ids = new_ids
 
-    # Convert to dicts for JSON serialization
-    return {
-        "builds": [b.model_dump() for b in all_builds],
-        "totals": totals,
-    }
+    previous_msg: dict = {}
+    if previous_changed:
+        previous = BuildHistory.get_previous()
+        previous_msg = {"previousBuilds": [b.model_dump() for b in previous]}
+
+    return latest_msg, previous_msg, previous_changed
 
 
 def validate_build_request(request: BuildRequest) -> str | None:
@@ -163,52 +147,13 @@ def handle_start_build(request: BuildRequest) -> None:
 
 def handle_cancel_build(build_id: str) -> dict:
     """Cancel a build. Returns result dict with success flag."""
-    if not _build_queue.find_build(build_id):
-        return {"success": False, "message": f"Build not found: {build_id}"}
-
     success = _build_queue.cancel_build(build_id)
     if success:
         return {"success": True, "message": f"Build {build_id} cancelled"}
     return {
         "success": False,
-        "message": f"Build {build_id} cannot be cancelled (already completed)",
+        "message": f"Build {build_id} not found or already completed",
     }
-
-
-def handle_get_active_builds() -> dict:
-    """Get all active (queued or building) builds."""
-    log.debug("handle_get_active_builds called")
-    builds = []
-    for build in _build_queue.get_all_builds():
-        status = build.status
-        if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-            continue
-
-        history = BuildHistory.get(build.build_id) if build.build_id else None
-        elapsed = history.elapsed_seconds if history else None
-
-        builds.append(
-            {
-                "build_id": build.build_id,
-                "status": status.value,
-                "project_root": build.project_root,
-                "name": build.name,
-                "entry": build.entry,
-                "started_at": history.started_at if history else None,
-                "elapsed_seconds": elapsed or 0.0,
-                "stages": history.stages if history else build.stages,
-                "warnings": build.warnings,
-                "errors": build.errors,
-                "return_code": build.return_code,
-                "error": build.error,
-            }
-        )
-
-    builds.sort(
-        key=lambda x: x["status"] != BuildStatus.BUILDING.value,
-    )
-
-    return {"builds": builds}
 
 
 def handle_get_build_queue_status() -> dict:
@@ -275,19 +220,10 @@ def handle_get_build_info(build_id: str) -> dict | None:
 
     Returns build info dict or None if not found.
     """
-    # First check active builds (in-memory)
-    build = _build_queue.find_build(build_id)
-    if build:
-        history = BuildHistory.get(build_id) if build_id else None
-        elapsed = history.elapsed_seconds if history else None
-        updates: dict = {"elapsed_seconds": elapsed or 0.0}
-        return build.model_copy(update=updates).model_dump()
-
-    # Fall back to build history database
-    historical = BuildHistory.get(build_id)
-    if historical:
-        return _fix_interrupted_build(historical).model_dump()
-    return None
+    build = BuildHistory.get(build_id)
+    if not build:
+        return None
+    return build.model_dump()
 
 
 def handle_get_builds_by_project(
@@ -315,10 +251,9 @@ def handle_get_builds_by_project(
 
 __all__ = [
     "MaxConcurrentRequest",
-    "handle_get_summary",
+    "handle_get_builds",
     "handle_start_build",
     "handle_cancel_build",
-    "handle_get_active_builds",
     "handle_get_build_queue_status",
     "handle_get_max_concurrent_setting",
     "handle_set_max_concurrent_setting",

@@ -2,13 +2,14 @@
  * Canonical shared types for the atopile UI.
  *
  * Imported by both the hub (Node process) and webview (React) code.
- * Keys use snake_case to match the core-server wire protocol.
  */
 
 export class StoreState {
-  hub_status = new HubStatus();
-  core_status = new CoreStatus();
-  project_state = new ProjectState();
+  hubStatus = new HubStatus();
+  coreStatus = new CoreStatus();
+  projectState = new ProjectState();
+  latestBuilds: Build[] = [];
+  previousBuilds: Build[] = [];
 }
 
 export class HubStatus {
@@ -21,7 +22,6 @@ export class CoreStatus {
 
 export class ProjectState {
   projects: Project[] = [];
-  builds: Build[] = [];
   selectedProject: string | null = null;
   selectedTarget: string | null = null;
 }

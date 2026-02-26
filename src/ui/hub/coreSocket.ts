@@ -7,7 +7,7 @@
 
 import WebSocket from "ws";
 import { store } from "./main";
-import { MSG_TYPE, type ProjectState } from "../shared/types";
+import { MSG_TYPE, type Build } from "../shared/types";
 import { ReconnectScheduler, parseMessage, sendAction } from "../shared/webSocketUtils";
 
 export type OnConnectedCallback = () => void;
@@ -37,7 +37,7 @@ export class CoreSocket {
 
     ws.on("open", () => {
       console.log("Connected to core server");
-      store.set("core_status", { connected: true });
+      store.set("coreStatus", { connected: true });
       this._reconnect.resetDelay();
       this._onConnected?.();
     });
@@ -50,14 +50,25 @@ export class CoreSocket {
       }
       if (msg.type === MSG_TYPE.STATE) {
         const payload = (msg.data as Record<string, unknown>) ?? {};
-        const value = payload[msg.key] ?? [];
-        store.set("project_state", { [msg.key as keyof ProjectState]: value });
+        switch (msg.key) {
+          case "latestBuilds":
+            store.setArray("latestBuilds", (payload.latestBuilds ?? []) as Build[]);
+            break;
+          case "previousBuilds":
+            store.setArray("previousBuilds", (payload.previousBuilds ?? []) as Build[]);
+            break;
+          case "projects":
+            store.set("projectState", { projects: payload.projects as any });
+            break;
+          default:
+            console.warn(`Unknown state key from core: ${msg.key}`);
+        }
       }
     });
 
     ws.on("close", () => {
       this._ws = null;
-      store.set("core_status", { connected: false });
+      store.set("coreStatus", { connected: false });
       this._reconnect.schedule(() => this._connect());
     });
 

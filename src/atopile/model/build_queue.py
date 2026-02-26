@@ -346,9 +346,9 @@ class BuildQueue:
     """
 
     def __init__(self, max_concurrent: int = MAX_CONCURRENT_BUILDS):
-        # Builds owned by the queue
-        self._builds: dict[str, Build] = {}
-        self._builds_lock = threading.RLock()
+        # Holds the original Build object between enqueue and dispatch
+        # so subprocess config (verbose, include_targets, etc.) survives
+        self._dispatch_config: dict[str, Build] = {}
 
         # Pending builds - use list for reordering capability
         self._pending: list[str] = []
@@ -410,34 +410,20 @@ class BuildQueue:
             log.error("BuildQueue: enqueue called without build_id")
             return False
 
-        with self._builds_lock:
-            existing = self._builds.get(build.build_id)
-            if existing and existing.status in (
-                BuildStatus.QUEUED,
-                BuildStatus.BUILDING,
-            ):
-                log.debug(
-                    "BuildQueue: %s already tracked, not enqueueing", build.build_id
-                )
-                return False
-            if build.started_at is None:
-                build.started_at = time.time()
-            build.status = BuildStatus.QUEUED
-            self._builds[build.build_id] = build
-
+        with self._pending_lock:
+            in_pending = build.build_id in self._pending
         with self._active_lock:
-            if build.build_id in self._active:
-                log.debug(
-                    "BuildQueue: %s already active, not enqueueing", build.build_id
-                )
-                return False
+            in_active = build.build_id in self._active
+        if in_pending or in_active:
+            log.debug("BuildQueue: %s already tracked, not enqueueing", build.build_id)
+            return False
+
+        if build.started_at is None:
+            build.started_at = time.time()
+        build.status = BuildStatus.QUEUED
+        self._dispatch_config[build.build_id] = build
 
         with self._pending_lock:
-            if build.build_id in self._pending:
-                log.debug(
-                    "BuildQueue: %s already pending, not enqueueing", build.build_id
-                )
-                return False
             self._pending.append(build.build_id)
             log.debug(
                 "BuildQueue: Enqueued %s (pending=%d, active=%d)",
@@ -446,19 +432,8 @@ class BuildQueue:
                 len(self._active),
             )
 
-        # Write initial record to database immediately so find_build() works
-        BuildHistory.set(
-            Build(
-                build_id=build.build_id,
-                name=build.name,
-                project_name=build.project_name,
-                project_root=build.project_root or "",
-                entry=build.entry,
-                status=BuildStatus.QUEUED,
-                started_at=build.started_at,
-                stages=[],
-            )
-        )
+        # Write to DB — single source of truth
+        BuildHistory.set(build)
 
         self._emit_change(build.build_id, "queued")
 
@@ -466,20 +441,6 @@ class BuildQueue:
         if not self._running:
             self.start()
         return True
-
-    def find_build(self, build_id: str) -> Build | None:
-        """Find a build by ID. Reads from database (single source of truth)."""
-        # Check if build is tracked by queue
-        with self._builds_lock:
-            if build_id not in self._builds:
-                return None
-        # Read live data from database
-        return BuildHistory.get(build_id)
-
-    def get_all_builds(self) -> list[Build]:
-        """Return all builds tracked by the queue."""
-        with self._builds_lock:
-            return list(self._builds.values())
 
     def is_duplicate(
         self, project_root: str, target: str, entry: str | None
@@ -489,17 +450,21 @@ class BuildQueue:
 
         Returns the existing build_id if duplicate, None otherwise.
         """
-        with self._builds_lock:
-            for build in self._builds.values():
-                if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                    continue
-                if build.project_root != project_root:
-                    continue
-                if build.name != target:
-                    continue
-                if build.entry != entry:
-                    continue
-                return build.build_id
+        with self._pending_lock:
+            ids = set(self._pending)
+        with self._active_lock:
+            ids |= self._active
+        for build_id in ids:
+            build = BuildHistory.get(build_id)
+            if not build:
+                continue
+            if build.project_root != project_root:
+                continue
+            if build.name != target:
+                continue
+            if build.entry != entry:
+                continue
+            return build.build_id
         return None
 
     def wait_for_builds(
@@ -522,7 +487,7 @@ class BuildQueue:
         while pending:
             to_remove: list[str] = []
             for build_id in pending:
-                build = self.find_build(build_id)
+                build = BuildHistory.get(build_id)
                 if not build:
                     results[build_id] = 1
                     to_remove.append(build_id)
@@ -693,10 +658,9 @@ class BuildQueue:
         while self._running:
             self._apply_results()
             self._dispatch_next()
-            time.sleep(0.05)
+            time.sleep(0.2)
 
     def _emit_change(self, build_id: str, event_type: str) -> None:
-        self._cleanup_completed_builds()
         if self.on_change:
             try:
                 self.on_change(build_id, event_type)
@@ -712,10 +676,9 @@ class BuildQueue:
                 break
 
             if isinstance(msg, BuildStartedMsg):
-                with self._builds_lock:
-                    build = self._builds.get(msg.build_id)
-                    if build:
-                        build.status = BuildStatus.BUILDING
+                BuildHistory.set(
+                    Build(build_id=msg.build_id, name="", status=BuildStatus.BUILDING)
+                )
                 self._emit_change(msg.build_id, "started")
 
             elif isinstance(msg, BuildStageMsg):
@@ -726,11 +689,14 @@ class BuildQueue:
                 self._handle_completed(msg)
 
             elif isinstance(msg, BuildCancelledMsg):
-                with self._builds_lock:
-                    build = self._builds.get(msg.build_id)
-                    if build:
-                        build.status = BuildStatus.CANCELLED
-                        build.error = "Build cancelled by user"
+                BuildHistory.set(
+                    Build(
+                        build_id=msg.build_id,
+                        name="",
+                        status=BuildStatus.CANCELLED,
+                        error="Build cancelled by user",
+                    )
+                )
 
                 with self._active_lock:
                     self._active.discard(msg.build_id)
@@ -756,55 +722,39 @@ class BuildQueue:
         )
         status = BuildStatus.from_return_code(msg.return_code, warnings)
 
-        started_at: float | None = None
-        elapsed_seconds: float | None = None
-
-        build: Build | None
-        with self._builds_lock:
-            build = self._builds.get(msg.build_id)
-            if build:
-                build.status = status
-                build.return_code = msg.return_code
-                build.error = msg.error
-                build.stages = msg.stages
-                build.warnings = warnings
-                build.errors = errors
-
         existing = BuildHistory.get(msg.build_id)
-        if existing:
-            started_at = existing.started_at
-            elapsed_seconds = existing.elapsed_seconds
+
+        BuildHistory.set(
+            Build(
+                build_id=msg.build_id,
+                name=existing.name if existing else "default",
+                project_root=(existing.project_root if existing else "") or "",
+                entry=existing.entry if existing else None,
+                status=status,
+                return_code=msg.return_code,
+                error=msg.error,
+                started_at=existing.started_at if existing else None,
+                elapsed_seconds=existing.elapsed_seconds if existing else None,
+                stages=msg.stages,
+                warnings=warnings,
+                errors=errors,
+            )
+        )
 
         with self._active_lock:
             self._active.discard(msg.build_id)
         with self._cancel_lock:
             self._cancel_flags.pop(msg.build_id, None)
 
-        if build:
-            BuildHistory.set(
-                Build(
-                    build_id=msg.build_id,
-                    name=build.name,
-                    project_root=build.project_root or "",
-                    entry=build.entry,
-                    status=status,
-                    return_code=msg.return_code,
-                    error=msg.error,
-                    started_at=started_at,
-                    elapsed_seconds=elapsed_seconds,
-                    stages=msg.stages,
-                    warnings=warnings,
-                    errors=errors,
-                )
-            )
-
         self._emit_change(msg.build_id, "completed")
 
-        if build and self.on_completed:
-            try:
-                self.on_completed(build)
-            except Exception:
-                log.exception("BuildQueue: on_completed callback failed")
+        if self.on_completed:
+            build = BuildHistory.get(msg.build_id)
+            if build:
+                try:
+                    self.on_completed(build)
+                except Exception:
+                    log.exception("BuildQueue: on_completed callback failed")
 
         if msg.error and status == BuildStatus.FAILED:
             log.error("BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error)
@@ -827,14 +777,18 @@ class BuildQueue:
                 return
             build_id = self._pending.pop(0)
 
-        with self._builds_lock:
-            build = self._builds.get(build_id)
-            if not build:
-                log.debug("BuildQueue: %s no longer exists, skipping", build_id)
-                return
-            if build.status == BuildStatus.CANCELLED:
-                log.debug("BuildQueue: %s was cancelled, skipping", build_id)
-                return
+        db_build = BuildHistory.get(build_id)
+        if not db_build:
+            log.debug("BuildQueue: %s not found in DB, skipping", build_id)
+            self._dispatch_config.pop(build_id, None)
+            return
+        if db_build.status == BuildStatus.CANCELLED:
+            log.debug("BuildQueue: %s was cancelled, skipping", build_id)
+            self._dispatch_config.pop(build_id, None)
+            return
+
+        # Use dispatch config for subprocess-only fields, fall back to DB
+        build = self._dispatch_config.pop(build_id, None) or db_build
 
         with self._active_lock:
             self._active.add(build_id)
@@ -867,11 +821,14 @@ class BuildQueue:
         """
         result = self.remove_pending(build_id)
         if result["success"]:
-            with self._builds_lock:
-                build = self._builds.get(build_id)
-                if build:
-                    build.status = BuildStatus.CANCELLED
-                    build.error = "Build cancelled by user"
+            BuildHistory.set(
+                Build(
+                    build_id=build_id,
+                    name="",
+                    status=BuildStatus.CANCELLED,
+                    error="Build cancelled by user",
+                )
+            )
             self._emit_change(build_id, "cancelled")
             return {
                 "success": True,
@@ -897,14 +854,11 @@ class BuildQueue:
 
     def cancel_build(self, build_id: str) -> bool:
         """Cancel a running build."""
-        with self._builds_lock:
-            build = self._builds.get(build_id)
-            if not build:
-                return False
-            if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                return False
-            build.status = BuildStatus.CANCELLED
-            build.error = "Build cancelled by user"
+        build = BuildHistory.get(build_id)
+        if not build:
+            return False
+        if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
+            return False
 
         _ = self.cancel(build_id)
         log.info("Build %s cancelled", build_id)
@@ -935,8 +889,7 @@ class BuildQueue:
             self._active.clear()
         with self._cancel_lock:
             self._cancel_flags.clear()
-        with self._builds_lock:
-            self._builds.clear()
+        self._dispatch_config.clear()
 
     def get_status(self) -> dict:
         """Return current queue status for debugging."""
@@ -974,55 +927,6 @@ class BuildQueue:
             self._executor = ThreadPoolExecutor(
                 max_workers=new_max, thread_name_prefix="build-worker"
             )
-
-    def _cleanup_completed_builds(self) -> None:
-        """
-        Remove completed/stale builds from tracked builds.
-
-        - Completed builds are kept for 30 seconds, then removed
-        - Builds stuck in "building" status for >1 hour are considered stale
-        """
-        now = time.time()
-        cleanup_delay = 30.0
-        stale_threshold = 3600.0
-
-        to_remove: list[str] = []
-        with self._builds_lock:
-            for build in self._builds.values():
-                status = build.status
-                started_at = build.started_at
-
-                if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                    elapsed_seconds = build.elapsed_seconds or 0.0
-                    completed_at = (started_at or 0.0) + elapsed_seconds
-                    if (
-                        started_at
-                        and elapsed_seconds
-                        and (now - completed_at) > cleanup_delay
-                    ):
-                        to_remove.append(build.build_id)
-                else:
-                    if started_at and (now - started_at) > stale_threshold:
-                        log.warning(
-                            "Build %s stuck in '%s' for >%ss, marking as failed",
-                            build.build_id,
-                            status.value,
-                            stale_threshold,
-                        )
-                        build.status = BuildStatus.FAILED
-                        build.error = "Build timed out or server restarted"
-                        to_remove.append(build.build_id)
-
-            for build_id in to_remove:
-                self._builds.pop(build_id, None)
-                with self._pending_lock:
-                    if build_id in self._pending:
-                        self._pending.remove(build_id)
-                with self._active_lock:
-                    self._active.discard(build_id)
-                with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
-                log.debug("Cleaned up build %s", build_id)
 
 
 # Get the default max concurrent (CPU count)

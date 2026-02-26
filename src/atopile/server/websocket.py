@@ -13,7 +13,7 @@ from websockets.asyncio.server import ServerConnection
 
 from atopile.dataclasses import BuildRequest
 from atopile.model.build_queue import BuildQueue, _build_queue
-from atopile.model.builds import handle_get_summary, handle_start_build
+from atopile.model.builds import handle_get_builds, handle_start_build
 from atopile.model.projects import handle_get_projects
 
 log = logging.getLogger(__name__)
@@ -33,9 +33,13 @@ class CoreSocket:
         log.info("Core WS client connected (%d total)", len(self._clients))
 
         try:
-            builds = handle_get_summary()
+            # Send both channels on connect
+            latest, previous, _ = handle_get_builds()
             await ws.send(
-                json.dumps({"type": "state", "key": "builds", "data": builds})
+                json.dumps({"type": "state", "key": "latestBuilds", "data": latest})
+            )
+            await ws.send(
+                json.dumps({"type": "state", "key": "previousBuilds", "data": previous})
             )
 
             async for raw in ws:
@@ -95,8 +99,10 @@ class CoreSocket:
         build_queue.start()
 
     async def _push_builds(self) -> None:
-        builds = handle_get_summary()
-        await self.broadcast_state("builds", builds)
+        latest, previous, previous_changed = handle_get_builds()
+        await self.broadcast_state("latestBuilds", latest)
+        if previous_changed:
+            await self.broadcast_state("previousBuilds", previous)
 
     # -- Broadcasting ------------------------------------------------------
 

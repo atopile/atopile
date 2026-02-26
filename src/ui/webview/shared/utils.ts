@@ -2,11 +2,10 @@ import type { Build, BuildStage } from "../../shared/types";
 
 /** Format seconds into a compact human-readable duration. */
 export function formatDuration(seconds: number): string {
-  if (seconds < 1) return "<1s";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 60) return `${seconds.toFixed(2)}s`;
   const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  const s = (seconds % 60).toFixed(2);
+  return `${m}m ${s}s`;
 }
 
 /** Format a unix timestamp into a relative "time ago" string. */
@@ -31,23 +30,3 @@ export function getCurrentStage(build: Build): BuildStage | null {
   return completed.length > 0 ? completed[completed.length - 1] : null;
 }
 
-/** Return the latest build per target for a given project root. */
-export function getLatestPerTarget(
-  builds: Build[],
-  projectRoot: string | null,
-): Build[] {
-  if (!projectRoot) return [];
-  const seen = new Map<string, Build>();
-  for (const b of builds) {
-    if (b.projectRoot !== projectRoot) continue;
-    const target = b.name ?? "";
-    const existing = seen.get(target);
-    if (!existing || (b.startedAt ?? 0) > (existing.startedAt ?? 0)) {
-      seen.set(target, b);
-    }
-  }
-  return Array.from(seen.values()).map((b) => ({
-    ...b,
-    currentStage: getCurrentStage(b),
-  }));
-}

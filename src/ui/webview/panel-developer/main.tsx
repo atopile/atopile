@@ -16,13 +16,17 @@ function GraphEdge({ connected }: { connected: boolean }) {
 }
 
 function StoreTable() {
-  const hubStatus = useSubscribe("hub_status");
-  const coreStatus = useSubscribe("core_status");
-  const projectState = useSubscribe("project_state");
+  const hubStatus = useSubscribe("hubStatus");
+  const coreStatus = useSubscribe("coreStatus");
+  const projectState = useSubscribe("projectState");
+  const latestBuilds = useSubscribe("latestBuilds");
+  const previousBuilds = useSubscribe("previousBuilds");
   const entries: [string, unknown][] = [
     ["HubStatus", hubStatus],
     ["CoreStatus", coreStatus],
     ["ProjectState", projectState],
+    ["latestBuilds", latestBuilds],
+    ["previousBuilds", previousBuilds],
   ];
 
   return (
@@ -46,8 +50,8 @@ function StoreTable() {
 }
 
 function App() {
-  const hubStatus = useSubscribe("hub_status");
-  const coreStatus = useSubscribe("core_status");
+  const hubStatus = useSubscribe("hubStatus");
+  const coreStatus = useSubscribe("coreStatus");
 
   return (
     <div className="panel">
