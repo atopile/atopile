@@ -189,7 +189,7 @@ markers = [
 
 [tool.ruff]
 line-length = 88         # Same as Black.
-target-version = "py313"
+target-version = "py314"
 
 exclude = [
     "src/atopile/compiler/parser/AtoLexer.py",
