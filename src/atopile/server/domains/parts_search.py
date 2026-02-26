@@ -281,13 +281,11 @@ def _lib_fp_to_pcb_fp(
 
 def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
     """Fetch footprint data wrapped in a kicad_pcb file for viewing in kicanvas."""
-    from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
-    from easyeda2kicad.easyeda.easyeda_importer import EasyedaFootprintImporter
-    from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
-
+    from faebryk.libs.easyeda import api as easyeda_api
+    from faebryk.libs.easyeda.converter import build_footprint
+    from faebryk.libs.easyeda.parser import parse_footprint
     from faebryk.libs.kicad.fileformats import kicad
     from faebryk.libs.test.fileformats import PCBFILE
-    from faebryk.libs.util import call_with_file_capture
 
     lcsc_numeric = _normalize_lcsc_id(lcsc_id)
     if lcsc_numeric is None:
@@ -296,26 +294,12 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
     lcsc_str = f"C{lcsc_numeric}"
 
     try:
-        # Fetch from EasyEDA API directly
-        api = EasyedaApi()
-        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_str)
+        cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_str)
         if not cad_data:
             return None
 
-        # Import footprint
-        easyeda_footprint = EasyedaFootprintImporter(
-            easyeda_cp_cad_data=cad_data
-        ).get_footprint()
-
-        # Export to KiCad format
-        exporter = ExporterFootprintKicad(easyeda_footprint)
-        fp_raw = call_with_file_capture(lambda path: exporter.export(str(path), None))[
-            1
-        ]
-
-        # Convert to latest KiCad format
-        fp_file = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
-        fp_file = kicad.convert(fp_file)
+        ee_fp = parse_footprint(cad_data)
+        fp_file = build_footprint(ee_fp, model_path=None)
 
         # Load template PCB and wrap the footprint in it (kicanvas needs kicad_pcb)
         template_pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
@@ -346,8 +330,8 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
 
 def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
     """Fetch the STEP 3D model data for a part."""
-    from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
-    from easyeda2kicad.easyeda.easyeda_importer import EasyedaFootprintImporter
+    from faebryk.libs.easyeda import api as easyeda_api
+    from faebryk.libs.easyeda.parser import parse_footprint
 
     lcsc_numeric = _normalize_lcsc_id(lcsc_id)
     if lcsc_numeric is None:
@@ -356,26 +340,20 @@ def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
     lcsc_str = f"C{lcsc_numeric}"
 
     try:
-        # Fetch from EasyEDA API directly
-        api = EasyedaApi()
-        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_str)
+        cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_str)
         if not cad_data:
             return None
 
-        # Import footprint to get model info
-        easyeda_footprint = EasyedaFootprintImporter(
-            easyeda_cp_cad_data=cad_data
-        ).get_footprint()
+        ee_fp = parse_footprint(cad_data)
 
-        if easyeda_footprint.model_3d is None:
+        if ee_fp.model_3d is None:
             return None
 
-        # Fetch the 3D model
-        model_data = api.get_step_3d_model(uuid=easyeda_footprint.model_3d.uuid)
+        model_data = easyeda_api.get_step_model(uuid=ee_fp.model_3d.uuid)
         if model_data is None:
             return None
 
-        return model_data, easyeda_footprint.model_3d.name
+        return model_data, ee_fp.model_3d.name
     except Exception as e:
         import logging
 
