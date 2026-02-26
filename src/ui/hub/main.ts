@@ -48,7 +48,7 @@ class Hub {
   }
 
   private _onCoreConnected(): void {
-    coreSocket.sendAction("discover_projects", { paths: this._workspaceFolders });
+    coreSocket.sendAction("discoverProjects", { paths: this._workspaceFolders });
   }
 }
 

@@ -37,6 +37,10 @@ export class WebviewManager implements vscode.WebviewViewProvider {
       if (msg.type === "openPanel" && typeof msg.panelId === "string") {
         this.openPanel(msg.panelId);
       }
+      if (msg.type === "openFile" && typeof msg.path === "string") {
+        const uri = vscode.Uri.file(msg.path);
+        vscode.window.showTextDocument(uri);
+      }
     });
   }
 

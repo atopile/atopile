@@ -8,6 +8,7 @@ export class StoreState {
   hubStatus = new HubStatus();
   coreStatus = new CoreStatus();
   projectState = new ProjectState();
+  projectFiles: FileNode[] = [];
   currentBuilds: Build[] = [];
   previousBuilds: Build[] = [];
 }
@@ -30,6 +31,11 @@ export class Project {
   root: string = "";
   name: string = "";
   targets: string[] = [];
+}
+
+export class FileNode {
+  name: string = "";
+  children?: FileNode[];
 }
 
 export class BuildStage {

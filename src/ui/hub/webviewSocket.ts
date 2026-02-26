@@ -84,21 +84,32 @@ export class WebviewSocket {
 
   private _handleAction(msg: ActionMessage): void {
     switch (msg.action) {
-      case "select_project": {
+      case "selectProject": {
+        const projectRoot = (msg.projectRoot as string) ?? null;
         store.set("projectState", {
-          selectedProject: (msg.projectRoot as string) ?? null,
+          selectedProject: projectRoot,
           selectedTarget: null,
+        });
+        // Auto-fire list_files so the file tree loads immediately
+        if (projectRoot) {
+          coreSocket.sendAction("listFiles", { projectRoot });
+        }
+        return;
+      }
+      case "listFiles": {
+        coreSocket.sendAction("listFiles", {
+          projectRoot: msg.projectRoot as string,
         });
         return;
       }
-      case "select_target": {
+      case "selectTarget": {
         store.set("projectState", {
           selectedTarget: (msg.target as string) ?? null,
         });
         return;
       }
-      case "start_build": {
-        coreSocket.sendAction("start_build", {
+      case "startBuild": {
+        coreSocket.sendAction("startBuild", {
           projectRoot: msg.projectRoot as string,
           targets: msg.targets as string[],
         });

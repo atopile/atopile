@@ -14,6 +14,7 @@ from websockets.asyncio.server import ServerConnection
 from atopile.dataclasses import BuildRequest
 from atopile.model.build_queue import BuildQueue, _build_queue
 from atopile.model.builds import handle_get_builds, handle_start_build
+from atopile.model.files import FileWatcher
 from atopile.model.projects import handle_get_projects
 
 log = logging.getLogger(__name__)
@@ -54,12 +55,20 @@ class CoreSocket:
 
     async def _dispatch(self, ws: ServerConnection, msg: dict) -> None:
         match msg.get("action"):
-            case "discover_projects":
+            case "discoverProjects":
                 paths = [Path(p) for p in msg.get("paths", []) if p]
                 result = handle_get_projects(paths)
                 await self.broadcast_state("projects", result.model_dump())
 
-            case "start_build":
+            case "listFiles":
+                project_root = msg.get("projectRoot", "")
+                result = FileWatcher.scan_and_serialize(project_root)
+                await self.broadcast_state("projectFiles", result)
+                FileWatcher.start(
+                    project_root, self.broadcast_state, asyncio.get_running_loop()
+                )
+
+            case "startBuild":
                 request = BuildRequest(
                     project_root=msg.get("projectRoot", ""),
                     targets=msg.get("targets", []),
@@ -67,7 +76,7 @@ class CoreSocket:
                 try:
                     handle_start_build(request)
                 except ValueError as e:
-                    log.warning("start_build failed: %s", e)
+                    log.warning("startBuild failed: %s", e)
 
             case action:
                 await ws.send(

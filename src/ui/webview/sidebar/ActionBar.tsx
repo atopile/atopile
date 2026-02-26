@@ -1,8 +1,7 @@
 import { Hammer, Compass, Box, Layout, Code } from "lucide-react";
 import { Button, Spinner } from "../shared/components";
+import { vscode } from "../shared/vscodeApi";
 import "./ActionBar.css";
-
-const vscode = acquireVsCodeApi();
 
 interface ActionBarProps {
   onBuild: () => void;

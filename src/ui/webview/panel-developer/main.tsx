@@ -19,12 +19,14 @@ function StoreTable() {
   const hubStatus = useSubscribe("hubStatus");
   const coreStatus = useSubscribe("coreStatus");
   const projectState = useSubscribe("projectState");
+  const projectFiles = useSubscribe("projectFiles");
   const currentBuilds = useSubscribe("currentBuilds");
   const previousBuilds = useSubscribe("previousBuilds");
   const entries: [string, unknown][] = [
     ["HubStatus", hubStatus],
     ["CoreStatus", coreStatus],
     ["ProjectState", projectState],
+    ["projectFiles", projectFiles],
     ["currentBuilds", currentBuilds],
     ["previousBuilds", previousBuilds],
   ];

@@ -35,8 +35,7 @@ export function connect(hubUrl: string) {
 
     socket.onopen = () => {
       reconnect.resetDelay();
-      const keys = [...subscribedKeys];
-      if (keys.length > 0) sendSubscribe(ws, keys);
+      if (subscribedKeys.size > 0) sendSubscribe(ws, [...subscribedKeys]);
       setState("hubStatus", { connected: true });
     };
 
@@ -63,12 +62,17 @@ export function connect(hubUrl: string) {
 // -- Hook ---------------------------------------------------------------------
 
 export function useSubscribe<K extends keyof StoreState>(key: K): StoreState[K] {
-  if (!LOCAL_KEYS.has(key)) subscribedKeys.add(key);
   const [, bump] = useState(0);
   useEffect(() => {
+    if (!LOCAL_KEYS.has(key) && !subscribedKeys.has(key)) {
+      subscribedKeys.add(key);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendSubscribe(ws, [...subscribedKeys]);
+      }
+    }
     const cb = () => bump((n) => n + 1);
     listeners.add(cb);
     return () => { listeners.delete(cb); };
-  }, []);
+  }, [key]);
   return state[key];
 }

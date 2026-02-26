@@ -86,7 +86,7 @@ function App() {
   }
 
   const panelMap: Record<TabId, React.ReactNode> = {
-    files: <FilesPanel />,
+    files: <FilesPanel projectRoot={projectState.selectedProject} />,
     packages: <PackagesPanel />,
     parts: <PartsPanel />,
     library: <LibraryPanel />,
@@ -112,17 +112,17 @@ function App() {
           projects={projectState.projects}
           selectedProject={projectState.selectedProject}
           onSelectProject={(root) =>
-            sendAction(ws, "select_project", { projectRoot: root })
+            sendAction(ws, "selectProject", { projectRoot: root })
           }
           targets={targets}
           selectedTarget={projectState.selectedTarget}
           onSelectTarget={(target) =>
-            sendAction(ws, "select_target", { target })
+            sendAction(ws, "selectTarget", { target })
           }
         />
         <ActionBar
           onBuild={() =>
-            sendAction(ws, "start_build", {
+            sendAction(ws, "startBuild", {
               projectRoot: projectState.selectedProject,
               targets: [projectState.selectedTarget],
             })

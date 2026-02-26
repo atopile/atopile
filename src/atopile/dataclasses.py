@@ -394,6 +394,18 @@ class CamelModel(BaseModel):
 
 
 # =============================================================================
+# File Explorer Models
+# =============================================================================
+
+
+class FileNode(CamelModel):
+    """A node in the project file tree. Has children if folder, None if file."""
+
+    name: str
+    children: list["FileNode"] | None = None
+
+
+# =============================================================================
 # Build-related Pydantic Models
 # =============================================================================
 

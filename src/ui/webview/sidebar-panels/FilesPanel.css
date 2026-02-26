@@ -1,0 +1,73 @@
+.file-tree {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  user-select: none;
+  font-size: var(--font-size-sm);
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+}
+
+.tree-row:hover {
+  background: var(--bg-hover);
+}
+
+.tree-row-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-row-icon {
+  margin-right: 4px;
+}
+
+.tree-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* File type colors */
+.file-ato { color: var(--ato-orange, #f95015); }
+.file-py { color: #4B8BBE; }
+.file-json { color: #e8c27d; }
+.file-config { color: #9b59b6; }
+.file-docs { color: #6cb6ff; }
+.file-ts { color: #3178c6; }
+.file-css { color: #563d7c; }
+.file-html { color: #e34c26; }
+.file-pdf { color: #e5252a; }
+.file-csv { color: #22863a; }
+.file-kicad { color: #314cb0; }
+.file-image { color: #a855f7; }
+.file-archive { color: #f59e0b; }
+.file-shell { color: #4ade80; }
+.file-git { color: #f14e32; }
+.file-default { color: var(--text-muted); }
+.folder-icon { color: var(--text-secondary); }
+.folder-icon.expanded { color: var(--ato-orange-light, var(--text-secondary)); }
+
+/* Indent guides */
+.tree-indent {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.tree-indent::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-subtle);
+  opacity: 0.5;
+}

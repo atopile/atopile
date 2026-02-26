@@ -7,7 +7,7 @@
 
 import WebSocket from "ws";
 import { store } from "./main";
-import { MSG_TYPE, type Build } from "../shared/types";
+import { MSG_TYPE, type Build, type FileNode } from "../shared/types";
 import { ReconnectScheduler, parseMessage, sendAction } from "../shared/webSocketUtils";
 
 export type OnConnectedCallback = () => void;
@@ -56,6 +56,9 @@ export class CoreSocket {
             break;
           case "previousBuilds":
             store.setArray("previousBuilds", (payload.previousBuilds ?? []) as Build[]);
+            break;
+          case "projectFiles":
+            store.setArray("projectFiles", (payload.projectFiles ?? []) as FileNode[]);
             break;
           case "projects":
             store.set("projectState", { projects: payload.projects as any });
