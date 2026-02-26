@@ -210,20 +210,10 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 ]
 
                 if targets:
-                    try:
-                        rel_path = project_root.relative_to(root_path)
-                        if rel_path == Path("."):
-                            display_path = root_path.name
-                        else:
-                            display_path = f"{root_path.name}/{rel_path}"
-                    except ValueError:
-                        display_path = project_root.name
-
                     projects.append(
                         Project(
                             root=root_str,
                             name=project_root.name,
-                            display_path=display_path,
                             targets=targets,
                             needs_migration=needs_migration(
                                 data.get("requires-atopile")

@@ -86,14 +86,14 @@ export class WebviewSocket {
     switch (msg.action) {
       case "select_project": {
         store.set("project_state", {
-          selected_project: (msg.projectRoot as string) ?? null,
-          selected_target: null,
+          selectedProject: (msg.projectRoot as string) ?? null,
+          selectedTarget: null,
         });
         return;
       }
       case "select_target": {
         store.set("project_state", {
-          selected_target: (msg.target as string) ?? null,
+          selectedTarget: (msg.target as string) ?? null,
         });
         return;
       }

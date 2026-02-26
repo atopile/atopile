@@ -22,21 +22,19 @@ export class CoreStatus {
 export class ProjectState {
   projects: Project[] = [];
   builds: Build[] = [];
-  selected_project: string | null = null;
-  selected_target: string | null = null;
+  selectedProject: string | null = null;
+  selectedTarget: string | null = null;
 }
 
 export class Project {
   root: string = "";
   name: string = "";
-  displayPath?: string;
   targets: string[] = [];
 }
 
 export class BuildStage {
   name: string = "";
   stageId?: string;
-  displayName?: string;
   elapsedSeconds: number = 0;
   status: string = "";
   infos?: number;
@@ -46,12 +44,10 @@ export class BuildStage {
 
 export class Build {
   name: string = "";
-  displayName: string = "";
   buildId?: string;
   status: string = "";
   elapsedSeconds: number = 0;
   projectRoot?: string;
-  target?: string;
   entry?: string;
   startedAt?: number;
   stages?: BuildStage[];

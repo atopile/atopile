@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from atopile.buildutil import generate_build_id, generate_build_timestamp
+from atopile.buildutil import generate_build_id
 from atopile.config import ProjectConfig
 from atopile.dataclasses import (
     Build,
@@ -69,12 +69,11 @@ def handle_get_summary() -> dict:
         totals["warnings"] += build.warnings
         totals["errors"] += build.errors
 
-    def sort_key(build: Build) -> tuple:
-        is_active = build.return_code is None
-        elapsed = build.elapsed_seconds or 0.0
-        return (not is_active, -elapsed)
+    # Sort by most recent first (started_at descending)
+    all_builds.sort(key=lambda b: b.started_at or 0, reverse=True)
 
-    all_builds.sort(key=sort_key)
+    # Limit to 100 builds
+    all_builds = all_builds[:100]
 
     # Convert to dicts for JSON serialization
     return {
@@ -143,23 +142,21 @@ def handle_start_build(request: BuildRequest) -> None:
     if not targets:
         raise ValueError("No build targets resolved")
 
-    timestamp = generate_build_timestamp()
-
     for target in targets:
         if _build_queue.is_duplicate(request.project_root, target, request.entry):
             continue
-        build_id = generate_build_id(request.project_root, target, timestamp)
+        started_at = time.time()
+        build_id = generate_build_id(request.project_root, target, started_at)
         _build_queue.enqueue(
             Build(
                 build_id=build_id,
                 project_root=request.project_root,
-                target=target,
-                timestamp=timestamp,
+                name=target,
                 entry=request.entry,
                 standalone=request.standalone,
                 frozen=request.frozen,
                 status=BuildStatus.QUEUED,
-                started_at=time.time(),
+                started_at=started_at,
             )
         )
 
@@ -190,19 +187,16 @@ def handle_get_active_builds() -> dict:
         history = BuildHistory.get(build.build_id) if build.build_id else None
         elapsed = history.elapsed_seconds if history else None
 
-        target = build.target or "default"
-
         builds.append(
             {
                 "build_id": build.build_id,
                 "status": status.value,
                 "project_root": build.project_root,
-                "target": target,
+                "name": build.name,
                 "entry": build.entry,
                 "started_at": history.started_at if history else None,
                 "elapsed_seconds": elapsed or 0.0,
                 "stages": history.stages if history else build.stages,
-                "queue_position": None,
                 "warnings": build.warnings,
                 "errors": build.errors,
                 "return_code": build.return_code,
@@ -211,10 +205,7 @@ def handle_get_active_builds() -> dict:
         )
 
     builds.sort(
-        key=lambda x: (
-            x["status"] != BuildStatus.BUILDING.value,
-            x.get("queue_position") or 999,
-        )
+        key=lambda x: x["status"] != BuildStatus.BUILDING.value,
     )
 
     return {"builds": builds}

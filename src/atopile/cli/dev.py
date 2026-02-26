@@ -101,9 +101,11 @@ def extension(
         typer.echo("Installing webview dependencies...")
         subprocess.run([bun, "install"], cwd=webview_dir, check=True)
 
-    # Build extension + webview so there are dist/ files to load
+    # Build extension + hub + webview so there are dist/ files to load
     typer.echo("Building extension...")
     subprocess.run([bun, "run", "build:extension"], cwd=ext_dir, check=True)
+    typer.echo("Building hub...")
+    subprocess.run([bun, "run", "build:hub"], cwd=ext_dir, check=True)
     typer.echo("Building webview...")
     subprocess.run([bun, "run", "build:webview"], cwd=ext_dir, check=True)
 
@@ -127,6 +129,10 @@ def extension(
         # Start esbuild watch (rebuilds dist/extension.js on changes)
         typer.echo("Starting extension watcher...")
         procs.append(subprocess.Popen([bun, "run", "watch:extension"], cwd=ext_dir))
+
+        # Start hub watcher (rebuilds hub-dist/main.js on changes)
+        typer.echo("Starting hub watcher...")
+        procs.append(subprocess.Popen([bun, "run", "watch:hub"], cwd=ext_dir))
 
         # Start bun build watch (rebuilds webview-ui/dist on changes)
         typer.echo("Starting webview watcher...")

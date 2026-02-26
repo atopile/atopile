@@ -65,10 +65,8 @@ class BuildHistory:
                 CREATE TABLE IF NOT EXISTS build_history (
                     build_id         TEXT PRIMARY KEY,
                     name             TEXT,
-                    display_name     TEXT,
                     project_name     TEXT,
                     project_root     TEXT,
-                    target           TEXT,
                     entry            TEXT,
                     status           TEXT,
                     return_code      INTEGER,
@@ -79,12 +77,11 @@ class BuildHistory:
                     total_stages     INTEGER,
                     warnings         INTEGER,
                     errors           INTEGER,
-                    timestamp        TEXT,
                     standalone       INTEGER,
                     frozen           INTEGER
                 );
-                CREATE INDEX IF NOT EXISTS idx_build_history_project_target
-                    ON build_history(project_root, target, started_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_build_history_project_name
+                    ON build_history(project_root, name, started_at DESC);
             """)
 
     @staticmethod
@@ -92,10 +89,8 @@ class BuildHistory:
         return Build(
             build_id=row["build_id"],
             name=row["name"] or "default",
-            display_name=row["display_name"] or "default",
             project_name=row["project_name"],
             project_root=row["project_root"],
-            target=row["target"],
             entry=row["entry"],
             status=BuildStatus(row["status"]),
             return_code=row["return_code"],
@@ -106,7 +101,6 @@ class BuildHistory:
             total_stages=row["total_stages"],
             warnings=row["warnings"],
             errors=row["errors"],
-            timestamp=row["timestamp"],
             standalone=bool(row["standalone"]),
             frozen=bool(row["frozen"]),
         )
@@ -138,20 +132,16 @@ class BuildHistory:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO build_history
-                        (build_id, name, display_name, project_name,
-                         project_root, target, entry, status,
+                        (build_id, name, project_name,
+                         project_root, entry, status,
                          return_code, error, started_at,
                          elapsed_seconds, stages, total_stages, warnings,
-                         errors, timestamp, standalone, frozen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         errors, standalone, frozen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         build.build_id,
                         pick(build.name, existing.name if existing else None),
-                        pick(
-                            build.display_name,
-                            existing.display_name if existing else None,
-                        ),
                         pick(
                             build.project_name,
                             existing.project_name if existing else None,
@@ -160,7 +150,6 @@ class BuildHistory:
                             build.project_root,
                             existing.project_root if existing else None,
                         ),
-                        pick(build.target, existing.target if existing else None),
                         pick(build.entry, existing.entry if existing else None),
                         build.status.value,  # status is always set
                         pick(
@@ -187,7 +176,6 @@ class BuildHistory:
                         build.errors
                         if build.errors
                         else (existing.errors if existing else 0),
-                        pick(build.timestamp, existing.timestamp if existing else None),
                         int(bool(build.standalone))
                         if build.standalone
                         else (int(bool(existing.standalone)) if existing else 0),
@@ -248,7 +236,7 @@ class BuildHistory:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM build_history"
-                    " WHERE project_root = ? AND target = ?"
+                    " WHERE project_root = ? AND name = ?"
                     " ORDER BY started_at DESC LIMIT 1",
                     (project_root, target),
                 ).fetchone()
@@ -537,7 +525,6 @@ class Tests:
         BuildHistory.set(
             Build(
                 name="target",
-                display_name="project_root:target",
                 build_id="123",
                 project_root="project_root",
                 target="target",

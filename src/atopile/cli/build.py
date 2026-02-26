@@ -10,7 +10,7 @@ from pathlib import Path
 import typer
 from typing_extensions import Annotated
 
-from atopile.buildutil import generate_build_id, generate_build_timestamp
+from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
     Build,
     BuildStatus,
@@ -69,9 +69,7 @@ def _run_build_queue(
     queue = BuildQueue(max_concurrent=max_concurrent)
 
     build_ids = [build.build_id for build in builds if build.build_id]
-    display_names = {
-        build.build_id: build.display_name for build in builds if build.build_id
-    }
+    display_names = {build.build_id: build.name for build in builds if build.build_id}
 
     for build in builds:
         queue.enqueue(build)
@@ -111,7 +109,7 @@ def _run_build_queue(
                 if not build:
                     continue
 
-                display_name = display_names.get(build_id, build.display_name)
+                display_name = display_names.get(build_id, build.name)
 
                 # Build started
                 if (
@@ -268,25 +266,20 @@ def _build_all_projects(
     )
 
     # Initialize build history database
-    timestamp = generate_build_timestamp()
     builds: list[Build] = []
     for build_name, project_root, project_name in build_tasks:
         project_path = str(project_root.resolve())
-        build_id = generate_build_id(project_path, build_name, timestamp)
+        started_at = time.time()
+        build_id = generate_build_id(project_path, build_name, started_at)
         builds.append(
             Build(
                 build_id=build_id,
                 name=build_name,
-                display_name=f"{project_name}/{build_name}"
-                if project_name
-                else build_name,
                 project_root=project_path,
                 project_name=project_name,
-                target=build_name,
-                timestamp=timestamp,
                 frozen=frozen,
                 status=BuildStatus.QUEUED,
-                started_at=time.time(),
+                started_at=started_at,
                 include_targets=targets or [],
                 exclude_targets=exclude_targets or [],
                 keep_picked_parts=keep_picked_parts,
@@ -300,7 +293,7 @@ def _build_all_projects(
 
     build_by_id = {build.build_id: build for build in builds if build.build_id}
     failed = [
-        build_by_id[build_id].display_name
+        build_by_id[build_id].name
         for build_id, code in results.items()
         if code != 0 and build_id in build_by_id
     ]
@@ -504,23 +497,22 @@ def build(
     build_names = list(config.selected_builds)
     project_root = config.project.paths.root
 
-    timestamp = generate_build_timestamp()
     builds: list[Build] = []
     for build_name in build_names:
-        build_id = generate_build_id(str(project_root.resolve()), build_name, timestamp)
+        started_at = time.time()
+        build_id = generate_build_id(
+            str(project_root.resolve()), build_name, started_at
+        )
         builds.append(
             Build(
                 build_id=build_id,
                 name=build_name,
-                display_name=build_name,
                 project_root=str(project_root.resolve()),
-                target=build_name,
                 entry=entry,
                 standalone=standalone,
-                timestamp=timestamp,
                 frozen=frozen,
                 status=BuildStatus.QUEUED,
-                started_at=time.time(),
+                started_at=started_at,
                 include_targets=target,
                 exclude_targets=exclude_target,
                 keep_picked_parts=keep_picked_parts,
@@ -538,7 +530,7 @@ def build(
 
     build_by_id = {build.build_id: build for build in builds if build.build_id}
     failed = [
-        build_by_id[build_id].display_name
+        build_by_id[build_id].name
         for build_id, code in results.items()
         if code != 0 and build_id in build_by_id
     ]

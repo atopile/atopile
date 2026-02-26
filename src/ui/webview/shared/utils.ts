@@ -40,7 +40,7 @@ export function getLatestPerTarget(
   const seen = new Map<string, Build>();
   for (const b of builds) {
     if (b.projectRoot !== projectRoot) continue;
-    const target = b.target ?? "";
+    const target = b.name ?? "";
     const existing = seen.get(target);
     if (!existing || (b.startedAt ?? 0) > (existing.startedAt ?? 0)) {
       seen.set(target, b);

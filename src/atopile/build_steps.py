@@ -83,12 +83,9 @@ def _run_stage_ticker(
     *,
     build_id: str,
     build_name: str,
-    display_name: str,
     project_root: str,
-    target: str,
     stage_name: str,
     stage_id: str,
-    stage_display_name: str | None,
     build_started_at: float,
     stage_started_at: float,
     stop_event,
@@ -118,7 +115,6 @@ def _run_stage_ticker(
                         **stage,
                         "name": stage_name,
                         "stageId": stage_id,
-                        "displayName": stage_display_name,
                         "status": StageStatus.RUNNING.value,
                         "elapsedSeconds": elapsed_stage,
                     }
@@ -131,7 +127,6 @@ def _run_stage_ticker(
                 {
                     "name": stage_name,
                     "stageId": stage_id,
-                    "displayName": stage_display_name,
                     "status": StageStatus.RUNNING.value,
                     "elapsedSeconds": elapsed_stage,
                 }
@@ -141,9 +136,7 @@ def _run_stage_ticker(
             Build(
                 build_id=build_id,
                 name=build_name,
-                display_name=display_name,
                 project_root=project_root,
-                target=target,
                 status=BuildStatus.BUILDING,
                 started_at=build_started_at,
                 elapsed_seconds=elapsed_build,
@@ -210,9 +203,7 @@ class MusterTarget:
                 Build(
                     build_id=ctx.build_id,
                     name=config.build.name,
-                    display_name=config.build.name,
                     project_root=str(config.project.paths.root),
-                    target=config.build.name,
                     status=BuildStatus.BUILDING,
                     started_at=build_started_at,
                     elapsed_seconds=time.time() - build_started_at,
@@ -229,12 +220,9 @@ class MusterTarget:
                 kwargs={
                     "build_id": ctx.build_id,
                     "build_name": config.build.name,
-                    "display_name": config.build.name,
                     "project_root": str(config.project.paths.root),
-                    "target": config.build.name,
                     "stage_name": self.description or self.name,
                     "stage_id": self.name,
-                    "stage_display_name": None,
                     "build_started_at": build_started_at,
                     "stage_started_at": start,
                     "stop_event": stop_event,
@@ -277,9 +265,7 @@ class MusterTarget:
                     Build(
                         build_id=ctx.build_id,
                         name=config.build.name,
-                        display_name=config.build.name,
                         project_root=str(config.project.paths.root),
-                        target=config.build.name,
                         status=BuildStatus.BUILDING,
                         started_at=started_at,
                         elapsed_seconds=time.time() - started_at,

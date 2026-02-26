@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from atopile.dataclasses import Build, BuildStatus, StageStatus
-from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory
+from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory, Logs
 
 # ---------------------------------------------------------------------------
 # Typed messages from build worker threads
@@ -81,8 +81,8 @@ def _build_subprocess_command(build: Build) -> list[str]:
     if build.standalone and build.entry:
         cmd.append(build.entry)
         cmd.append("--standalone")
-    elif build.target:
-        cmd.extend(["--build", build.target])
+    elif build.name:
+        cmd.extend(["--build", build.name])
 
     if build.frozen:
         cmd.append("--frozen")
@@ -103,12 +103,12 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
     if build.verbose:
         env["FORCE_COLOR"] = "1"
         # Set log source for prefix in log output
-        env["ATO_LOG_SOURCE"] = build.display_name or build.name or "build"
+        env["ATO_LOG_SOURCE"] = build.name or "build"
 
     if build.build_id:
         env["ATO_BUILD_ID"] = build.build_id
-    if build.timestamp:
-        env["ATO_BUILD_TIMESTAMP"] = build.timestamp
+    if build.started_at:
+        env["ATO_BUILD_STARTED_AT"] = str(build.started_at)
 
     env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
 
@@ -306,10 +306,21 @@ def _run_build_subprocess(
             final_stages = build_info.stages
 
         if return_code != 0:
-            # Include captured stderr in error message
-            if stderr_output:
-                error_msg = "".join(stderr_output)
-            else:
+            # Pull error messages from the logs DB instead of raw stderr
+            try:
+                error_logs, _ = Logs.fetch_chunk(
+                    build.build_id,
+                    levels=["ERROR", "ALERT"],
+                    count=10,
+                    order="DESC",
+                )
+                if error_logs:
+                    error_msg = "\n".join(
+                        log_entry["message"] for log_entry in reversed(error_logs)
+                    )
+                else:
+                    error_msg = f"Build failed with code {return_code}"
+            except Exception:
                 error_msg = f"Build failed with code {return_code}"
 
     except Exception as exc:
@@ -440,10 +451,8 @@ class BuildQueue:
             Build(
                 build_id=build.build_id,
                 name=build.name,
-                display_name=build.display_name,
                 project_name=build.project_name,
                 project_root=build.project_root or "",
-                target=build.target or "default",
                 entry=build.entry,
                 status=BuildStatus.QUEUED,
                 started_at=build.started_at,
@@ -486,7 +495,7 @@ class BuildQueue:
                     continue
                 if build.project_root != project_root:
                     continue
-                if build.target != target:
+                if build.name != target:
                     continue
                 if build.entry != entry:
                     continue
@@ -775,8 +784,8 @@ class BuildQueue:
             BuildHistory.set(
                 Build(
                     build_id=msg.build_id,
+                    name=build.name,
                     project_root=build.project_root or "",
-                    target=build.target or "default",
                     entry=build.entry,
                     status=status,
                     return_code=msg.return_code,

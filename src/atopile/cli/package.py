@@ -411,7 +411,7 @@ class _PackageValidators:
         # Get the latest build for each target
         latest_by_target: dict[str, Build] = {}
         for build in builds:
-            target = build.target or "default"
+            target = build.name
             if target not in latest_by_target:
                 latest_by_target[target] = build
 

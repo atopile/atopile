@@ -31,23 +31,23 @@ function App() {
 
   const targets = useMemo(() => {
     const match = projectState.projects.find(
-      (p) => p.root === projectState.selected_project,
+      (p) => p.root === projectState.selectedProject,
     );
     return match?.targets ?? [];
   }, [
     projectState.projects,
-    projectState.selected_project,
+    projectState.selectedProject,
   ]);
 
   const projectBuilds = useMemo(
     () =>
       getLatestPerTarget(
         projectState.builds,
-        projectState.selected_project,
+        projectState.selectedProject,
       ),
     [
       projectState.builds,
-      projectState.selected_project,
+      projectState.selectedProject,
     ],
   );
 
@@ -56,9 +56,9 @@ function App() {
       projectBuilds.some(
         (b) =>
           (b.status === "queued" || b.status === "building") &&
-          b.target === projectState.selected_target,
+          b.name === projectState.selectedTarget,
       ),
-    [projectBuilds, projectState.selected_target],
+    [projectBuilds, projectState.selectedTarget],
   );
 
   const projectItems = projectState.projects.map((p) => ({
@@ -109,7 +109,7 @@ function App() {
             ) : (
               <Select
                 items={projectItems}
-                value={projectState.selected_project}
+                value={projectState.selectedProject}
                 onValueChange={(v) =>
                   sendAction(ws,"select_project", { projectRoot: v })
                 }
@@ -130,7 +130,7 @@ function App() {
         </div>
 
         {/* Target selector */}
-        {projectState.selected_project && (
+        {projectState.selectedProject && (
           <div className="sidebar-field">
             <label className="sidebar-field-label">Target</label>
             <div className="sidebar-field-control">
@@ -139,7 +139,7 @@ function App() {
               ) : (
                 <Select
                   items={targetItems}
-                  value={projectState.selected_target}
+                  value={projectState.selectedTarget}
                   onValueChange={(v) =>
                     sendAction(ws,"select_target", { target: v })
                   }
@@ -165,13 +165,13 @@ function App() {
           <Button
             onClick={() =>
               sendAction(ws,"start_build", {
-                projectRoot: projectState.selected_project,
-                targets: [projectState.selected_target],
+                projectRoot: projectState.selectedProject,
+                targets: [projectState.selectedTarget],
               })
             }
             disabled={
-              !projectState.selected_project ||
-              !projectState.selected_target ||
+              !projectState.selectedProject ||
+              !projectState.selectedTarget ||
               isBuilding
             }
           >
@@ -195,7 +195,7 @@ function App() {
       </div>
 
       {/* Resizable builds pane at bottom */}
-      {projectState.selected_project && (
+      {projectState.selectedProject && (
         <div className="sidebar-builds-pane">
           <div
             className="sidebar-resize-handle"
@@ -206,7 +206,7 @@ function App() {
             <div className="sidebar-resize-grip" />
           </div>
           <div className="sidebar-builds-header">
-            <label className="sidebar-label">Builds</label>
+            <label className="sidebar-label">Build Queue</label>
           </div>
           <div
             className="sidebar-builds-scroll"

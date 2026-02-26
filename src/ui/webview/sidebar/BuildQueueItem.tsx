@@ -49,11 +49,11 @@ export function BuildQueueItem({ build }: { build: Build }) {
         </span>
         <span className="bq-item-info">
           <span className="bq-item-target">
-            {build.target ?? build.displayName}
+            {build.name}
           </span>
           {currentStage && isActive && (
             <span className="bq-item-stage">
-              {currentStage.displayName ?? currentStage.name}
+              {currentStage.name}
             </span>
           )}
         </span>
@@ -83,10 +83,6 @@ export function BuildQueueItem({ build }: { build: Build }) {
               {build.warnings !== 1 ? "s" : ""}
             </div>
           )}
-          {build.error && (
-            <div className="bq-item-error">{build.error}</div>
-          )}
-
           {stages.length > 0 && (
             <div className="bq-stages">
               {stages.map((stage, i) => (
@@ -98,7 +94,7 @@ export function BuildQueueItem({ build }: { build: Build }) {
                     {stageStatusIcon(stage.status)}
                   </span>
                   <span className="bq-stage-name">
-                    {stage.displayName ?? stage.name}
+                    {stage.name}
                   </span>
                   {stage.elapsedSeconds > 0 && (
                     <span className="bq-stage-time">

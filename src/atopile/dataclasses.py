@@ -84,7 +84,6 @@ class StageCompleteEvent:
     infos: int
     warnings: int
     errors: int
-    alerts: int
     log_name: str
     description: str
 
@@ -404,13 +403,11 @@ class BuildStage(CamelModel):
 
     name: str
     stage_id: str = ""
-    display_name: Optional[str] = None
     elapsed_seconds: float = 0.0
     status: StageStatus = StageStatus.PENDING
     infos: int = 0
     warnings: int = 0
     errors: int = 0
-    alerts: int = 0
 
 
 class Build(CamelModel):
@@ -418,7 +415,6 @@ class Build(CamelModel):
 
     # Core identification
     name: str
-    display_name: str
     project_name: Optional[str] = None
     build_id: Optional[str] = None
 
@@ -432,12 +428,10 @@ class Build(CamelModel):
 
     # Context
     project_root: Optional[str] = None
-    target: Optional[str] = None
     entry: Optional[str] = None
     started_at: Optional[float] = None
 
     # Active build fields
-    timestamp: Optional[str] = None
     standalone: bool = False
     frozen: bool | None = False
 
@@ -445,11 +439,6 @@ class Build(CamelModel):
     stages: list[dict[str, Any]] = Field(default_factory=list)
     # Total number of stages - set by subprocess at build start
     total_stages: Optional[int] = None
-    log_dir: Optional[str] = None
-    log_file: Optional[str] = None
-
-    # Queue info
-    queue_position: Optional[int] = None
 
     # Build options (used to construct subprocess command/env, not serialized)
     include_targets: list[str] = Field(default_factory=list, exclude=True)
@@ -464,16 +453,10 @@ class Build(CamelModel):
     def _fill_display_fields(cls, values: Any) -> Any:
         if not isinstance(values, dict):
             return values
-        target = values.get("target") or values.get("name") or "default"
-        values.setdefault("name", target)
+        values.setdefault("name", values.get("name") or "default")
         project_root = values.get("project_root")
         if project_root and not values.get("project_name"):
             values["project_name"] = Path(project_root).name
-        if not values.get("display_name"):
-            if values.get("project_name"):
-                values["display_name"] = f"{values['project_name']}:{values['name']}"
-            else:
-                values["display_name"] = values["name"]
         return values
 
 
@@ -514,9 +497,6 @@ class Project(CamelModel):
     root: str
     name: str
     targets: list[str]
-    display_path: Optional[str] = (
-        None  # Relative path for display (e.g., "packages/proj")
-    )
     needs_migration: bool = False
 
 

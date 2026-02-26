@@ -28,7 +28,7 @@ def get_builds_by_project_target(
         if project_root:
             builds = [b for b in builds if b.project_root == project_root]
         if target:
-            builds = [b for b in builds if b.target == target]
+            builds = [b for b in builds if b.name == target]
         return builds
     except Exception as exc:
         log.error(f"Failed to get builds by project/target: {exc}")

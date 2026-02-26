@@ -52,8 +52,11 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Use parent's timestamp if running as parallel worker
-NOW = os.environ.get("ATO_BUILD_TIMESTAMP") or datetime.now().strftime(
-    "%Y-%m-%d_%H-%M-%S"
+_env_started_at = os.environ.get("ATO_BUILD_STARTED_AT")
+NOW = (
+    datetime.fromtimestamp(float(_env_started_at)).strftime("%Y-%m-%d_%H-%M-%S")
+    if _env_started_at
+    else datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 )
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _log_sink_var: ContextVar[io.StringIO | None] = ContextVar("log_sink", default=None)
@@ -711,19 +714,22 @@ class BuildLogger(BaseLogger):
         cls,
         project_path: str,
         target: str,
-        timestamp: str | None = None,
         stage: str = "",
         build_id: str | None = None,
+        started_at: float | None = None,
     ) -> "BuildLogger":
-        timestamp = timestamp or NOW
         from atopile.model.sqlite import Logs
 
         Logs.init_db()
 
         if build_id is None:
+            import time
+
             from atopile.buildutil import generate_build_id
 
-            build_id = generate_build_id(project_path, target, timestamp)
+            build_id = generate_build_id(
+                project_path, target, started_at or time.time()
+            )
         if build_id not in cls._loggers:
             bl = cls(build_id, stage)
             bl.set_writer(Logs.append_chunk)
@@ -758,14 +764,13 @@ class BuildLogger(BaseLogger):
                 project_path, target = "cli", "default"
 
             env_build_id = os.environ.get("ATO_BUILD_ID")
-            env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
-            if not env_build_id or not env_timestamp:
+            env_started_at = os.environ.get("ATO_BUILD_STARTED_AT")
+            if not env_build_id or not env_started_at:
                 return None
 
             bl = cls.get(
                 project_path,
                 target,
-                timestamp=env_timestamp,
                 stage=stage or "cli",
                 build_id=env_build_id,
             )

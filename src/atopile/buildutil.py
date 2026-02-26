@@ -1,7 +1,6 @@
 import contextlib
 import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
@@ -21,9 +20,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
+def generate_build_id(project_path: str, target: str, started_at: float) -> str:
     """
-    Generate a unique build ID from project, target, and timestamp.
+    Generate a unique build ID from project, target, and start time.
 
     This is the single source of truth for build ID generation.
     All components (server, CLI, logging) must use this function.
@@ -31,18 +30,13 @@ def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
     Args:
         project_path: Absolute path to the project root
         target: Build target name
-        timestamp: Timestamp string in format "%Y-%m-%d_%H-%M-%S"
+        started_at: Unix epoch float from time.time()
 
     Returns:
         16-character hex string (truncated SHA256 hash)
     """
-    content = f"{project_path}:{target}:{timestamp}"
+    content = f"{project_path}:{target}:{started_at}"
     return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-
-def generate_build_timestamp() -> str:
-    """Generate a build timestamp in the standard format."""
-    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 @dataclass
@@ -157,7 +151,6 @@ def run_build_targets(ctx: BuildStepContext) -> None:
             Build(
                 build_id=build_id,
                 name=config.build.name,
-                display_name=config.build.name,
                 status=BuildStatus.BUILDING,
                 total_stages=total_stages,
             )

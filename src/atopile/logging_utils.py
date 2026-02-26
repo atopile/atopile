@@ -819,7 +819,7 @@ class BuildPrinter:
         from atopile.model.sqlite import Logs
 
         icon, color = get_status_style(build.status)
-        display_name = build.display_name or build.name
+        display_name = build.name
         build_id = build.build_id or ""
 
         # Fetch errors and warnings from the database
@@ -859,7 +859,7 @@ class BuildPrinter:
             if status_str not in terminal_statuses:
                 continue  # Skip running/pending stages
 
-            stage_name = stage.get("name", stage.get("displayName", ""))
+            stage_name = stage.get("name", "")
             elapsed = stage.get("elapsedSeconds", 0.0)
             total_stage_time += elapsed
             stage_icon, stage_color = get_status_style(status_str)
