@@ -27,7 +27,7 @@ class CAN(fabll.Node):
     # ISO 11898: CAN bus differential impedance 120 Ohm +/- 10%
     _parameter_constraints = [
         F.Literals.Numbers.MakeChild_SetSuperset(
-            [diff_pair, F.DifferentialPair.impedance],
+            [diff_pair, F.DifferentialPair.differential_impedance],
             108.0,
             132.0,
             unit=F.Units.Ohm,

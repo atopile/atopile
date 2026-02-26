@@ -21,7 +21,7 @@ class RS485HalfDuplex(fabll.Node):
     # TIA/EIA-485: characteristic impedance 120 Ohm (100-130 Ohm range)
     _parameter_constraints = [
         F.Literals.Numbers.MakeChild_SetSuperset(
-            [diff_pair, F.DifferentialPair.impedance],
+            [diff_pair, F.DifferentialPair.differential_impedance],
             100.0,
             130.0,
             unit=F.Units.Ohm,
