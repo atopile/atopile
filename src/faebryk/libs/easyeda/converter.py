@@ -134,8 +134,9 @@ def _compute_arc(
     p = ux * vx + uy * vy
     cross_sign = -1 if (ux * vy - uy * vx) < 0 else 1
 
-    if n != 0 and abs(p / n) < 1:
-        angle_extent = math.degrees(cross_sign * math.acos(p / n))
+    if n != 0:
+        p_n = max(-1.0, min(1.0, p / n))
+        angle_extent = math.degrees(cross_sign * math.acos(p_n))
     else:
         angle_extent = 360 + 359
 
@@ -172,6 +173,84 @@ def _angle_to_ki(rotation: float) -> float:
     if math.isnan(rotation):
         return 0.0
     return -(360 - rotation) if rotation > 180 else rotation
+
+
+# ── Custom pad anchor repositioning ──────────────────────────────────────────
+
+KI_PAD_SIZE_MIN = 0.001
+
+
+def _is_on_segment(
+    x0: float, y0: float, x1: float, y1: float, px: float, py: float
+) -> bool:
+    EPSILON = 1e-9
+    return (
+        min(x0, x1) <= px <= max(x0, x1)
+        and min(y0, y1) <= py <= max(y0, y1)
+        and abs((px - x0) * (y1 - y0) - (py - y0) * (x1 - x0)) < EPSILON
+    )
+
+
+def _is_left(x0: float, y0: float, x1: float, y1: float, px: float, py: float) -> bool:
+    return ((x1 - x0) * (py - y0) - (y1 - y0) * (px - x0)) > 0
+
+
+def _is_point_in_polygon(
+    point: tuple[float, float], polygon: list[tuple[float, float]]
+) -> bool:
+    x, y = point
+    winding_number = 0
+    n = len(polygon)
+    for i in range(n):
+        x0, y0 = polygon[i]
+        x1, y1 = polygon[(i + 1) % n]
+        if _is_on_segment(x0, y0, x1, y1, x, y):
+            return True
+        if y0 <= y:
+            if y1 > y and _is_left(x0, y0, x1, y1, x, y):
+                winding_number += 1
+        else:
+            if y1 <= y and not _is_left(x0, y0, x1, y1, x, y):
+                winding_number -= 1
+    return winding_number != 0
+
+
+def _is_circle_in_polygon(
+    center: tuple[float, float],
+    radius: float,
+    polygon: list[tuple[float, float]],
+) -> bool:
+    # Approximate circle with 12-sided polygon
+    cx, cy = center
+    return all(
+        _is_point_in_polygon(
+            (
+                cx + radius * math.cos(2 * math.pi * i / 12),
+                cy + radius * math.sin(2 * math.pi * i / 12),
+            ),
+            polygon,
+        )
+        for i in range(12)
+    )
+
+
+def _find_anchor_position(
+    polygon: list[tuple[float, float]], radius: float
+) -> tuple[float, float] | None:
+    min_x = min(p[0] for p in polygon)
+    max_x = max(p[0] for p in polygon)
+    min_y = min(p[1] for p in polygon)
+    max_y = max(p[1] for p in polygon)
+    STEP = 0.05
+    x = min_x
+    while x < max_x:
+        y = min_y
+        while y < max_y:
+            if _is_circle_in_polygon((x, y), radius, polygon):
+                return (x, y)
+            y += STEP
+        x += STEP
+    return None
 
 
 # ── Footprint builder ────────────────────────────────────────────────────────
@@ -235,16 +314,37 @@ def build_footprint(
         point_list = [_fp_to_ki(p) for p in re.findall(r"\S+", ee_pad.points)]
 
         if shape == "custom" and point_list:
-            width = 0.005
-            height = 0.005
+            width = KI_PAD_SIZE_MIN
+            height = KI_PAD_SIZE_MIN
             orientation = 0
 
-            poly_pts = [
-                kicad.pcb.Xy(
-                    x=round(point_list[i] - bbox_x - pos_x, 2),
-                    y=round(point_list[i + 1] - bbox_y - pos_y, 2),
+            # Absolute coords relative to bbox origin
+            absolute_coords = [
+                (
+                    point_list[i] - bbox_x,
+                    point_list[i + 1] - bbox_y,
                 )
                 for i in range(0, len(point_list) - 1, 2)
+            ]
+
+            # Reposition anchor pad to be contained within the polygon
+            if not _is_circle_in_polygon((pos_x, pos_y), width / 2, absolute_coords):
+                new_center = _find_anchor_position(absolute_coords, width / 2)
+                if new_center is not None:
+                    pos_x, pos_y = new_center
+                else:
+                    logger.warning(
+                        f"Custom pad #{number}: anchor pad cannot be "
+                        "contained within polygon"
+                    )
+
+            # Generate polygon with coordinates relative to anchor pad
+            poly_pts = [
+                kicad.pcb.Xy(
+                    x=round(x - pos_x, 2),
+                    y=round(y - pos_y, 2),
+                )
+                for x, y in absolute_coords
             ]
             if poly_pts:
                 primitives = kicad.pcb.PadPrimitives(

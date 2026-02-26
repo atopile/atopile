@@ -205,10 +205,10 @@ def _parse_rect(f: list[str]) -> EeFpRect:
         y=_to_mm(_float(_get(f, 1))),
         width=_to_mm(_float(_get(f, 2))),
         height=_to_mm(_float(_get(f, 3))),
-        stroke_width=_to_mm(_float(_get(f, 4))),
+        layer_id=_int(_get(f, 4), default=1),
         id=_get(f, 5),
-        layer_id=_int(_get(f, 6), default=1),
-        is_locked=_bool_field(_get(f, 7)),
+        is_locked=_bool_field(_get(f, 6)),
+        stroke_width=_to_mm(_float(_get(f, 7))),
     )
 
 
