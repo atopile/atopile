@@ -17,20 +17,24 @@ from __future__ import annotations
 import re
 
 
+def _join_continuation_lines(lines: list[str]) -> list[str]:
+    """Join SPICE continuation lines (+ prefix) to the previous line."""
+    joined: list[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("+") and joined:
+            joined[-1] = joined[-1] + " " + stripped[1:].strip()
+        else:
+            joined.append(line)
+    return joined
+
+
 def convert_pspice_to_ngspice(text: str) -> str:
     """Convert PSpice/LTspice model text to ngspice-compatible syntax."""
     lines = text.splitlines()
 
     # 1. Join continuation lines (+ prefix) to previous line
-    joined: list[str] = []
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith("+") and joined:
-            # Append continuation (strip the '+' prefix) to previous line
-            joined[-1] = joined[-1] + " " + stripped[1:].strip()
-        else:
-            joined.append(line)
-    lines = joined
+    lines = _join_continuation_lines(lines)
 
     result: list[str] = []
     for line in lines:
@@ -597,14 +601,7 @@ def parse_subcircuit_pins(text: str, subckt_name: str) -> list[str]:
     Returns:
         List of pin names in the order they appear in the .SUBCKT declaration.
     """
-    # Join continuation lines first
-    joined_lines: list[str] = []
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("+") and joined_lines:
-            joined_lines[-1] = joined_lines[-1] + " " + stripped[1:].strip()
-        else:
-            joined_lines.append(line)
+    joined_lines = _join_continuation_lines(text.splitlines())
 
     for line in joined_lines:
         stripped = line.strip()
@@ -648,14 +645,7 @@ def parse_subcircuit_params(text: str, subckt_name: str) -> dict[str, str]:
     Returns:
         Dict of parameter name → default value string.
     """
-    # Join continuation lines first
-    joined_lines: list[str] = []
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("+") and joined_lines:
-            joined_lines[-1] = joined_lines[-1] + " " + stripped[1:].strip()
-        else:
-            joined_lines.append(line)
+    joined_lines = _join_continuation_lines(text.splitlines())
 
     for line in joined_lines:
         stripped = line.strip()

@@ -70,13 +70,6 @@
   color: var(--text-muted);
 }
 .req-summary-toggle .chevron.open { transform: rotate(180deg); }
-.req-summary-chart {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
-}
-
 /* ---- Filter bar ---- */
 .req-filter-bar {
   display: flex;
@@ -167,49 +160,6 @@
   flex-shrink: 0;
 }
 
-/* ---- Tooltip ---- */
-.req-tooltip {
-  position: fixed;
-  z-index: var(--z-dropdown);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-sm) var(--spacing-md);
-  min-width: 220px;
-  max-width: 300px;
-  box-shadow: 0 8px 24px var(--shadow-color);
-  pointer-events: none;
-}
-.req-tooltip-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-  padding: 2px 0;
-  font-size: var(--font-size-xxs);
-}
-.req-tooltip-row .tt-label {
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.req-tooltip-row .tt-value {
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  text-align: right;
-  white-space: nowrap;
-}
-.req-tooltip-divider {
-  border-top: 1px solid var(--border-subtle);
-  margin: 4px 0;
-}
-.req-tooltip-justification {
-  font-size: var(--font-size-xxs);
-  color: var(--text-muted);
-  font-style: italic;
-  margin-top: 4px;
-  white-space: normal;
-  line-height: 1.4;
-}
-
 /* ---- Empty state ---- */
 .req-empty-state {
   display: flex;
@@ -222,11 +172,6 @@
 }
 .req-empty-state svg {
   opacity: 0.3;
-}
-.req-empty-state-title {
-  font-size: var(--font-size-md);
-  font-weight: 500;
-  color: var(--text-secondary);
 }
 .req-empty-state-desc {
   font-size: var(--font-size-sm);
@@ -267,17 +212,6 @@
   font-family: var(--font-mono);
 }
 
-/* --- Info card (shared between sidebar inline & detail page) --- */
-.req-info-card-outer {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  transition: box-shadow 0.2s ease;
-}
-.req-info-card-outer:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-}
 /* Inside unified rall-row card, remove redundant border/radius */
 .rall-row .rall-card .ric-body {
   border: none;
@@ -393,40 +327,6 @@
   gap: 4px;
   text-align: right;
 }
-
-.ric-actual-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-.ric-actual-value {
-  font-size: 16px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-.ric-actual-value.pass { color: var(--success); }
-.ric-actual-value.fail { color: var(--error); }
-
-.ric-margin-bar {
-  margin-top: 4px;
-}
-.ric-margin-track {
-  height: 3px;
-  background: var(--bg-hover);
-  border-radius: 2px;
-  position: relative;
-  overflow: hidden;
-}
-.ric-margin-fill {
-  position: absolute;
-  top: 0; bottom: 0; left: 0;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-.ric-margin-fill.high { background: var(--success); }
-.ric-margin-fill.medium { background: var(--warning); }
-.ric-margin-fill.low { background: var(--error); }
 
 .ric-section.ric-full {
   /* no-op in single-column layout */
@@ -1022,37 +922,6 @@
   min-width: 72px;
   flex-shrink: 0;
 }
-.plot-popover-footer {
-  padding: 8px 12px;
-  border-top: 1px solid var(--border-subtle);
-  display: flex;
-  justify-content: flex-end;
-}
-.plot-type-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm, 4px);
-  color: var(--text-primary);
-  font-size: var(--font-size-xs);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-.plot-type-btn + .plot-type-btn {
-  margin-top: 4px;
-}
-.plot-type-btn:hover {
-  background: var(--bg-tertiary);
-}
-.plot-type-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 /* ---- Plot popover status indicators ---- */
 .plot-popover-input-wrap {
   display: flex;

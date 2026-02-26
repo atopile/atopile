@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import subprocess
 import tempfile
@@ -675,12 +676,6 @@ class Circuit:
         signals.extend(sorted(f"i({e})" for e in branch_elements))
         return signals
 
-    def _detect_node_voltages(self) -> list[str]:
-        """Auto-detect node names from the netlist and return as v(name) signals.
-
-        Deprecated: prefer _detect_signals() which also includes branch currents.
-        """
-        return [s for s in self._detect_signals() if s.startswith("v(")]
 
 
 # ---------------------------------------------------------------------------
@@ -802,8 +797,11 @@ def _run_ngspice_batch(netlist: SpiceNetlist) -> str:
     tmp = tempfile.NamedTemporaryFile(suffix=".spice", mode="w", delete=False)
     tmp.write(netlist.to_string())
     tmp.close()
-    proc = _run_ngspice_subprocess(tmp.name)
-    return proc.stdout
+    try:
+        proc = _run_ngspice_subprocess(tmp.name)
+        return proc.stdout
+    finally:
+        os.unlink(tmp.name)
 
 
 def _load_spice_circuit(path: Path | str) -> SpiceNetlist:

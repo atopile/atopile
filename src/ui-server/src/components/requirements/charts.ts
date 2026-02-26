@@ -548,6 +548,7 @@ export async function renderSpecAtSize(
   legend.y = 1;
   legend.yanchor = 'top';
   delete legend.bgcolor;
+  legend.traceorder = 'normal';
   legend.font = { size: 8, color: colors.muted };
   layout.legend = legend;
 

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import type { RequirementData, FilterType } from './requirements/types';
+import type { FilterType } from './requirements/types';
 import { RequirementItem } from './requirements/RequirementItem';
+import { filterRequirements, computeRequirementStats } from './requirements/helpers';
 import { postMessage } from '../api/vscodeApi';
 import { useStore } from '../store';
 
@@ -30,21 +31,9 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
     [requirementsData],
   );
 
-  const hasResult = (r: RequirementData) => r.actual !== null && isFinite(r.actual);
+  const filteredReqs = useMemo(() => filterRequirements(requirements, filter), [filter, requirements]);
 
-  const filteredReqs = useMemo(() => {
-    if (filter === 'all') return requirements;
-    if (filter === 'pass') return requirements.filter(r => hasResult(r) && r.passed);
-    if (filter === 'fail') return requirements.filter(r => hasResult(r) && !r.passed);
-    if (filter === 'dc') return requirements.filter(r => r.capture === 'dcop');
-    if (filter === 'transient') return requirements.filter(r => r.capture === 'transient');
-    if (filter === 'ac') return requirements.filter(r => r.capture === 'ac');
-    return requirements;
-  }, [filter, requirements]);
-
-  const passCount = useMemo(() => requirements.filter(r => hasResult(r) && r.passed).length, [requirements]);
-  const failCount = useMemo(() => requirements.filter(r => hasResult(r) && !r.passed).length, [requirements]);
-  const pendingCount = useMemo(() => requirements.filter(r => !hasResult(r)).length, [requirements]);
+  const { passCount, failCount, pendingCount } = useMemo(() => computeRequirementStats(requirements), [requirements]);
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);

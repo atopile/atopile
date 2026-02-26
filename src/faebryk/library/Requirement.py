@@ -399,28 +399,10 @@ class Requirement(fabll.Node):
     def get_measurement(self) -> str:
         return self.measurement.get().extract_singleton()
 
-    def _extract_float(self, param) -> float | None:
-        """Extract a float from a StringParameter, handling solver type coercion.
-
-        The solver may resolve string values like "2e-7" to Numbers.
-        This method handles both Strings and Numbers transparently.
-        """
-        try:
-            v = param.get().try_extract_singleton()
-            return float(v) if v is not None else None
-        except Exception:
-            # Solver resolved StringParameter to Numbers — extract numerically
-            try:
-                from faebryk.library.Literals import Numbers
-
-                nums = param.get().is_parameter_operatable.get().try_extract_superset(
-                    lit_type=Numbers
-                )
-                if nums is not None:
-                    return float(nums.get_single())
-            except Exception:
-                pass
-            return None
+    @staticmethod
+    def _extract_float(param) -> float | None:
+        from faebryk.library.Simulations import _extract_float
+        return _extract_float(param)
 
     def get_tran_step(self) -> float | None:
         return self._extract_float(self.tran_step)

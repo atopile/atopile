@@ -2,6 +2,7 @@ import contextlib
 import itertools
 import json
 import os
+import re as _re
 import tempfile
 import time
 from collections.abc import Callable, Generator
@@ -624,6 +625,22 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     )
 
 
+def _read_str(node, field_name: str) -> str | None:
+    """Safely extract a singleton string from a node's attribute field."""
+    try:
+        return getattr(node, field_name).get().try_extract_singleton()
+    except Exception:
+        return None
+
+
+def _should_show_limits(plot_node, is_supplementary: bool) -> bool:
+    """Determine whether to show limit bands on a plot."""
+    raw = _read_str(plot_node, "plot_limits")
+    if is_supplementary:
+        return raw is not None and raw.lower() in ("true", "1", "yes", "on")
+    return raw is None or raw.lower() not in ("false", "0", "no", "off")
+
+
 @muster.register(
     "spice-netlist",
     description="Generating SPICE netlist",
@@ -650,6 +667,11 @@ def generate_spice_netlist_step(ctx: BuildStepContext) -> None:
 def _signal_unit(key: str) -> str:
     """Infer unit from signal key."""
     return "A" if key.startswith("i(") else "V"
+
+
+def _title_to_slug(title: str) -> str:
+    """Convert a title to a URL/filename-safe slug."""
+    return title.replace(" ", "_").replace(":", "").replace("/", "_")
 
 
 # ---------------------------------------------------------------------------
@@ -734,8 +756,6 @@ def _find_source_line(source_file: str, var_name: str) -> int | None:
     Looks for patterns like ``var_name = new ...`` or ``var_name: Type``
     or ``assert var_name.limit ...``.
     """
-    import re
-
     if source_file not in _source_line_cache:
         try:
             lines = Path(source_file).read_text(encoding="utf-8").splitlines()
@@ -744,11 +764,11 @@ def _find_source_line(source_file: str, var_name: str) -> int | None:
         cache: dict[str, int] = {}
         for i, line in enumerate(lines, start=1):
             # Match: var_name = new ..., var_name: Type, var_name = ..., trait var_name
-            m = re.match(r"\s+(\w+)\s*[=:]", line)
+            m = _re.match(r"\s+(\w+)\s*[=:]", line)
             if m and m.group(1) not in cache:
                 cache[m.group(1)] = i
             # Also match: trait var_name
-            m2 = re.match(r"\s+trait\s+(\w+)", line)
+            m2 = _re.match(r"\s+trait\s+(\w+)", line)
             if m2 and m2.group(1) not in cache:
                 cache[m2.group(1)] = i
         _source_line_cache[source_file] = cache
@@ -761,8 +781,6 @@ def _extract_limit_expr(source_file: str, var_name: str) -> str | None:
     ``assert req_001.limit within 5V +/- 10%`` in the .ato source file.
     Returns the expression after 'within', e.g. ``5V +/- 10%``.
     """
-    import re
-
     # Cache per file to avoid re-reading for every requirement
     if source_file not in _limit_expr_cache:
         try:
@@ -770,10 +788,10 @@ def _extract_limit_expr(source_file: str, var_name: str) -> str | None:
         except Exception:
             return None
         cache: dict[str, str] = {}
-        for m in re.finditer(
+        for m in _re.finditer(
             r"assert\s+(\w+)\.limit\s+within\s+(.+?)$",
             content,
-            re.MULTILINE,
+            _re.MULTILINE,
         ):
             cache[m.group(1)] = m.group(2).strip()
         _limit_expr_cache[source_file] = cache
@@ -1280,7 +1298,7 @@ def run_simulations_step(ctx: BuildStepContext) -> None:
         ctx._simulation_stats = []
 
 
-def _downsample_trace(trace_json: dict, max_points: int = 2000) -> dict:
+def _downsample_trace(trace_json: dict, max_points: int = _MAX_POINTS) -> dict:
     """Downsample a Plotly trace dict to at most max_points for JSON size."""
     x = trace_json.get("x")
     y = trace_json.get("y")
@@ -1459,6 +1477,7 @@ def _plot_multi_dut_requirement(
         height=540,
         margin=dict(t=80, b=60, l=60, r=30),
         showlegend=True,
+        legend=dict(traceorder="normal"),
     )
 
     path = Path(path)
@@ -1617,8 +1636,6 @@ def _plot_sweep_requirement(
 # Unified chart renderer for LineChart nodes (x/y/color declarative plots)
 # ---------------------------------------------------------------------------
 
-import re as _re
-
 _MEASUREMENT_PATTERN = _re.compile(r"^(\w+)\((.+)\)$")
 
 # SPICE probe prefixes — i(element) / v(node) are signal references, not measurements
@@ -1742,6 +1759,26 @@ def _resolve_dut_param(
     return None
 
 
+def _resolve_signal_key(
+    raw_net: str,
+    net_aliases: dict[str, str],
+    dut_name: str | None = None,
+) -> str:
+    """Resolve a net reference to a SPICE signal key (e.g. ``v(net)``).
+
+    Works for both multi-DUT (``dut_name`` provided, prefixes ``dut_xxx``
+    nets with the concrete DUT name) and single-DUT (``dut_name=None``,
+    standard alias lookup).
+    """
+    net = raw_net.replace(".", "_")
+    if dut_name and net.startswith("dut_"):
+        net = f"{dut_name}_{net[4:]}"
+    resolved = net_aliases.get(raw_net, net_aliases.get(net, net))
+    if not resolved.startswith(("v(", "i(")):
+        return f"v({resolved})"
+    return resolved
+
+
 def _resolve_dut_net_key(
     raw_net: str,
     dut_name: str,
@@ -1751,13 +1788,98 @@ def _resolve_dut_net_key(
     from faebryk.library.Requirement import Requirement as ReqClass
 
     net = ReqClass._sanitize_net_name(raw_net)
-    if net.startswith("dut_"):
-        net = f"{dut_name}_{net[4:]}"
-    normalized = net.replace(".", "_")
-    resolved = dut_aliases.get(net, dut_aliases.get(normalized, normalized))
-    if not resolved.startswith(("v(", "i(")):
-        return f"v({resolved})"
+    return _resolve_signal_key(net, dut_aliases, dut_name=dut_name)
+
+
+def _resolve_context_nets(
+    ctx_nets: list[str],
+    aliases: dict[str, str],
+    dut_name: str | None = None,
+) -> list[str]:
+    """Resolve context net references through aliases.
+
+    For multi-DUT (dut_name provided), rewrites ``dut_``/``dut.`` prefixes
+    to the concrete DUT name.  For single-DUT, just normalizes dots.
+    """
+    resolved: list[str] = []
+    for cn in ctx_nets:
+        if dut_name:
+            if cn.startswith("dut_"):
+                cn = f"{dut_name}_{cn[4:]}"
+            elif cn.startswith("dut."):
+                cn = f"{dut_name}_{cn[4:].replace('.', '_')}"
+        norm = cn.replace(".", "_")
+        resolved.append(aliases.get(cn, aliases.get(norm, norm)))
     return resolved
+
+
+def _measure_sweep_points(
+    sweep_dict: dict,
+    sig_key: str,
+    measurement: str,
+    settling_tol: float | None,
+    tran_start: float | None,
+    context_nets: list[str],
+    env_bounds: tuple[float | None, float | None],
+    req_bounds: tuple[float | None, float | None],
+) -> tuple[list[dict], float]:
+    """Measure all sweep points and return (point_data, worst_case_actual).
+
+    Shared by both multi-DUT and single-DUT sweep measurement paths.
+    """
+    import math
+
+    from faebryk.exporters.simulation.ngspice import TransientResult
+    from faebryk.exporters.simulation.requirement import (
+        _measure_tran,
+        _slice_from,
+    )
+
+    env_min, env_max = env_bounds
+    point_data: list[dict] = []
+
+    for pval, point_result in sorted(sweep_dict.items()):
+        if not isinstance(point_result, TransientResult):
+            continue
+        try:
+            sd = point_result[sig_key]
+        except KeyError:
+            continue
+        td = point_result.time
+        if tran_start and tran_start > 0:
+            td, sd = _slice_from(td, sd, tran_start)
+        try:
+            v = _measure_tran(
+                measurement, sd, td,
+                settling_tolerance=settling_tol,
+                sim_result=point_result,
+                context_nets=context_nets,
+                min_val=env_min,
+                max_val=env_max,
+            )
+        except Exception:
+            continue
+        point_data.append({"paramValue": pval, "actual": v})
+
+    if not point_data:
+        return point_data, float("nan")
+
+    actuals = [sp["actual"] for sp in point_data]
+    s_min, s_max = req_bounds
+    if s_min is not None and s_max is not None:
+        mid = (s_min + s_max) / 2
+        worst = max(actuals, key=lambda v: abs(v - mid))
+        for sp in point_data:
+            sp["passed"] = (
+                math.isfinite(sp["actual"])
+                and s_min <= sp["actual"] <= s_max
+            )
+    else:
+        worst = actuals[-1]
+        for sp in point_data:
+            sp["passed"] = False
+
+    return point_data, worst
 
 
 def _render_chart(
@@ -1794,32 +1916,12 @@ def _render_chart(
         signal_unit,
     )
 
-    # Read axis specs directly from the plot node's StringParameter fields.
-    # The is_plot trait delegation may not resolve for ato-instantiated nodes,
-    # so we access the fields directly.
-    def _read_str(node, field_name: str) -> str | None:
-        try:
-            return getattr(node, field_name).get().try_extract_singleton()
-        except Exception:
-            return None
-
     title = _read_str(plot_node, "title") or req.get_name()
     x_spec = _read_str(plot_node, "x")
     y_spec = _read_str(plot_node, "y")
     y_secondary_spec = _read_str(plot_node, "y_secondary")
     color_spec = _read_str(plot_node, "color")
-    plot_limits_raw = _read_str(plot_node, "plot_limits")
-    if is_supplementary:
-        # Supplementary: limits OFF by default, opt-in with plot_limits="true"
-        show_limits = (
-            plot_limits_raw is not None
-            and plot_limits_raw.lower() in ("true", "1", "yes", "on")
-        )
-    else:
-        # Required: limits ON by default, opt-out with plot_limits="false"
-        show_limits = plot_limits_raw is None or plot_limits_raw.lower() not in (
-            "false", "0", "no", "off",
-        )
+    show_limits = _should_show_limits(plot_node, is_supplementary)
 
     # Detect and strip ac_coupled() signal transform
     ac_coupled = False
@@ -1862,7 +1964,7 @@ def _render_chart(
     if has_secondary:
         sec_measurement_fn, sec_y_net = _parse_y_axis(y_secondary_spec)
 
-    name_slug = title.replace(" ", "_").replace(":", "").replace("/", "_")
+    name_slug = _title_to_slug(title)
     plot_path = Path(output_dir) / f"plot_{name_slug}.html"
 
     # ===================================================================
@@ -2098,16 +2200,7 @@ def _render_chart(
                     continue
 
         elif isinstance(sim_result, TransientResult):
-            raw_net = req.get_net()
-            normalized = raw_net.replace(".", "_")
-            resolved = net_aliases.get(
-                raw_net, net_aliases.get(normalized, raw_net)
-            )
-            sig_key = (
-                f"v({resolved})"
-                if not resolved.startswith(("v(", "i("))
-                else resolved
-            )
+            sig_key = _resolve_signal_key(req.get_net(), net_aliases)
             try:
                 signal_data = sim_result[sig_key]
             except KeyError:
@@ -2144,15 +2237,7 @@ def _render_chart(
 
             # Secondary y-axis trace for single-DUT
             if has_secondary:
-                sec_resolved = sec_y_net.replace(".", "_")
-                sec_resolved = net_aliases.get(
-                    sec_y_net, net_aliases.get(sec_resolved, sec_resolved)
-                )
-                sec_sig_key = (
-                    f"v({sec_resolved})"
-                    if not sec_resolved.startswith(("v(", "i("))
-                    else sec_resolved
-                )
+                sec_sig_key = _resolve_signal_key(sec_y_net, net_aliases)
                 try:
                     sec_data = sim_result[sec_sig_key]
                     sec_time = list(sim_result.time)
@@ -2353,6 +2438,7 @@ def _render_chart(
             y=1,
             xanchor="left",
             yanchor="top",
+            traceorder="normal",
         )
         if color_spec:
             legend_kwargs["title"] = dict(text=color_spec)
@@ -2688,6 +2774,7 @@ def _render_chart(
             y=1,
             xanchor="left",
             yanchor="top",
+            traceorder="normal",
         ),
     )
 
@@ -2723,27 +2810,10 @@ def _render_bar_chart(
     from faebryk.exporters.simulation.simulation_runner import MultiDutResult
     from faebryk.library.Plots import format_eng
 
-    def _read_str(node, field_name: str) -> str | None:
-        try:
-            return getattr(node, field_name).get().try_extract_singleton()
-        except Exception:
-            return None
-
     title = _read_str(plot_node, "title") or req.get_name()
     x_spec = _read_str(plot_node, "x")
     y_spec = _read_str(plot_node, "y")
-    plot_limits_raw = _read_str(plot_node, "plot_limits")
-    if is_supplementary:
-        # Supplementary: limits OFF by default, opt-in with plot_limits="true"
-        show_limits = (
-            plot_limits_raw is not None
-            and plot_limits_raw.lower() in ("true", "1", "yes", "on")
-        )
-    else:
-        # Required: limits ON by default, opt-out with plot_limits="false"
-        show_limits = plot_limits_raw is None or plot_limits_raw.lower() not in (
-            "false", "0", "no", "off",
-        )
+    show_limits = _should_show_limits(plot_node, is_supplementary)
 
     if not x_spec or not y_spec:
         return None
@@ -2752,7 +2822,7 @@ def _render_bar_chart(
     if measurement_fn is None:
         return None
 
-    name_slug = title.replace(" ", "_").replace(":", "").replace("/", "_")
+    name_slug = _title_to_slug(title)
     plot_path = Path(output_dir) / f"plot_{name_slug}.html"
     settling_tol = req.get_settling_tolerance()
     tran_start = req.get_tran_start()
@@ -2771,58 +2841,26 @@ def _render_bar_chart(
     y_vals: list[float] = []
     bar_labels: list[str] = []
 
-    # Infer param unit from MultiDutResult or use x_spec as label
+    # Normalize to a list of (sweep_dict, sig_key) pairs so a single loop
+    # handles both multi-DUT and single-DUT sweep results.
     param_unit = ""
+    sweep_items: list[tuple[dict, str]] = []
+
     if isinstance(sim_result, MultiDutResult):
         param_unit = sim_result.sweep_param_unit or ""
-
-    if isinstance(sim_result, MultiDutResult):
         for dut_name, (dut_result, dut_aliases) in sim_result.results.items():
-            if not isinstance(dut_result, dict):
-                continue
-            sig_key = _resolve_dut_net_key(y_net, dut_name, dut_aliases)
-
-            for pval in sorted(dut_result.keys()):
-                point_result = dut_result[pval]
-                if not isinstance(point_result, TransientResult):
-                    continue
-                try:
-                    signal_data = point_result[sig_key]
-                except KeyError:
-                    continue
-                time_data = list(point_result.time)
-                if tran_start and tran_start > 0:
-                    time_data, signal_data = _slice_from(
-                        time_data, signal_data, tran_start
-                    )
-                try:
-                    val = _measure_tran(
-                        measurement_fn,
-                        signal_data,
-                        time_data,
-                        settling_tolerance=settling_tol,
-                        sim_result=point_result,
-                    )
-                except Exception:
-                    continue
-                x_vals.append(pval)
-                y_vals.append(val)
-                bar_labels.append(format_eng(pval, param_unit))
-
+            if isinstance(dut_result, dict):
+                sig_key = _resolve_dut_net_key(y_net, dut_name, dut_aliases)
+                sweep_items.append((dut_result, sig_key))
     elif isinstance(sim_result, dict):
-        # Single-DUT sweep: dict[float, TransientResult]
-        raw_net = req.get_net()
-        normalized = raw_net.replace(".", "_")
-        resolved = net_aliases.get(
-            raw_net, net_aliases.get(normalized, raw_net)
-        )
-        sig_key = (
-            f"v({resolved})"
-            if not resolved.startswith(("v(", "i("))
-            else resolved
-        )
-        for pval in sorted(sim_result.keys()):
-            point_result = sim_result[pval]
+        sig_key = _resolve_signal_key(req.get_net(), net_aliases)
+        sweep_items.append((sim_result, sig_key))
+    else:
+        return None
+
+    for sweep_dict, sig_key in sweep_items:
+        for pval in sorted(sweep_dict.keys()):
+            point_result = sweep_dict[pval]
             if not isinstance(point_result, TransientResult):
                 continue
             try:
@@ -2847,8 +2885,6 @@ def _render_bar_chart(
             x_vals.append(pval)
             y_vals.append(val)
             bar_labels.append(format_eng(pval, param_unit))
-    else:
-        return None
 
     if not x_vals:
         return None
@@ -2985,12 +3021,6 @@ def _render_plots_for_requirement(
     Returns aggregated Plotly specs from all charts, or None if no plots.
     """
     from faebryk.library.Plots import BarChart
-
-    def _read_str(node, field_name: str) -> str | None:
-        try:
-            return getattr(node, field_name).get().try_extract_singleton()
-        except Exception:
-            return None
 
     plots = plot_nodes if plot_nodes is not None else req.get_plots()
     if not plots:
@@ -3134,7 +3164,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
         def _safe_get_bounds(req) -> tuple[float | None, float | None]:
             try:
                 return (req.get_min_val(), req.get_max_val())
-            except (ValueError, Exception):
+            except Exception:
                 pass
             # Fallback: parse limit expression from .ato source
             try:
@@ -3178,59 +3208,33 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                     raw_addr = req.net.get().try_extract_singleton() or ""
                     actuals_per_dut: dict[str, float] = {}
                     mdut_sweep_points: list[dict] = []
+                    tran_start = req.get_tran_start()
+                    env_bounds = (
+                        _safe_get_bounds(req)
+                        if measurement == "envelope"
+                        else (None, None)
+                    )
+                    req_bounds = _safe_get_bounds(req)
 
                     for dut_name, (dut_result, dut_aliases) in (
                         sim_result.results.items()
                     ):
-                        # Resolve dut.xxx → dut_name_xxx for net lookup
-                        dut_net = raw_net
-                        if dut_net.startswith("dut_"):
-                            dut_net = f"{dut_name}_{dut_net[4:]}"
-                        elif dut_net.startswith("dut."):
-                            dut_net = f"{dut_name}_{dut_net[4:].replace('.', '_')}"
-                        normalized_dut_net = dut_net.replace(".", "_")
-                        resolved_dut_net = dut_aliases.get(
-                            dut_net,
-                            dut_aliases.get(
-                                normalized_dut_net, normalized_dut_net
-                            ),
+                        sig_key = _resolve_signal_key(
+                            raw_net, dut_aliases, dut_name=dut_name
                         )
-
-                        # Resolve context nets for this DUT
-                        dut_ctx = []
-                        for ctx_net in req.get_context_nets():
-                            cn = ctx_net
-                            if cn.startswith("dut_"):
-                                cn = f"{dut_name}_{cn[4:]}"
-                            elif cn.startswith("dut."):
-                                cn = f"{dut_name}_{cn[4:].replace('.', '_')}"
-                            cn_norm = cn.replace(".", "_")
-                            dut_ctx.append(
-                                dut_aliases.get(
-                                    cn, dut_aliases.get(cn_norm, cn_norm)
-                                )
-                            )
-
-                        sig_key = (
-                            f"v({resolved_dut_net})"
-                            if not resolved_dut_net.startswith(("v(", "i("))
-                            else resolved_dut_net
+                        dut_ctx = _resolve_context_nets(
+                            req.get_context_nets(), dut_aliases,
+                            dut_name=dut_name,
                         )
 
                         try:
                             if isinstance(dut_result, TransientResult):
                                 signal_data = dut_result[sig_key]
                                 time_data = dut_result.time
-                                tran_start = req.get_tran_start()
                                 if tran_start and tran_start > 0:
                                     time_data, signal_data = _slice_from(
                                         time_data, signal_data, tran_start
                                     )
-                                env_min, env_max = (
-                                    _safe_get_bounds(req)
-                                    if measurement == "envelope"
-                                    else (None, None)
-                                )
                                 val = _measure_tran(
                                     measurement,
                                     signal_data,
@@ -3238,65 +3242,18 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                     settling_tolerance=settling_tol,
                                     sim_result=dut_result,
                                     context_nets=dut_ctx,
-                                    min_val=env_min,
-                                    max_val=env_max,
+                                    min_val=env_bounds[0],
+                                    max_val=env_bounds[1],
                                 )
                                 actuals_per_dut[dut_name] = val
                             elif isinstance(dut_result, dict):
-                                # Sweep result per DUT: dict[float, TransientResult]
-                                sweep_actuals = []
-                                dut_sp_data: list[dict] = []
-                                s_env_min, s_env_max = (
-                                    _safe_get_bounds(req)
-                                    if measurement == "envelope"
-                                    else (None, None)
+                                dut_sp_data, worst = _measure_sweep_points(
+                                    dut_result, sig_key, measurement,
+                                    settling_tol, tran_start, dut_ctx,
+                                    env_bounds, req_bounds,
                                 )
-                                for pval, point_result in sorted(dut_result.items()):
-                                    if not isinstance(point_result, TransientResult):
-                                        continue
-                                    try:
-                                        sd = point_result[sig_key]
-                                    except KeyError:
-                                        continue
-                                    td = point_result.time
-                                    tran_start = req.get_tran_start()
-                                    if tran_start and tran_start > 0:
-                                        td, sd = _slice_from(td, sd, tran_start)
-                                    try:
-                                        v = _measure_tran(
-                                            measurement, sd, td,
-                                            settling_tolerance=settling_tol,
-                                            sim_result=point_result,
-                                            context_nets=dut_ctx,
-                                            min_val=s_env_min,
-                                            max_val=s_env_max,
-                                        )
-                                    except Exception:
-                                        continue
-                                    sweep_actuals.append(v)
-                                    dut_sp_data.append({
-                                        "paramValue": pval,
-                                        "actual": v,
-                                    })
-                                if sweep_actuals:
-                                    s_min, s_max = _safe_get_bounds(req)
-                                    if s_min is not None and s_max is not None:
-                                        mid = (s_min + s_max) / 2
-                                        actuals_per_dut[dut_name] = max(
-                                            sweep_actuals,
-                                            key=lambda v: abs(v - mid),
-                                        )
-                                        for sp in dut_sp_data:
-                                            sp["passed"] = (
-                                                math.isfinite(sp["actual"])
-                                                and s_min <= sp["actual"] <= s_max
-                                            )
-                                    else:
-                                        actuals_per_dut[dut_name] = sweep_actuals[-1]
-                                        for sp in dut_sp_data:
-                                            sp["passed"] = False
-                                # Use the first DUT's sweep points
-                                # (most common case is single-DUT)
+                                if dut_sp_data:
+                                    actuals_per_dut[dut_name] = worst
                                 if dut_sp_data and not mdut_sweep_points:
                                     mdut_sweep_points = dut_sp_data
                         except Exception:
@@ -3310,9 +3267,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         actual = float("nan")
                         passed = False
                     else:
-                        # Pass/fail: compare measurement scalar to bounds
-                        import math
-                        min_v, max_v = _safe_get_bounds(req)
+                        min_v, max_v = req_bounds
                         if min_v is not None and max_v is not None:
                             mid = (min_v + max_v) / 2
                             actual = max(
@@ -3372,23 +3327,16 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                     continue
 
                 # ----- Single-DUT handling (original path) -----
-                # Resolve net alias (normalize dots→underscores for lookup)
+                raw_addr = req.net.get().try_extract_singleton() or ""
+                # Resolve net alias (bare name for RequirementResult/AC)
                 normalized_net = raw_net.replace(".", "_")
                 resolved_net = net_aliases.get(
                     raw_net, net_aliases.get(normalized_net, raw_net)
                 )
-                raw_addr = req.net.get().try_extract_singleton() or ""
-
-                # Resolve context nets (normalize dots→underscores for alias lookup)
-                resolved_ctx = []
-                for ctx_net in req.get_context_nets():
-                    # Try exact match first, then normalized (dot→underscore)
-                    normalized = ctx_net.replace(".", "_")
-                    resolved = net_aliases.get(
-                        ctx_net,
-                        net_aliases.get(normalized, ctx_net),
-                    )
-                    resolved_ctx.append(resolved)
+                sig_key = _resolve_signal_key(raw_net, net_aliases)
+                resolved_ctx = _resolve_context_nets(
+                    req.get_context_nets(), net_aliases
+                )
 
                 # Resolve diff_ref_net
                 raw_diff = req.get_diff_ref_net()
@@ -3396,47 +3344,35 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                 if raw_diff:
                     resolved_diff = net_aliases.get(raw_diff, raw_diff)
 
-                import math
-
-                signal_data = None  # set for transient, used by all-points check
+                signal_data = None
                 sweep_point_data: list[dict] = []
+                tran_start = req.get_tran_start()
+                env_bounds = (
+                    _safe_get_bounds(req)
+                    if measurement == "envelope"
+                    else (None, None)
+                )
 
                 if isinstance(sim_result, TransientResult):
-                    # Construct signal key
-                    sig_key = (
-                        f"v({resolved_net})"
-                        if not resolved_net.startswith(("v(", "i("))
-                        else resolved_net
-                    )
-
                     # Handle differential measurement
                     if resolved_diff:
-                        ref_key = (
-                            f"v({resolved_diff})"
-                            if not resolved_diff.startswith(("v(", "i("))
-                            else resolved_diff
-                        )
+                        ref_key = _resolve_signal_key(resolved_diff, net_aliases)
                         signal_data = [
                             a - b
-                            for a, b in zip(sim_result[sig_key], sim_result[ref_key])
+                            for a, b in zip(
+                                sim_result[sig_key],
+                                sim_result[ref_key],
+                            )
                         ]
                     else:
                         signal_data = sim_result[sig_key]
 
                     time_data = sim_result.time
-
-                    # Apply tran_start filtering if requirement specifies it
-                    tran_start = req.get_tran_start()
                     if tran_start and tran_start > 0:
                         time_data, signal_data = _slice_from(
                             time_data, signal_data, tran_start
                         )
 
-                    env_min, env_max = (
-                        _safe_get_bounds(req)
-                        if measurement == "envelope"
-                        else (None, None)
-                    )
                     actual = _measure_tran(
                         measurement,
                         signal_data,
@@ -3444,8 +3380,8 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         settling_tolerance=settling_tol,
                         sim_result=sim_result,
                         context_nets=resolved_ctx,
-                        min_val=env_min,
-                        max_val=env_max,
+                        min_val=env_bounds[0],
+                        max_val=env_bounds[1],
                     )
                 elif isinstance(sim_result, ACResult):
                     ref_net = req.get_ac_ref_net()
@@ -3455,71 +3391,11 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         ref_net, measure_freq,
                     )
                 elif isinstance(sim_result, dict):
-                    # Sweep result: dict[float, TransientResult]
-                    # Measure each point and take the worst case
-                    sweep_point_data: list[dict] = []
-                    for pval, point_result in sorted(sim_result.items()):
-                        if not isinstance(point_result, TransientResult):
-                            continue
-                        sig_key = (
-                            f"v({resolved_net})"
-                            if not resolved_net.startswith(("v(", "i("))
-                            else resolved_net
-                        )
-                        try:
-                            signal_data = point_result[sig_key]
-                        except KeyError:
-                            continue
-                        time_data = point_result.time
-
-                        # Apply tran_start filtering for sweeps too
-                        tran_start = req.get_tran_start()
-                        if tran_start and tran_start > 0:
-                            time_data, signal_data = _slice_from(
-                                time_data, signal_data, tran_start
-                            )
-
-                        s_env_min, s_env_max = (
-                            _safe_get_bounds(req)
-                            if measurement == "envelope"
-                            else (None, None)
-                        )
-                        try:
-                            val = _measure_tran(
-                                measurement,
-                                signal_data,
-                                time_data,
-                                settling_tolerance=settling_tol,
-                                sim_result=point_result,
-                                context_nets=resolved_ctx,
-                                min_val=s_env_min,
-                                max_val=s_env_max,
-                            )
-                        except Exception:
-                            continue
-                        sweep_point_data.append({
-                            "paramValue": pval,
-                            "actual": val,
-                        })
-                    actuals = [sp["actual"] for sp in sweep_point_data]
-                    if actuals:
-                        # For sweep: use worst-case (furthest from bounds)
-                        s_min, s_max = _safe_get_bounds(req)
-                        if s_min is not None and s_max is not None:
-                            mid = (s_min + s_max) / 2
-                            actual = max(actuals, key=lambda v: abs(v - mid))
-                            # Add passed per sweep point
-                            for sp in sweep_point_data:
-                                sp["passed"] = (
-                                    math.isfinite(sp["actual"])
-                                    and s_min <= sp["actual"] <= s_max
-                                )
-                        else:
-                            actual = actuals[-1]
-                            for sp in sweep_point_data:
-                                sp["passed"] = False
-                    else:
-                        actual = float("nan")
+                    sweep_point_data, actual = _measure_sweep_points(
+                        sim_result, sig_key, measurement,
+                        settling_tol, tran_start, resolved_ctx,
+                        env_bounds, _safe_get_bounds(req),
+                    )
                 else:
                     logger.warning(
                         f"Unsupported result type for requirement "

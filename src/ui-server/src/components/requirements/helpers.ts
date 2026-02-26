@@ -1,3 +1,45 @@
+import type { RequirementData, FilterType } from './types';
+
+/** Whether a requirement has a finite numeric result */
+export function hasResult(r: { actual: number | null }): boolean {
+  return r.actual !== null && isFinite(r.actual);
+}
+
+/** Filter requirements by status/type and optional search query */
+export function filterRequirements(
+  reqs: RequirementData[],
+  filter: FilterType,
+  search?: string,
+): RequirementData[] {
+  let result = reqs;
+  if (filter === 'pass') result = result.filter(r => hasResult(r) && r.passed);
+  else if (filter === 'fail') result = result.filter(r => hasResult(r) && !r.passed);
+  else if (filter === 'dc') result = result.filter(r => r.capture === 'dcop');
+  else if (filter === 'transient') result = result.filter(r => r.capture === 'transient');
+  else if (filter === 'ac') result = result.filter(r => r.capture === 'ac');
+  if (search?.trim()) {
+    const q = search.toLowerCase();
+    result = result.filter(r =>
+      r.name.toLowerCase().includes(q) ||
+      r.net.toLowerCase().includes(q) ||
+      r.measurement.toLowerCase().includes(q) ||
+      r.id.toLowerCase().includes(q),
+    );
+  }
+  return result;
+}
+
+/** Compute pass/fail/pending counts for a list of requirements */
+export function computeRequirementStats(reqs: RequirementData[]): { passCount: number; failCount: number; pendingCount: number } {
+  let passCount = 0, failCount = 0, pendingCount = 0;
+  for (const r of reqs) {
+    if (!hasResult(r)) pendingCount++;
+    else if (r.passed) passCount++;
+    else failCount++;
+  }
+  return { passCount, failCount, pendingCount };
+}
+
 /** Format a number with engineering prefix (e.g. 7.5 V, 250 uA) */
 export function formatEng(value: number, unit: string): string {
   if (unit === '%') return `${value.toFixed(2)}%`;

@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.0.0-dev.1771980157-dev.1771996934",
+    "version": "0.0.0",
     "preview": false,
     "publisher": "atopile",
     "license": "MIT",

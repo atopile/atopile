@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { RequirementData } from './types';
+import { hasResult } from './helpers';
 
 interface RequirementItemProps {
   req: RequirementData;
@@ -12,13 +13,13 @@ export const RequirementItem = memo(function RequirementItem({
   selected,
   onClick,
 }: RequirementItemProps) {
-  const hasResult = req.actual !== null && isFinite(req.actual);
+  const hasRes = hasResult(req);
   return (
     <div
       className={`req-item ${selected ? 'selected' : ''}`}
       onClick={onClick}
     >
-      <div className={`req-status-dot ${hasResult ? (req.passed ? 'pass' : 'fail') : 'pending'}`} />
+      <div className={`req-status-dot ${hasRes ? (req.passed ? 'pass' : 'fail') : 'pending'}`} />
       <div className="req-item-info">
         <div className="req-item-name">{req.name}</div>
         <div className="req-item-limit">

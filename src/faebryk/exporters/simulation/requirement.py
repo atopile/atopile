@@ -1028,7 +1028,7 @@ def _finalize_plot(
         height=540,
         template="plotly_white",
         showlegend=True,
-        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top"),
+        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top", traceorder="normal"),
     )
 
     if time_scaled:
@@ -1686,7 +1686,7 @@ def _finalize_ac_plot(
         height=540,
         template="plotly_white",
         showlegend=True,
-        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top"),
+        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top", traceorder="normal"),
     )
     fig.write_html(str(path))
     return _extract_plot_specs(fig)
