@@ -22,21 +22,12 @@ ENDPOINT_3D_MODEL_STEP = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{
 class EasyEDAApiError(Exception): ...
 
 
-@once
-def _get_headers() -> dict[str, str]:
-    from importlib.metadata import version as get_package_version
-
-    try:
-        ver = get_package_version("atopile")
-    except Exception:
-        ver = "unknown"
-
-    return {
-        "Accept-Encoding": "gzip, deflate",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "User-Agent": f"easyeda2kicad v{ver}",
-    }
+_HEADERS = {
+    "Accept-Encoding": "gzip, deflate",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "User-Agent": "easyeda2kicad v0.8.0",
+}
 
 
 @once
@@ -48,7 +39,7 @@ def _get_verify() -> bool:
 
 def get_cad_data(lcsc_id: str) -> dict | None:
     """Fetch component CAD data from EasyEDA API. Returns the result dict or None."""
-    with http_client(headers=_get_headers(), verify=_get_verify()) as client:
+    with http_client(headers=_HEADERS, verify=_get_verify()) as client:
         r = client.get(url=API_ENDPOINT.format(lcsc_id=lcsc_id))
 
     api_response = r.json()
@@ -64,7 +55,7 @@ def get_cad_data(lcsc_id: str) -> dict | None:
 
 def get_step_model(uuid: str) -> bytes | None:
     """Fetch STEP 3D model binary data. Returns bytes or None."""
-    headers = {"User-Agent": _get_headers()["User-Agent"]}
+    headers = {"User-Agent": _HEADERS["User-Agent"]}
     with http_client(headers=headers, verify=_get_verify()) as client:
         r = client.get(url=ENDPOINT_3D_MODEL_STEP.format(uuid=uuid))
 

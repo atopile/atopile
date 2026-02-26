@@ -74,6 +74,35 @@ class EeFpArc:
 
 
 @dataclass
+class EeFpVia:
+    center_x: float  # mm
+    center_y: float  # mm
+    diameter: float  # mm
+    net: str
+    radius: float  # mm
+    id: str
+    is_locked: bool
+
+
+@dataclass
+class EeFpText:
+    type: str  # "N" for non-visible, etc.
+    center_x: float  # mm
+    center_y: float  # mm
+    stroke_width: float  # mm
+    rotation: float
+    mirror: str
+    layer_id: int
+    net: str
+    font_size: float  # mm
+    text: str
+    text_path: str
+    is_displayed: bool
+    id: str
+    is_locked: bool
+
+
+@dataclass
 class EeFpRect:
     x: float  # mm
     y: float  # mm
@@ -106,9 +135,11 @@ class EeFootprint:
     pads: list[EeFpPad] = field(default_factory=list)
     tracks: list[EeFpTrack] = field(default_factory=list)
     holes: list[EeFpHole] = field(default_factory=list)
+    vias: list[EeFpVia] = field(default_factory=list)
     circles: list[EeFpCircle] = field(default_factory=list)
     arcs: list[EeFpArc] = field(default_factory=list)
     rects: list[EeFpRect] = field(default_factory=list)
+    texts: list[EeFpText] = field(default_factory=list)
     model_3d: Ee3dModelInfo | None = None
 
 
@@ -189,11 +220,11 @@ class EeSymbolUnit:
 class EeSymbolInfo:
     name: str
     prefix: str
-    package: str
-    manufacturer: str
-    datasheet: str
-    lcsc_id: str
-    jlc_id: str
+    package: str | None
+    manufacturer: str | None
+    datasheet: str | None
+    lcsc_id: str | None
+    jlc_id: str | None
 
 
 @dataclass

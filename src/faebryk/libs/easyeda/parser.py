@@ -14,7 +14,9 @@ from faebryk.libs.easyeda.easyeda_types import (
     EeFpHole,
     EeFpPad,
     EeFpRect,
+    EeFpText,
     EeFpTrack,
+    EeFpVia,
     EeSymArc,
     EeSymbol,
     EeSymbolInfo,
@@ -68,6 +70,13 @@ def _int(val: str, default: int = 0) -> int:
         return default
 
 
+def _text_is_displayed(val: str) -> bool:
+    """Match old Pydantic validator: empty string → True, otherwise parse as bool."""
+    if val == "":
+        return True
+    return _bool_field(val)
+
+
 def _has_fill(f: list[str], idx: int) -> bool:
     raw = _get(f, idx)
     return bool(raw and raw.lower() != "none")
@@ -110,9 +119,13 @@ def parse_footprint(cad_data: dict) -> EeFootprint:
             fp.arcs.append(_parse_arc(fields))
         elif designator == "RECT":
             fp.rects.append(_parse_rect(fields))
+        elif designator == "VIA":
+            fp.vias.append(_parse_via(fields))
+        elif designator == "TEXT":
+            fp.texts.append(_parse_text(fields))
         elif designator == "SVGNODE":
             fp.model_3d = _parse_3d_model(fields)
-        elif designator in ("TEXT", "SOLIDREGION", "VIA"):
+        elif designator == "SOLIDREGION":
             pass  # skip
         else:
             logger.warning(f"Unknown footprint designator: {designator}")
@@ -199,6 +212,37 @@ def _parse_rect(f: list[str]) -> EeFpRect:
     )
 
 
+def _parse_via(f: list[str]) -> EeFpVia:
+    return EeFpVia(
+        center_x=_to_mm(_float(_get(f, 0))),
+        center_y=_to_mm(_float(_get(f, 1))),
+        diameter=_to_mm(_float(_get(f, 2))),
+        net=_get(f, 3),
+        radius=_to_mm(_float(_get(f, 4))),
+        id=_get(f, 5),
+        is_locked=_bool_field(_get(f, 6)),
+    )
+
+
+def _parse_text(f: list[str]) -> EeFpText:
+    return EeFpText(
+        type=_get(f, 0),
+        center_x=_to_mm(_float(_get(f, 1))),
+        center_y=_to_mm(_float(_get(f, 2))),
+        stroke_width=_to_mm(_float(_get(f, 3))),
+        rotation=_float(_get(f, 4)),
+        mirror=_get(f, 5),
+        layer_id=_int(_get(f, 6), default=1),
+        net=_get(f, 7),
+        font_size=_to_mm(_float(_get(f, 8))),
+        text=_get(f, 9),
+        text_path=_get(f, 10),
+        is_displayed=_text_is_displayed(_get(f, 11, "1")),
+        id=_get(f, 12),
+        is_locked=_bool_field(_get(f, 13)),
+    )
+
+
 def _parse_3d_model(fields: list[str]) -> Ee3dModelInfo | None:
     if not fields:
         return None
@@ -231,13 +275,13 @@ def parse_symbol(cad_data: dict) -> EeSymbol:
 
     sym = EeSymbol(
         info=EeSymbolInfo(
-            name=ee_data_info.get("name", ""),
-            prefix=ee_data_info.get("pre", ""),
-            package=ee_data_info.get("package", ""),
-            manufacturer=ee_data_info.get("BOM_Manufacturer", ""),
-            datasheet=cad_data["lcsc"].get("url", ""),
-            lcsc_id=cad_data["lcsc"].get("number", ""),
-            jlc_id=ee_data_info.get("BOM_JLCPCB Part Class", ""),
+            name=ee_data_info["name"],
+            prefix=ee_data_info["pre"],
+            package=ee_data_info.get("package", None),
+            manufacturer=ee_data_info.get("BOM_Manufacturer", None),
+            datasheet=cad_data["lcsc"].get("url", None),
+            lcsc_id=cad_data["lcsc"].get("number", None),
+            jlc_id=ee_data_info.get("BOM_JLCPCB Part Class", None),
         ),
     )
 
