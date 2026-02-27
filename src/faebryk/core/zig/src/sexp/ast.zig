@@ -353,6 +353,21 @@ const ListFrame = struct {
     child_count: u32,
 };
 
+const OverflowEntry = struct {
+    idx: u32,
+    count: u32,
+};
+
+const ListChildCounts = struct {
+    counts16: []u16,
+    overflow_entries: []OverflowEntry,
+
+    fn deinit(self: ListChildCounts, allocator: std.mem.Allocator) void {
+        allocator.free(self.counts16);
+        allocator.free(self.overflow_entries);
+    }
+};
+
 fn countListNodes(tokens: []const Token) usize {
     var count: usize = 0;
     for (tokens) |token| {
@@ -369,11 +384,13 @@ fn incrementTopChildCount(stack: *std.array_list.Managed(ListFrame)) void {
     }
 }
 
-fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) ParseError![]u32 {
+fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) ParseError!ListChildCounts {
     const list_count = countListNodes(tokens);
-    var child_counts = try allocator.alloc(u32, list_count);
-    errdefer allocator.free(child_counts);
-    @memset(child_counts, 0);
+    var child_counts16 = try allocator.alloc(u16, list_count);
+    errdefer allocator.free(child_counts16);
+    @memset(child_counts16, 0);
+    var overflow_builder = std.array_list.Managed(OverflowEntry).init(allocator);
+    defer overflow_builder.deinit();
 
     var stack = std.array_list.Managed(ListFrame).init(allocator);
     defer stack.deinit();
@@ -391,20 +408,38 @@ fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) Par
             },
             .rparen => {
                 const frame = stack.pop() orelse return error.UnexpectedRightParen;
-                child_counts[frame.meta_idx] = frame.child_count;
+                if (frame.child_count <= std.math.maxInt(u16)) {
+                    child_counts16[frame.meta_idx] = @as(u16, @intCast(frame.child_count));
+                } else {
+                    child_counts16[frame.meta_idx] = std.math.maxInt(u16);
+                    try overflow_builder.append(.{
+                        .idx = @as(u32, @intCast(frame.meta_idx)),
+                        .count = frame.child_count,
+                    });
+                }
             },
             else => incrementTopChildCount(&stack),
         }
     }
 
     if (stack.items.len != 0) return error.UnterminatedList;
-    return child_counts;
+    std.sort.pdq(OverflowEntry, overflow_builder.items, {}, struct {
+        fn lessThan(_: void, lhs: OverflowEntry, rhs: OverflowEntry) bool {
+            return lhs.idx < rhs.idx;
+        }
+    }.lessThan);
+    return .{
+        .counts16 = child_counts16,
+        .overflow_entries = try overflow_builder.toOwnedSlice(),
+    };
 }
 
 pub const Parser = struct {
     source: []const u8,
     tokens: []const Token,
-    list_child_counts: []const u32,
+    list_child_counts16: []const u16,
+    overflow_entries: []const OverflowEntry,
+    overflow_cursor: usize,
     list_meta_cursor: usize,
     position: usize,
     list_pool: []SExp,
@@ -414,11 +449,13 @@ pub const Parser = struct {
     copy_atoms: bool,
     track_locations: bool,
 
-    pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: []const u32) Parser {
+    pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: ListChildCounts) Parser {
         return .{
             .source = source,
             .tokens = tokens,
-            .list_child_counts = list_child_counts,
+            .list_child_counts16 = list_child_counts.counts16,
+            .overflow_entries = list_child_counts.overflow_entries,
+            .overflow_cursor = 0,
             .list_meta_cursor = 0,
             .position = 0,
             .list_pool = &[_]SExp{},
@@ -430,11 +467,13 @@ pub const Parser = struct {
         };
     }
 
-    pub fn initBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: []const u32) Parser {
+    pub fn initBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: ListChildCounts) Parser {
         return .{
             .source = source,
             .tokens = tokens,
-            .list_child_counts = list_child_counts,
+            .list_child_counts16 = list_child_counts.counts16,
+            .overflow_entries = list_child_counts.overflow_entries,
+            .overflow_cursor = 0,
             .list_meta_cursor = 0,
             .position = 0,
             .list_pool = &[_]SExp{},
@@ -444,6 +483,18 @@ pub const Parser = struct {
             .copy_atoms = false,
             .track_locations = true,
         };
+    }
+
+    fn listChildCountAt(self: *Parser, idx: usize) ParseError!usize {
+        if (idx >= self.list_child_counts16.len) return error.UnterminatedList;
+        const raw = self.list_child_counts16[idx];
+        if (raw != std.math.maxInt(u16)) return @as(usize, raw);
+
+        if (self.overflow_cursor >= self.overflow_entries.len) return error.UnterminatedList;
+        const entry = self.overflow_entries[self.overflow_cursor];
+        if (entry.idx != @as(u32, @intCast(idx))) return error.UnterminatedList;
+        self.overflow_cursor += 1;
+        return @as(usize, entry.count);
     }
 
     fn tokenSlice(self: *const Parser, token: Token) []const u8 {
@@ -516,10 +567,10 @@ pub const Parser = struct {
     }
 
     fn parseList(self: *Parser, start_location: TokenLocation) ParseError!SExp {
-        if (self.list_meta_cursor >= self.list_child_counts.len) {
+        if (self.list_meta_cursor >= self.list_child_counts16.len) {
             return error.UnterminatedList;
         }
-        const child_count = @as(usize, self.list_child_counts[self.list_meta_cursor]);
+        const child_count = try self.listChildCountAt(self.list_meta_cursor);
         self.list_meta_cursor += 1;
 
         var items: []SExp = undefined;
@@ -567,7 +618,7 @@ pub const Parser = struct {
 // Parse a single S-expression
 pub fn parse(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
     const child_counts = try buildListChildCounts(allocator, tokens);
-    defer allocator.free(child_counts);
+    defer child_counts.deinit(allocator);
     var parser = Parser.init(allocator, source, tokens, child_counts);
     return try parser.parse() orelse return error.EmptyFile;
 }
@@ -576,7 +627,7 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8, tokens: []const T
 // Callers must ensure token storage outlives the returned SExp.
 pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
     const child_counts = try buildListChildCounts(allocator, tokens);
-    defer allocator.free(child_counts);
+    defer child_counts.deinit(allocator);
     var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
     return try parser.parse() orelse return error.EmptyFile;
 }
@@ -585,10 +636,17 @@ pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: [
 // This is the fastest/lower-memory path for decode-only pipelines.
 pub fn parseBorrowedFast(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
     const child_counts = try buildListChildCounts(allocator, tokens);
-    defer allocator.free(child_counts);
+    defer child_counts.deinit(allocator);
     var total_child_slots: usize = 0;
-    for (child_counts) |count| {
-        total_child_slots = std.math.add(usize, total_child_slots, @as(usize, count)) catch return error.OutOfMemory;
+    var overflow_idx: usize = 0;
+    for (child_counts.counts16) |count16| {
+        if (count16 == std.math.maxInt(u16)) {
+            const count = child_counts.overflow_entries[overflow_idx].count;
+            overflow_idx += 1;
+            total_child_slots = std.math.add(usize, total_child_slots, @as(usize, count)) catch return error.OutOfMemory;
+        } else {
+            total_child_slots = std.math.add(usize, total_child_slots, @as(usize, count16)) catch return error.OutOfMemory;
+        }
     }
     const list_pool = try allocator.alloc(SExp, total_child_slots);
     var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
