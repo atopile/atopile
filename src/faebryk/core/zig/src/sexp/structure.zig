@@ -1340,30 +1340,82 @@ pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, sy
 }
 
 // Load a struct from an S-expression string with a wrapping symbol
-pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected_symbol: []const u8) !T {
-    // Parse S-expression from input
-    var sexp: SExp = undefined;
-    var should_deinit = false;
+fn decodeWrappedWithExpectedSymbol(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, expected_symbol: []const u8) !T {
+    // The file structure is (symbol_name ...)
+    const file_list = ast.getList(sexp) orelse {
+        setCtx(T, sexp, null, "expected list at top level");
+        return error.UnexpectedType;
+    };
+    if (file_list.len < 1) {
+        setCtx(T, sexp, null, "empty top-level list");
+        return error.UnexpectedType;
+    }
 
+    const symbol = ast.getSymbol(file_list[0]) orelse {
+        setCtx(T, file_list[0], null, "expected symbol as first element");
+        return error.UnexpectedType;
+    };
+    if (!std.mem.eql(u8, symbol, expected_symbol)) {
+        setCtx(T, file_list[0], null, std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol");
+        return error.UnexpectedType;
+    }
+
+    // Create a new list without the symbol for decoding
+    const contents = file_list[1..];
+    const table_sexp = ast.SExp{ .value = .{ .list = contents }, .location = null };
+
+    // Decode
+    return try decodeWithMetadata(T, allocator, table_sexp, SexpField{});
+}
+
+pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected_symbol: []const u8) !T {
     switch (in) {
         .path => {
             const file_content = try std.fs.cwd().readFileAlloc(allocator, in.path, 200 * 1024 * 1024);
             defer allocator.free(file_content);
             const tokens = try tokenizer.tokenize(allocator, file_content);
             defer allocator.free(tokens);
-            sexp = try ast.parse(allocator, file_content, tokens);
-            should_deinit = true;
+
+            var fast_parse_arena = std.heap.ArenaAllocator.init(allocator);
+            defer fast_parse_arena.deinit();
+            const fast_sexp = try ast.parseBorrowedFast(fast_parse_arena.allocator(), file_content, tokens);
+            if (decodeWrappedWithExpectedSymbol(T, allocator, fast_sexp, expected_symbol)) |decoded| {
+                return decoded;
+            } else |err| {
+                if (err == error.OutOfMemory) return err;
+
+                // Retry with location tracking for rich diagnostics.
+                clearErrorContext();
+                var diag_parse_arena = std.heap.ArenaAllocator.init(allocator);
+                defer diag_parse_arena.deinit();
+                const diag_sexp = try ast.parseBorrowed(diag_parse_arena.allocator(), file_content, tokens);
+                return decodeWrappedWithExpectedSymbol(T, allocator, diag_sexp, expected_symbol);
+            }
         },
         .string => {
             const tokens = try tokenizer.tokenize(allocator, in.string);
             defer allocator.free(tokens);
-            sexp = try ast.parse(allocator, in.string, tokens);
-            should_deinit = true;
+
+            var fast_parse_arena = std.heap.ArenaAllocator.init(allocator);
+            defer fast_parse_arena.deinit();
+            const fast_sexp = try ast.parseBorrowedFast(fast_parse_arena.allocator(), in.string, tokens);
+            if (decodeWrappedWithExpectedSymbol(T, allocator, fast_sexp, expected_symbol)) |decoded| {
+                return decoded;
+            } else |err| {
+                if (err == error.OutOfMemory) return err;
+
+                // Retry with location tracking for rich diagnostics.
+                clearErrorContext();
+                var diag_parse_arena = std.heap.ArenaAllocator.init(allocator);
+                defer diag_parse_arena.deinit();
+                const diag_sexp = try ast.parseBorrowed(diag_parse_arena.allocator(), in.string, tokens);
+                return decodeWrappedWithExpectedSymbol(T, allocator, diag_sexp, expected_symbol);
+            }
         },
         .sexp => |s| {
             // When given a pre-parsed SExp, check if it's already unwrapped
             // (i.e., if it's the contents without the symbol wrapper)
-            sexp = s;
+            return decodeWrappedWithExpectedSymbol(T, allocator, s, expected_symbol);
             // for now dont support that
             //if (ast.isList(s)) {
             //    const items = ast.getList(s).?;
@@ -1405,33 +1457,6 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
             //}
         },
     }
-    defer if (should_deinit) sexp.deinit(allocator);
-
-    // The file structure is (symbol_name ...)
-    const file_list = ast.getList(sexp) orelse {
-        setCtx(T, sexp, null, "expected list at top level");
-        return error.UnexpectedType;
-    };
-    if (file_list.len < 1) {
-        setCtx(T, sexp, null, "empty top-level list");
-        return error.UnexpectedType;
-    }
-
-    const symbol = ast.getSymbol(file_list[0]) orelse {
-        setCtx(T, file_list[0], null, "expected symbol as first element");
-        return error.UnexpectedType;
-    };
-    if (!std.mem.eql(u8, symbol, expected_symbol)) {
-        setCtx(T, file_list[0], null, std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol");
-        return error.UnexpectedType;
-    }
-
-    // Create a new list without the symbol for decoding
-    const contents = file_list[1..];
-    const table_sexp = ast.SExp{ .value = .{ .list = contents }, .location = null };
-
-    // Decode
-    return try decodeWithMetadata(T, allocator, table_sexp, SexpField{});
 }
 
 // Dump a struct to an S-expression string with a wrapping symbol

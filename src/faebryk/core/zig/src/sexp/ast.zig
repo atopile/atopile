@@ -412,6 +412,7 @@ pub const Parser = struct {
     scan_location: LocationInfo,
     allocator: std.mem.Allocator,
     copy_atoms: bool,
+    track_locations: bool,
 
     pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: []const u32) Parser {
         return .{
@@ -424,6 +425,7 @@ pub const Parser = struct {
             .scan_location = .{ .line = 1, .column = 1 },
             .allocator = allocator,
             .copy_atoms = true,
+            .track_locations = true,
         };
     }
 
@@ -438,6 +440,7 @@ pub const Parser = struct {
             .scan_location = .{ .line = 1, .column = 1 },
             .allocator = allocator,
             .copy_atoms = false,
+            .track_locations = true,
         };
     }
 
@@ -483,7 +486,7 @@ pub const Parser = struct {
 
         const token = self.tokens[self.position];
         self.position += 1;
-        const token_location = self.tokenLocation(token);
+        const token_location: ?TokenLocation = if (self.track_locations) self.tokenLocation(token) else null;
         const token_value = self.tokenSlice(token);
 
         switch (token.type) {
@@ -534,7 +537,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseList(self: *Parser, start_location: TokenLocation) ParseError!SExp {
+    fn parseList(self: *Parser, start_location: ?TokenLocation) ParseError!SExp {
         if (self.list_meta_cursor >= self.list_child_counts.len) {
             return error.UnterminatedList;
         }
@@ -543,6 +546,13 @@ pub const Parser = struct {
 
         var items = try self.allocator.alloc(SExp, child_count);
         var i: usize = 0;
+        errdefer {
+            var j: usize = 0;
+            while (j < i) : (j += 1) {
+                items[j].deinit(self.allocator);
+            }
+            self.allocator.free(items);
+        }
         while (i < child_count) : (i += 1) {
             items[i] = (try self.parse()) orelse return error.UnterminatedList;
         }
@@ -554,12 +564,13 @@ pub const Parser = struct {
         if (next_token.type != .rparen) {
             return error.UnterminatedList;
         }
-        const end_location = self.tokenLocation(next_token);
+        const end_location = if (self.track_locations) self.tokenLocation(next_token) else null;
+        const list_location: ?TokenLocation = if (self.track_locations) .{
+            .start = start_location.?.start,
+            .end = end_location.?.end,
+        } else null;
         self.position += 1;
-        return SExp{ .value = .{ .list = items }, .location = .{
-            .start = start_location.start,
-            .end = end_location.end,
-        } };
+        return SExp{ .value = .{ .list = items }, .location = list_location };
     }
 };
 
@@ -578,6 +589,16 @@ pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: [
     const child_counts = try buildListChildCounts(allocator, tokens);
     defer allocator.free(child_counts);
     var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
+    return try parser.parse() orelse return error.EmptyFile;
+}
+
+// Parse without duplicating symbol/number/comment atoms and skip location tracking.
+// This is the fastest/lower-memory path for decode-only pipelines.
+pub fn parseBorrowedFast(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
+    const child_counts = try buildListChildCounts(allocator, tokens);
+    defer allocator.free(child_counts);
+    var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
+    parser.track_locations = false;
     return try parser.parse() orelse return error.EmptyFile;
 }
 
