@@ -1348,6 +1348,11 @@ pub const GraphView = struct {
         if (header.magic_number != MAGIC) return error.InvalidMagic;
         if (header.version != FORMAT_VERSION) return error.VersionMismatch;
 
+        // node_count contributes 0 bytes to the payload, so computeTotalSize
+        // can't catch an inflated value. Cap against the static array limit
+        // to prevent OOM via malicious headers.
+        if (header.node_count > Nodes.len) return error.MalformedPayload;
+
         const expected_size = try computeTotalSize(header);
         if (bytes.len != expected_size) return error.BufferSizeMismatch;
 
