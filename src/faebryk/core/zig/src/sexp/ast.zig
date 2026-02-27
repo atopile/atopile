@@ -349,19 +349,76 @@ pub const ParseError = error{
     EmptyFile,
 };
 
+const ListFrame = struct {
+    meta_idx: usize,
+    child_count: u32,
+};
+
+fn countListNodes(tokens: []const Token) usize {
+    var count: usize = 0;
+    for (tokens) |token| {
+        if (token.type == .lparen) count += 1;
+    }
+    return count;
+}
+
+fn incrementTopChildCount(stack: *std.array_list.Managed(ListFrame)) void {
+    if (stack.items.len == 0) return;
+    var top = &stack.items[stack.items.len - 1];
+    if (top.child_count != std.math.maxInt(u32)) {
+        top.child_count += 1;
+    }
+}
+
+fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) ParseError![]u32 {
+    const list_count = countListNodes(tokens);
+    var child_counts = try allocator.alloc(u32, list_count);
+    errdefer allocator.free(child_counts);
+    @memset(child_counts, 0);
+
+    var stack = std.array_list.Managed(ListFrame).init(allocator);
+    defer stack.deinit();
+
+    var next_meta: usize = 0;
+    for (tokens) |token| {
+        switch (token.type) {
+            .lparen => {
+                incrementTopChildCount(&stack);
+                try stack.append(.{
+                    .meta_idx = next_meta,
+                    .child_count = 0,
+                });
+                next_meta += 1;
+            },
+            .rparen => {
+                const frame = stack.pop() orelse return error.UnexpectedRightParen;
+                child_counts[frame.meta_idx] = frame.child_count;
+            },
+            else => incrementTopChildCount(&stack),
+        }
+    }
+
+    if (stack.items.len != 0) return error.UnterminatedList;
+    return child_counts;
+}
+
 pub const Parser = struct {
     source: []const u8,
     tokens: []const Token,
+    list_child_counts: []const u32,
+    list_meta_cursor: usize,
     position: usize,
     scan_offset: usize,
     scan_location: LocationInfo,
     allocator: std.mem.Allocator,
     copy_atoms: bool,
 
-    pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) Parser {
+    pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: []const u32) Parser {
         return .{
             .source = source,
             .tokens = tokens,
+            .list_child_counts = list_child_counts,
+            .list_meta_cursor = 0,
             .position = 0,
             .scan_offset = 0,
             .scan_location = .{ .line = 1, .column = 1 },
@@ -370,10 +427,12 @@ pub const Parser = struct {
         };
     }
 
-    pub fn initBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) Parser {
+    pub fn initBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: []const u32) Parser {
         return .{
             .source = source,
             .tokens = tokens,
+            .list_child_counts = list_child_counts,
+            .list_meta_cursor = 0,
             .position = 0,
             .scan_offset = 0,
             .scan_location = .{ .line = 1, .column = 1 },
@@ -451,6 +510,14 @@ pub const Parser = struct {
             .string => {
                 // token value points to the input buffer which may be freed later
                 const string_inner = if (token_value.len >= 2) token_value[1 .. token_value.len - 1] else token_value;
+                if (std.mem.indexOfScalar(u8, string_inner, '\\') == null) {
+                    if (self.copy_atoms) {
+                        const duped = self.allocator.alloc(u8, string_inner.len) catch return error.OutOfMemory;
+                        @memcpy(duped, string_inner);
+                        return SExp{ .value = .{ .string = duped }, .location = token_location };
+                    }
+                    return SExp{ .value = .{ .string = string_inner }, .location = token_location };
+                }
                 const val = try _unescape_string(self.allocator, string_inner);
                 return SExp{ .value = .{ .string = val }, .location = token_location };
             },
@@ -468,43 +535,49 @@ pub const Parser = struct {
     }
 
     fn parseList(self: *Parser, start_location: TokenLocation) ParseError!SExp {
-        var items = std.array_list.Managed(SExp).init(self.allocator);
-        defer items.deinit();
+        if (self.list_meta_cursor >= self.list_child_counts.len) {
+            return error.UnterminatedList;
+        }
+        const child_count = @as(usize, self.list_child_counts[self.list_meta_cursor]);
+        self.list_meta_cursor += 1;
 
-        while (self.position < self.tokens.len) {
-            const next_token = self.tokens[self.position];
-
-            if (next_token.type == .rparen) {
-                const end_location = self.tokenLocation(next_token);
-                self.position += 1;
-                return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = .{
-                    .start = start_location.start,
-                    .end = end_location.end,
-                } };
-            }
-
-            if (try self.parse()) |sexp| {
-                try items.append(sexp);
-            } else {
-                break;
-            }
+        var items = try self.allocator.alloc(SExp, child_count);
+        var i: usize = 0;
+        while (i < child_count) : (i += 1) {
+            items[i] = (try self.parse()) orelse return error.UnterminatedList;
         }
 
-        return error.UnterminatedList;
+        if (self.position >= self.tokens.len) {
+            return error.UnterminatedList;
+        }
+        const next_token = self.tokens[self.position];
+        if (next_token.type != .rparen) {
+            return error.UnterminatedList;
+        }
+        const end_location = self.tokenLocation(next_token);
+        self.position += 1;
+        return SExp{ .value = .{ .list = items }, .location = .{
+            .start = start_location.start,
+            .end = end_location.end,
+        } };
     }
 };
 
 // Parse with arena allocator for better performance!
 // Parse a single S-expression
 pub fn parse(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
-    var parser = Parser.init(allocator, source, tokens);
+    const child_counts = try buildListChildCounts(allocator, tokens);
+    defer allocator.free(child_counts);
+    var parser = Parser.init(allocator, source, tokens, child_counts);
     return try parser.parse() orelse return error.EmptyFile;
 }
 
 // Parse without duplicating symbol/number/comment atoms.
 // Callers must ensure token storage outlives the returned SExp.
 pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
-    var parser = Parser.initBorrowed(allocator, source, tokens);
+    const child_counts = try buildListChildCounts(allocator, tokens);
+    defer allocator.free(child_counts);
+    var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
     return try parser.parse() orelse return error.EmptyFile;
 }
 
