@@ -1,5 +1,6 @@
 import { render } from "../shared/render";
-import { useSubscribe } from "../shared/webSocketProvider";
+import { WebviewWebSocketClient } from "../shared/webviewWebSocketClient";
+import { StoreState } from "../../shared/types";
 import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../shared/components";
 import { ComponentShowcase } from "../shared/components/ComponentShowcase";
 
@@ -15,22 +16,17 @@ function GraphEdge({ connected }: { connected: boolean }) {
   );
 }
 
-function StoreTable() {
-  const hubStatus = useSubscribe("hubStatus");
-  const coreStatus = useSubscribe("coreStatus");
-  const projectState = useSubscribe("projectState");
-  const projectFiles = useSubscribe("projectFiles");
-  const currentBuilds = useSubscribe("currentBuilds");
-  const previousBuilds = useSubscribe("previousBuilds");
-  const entries: [string, unknown][] = [
-    ["HubStatus", hubStatus],
-    ["CoreStatus", coreStatus],
-    ["ProjectState", projectState],
-    ["projectFiles", projectFiles],
-    ["currentBuilds", currentBuilds],
-    ["previousBuilds", previousBuilds],
-  ];
+function StoreRow({ storeKey }: { storeKey: keyof StoreState }) {
+  const value = WebviewWebSocketClient.useSubscribe(storeKey);
+  return (
+    <TableRow>
+      <TableCell><code>{storeKey}</code></TableCell>
+      <TableCell><JsonView value={value} defaultOpen={true} /></TableCell>
+    </TableRow>
+  );
+}
 
+function StoreTable() {
   return (
     <Table>
       <TableHeader>
@@ -40,20 +36,21 @@ function StoreTable() {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {entries.map(([key, value]) => (
-          <TableRow key={key}>
-            <TableCell><code>{key}</code></TableCell>
-            <TableCell><JsonView value={value} defaultOpen={true} /></TableCell>
-          </TableRow>
+        {(Object.keys(new StoreState()) as (keyof StoreState)[]).map((key) => (
+          <StoreRow key={key} storeKey={key} />
         ))}
       </TableBody>
     </Table>
   );
 }
 
+const hubPort = (() => {
+  try { return new URL(window.__ATOPILE_HUB_URL__).port; } catch { return ""; }
+})();
+
 function App() {
-  const hubStatus = useSubscribe("hubStatus");
-  const coreStatus = useSubscribe("coreStatus");
+  const hubStatus = WebviewWebSocketClient.useSubscribe("hubStatus");
+  const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
 
   return (
     <div className="panel">
@@ -62,9 +59,9 @@ function App() {
       <div className="graph">
         <div className="graph-node">Webviews</div>
         <GraphEdge connected={hubStatus.connected} />
-        <div className="graph-node">UI Hub</div>
+        <div className="graph-node">UI Hub{hubPort ? ` :${hubPort}` : ""}</div>
         <GraphEdge connected={coreStatus.connected} />
-        <div className="graph-node">Core Server</div>
+        <div className="graph-node">Core Server{coreStatus.coreServerPort ? ` :${coreStatus.coreServerPort}` : ""}</div>
       </div>
 
       <Separator className="showcase-divider" />

@@ -9,9 +9,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { store, coreSocket } from "./main";
 import { MSG_TYPE, type ActionMessage, type WebSocketMessage } from "../shared/types";
-import { parseMessage, sendState } from "../shared/webSocketUtils";
+import { parseMessage, sendState } from "../shared/webSocketClient";
 
-export class WebviewSocket {
+export class WebviewWebSocketServer {
   private _wss: WebSocketServer | null = null;
   private _subscriptions = new Map<WebSocket, Set<string>>();
 
@@ -112,6 +112,33 @@ export class WebviewSocket {
         coreSocket.sendAction("startBuild", {
           projectRoot: msg.projectRoot as string,
           targets: msg.targets as string[],
+        });
+        return;
+      }
+      case "resolverInfo": {
+        store.set("coreStatus", {
+          uvPath: msg.uvPath as string,
+          atoBinary: msg.atoBinary as string,
+          mode: msg.mode as "local" | "production",
+          version: msg.version as string,
+        });
+        return;
+      }
+      case "coreStartupError": {
+        store.set("coreStatus", { error: msg.message as string });
+        coreSocket.stop();
+        return;
+      }
+      case "extensionSettings": {
+        store.set("extensionSettings", {
+          devPath: msg.devPath as string,
+          autoInstall: msg.autoInstall as boolean,
+        });
+        return;
+      }
+      case "updateExtensionSetting": {
+        store.set("extensionSettings", {
+          [msg.key as string]: msg.value,
         });
         return;
       }

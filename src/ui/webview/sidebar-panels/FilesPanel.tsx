@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { EmptyState, Spinner } from "../shared/components";
 import { vscode } from "../shared/vscodeApi";
-import { useSubscribe } from "../shared/webSocketProvider";
+import { WebviewWebSocketClient } from "../shared/webviewWebSocketClient";
 import type { FileNode } from "../../shared/types";
 import "./FilesPanel.css";
 
@@ -163,7 +163,7 @@ function TreeNode({
 }
 
 export function FilesPanel({ projectRoot }: { projectRoot: string | null }) {
-  const projectFiles = useSubscribe("projectFiles");
+  const projectFiles = WebviewWebSocketClient.useSubscribe("projectFiles");
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 

@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.0.1",
   "scripts": {
-    "build": "bun build sidebar/main.tsx panel-developer/main.tsx panel-b/main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --minify && node -e \"fs=require('fs');fs.mkdirSync('../../vscode-atopile/webview-dist',{recursive:true});fs.copyFileSync('shared/logo.png','../../vscode-atopile/webview-dist/logo.png')\"",
-    "watch": "bun build sidebar/main.tsx panel-developer/main.tsx panel-b/main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --watch"
+    "build": "bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --minify && node -e \"fs=require('fs');fs.mkdirSync('../../vscode-atopile/webview-dist',{recursive:true});fs.copyFileSync('shared/logo.png','../../vscode-atopile/webview-dist/logo.png')\"",
+    "watch": "bun build */main.tsx --outdir ../../vscode-atopile/webview-dist --entry-naming [dir]/index.[ext] --watch"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

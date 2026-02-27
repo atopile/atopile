@@ -3,6 +3,7 @@
    ============================================ */
 
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -58,6 +59,7 @@
   border-radius: var(--radius-sm);
 }
 
+
 /* Top section: project/target selectors + action bar — fixed at top
    Matches mainline .projects-section-fixed */
 .sidebar-top {
@@ -100,6 +102,22 @@
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   padding: var(--spacing-md) 8px;
+}
+
+/* Disconnected Overlay — positioned below header so settings remain accessible */
+.disconnected-overlay {
+  position: absolute;
+  top: 35px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  background: var(--bg-primary);
+  opacity: 0.95;
 }
 
 /* ============================================

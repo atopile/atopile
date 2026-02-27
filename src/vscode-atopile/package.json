@@ -2,7 +2,7 @@
   "name": "atopile",
   "displayName": "atopile",
   "description": "atopile EDA tooling for VS Code",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "publisher": "atopile",
   "engines": {
     "vscode": "^1.85.0"
@@ -55,6 +55,23 @@
         "path": "./syntaxes/ato.tmLanguage.json"
       }
     ],
+    "configuration": {
+      "title": "atopile",
+      "properties": {
+        "atopile.devPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Path to a local atopile checkout. Enables local mode."
+        },
+        "atopile.autoInstall": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "description": "Auto-download uv if not found on PATH."
+        }
+      }
+    },
     "commands": [
       {
         "command": "atopile.openPanel",
@@ -67,22 +84,18 @@
     ]
   },
   "scripts": {
-    "build:extension": "node esbuild.js --production",
-    "build:webview": "cd ../ui/webview && bun run build",
-    "build:hub": "cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs",
-    "watch:extension": "node esbuild.js --watch",
-    "watch:webview": "cd ../ui/webview && bun run watch",
-    "watch:hub": "cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --watch",
-    "watch": "concurrently \"bun run watch:extension\" \"bun run watch:webview\" \"bun run watch:hub\"",
-    "vscode:prepublish": "bun run build:extension && bun run build:webview && bun run build:hub",
+    "build": "bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --minify && cd ../webview && bun run build",
+    "watch": "concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --watch\" \"cd ../ui/webview && bun run watch\"",
+    "vscode:prepublish": "bun run build",
     "package": "vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.11.0",
-    "esbuild": "^0.20.0",
-    "typescript": "^5.3.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.0",
+    "@vscode/vsce": "^2.22.0",
     "concurrently": "^8.2.0",
-    "@vscode/vsce": "^2.22.0"
+    "typescript": "^5.3.0",
+    "ws": "^8.16.0"
   }
 }

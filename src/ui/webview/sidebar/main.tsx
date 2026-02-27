@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { render, logoUrl } from "../shared/render";
-import { useSubscribe, ws } from "../shared/webSocketProvider";
-import { sendAction } from "../../shared/webSocketUtils";
+import { vscode } from "../shared/vscodeApi";
+import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
 import type { Build } from "../../shared/types";
-import { Spinner } from "../shared/components";
+import { Spinner, Button, Alert, AlertTitle, AlertDescription } from "../shared/components";
 import { getCurrentStage } from "../shared/utils";
 import { BuildQueuePane } from "./BuildQueuePane";
 import { ProjectTargetSelector } from "./ProjectTargetSelector";
@@ -18,15 +18,92 @@ import {
   ParametersPanel,
   BOMPanel,
 } from "../sidebar-panels";
+import { Settings } from "lucide-react";
 import "./sidebar.css";
 
+const POST_CONNECT_DISCONNECT_GRACE_MS = 5_000;
+
+function DisconnectedOverlay({
+  isConnected,
+  startupError,
+  hubConnected,
+}: {
+  isConnected: boolean;
+  startupError: string | null;
+  hubConnected: boolean;
+}) {
+  const [hasEverConnected, setHasEverConnected] = useState(false);
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (isConnected) {
+      setHasEverConnected(true);
+      setShow(false);
+      return;
+    }
+    if (startupError) {
+      setShow(true);
+      return;
+    }
+    if (!hasEverConnected) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setShow(true);
+    }, POST_CONNECT_DISCONNECT_GRACE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [isConnected, hasEverConnected, startupError]);
+
+  if (isConnected || !show) return null;
+
+  return (
+    <div className="disconnected-overlay">
+      <Alert variant={startupError ? "destructive" : "warning"}>
+        <AlertTitle>
+          {startupError ? "Failed to Start" : "Connection Lost"}
+        </AlertTitle>
+        <AlertDescription>
+          {startupError ? (
+            <code>{startupError}</code>
+          ) : (
+            !hubConnected
+              ? "Unable to connect to the UI hub."
+              : "Unable to connect to the core server."
+          )}
+        </AlertDescription>
+        <AlertDescription>
+          Run <code>Restart Extension Host</code> from the command palette.
+          Check the <code>atopile</code> output channel for errors.
+        </AlertDescription>
+        <AlertDescription>
+          Need help?{" "}
+          <a href="https://discord.gg/CRe5xaDBr3" target="_blank" rel="noopener noreferrer">
+            Join our Discord
+          </a>
+        </AlertDescription>
+      </Alert>
+    </div>
+  );
+}
+
 function App() {
-  const projectState = useSubscribe("projectState");
-  const hubStatus = useSubscribe("hubStatus");
-  const currentBuilds = useSubscribe("currentBuilds");
-  const previousBuilds = useSubscribe("previousBuilds");
+  const projectState = WebviewWebSocketClient.useSubscribe("projectState");
+  const hubStatus = WebviewWebSocketClient.useSubscribe("hubStatus");
+  const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
+  const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
+  const previousBuilds = WebviewWebSocketClient.useSubscribe("previousBuilds");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
+
+  const isConnected = hubStatus.connected && coreStatus.connected;
+  const startupError = coreStatus.error;
+  const [hasEverConnected, setHasEverConnected] = useState(false);
+
+  useEffect(() => {
+    if (isConnected) {
+      setHasEverConnected(true);
+    }
+  }, [isConnected]);
 
   const targets = useMemo(() => {
     const match = projectState.projects.find(
@@ -68,23 +145,6 @@ function App() {
     [projectBuilds, projectState.selectedTarget],
   );
 
-  if (!hubStatus.connected) {
-    return (
-      <div className="sidebar">
-        <div className="sidebar-header">
-          {logoUrl && (
-            <img src={logoUrl} alt="atopile" className="sidebar-logo" />
-          )}
-          <span className="sidebar-title">atopile</span>
-        </div>
-        <div className="sidebar-status">
-          <Spinner size={14} />
-          <span>Connecting...</span>
-        </div>
-      </div>
-    );
-  }
-
   const panelMap: Record<TabId, React.ReactNode> = {
     files: <FilesPanel projectRoot={projectState.selectedProject} />,
     packages: <PackagesPanel />,
@@ -97,51 +157,75 @@ function App() {
 
   return (
     <div className="sidebar">
-      {/* Header: logo + title + version badge */}
+      {/* Header: logo + title + version badge + settings */}
       <div className="sidebar-header">
         {logoUrl && (
           <img src={logoUrl} alt="atopile" className="sidebar-logo" />
         )}
         <span className="sidebar-title">atopile</span>
-        <span className="version-badge">v0.0.0</span>
+        {coreStatus.version && <span className="version-badge">v{coreStatus.version}</span>}
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Settings"
+          style={{ marginLeft: "auto" }}
+          onClick={() => vscode.postMessage({ type: "openPanel", panelId: "panel-settings" })}
+        >
+          <Settings size={14} />
+        </Button>
       </div>
 
-      {/* Top section: selectors + action bar */}
-      <div className="sidebar-top">
-        <ProjectTargetSelector
-          projects={projectState.projects}
-          selectedProject={projectState.selectedProject}
-          onSelectProject={(root) =>
-            sendAction(ws, "selectProject", { projectRoot: root })
-          }
-          targets={targets}
-          selectedTarget={projectState.selectedTarget}
-          onSelectTarget={(target) =>
-            sendAction(ws, "selectTarget", { target })
-          }
-        />
-        <ActionBar
-          onBuild={() =>
-            sendAction(ws, "startBuild", {
-              projectRoot: projectState.selectedProject,
-              targets: [projectState.selectedTarget],
-            })
-          }
-          buildDisabled={
-            !projectState.selectedProject || !projectState.selectedTarget
-          }
-          isBuilding={isBuilding}
-        />
-      </div>
+      {!isConnected && !hasEverConnected ? (
+        <div className="sidebar-status">
+          <Spinner size={14} />
+          <span>Connecting...</span>
+        </div>
+      ) : (
+        <>
+          {/* Top section: selectors + action bar */}
+          <div className="sidebar-top">
+            <ProjectTargetSelector
+              projects={projectState.projects}
+              selectedProject={projectState.selectedProject}
+              onSelectProject={(root) =>
+                webviewClient?.sendAction("selectProject", { projectRoot: root })
+              }
+              targets={targets}
+              selectedTarget={projectState.selectedTarget}
+              onSelectTarget={(target) =>
+                webviewClient?.sendAction("selectTarget", { target })
+              }
+            />
+            <ActionBar
+              onBuild={() =>
+                webviewClient?.sendAction("startBuild", {
+                  projectRoot: projectState.selectedProject,
+                  targets: [projectState.selectedTarget],
+                })
+              }
+              buildDisabled={
+                !projectState.selectedProject || !projectState.selectedTarget
+              }
+              isBuilding={isBuilding}
+            />
+          </div>
 
-      {/* Tab bar + panel content */}
-      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-      <div className="sidebar-tab-content">
-        {panelMap[activeTab]}
-      </div>
+          {/* Tab bar + panel content */}
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <div className="sidebar-tab-content">
+            {panelMap[activeTab]}
+          </div>
 
-      {/* Resizable builds pane at bottom */}
-      <BuildQueuePane builds={projectBuilds} />
+          {/* Resizable builds pane at bottom */}
+          <BuildQueuePane builds={projectBuilds} />
+        </>
+      )}
+
+      <DisconnectedOverlay
+        isConnected={isConnected}
+        startupError={startupError}
+        hubConnected={hubStatus.connected}
+      />
     </div>
   );
 }

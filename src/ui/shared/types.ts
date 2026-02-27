@@ -7,10 +7,16 @@
 export class StoreState {
   hubStatus = new HubStatus();
   coreStatus = new CoreStatus();
+  extensionSettings = new ExtensionSettings();
   projectState = new ProjectState();
   projectFiles: FileNode[] = [];
   currentBuilds: Build[] = [];
   previousBuilds: Build[] = [];
+}
+
+export class ExtensionSettings {
+  devPath: string = "";
+  autoInstall: boolean = true;
 }
 
 export class HubStatus {
@@ -19,6 +25,12 @@ export class HubStatus {
 
 export class CoreStatus {
   connected: boolean = false;
+  error: string | null = null;
+  uvPath: string = "";
+  atoBinary: string = "";
+  mode: "local" | "production" = "production";
+  version: string = "";
+  coreServerPort: number = 0;
 }
 
 export class ProjectState {

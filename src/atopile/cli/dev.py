@@ -56,10 +56,10 @@ def extension(
         False, "--no-install", help="Skip bun install step"
     ),
 ):
-    """Launch VS Code Extension Development Host with webview watcher.
+    """Launch VS Code Extension Development Host with watchers.
 
-    Starts esbuild watch + bun build watch, then opens a new VS Code
-    window in Extension Development Host mode loading the atopile extension.
+    Builds and watches extension, hub, and webview with bun, then opens
+    a new VS Code window in Extension Development Host mode.
     """
     from faebryk.libs.util import repo_root
 
@@ -102,12 +102,8 @@ def extension(
         subprocess.run([bun, "install"], cwd=webview_dir, check=True)
 
     # Build extension + hub + webview so there are dist/ files to load
-    typer.echo("Building extension...")
-    subprocess.run([bun, "run", "build:extension"], cwd=ext_dir, check=True)
-    typer.echo("Building hub...")
-    subprocess.run([bun, "run", "build:hub"], cwd=ext_dir, check=True)
-    typer.echo("Building webview...")
-    subprocess.run([bun, "run", "build:webview"], cwd=ext_dir, check=True)
+    typer.echo("Building...")
+    subprocess.run([bun, "run", "build"], cwd=ext_dir, check=True)
 
     procs: list[subprocess.Popen] = []
 
@@ -126,17 +122,9 @@ def extension(
     signal.signal(signal.SIGTERM, cleanup)
 
     try:
-        # Start esbuild watch (rebuilds dist/extension.js on changes)
-        typer.echo("Starting extension watcher...")
-        procs.append(subprocess.Popen([bun, "run", "watch:extension"], cwd=ext_dir))
-
-        # Start hub watcher (rebuilds hub-dist/main.js on changes)
-        typer.echo("Starting hub watcher...")
-        procs.append(subprocess.Popen([bun, "run", "watch:hub"], cwd=ext_dir))
-
-        # Start bun build watch (rebuilds webview-ui/dist on changes)
-        typer.echo("Starting webview watcher...")
-        procs.append(subprocess.Popen([bun, "run", "watch:webview"], cwd=ext_dir))
+        # Start watchers (rebuilds extension, hub, and webview on changes)
+        typer.echo("Starting watchers...")
+        procs.append(subprocess.Popen([bun, "run", "watch"], cwd=ext_dir))
 
         # Give watchers a moment to produce initial output
         time.sleep(2)
@@ -147,12 +135,7 @@ def extension(
             [code_bin, "--extensionDevelopmentPath", str(ext_dir), str(root)],
         )
 
-        typer.echo(
-            "\nDev environment running:\n"
-            "  - esbuild watch  (extension host)\n"
-            "  - bun watch      (webview-ui)\n"
-            "\nPress Ctrl+C to stop all watchers."
-        )
+        typer.echo("\nDev environment running. Press Ctrl+C to stop.")
 
         # Block until a watcher exits or user interrupts
         while True:

@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { connect } from "./webSocketProvider";
+import { connectWebview } from "./webviewWebSocketClient";
 import "./index.css";
 
 declare global {
@@ -16,6 +16,6 @@ export const panelId = window.__ATOPILE_PANEL_ID__;
 export const logoUrl = window.__ATOPILE_LOGO_URL__;
 
 export function render(App: React.ComponentType) {
-  connect(hubUrl);
+  connectWebview(hubUrl);
   ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
 }

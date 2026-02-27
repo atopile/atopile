@@ -4,8 +4,8 @@
  */
 
 import { Store } from "./store";
-import { WebviewSocket } from "./webviewSocket";
-import { CoreSocket } from "./coreSocket";
+import { WebviewWebSocketServer } from "./webviewWebSocketServer";
+import { CoreWebSocketClient } from "./coreWebSocketClient";
 import { requirePort } from "./utils";
 
 const HUB_READY_MARKER = "ATOPILE_HUB_READY";
@@ -13,8 +13,8 @@ const HUB_READY_MARKER = "ATOPILE_HUB_READY";
 // -- Globals ------------------------------------------------------------------
 
 export const store = new Store();
-export const webviewSocket = new WebviewSocket();
-export const coreSocket = new CoreSocket();
+export const webviewSocket = new WebviewWebSocketServer();
+export const coreSocket = new CoreWebSocketClient();
 
 // -- Hub ----------------------------------------------------------------------
 
@@ -28,6 +28,8 @@ class Hub {
     this._workspaceFolders = (process.env.ATOPILE_WORKSPACE_FOLDERS ?? "")
       .split(":")
       .filter(Boolean);
+
+    store.set("coreStatus", { coreServerPort });
 
     webviewSocket
       .start(this._hubPort)

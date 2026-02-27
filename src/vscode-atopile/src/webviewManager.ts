@@ -32,16 +32,7 @@ export class WebviewManager implements vscode.WebviewViewProvider {
     };
 
     webviewView.webview.html = this._getHtml(webviewView.webview, "sidebar");
-
-    webviewView.webview.onDidReceiveMessage((msg) => {
-      if (msg.type === "openPanel" && typeof msg.panelId === "string") {
-        this.openPanel(msg.panelId);
-      }
-      if (msg.type === "openFile" && typeof msg.path === "string") {
-        const uri = vscode.Uri.file(msg.path);
-        vscode.window.showTextDocument(uri);
-      }
-    });
+    this._registerMessageHandler(webviewView.webview);
   }
 
   /** Open or reveal an editor-tab webview panel. */
@@ -64,6 +55,7 @@ export class WebviewManager implements vscode.WebviewViewProvider {
     );
 
     panel.webview.html = this._getHtml(panel.webview, panelId);
+    this._registerMessageHandler(panel.webview);
 
     panel.onDidDispose(() => {
       this._panels.delete(panelId);
@@ -73,6 +65,36 @@ export class WebviewManager implements vscode.WebviewViewProvider {
   }
 
   // --- Private ---
+
+  private _registerMessageHandler(webview: vscode.Webview): void {
+    webview.onDidReceiveMessage(async (msg) => {
+      if (msg.type === "openPanel" && typeof msg.panelId === "string") {
+        this.openPanel(msg.panelId);
+        return;
+      }
+
+      if (msg.type === "openFile" && typeof msg.path === "string") {
+        const uri = vscode.Uri.file(msg.path);
+        await vscode.window.showTextDocument(uri);
+        return;
+      }
+
+      if (msg.type === "browseFolder") {
+        const result = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: "Select folder",
+        });
+        if (result?.[0]) {
+          webview.postMessage({
+            type: "folderSelected",
+            path: result[0].fsPath,
+          });
+        }
+      }
+    });
+  }
 
   private _getHtml(webview: vscode.Webview, panelId: string): string {
     const distUri = vscode.Uri.joinPath(this._extensionUri, "webview-dist");

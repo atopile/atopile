@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["shared", "sidebar", "panel-developer", "panel-b", "../shared"]
+  "include": ["shared", "sidebar", "sidebar-panels", "panel-developer", "panel-settings", "panel-b", "../shared"]
 }

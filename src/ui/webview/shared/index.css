@@ -262,6 +262,18 @@ body {
   padding: 1rem;
 }
 
+.panel-centered {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--spacing-xl);
+}
+
+.panel-centered h2 { margin: 0; }
+.panel-centered h3 { margin: 0; color: var(--text-secondary); font-size: var(--font-sm); text-transform: uppercase; letter-spacing: 0.05em; }
+
 .logo {
   width: 48px;
   height: 48px;
