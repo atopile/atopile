@@ -225,9 +225,9 @@ class C_kicad_project_file(JSON_File):
                     arrow_length: int = 1270000
                     extension_offset: int = 500000
                     keep_text_aligned: bool = True
-                    suppress_zeroes: bool = False
+                    suppress_zeroes: bool = True
                     text_position: int = 0
-                    units_format: int = 1
+                    units_format: int = 0
                     unknown: CatchAll = None
 
                 dimensions: C_dimensions = field(default_factory=C_dimensions)
@@ -247,9 +247,9 @@ class C_kicad_project_file(JSON_File):
                 @dataclass_json(undefined=Undefined.INCLUDE)
                 @dataclass
                 class C_pads:
-                    drill: float = 0.762
-                    height: float = 1.524
-                    width: float = 1.524
+                    drill: float = 0.8
+                    height: float = 1.27
+                    width: float = 2.54
                     unknown: CatchAll = None
 
                 pads: C_pads = field(default_factory=C_pads)
@@ -264,6 +264,9 @@ class C_kicad_project_file(JSON_File):
                 @dataclass
                 class C_zones:
                     min_clearance: float = 0.5
+                    forty_five_degree_only: Optional[bool] = field(
+                        metadata=config(field_name="45_degree_only"), default=None
+                    )
                     unknown: CatchAll = None
 
                 zones: C_zones = field(default_factory=C_zones)
@@ -274,18 +277,17 @@ class C_kicad_project_file(JSON_File):
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_diff_pair_dimensions:
+                gap: float = 0.0
+                via_gap: float = 0.0
+                width: float = 0.0
                 unknown: CatchAll = None
 
             diff_pair_dimensions: list[C_diff_pair_dimensions] = field(
                 default_factory=list
             )
 
-            @dataclass_json(undefined=Undefined.INCLUDE)
-            @dataclass
-            class C_drc_exclusions:
-                unknown: CatchAll = None
-
-            drc_exclusions: list[C_drc_exclusions] = field(default_factory=list)
+            # Elements are either strings or [marker_string, comment_string] pairs
+            drc_exclusions: list[str] = field(default_factory=list)
 
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
@@ -304,16 +306,19 @@ class C_kicad_project_file(JSON_File):
                 copper_edge_clearance: str = "error"
                 copper_sliver: str = "warning"
                 courtyards_overlap: str = "error"
+                creepage: str = "error"
                 diff_pair_gap_out_of_range: str = "error"
                 diff_pair_uncoupled_length_too_long: str = "error"
                 drill_out_of_range: str = "error"
                 duplicate_footprints: str = "warning"
                 extra_footprint: str = "warning"
                 footprint: str = "error"
+                footprint_filters_mismatch: str = "ignore"
                 footprint_symbol_mismatch: str = "warning"
                 footprint_type_mismatch: str = "ignore"
                 hole_clearance: str = "error"
-                hole_near_hole: str = "error"
+                hole_near_hole: Optional[str] = None
+                hole_to_hole: str = "warning"
                 holes_co_located: str = "warning"
                 invalid_outline: str = "error"
                 isolated_copper: str = "warning"
@@ -324,11 +329,15 @@ class C_kicad_project_file(JSON_File):
                 lib_footprint_mismatch: str = "warning"
                 malformed_courtyard: str = "error"
                 microvia_drill_out_of_range: str = "error"
+                mirrored_text_on_front_layer: str = "warning"
                 missing_courtyard: str = "ignore"
                 missing_footprint: str = "warning"
                 net_conflict: str = "warning"
+                nonmirrored_text_on_back_layer: str = "warning"
                 npth_inside_courtyard: str = "ignore"
+                overlapping_pads: Optional[str] = None
                 padstack: str = "warning"
+                padstack_invalid: Optional[str] = None
                 pth_inside_courtyard: str = "ignore"
                 shorting_items: str = "error"
                 silk_edge_clearance: str = "warning"
@@ -338,10 +347,13 @@ class C_kicad_project_file(JSON_File):
                 solder_mask_bridge: str = "error"
                 starved_thermal: str = "error"
                 text_height: str = "warning"
+                text_on_edge_cuts: str = "error"
                 text_thickness: str = "warning"
                 through_hole_pad_without_hole: str = "error"
                 too_many_vias: str = "error"
+                track_angle: str = "error"
                 track_dangling: str = "warning"
+                track_segment_length: str = "error"
                 track_width: str = "error"
                 tracks_crossing: str = "error"
                 unconnected_items: str = "error"
@@ -357,10 +369,13 @@ class C_kicad_project_file(JSON_File):
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_rules:
+                allow_blind_buried_vias: Optional[bool] = None
+                allow_microvias: Optional[bool] = None
                 max_error: float = 0.005
                 min_clearance: float = 0.0
                 min_connection: float = 0.0
                 min_copper_edge_clearance: float = 0.5
+                min_groove_width: float = 0.0
                 min_hole_clearance: float = 0.25
                 min_hole_to_hole: float = 0.25
                 min_microvia_diameter: float = 0.2
@@ -382,10 +397,15 @@ class C_kicad_project_file(JSON_File):
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_teardrop_options:
-                td_onpadsmd: bool = True
+                # legacy field names (pre-v9)
+                td_onpadsmd: Optional[bool] = None
+                td_onviapad: Optional[bool] = None
+                # current field names
+                td_onpthpad: bool = True
+                td_onsmdpad: bool = True
+                td_onvia: bool = True
                 td_onroundshapesonly: bool = False
                 td_ontrackend: bool = False
-                td_onviapad: bool = True
                 unknown: CatchAll = None
 
             teardrop_options: list[C_teardrop_options] = field(default_factory=list)
@@ -466,10 +486,13 @@ class C_kicad_project_file(JSON_File):
             @dataclass_json(undefined=Undefined.INCLUDE)
             @dataclass
             class C_via_dimensions:
+                diameter: float = 0.0
+                drill: float = 0.0
                 unknown: CatchAll = None
 
             via_dimensions: list[C_via_dimensions] = field(default_factory=list)
             zones_allow_external_fillets: bool = False
+            zones_use_no_outline: Optional[bool] = None
             unknown: CatchAll = None
 
         design_settings: C_design_settings = field(default_factory=C_design_settings)
@@ -488,14 +511,70 @@ class C_kicad_project_file(JSON_File):
 
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
-        class C_layer_presets:
+        class C_layer_pair:
+            top_layer: Optional[int] = field(
+                metadata=config(field_name="topLayer"), default=None
+            )
+            bottom_layer: Optional[int] = field(
+                metadata=config(field_name="bottomLayer"), default=None
+            )
+            enabled: Optional[bool] = None
+            name: Optional[str] = None
             unknown: CatchAll = None
 
-        layer_presets: list[C_layer_presets] = field(default_factory=list)
+        layer_pairs: list[C_layer_pair] = field(default_factory=list)
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_layer_preset:
+            name: str = ""
+            active_layer: Optional[int] = field(
+                metadata=config(field_name="activeLayer"), default=None
+            )
+            flip_board: Optional[bool] = field(
+                metadata=config(field_name="flipBoard"), default=None
+            )
+            layers: list[int] = field(default_factory=list)
+            render_layers: list[str] = field(
+                metadata=config(field_name="renderLayers"), default_factory=list
+            )
+            unknown: CatchAll = None
+
+        layer_presets: list[C_layer_preset] = field(default_factory=list)
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_3d_viewport:
+            name: str = ""
+            xx: float = 0.0
+            xy: float = 0.0
+            xz: float = 0.0
+            xw: float = 0.0
+            yx: float = 0.0
+            yy: float = 0.0
+            yz: float = 0.0
+            yw: float = 0.0
+            zx: float = 0.0
+            zy: float = 0.0
+            zz: float = 0.0
+            zw: float = 0.0
+            wx: float = 0.0
+            wy: float = 0.0
+            wz: float = 0.0
+            ww: float = 0.0
+            unknown: CatchAll = None
+
+        three_d_viewports: list[C_3d_viewport] = field(
+            metadata=config(field_name="3dviewports"), default_factory=list
+        )
 
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
         class C_viewports:
+            name: str = ""
+            x: float = 0.0
+            y: float = 0.0
+            zoom: float = 1.0
             unknown: CatchAll = None
 
         viewports: list[C_viewports] = field(default_factory=list)
@@ -503,22 +582,13 @@ class C_kicad_project_file(JSON_File):
 
     board: C_board = field(default_factory=C_board)
 
-    @dataclass_json(undefined=Undefined.INCLUDE)
-    @dataclass
-    class C_boards:
-        unknown: CatchAll = None
-
-    boards: list[C_boards] = field(default_factory=list)
+    # Each element is a [uuid, title] pair
+    boards: list[list[str]] = field(default_factory=list)
 
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
     class C_cvpcb:
-        @dataclass_json(undefined=Undefined.INCLUDE)
-        @dataclass
-        class C_equivalence_files:
-            unknown: CatchAll = None
-
-        equivalence_files: list[C_equivalence_files] = field(default_factory=list)
+        equivalence_files: list[str] = field(default_factory=list)
         unknown: CatchAll = None
 
     cvpcb: C_cvpcb = field(default_factory=C_cvpcb)
@@ -526,21 +596,9 @@ class C_kicad_project_file(JSON_File):
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
     class C_libraries:
-        @dataclass_json(undefined=Undefined.INCLUDE)
-        @dataclass
-        class C_pinned_footprint_libs:
-            unknown: CatchAll = None
-
-        pinned_footprint_libs: list[C_pinned_footprint_libs] = field(
-            default_factory=list
-        )
-
-        @dataclass_json(undefined=Undefined.INCLUDE)
-        @dataclass
-        class C_pinned_symbol_libs:
-            unknown: CatchAll = None
-
-        pinned_symbol_libs: list[C_pinned_symbol_libs] = field(default_factory=list)
+        pinned_footprint_libs: list[str] = field(default_factory=list)
+        pinned_symbol_libs: list[str] = field(default_factory=list)
+        pinned_design_block_libs: Optional[list[str]] = None
         unknown: CatchAll = None
 
     libraries: C_libraries = field(default_factory=C_libraries)
@@ -549,7 +607,7 @@ class C_kicad_project_file(JSON_File):
     @dataclass
     class C_meta:
         filename: str = "example.kicad_pro"
-        version: int = 1
+        version: int = 3
         unknown: CatchAll = None
 
     meta: C_meta = field(default_factory=C_meta)
@@ -570,6 +628,7 @@ class C_kicad_project_file(JSON_File):
             microvia_drill: float = 0.1
             name: str = "Default"
             pcb_color: str = "rgba(0, 0, 0, 0.000)"
+            priority: int = 2147483647
             schematic_color: str = "rgba(0, 0, 0, 0.000)"
             track_width: float = 0.2
             via_diameter: float = 0.6
@@ -582,13 +641,21 @@ class C_kicad_project_file(JSON_File):
         @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
         class C_meta:
-            version: int = 3
+            version: int = 4
             unknown: CatchAll = None
 
         meta: C_meta = field(default_factory=C_meta)
         net_colors: Optional[Any] = None
         netclass_assignments: Optional[Any] = None
-        netclass_patterns: list = field(default_factory=list)
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_netclass_pattern:
+            netclass: str = ""
+            pattern: str = ""
+            unknown: CatchAll = None
+
+        netclass_patterns: list[C_netclass_pattern] = field(default_factory=list)
         unknown: CatchAll = None
 
     net_settings: C_net_settings = field(default_factory=C_net_settings)
@@ -596,30 +663,184 @@ class C_kicad_project_file(JSON_File):
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
     class C_schematic:
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_drawing:
+            dashed_lines_dash_length_ratio: float = 12.0
+            dashed_lines_gap_length_ratio: float = 3.0
+            default_bus_thickness: float = 12.0
+            default_junction_size: float = 40.0
+            default_line_thickness: float = 6.0
+            default_text_size: float = 50.0
+            default_wire_thickness: float = 6.0
+            field_names: list[str] = field(default_factory=list)
+            intersheets_ref_own_page: bool = False
+            intersheets_ref_prefix: str = ""
+            intersheets_ref_short: bool = False
+            intersheets_ref_show: bool = False
+            intersheets_ref_suffix: str = ""
+            junction_size_choice: int = 3
+            label_size_ratio: float = 0.25
+            operating_point_overlay_i_precision: int = 3
+            operating_point_overlay_i_range: str = "~A"
+            operating_point_overlay_v_precision: int = 3
+            operating_point_overlay_v_range: str = "~V"
+            overbar_offset_ratio: float = 1.23
+            pin_symbol_size: float = 0.0
+            text_offset_ratio: float = 0.08
+            unknown: CatchAll = None
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_bom_field:
+            group_by: bool = False
+            label: str = ""
+            name: str = ""
+            show: bool = True
+            unknown: CatchAll = None
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_bom_settings:
+            exclude_dnp: bool = False
+            fields_ordered: list["C_kicad_project_file.C_schematic.C_bom_field"] = (
+                field(default_factory=list)
+            )
+            filter_string: str = ""
+            group_symbols: bool = True
+            include_excluded_from_bom: Optional[bool] = None
+            name: str = "Grouped By Value"
+            sort_asc: bool = True
+            sort_field: str = "Reference"
+            unknown: CatchAll = None
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_bom_fmt_settings:
+            field_delimiter: str = ","
+            keep_line_breaks: bool = False
+            keep_tabs: bool = False
+            name: str = "CSV"
+            ref_delimiter: str = ","
+            ref_range_delimiter: str = ""
+            string_delimiter: str = '"'
+            unknown: CatchAll = None
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_ngspice:
+            fix_include_paths: Optional[bool] = None
+            fix_passive_vals: Optional[bool] = None
+            meta: Optional[dict[str, int]] = None
+            model_mode: Optional[int] = None
+            workbook_filename: str = ""
+            unknown: CatchAll = None
+
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_meta:
+            version: int = 1
+            unknown: CatchAll = None
+
+        annotate_start_num: Optional[int] = None
+        bom_export_filename: Optional[str] = None
+        bom_fmt_presets: Optional[list[C_bom_fmt_settings]] = None
+        bom_fmt_settings: Optional[C_bom_fmt_settings] = None
+        bom_presets: Optional[list[C_bom_settings]] = None
+        bom_settings: Optional[C_bom_settings] = None
+        connection_grid_size: Optional[float] = None
+        drawing: Optional[C_drawing] = None
         legacy_lib_dir: str = ""
-        legacy_lib_list: list = field(default_factory=list)
+        legacy_lib_list: list[str] = field(default_factory=list)
+        meta: Optional[C_meta] = None
+        net_format_name: Optional[str] = None
+        ngspice: Optional[C_ngspice] = None
+        page_layout_descr_file: Optional[str] = None
+        plot_directory: Optional[str] = None
+        space_save_all_events: Optional[bool] = None
+        spice_adjust_passive_values: Optional[bool] = None
+        spice_current_sheet_as_root: Optional[bool] = None
+        spice_external_command: Optional[str] = None
+        spice_model_current_sheet_as_root: Optional[bool] = None
+        spice_save_all_currents: Optional[bool] = None
+        spice_save_all_dissipations: Optional[bool] = None
+        spice_save_all_voltages: Optional[bool] = None
+        subpart_first_id: Optional[int] = None
+        subpart_id_separator: Optional[int] = None
         unknown: CatchAll = None
 
     schematic: C_schematic = field(default_factory=C_schematic)
 
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass
-    class C_sheets:
+    class C_erc:
+        @dataclass_json(undefined=Undefined.INCLUDE)
         @dataclass
-        class C_sheet:
-            uuid: str
-            title: str
+        class C_rule_severities:
+            bus_definition_conflict: str = "error"
+            bus_entry_needed: str = "error"
+            bus_label_syntax: Optional[str] = None
+            bus_to_bus_conflict: str = "error"
+            bus_to_net_conflict: str = "error"
+            conflicting_netclasses: str = "error"
+            different_unit_footprint: str = "error"
+            different_unit_net: str = "error"
+            duplicate_reference: str = "error"
+            duplicate_sheet_names: str = "error"
+            endpoint_off_grid: str = "warning"
+            extra_units: str = "error"
+            footprint_filter: Optional[str] = None
+            footprint_link_issues: Optional[str] = None
+            four_way_junction: Optional[str] = None
+            global_label_dangling: str = "warning"
+            hier_label_mismatch: str = "error"
+            label_dangling: str = "error"
+            label_multiple_wires: Optional[str] = None
+            lib_symbol_issues: str = "warning"
+            lib_symbol_mismatch: Optional[str] = None
+            missing_bidi_pin: str = "warning"
+            missing_input_pin: str = "warning"
+            missing_power_pin: Optional[str] = None
+            missing_unit: str = "warning"
+            multiple_net_names: str = "warning"
+            net_not_bus_member: str = "warning"
+            no_connect_connected: str = "warning"
+            no_connect_dangling: str = "warning"
+            pin_not_connected: str = "error"
+            pin_not_driven: str = "error"
+            pin_to_pin: str = "warning"
+            power_pin_not_driven: str = "error"
+            same_local_global_label: Optional[str] = None
+            similar_label_and_power: Optional[str] = None
+            similar_labels: str = "warning"
+            similar_power: Optional[str] = None
+            simulation_model_issue: str = "ignore"
+            single_global_label: Optional[str] = None
+            unannotated: str = "error"
+            unconnected_wire_endpoint: Optional[str] = None
+            unit_value_mismatch: str = "error"
+            unresolved_variable: str = "error"
+            wire_dangling: Optional[str] = None
+            unknown: CatchAll = None
 
-        sheet: list[C_sheet] = field(default_factory=list)
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class C_meta:
+            version: int = 0
+            unknown: CatchAll = None
 
-    sheets: list[C_sheets] = field(default_factory=list)
-
-    @dataclass_json(undefined=Undefined.INCLUDE)
-    @dataclass
-    class C_text_variables:
+        erc_exclusions: list[str] = field(default_factory=list)
+        meta: C_meta = field(default_factory=C_meta)
+        pin_map: list[list[int]] = field(default_factory=list)
+        rule_severities: Optional[C_rule_severities] = None
         unknown: CatchAll = None
 
-    text_variables: dict = field(default_factory=dict)
+    erc: Optional[C_erc] = None
+
+    # Each element is a [uuid, title] pair
+    sheets: list[list[str]] = field(default_factory=list)
+
+    text_variables: dict[str, str] = field(default_factory=dict)
     unknown: CatchAll = None
 
     def __rich_repr__(self):

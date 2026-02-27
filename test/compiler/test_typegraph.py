@@ -2053,6 +2053,72 @@ class TestTraitStatements:
 
         assert trait.get_count() == 42
 
+    def test_instance_trait_on_child(self):
+        """Instance trait applies trait to a child field via dot syntax."""
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from test.compiler.conftest import build_instance
+
+        g, tg, stdlib, result, app_root = build_instance(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("INSTANCE_TRAITS")
+            import has_net_name_suggestion
+            import Electrical
+
+            module App:
+                e1 = new Electrical
+                trait e1 has_net_name_suggestion<name="MY_NET", level="SUGGESTED">
+            """,
+            root="App",
+        )
+
+        e1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_root, child_identifier="e1"
+        )
+        assert e1_bnode is not None
+
+        e1 = fabll.Node.bind_instance(e1_bnode)
+        trait = e1.get_trait(F.has_net_name_suggestion)
+
+        assert trait.name == "MY_NET"
+        assert trait.level == F.has_net_name_suggestion.Level.SUGGESTED
+
+    def test_instance_trait_on_childs_child(self):
+        """Instance trait applies trait to a childs child field via dot syntax."""
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from test.compiler.conftest import build_instance
+
+        g, tg, stdlib, result, app_root = build_instance(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("INSTANCE_TRAITS")
+            import has_net_name_suggestion
+            import Resistor
+
+            module App:
+                r1 = new Resistor
+                trait r1.unnamed[0] has_net_name_suggestion<name="R1_UN0", level="SUGGESTED">
+            """,  # noqa: E501
+            root="App",
+        )
+
+        r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_root, child_identifier="r1"
+        )
+        assert r1_bnode is not None
+
+        r1_unnamed_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=r1_bnode, child_identifier="unnamed[0]"
+        )
+        assert r1_unnamed_bnode is not None
+        r1_unnamed = fabll.Node.bind_instance(r1_unnamed_bnode)
+        trait = r1_unnamed.get_trait(F.has_net_name_suggestion)
+
+        assert trait.name == "R1_UN0"
+        assert trait.level == F.has_net_name_suggestion.Level.SUGGESTED
+
 
 class TestAssignments:
     """Tests for parameter assignments in ato."""

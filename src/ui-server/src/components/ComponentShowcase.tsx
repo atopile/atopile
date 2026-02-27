@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import { Zap, Package, Star, Trash2, Mail, Calendar, Globe } from 'lucide-react'
+import { Zap, Package, Star, Trash2, Mail, Calendar, Globe, Sun, Moon, Monitor } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 // ---- Primitives ----
@@ -40,6 +40,7 @@ import { PanelSearchBox } from './shared/PanelSearchBox'
 import { PublisherBadge } from './shared/PublisherBadge'
 import { TreeRowHeader } from './shared/TreeRowHeader'
 
+import { useTheme, type ThemePreference } from '../hooks/useTheme'
 import './ComponentShowcase.css'
 
 /* ================================================================
@@ -109,9 +110,31 @@ export function ComponentShowcase() {
   const [selectVal, setSelectVal] = useState<string | null>(null)
   const [treeExpanded, setTreeExpanded] = useState(false)
 
+  const { theme, setTheme } = useTheme()
+
+  const themeOptions: { value: ThemePreference; icon: React.ReactNode; label: string }[] = [
+    { value: 'dark', icon: <Moon size={14} />, label: 'Dark' },
+    { value: 'light', icon: <Sun size={14} />, label: 'Light' },
+    { value: 'system', icon: <Monitor size={14} />, label: 'System' },
+  ]
+
   return (
     <div className="showcase">
-      <h1>Shared Component Library</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 style={{ margin: 0 }}>Shared Component Library</h1>
+        <div className="theme-toggle-group">
+          {themeOptions.map((opt) => (
+            <button
+              key={opt.value}
+              className={`theme-btn${theme === opt.value ? ' active' : ''}`}
+              onClick={() => setTheme(opt.value)}
+              title={opt.label}
+            >
+              {opt.icon}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* ---- Badge ---- */}
       <section className="showcase-section">
