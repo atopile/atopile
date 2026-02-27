@@ -1228,18 +1228,18 @@ pub const GraphView = struct {
             }
         }
 
-        // Pack attribute stream — 6-byte header (owner_index + is_node_owner + in_use)
-        // + packed attribute entries (17B each) per DA
+        // Pack attribute stream — 4-byte PackedAttrBlockHeader + packed attribute entries (17B each) per DA
         for (da_entries.items) |entry| {
             const attrs = &Attrs[entry.da_uuid];
             const in_use = attrs.in_use;
 
-            // Write 6-byte header: owner_index(4B LE) + is_node_owner(1B) + in_use(1B)
-            var hdr_buf: [ATTR_BLOCK_HEADER_SIZE]u8 = undefined;
-            @memcpy(hdr_buf[0..4], std.mem.asBytes(&entry.owner_index));
-            hdr_buf[4] = if (entry.is_node) 1 else 0;
-            hdr_buf[5] = in_use;
-            attr_stream.appendSlice(&hdr_buf) catch return error.OutOfMemory;
+            // Write 4-byte bit-packed header
+            const blk_hdr = PackedAttrBlockHeader{
+                .owner_index = @intCast(entry.owner_index),
+                .in_use = in_use,
+                .is_node_owner = if (entry.is_node) 1 else 0,
+            };
+            attr_stream.appendSlice(std.mem.asBytes(&blk_hdr)) catch return error.OutOfMemory;
 
             // Write in_use packed attribute entries (17 bytes each, no padding)
             for (0..in_use) |j| {
@@ -1399,26 +1399,26 @@ pub const GraphView = struct {
 
         // === Data Phase ===
 
-        // Step 7: Read attribute stream — 6-byte headers with back-pointers + packed attr entries
+        // Step 7: Read attribute stream — 4-byte PackedAttrBlockHeader + packed attr entries
         {
             var stream_offset: usize = 0;
             var block_idx: u32 = 0;
-            while (stream_offset + ATTR_BLOCK_HEADER_SIZE <= attr_stream_size and
+            while (stream_offset + @sizeOf(PackedAttrBlockHeader) <= attr_stream_size and
                 block_idx < header.attr_block_count)
             {
                 const abs = attr_stream_start + stream_offset;
-                // Read 6-byte header: owner_index(4B LE) + is_node_owner(1B) + in_use(1B)
-                const owner_index: u32 = @bitCast(bytes[abs..][0..4].*);
-                const is_node_owner = bytes[abs + 4];
-                const in_use = bytes[abs + 5];
-                stream_offset += ATTR_BLOCK_HEADER_SIZE;
+                const blk_hdr: PackedAttrBlockHeader = @bitCast(bytes[abs..][0..4].*);
+                stream_offset += @sizeOf(PackedAttrBlockHeader);
                 block_idx += 1;
 
-                // Validate is_node_owner flag
-                if (is_node_owner > 1) return error.MalformedPayload;
+                const owner_index: u32 = blk_hdr.owner_index;
+                const in_use = blk_hdr.in_use;
+
+                // Validate reserved padding bits
+                if (blk_hdr._pad != 0) return error.MalformedPayload;
 
                 // Resolve owner and ensure DA block
-                const da = if (is_node_owner == 1) blk: {
+                const da = if (blk_hdr.is_node_owner == 1) blk: {
                     if (owner_index >= node_count) return error.MalformedPayload;
                     const node_uuid = local_node_uuids[owner_index];
                     _ = Nodes[node_uuid].dynamic.ensure();
@@ -1430,7 +1430,7 @@ pub const GraphView = struct {
                     break :blk &Attrs[Edges[edge_uuid].dynamic.uuid];
                 };
 
-                da.in_use = @intCast(in_use);
+                da.in_use = in_use;
 
                 // Read in_use packed attribute entries (17 bytes each) directly into DA storage
                 for (0..in_use) |j| {
@@ -1501,7 +1501,7 @@ pub const GraphView = struct {
 // Payload layout:
 //   [ Header              (64 bytes)                           ]
 //   [ Packed Edges        (edge_count × 12 bytes)              ]
-//   [ Attribute Stream    (variable-length, 6B headers + 17B entries) ]
+//   [ Attribute Stream    (variable-length, 4B headers + 17B entries) ]
 //   [ String Table        (string_table_size bytes, interned)  ]
 //
 // Serialization (dumps):
@@ -1579,8 +1579,17 @@ const PackedEdge = extern struct {
     flags: u32,
 };
 
-/// Attribute block header size: owner_index(4) + is_node_owner(1) + in_use(1).
-const ATTR_BLOCK_HEADER_SIZE: usize = 6;
+/// 4-byte bit-packed attribute block header. Back-pointer to owning node/edge.
+/// Field widths match in-memory structural limits:
+///   owner_index u24: max 16M (matches Edges[16*1024*1024] static array)
+///   in_use      u3:  max 7   (matches DynamicAttributes.in_use: u3)
+///   is_node_owner u1: boolean
+const PackedAttrBlockHeader = packed struct(u32) {
+    owner_index: u24, // Bits 0-23
+    in_use: u3, // Bits 24-26
+    is_node_owner: u1, // Bit 27
+    _pad: u4 = 0, // Bits 28-31
+};
 
 /// Packed attribute entry size: 17 bytes (no padding).
 /// Layout: [value_tag: u8][identifier: PackedStringRef (8B)][value: PackedLiteralValue (8B)]
@@ -1601,7 +1610,7 @@ comptime {
     std.debug.assert(@sizeOf(BinaryHeader) == 64);
     std.debug.assert(@sizeOf(PackedEdge) == 12);
     std.debug.assert(PACKED_ATTR_SIZE == 17);
-    std.debug.assert(ATTR_BLOCK_HEADER_SIZE == 6);
+    std.debug.assert(@sizeOf(PackedAttrBlockHeader) == 4);
     std.debug.assert(@sizeOf(PackedStringRef) == 8);
     std.debug.assert(@sizeOf(PackedLiteralValue) == 8);
 }
@@ -2082,8 +2091,8 @@ test "serialization: string table bounds and swizzling" {
         const attr_stream_start = @sizeOf(BinaryHeader) +
             @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
-        // First attr block: 6-byte header + first packed attribute (17 bytes)
-        const first_attr_offset = attr_stream_start + ATTR_BLOCK_HEADER_SIZE; // skip 6-byte header
+        // First attr block: 4-byte header + first packed attribute (17 bytes)
+        const first_attr_offset = attr_stream_start + @sizeOf(PackedAttrBlockHeader); // skip 4-byte header
         // Corrupt the identifier offset (bytes 1..5 of the 17-byte packed attr = PackedStringRef.offset)
         const ident_offset_pos = first_attr_offset + 1; // skip value_tag byte
         const corrupt_offset: u32 = hdr.string_table_size + 100;
@@ -2193,7 +2202,7 @@ test "serialization: malicious payload rejection" {
         const attr_stream_start = @sizeOf(BinaryHeader) +
             @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
-        const first_attr_offset = attr_stream_start + ATTR_BLOCK_HEADER_SIZE; // skip 6-byte header
+        const first_attr_offset = attr_stream_start + @sizeOf(PackedAttrBlockHeader); // skip 4-byte header
         // Corrupt value_tag (byte 0 of the 17-byte packed attr)
         good_data[first_attr_offset] = 255; // invalid
 
@@ -2549,9 +2558,9 @@ test "serialization: corrupt attr block header" {
     const attr_stream_start = @sizeOf(BinaryHeader) +
         @as(usize, hdr.edge_count) * @sizeOf(PackedEdge);
 
-    // Corrupt the in_use byte (byte 5 of 6-byte header) to claim 255 attributes —
-    // the stream won't have enough data, triggering MalformedPayload
-    good_data[attr_stream_start + 5] = 255;
+    // Corrupt the 4-byte header by setting the reserved padding bits (bits 28-31).
+    // This triggers MalformedPayload due to _pad != 0 validation.
+    good_data[attr_stream_start + 3] |= 0xF0;
 
     try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, good_data));
 }
@@ -2616,7 +2625,8 @@ test "serialization: attr index out of bounds" {
     // Attr block header with owner_index >= node_count
     {
         const header_size = @sizeOf(BinaryHeader);
-        const total = header_size + ATTR_BLOCK_HEADER_SIZE;
+        const blk_hdr_size = @sizeOf(PackedAttrBlockHeader);
+        const total = header_size + blk_hdr_size;
         var buf: [total]u8 = undefined;
         @memset(&buf, 0);
 
@@ -2632,22 +2642,25 @@ test "serialization: attr index out of bounds" {
         @memcpy(buf[0..header_size], std.mem.asBytes(&hdr));
 
         // Write attr header with owner_index=5 (>= node_count=1), is_node_owner=1, in_use=0
-        const bad_owner: u32 = 5;
-        @memcpy(buf[header_size..][0..4], std.mem.asBytes(&bad_owner));
-        buf[header_size + 4] = 1; // is_node_owner
-        buf[header_size + 5] = 0; // in_use
+        const bad_blk_hdr = PackedAttrBlockHeader{
+            .owner_index = 5,
+            .in_use = 0,
+            .is_node_owner = 1,
+        };
+        @memcpy(buf[header_size..][0..blk_hdr_size], std.mem.asBytes(&bad_blk_hdr));
 
         try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, &buf));
     }
 }
 
-test "serialization: invalid attr owner type" {
+test "serialization: attr header reserved bits rejected" {
     const a = std.testing.allocator;
 
-    // Attr block with is_node_owner > 1 → MalformedPayload
+    // Attr block header with non-zero padding bits → MalformedPayload
     {
         const header_size = @sizeOf(BinaryHeader);
-        const total = header_size + ATTR_BLOCK_HEADER_SIZE;
+        const blk_hdr_size = @sizeOf(PackedAttrBlockHeader);
+        const total = header_size + blk_hdr_size;
         var buf: [total]u8 = undefined;
         @memset(&buf, 0);
 
@@ -2662,11 +2675,14 @@ test "serialization: invalid attr owner type" {
         };
         @memcpy(buf[0..header_size], std.mem.asBytes(&hdr));
 
-        // Write attr header with owner_index=0, is_node_owner=2 (invalid), in_use=0
-        const owner: u32 = 0;
-        @memcpy(buf[header_size..][0..4], std.mem.asBytes(&owner));
-        buf[header_size + 4] = 2; // invalid is_node_owner
-        buf[header_size + 5] = 0; // in_use
+        // Write a valid header then corrupt the reserved padding bits
+        const valid_blk_hdr = PackedAttrBlockHeader{
+            .owner_index = 0,
+            .in_use = 0,
+            .is_node_owner = 1,
+        };
+        @memcpy(buf[header_size..][0..blk_hdr_size], std.mem.asBytes(&valid_blk_hdr));
+        buf[header_size + 3] |= 0xF0; // set padding bits (bits 28-31)
 
         try std.testing.expectError(error.MalformedPayload, GraphView.loads(a, &buf));
     }
