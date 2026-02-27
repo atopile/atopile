@@ -113,6 +113,41 @@ High-leverage flags you’ll use often:
 - Solver debug: `SLOG`, `SVERBOSE_TABLE`, `SPRINT_START`, `SMAX_ITERATIONS`, `SSHOW_SS_IS`
 - Logs: `COLOR_LOGS`, `LOG_TIME`, `LOG_FILEINFO`
 
+### Search Commands (`ato search`)
+
+The `ato search` command group exposes parts, packages, stdlib, BOM, and variables to the terminal. All subcommands support `--json` for machine-parseable output.
+
+```bash
+# Parts: search JLCPCB catalog
+ato search parts "10k resistor"
+ato search parts C25744              # LCSC ID → detail view
+ato search parts C25744 --json       # raw JSON
+
+# Packages: browse the atopile registry (* = installed)
+ato search packages                  # list all
+ato search packages sensor           # search by keyword
+ato search packages atopile/bosch-bme280  # publisher/name → detail
+
+# Standard library: browse modules & interfaces
+ato search stdlib                    # list all
+ato search stdlib --modules          # modules only
+ato search stdlib Resistor           # exact name → detail view
+
+# BOM & Variables: inspect build output (requires prior `ato build`)
+ato search bom                       # first 20 components
+ato search bom resistor --all        # filter + show all
+ato search bom --target my_target    # specify build target
+ato search variables voltage         # filter by name/path
+ato search variables --all --json    # all variables as JSON
+```
+
+Key files:
+- CLI: `src/atopile/cli/search.py` (registered in `src/atopile/cli/cli.py`)
+- Domain APIs (reused from build server): `src/atopile/server/domains/parts_search.py`, `packages.py`, `stdlib.py`
+- Build artifacts: `build/builds/{target}/{target}.bom.json` / `.variables.json` (camelCase keys: `unitCost`, `meetsSpec`)
+
+Auto-detection rules: `parts` treats `^C?\d+$` as an LCSC detail lookup; `packages` treats queries with `/` as detail lookups; `stdlib` tries exact name match first via `handle_get_stdlib_item()`.
+
 ### Development Workflow
 1.  **Zig Changes**: Edit files under `src/faebryk/core/zig/src/` -> Run `ato dev compile`.
 2.  **Profiling**: If something is slow, use `ato dev profile <command>` to generate a flamegraph or stats.

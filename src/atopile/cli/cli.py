@@ -31,6 +31,7 @@ from atopile.cli import (
     lsp,
     mcp,
     package,
+    search,
     serve,
     view,
 )
@@ -203,7 +204,9 @@ def cli(
 
     BuildLogger.setup_logging(enable_database=True, stage="cli")
 
-    configure.setup()
+    # Only run KiCAD plugin setup for build commands
+    if ctx.invoked_subcommand == "build":
+        configure.setup()
 
 
 app.command()(build.build)
@@ -220,6 +223,7 @@ app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 app.add_typer(dev.dev_app, name="dev", hidden=True)
+app.add_typer(search.search_app, name="search")
 app.add_typer(serve.serve_app, name="serve")
 
 
