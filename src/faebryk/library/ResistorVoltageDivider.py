@@ -388,8 +388,94 @@ class TestVdivSolver:
             assert_=True,
         )
 
+        # Solve and validate pre-pick ranges
         solver = Solver()
-        pick_parts_recursively(rdiv, solver)
+        solver.simplify(g=g, tg=tg)
+
+        r_top = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[0]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        r_bottom = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[1]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+
+        print("r_top:", r_top.pretty_str())
+        print("r_bottom:", r_bottom.pretty_str())
+
+        # Expected (uncorrelated interval arithmetic):
+        #   total_R ∈ [90kΩ, 110kΩ], ratio ∈ [0.08, 0.12]
+        #   r_bottom = total_R × ratio ∈ [7.2kΩ, 13.2kΩ]
+        #   r_top = total_R − r_bottom ∈ [76.8kΩ, 102.8kΩ]
+        expected_r_top = not_none(
+            fabll.Traits(E.lit_op_range(((76800, E.U.Ohm), (102800, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        expected_r_bottom = not_none(
+            fabll.Traits(E.lit_op_range(((7200, E.U.Ohm), (13200, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+
+        assert r_top.op_setic_is_subset_of(expected_r_top, g=g, tg=tg), (
+            f"r_top {r_top.pretty_str()} not in expected {expected_r_top.pretty_str()}"
+        )
+        assert r_bottom.op_setic_is_subset_of(expected_r_bottom, g=g, tg=tg), (
+            f"r_bottom {r_bottom.pretty_str()} not in expected"
+            f" {expected_r_bottom.pretty_str()}"
+        )
+
+        pick_solver = Solver()
+        pick_parts_recursively(rdiv, pick_solver)
+
+        # Verify picked parts produce a ratio within the permitted interval
+        verify_solver = Solver()
+        verify_solver.simplify(g=g, tg=tg)
+        picked_r_top = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[0]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_r_bottom = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[1]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_total = picked_r_top.op_add_intervals(picked_r_bottom, g=g, tg=tg)
+        actual_ratio = picked_r_bottom.op_div_intervals(picked_total, g=g, tg=tg)
+        print("Picked r_top:", picked_r_top.pretty_str())
+        print("Picked r_bottom:", picked_r_bottom.pretty_str())
+        print("Actual ratio:", actual_ratio.pretty_str())
+
+        required_ratio = not_none(
+            fabll.Traits(E.lit_op_range(((0.08, E.U.dl), (0.12, E.U.dl))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        assert actual_ratio.op_setic_is_subset_of(required_ratio, g=g, tg=tg), (
+            f"Picked ratio {actual_ratio.pretty_str()} violates constraint"
+            f" {required_ratio.pretty_str()}"
+        )
 
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
@@ -419,8 +505,354 @@ class TestVdivSolver:
             assert_=True,
         )
 
+        # Solve and validate pre-pick ranges
         solver = Solver()
-        pick_parts_recursively(rdiv, solver)
+        solver.simplify(g=g, tg=tg)
+
+        r_top = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[0]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        r_bottom = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[1]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        solved_ratio = solver.extract_superset(
+            rdiv.ratio.get().is_parameter_operatable.get().as_parameter.force_get()
+        )
+
+        print("r_top:", r_top.pretty_str())
+        print("r_bottom:", r_bottom.pretty_str())
+        print("ratio:", solved_ratio.pretty_str())
+
+        # Expected:
+        #   total_R = v_in / current = [9V, 11V] / [1mA, 3mA] = [3kΩ, 11kΩ]
+        #   ratio = v_out / v_in = [3V, 3.2V] / [9V, 11V] ≈ [0.273, 0.356]
+        #   r_bottom = total_R × ratio ≈ [818Ω, 3912Ω]
+        #   r_top = total_R × (1 − ratio) ≈ [1932Ω, 7997Ω]
+        expected_r_top = not_none(
+            fabll.Traits(E.lit_op_range(((1932, E.U.Ohm), (7997, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        expected_r_bottom = not_none(
+            fabll.Traits(E.lit_op_range(((818, E.U.Ohm), (3912, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        expected_ratio = not_none(
+            fabll.Traits(E.lit_op_range(((0.272, E.U.dl), (0.356, E.U.dl))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+
+        assert r_top.op_setic_is_subset_of(expected_r_top, g=g, tg=tg), (
+            f"r_top {r_top.pretty_str()} not in expected {expected_r_top.pretty_str()}"
+        )
+        assert r_bottom.op_setic_is_subset_of(expected_r_bottom, g=g, tg=tg), (
+            f"r_bottom {r_bottom.pretty_str()} not in expected"
+            f" {expected_r_bottom.pretty_str()}"
+        )
+        assert solved_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"ratio {solved_ratio.pretty_str()} not in expected"
+            f" {expected_ratio.pretty_str()}"
+        )
+
+        pick_solver = Solver()
+        pick_parts_recursively(rdiv, pick_solver)
+
+        # Verify picked parts produce a ratio within the permitted interval
+        verify_solver = Solver()
+        verify_solver.simplify(g=g, tg=tg)
+        picked_r_top = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[0]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_r_bottom = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[1]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_total = picked_r_top.op_add_intervals(picked_r_bottom, g=g, tg=tg)
+        actual_ratio = picked_r_bottom.op_div_intervals(picked_total, g=g, tg=tg)
+        print("Picked r_top:", picked_r_top.pretty_str())
+        print("Picked r_bottom:", picked_r_bottom.pretty_str())
+        print("Actual ratio:", actual_ratio.pretty_str())
+
+        assert actual_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"Picked ratio {actual_ratio.pretty_str()} violates constraint"
+            f" {expected_ratio.pretty_str()}"
+        )
+
+    @pytest.mark.usefixtures("setup_project_config")
+    @staticmethod
+    def test_pick_dependency_advanced_3():
+        from faebryk.core.solver.solver import Solver
+        from faebryk.libs.picker.picker import pick_parts_recursively
+        from faebryk.libs.test.boundexpressions import BoundExpressions
+
+        E = BoundExpressions()
+        g, tg = E.g, E.tg
+
+        rdiv = ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+
+        E.is_subset(
+            rdiv.current.get().can_be_operand.get(),
+            E.lit_op_range(((1e-6, E.U.A), (1e-3, E.U.A))),
+            assert_=True,
+        )
+        E.is_subset(
+            rdiv.v_in.get().can_be_operand.get(),
+            E.lit_op_range_from_center_rel((10, E.U.V), 0.05),
+            assert_=True,
+        )
+        E.is_subset(
+            rdiv.v_out.get().can_be_operand.get(),
+            E.lit_op_range_from_center_rel((2, E.U.V), 0.01),
+            assert_=True,
+        )
+
+        # Solve and validate pre-pick ranges
+        solver = Solver()
+        solver.simplify(g=g, tg=tg)
+
+        r_top = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[0]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        r_bottom = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[1]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        solved_ratio = solver.extract_superset(
+            rdiv.ratio.get().is_parameter_operatable.get().as_parameter.force_get()
+        )
+        solved_total_r = solver.extract_superset(
+            rdiv.total_resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+
+        print("r_top:", r_top.pretty_str())
+        print("r_bottom:", r_bottom.pretty_str())
+        print("ratio:", solved_ratio.pretty_str())
+        print("total_R:", solved_total_r.pretty_str())
+
+        # Expected:
+        #   total_R = v_in / current = [9.5V, 10.5V] / [1µA, 1mA] = [9.5kΩ, 10.5MΩ]
+        #   ratio = v_out / v_in = [1.98V, 2.02V] / [9.5V, 10.5V] ≈ [0.1886, 0.2126]
+        #   r_bottom = total_R × ratio ≈ [1796Ω, 2.24MΩ]
+        #   r_top = total_R × (1 − ratio) ≈ [7477Ω, 8.51MΩ]
+        expected_r_top = not_none(
+            fabll.Traits(E.lit_op_range(((7477, E.U.Ohm), (8505000, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        expected_r_bottom = not_none(
+            fabll.Traits(E.lit_op_range(((1796, E.U.Ohm), (2236500, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        expected_ratio = not_none(
+            fabll.Traits(E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+        expected_total_r = not_none(
+            fabll.Traits(E.lit_op_range(((9500, E.U.Ohm), (10500000, E.U.Ohm))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+
+        assert r_top.op_setic_is_subset_of(expected_r_top, g=g, tg=tg), (
+            f"r_top {r_top.pretty_str()} not in expected {expected_r_top.pretty_str()}"
+        )
+        assert r_bottom.op_setic_is_subset_of(expected_r_bottom, g=g, tg=tg), (
+            f"r_bottom {r_bottom.pretty_str()} not in expected"
+            f" {expected_r_bottom.pretty_str()}"
+        )
+        assert solved_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"ratio {solved_ratio.pretty_str()} not in expected"
+            f" {expected_ratio.pretty_str()}"
+        )
+        assert solved_total_r.op_setic_is_subset_of(expected_total_r, g=g, tg=tg), (
+            f"total_R {solved_total_r.pretty_str()} not in expected"
+            f" {expected_total_r.pretty_str()}"
+        )
+
+        pick_solver = Solver()
+        pick_parts_recursively(rdiv, pick_solver)
+
+        # Verify picked parts produce a ratio within the permitted interval
+        verify_solver = Solver()
+        verify_solver.simplify(g=g, tg=tg)
+        picked_r_top = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[0]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_r_bottom = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[1]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_total = picked_r_top.op_add_intervals(picked_r_bottom, g=g, tg=tg)
+        actual_ratio = picked_r_bottom.op_div_intervals(picked_total, g=g, tg=tg)
+        print("Picked r_top:", picked_r_top.pretty_str())
+        print("Picked r_bottom:", picked_r_bottom.pretty_str())
+        print("Actual ratio:", actual_ratio.pretty_str())
+
+        assert actual_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"Picked ratio {actual_ratio.pretty_str()} violates constraint"
+            f" {expected_ratio.pretty_str()}"
+        )
+
+    @pytest.mark.usefixtures("setup_project_config")
+    @staticmethod
+    def test_pick_dependency_advanced_4():
+        from faebryk.core.solver.solver import Solver
+        from faebryk.libs.picker.picker import pick_parts_recursively
+        from faebryk.libs.test.boundexpressions import BoundExpressions
+
+        E = BoundExpressions()
+        g, tg = E.g, E.tg
+
+        rdiv = ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+
+        E.is_subset(
+            rdiv.v_in.get().can_be_operand.get(),
+            E.lit_op_range_from_center_rel((10, E.U.V), 0.05),
+            assert_=True,
+        )
+        E.is_subset(
+            rdiv.v_out.get().can_be_operand.get(),
+            E.lit_op_range_from_center_rel((2, E.U.V), 0.01),
+            assert_=True,
+        )
+
+        # Solve and validate pre-pick ranges
+        solver = Solver()
+        solver.simplify(g=g, tg=tg)
+
+        r_top = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[0]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        r_bottom = solver.extract_superset(
+            rdiv.chain.get()
+            .resistors[1]
+            .get()
+            .resistance.get()
+            .is_parameter_operatable.get()
+            .as_parameter.force_get()
+        )
+        solved_ratio = solver.extract_superset(
+            rdiv.ratio.get().is_parameter_operatable.get().as_parameter.force_get()
+        )
+
+        print("r_top:", r_top.pretty_str())
+        print("r_bottom:", r_bottom.pretty_str())
+        print("ratio:", solved_ratio.pretty_str())
+
+        # Expected:
+        #   ratio = v_out / v_in = [1.98V, 2.02V] / [9.5V, 10.5V] ≈ [0.1886, 0.2126]
+        #   No current constraint, so total_R (and thus individual resistances)
+        #   are bounded only by the Resistor domain — just verify ratio and
+        #   that resistances are non-empty.
+        expected_ratio = not_none(
+            fabll.Traits(E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl))))
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+
+        assert solved_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"ratio {solved_ratio.pretty_str()} not in expected"
+            f" {expected_ratio.pretty_str()}"
+        )
+        assert not r_top.op_setic_is_empty(), (
+            f"r_top should not be empty, got {r_top.pretty_str()}"
+        )
+        assert not r_bottom.op_setic_is_empty(), (
+            f"r_bottom should not be empty, got {r_bottom.pretty_str()}"
+        )
+
+        pick_solver = Solver()
+        pick_parts_recursively(rdiv, pick_solver)
+
+        # Verify picked parts produce a ratio within the permitted interval
+        verify_solver = Solver()
+        verify_solver.simplify(g=g, tg=tg)
+        picked_r_top = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[0]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_r_bottom = not_none(
+            verify_solver.extract_superset(
+                rdiv.chain.get()
+                .resistors[1]
+                .get()
+                .resistance.get()
+                .is_parameter_operatable.get()
+                .as_parameter.force_get()
+            ).try_cast(F.Literals.Numbers)
+        )
+        picked_total = picked_r_top.op_add_intervals(picked_r_bottom, g=g, tg=tg)
+        actual_ratio = picked_r_bottom.op_div_intervals(picked_total, g=g, tg=tg)
+        print("Picked r_top:", picked_r_top.pretty_str())
+        print("Picked r_bottom:", picked_r_bottom.pretty_str())
+        print("Actual ratio:", actual_ratio.pretty_str())
+
+        assert actual_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"Picked ratio {actual_ratio.pretty_str()} violates constraint"
+            f" {expected_ratio.pretty_str()}"
+        )
 
     @pytest.mark.skip(reason="needs review")
     @pytest.mark.usefixtures("setup_project_config")
