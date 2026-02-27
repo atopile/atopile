@@ -4,6 +4,7 @@ const tokenizer = @import("tokenizer.zig");
 const Token = tokenizer.Token;
 const TokenType = tokenizer.TokenType;
 pub const TokenLocation = tokenizer.TokenLocation;
+const LocationInfo = tokenizer.LocationInfo;
 
 // S-Expression value type
 pub const SExpValue = union(enum) {
@@ -349,16 +350,71 @@ pub const ParseError = error{
 };
 
 pub const Parser = struct {
+    source: []const u8,
     tokens: []const Token,
     position: usize,
+    scan_offset: usize,
+    scan_location: LocationInfo,
     allocator: std.mem.Allocator,
+    copy_atoms: bool,
 
-    pub fn init(allocator: std.mem.Allocator, tokens: []const Token) Parser {
+    pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) Parser {
         return .{
+            .source = source,
             .tokens = tokens,
             .position = 0,
+            .scan_offset = 0,
+            .scan_location = .{ .line = 1, .column = 1 },
             .allocator = allocator,
+            .copy_atoms = true,
         };
+    }
+
+    pub fn initBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) Parser {
+        return .{
+            .source = source,
+            .tokens = tokens,
+            .position = 0,
+            .scan_offset = 0,
+            .scan_location = .{ .line = 1, .column = 1 },
+            .allocator = allocator,
+            .copy_atoms = false,
+        };
+    }
+
+    fn tokenSlice(self: *const Parser, token: Token) []const u8 {
+        return token.slice(self.source);
+    }
+
+    fn locationAtOffset(self: *Parser, target: usize) LocationInfo {
+        if (target < self.scan_offset) {
+            self.scan_offset = 0;
+            self.scan_location = .{ .line = 1, .column = 1 };
+        }
+
+        var offset = self.scan_offset;
+        var line = self.scan_location.line;
+        var column = self.scan_location.column;
+
+        while (offset < target and offset < self.source.len) : (offset += 1) {
+            const c = self.source[offset];
+            if (c == '\n') {
+                line = std.math.add(@TypeOf(line), line, 1) catch std.math.maxInt(@TypeOf(line));
+                column = 1;
+            } else {
+                column = std.math.add(@TypeOf(column), column, 1) catch std.math.maxInt(@TypeOf(column));
+            }
+        }
+
+        self.scan_offset = offset;
+        self.scan_location = .{ .line = line, .column = column };
+        return self.scan_location;
+    }
+
+    fn tokenLocation(self: *Parser, token: Token) TokenLocation {
+        const start = self.locationAtOffset(@as(usize, token.start));
+        const end = self.locationAtOffset(@as(usize, token.end));
+        return .{ .start = start, .end = end };
     }
 
     pub fn parse(self: *Parser) ParseError!?SExp {
@@ -368,36 +424,45 @@ pub const Parser = struct {
 
         const token = self.tokens[self.position];
         self.position += 1;
+        const token_location = self.tokenLocation(token);
+        const token_value = self.tokenSlice(token);
 
         switch (token.type) {
-            .lparen => return try self.parseList(token.location),
+            .lparen => return try self.parseList(token_location),
             .rparen => return error.UnexpectedRightParen,
             .symbol => {
-                // CRITICAL FIX: Duplicate symbol to prevent use-after-free
-                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
-                @memcpy(duped, token.value);
-                return SExp{ .value = .{ .symbol = duped }, .location = token.location };
+                if (self.copy_atoms) {
+                    // Duplicate symbol to prevent use-after-free.
+                    const duped = self.allocator.alloc(u8, token_value.len) catch return error.OutOfMemory;
+                    @memcpy(duped, token_value);
+                    return SExp{ .value = .{ .symbol = duped }, .location = token_location };
+                }
+                return SExp{ .value = .{ .symbol = token_value }, .location = token_location };
             },
             .number => {
-                // CRITICAL FIX: Duplicate number to prevent use-after-free
-                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
-                @memcpy(duped, token.value);
-                return SExp{ .value = .{ .number = duped }, .location = token.location };
+                if (self.copy_atoms) {
+                    // Duplicate number to prevent use-after-free.
+                    const duped = self.allocator.alloc(u8, token_value.len) catch return error.OutOfMemory;
+                    @memcpy(duped, token_value);
+                    return SExp{ .value = .{ .number = duped }, .location = token_location };
+                }
+                return SExp{ .value = .{ .number = token_value }, .location = token_location };
             },
             .string => {
-                // CRITICAL FIX: Duplicate string to prevent use-after-free
-                // token.value points to the input buffer which may be freed later
-                const val = try _unescape_string(self.allocator, token.value);
-                const duped = self.allocator.alloc(u8, val.len) catch return error.OutOfMemory;
-                @memcpy(duped, val);
-                return SExp{ .value = .{ .string = duped }, .location = token.location };
+                // token value points to the input buffer which may be freed later
+                const string_inner = if (token_value.len >= 2) token_value[1 .. token_value.len - 1] else token_value;
+                const val = try _unescape_string(self.allocator, string_inner);
+                return SExp{ .value = .{ .string = val }, .location = token_location };
             },
             //.string => return SExp{ .value = .{ .string = try _unescape_string(self.allocator, token.value) }, .location = token.location },
             .comment => {
-                // CRITICAL FIX: Duplicate comment to prevent use-after-free
-                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
-                @memcpy(duped, token.value);
-                return SExp{ .value = .{ .comment = duped }, .location = token.location };
+                if (self.copy_atoms) {
+                    // Duplicate comment to prevent use-after-free.
+                    const duped = self.allocator.alloc(u8, token_value.len) catch return error.OutOfMemory;
+                    @memcpy(duped, token_value);
+                    return SExp{ .value = .{ .comment = duped }, .location = token_location };
+                }
+                return SExp{ .value = .{ .comment = token_value }, .location = token_location };
             },
         }
     }
@@ -410,7 +475,7 @@ pub const Parser = struct {
             const next_token = self.tokens[self.position];
 
             if (next_token.type == .rparen) {
-                const end_location = next_token.location;
+                const end_location = self.tokenLocation(next_token);
                 self.position += 1;
                 return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = .{
                     .start = start_location.start,
@@ -431,8 +496,15 @@ pub const Parser = struct {
 
 // Parse with arena allocator for better performance!
 // Parse a single S-expression
-pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!SExp {
-    var parser = Parser.init(allocator, tokens);
+pub fn parse(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
+    var parser = Parser.init(allocator, source, tokens);
+    return try parser.parse() orelse return error.EmptyFile;
+}
+
+// Parse without duplicating symbol/number/comment atoms.
+// Callers must ensure token storage outlives the returned SExp.
+pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
+    var parser = Parser.initBorrowed(allocator, source, tokens);
     return try parser.parse() orelse return error.EmptyFile;
 }
 

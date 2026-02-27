@@ -606,6 +606,7 @@ fn measureTokenizer(
 
 fn measureAst(
     allocator: std.mem.Allocator,
+    input: []const u8,
     tokens: []const tokenizer.Token,
     warmup: usize,
     samples: usize,
@@ -632,7 +633,7 @@ fn measureAst(
         const stage_start_peak = tracker.peak_bytes;
 
         var timer = try std.time.Timer.start();
-        _ = try ast.parse(arena.allocator(), tokens);
+        _ = try ast.parseBorrowed(arena.allocator(), input, tokens);
         const elapsed_ms = nsToMs(timer.read());
         const stage_end_current = tracker.current_bytes;
         const stage_peak = tracker.peak_bytes;
@@ -860,7 +861,7 @@ fn measureCumulativePipelinePeaks(
         const tok_peak = tracker.peak_bytes;
 
         const ast_start = tracker.current_bytes;
-        const parsed = try ast.parse(a, tokens);
+        const parsed = try ast.parseBorrowed(a, input, tokens);
         const ast_end = tracker.current_bytes;
         const ast_peak = tracker.peak_bytes;
 
@@ -988,7 +989,7 @@ fn benchmarkDataset(
     const parse_alloc = parse_arena.allocator();
 
     const tokens = try tokenizer._tokenize(parse_alloc, dataset.input);
-    const parsed = try ast.parse(parse_alloc, tokens);
+    const parsed = try ast.parseBorrowed(parse_alloc, dataset.input, tokens);
     const model = try pcb.PcbFile.loads(parse_alloc, .{ .sexp = parsed });
     const pretty_source = try buildPrettyInputSource(allocator, model);
     defer allocator.free(pretty_source);
@@ -1004,7 +1005,7 @@ fn benchmarkDataset(
     defer allocator.free(tokenizer_samples.peak_increment_kib);
     _ = try appendLayerResult(allocator, rows, dataset, .tokenizer, tokenizer_samples, cumulative.tokenizer);
 
-    const ast_samples = try measureAst(allocator, tokens, warmup, samples);
+    const ast_samples = try measureAst(allocator, dataset.input, tokens, warmup, samples);
     defer allocator.free(ast_samples.times_ms);
     defer allocator.free(ast_samples.peak_kib);
     defer allocator.free(ast_samples.mem_before_kib);
