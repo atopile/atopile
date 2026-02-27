@@ -5,6 +5,30 @@ const pyzig = @import("pyzig.zig");
 const util = @import("util.zig");
 const linked_list = @import("linked_list.zig");
 
+fn expectStructWrapper(comptime ChildType: type, value: ?*py.PyObject) ?*pyzig.PyObjectWrapper(ChildType) {
+    if (value == null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "Expected object");
+        return null;
+    }
+
+    const type_name_for_registry = @typeName(ChildType) ++ "\x00";
+    const expected_type = pyzig.ensureTypeObject(
+        ChildType,
+        type_name_for_registry,
+        "Failed to initialize nested type",
+    );
+    const actual_type = py.Py_TYPE(value);
+
+    if (actual_type == null or actual_type.? != expected_type) {
+        var error_msg: [256]u8 = undefined;
+        const msg = std.fmt.bufPrintZ(&error_msg, "Expected {s}", .{@typeName(ChildType)}) catch "Invalid object type";
+        py.PyErr_SetString(py.PyExc_TypeError, msg);
+        return null;
+    }
+
+    return @as(*pyzig.PyObjectWrapper(ChildType), @ptrCast(@alignCast(value.?)));
+}
+
 pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
     const info = @typeInfo(T);
     if (info != .@"struct") {
@@ -144,7 +168,11 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     switch (child_info) {
                                         .@"struct" => {
                                             // Handle struct items
-                                            const nested_wrapper = @as(*pyzig.PyObjectWrapper(ptr.child), @ptrCast(@alignCast(item)));
+                                            const nested_wrapper = expectStructWrapper(ptr.child, item) orelse {
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            };
                                             slice[i] = nested_wrapper.data.*;
                                         },
                                         .@"enum" => {
@@ -172,7 +200,11 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 const opt_child_info = @typeInfo(opt.child);
                                                 switch (opt_child_info) {
                                                     .@"struct" => {
-                                                        const nested_wrapper = @as(*pyzig.PyObjectWrapper(opt.child), @ptrCast(@alignCast(item)));
+                                                        const nested_wrapper = expectStructWrapper(opt.child, item) orelse {
+                                                            std.heap.c_allocator.free(slice);
+                                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                            return -1;
+                                                        };
                                                         slice[i] = nested_wrapper.data.*;
                                                     },
                                                     .int => {
@@ -325,7 +357,10 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     },
                                     .@"struct" => {
                                         // Handle optional struct fields
-                                        const nested_wrapper = @as(*pyzig.PyObjectWrapper(opt.child), @ptrCast(@alignCast(value)));
+                                        const nested_wrapper = expectStructWrapper(opt.child, value) orelse {
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            return -1;
+                                        };
                                         @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
                                     },
                                     .@"enum" => {
@@ -379,7 +414,12 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     const child_info = @typeInfo(ChildType);
                                     switch (child_info) {
                                         .@"struct" => {
-                                            const nested = @as(*pyzig.PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
+                                            const nested = expectStructWrapper(ChildType, item) orelse {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            };
                                             node.* = NodeType{ .data = nested.data.* };
                                         },
                                         .@"enum" => {
@@ -470,7 +510,10 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                 @field(wrapper_obj.data.*, field.name) = ll;
                             } else {
                                 // Treat as nested struct
-                                const nested_wrapper = @as(*pyzig.PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
+                                const nested_wrapper = expectStructWrapper(field.type, value) orelse {
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                };
                                 @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
                             }
                         },
