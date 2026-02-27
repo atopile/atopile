@@ -2,15 +2,77 @@ import { Vec2, BBox } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintAll, paintGroupBBox, paintGroupHalos, paintSelection, computeBBox } from "./painter";
+import { paintAll, paintGroupBBox, paintGroupHalos, paintBBoxOutline, paintSelection, computeBBox } from "./painter";
 import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
 import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
 import { buildGroupIndex, type UiFootprintGroup } from "./footprint_groups";
-import type { ActionCommand, LayerModel, RenderModel } from "./types";
+import type { ActionCommand, DrawingModel, LayerModel, RenderModel, ZoneModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
+
+function captureDrawingCoords(drawing: DrawingModel): number[] {
+    switch (drawing.type) {
+        case "line": return [drawing.start.x, drawing.start.y, drawing.end.x, drawing.end.y];
+        case "arc": return [drawing.start.x, drawing.start.y, drawing.mid.x, drawing.mid.y, drawing.end.x, drawing.end.y];
+        case "circle": return [drawing.center.x, drawing.center.y, drawing.end.x, drawing.end.y];
+        case "rect": return [drawing.start.x, drawing.start.y, drawing.end.x, drawing.end.y];
+        case "polygon": case "curve": return drawing.points.flatMap(p => [p.x, p.y]);
+        default: return [];
+    }
+}
+
+function applyDeltaToDrawing(drawing: DrawingModel, coords: number[], dx: number, dy: number): void {
+    let i = 0;
+    switch (drawing.type) {
+        case "line":
+            drawing.start.x = coords[i++]! + dx; drawing.start.y = coords[i++]! + dy;
+            drawing.end.x = coords[i++]! + dx; drawing.end.y = coords[i++]! + dy;
+            break;
+        case "arc":
+            drawing.start.x = coords[i++]! + dx; drawing.start.y = coords[i++]! + dy;
+            drawing.mid.x = coords[i++]! + dx; drawing.mid.y = coords[i++]! + dy;
+            drawing.end.x = coords[i++]! + dx; drawing.end.y = coords[i++]! + dy;
+            break;
+        case "circle":
+            drawing.center.x = coords[i++]! + dx; drawing.center.y = coords[i++]! + dy;
+            drawing.end.x = coords[i++]! + dx; drawing.end.y = coords[i++]! + dy;
+            break;
+        case "rect":
+            drawing.start.x = coords[i++]! + dx; drawing.start.y = coords[i++]! + dy;
+            drawing.end.x = coords[i++]! + dx; drawing.end.y = coords[i++]! + dy;
+            break;
+        case "polygon": case "curve":
+            for (const pt of drawing.points) {
+                pt.x = coords[i++]! + dx; pt.y = coords[i++]! + dy;
+            }
+            break;
+    }
+}
+
+function captureZoneCoords(zone: ZoneModel): { outline: number[]; fills: number[][] } {
+    return {
+        outline: zone.outline.flatMap(p => [p.x, p.y]),
+        fills: zone.filled_polygons.map(fp => fp.points.flatMap(p => [p.x, p.y])),
+    };
+}
+
+function applyDeltaToZone(zone: ZoneModel, coords: { outline: number[]; fills: number[][] }, dx: number, dy: number): void {
+    for (let i = 0; i < zone.outline.length; i++) {
+        zone.outline[i]!.x = coords.outline[i * 2]! + dx;
+        zone.outline[i]!.y = coords.outline[i * 2 + 1]! + dy;
+    }
+    for (let fi = 0; fi < zone.filled_polygons.length; fi++) {
+        const fillPts = zone.filled_polygons[fi]!.points;
+        const fillCoords = coords.fills[fi];
+        if (!fillCoords) continue;
+        for (let i = 0; i < fillPts.length; i++) {
+            fillPts[i]!.x = fillCoords[i * 2]! + dx;
+            fillPts[i]!.y = fillCoords[i * 2 + 1]! + dy;
+        }
+    }
+}
 
 export class Editor {
     private canvas: HTMLCanvasElement;
@@ -35,6 +97,15 @@ export class Editor {
     private groupIdByFpIndex = new Map<number, string>();
     private trackIndexByUuid = new Map<string, number>();
     private viaIndexByUuid = new Map<string, number>();
+    private drawingIndexByUuid = new Map<string, number>();
+    private textIndexByUuid = new Map<string, number>();
+    private zoneIndexByUuid = new Map<string, number>();
+    private dragTargetDrawingUuids: string[] = [];
+    private dragStartDrawingCoords: Map<string, number[]> | null = null;
+    private dragTargetTextUuids: string[] = [];
+    private dragStartTextPositions: Map<string, { x: number; y: number; r: number }> | null = null;
+    private dragTargetZoneUuids: string[] = [];
+    private dragStartZoneCoords: Map<string, { outline: number[]; fills: number[][] }> | null = null;
 
     private isDragging = false;
     private dragStartWorld: Vec2 | null = null;
@@ -148,8 +219,12 @@ export class Editor {
         if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
             const hovered = this.groupsById.get(this.hoveredGroupId);
             if (hovered) {
-                paintGroupBBox(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
-                paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
+                if (hovered.memberIndices.length > 0) {
+                    paintGroupBBox(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
+                    paintGroupHalos(this.renderer, this.model.footprints, hovered.memberIndices, "hover");
+                } else if (hovered.graphicBBox) {
+                    paintBBoxOutline(this.renderer, hovered.graphicBBox, "hover");
+                }
             }
         }
         if (
@@ -164,8 +239,12 @@ export class Editor {
         if (!this.singleOverrideMode && this.selectedGroupId) {
             const selectedGroup = this.groupsById.get(this.selectedGroupId);
             if (selectedGroup) {
-                paintGroupBBox(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
-                paintGroupHalos(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
+                if (selectedGroup.memberIndices.length > 0) {
+                    paintGroupBBox(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
+                    paintGroupHalos(this.renderer, this.model.footprints, selectedGroup.memberIndices, "selected");
+                } else if (selectedGroup.graphicBBox) {
+                    paintBBoxOutline(this.renderer, selectedGroup.graphicBBox, "selected");
+                }
             }
         }
 
@@ -187,6 +266,9 @@ export class Editor {
         this.groupIdByFpIndex = index.groupIdByFpIndex;
         this.trackIndexByUuid = index.trackIndexByUuid;
         this.viaIndexByUuid = index.viaIndexByUuid;
+        this.drawingIndexByUuid = index.drawingIndexByUuid;
+        this.textIndexByUuid = index.textIndexByUuid;
+        this.zoneIndexByUuid = index.zoneIndexByUuid;
     }
 
     private getSelectedSingleUuid(): string | null {
@@ -352,6 +434,12 @@ export class Editor {
         this.dragStartTrackPositions = null;
         this.dragTargetViaUuids = [];
         this.dragStartViaPositions = null;
+        this.dragTargetDrawingUuids = [];
+        this.dragStartDrawingCoords = null;
+        this.dragTargetTextUuids = [];
+        this.dragStartTextPositions = null;
+        this.dragTargetZoneUuids = [];
+        this.dragStartZoneCoords = null;
     }
 
     private clearBoxSelectionState() {
@@ -360,14 +448,15 @@ export class Editor {
         this.boxSelectCurrentWorld = null;
     }
 
-    private beginDragSelection(worldPos: Vec2, targetIndices: number[], trackUuids: string[] = [], viaUuids: string[] = []) {
+    private beginDragSelection(worldPos: Vec2, targetIndices: number[], trackUuids: string[] = [], viaUuids: string[] = [], drawingUuids: string[] = [], textUuids: string[] = [], zoneUuids: string[] = []) {
         const dragStartPositions = new Map<number, { x: number; y: number }>();
         for (const index of targetIndices) {
             const fp = this.model?.footprints[index];
             if (!fp) continue;
             dragStartPositions.set(index, { x: fp.at.x, y: fp.at.y });
         }
-        if (dragStartPositions.size === 0) {
+        // Allow drag even with no footprints if drawings/texts/zones are being dragged.
+        if (dragStartPositions.size === 0 && drawingUuids.length === 0 && textUuids.length === 0 && zoneUuids.length === 0) {
             return false;
         }
         const dragStartTrackPositions = new Map<string, { sx: number; sy: number; ex: number; ey: number; mx?: number; my?: number }>();
@@ -390,6 +479,30 @@ export class Editor {
             if (!via) continue;
             dragStartViaPositions.set(uuid, { x: via.at.x, y: via.at.y });
         }
+        const dragStartDrawingCoords = new Map<string, number[]>();
+        for (const uuid of drawingUuids) {
+            const idx = this.drawingIndexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            const drawing = this.model?.drawings[idx];
+            if (!drawing) continue;
+            dragStartDrawingCoords.set(uuid, captureDrawingCoords(drawing));
+        }
+        const dragStartTextPositions = new Map<string, { x: number; y: number; r: number }>();
+        for (const uuid of textUuids) {
+            const idx = this.textIndexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            const text = this.model?.texts[idx];
+            if (!text) continue;
+            dragStartTextPositions.set(uuid, { x: text.at.x, y: text.at.y, r: text.at.r });
+        }
+        const dragStartZoneCoords = new Map<string, { outline: number[]; fills: number[][] }>();
+        for (const uuid of zoneUuids) {
+            const idx = this.zoneIndexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            const zone = this.model?.zones[idx];
+            if (!zone) continue;
+            dragStartZoneCoords.set(uuid, captureZoneCoords(zone));
+        }
         this.isDragging = true;
         this.dragStartWorld = worldPos;
         this.dragTargetIndices = [...dragStartPositions.keys()];
@@ -398,6 +511,12 @@ export class Editor {
         this.dragStartTrackPositions = dragStartTrackPositions;
         this.dragTargetViaUuids = [...dragStartViaPositions.keys()];
         this.dragStartViaPositions = dragStartViaPositions;
+        this.dragTargetDrawingUuids = [...dragStartDrawingCoords.keys()];
+        this.dragStartDrawingCoords = dragStartDrawingCoords;
+        this.dragTargetTextUuids = [...dragStartTextPositions.keys()];
+        this.dragStartTextPositions = dragStartTextPositions;
+        this.dragTargetZoneUuids = [...dragStartZoneCoords.keys()];
+        this.dragStartZoneCoords = dragStartZoneCoords;
         return true;
     }
 
@@ -449,6 +568,17 @@ export class Editor {
                 } else {
                     nextHoverFp = hitIndex;
                 }
+            } else {
+                // Check graphic-only groups (no footprint members) by bounding box.
+                for (const [groupId, group] of this.groupsById) {
+                    if (group.memberIndices.length === 0 && group.graphicBBox) {
+                        const hit = group.graphicBBox.contains_point(worldPos);
+                        if (hit) {
+                            nextHoverId = groupId;
+                            break;
+                        }
+                    }
+                }
             }
         }
         if (nextHoverId === this.hoveredGroupId && nextHoverFp === this.hoveredFpIndex) return;
@@ -497,15 +627,38 @@ export class Editor {
                 const isGroupDrag = this.selectionMode === "group";
                 const dragTrackUuids = isGroupDrag ? (this.selectedGroup()?.trackMemberUuids ?? []) : [];
                 const dragViaUuids = isGroupDrag ? (this.selectedGroup()?.viaMemberUuids ?? []) : [];
-                if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids)) {
+                const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
+                const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
+                const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
+                if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
                     this.repaintWithSelection();
                     return;
                 }
 
                 this.repaintWithSelection();
             } else {
-                this.clearSelection(true);
-                this.repaintWithSelection();
+                // Check if clicking inside a graphic-only group's bounding box.
+                let hitGraphicGroupId: string | null = null;
+                if (!this.singleOverrideMode) {
+                    for (const [groupId, group] of this.groupsById) {
+                        if (group.memberIndices.length === 0 && group.graphicBBox?.contains_point(worldPos)) {
+                            hitGraphicGroupId = groupId;
+                            break;
+                        }
+                    }
+                }
+                if (hitGraphicGroupId) {
+                    this.setGroupSelection(hitGraphicGroupId);
+                    const group = this.groupsById.get(hitGraphicGroupId)!;
+                    if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
+                        this.repaintWithSelection();
+                        return;
+                    }
+                    this.repaintWithSelection();
+                } else {
+                    this.clearSelection(true);
+                    this.repaintWithSelection();
+                }
             }
         });
 
@@ -543,14 +696,20 @@ export class Editor {
                 return;
             }
 
-            if (!this.dragStartWorld || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
-                return;
-            }
+            if (!this.dragStartWorld) return;
+            const hasAnyTargets =
+                this.dragTargetIndices.length > 0
+                || this.dragTargetTrackUuids.length > 0
+                || this.dragTargetViaUuids.length > 0
+                || this.dragTargetDrawingUuids.length > 0
+                || this.dragTargetTextUuids.length > 0
+                || this.dragTargetZoneUuids.length > 0;
+            if (!hasAnyTargets) return;
 
             const delta = worldPos.sub(this.dragStartWorld);
             for (const index of this.dragTargetIndices) {
                 const fp = this.model.footprints[index];
-                const start = this.dragStartPositions.get(index);
+                const start = this.dragStartPositions?.get(index);
                 if (!fp || !start) continue;
                 fp.at.x = start.x + delta.x;
                 fp.at.y = start.y + delta.y;
@@ -583,6 +742,37 @@ export class Editor {
                     via.at.y = start.y + delta.y;
                 }
             }
+            if (this.dragStartDrawingCoords) {
+                for (const uuid of this.dragTargetDrawingUuids) {
+                    const idx = this.drawingIndexByUuid.get(uuid);
+                    if (idx === undefined) continue;
+                    const drawing = this.model.drawings[idx];
+                    const coords = this.dragStartDrawingCoords.get(uuid);
+                    if (!drawing || !coords) continue;
+                    applyDeltaToDrawing(drawing, coords, delta.x, delta.y);
+                }
+            }
+            if (this.dragStartTextPositions) {
+                for (const uuid of this.dragTargetTextUuids) {
+                    const idx = this.textIndexByUuid.get(uuid);
+                    if (idx === undefined) continue;
+                    const text = this.model.texts[idx];
+                    const start = this.dragStartTextPositions.get(uuid);
+                    if (!text || !start) continue;
+                    text.at.x = start.x + delta.x;
+                    text.at.y = start.y + delta.y;
+                }
+            }
+            if (this.dragStartZoneCoords) {
+                for (const uuid of this.dragTargetZoneUuids) {
+                    const idx = this.zoneIndexByUuid.get(uuid);
+                    if (idx === undefined) continue;
+                    const zone = this.model.zones[idx];
+                    const coords = this.dragStartZoneCoords.get(uuid);
+                    if (!zone || !coords) continue;
+                    applyDeltaToZone(zone, coords, delta.x, delta.y);
+                }
+            }
 
             this.paint();
             this.requestRedraw();
@@ -609,21 +799,54 @@ export class Editor {
             if (!this.isDragging) return;
             this.isDragging = false;
 
-            if (!this.model || !this.dragStartPositions || this.dragTargetIndices.length === 0) {
+            if (!this.model || !this.dragStartWorld) {
                 this.clearDragState();
                 return;
             }
 
-            const firstTarget = this.dragTargetIndices[0]!;
-            const firstStart = this.dragStartPositions.get(firstTarget);
-            const firstFp = this.model.footprints[firstTarget];
-            if (!firstStart || !firstFp) {
+            let dx = 0, dy = 0;
+
+            if (this.dragTargetIndices.length > 0 && this.dragStartPositions) {
+                // Compute delta from first footprint's movement.
+                const firstTarget = this.dragTargetIndices[0]!;
+                const firstStart = this.dragStartPositions.get(firstTarget);
+                const firstFp = this.model.footprints[firstTarget];
+                if (!firstStart || !firstFp) {
+                    this.clearDragState();
+                    return;
+                }
+                dx = firstFp.at.x - firstStart.x;
+                dy = firstFp.at.y - firstStart.y;
+            } else if (this.dragTargetDrawingUuids.length > 0 && this.dragStartDrawingCoords) {
+                // Graphic-only group: derive delta from the first drawing's displacement.
+                const firstUuid = this.dragTargetDrawingUuids[0]!;
+                const firstCoords = this.dragStartDrawingCoords.get(firstUuid);
+                const idx = this.drawingIndexByUuid.get(firstUuid);
+                const drawing = idx !== undefined ? this.model.drawings[idx] : undefined;
+                if (!firstCoords || !drawing) {
+                    this.clearDragState();
+                    return;
+                }
+                // Current x is coords[0] + applied_delta; original x is coords[0].
+                const currentX = drawing.type === "line" ? drawing.start.x
+                    : drawing.type === "arc" ? drawing.start.x
+                    : drawing.type === "circle" ? drawing.center.x
+                    : drawing.type === "rect" ? drawing.start.x
+                    : drawing.type === "polygon" || drawing.type === "curve" ? (drawing.points[0]?.x ?? 0)
+                    : 0;
+                const currentY = drawing.type === "line" ? drawing.start.y
+                    : drawing.type === "arc" ? drawing.start.y
+                    : drawing.type === "circle" ? drawing.center.y
+                    : drawing.type === "rect" ? drawing.start.y
+                    : drawing.type === "polygon" || drawing.type === "curve" ? (drawing.points[0]?.y ?? 0)
+                    : 0;
+                dx = currentX - (firstCoords[0] ?? 0);
+                dy = currentY - (firstCoords[1] ?? 0);
+            } else {
                 this.clearDragState();
                 return;
             }
 
-            const dx = firstFp.at.x - firstStart.x;
-            const dy = firstFp.at.y - firstStart.y;
             const isNoop = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001;
 
             this.clearDragState();

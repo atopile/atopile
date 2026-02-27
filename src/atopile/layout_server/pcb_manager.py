@@ -186,7 +186,7 @@ class RotateAction(Action):
 
 
 class FlipAction(Action):
-    """Flip any PCB object between front and back."""
+    """Flip a footprint between front and back (internal geometry + layer change)."""
 
     def __init__(self, uuid: str) -> None:
         self.uuid = uuid
@@ -202,6 +202,48 @@ class FlipAction(Action):
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
         self._flip(pcb)  # Flip is its own inverse
+
+
+class FlipObjectAction(Action):
+    """Flip a global (non-footprint) PCB object by mirroring X around cx."""
+
+    def __init__(self, uuid: str, cx: float) -> None:
+        self.uuid = uuid
+        self.cx = cx
+
+    def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+        obj = _find_object_by_uuid(pcb, self.uuid)
+        PCB_Transformer.flip_object(obj, self.cx)
+
+    def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._flip(pcb)
+
+    def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._flip(pcb)  # X-mirror is its own inverse
+
+
+class RotateObjectAction(Action):
+    """Rotate a global (non-footprint) PCB object's geometry around a fixed point."""
+
+    def __init__(self, uuid: str, cx: float, cy: float, delta_degrees: float) -> None:
+        self.uuid = uuid
+        self.cx = cx
+        self.cy = cy
+        self.delta_degrees = delta_degrees
+
+    def _rotate(self, pcb: kicad.pcb.KicadPcb, delta: float) -> None:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+        obj = _find_object_by_uuid(pcb, self.uuid)
+        PCB_Transformer.rotate_object(obj, self.cx, self.cy, delta)
+
+    def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._rotate(pcb, self.delta_degrees)
+
+    def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
+        self._rotate(pcb, -self.delta_degrees)
 
 
 class CompositeAction(Action):
@@ -311,14 +353,20 @@ class PcbManager:
                 uid = str(getattr(obj, "uuid", "") or "").strip()
                 if not uid:
                     continue
-                dvx, dvy = obj_cx - cx, obj_cy - cy
-                rdvx, rdvy = _rotate_kicad_xy(dvx, dvy, request.delta_degrees)
-                move_dx = (cx + rdvx) - obj_cx
-                move_dy = (cy + rdvy) - obj_cy
-                if abs(move_dx) > 1e-9 or abs(move_dy) > 1e-9:
-                    actions.append(MoveAction(uid, move_dx, move_dy))
                 if isinstance(obj, kicad.pcb.Footprint):
+                    # Footprint: rotate the fp locally + move its center to the orbit
+                    dvx, dvy = obj_cx - cx, obj_cy - cy
+                    rdvx, rdvy = _rotate_kicad_xy(dvx, dvy, request.delta_degrees)
+                    move_dx = (cx + rdvx) - obj_cx
+                    move_dy = (cy + rdvy) - obj_cy
+                    if abs(move_dx) > 1e-9 or abs(move_dy) > 1e-9:
+                        actions.append(MoveAction(uid, move_dx, move_dy))
                     actions.append(RotateAction(uid, request.delta_degrees))
+                else:
+                    # Non-footprint: rotate all geometry points around group center
+                    actions.append(
+                        RotateObjectAction(uid, cx, cy, request.delta_degrees)
+                    )
             if actions:
                 self.execute_action(CompositeAction(actions))
             return
@@ -334,10 +382,15 @@ class PcbManager:
                 uid = str(getattr(obj, "uuid", "") or "").strip()
                 if not uid:
                     continue
-                move_dx = 2.0 * (cx - obj_cx)
-                actions.append(FlipAction(uid))
-                if abs(move_dx) > 1e-9:
-                    actions.append(MoveAction(uid, move_dx, 0.0))
+                if isinstance(obj, kicad.pcb.Footprint):
+                    # Footprint: _flip_obj handles internal geometry; translate X
+                    move_dx = 2.0 * (cx - obj_cx)
+                    actions.append(FlipAction(uid))
+                    if abs(move_dx) > 1e-9:
+                        actions.append(MoveAction(uid, move_dx, 0.0))
+                else:
+                    # Non-footprint: mirror all X coordinates around group center
+                    actions.append(FlipObjectAction(uid, cx))
             if actions:
                 self.execute_action(CompositeAction(actions))
 
@@ -472,11 +525,39 @@ class PcbManager:
         for via in pcb.vias:
             if via.uuid:
                 via_uuids.add(str(via.uuid).strip())
+        graphic_objs: dict[str, Any] = {}
+        for collection in [
+            pcb.gr_lines,
+            pcb.gr_arcs,
+            pcb.gr_circles,
+            pcb.gr_rects,
+            pcb.gr_polys,
+            pcb.gr_curves,
+        ]:
+            for obj in collection:
+                uid = str(getattr(obj, "uuid", None) or "").strip()
+                if uid:
+                    graphic_objs[uid] = obj
+        graphic_uuids: set[str] = set(graphic_objs.keys())
+        zone_uuids: set[str] = set()
+        for zone in pcb.zones:
+            uid = str(getattr(zone, "uuid", None) or "").strip()
+            if uid:
+                zone_uuids.add(uid)
+        text_uuids: set[str] = set()
+        for collection in [pcb.gr_texts, pcb.gr_text_boxes]:
+            for obj in collection:
+                uid = str(getattr(obj, "uuid", None) or "").strip()
+                if uid:
+                    text_uuids.add(uid)
         groups: list[FootprintGroupModel] = []
         for group in pcb.groups:
             member_uuids: list[str] = []
             track_member_uuids: list[str] = []
             via_member_uuids: list[str] = []
+            graphic_member_uuids: list[str] = []
+            text_member_uuids: list[str] = []
+            zone_member_uuids: list[str] = []
             seen_members: set[str] = set()
             for member in group.members:
                 token = member.strip()
@@ -489,11 +570,36 @@ class PcbManager:
                     track_member_uuids.append(token)
                 elif token in via_uuids:
                     via_member_uuids.append(token)
-            if len(member_uuids) < 2:
+                elif token in graphic_uuids:
+                    graphic_member_uuids.append(token)
+                elif token in text_uuids:
+                    text_member_uuids.append(token)
+                elif token in zone_uuids:
+                    zone_member_uuids.append(token)
+            # Include group if it has ≥2 footprints or any graphic/text members.
+            # Zone-only groups are not interactive (no bbox hit-test), skip them.
+            if (
+                len(member_uuids) < 2
+                and not graphic_member_uuids
+                and not text_member_uuids
+            ):
                 continue
-            member_fps = [footprints_by_uuid[u] for u in member_uuids]
-            cx = sum(fp.at.x for fp in member_fps) / len(member_fps)
-            cy = sum(fp.at.y for fp in member_fps) / len(member_fps)
+            if member_uuids:
+                member_fps = [footprints_by_uuid[u] for u in member_uuids]
+                cx = sum(fp.at.x for fp in member_fps) / len(member_fps)
+                cy = sum(fp.at.y for fp in member_fps) / len(member_fps)
+            else:
+                # Graphic-only group: derive centroid from graphic objects.
+                centers = [
+                    _get_object_center(graphic_objs[u])
+                    for u in graphic_member_uuids
+                    if u in graphic_objs
+                ]
+                if centers:
+                    cx = sum(c[0] for c in centers) / len(centers)
+                    cy = sum(c[1] for c in centers) / len(centers)
+                else:
+                    cx = cy = 0.0
             groups.append(
                 FootprintGroupModel(
                     uuid=((group.uuid or "").strip() or None),
@@ -501,6 +607,9 @@ class PcbManager:
                     member_uuids=member_uuids,
                     track_member_uuids=track_member_uuids,
                     via_member_uuids=via_member_uuids,
+                    graphic_member_uuids=graphic_member_uuids,
+                    text_member_uuids=text_member_uuids,
+                    zone_member_uuids=zone_member_uuids,
                     at=PointXYR(x=cx, y=cy, r=0),
                 )
             )
@@ -747,18 +856,21 @@ class PcbManager:
         for line in lines:
             if skip_edge_cuts and _on_layer(line, "Edge.Cuts"):
                 continue
+            uid = str(getattr(line, "uuid", None) or "").strip() or None
             drawings.append(
                 _line_drawing(
                     start=PointXY(x=line.start.x, y=line.start.y),
                     end=PointXY(x=line.end.x, y=line.end.y),
                     width=_stroke_width(line),
                     layer=_get_layer(line),
+                    uuid=uid,
                 )
             )
 
         for arc in arcs:
             if skip_edge_cuts and _on_layer(arc, "Edge.Cuts"):
                 continue
+            uid = str(getattr(arc, "uuid", None) or "").strip() or None
             drawings.append(
                 _arc_drawing(
                     start=PointXY(x=arc.start.x, y=arc.start.y),
@@ -766,12 +878,14 @@ class PcbManager:
                     end=PointXY(x=arc.end.x, y=arc.end.y),
                     width=_stroke_width(arc),
                     layer=_get_layer(arc),
+                    uuid=uid,
                 )
             )
 
         for circle in circles:
             if skip_edge_cuts and _on_layer(circle, "Edge.Cuts"):
                 continue
+            uid = str(getattr(circle, "uuid", None) or "").strip() or None
             drawings.append(
                 _circle_drawing(
                     center=PointXY(x=circle.center.x, y=circle.center.y),
@@ -779,12 +893,14 @@ class PcbManager:
                     width=_stroke_width(circle),
                     layer=_get_layer(circle),
                     filled=_is_filled(circle),
+                    uuid=uid,
                 )
             )
 
         for rect in rects:
             if skip_edge_cuts and _on_layer(rect, "Edge.Cuts"):
                 continue
+            uid = str(getattr(rect, "uuid", None) or "").strip() or None
             drawings.append(
                 _rect_drawing(
                     start=PointXY(x=rect.start.x, y=rect.start.y),
@@ -792,29 +908,34 @@ class PcbManager:
                     width=_stroke_width(rect),
                     layer=_get_layer(rect),
                     filled=_is_filled(rect),
+                    uuid=uid,
                 )
             )
 
         for poly in polygons:
             if skip_edge_cuts and _on_layer(poly, "Edge.Cuts"):
                 continue
+            uid = str(getattr(poly, "uuid", None) or "").strip() or None
             drawings.append(
                 _polygon_drawing(
                     points=[PointXY(x=p.x, y=p.y) for p in poly.pts.xys],
                     width=_stroke_width(poly),
                     layer=_get_layer(poly),
                     filled=_is_filled(poly),
+                    uuid=uid,
                 )
             )
 
         for curve in curves:
             if skip_edge_cuts and _on_layer(curve, "Edge.Cuts"):
                 continue
+            uid = str(getattr(curve, "uuid", None) or "").strip() or None
             drawings.append(
                 _curve_drawing(
                     points=[PointXY(x=p.x, y=p.y) for p in curve.pts.xys],
                     width=_stroke_width(curve),
                     layer=_get_layer(curve),
+                    uuid=uid,
                 )
             )
 
@@ -827,14 +948,16 @@ class PcbManager:
                 continue
             if not txt.text.strip():
                 continue
-            texts.append(self._extract_text_entry(txt.text, txt))
+            uid = str(txt.uuid or "").strip() or None
+            texts.append(self._extract_text_entry(txt.text, txt, uuid=uid))
 
         for tb in pcb.gr_text_boxes:
             if _is_hidden(tb):
                 continue
             if not tb.text.strip():
                 continue
-            texts.append(self._extract_text_box_text(tb))
+            uid = str(getattr(tb, "uuid", None) or "").strip() or None
+            texts.append(self._extract_text_box_text(tb, uuid=uid))
 
         for dimension in pcb.dimensions:
             if _is_hidden(dimension.gr_text):
@@ -842,7 +965,9 @@ class PcbManager:
             if not dimension.gr_text.text.strip():
                 continue
             texts.append(
-                self._extract_text_entry(dimension.gr_text.text, dimension.gr_text)
+                self._extract_text_entry(
+                    dimension.gr_text.text, dimension.gr_text, uuid=None
+                )
             )
 
         for table in pcb.tables:
@@ -855,7 +980,9 @@ class PcbManager:
 
         return texts
 
-    def _extract_text_box_text(self, tb: kicad.pcb.TextBox) -> TextModel:
+    def _extract_text_box_text(
+        self, tb: kicad.pcb.TextBox, uuid: str | None = None
+    ) -> TextModel:
         at = _text_box_position(tb)
         font = tb.effects.font
         font_size = font.size
@@ -869,6 +996,7 @@ class PcbManager:
             size=size,
             thickness=(float(font.thickness) if font.thickness is not None else None),
             justify=_extract_text_justify(tb.effects),
+            uuid=uuid,
         )
 
     def _extract_pad_name_annotations_for_footprint(
@@ -975,7 +1103,9 @@ class PcbManager:
 
         return texts
 
-    def _extract_text_entry(self, text: str, obj: TextUnion) -> TextModel:
+    def _extract_text_entry(
+        self, text: str, obj: TextUnion, uuid: str | None = None
+    ) -> TextModel:
         at = obj.at
         effects = obj.effects
         font = effects.font if effects is not None else None
@@ -995,6 +1125,7 @@ class PcbManager:
                 else None
             ),
             justify=_extract_text_justify(effects),
+            uuid=uuid,
         )
 
     def _extract_pad_hole(self, pad: kicad.pcb.Pad) -> HoleModel | None:
@@ -1213,6 +1344,7 @@ def _line_drawing(
     width: float,
     layer: str | None,
     filled: bool = False,
+    uuid: str | None = None,
 ) -> DrawingModel:
     return LineDrawingModel(
         start=start,
@@ -1220,6 +1352,7 @@ def _line_drawing(
         width=width,
         layer=layer,
         filled=filled,
+        uuid=uuid,
     )
 
 
@@ -1231,6 +1364,7 @@ def _arc_drawing(
     width: float,
     layer: str | None,
     filled: bool = False,
+    uuid: str | None = None,
 ) -> DrawingModel:
     return ArcDrawingModel(
         start=start,
@@ -1239,6 +1373,7 @@ def _arc_drawing(
         width=width,
         layer=layer,
         filled=filled,
+        uuid=uuid,
     )
 
 
@@ -1249,6 +1384,7 @@ def _circle_drawing(
     width: float,
     layer: str | None,
     filled: bool = False,
+    uuid: str | None = None,
 ) -> DrawingModel:
     return CircleDrawingModel(
         center=center,
@@ -1256,6 +1392,7 @@ def _circle_drawing(
         width=width,
         layer=layer,
         filled=filled,
+        uuid=uuid,
     )
 
 
@@ -1266,6 +1403,7 @@ def _rect_drawing(
     width: float,
     layer: str | None,
     filled: bool = False,
+    uuid: str | None = None,
 ) -> DrawingModel:
     return RectDrawingModel(
         start=start,
@@ -1273,28 +1411,41 @@ def _rect_drawing(
         width=width,
         layer=layer,
         filled=filled,
+        uuid=uuid,
     )
 
 
 def _polygon_drawing(
-    *, points: list[PointXY], width: float, layer: str | None, filled: bool = False
+    *,
+    points: list[PointXY],
+    width: float,
+    layer: str | None,
+    filled: bool = False,
+    uuid: str | None = None,
 ) -> DrawingModel:
     return PolygonDrawingModel(
         points=points,
         width=width,
         layer=layer,
         filled=filled,
+        uuid=uuid,
     )
 
 
 def _curve_drawing(
-    *, points: list[PointXY], width: float, layer: str | None, filled: bool = False
+    *,
+    points: list[PointXY],
+    width: float,
+    layer: str | None,
+    filled: bool = False,
+    uuid: str | None = None,
 ) -> DrawingModel:
     return CurveDrawingModel(
         points=points,
         width=width,
         layer=layer,
         filled=filled,
+        uuid=uuid,
     )
 
 

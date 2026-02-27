@@ -938,6 +938,29 @@ export function paintGroupBBox(
     renderer.end_layer();
 }
 
+/** Paint a pre-computed bounding box outline (e.g. for graphic-only groups). */
+export function paintBBoxOutline(renderer: Renderer, bbox: BBox, mode: "selected" | "hover"): void {
+    const grow = mode === "selected" ? 0.4 : 0.28;
+    const strokeWidth = mode === "selected" ? 0.12 : 0.09;
+    const alpha = mode === "selected" ? 0.8 : 0.4;
+    const fillAlpha = mode === "selected" ? 0.06 : 0.025;
+    const grown = bbox.grow(grow);
+    if (grown.w <= 0 || grown.h <= 0) return;
+    const layer = renderer.start_layer(mode === "selected" ? "group-bbox-selected" : "group-bbox-hover");
+    const corners = [
+        new Vec2(grown.x, grown.y),
+        new Vec2(grown.x2, grown.y),
+        new Vec2(grown.x2, grown.y2),
+        new Vec2(grown.x, grown.y2),
+        new Vec2(grown.x, grown.y),
+    ];
+    if (fillAlpha > 0) {
+        layer.geometry.add_polygon(corners.slice(0, 4), 0.4, 0.75, 1.0, fillAlpha);
+    }
+    layer.geometry.add_polyline(corners, strokeWidth, 0.4, 0.75, 1.0, alpha);
+    renderer.end_layer();
+}
+
 /** Compute a bounding box for the full render model */
 export function computeBBox(model: RenderModel): BBox {
     const points: Vec2[] = [];

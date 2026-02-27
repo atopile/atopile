@@ -75,6 +75,7 @@ class _DrawingBase(BaseModel):
     width: float = 0.12
     layer: str | None = None
     filled: bool = False
+    uuid: str | None = None
 
 
 class LineDrawingModel(_DrawingBase):
@@ -130,6 +131,7 @@ class TextModel(BaseModel):
     size: Size2 | None = None
     thickness: float | None = None
     justify: list[str] | None = None
+    uuid: str | None = None
 
 
 class PadNameAnnotationModel(BaseModel):
@@ -163,6 +165,9 @@ class FootprintGroupModel(PcbObjectModel):
     member_uuids: list[str]
     track_member_uuids: list[str] = Field(default_factory=list)
     via_member_uuids: list[str] = Field(default_factory=list)
+    graphic_member_uuids: list[str] = Field(default_factory=list)
+    text_member_uuids: list[str] = Field(default_factory=list)
+    zone_member_uuids: list[str] = Field(default_factory=list)
 
 
 # --- Tracks ---

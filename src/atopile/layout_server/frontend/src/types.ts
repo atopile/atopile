@@ -63,6 +63,9 @@ export interface FootprintGroupModel extends PcbObjectModel {
     member_uuids: string[];
     track_member_uuids: string[];
     via_member_uuids: string[];
+    graphic_member_uuids: string[];
+    text_member_uuids: string[];
+    zone_member_uuids: string[];
 }
 
 export interface TextModel {
@@ -72,6 +75,7 @@ export interface TextModel {
     size: Size2 | null;
     thickness: number | null;
     justify: string[] | null;
+    uuid: string | null;
 }
 
 export interface PadNameAnnotationModel {
@@ -112,6 +116,7 @@ interface DrawingBase {
     width: number;
     layer: string | null;
     filled: boolean;
+    uuid: string | null;
 }
 
 export interface LineDrawingModel extends DrawingBase {
