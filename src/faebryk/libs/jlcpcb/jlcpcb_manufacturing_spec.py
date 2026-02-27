@@ -208,11 +208,12 @@ class DrillSpec:
 class TraceSpec:
     """Trace and clearance capabilities."""
 
-    # Trace width/spacing by copper weight
+    # Trace width/spacing (mm) by copper weight (oz)
     trace_rules: tuple[TraceWidthSpacing, ...] = (
         # 1 oz
         TraceWidthSpacing(1.0, 0.10, 0.10, "1-2 layer"),
-        TraceWidthSpacing(1.0, 0.09, 0.09, "multilayer (3.5/3.5 mil, 3 mil in BGA)"),
+        TraceWidthSpacing(1.0, 0.09, 0.09, ">2 layers"),
+        TraceWidthSpacing(1.0, 0.0762, 0.762, ">2 layers BGA fanout only"),
         # 2 oz
         TraceWidthSpacing(2.0, 0.16, 0.16, "2-layer"),
         TraceWidthSpacing(2.0, 0.16, 0.20, "multilayer"),
