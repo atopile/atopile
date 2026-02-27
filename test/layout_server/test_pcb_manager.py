@@ -8,6 +8,7 @@ import pytest
 
 from atopile.layout_server.models import (
     FootprintSummary,
+    HoleModel,
     RenderModel,
 )
 from atopile.layout_server.pcb_manager import (
@@ -72,7 +73,7 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     assert len(model.drawings) > 0
     assert len(model.texts) > 0
     assert len(model.tracks) > 0
-    assert not hasattr(model, "vias")
+    assert len(model.vias) > 0
     assert len(model.board.edges) > 0
 
     fp = model.footprints[0]
@@ -140,7 +141,7 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
     )
 
     assert all(
-        not hasattr(pad, "hole") and not hasattr(pad, "drill")
+        pad.hole is None or isinstance(pad.hole, HoleModel)
         for footprint in model.footprints
         for pad in footprint.pads
     )

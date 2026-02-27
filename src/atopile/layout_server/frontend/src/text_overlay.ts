@@ -163,10 +163,15 @@ export function renderTextOverlay(
     camera: Camera2,
     hiddenLayers: Set<string>,
     layerById: Map<string, LayerModel>,
+    vpWidth?: number,
+    vpHeight?: number,
 ) {
     const dpr = Math.max(window.devicePixelRatio || 1, 1);
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    // Prefer caller-supplied dimensions (from the WebGL canvas) so text and
+    // geometry share the same coordinate space in VS Code webviews where
+    // window.innerWidth/Height can differ from the actual canvas dimensions.
+    const width = vpWidth ?? window.innerWidth;
+    const height = vpHeight ?? window.innerHeight;
     ctx.canvas.width = Math.floor(width * dpr);
     ctx.canvas.height = Math.floor(height * dpr);
     ctx.canvas.style.width = `${width}px`;

@@ -1016,6 +1016,8 @@ export class Editor {
             this.camera,
             this.hiddenLayers,
             this.getLayerMap(),
+            this.canvas.clientWidth,
+            this.canvas.clientHeight,
         );
     }
 
