@@ -4,11 +4,6 @@
 from dataclasses import dataclass, field
 
 
-def _to_mm(dim: float) -> float:
-    """Convert EasyEDA internal units to mm."""
-    return float(dim) * 10 * 0.0254
-
-
 # ── Footprint types ──────────────────────────────────────────────────────────
 
 
@@ -53,8 +48,8 @@ class EeFpHole:
 
 @dataclass
 class EeFpCircle:
-    cx: float  # mm
-    cy: float  # mm
+    center_x: float  # mm
+    center_y: float  # mm
     radius: float  # mm
     stroke_width: float  # mm
     layer_id: int
@@ -64,7 +59,7 @@ class EeFpCircle:
 
 @dataclass
 class EeFpArc:
-    stroke_width: float  # EE units (converted during build)
+    stroke_width: float  # mm
     layer_id: int
     net: str
     path: str  # SVG path string
@@ -104,8 +99,8 @@ class EeFpText:
 
 @dataclass
 class EeFpRect:
-    x: float  # mm
-    y: float  # mm
+    pos_x: float  # mm
+    pos_y: float  # mm
     width: float  # mm
     height: float  # mm
     stroke_width: float  # mm (not used for layer mapping)
@@ -231,19 +226,3 @@ class EeSymbolInfo:
 class EeSymbol:
     info: EeSymbolInfo
     units: list[EeSymbolUnit] = field(default_factory=list)
-
-
-# ── Tests ─────────────────────────────────────────────────────────────────────
-
-import pytest  # noqa: E402
-
-
-def test_to_mm():
-    assert _to_mm(0) == 0
-    # 100 * 10 * 0.0254 = 25.4
-    assert _to_mm(100) == pytest.approx(25.4, abs=0.01)
-    assert _to_mm(1000) == pytest.approx(254.0, abs=0.1)
-
-
-def test_to_mm_negative():
-    assert _to_mm(-100) == pytest.approx(-25.4, abs=0.01)

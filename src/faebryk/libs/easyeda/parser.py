@@ -6,6 +6,7 @@
 import json
 import logging
 
+from faebryk.libs.easyeda._units import _to_mm
 from faebryk.libs.easyeda.easyeda_types import (
     Ee3dModelInfo,
     EeFootprint,
@@ -27,7 +28,6 @@ from faebryk.libs.easyeda.easyeda_types import (
     EeSymPin,
     EeSymPolyline,
     EeSymRect,
-    _to_mm,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,8 @@ def _int(val: str, default: int = 0) -> int:
 
 
 def _text_is_displayed(val: str) -> bool:
-    """Match old Pydantic validator: empty string → True, otherwise parse as bool."""
+    # LEGACY: empty string → True matches the old Pydantic model's default validator.
+    # Changing this would alter visibility of text fields parsed from older data."""
     if val == "":
         return True
     return _bool_field(val)
@@ -177,8 +178,8 @@ def _parse_hole(f: list[str]) -> EeFpHole:
 
 def _parse_circle(f: list[str]) -> EeFpCircle:
     return EeFpCircle(
-        cx=_to_mm(_float(_get(f, 0))),
-        cy=_to_mm(_float(_get(f, 1))),
+        center_x=_to_mm(_float(_get(f, 0))),
+        center_y=_to_mm(_float(_get(f, 1))),
         radius=_to_mm(_float(_get(f, 2))),
         stroke_width=_to_mm(_float(_get(f, 3))),
         layer_id=_int(_get(f, 4), default=1),
@@ -189,7 +190,7 @@ def _parse_circle(f: list[str]) -> EeFpCircle:
 
 def _parse_arc(f: list[str]) -> EeFpArc:
     return EeFpArc(
-        stroke_width=_float(_get(f, 0)),
+        stroke_width=_to_mm(_float(_get(f, 0))),
         layer_id=_int(_get(f, 1), default=1),
         net=_get(f, 2),
         path=_get(f, 3),
@@ -201,8 +202,8 @@ def _parse_arc(f: list[str]) -> EeFpArc:
 
 def _parse_rect(f: list[str]) -> EeFpRect:
     return EeFpRect(
-        x=_to_mm(_float(_get(f, 0))),
-        y=_to_mm(_float(_get(f, 1))),
+        pos_x=_to_mm(_float(_get(f, 0))),
+        pos_y=_to_mm(_float(_get(f, 1))),
         width=_to_mm(_float(_get(f, 2))),
         height=_to_mm(_float(_get(f, 3))),
         layer_id=_int(_get(f, 4), default=1),
@@ -244,6 +245,11 @@ def _parse_text(f: list[str]) -> EeFpText:
 
 
 def _parse_3d_model(fields: list[str]) -> Ee3dModelInfo | None:
+    """Parse SVGNODE 3D model metadata.
+
+    Returns None when the model data is missing or malformed — this is expected,
+    not an error.  Many EasyEDA components have no associated 3D model.
+    """
     if not fields:
         return None
     try:

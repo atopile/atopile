@@ -23,6 +23,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.libs.easyeda import api as easyeda_api
+from faebryk.libs.easyeda.api import EasyEDAModelNotFound, EasyEDAPartNotFound
 from faebryk.libs.easyeda.converter import build_footprint, build_symbol
 from faebryk.libs.easyeda.easyeda_types import Ee3dModelInfo, EeFootprint, EeSymbol
 from faebryk.libs.easyeda.parser import parse_footprint, parse_symbol
@@ -294,9 +295,11 @@ class EasyEDAPart:
         assert self._pre_model is not None
         if lifecycle.easyeda2kicad.shall_refresh_model(self):
             logger.debug(f"Downloading model for {self.identifier}")
-            model = easyeda_api.get_step_model(uuid=self._pre_model.uuid)
-            # might happen sometimes, that even tho it's in the api, it's not available
-            if model is None:
+            try:
+                model = easyeda_api.get_step_model(uuid=self._pre_model.uuid)
+            except EasyEDAModelNotFound:
+                # might happen sometimes, that even tho it's in the api,
+                # it's not available
                 self.model = None
             else:
                 self.model = EasyEDA3DModel(model, self._pre_model.name)
@@ -427,12 +430,12 @@ def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
         return lifecycle.easyeda_api.load(lcsc_id)
 
     logger.debug(f"Downloading API data {lcsc_id}")
-    cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_id)
-    # API returned no data
-    if not cad_data:
+    try:
+        cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_id)
+    except EasyEDAPartNotFound as e:
         raise LCSC_NoDataException(
             lcsc_id, f"Failed to fetch data from EasyEDA API for part {lcsc_id}"
-        )
+        ) from e
     response = EasyEDAAPIResponse.from_api_dict(cad_data)
     # TODO: this is a hack
     # get manufacturer from backend

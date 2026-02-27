@@ -295,8 +295,6 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
 
     try:
         cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_str)
-        if not cad_data:
-            return None
 
         ee_fp = parse_footprint(cad_data)
         fp_file = build_footprint(ee_fp, model_path=None)
@@ -341,8 +339,6 @@ def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
 
     try:
         cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_str)
-        if not cad_data:
-            return None
 
         ee_fp = parse_footprint(cad_data)
 
@@ -350,8 +346,6 @@ def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
             return None
 
         model_data = easyeda_api.get_step_model(uuid=ee_fp.model_3d.uuid)
-        if model_data is None:
-            return None
 
         return model_data, ee_fp.model_3d.name
     except Exception as e:

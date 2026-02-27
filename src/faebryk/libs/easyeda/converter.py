@@ -1,13 +1,51 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-"""Build KiCad typed models directly from parsed EasyEDA data."""
+"""Build KiCad typed models directly from parsed EasyEDA data.
+
+Legacy Compatibility
+--------------------
+Several workarounds exist to match the output of the original easyeda2kicad
+pipeline.  These are tagged with ``# LEGACY:`` comments for easy discovery
+via grep.
+"""
 
 import logging
-import math
 import re
 
-from faebryk.libs.easyeda.easyeda_types import EeFootprint, EeSymbol, _to_mm
+from faebryk.libs.easyeda._arc import _arc_midpoint, _compute_arc, _parse_svg_path_for_arc
+from faebryk.libs.easyeda._geometry import (
+    KI_PAD_SIZE_MIN,
+    _find_anchor_position,
+    _is_circle_in_polygon,
+)
+from faebryk.libs.easyeda._units import (
+    _MIN_STROKE_W,
+    _angle_to_ki,
+    _fp_to_ki,
+    _fp_xy,
+    _sym_xy,
+    _to_mm,
+)
+from faebryk.libs.easyeda.easyeda_types import (
+    EeFpArc,
+    EeFpCircle,
+    EeFpHole,
+    EeFpPad,
+    EeFpRect,
+    EeFpText,
+    EeFpTrack,
+    EeFpVia,
+    EeFootprint,
+    EeSymArc,
+    EeSymCircle,
+    EeSymEllipse,
+    EeSymPath,
+    EeSymPin,
+    EeSymPolyline,
+    EeSymRect,
+    EeSymbol,
+)
 from faebryk.libs.kicad.fileformats import kicad
 
 logger = logging.getLogger(__name__)
@@ -65,192 +103,354 @@ KI_PIN_TYPE = {
     4: "power_in",
 }
 
-WORKAROUND_SMD_3D_MODEL_FIX = True
+
+# ── Shared defaults ─────────────────────────────────────────────────────────
+
+_SYM_DEFAULT_STROKE = kicad.schematic.Stroke(
+    width=0, type="default", color=kicad.schematic.Color(r=0, g=0, b=0, a=0)
+)
+_SYM_FILL_BG = kicad.schematic.Fill(type="background")
+_SYM_FILL_NONE = kicad.schematic.Fill(type="none")
+_SYM_PIN_EFFECTS = kicad.pcb.Effects(
+    font=kicad.pcb.Font(size=kicad.pcb.Wh(w=1.27, h=1.27)),
+)
 
 
-# ── Arc geometry ─────────────────────────────────────────────────────────────
+# ── Per-shape footprint converters ───────────────────────────────────────────
 
 
-def _compute_arc(
-    start_x: float,
-    start_y: float,
-    radius_x: float,
-    radius_y: float,
-    angle: float,
-    large_arc_flag: bool,
-    sweep_flag: bool,
-    end_x: float,
-    end_y: float,
-) -> tuple[float, float, float]:
-    """
-    Elliptical arc endpoint-to-center conversion (W3C SVG spec).
-    Returns (center_x, center_y, angle_extent).
-    """
-    dx2 = (start_x - end_x) / 2.0
-    dy2 = (start_y - end_y) / 2.0
+def _convert_fp_pad(ee_pad: EeFpPad, bbox_x: float, bbox_y: float) -> kicad.pcb.Pad:
+    is_tht = ee_pad.hole_radius > 0
+    pad_type = "thru_hole" if is_tht else "smd"
+    shape = KI_PAD_SHAPE.get(ee_pad.shape, "custom")
 
-    angle_rad = math.radians(angle % 360.0)
-    cos_a = math.cos(angle_rad)
-    sin_a = math.sin(angle_rad)
+    layer_map = KI_PAD_LAYERS_THT if is_tht else KI_PAD_LAYERS
+    layers = layer_map.get(ee_pad.layer_id, [])
 
-    x1 = cos_a * dx2 + sin_a * dy2
-    y1 = -sin_a * dx2 + cos_a * dy2
+    pos_x, pos_y = _fp_xy(ee_pad.center_x, ee_pad.center_y, bbox_x, bbox_y)
+    width = round(max(ee_pad.width, _MIN_STROKE_W), 2)
+    height = round(max(ee_pad.height, _MIN_STROKE_W), 2)
+    orientation = round(_angle_to_ki(ee_pad.rotation), 2)
 
-    radius_x = abs(radius_x)
-    radius_y = abs(radius_y)
-    rx2 = radius_x * radius_x
-    ry2 = radius_y * radius_y
-    x1_2 = x1 * x1
-    y1_2 = y1 * y1
+    number = ee_pad.number
+    if "(" in number and ")" in number:
+        number = number.split("(")[1].split(")")[0]
 
-    radii_check = (x1_2 / rx2 + y1_2 / ry2) if rx2 != 0 and ry2 != 0 else 0
-    if radii_check > 1:
-        radius_x *= math.sqrt(radii_check)
-        radius_y *= math.sqrt(radii_check)
-        rx2 = radius_x * radius_x
-        ry2 = radius_y * radius_y
-
-    sign = -1 if large_arc_flag == sweep_flag else 1
-    sq = 0.0
-    denom = rx2 * y1_2 + ry2 * x1_2
-    if denom > 0:
-        sq = (rx2 * ry2 - rx2 * y1_2 - ry2 * x1_2) / denom
-    sq = max(sq, 0)
-    coef = sign * math.sqrt(sq)
-    cx1 = coef * ((radius_x * y1) / radius_y) if radius_y != 0 else 0
-    cy1 = coef * -((radius_y * x1) / radius_x) if radius_x != 0 else 0
-
-    sx2 = (start_x + end_x) / 2.0
-    sy2 = (start_y + end_y) / 2.0
-    cx = sx2 + (cos_a * cx1 - sin_a * cy1)
-    cy = sy2 + (sin_a * cx1 + cos_a * cy1)
-
-    ux = (x1 - cx1) / radius_x if radius_x != 0 else 0
-    uy = (y1 - cy1) / radius_y if radius_y != 0 else 0
-    vx = (-x1 - cx1) / radius_x if radius_x != 0 else 0
-    vy = (-y1 - cy1) / radius_y if radius_y != 0 else 0
-
-    n = math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
-    p = ux * vx + uy * vy
-    cross_sign = -1 if (ux * vy - uy * vx) < 0 else 1
-
-    if n != 0:
-        p_n = max(-1.0, min(1.0, p / n))
-        angle_extent = math.degrees(cross_sign * math.acos(p_n))
-    else:
-        angle_extent = 360 + 359
-
-    if not sweep_flag and angle_extent > 0:
-        angle_extent -= 360
-    elif sweep_flag and angle_extent < 0:
-        angle_extent += 360
-
-    extent_sign = 1 if angle_extent < 0 else -1
-    angle_extent = (abs(angle_extent) % 360) * extent_sign
-
-    return cx, cy, angle_extent
-
-
-def _arc_midpoint(
-    cx: float, cy: float, radius: float, angle_start: float, angle_end: float
-) -> tuple[float, float]:
-    mid_angle = (angle_start + angle_end) / 2
-    return (
-        cx + radius * math.cos(mid_angle),
-        cy + radius * math.sin(mid_angle),
-    )
-
-
-def _fp_to_ki(dim: str | float) -> float:
-    """Convert EasyEDA raw units (possibly string) to KiCad mm, rounded."""
-    try:
-        return round(_to_mm(float(dim)), 2)
-    except ValueError, TypeError:
-        return 0.0
-
-
-def _angle_to_ki(rotation: float) -> float:
-    if math.isnan(rotation):
-        return 0.0
-    return -(360 - rotation) if rotation > 180 else rotation
-
-
-# ── Custom pad anchor repositioning ──────────────────────────────────────────
-
-KI_PAD_SIZE_MIN = 0.001
-
-
-def _is_on_segment(
-    x0: float, y0: float, x1: float, y1: float, px: float, py: float
-) -> bool:
-    EPSILON = 1e-9
-    return (
-        min(x0, x1) <= px <= max(x0, x1)
-        and min(y0, y1) <= py <= max(y0, y1)
-        and abs((px - x0) * (y1 - y0) - (py - y0) * (x1 - x0)) < EPSILON
-    )
-
-
-def _is_left(x0: float, y0: float, x1: float, y1: float, px: float, py: float) -> bool:
-    return ((x1 - x0) * (py - y0) - (y1 - y0) * (px - x0)) > 0
-
-
-def _is_point_in_polygon(
-    point: tuple[float, float], polygon: list[tuple[float, float]]
-) -> bool:
-    x, y = point
-    winding_number = 0
-    n = len(polygon)
-    for i in range(n):
-        x0, y0 = polygon[i]
-        x1, y1 = polygon[(i + 1) % n]
-        if _is_on_segment(x0, y0, x1, y1, x, y):
-            return True
-        if y0 <= y:
-            if y1 > y and _is_left(x0, y0, x1, y1, x, y):
-                winding_number += 1
+    # Drill
+    drill = None
+    if ee_pad.hole_radius > 0:
+        hr = round(ee_pad.hole_radius, 2)
+        hl = round(ee_pad.hole_length, 2) if ee_pad.hole_length else 0
+        if hl and hl != 0:
+            max_dist_hole = max(hr * 2, hl)
+            if height - max_dist_hole >= width - max_dist_hole:
+                drill = kicad.pcb.PadDrill(
+                    shape="oval", size_x=round(hr * 2, 2), size_y=hl
+                )
+            else:
+                drill = kicad.pcb.PadDrill(
+                    shape="oval", size_x=hl, size_y=round(hr * 2, 2)
+                )
         else:
-            if y1 <= y and not _is_left(x0, y0, x1, y1, x, y):
-                winding_number -= 1
-    return winding_number != 0
+            drill = kicad.pcb.PadDrill(size_x=round(2 * hr, 2))
 
+    # Custom polygon pad
+    primitives = None
+    point_list = [_fp_to_ki(p) for p in re.findall(r"\S+", ee_pad.points)]
 
-def _is_circle_in_polygon(
-    center: tuple[float, float],
-    radius: float,
-    polygon: list[tuple[float, float]],
-) -> bool:
-    # Approximate circle with 12-sided polygon
-    cx, cy = center
-    return all(
-        _is_point_in_polygon(
+    if shape == "custom" and point_list:
+        width = KI_PAD_SIZE_MIN
+        height = KI_PAD_SIZE_MIN
+        orientation = 0
+
+        # Absolute coords relative to bbox origin
+        absolute_coords = [
             (
-                cx + radius * math.cos(2 * math.pi * i / 12),
-                cy + radius * math.sin(2 * math.pi * i / 12),
-            ),
-            polygon,
-        )
-        for i in range(12)
+                point_list[i] - bbox_x,
+                point_list[i + 1] - bbox_y,
+            )
+            for i in range(0, len(point_list) - 1, 2)
+        ]
+
+        # Reposition anchor pad to be contained within the polygon
+        if not _is_circle_in_polygon((pos_x, pos_y), width / 2, absolute_coords):
+            new_center = _find_anchor_position(absolute_coords, width / 2)
+            if new_center is not None:
+                pos_x, pos_y = new_center
+            else:
+                logger.warning(
+                    f"Custom pad #{number}: anchor pad cannot be "
+                    "contained within polygon"
+                )
+
+        # Generate polygon with coordinates relative to anchor pad
+        poly_pts = [
+            kicad.pcb.Xy(
+                x=round(x - pos_x, 2),
+                y=round(y - pos_y, 2),
+            )
+            for x, y in absolute_coords
+        ]
+        if poly_pts:
+            primitives = kicad.pcb.PadPrimitives(
+                gr_polys=[
+                    kicad.pcb.Polygon(
+                        pts=kicad.pcb.Pts(xys=poly_pts),
+                        layers=[],
+                    )
+                ]
+            )
+
+    return kicad.pcb.Pad(
+        name=number,
+        type=pad_type,
+        shape=shape,
+        at=kicad.pcb.Xyr(
+            x=pos_x, y=pos_y, r=orientation if orientation else None
+        ),
+        size=kicad.pcb.Wh(w=width, h=height),
+        drill=drill,
+        layers=layers,
+        uuid=kicad.gen_uuid(),
+        primitives=primitives,
     )
 
 
-def _find_anchor_position(
-    polygon: list[tuple[float, float]], radius: float
-) -> tuple[float, float] | None:
-    min_x = min(p[0] for p in polygon)
-    max_x = max(p[0] for p in polygon)
-    min_y = min(p[1] for p in polygon)
-    max_y = max(p[1] for p in polygon)
-    STEP = 0.05
-    x = min_x
-    while x < max_x:
-        y = min_y
-        while y < max_y:
-            if _is_circle_in_polygon((x, y), radius, polygon):
-                return (x, y)
-            y += STEP
-        x += STEP
-    return None
+def _convert_fp_track(ee_track: EeFpTrack, bbox_x: float, bbox_y: float) -> list[kicad.pcb.Line]:
+    layer_str = (
+        " ".join(KI_PAD_LAYERS[ee_track.layer_id])
+        if ee_track.layer_id in KI_PAD_LAYERS
+        else "F.Fab"
+    )
+    stroke_w = round(max(ee_track.stroke_width, _MIN_STROKE_W), 2)
+
+    point_list = [_fp_to_ki(p) for p in re.findall(r"\S+", ee_track.points)]
+    lines = []
+    for i in range(0, len(point_list) - 2, 2):
+        sx, sy = _fp_xy(point_list[i], point_list[i + 1], bbox_x, bbox_y)
+        ex, ey = _fp_xy(point_list[i + 2], point_list[i + 3], bbox_x, bbox_y)
+        lines.append(
+            kicad.pcb.Line(
+                start=kicad.pcb.Xy(x=sx, y=sy),
+                end=kicad.pcb.Xy(x=ex, y=ey),
+                layer=layer_str,
+                layers=[layer_str],
+                stroke=kicad.pcb.Stroke(width=stroke_w, type="solid"),
+                locked=False,
+                uuid=kicad.gen_uuid(),
+            )
+        )
+    return lines
+
+
+def _convert_fp_hole(ee_hole: EeFpHole, bbox_x: float, bbox_y: float) -> kicad.pcb.Pad:
+    # LEGACY: Holes are emitted as thru_hole pads (not NPTH) to match old pipeline output.
+    size = round(ee_hole.radius * 2, 2)
+    hx, hy = _fp_xy(ee_hole.center_x, ee_hole.center_y, bbox_x, bbox_y)
+    return kicad.pcb.Pad(
+        name="",
+        type="thru_hole",
+        shape="circle",
+        at=kicad.pcb.Xyr(x=hx, y=hy),
+        size=kicad.pcb.Wh(w=size, h=size),
+        drill=kicad.pcb.PadDrill(size_x=size),
+        layers=["*.Cu", "*.Mask"],
+        uuid=kicad.gen_uuid(),
+    )
+
+
+def _convert_fp_via(ee_via: EeFpVia, bbox_x: float, bbox_y: float) -> kicad.pcb.Pad:
+    drill_size = round(ee_via.radius * 2, 2)
+    diameter = round(ee_via.diameter, 2)
+    vx, vy = _fp_xy(ee_via.center_x, ee_via.center_y, bbox_x, bbox_y)
+    return kicad.pcb.Pad(
+        name="",
+        type="thru_hole",
+        shape="circle",
+        at=kicad.pcb.Xyr(x=vx, y=vy),
+        size=kicad.pcb.Wh(w=diameter, h=diameter),
+        drill=kicad.pcb.PadDrill(size_x=drill_size),
+        layers=["*.Cu", "*.Paste", "*.Mask"],
+        uuid=kicad.gen_uuid(),
+    )
+
+
+def _convert_fp_circle(
+    ee_circle: EeFpCircle, bbox_x: float, bbox_y: float
+) -> kicad.pcb.Circle:
+    cx, cy = _fp_xy(ee_circle.center_x, ee_circle.center_y, bbox_x, bbox_y)
+    return kicad.pcb.Circle(
+        center=kicad.pcb.Xy(x=cx, y=cy),
+        end=kicad.pcb.Xy(x=round(cx + ee_circle.radius, 2), y=cy),
+        layer=KI_LAYERS.get(ee_circle.layer_id, "F.Fab"),
+        layers=[],
+        stroke=kicad.pcb.Stroke(
+            width=round(max(ee_circle.stroke_width, _MIN_STROKE_W), 2), type="solid"
+        ),
+        locked=False,
+        uuid=kicad.gen_uuid(),
+    )
+
+
+def _convert_fp_rect(
+    ee_rect: EeFpRect, bbox_x: float, bbox_y: float
+) -> list[kicad.pcb.Line]:
+    layer = (
+        " ".join(KI_PAD_LAYERS[ee_rect.layer_id])
+        if ee_rect.layer_id in KI_PAD_LAYERS
+        else "F.Fab"
+    )
+    stroke = kicad.pcb.Stroke(
+        width=round(max(ee_rect.stroke_width, _MIN_STROKE_W), 2), type="solid"
+    )
+
+    sx, sy = _fp_xy(ee_rect.pos_x, ee_rect.pos_y, bbox_x, bbox_y)
+    w = round(ee_rect.width, 2)
+    h = round(ee_rect.height, 2)
+
+    starts_x = [sx, sx + w, sx + w, sx]
+    starts_y = [sy, sy, sy + h, sy]
+    ends_x = [sx + w, sx + w, sx, sx]
+    ends_y = [sy, sy + h, sy + h, sy]
+
+    return [
+        kicad.pcb.Line(
+            start=kicad.pcb.Xy(x=starts_x[i], y=starts_y[i]),
+            end=kicad.pcb.Xy(x=ends_x[i], y=ends_y[i]),
+            layer=layer,
+            layers=[layer],
+            stroke=stroke,
+            locked=False,
+            uuid=kicad.gen_uuid(),
+        )
+        for i in range(4)
+    ]
+
+
+def _convert_fp_arc(
+    ee_arc: EeFpArc, bbox_x: float, bbox_y: float
+) -> kicad.pcb.Arc | None:
+    try:
+        parsed = _parse_svg_path_for_arc(ee_arc.path)
+        if parsed is None:
+            return None
+        move_x, move_y, (svg_rx, svg_ry, x_rot, large_arc, sweep, end_x, end_y) = (
+            parsed
+        )
+
+        sx = _fp_to_ki(move_x) - bbox_x
+        sy = _fp_to_ki(move_y) - bbox_y
+        ex = _fp_to_ki(end_x) - bbox_x
+        ey = _fp_to_ki(end_y) - bbox_y
+        arc_rx = _fp_to_ki(svg_rx)
+        arc_ry = _fp_to_ki(svg_ry)
+
+        if arc_ry == 0:
+            return None
+
+        center_x, center_y, extent = _compute_arc(
+            sx, sy, arc_rx, arc_ry, x_rot, large_arc, sweep, ex, ey
+        )
+
+        # LEGACY: Round to 2dp to match old pipeline serialization. The original
+        # KiFootprintArc round_float_values() and {:.2f} template produce clean
+        # 2dp floats; the midpoint calculation depends on this precision.
+        center_x = round(center_x, 2)
+        center_y = round(center_y, 2)
+        extent = round(extent, 2)
+        ex = round(ex, 2)
+        ey = round(ey, 2)
+
+        center = kicad.pcb.Xy(x=center_x, y=center_y)
+        end_xy = kicad.pcb.Xy(x=ex, y=ey)
+
+        # 3-point arc: start, mid, end via rotation around center
+        mid = kicad.geo.rotate(end_xy, center, -extent / 2.0)
+        end_pt = kicad.geo.rotate(end_xy, center, -extent)
+
+        return kicad.pcb.Arc(
+            start=kicad.pcb.Xy(x=ex, y=ey),
+            mid=kicad.pcb.Xy(x=mid.x, y=mid.y),
+            end=kicad.pcb.Xy(x=end_pt.x, y=end_pt.y),
+            layer=KI_LAYERS.get(ee_arc.layer_id, "F.Fab"),
+            layers=[],
+            stroke=kicad.pcb.Stroke(
+                width=round(max(ee_arc.stroke_width, _MIN_STROKE_W), 2), type="solid"
+            ),
+            locked=False,
+            uuid=kicad.gen_uuid(),
+        )
+    except (ValueError, IndexError) as e:
+        logger.warning(f"Failed to parse footprint arc: {e}")
+        return None
+
+
+def _convert_fp_text(
+    ee_text: EeFpText, bbox_x: float, bbox_y: float
+) -> kicad.pcb.FpText:
+    layer = KI_LAYERS.get(ee_text.layer_id, "F.Fab")
+    if ee_text.type == "N":
+        layer = layer.replace(".SilkS", ".Fab")
+    mirror = layer.startswith("B")
+    justify = kicad.pcb.Justify(
+        justification="left", mirror=mirror if mirror else None
+    )
+    tx, ty = _fp_xy(ee_text.center_x, ee_text.center_y, bbox_x, bbox_y)
+    return kicad.pcb.FpText(
+        type=kicad.pcb.E_fp_text_type.USER,
+        text=ee_text.text,
+        at=kicad.pcb.Xyr(
+            x=tx,
+            y=ty,
+            r=_angle_to_ki(ee_text.rotation) or None,
+        ),
+        layer=kicad.pcb.TextLayer(layer=layer),
+        hide=not ee_text.is_displayed if not ee_text.is_displayed else None,
+        effects=kicad.pcb.Effects(
+            font=kicad.pcb.Font(
+                size=kicad.pcb.Wh(
+                    w=round(max(ee_text.font_size, 1), 2),
+                    h=round(max(ee_text.font_size, 1), 2),
+                ),
+                thickness=round(max(ee_text.stroke_width, _MIN_STROKE_W), 2),
+            ),
+            justify=justify,
+        ),
+        uuid=kicad.gen_uuid(),
+    )
+
+
+def _convert_fp_model(
+    ee_fp: EeFootprint, bbox_x: float, bbox_y: float, model_path: str
+) -> kicad.pcb.Model:
+    m3d = ee_fp.model_3d
+    # Convert translation to mm
+    tx = _to_mm(m3d.translation_x)
+    ty = _to_mm(m3d.translation_y)
+    tz = _to_mm(m3d.translation_z)
+
+    offset_x = round(tx - bbox_x, 2)
+    offset_y = -round(ty - bbox_y, 2)
+    offset_z = -round(tz, 2) if ee_fp.fp_type == "smd" else 0
+
+    # LEGACY: SMD 3D model X/Y offset zeroed to match original easyeda2kicad output.
+    # Without this, SMD models are shifted off-center in KiCad.
+    if ee_fp.fp_type == "smd" or re.search(r"[cCrR]0201", ee_fp.name):
+        offset_x = 0
+        offset_y = 0
+
+    rot_x = (360 - m3d.rotation_x) % 360
+    rot_y = (360 - m3d.rotation_y) % 360
+    rot_z = (360 - m3d.rotation_z) % 360
+
+    return kicad.pcb.Model(
+        path=f"{model_path}/{m3d.name}",
+        offset=kicad.pcb.ModelXyz(
+            xyz=kicad.pcb.Xyz(x=offset_x, y=offset_y, z=offset_z)
+        ),
+        scale=kicad.pcb.ModelXyz(xyz=kicad.pcb.Xyz(x=1, y=1, z=1)),
+        rotate=kicad.pcb.ModelXyz(xyz=kicad.pcb.Xyz(x=rot_x, y=rot_y, z=rot_z)),
+    )
 
 
 # ── Footprint builder ────────────────────────────────────────────────────────
@@ -265,328 +465,27 @@ def build_footprint(
     bbox_x = ee_fp.bbox_x
     bbox_y = ee_fp.bbox_y
 
-    pads: list[kicad.pcb.Pad] = []
+    pads = [_convert_fp_pad(p, bbox_x, bbox_y) for p in ee_fp.pads]
+    pads += [_convert_fp_hole(h, bbox_x, bbox_y) for h in ee_fp.holes]
+    pads += [_convert_fp_via(v, bbox_x, bbox_y) for v in ee_fp.vias]
+
     lines: list[kicad.pcb.Line] = []
-    circles: list[kicad.pcb.Circle] = []
-    arcs: list[kicad.pcb.Arc] = []
-    texts: list[kicad.pcb.FpText] = []
-    models: list[kicad.pcb.Model] = []
+    for t in ee_fp.tracks:
+        lines.extend(_convert_fp_track(t, bbox_x, bbox_y))
+    for r in ee_fp.rects:
+        lines.extend(_convert_fp_rect(r, bbox_x, bbox_y))
 
-    # ── Pads ──
-    for ee_pad in ee_fp.pads:
-        is_tht = ee_pad.hole_radius > 0
-        pad_type = "thru_hole" if is_tht else "smd"
-        shape = KI_PAD_SHAPE.get(ee_pad.shape, "custom")
+    circles = [_convert_fp_circle(c, bbox_x, bbox_y) for c in ee_fp.circles]
 
-        layer_map = KI_PAD_LAYERS_THT if is_tht else KI_PAD_LAYERS
-        layers = layer_map.get(ee_pad.layer_id, [])
+    arcs = [
+        a
+        for ee_arc in ee_fp.arcs
+        if (a := _convert_fp_arc(ee_arc, bbox_x, bbox_y)) is not None
+    ]
 
-        pos_x = round(ee_pad.center_x - bbox_x, 2)
-        pos_y = round(ee_pad.center_y - bbox_y, 2)
-        width = round(max(ee_pad.width, 0.01), 2)
-        height = round(max(ee_pad.height, 0.01), 2)
-        orientation = round(_angle_to_ki(ee_pad.rotation), 2)
+    texts = [_convert_fp_text(t, bbox_x, bbox_y) for t in ee_fp.texts]
 
-        number = ee_pad.number
-        if "(" in number and ")" in number:
-            number = number.split("(")[1].split(")")[0]
-
-        # Drill
-        drill = None
-        if ee_pad.hole_radius > 0:
-            hr = round(ee_pad.hole_radius, 2)
-            hl = round(ee_pad.hole_length, 2) if ee_pad.hole_length else 0
-            if hl and hl != 0:
-                max_dist_hole = max(hr * 2, hl)
-                if height - max_dist_hole >= width - max_dist_hole:
-                    drill = kicad.pcb.PadDrill(
-                        shape="oval", size_x=round(hr * 2, 2), size_y=hl
-                    )
-                else:
-                    drill = kicad.pcb.PadDrill(
-                        shape="oval", size_x=hl, size_y=round(hr * 2, 2)
-                    )
-            else:
-                drill = kicad.pcb.PadDrill(size_x=round(2 * hr, 2))
-
-        # Custom polygon pad
-        primitives = None
-        point_list = [_fp_to_ki(p) for p in re.findall(r"\S+", ee_pad.points)]
-
-        if shape == "custom" and point_list:
-            width = KI_PAD_SIZE_MIN
-            height = KI_PAD_SIZE_MIN
-            orientation = 0
-
-            # Absolute coords relative to bbox origin
-            absolute_coords = [
-                (
-                    point_list[i] - bbox_x,
-                    point_list[i + 1] - bbox_y,
-                )
-                for i in range(0, len(point_list) - 1, 2)
-            ]
-
-            # Reposition anchor pad to be contained within the polygon
-            if not _is_circle_in_polygon((pos_x, pos_y), width / 2, absolute_coords):
-                new_center = _find_anchor_position(absolute_coords, width / 2)
-                if new_center is not None:
-                    pos_x, pos_y = new_center
-                else:
-                    logger.warning(
-                        f"Custom pad #{number}: anchor pad cannot be "
-                        "contained within polygon"
-                    )
-
-            # Generate polygon with coordinates relative to anchor pad
-            poly_pts = [
-                kicad.pcb.Xy(
-                    x=round(x - pos_x, 2),
-                    y=round(y - pos_y, 2),
-                )
-                for x, y in absolute_coords
-            ]
-            if poly_pts:
-                primitives = kicad.pcb.PadPrimitives(
-                    gr_polys=[
-                        kicad.pcb.Polygon(
-                            pts=kicad.pcb.Pts(xys=poly_pts),
-                            layers=[],
-                        )
-                    ]
-                )
-
-        pads.append(
-            kicad.pcb.Pad(
-                name=number,
-                type=pad_type,
-                shape=shape,
-                at=kicad.pcb.Xyr(
-                    x=pos_x, y=pos_y, r=orientation if orientation else None
-                ),
-                size=kicad.pcb.Wh(w=width, h=height),
-                drill=drill,
-                layers=layers,
-                uuid=kicad.gen_uuid(),
-                primitives=primitives,
-            )
-        )
-
-    # ── Tracks → Lines ──
-    for ee_track in ee_fp.tracks:
-        layer_str = (
-            " ".join(KI_PAD_LAYERS[ee_track.layer_id])
-            if ee_track.layer_id in KI_PAD_LAYERS
-            else "F.Fab"
-        )
-        stroke_w = round(max(ee_track.stroke_width, 0.01), 2)
-
-        point_list = [_fp_to_ki(p) for p in re.findall(r"\S+", ee_track.points)]
-        for i in range(0, len(point_list) - 2, 2):
-            lines.append(
-                kicad.pcb.Line(
-                    start=kicad.pcb.Xy(
-                        x=round(point_list[i] - bbox_x, 2),
-                        y=round(point_list[i + 1] - bbox_y, 2),
-                    ),
-                    end=kicad.pcb.Xy(
-                        x=round(point_list[i + 2] - bbox_x, 2),
-                        y=round(point_list[i + 3] - bbox_y, 2),
-                    ),
-                    layer=layer_str,
-                    layers=[layer_str],
-                    stroke=kicad.pcb.Stroke(width=stroke_w, type="solid"),
-                    locked=False,
-                    uuid=kicad.gen_uuid(),
-                )
-            )
-
-    # ── Holes → thru_hole pads ──
-    for ee_hole in ee_fp.holes:
-        size = round(ee_hole.radius * 2, 2)
-        pads.append(
-            kicad.pcb.Pad(
-                name="",
-                type="thru_hole",
-                shape="circle",
-                at=kicad.pcb.Xyr(
-                    x=round(ee_hole.center_x - bbox_x, 2),
-                    y=round(ee_hole.center_y - bbox_y, 2),
-                ),
-                size=kicad.pcb.Wh(w=size, h=size),
-                drill=kicad.pcb.PadDrill(size_x=size),
-                layers=["*.Cu", "*.Mask"],
-                uuid=kicad.gen_uuid(),
-            )
-        )
-
-    # ── Vias → thru_hole pads ──
-    for ee_via in ee_fp.vias:
-        drill_size = round(ee_via.radius * 2, 2)
-        diameter = round(ee_via.diameter, 2)
-        pads.append(
-            kicad.pcb.Pad(
-                name="",
-                type="thru_hole",
-                shape="circle",
-                at=kicad.pcb.Xyr(
-                    x=round(ee_via.center_x - bbox_x, 2),
-                    y=round(ee_via.center_y - bbox_y, 2),
-                ),
-                size=kicad.pcb.Wh(w=diameter, h=diameter),
-                drill=kicad.pcb.PadDrill(size_x=drill_size),
-                layers=["*.Cu", "*.Paste", "*.Mask"],
-                uuid=kicad.gen_uuid(),
-            )
-        )
-
-    # ── Circles ──
-    for ee_circle in ee_fp.circles:
-        cx = round(ee_circle.cx - bbox_x, 2)
-        cy = round(ee_circle.cy - bbox_y, 2)
-        circles.append(
-            kicad.pcb.Circle(
-                center=kicad.pcb.Xy(x=cx, y=cy),
-                end=kicad.pcb.Xy(x=round(cx + ee_circle.radius, 2), y=cy),
-                layer=KI_LAYERS.get(ee_circle.layer_id, "F.Fab"),
-                layers=[],
-                stroke=kicad.pcb.Stroke(
-                    width=round(max(ee_circle.stroke_width, 0.01), 2), type="solid"
-                ),
-                locked=False,
-                uuid=kicad.gen_uuid(),
-            )
-        )
-
-    # ── Rectangles → 4 Lines ──
-    for ee_rect in ee_fp.rects:
-        layer = (
-            " ".join(KI_PAD_LAYERS[ee_rect.layer_id])
-            if ee_rect.layer_id in KI_PAD_LAYERS
-            else "F.Fab"
-        )
-        stroke = kicad.pcb.Stroke(
-            width=round(max(ee_rect.stroke_width, 0.01), 2), type="solid"
-        )
-
-        sx = round(ee_rect.x - bbox_x, 2)
-        sy = round(ee_rect.y - bbox_y, 2)
-        w = round(ee_rect.width, 2)
-        h = round(ee_rect.height, 2)
-
-        starts_x = [sx, sx + w, sx + w, sx]
-        starts_y = [sy, sy, sy + h, sy]
-        ends_x = [sx + w, sx + w, sx, sx]
-        ends_y = [sy, sy + h, sy + h, sy]
-
-        for i in range(4):
-            lines.append(
-                kicad.pcb.Line(
-                    start=kicad.pcb.Xy(x=starts_x[i], y=starts_y[i]),
-                    end=kicad.pcb.Xy(x=ends_x[i], y=ends_y[i]),
-                    layer=layer,
-                    layers=[layer],
-                    stroke=stroke,
-                    locked=False,
-                    uuid=kicad.gen_uuid(),
-                )
-            )
-
-    # ── Arcs ──
-    for ee_arc in ee_fp.arcs:
-        arc_path = ee_arc.path.replace(",", " ").replace("M ", "M").replace("A ", "A")
-        try:
-            start_part, arc_part = arc_path.split("A", 1)
-            start_xy = start_part[1:].split(" ", 1)
-            sx = _fp_to_ki(start_xy[0]) - bbox_x
-            sy = _fp_to_ki(start_xy[1]) - bbox_y
-
-            params = arc_part.replace("  ", " ").strip().split(" ", 6)
-            svg_rx = _fp_to_ki(params[0])
-            svg_ry = _fp_to_ki(params[1])
-            x_rot = float(params[2])
-            large_arc = params[3] == "1"
-            sweep = params[4] == "1"
-            ex = _fp_to_ki(params[5]) - bbox_x
-            ey = _fp_to_ki(params[6]) - bbox_y
-
-            if svg_ry == 0:
-                continue
-
-            center_x, center_y, extent = _compute_arc(
-                sx, sy, svg_rx, svg_ry, x_rot, large_arc, sweep, ex, ey
-            )
-
-            # Round to 2dp to match old pipeline: KiFootprintArc stores all
-            # float fields via round_float_values() and the v5 template uses
-            # {:.2f}. The text round-trip (serialize → parse) produces clean
-            # 2dp floats that _calc_arc_midpoint then rotates.
-            center_x = round(center_x, 2)
-            center_y = round(center_y, 2)
-            extent = round(extent, 2)
-            ex = round(ex, 2)
-            ey = round(ey, 2)
-
-            center = kicad.pcb.Xy(x=center_x, y=center_y)
-            end_xy = kicad.pcb.Xy(x=ex, y=ey)
-
-            # 3-point arc: start, mid, end via rotation around center
-            mid = kicad.geo.rotate(end_xy, center, -extent / 2.0)
-            end_pt = kicad.geo.rotate(end_xy, center, -extent)
-
-            arcs.append(
-                kicad.pcb.Arc(
-                    start=kicad.pcb.Xy(x=ex, y=ey),
-                    mid=kicad.pcb.Xy(x=mid.x, y=mid.y),
-                    end=kicad.pcb.Xy(x=end_pt.x, y=end_pt.y),
-                    layer=KI_LAYERS.get(ee_arc.layer_id, "F.Fab"),
-                    layers=[],
-                    stroke=kicad.pcb.Stroke(
-                        width=max(_fp_to_ki(ee_arc.stroke_width), 0.01), type="solid"
-                    ),
-                    locked=False,
-                    uuid=kicad.gen_uuid(),
-                )
-            )
-        except (ValueError, IndexError) as e:
-            logger.warning(f"Failed to parse footprint arc: {e}")
-            continue
-
-    # ── Texts ──
-    for ee_text in ee_fp.texts:
-        layer = KI_LAYERS.get(ee_text.layer_id, "F.Fab")
-        if ee_text.type == "N":
-            layer = layer.replace(".SilkS", ".Fab")
-        mirror = layer.startswith("B")
-        justify = kicad.pcb.Justify(
-            justification="left", mirror=mirror if mirror else None
-        )
-        texts.append(
-            kicad.pcb.FpText(
-                type=kicad.pcb.E_fp_text_type.USER,
-                text=ee_text.text,
-                at=kicad.pcb.Xyr(
-                    x=round(ee_text.center_x - bbox_x, 2),
-                    y=round(ee_text.center_y - bbox_y, 2),
-                    r=_angle_to_ki(ee_text.rotation) or None,
-                ),
-                layer=kicad.pcb.TextLayer(layer=layer),
-                hide=not ee_text.is_displayed if not ee_text.is_displayed else None,
-                effects=kicad.pcb.Effects(
-                    font=kicad.pcb.Font(
-                        size=kicad.pcb.Wh(
-                            w=round(max(ee_text.font_size, 1), 2),
-                            h=round(max(ee_text.font_size, 1), 2),
-                        ),
-                        thickness=round(max(ee_text.stroke_width, 0.01), 2),
-                    ),
-                    justify=justify,
-                ),
-                uuid=kicad.gen_uuid(),
-            )
-        )
-
-    # ── Fab reference text (%R) ──
+    # Fab reference text (%R)
     texts.append(
         kicad.pcb.FpText(
             type=kicad.pcb.E_fp_text_type.USER,
@@ -600,40 +499,12 @@ def build_footprint(
         )
     )
 
-    # ── 3D Model ──
+    # 3D Model
+    models = []
     if ee_fp.model_3d is not None and model_path is not None:
-        m3d = ee_fp.model_3d
-        # Convert translation to mm
-        tx = _to_mm(m3d.translation_x)
-        ty = _to_mm(m3d.translation_y)
-        tz = _to_mm(m3d.translation_z)
+        models.append(_convert_fp_model(ee_fp, bbox_x, bbox_y, model_path))
 
-        offset_x = round(tx - bbox_x, 2)
-        offset_y = -round(ty - bbox_y, 2)
-        offset_z = -round(tz, 2) if ee_fp.fp_type == "smd" else 0
-
-        # Apply SMD 3D model offset workaround
-        if WORKAROUND_SMD_3D_MODEL_FIX:
-            if ee_fp.fp_type == "smd" or re.search(r"[cCrR]0201", ee_fp.name):
-                offset_x = 0
-                offset_y = 0
-
-        rot_x = (360 - m3d.rotation_x) % 360
-        rot_y = (360 - m3d.rotation_y) % 360
-        rot_z = (360 - m3d.rotation_z) % 360
-
-        models.append(
-            kicad.pcb.Model(
-                path=f"{model_path}/{m3d.name}",
-                offset=kicad.pcb.ModelXyz(
-                    xyz=kicad.pcb.Xyz(x=offset_x, y=offset_y, z=offset_z)
-                ),
-                scale=kicad.pcb.ModelXyz(xyz=kicad.pcb.Xyz(x=1, y=1, z=1)),
-                rotate=kicad.pcb.ModelXyz(xyz=kicad.pcb.Xyz(x=rot_x, y=rot_y, z=rot_z)),
-            )
-        )
-
-    # ── Properties ──
+    # Properties
     y_low = min((p.at.y for p in pads), default=0)
     y_high = max((p.at.y for p in pads), default=0)
 
@@ -683,7 +554,7 @@ def build_footprint(
     )
 
 
-# ── Symbol builder ───────────────────────────────────────────────────────────
+# ── Symbol helpers ───────────────────────────────────────────────────────────
 
 
 def _sanitize_name(name: str) -> str:
@@ -700,6 +571,196 @@ def _apply_pin_name_style(pin_name: str) -> str:
     return "/".join(_apply_text_style(txt) for txt in pin_name.split("/"))
 
 
+# ── Per-shape symbol converters ──────────────────────────────────────────────
+
+
+def _convert_sym_pin(
+    ee_pin: EeSymPin, bbox_x: float, bbox_y: float
+) -> kicad.schematic.SymbolPin:
+    pin_x, pin_y = _sym_xy(ee_pin.pos_x, ee_pin.pos_y, bbox_x, bbox_y)
+
+    if ee_pin.has_dot and ee_pin.has_clock:
+        pin_style = "inverted_clock"
+    elif ee_pin.has_dot:
+        pin_style = "inverted"
+    elif ee_pin.has_clock:
+        pin_style = "clock"
+    else:
+        pin_style = "line"
+
+    return kicad.schematic.SymbolPin(
+        at=kicad.pcb.Xyr(x=pin_x, y=pin_y, r=(180 + ee_pin.rotation) % 360),
+        length=round(_to_mm(ee_pin.length), 2),
+        type=KI_PIN_TYPE.get(ee_pin.pin_type, "unspecified"),
+        style=pin_style,
+        name=kicad.schematic.PinName(
+            name=_apply_pin_name_style(ee_pin.name), effects=_SYM_PIN_EFFECTS
+        ),
+        number=kicad.schematic.PinNumber(
+            number=ee_pin.number, effects=_SYM_PIN_EFFECTS
+        ),
+    )
+
+
+def _convert_sym_rect(
+    ee_rect: EeSymRect, bbox_x: float, bbox_y: float
+) -> kicad.schematic.Rect:
+    x0, y0 = _sym_xy(ee_rect.pos_x, ee_rect.pos_y, bbox_x, bbox_y)
+    x1 = round(_to_mm(int(ee_rect.width)) + x0, 2)
+    y1 = round(-_to_mm(int(ee_rect.height)) + y0, 2)
+
+    return kicad.schematic.Rect(
+        start=kicad.pcb.Xy(x=x0, y=y0),
+        end=kicad.pcb.Xy(x=x1, y=y1),
+        stroke=_SYM_DEFAULT_STROKE,
+        fill=_SYM_FILL_BG,
+    )
+
+
+def _convert_sym_circle(
+    ee_circle: EeSymCircle, bbox_x: float, bbox_y: float
+) -> kicad.schematic.Circle:
+    cx, cy = _sym_xy(ee_circle.center_x, ee_circle.center_y, bbox_x, bbox_y)
+    r = round(_to_mm(ee_circle.radius), 2)
+    fill = _SYM_FILL_BG if ee_circle.fill else _SYM_FILL_NONE
+
+    return kicad.schematic.Circle(
+        center=kicad.pcb.Xy(x=cx, y=cy),
+        end=kicad.pcb.Xy(x=round(cx + r, 2), y=cy),
+        stroke=_SYM_DEFAULT_STROKE,
+        fill=fill,
+    )
+
+
+def _convert_sym_ellipse(
+    ee_ellipse: EeSymEllipse, bbox_x: float, bbox_y: float
+) -> kicad.schematic.Circle | None:
+    if ee_ellipse.radius_x != ee_ellipse.radius_y:
+        return None
+    cx, cy = _sym_xy(ee_ellipse.center_x, ee_ellipse.center_y, bbox_x, bbox_y)
+    r = round(_to_mm(ee_ellipse.radius_x), 2)
+
+    return kicad.schematic.Circle(
+        center=kicad.pcb.Xy(x=cx, y=cy),
+        end=kicad.pcb.Xy(x=round(cx + r, 2), y=cy),
+        stroke=_SYM_DEFAULT_STROKE,
+        fill=_SYM_FILL_NONE,
+    )
+
+
+def _convert_sym_polyline(
+    ee_polyline: EeSymPolyline, bbox_x: float, bbox_y: float
+) -> kicad.schematic.Polyline | None:
+    raw_pts = re.findall(r"\S+", ee_polyline.points)
+    coords = [
+        _sym_xy(float(raw_pts[i]), float(raw_pts[i + 1]), bbox_x, bbox_y)
+        for i in range(0, len(raw_pts) - 1, 2)
+    ]
+
+    if ee_polyline.is_polygon or ee_polyline.fill:
+        coords.append(coords[0])
+
+    if not coords:
+        return None
+
+    pts = [kicad.pcb.Xy(x=x, y=y) for x, y in coords]
+    is_closed = len(pts) >= 2 and pts[0].x == pts[-1].x and pts[0].y == pts[-1].y
+
+    return kicad.schematic.Polyline(
+        pts=kicad.schematic.Pts(xys=pts),
+        stroke=_SYM_DEFAULT_STROKE,
+        fill=_SYM_FILL_BG if is_closed else _SYM_FILL_NONE,
+    )
+
+
+def _convert_sym_path(
+    ee_path: EeSymPath, bbox_x: float, bbox_y: float
+) -> kicad.schematic.Polyline | None:
+    raw_pts = re.findall(r"\S+", ee_path.paths)
+    coords: list[tuple[float, float]] = []
+    i = 0
+    while i < len(raw_pts):
+        cmd = raw_pts[i]
+        if cmd in ("M", "L") and i + 2 < len(raw_pts):
+            coords.append(
+                _sym_xy(float(raw_pts[i + 1]), float(raw_pts[i + 2]), bbox_x, bbox_y)
+            )
+            i += 3
+        elif cmd == "Z":
+            if coords:
+                coords.append(coords[0])
+            i += 1
+        elif cmd == "C":
+            i += 7  # skip cubic bezier
+        else:
+            i += 1
+
+    if not coords:
+        return None
+
+    pts = [kicad.pcb.Xy(x=x, y=y) for x, y in coords]
+    is_closed = len(pts) >= 2 and pts[0].x == pts[-1].x and pts[0].y == pts[-1].y
+
+    return kicad.schematic.Polyline(
+        pts=kicad.schematic.Pts(xys=pts),
+        stroke=_SYM_DEFAULT_STROKE,
+        fill=_SYM_FILL_BG if is_closed else _SYM_FILL_NONE,
+    )
+
+
+def _convert_sym_arc(
+    ee_arc: EeSymArc, bbox_x: float, bbox_y: float
+) -> kicad.schematic.Arc | None:
+    try:
+        parsed = _parse_svg_path_for_arc(ee_arc.path)
+        if parsed is None:
+            return None
+        move_x, move_y, arc_params = parsed
+        rx_raw, ry_raw, x_rot, large_arc, sweep, end_x_raw, end_y_raw = arc_params
+
+        start_x = _to_mm(move_x - bbox_x)
+        start_y = _to_mm(move_y - bbox_y)
+        arc_end_x = _to_mm(end_x_raw - bbox_x)
+        arc_end_y = _to_mm(end_y_raw - bbox_y)
+        rx = _to_mm(rx_raw)
+        ry = _to_mm(ry_raw)
+
+        cx, cy, extent = _compute_arc(
+            start_x,
+            start_y,
+            rx,
+            ry,
+            x_rot,
+            large_arc,
+            sweep,
+            arc_end_x,
+            arc_end_y,
+        )
+
+        # Schematic Y axis is flipped; large_arc needs different handling
+        if not large_arc:
+            cy, start_y, arc_end_y = -cy, -start_y, -arc_end_y
+        else:
+            extent = 360 - extent
+
+        radius = max(rx, ry)
+        mid_x, mid_y = _arc_midpoint(cx, cy, radius, x_rot, extent)
+
+        return kicad.schematic.Arc(
+            start=kicad.pcb.Xy(x=round(start_x, 2), y=round(start_y, 2)),
+            mid=kicad.pcb.Xy(x=round(mid_x, 2), y=round(mid_y, 2)),
+            end=kicad.pcb.Xy(x=round(arc_end_x, 2), y=round(arc_end_y, 2)),
+            stroke=_SYM_DEFAULT_STROKE,
+            fill=_SYM_FILL_BG if ee_arc.fill else _SYM_FILL_NONE,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to parse symbol arc: {e}")
+        return None
+
+
+# ── Symbol builder ───────────────────────────────────────────────────────────
+
+
 def build_symbol(
     ee_sym: EeSymbol,
     fp_lib_name: str,
@@ -712,236 +773,47 @@ def build_symbol(
     ki_units: list[kicad.schematic.SymbolUnit] = []
     all_pin_ys: list[float] = []
 
-    default_stroke = kicad.schematic.Stroke(
-        width=0, type="default", color=kicad.schematic.Color(r=0, g=0, b=0, a=0)
-    )
-    fill_bg = kicad.schematic.Fill(type="background")
-    fill_none = kicad.schematic.Fill(type="none")
-    pin_effects = kicad.pcb.Effects(
-        font=kicad.pcb.Font(size=kicad.pcb.Wh(w=1.27, h=1.27)),
-    )
-
     unit_number = 1 if len(ee_sym.units) > 1 else 0
     for ee_unit in ee_sym.units:
         unit_name = f"{sanitized_name}_{unit_number}_1"
         bbox_x = ee_unit.bbox_x
         bbox_y = ee_unit.bbox_y
 
-        sch_pins: list[kicad.schematic.SymbolPin] = []
-        sch_polylines: list[kicad.schematic.Polyline] = []
-        sch_circles: list[kicad.schematic.Circle] = []
-        sch_rects: list[kicad.schematic.Rect] = []
-        sch_arcs: list[kicad.schematic.Arc] = []
-
-        # ── Pins ──
+        sch_pins = []
         for ee_pin in ee_unit.pins:
-            pin_x = round(_to_mm(int(ee_pin.pos_x) - int(bbox_x)), 2)
-            pin_y = round(-_to_mm(int(ee_pin.pos_y) - int(bbox_y)), 2)
-            all_pin_ys.append(pin_y)
+            pin = _convert_sym_pin(ee_pin, bbox_x, bbox_y)
+            sch_pins.append(pin)
+            all_pin_ys.append(pin.at.y)
 
-            if ee_pin.has_dot and ee_pin.has_clock:
-                pin_style = "inverted_clock"
-            elif ee_pin.has_dot:
-                pin_style = "inverted"
-            elif ee_pin.has_clock:
-                pin_style = "clock"
-            else:
-                pin_style = "line"
+        sch_rects = [
+            _convert_sym_rect(r, bbox_x, bbox_y) for r in ee_unit.rectangles
+        ]
 
-            sch_pins.append(
-                kicad.schematic.SymbolPin(
-                    at=kicad.pcb.Xyr(x=pin_x, y=pin_y, r=(180 + ee_pin.rotation) % 360),
-                    length=round(_to_mm(ee_pin.length), 2),
-                    type=KI_PIN_TYPE.get(ee_pin.pin_type, "unspecified"),
-                    style=pin_style,
-                    name=kicad.schematic.PinName(
-                        name=_apply_pin_name_style(ee_pin.name), effects=pin_effects
-                    ),
-                    number=kicad.schematic.PinNumber(
-                        number=ee_pin.number, effects=pin_effects
-                    ),
-                )
-            )
+        sch_circles = [
+            _convert_sym_circle(c, bbox_x, bbox_y) for c in ee_unit.circles
+        ]
+        sch_circles += [
+            c
+            for ee_e in ee_unit.ellipses
+            if (c := _convert_sym_ellipse(ee_e, bbox_x, bbox_y)) is not None
+        ]
 
-        # ── Rectangles ──
-        for ee_rect in ee_unit.rectangles:
-            x0 = round(_to_mm(int(ee_rect.pos_x) - int(bbox_x)), 2)
-            y0 = round(-_to_mm(int(ee_rect.pos_y) - int(bbox_y)), 2)
-            x1 = round(_to_mm(int(ee_rect.width)) + x0, 2)
-            y1 = round(-_to_mm(int(ee_rect.height)) + y0, 2)
+        sch_polylines = [
+            p
+            for ee_pl in ee_unit.polylines
+            if (p := _convert_sym_polyline(ee_pl, bbox_x, bbox_y)) is not None
+        ]
+        sch_polylines += [
+            p
+            for ee_pa in ee_unit.paths
+            if (p := _convert_sym_path(ee_pa, bbox_x, bbox_y)) is not None
+        ]
 
-            sch_rects.append(
-                kicad.schematic.Rect(
-                    start=kicad.pcb.Xy(x=x0, y=y0),
-                    end=kicad.pcb.Xy(x=x1, y=y1),
-                    stroke=default_stroke,
-                    fill=fill_bg,
-                )
-            )
-
-        # ── Circles ──
-        for ee_circle in ee_unit.circles:
-            cx = round(_to_mm(int(ee_circle.center_x) - int(bbox_x)), 2)
-            cy = round(-_to_mm(int(ee_circle.center_y) - int(bbox_y)), 2)
-            r = round(_to_mm(ee_circle.radius), 2)
-            fill = fill_bg if ee_circle.fill else fill_none
-
-            sch_circles.append(
-                kicad.schematic.Circle(
-                    center=kicad.pcb.Xy(x=cx, y=cy),
-                    end=kicad.pcb.Xy(x=round(cx + r, 2), y=cy),
-                    stroke=default_stroke,
-                    fill=fill,
-                )
-            )
-
-        # ── Ellipses → Circles (only if rx == ry) ──
-        for ee_ellipse in ee_unit.ellipses:
-            if ee_ellipse.radius_x != ee_ellipse.radius_y:
-                continue
-            cx = round(_to_mm(int(ee_ellipse.center_x) - int(bbox_x)), 2)
-            cy = round(-_to_mm(int(ee_ellipse.center_y) - int(bbox_y)), 2)
-            r = round(_to_mm(ee_ellipse.radius_x), 2)
-
-            sch_circles.append(
-                kicad.schematic.Circle(
-                    center=kicad.pcb.Xy(x=cx, y=cy),
-                    end=kicad.pcb.Xy(x=round(cx + r, 2), y=cy),
-                    stroke=default_stroke,
-                    fill=fill_none,
-                )
-            )
-
-        # ── Polylines & Polygons ──
-        for ee_polyline in ee_unit.polylines:
-            raw_pts = re.findall(r"\S+", ee_polyline.points)
-            x_pts = [
-                round(_to_mm(int(float(raw_pts[i])) - int(bbox_x)), 2)
-                for i in range(0, len(raw_pts), 2)
-            ]
-            y_pts = [
-                round(-_to_mm(int(float(raw_pts[i])) - int(bbox_y)), 2)
-                for i in range(1, len(raw_pts), 2)
-            ]
-
-            if ee_polyline.is_polygon or ee_polyline.fill:
-                x_pts.append(x_pts[0])
-                y_pts.append(y_pts[0])
-
-            if x_pts and y_pts:
-                pts = [
-                    kicad.pcb.Xy(x=x_pts[i], y=y_pts[i])
-                    for i in range(min(len(x_pts), len(y_pts)))
-                ]
-                is_closed = (
-                    len(pts) >= 2 and pts[0].x == pts[-1].x and pts[0].y == pts[-1].y
-                )
-                sch_polylines.append(
-                    kicad.schematic.Polyline(
-                        pts=kicad.schematic.Pts(xys=pts),
-                        stroke=default_stroke,
-                        fill=fill_bg if is_closed else fill_none,
-                    )
-                )
-
-        # ── Paths (SVG M/L/Z) ──
-        for ee_path in ee_unit.paths:
-            raw_pts = re.findall(r"\S+", ee_path.paths)
-            x_pts: list[float] = []
-            y_pts: list[float] = []
-            i = 0
-            while i < len(raw_pts):
-                cmd = raw_pts[i]
-                if cmd in ("M", "L") and i + 2 < len(raw_pts):
-                    x_pts.append(
-                        round(
-                            _to_mm(int(float(raw_pts[i + 1])) - int(bbox_x)),
-                            2,
-                        )
-                    )
-                    y_pts.append(
-                        round(
-                            -_to_mm(int(float(raw_pts[i + 2])) - int(bbox_y)),
-                            2,
-                        )
-                    )
-                    i += 3
-                elif cmd == "Z":
-                    if x_pts and y_pts:
-                        x_pts.append(x_pts[0])
-                        y_pts.append(y_pts[0])
-                    i += 1
-                elif cmd == "C":
-                    i += 7  # skip cubic bezier
-                else:
-                    i += 1
-
-            if x_pts and y_pts:
-                pts = [
-                    kicad.pcb.Xy(x=x_pts[j], y=y_pts[j])
-                    for j in range(min(len(x_pts), len(y_pts)))
-                ]
-                is_closed = (
-                    len(pts) >= 2 and pts[0].x == pts[-1].x and pts[0].y == pts[-1].y
-                )
-                sch_polylines.append(
-                    kicad.schematic.Polyline(
-                        pts=kicad.schematic.Pts(xys=pts),
-                        stroke=default_stroke,
-                        fill=fill_bg if is_closed else fill_none,
-                    )
-                )
-
-        # ── Arcs ──
-        for ee_arc in ee_unit.arcs:
-            try:
-                parsed = _parse_svg_path_for_arc(ee_arc.path)
-                if parsed is None:
-                    continue
-                move_x, move_y, arc_params = parsed
-                rx_raw, ry_raw, x_rot, large_arc, sweep, end_x_raw, end_y_raw = (
-                    arc_params
-                )
-
-                start_x = _to_mm(move_x - bbox_x)
-                start_y = _to_mm(move_y - bbox_y)
-                arc_end_x = _to_mm(end_x_raw - bbox_x)
-                arc_end_y = _to_mm(end_y_raw - bbox_y)
-                rx = _to_mm(rx_raw)
-                ry = _to_mm(ry_raw)
-
-                cx, cy, extent = _compute_arc(
-                    start_x,
-                    start_y,
-                    rx,
-                    ry,
-                    x_rot,
-                    large_arc,
-                    sweep,
-                    arc_end_x,
-                    arc_end_y,
-                )
-
-                # Schematic Y axis is flipped; large_arc needs different handling
-                if not large_arc:
-                    cy, start_y, arc_end_y = -cy, -start_y, -arc_end_y
-                else:
-                    extent = 360 - extent
-
-                radius = max(rx, ry)
-                mid_x, mid_y = _arc_midpoint(cx, cy, radius, x_rot, extent)
-
-                sch_arcs.append(
-                    kicad.schematic.Arc(
-                        start=kicad.pcb.Xy(x=round(start_x, 2), y=round(start_y, 2)),
-                        mid=kicad.pcb.Xy(x=round(mid_x, 2), y=round(mid_y, 2)),
-                        end=kicad.pcb.Xy(x=round(arc_end_x, 2), y=round(arc_end_y, 2)),
-                        stroke=default_stroke,
-                        fill=fill_bg if ee_arc.fill else fill_none,
-                    )
-                )
-            except Exception as e:
-                logger.warning(f"Failed to parse symbol arc: {e}")
+        sch_arcs = [
+            a
+            for ee_arc in ee_unit.arcs
+            if (a := _convert_sym_arc(ee_arc, bbox_x, bbox_y)) is not None
+        ]
 
         ki_units.append(
             kicad.schematic.SymbolUnit(
@@ -1065,49 +937,14 @@ def build_symbol(
     )
 
 
-def _parse_svg_path_for_arc(
-    path: str,
-) -> tuple[float, float, tuple[float, float, float, bool, bool, float, float]] | None:
-    """Parse an SVG path containing M...A... for arc conversion."""
-    path = path.replace(",", " ")
-    if "M" not in path or "A" not in path:
-        return None
-
-    parts = re.findall(r"([MA])([\s\d.eE+\-]+)", path)
-    move_data = None
-    arc_data = None
-    for cmd, args in parts:
-        nums = [float(x) for x in args.split()]
-        if cmd == "M" and len(nums) >= 2:
-            move_data = (nums[0], nums[1])
-        elif cmd == "A" and len(nums) >= 7:
-            arc_data = (
-                nums[0],
-                nums[1],
-                nums[2],
-                bool(nums[3]),
-                bool(nums[4]),
-                nums[5],
-                nums[6],
-            )
-
-    if move_data is None or arc_data is None:
-        return None
-
-    return move_data[0], move_data[1], arc_data
-
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 import pytest  # noqa: E402
 
 from faebryk.libs.easyeda.easyeda_types import (  # noqa: E402
-    EeFpHole,
-    EeFpPad,
-    EeFpRect,
     EeSymbolInfo,
     EeSymbolUnit,
-    EeSymPin,
 )
 from faebryk.libs.easyeda.parser import (  # noqa: E402
     _opamp_cad_data,
@@ -1116,12 +953,6 @@ from faebryk.libs.easyeda.parser import (  # noqa: E402
     parse_footprint,
     parse_symbol,
 )
-
-
-def test_fp_to_ki_conversion():
-    assert _fp_to_ki(0) == 0
-    assert _fp_to_ki("100") == pytest.approx(25.4, abs=0.01)
-    assert _fp_to_ki("invalid") == 0.0
 
 
 def test_build_fp_resistor_structure():
@@ -1358,79 +1189,6 @@ def test_kicad_opamp_sym_dumps():
     assert "pin" in text.lower()
 
 
-# ── Arc geometry ─────────────────────────────────────────────────────────────
-
-
-def test_compute_arc_quarter_circle():
-    r = 5
-    cx, cy, extent = _compute_arc(
-        start_x=r,
-        start_y=0,
-        radius_x=r,
-        radius_y=r,
-        angle=0,
-        large_arc_flag=False,
-        sweep_flag=True,
-        end_x=0,
-        end_y=r,
-    )
-    assert cx == pytest.approx(0.0, abs=0.1)
-    assert cy == pytest.approx(0.0, abs=0.1)
-    assert abs(extent) == pytest.approx(90.0, abs=1.0)
-
-
-def test_compute_arc_small():
-    cx, cy, extent = _compute_arc(
-        start_x=10,
-        start_y=0,
-        radius_x=10,
-        radius_y=10,
-        angle=0,
-        large_arc_flag=False,
-        sweep_flag=False,
-        end_x=0,
-        end_y=-10,
-    )
-    assert cx == pytest.approx(0.0, abs=0.5)
-    assert cy == pytest.approx(0.0, abs=0.5)
-    assert abs(extent) == pytest.approx(90.0, abs=2.0)
-
-
-def test_compute_arc_zero_radius():
-    cx, cy, extent = _compute_arc(0, 0, 0, 0, 0, False, False, 1, 1)
-    assert math.isfinite(cx)
-    assert math.isfinite(cy)
-
-
-def test_compute_arc_large_vs_small():
-    _, _, ext_small = _compute_arc(10, 0, 10, 10, 0, False, True, 0, 10)
-    _, _, ext_large = _compute_arc(10, 0, 10, 10, 0, True, True, 0, 10)
-    assert abs(ext_large) > abs(ext_small)
-
-
-def test_compute_arc_sweep_direction():
-    _, _, ext_cw = _compute_arc(10, 0, 10, 10, 0, False, True, 0, 10)
-    _, _, ext_ccw = _compute_arc(10, 0, 10, 10, 0, False, False, 0, 10)
-    assert ext_cw * ext_ccw < 0
-
-
-def test_compute_arc_real_world():
-    cx, cy, extent = _compute_arc(
-        start_x=3990.1575,
-        start_y=3002.8605,
-        radius_x=2.8648,
-        radius_y=2.8648,
-        angle=0,
-        large_arc_flag=False,
-        sweep_flag=False,
-        end_x=3990.1768,
-        end_y=2997.1406,
-    )
-    assert math.isfinite(cx)
-    assert math.isfinite(cy)
-    assert math.isfinite(extent)
-
-
 # ── Edge cases ───────────────────────────────────────────────────────────────
 
 
@@ -1492,8 +1250,8 @@ def test_rectangle_to_lines():
     fp = EeFootprint(name="TEST", fp_type="smd", bbox_x=0, bbox_y=0)
     fp.rects.append(
         EeFpRect(
-            x=1,
-            y=1,
+            pos_x=1,
+            pos_y=1,
             width=2,
             height=3,
             stroke_width=0.1,
