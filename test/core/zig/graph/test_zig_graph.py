@@ -250,6 +250,241 @@ def test_typegraph_instantiate():
     assert e.get_attr(key="test_key") == "test_value"
 
 
+def test_dumps_loads_roundtrip():
+    """
+    Serialize a graph with nodes, edges, and attributes, then loads into a new graph.
+    """
+    g = graph.GraphView.create()
+
+    n1 = graph.Node.create(name="hello")
+    n2 = graph.Node.create(count=42)
+    n3 = graph.Node.create(ratio=3.14, active=True)
+
+    g.insert_node(node=n1)
+    g.insert_node(node=n2)
+    g.insert_node(node=n3)
+
+    e12 = graph.Edge.create(source=n1, target=n2, edge_type=0)
+    e23 = graph.Edge.create(source=n2, target=n3, edge_type=0)
+    g.insert_edge(edge=e12)
+    g.insert_edge(edge=e23)
+
+    data = g.dumps()
+    assert isinstance(data, bytes)
+    assert len(data) > 64  # at least header (64 bytes in v2)
+
+    g2 = graph.GraphView.loads(data=data)
+
+    # loads creates a fresh graph — counts must match exactly
+    assert g2.get_node_count() == g.get_node_count()
+
+
+def test_loads_static():
+    """Test GraphView.loads() creates a new graph from bytes."""
+    g = graph.GraphView.create()
+
+    n1 = graph.Node.create(label="test")
+    n2 = graph.Node.create()
+    g.insert_node(node=n1)
+    g.insert_node(node=n2)
+    e = graph.Edge.create(source=n1, target=n2, edge_type=0)
+    g.insert_edge(edge=e)
+
+    data = g.dumps()
+    g2 = graph.GraphView.loads(data=data)
+
+    assert g2.get_node_count() == g.get_node_count()
+
+
+def test_loads_preserves_edge_connectivity():
+    """
+    Verify edge directional/name/type and source-target connectivity survive loads.
+    """
+    g = graph.GraphView.create()
+
+    n1 = graph.Node.create()
+    n2 = graph.Node.create()
+    n3 = graph.Node.create()
+    g.insert_node(node=n1)
+    g.insert_node(node=n2)
+    g.insert_node(node=n3)
+
+    e12 = graph.Edge.create(
+        source=n1, target=n2, edge_type=0, directional=True, name="forward"
+    )
+    e23 = graph.Edge.create(source=n2, target=n3, edge_type=0, name="chain")
+    g.insert_edge(edge=e12)
+    g.insert_edge(edge=e23)
+
+    data = g.dumps()
+    g2 = graph.GraphView.loads(data=data)
+
+    assert g2.get_node_count() == g.get_node_count()
+
+    # Collect all edges of type 0 across the loaded graph
+    all_edges = []
+    for bound in g2.get_nodes():
+        bound.visit_edges_of_type(
+            edge_type=0,
+            ctx=all_edges,
+            f=lambda ctx, be: ctx.append(be.edge()),
+        )
+
+    # Each edge appears from both source and target visits, so deduplicate by name
+    names = {e.name() for e in all_edges if e.name() is not None}
+    assert "forward" in names
+    assert "chain" in names
+
+    # Verify directional flag survives
+    directional_edges = [e for e in all_edges if e.name() == "forward"]
+    assert len(directional_edges) > 0
+    assert directional_edges[0].directional() is True
+
+
+def test_loads_preserves_composition_attributes():
+    """Verify composition edge names (stored as dynamic attributes) survive loads."""
+    g = graph.GraphView.create()
+
+    parent = graph.Node.create()
+    child_a = graph.Node.create()
+    child_b = graph.Node.create()
+
+    parent_bound = g.insert_node(node=parent)
+    g.insert_node(node=child_a)
+    g.insert_node(node=child_b)
+
+    fbrk.EdgeComposition.add_child(
+        bound_node=parent_bound, child=child_a, child_identifier="pin_a"
+    )
+    fbrk.EdgeComposition.add_child(
+        bound_node=parent_bound, child=child_b, child_identifier="pin_b"
+    )
+
+    # Verify original
+    orig_children = []
+    fbrk.EdgeComposition.visit_children_edges(
+        bound_node=parent_bound,
+        ctx=orig_children,
+        f=lambda ctx, be: ctx.append(fbrk.EdgeComposition.get_name(edge=be.edge())),
+    )
+    assert orig_children == ["pin_a", "pin_b"]
+
+    # Serialize and reload
+    data = g.dumps()
+    g2 = graph.GraphView.loads(data=data)
+    assert g2.get_node_count() == g.get_node_count()
+
+    # Find the parent node in the loaded graph (the one with composition children)
+    found = False
+    for bound in g2.get_nodes():
+        children = []
+        fbrk.EdgeComposition.visit_children_edges(
+            bound_node=bound,
+            ctx=children,
+            f=lambda ctx, be: ctx.append(fbrk.EdgeComposition.get_name(edge=be.edge())),
+        )
+        if len(children) == 2:
+            assert children == ["pin_a", "pin_b"]
+            found = True
+            break
+
+    assert found, "No node with 2 composition children found after loads"
+
+
+def test_clone():
+    """Test GraphView.clone() produces an independent deep copy."""
+    g = graph.GraphView.create()
+
+    n1 = graph.Node.create(x="original")
+    n2 = graph.Node.create()
+    g.insert_node(node=n1)
+    g.insert_node(node=n2)
+    e = graph.Edge.create(source=n1, target=n2, edge_type=0)
+    g.insert_edge(edge=e)
+
+    cloned = g.clone()
+
+    assert cloned.get_node_count() == g.get_node_count()
+    # cloned is independent — adding to g doesn't affect cloned
+    g.create_and_insert_node()
+    assert g.get_node_count() == cloned.get_node_count() + 1
+
+
+def test_clone_with_composition_traversal():
+    """Clone a graph with composition edges and verify children can be visited."""
+    g = graph.GraphView.create()
+
+    parent = graph.Node.create()
+    child_a = graph.Node.create()
+    child_b = graph.Node.create()
+
+    parent_bound = g.insert_node(node=parent)
+    g.insert_node(node=child_a)
+    g.insert_node(node=child_b)
+
+    fbrk.EdgeComposition.add_child(
+        bound_node=parent_bound, child=child_a, child_identifier="a"
+    )
+    fbrk.EdgeComposition.add_child(
+        bound_node=parent_bound, child=child_b, child_identifier="b"
+    )
+
+    # Verify original graph composition
+    orig_children = []
+    fbrk.EdgeComposition.visit_children_edges(
+        bound_node=parent_bound,
+        ctx=orig_children,
+        f=lambda ctx, be: ctx.append(fbrk.EdgeComposition.get_name(edge=be.edge())),
+    )
+    assert orig_children == ["a", "b"]
+
+    cloned = g.clone()
+    assert cloned.get_node_count() == g.get_node_count()
+
+    # Find the parent node in the cloned graph by visiting all nodes
+    # and checking which one has composition children
+    for bound in cloned.get_nodes():
+        children = []
+        fbrk.EdgeComposition.visit_children_edges(
+            bound_node=bound,
+            ctx=children,
+            f=lambda ctx, be: ctx.append(fbrk.EdgeComposition.get_name(edge=be.edge())),
+        )
+        if len(children) == 2:
+            assert children == ["a", "b"]
+            # Also verify get_child_by_identifier works on cloned graph
+            child_a_cloned = fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=bound, child_identifier="a"
+            )
+            child_b_cloned = fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=bound, child_identifier="b"
+            )
+            assert child_a_cloned is not None
+            assert child_b_cloned is not None
+            return
+
+    assert False, "No node with 2 composition children found in cloned graph"
+
+
+def test_loads_rejects_malformed():
+    """Test that loads rejects invalid payloads."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        graph.GraphView.loads(data=b"too short")
+
+    with pytest.raises(ValueError):
+        graph.GraphView.loads(data=b"\x00" * 64)  # wrong magic (64 bytes = v2 header)
+
+
+def test_loads_malformed():
+    """Test that loads rejects invalid payloads."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        graph.GraphView.loads(data=b"bad")
+
+
 if __name__ == "__main__":
     test_minimal_graph()
     test_node_count()
@@ -260,6 +495,14 @@ if __name__ == "__main__":
     test_edge_next()
     test_typegraph_add_type_collision()
     test_typegraph_instantiate()
+    test_dumps_loads_roundtrip()
+    test_loads_static()
+    test_loads_preserves_edge_connectivity()
+    test_loads_preserves_composition_attributes()
+    test_clone()
+    test_clone_with_composition_traversal()
+    test_loads_rejects_malformed()
+    test_loads_malformed()
 
     print("-" * 80)
     print("All tests passed")
