@@ -579,3 +579,77 @@ We abandon serializing bitsets and original UUIDs entirely. Instead, `dumps()` m
 *   **Zero Bloat:** A 5-node subgraph payload is just a few dozen bytes, regardless of global counter states.
 *   **Deterministic:** Payloads are identical regardless of process history, eliminating state leaks.
 *   **Faster Loads:** `loads()` no longer allocates massive sparse translation arrays or parses bitsets. Memory allocations scale strictly with `node_count`, not `max_node_uuid`.
+
+### 11.8 Decoupled Topology and Data (Attribute Back-Pointers)
+
+To achieve maximum compaction without the complexity of parsing multiple distinct edge arrays or bitsets, we can decouple Graph Topology from Graph Data by using **Attribute Back-Pointers**.
+
+Instead of Nodes and Edges pointing *forward* to their attributes, the Attribute Stream points *backward* to its owner.
+
+**1. Pure Structural Arrays:**
+The `PackedNode` array is entirely eliminated (Nodes are just indices inferred during iteration).
+The `PackedEdge` array is unified into a single 12-byte struct containing only topological data (allowing padding to be dropped later if aligned).
+```zig
+const PackedEdge = extern struct {
+    source: u32,
+    target: u32,
+    flags: u32,
+}; // Exactly 12 bytes.
+```
+
+**2. The Attribute Back-Pointer Header:**
+The variable-length Attribute Stream introduces a 6-byte header that explicitly declares the dense index of the Node or Edge that owns the subsequent attributes.
+```zig
+const PackedAttrBlockHeader = packed struct {
+    owner_index: u32,       // The dense index (0..N) of the Node or Edge
+    is_node_owner: u8,      // 1 if Node, 0 if Edge
+    in_use: u8,             // Number of attributes in this block
+}; // 6 bytes
+```
+
+**3. Implementation Mechanics (`loads`):**
+1.  **Topology Phase:** Iterate `0..node_count`, call `create_and_insert_node()`, and build `local_node_uuids[dense_idx] = new_uuid`. Iterate `0..edge_count`, call `insertEdge()`, and build `local_edge_uuids[dense_idx] = new_edge_uuid`. (No attributes are allocated during this phase).
+2.  **Data Phase:** Stream through the Attribute Blocks. Read the 6-byte header. Use `owner_index` and `is_node_owner` to look up the correct local UUID in either `local_node_uuids` or `local_edge_uuids`. Call `.dynamic.ensure()` on that entity, and loop `in_use` times to parse and assign the `PackedAttribute` entries.
+
+### 11.9 The Final "Zero-Overhead" Payload Layout
+
+Integrating all optimizations, the final format strips out all bitsets, node arrays, and dynamic attribute blocks, representing the graph as pure, decoupled streams of topology and data. 
+
+Furthermore, by guaranteeing that `dumps()` always processes the `GraphView`'s `self_node` first, it inherently assigns the `self_node` to dense index `0`. This structural guarantee eliminates the need to serialize a `self_node_index` in the header, as the receiver inherently assigns the root identity to the very first node it creates.
+
+```zig
+const BinaryHeader = extern struct {
+    magic_number: u32,       // 0x52494E53 ("RINS")
+    version: u32,            // e.g., 4 (Implicit Root SoA)
+    
+    node_count: u32,         
+    edge_count: u32,         
+    attr_block_count: u32,   
+    string_table_size: u32,  
+
+    _reserved: [10]u32,      // 40 bytes reserved to hit exactly 64 bytes
+}; // Exactly 64 bytes (One L1 Cache Line)
+```
+
+**Payload Structure:**
+```text
+[ Header (64 bytes) ]
+
+[ Nodes (0 bytes) ]
+    // Implicit structure. The receiver simply loops `0..node_count` 
+    // and calls `create_and_insert_node()` to instantiate the structural 
+    // nodes. The node created at index 0 is inherently the self_node.
+
+[ Edges Array (edge_count * 12 bytes) ]
+    // Dense structural edges.
+    // Contains: [source_idx: u32, target_idx: u32, flags: u32]
+
+[ Variable-Length Attribute Stream ]
+    // A contiguous sequence of blocks pointing backwards to decorate topology.
+    // [PackedAttrBlockHeader (6 bytes)] -> owner_index, is_node_owner, in_use
+    //     [PackedAttribute (24 bytes)] * in_use
+    // [PackedAttrBlockHeader (6 bytes)] ...
+
+[ String Table (string_table_size bytes) ]
+    // Deduplicated raw string data.
+```
