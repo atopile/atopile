@@ -150,12 +150,6 @@ fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
     }
     ctx.sexp = sexp;
 
-    // If no message set by caller, attach a concise preview of the offending expression
-    if (ctx.message == null) {
-        const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
-        if (preview) |p| ctx.message = p;
-    }
-
     current_error_context = ctx;
 }
 
