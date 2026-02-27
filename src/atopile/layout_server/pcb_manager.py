@@ -258,7 +258,6 @@ class CompositeAction(Action):
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
         for action in reversed(self.actions):
-            print(f"Undoing action: {action}")
             action.undo(pcb)
 
 
