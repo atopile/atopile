@@ -1,0 +1,96 @@
+/* ============================================
+   Table — data table primitives
+   Uses project CSS variables from _variables.css
+   ============================================ */
+
+.table-wrapper {
+  width: 100%;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+/* ---- Header ---- */
+
+.table-header {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.table-head {
+  height: var(--row-height-section-header);
+  padding: 0 var(--spacing-md);
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* ---- Body ---- */
+
+.table-body .table-row:not(:last-child) {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ---- Row ---- */
+
+.table-row {
+  transition: background var(--transition-fast);
+}
+
+.table-row:hover {
+  background: var(--hover);
+}
+
+.table-row[data-state="selected"] {
+  background: var(--selected);
+}
+
+/* ---- Cell ---- */
+
+.table-cell {
+  padding: var(--spacing-xs) var(--spacing-md);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-cell.font-medium {
+  font-weight: 500;
+}
+
+/* ---- Footer ---- */
+
+.table-footer {
+  border-top: 1px solid var(--border-color);
+  background: var(--hover);
+  font-weight: 500;
+}
+
+.table-footer .table-row:last-child {
+  border-bottom: 0;
+}
+
+/* ---- Caption ---- */
+
+.table-caption {
+  margin-top: var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  caption-side: bottom;
+}
+
+/* ---- Utility widths ---- */
+
+.table-head.w-8,
+.table-cell.w-8 {
+  width: 32px;
+  padding-right: var(--spacing-xs);
+}

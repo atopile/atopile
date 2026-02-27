@@ -1777,7 +1777,7 @@ class ASTVisitor:
                 source_text = source.get_text().split(" ")[0] if source else ""
                 self._raise(
                     DslSyntaxError,
-                    (f"Invalid statement in for loop: {source_text}"),
+                    (f"Invalid/Unsupported statement in for loop: {source_text}"),
                     node,
                 )
 

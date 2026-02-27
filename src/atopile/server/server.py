@@ -775,7 +775,7 @@ def run_server(
 
     Args:
         port: Port to run the server on
-        workspace_paths: Workspace paths to scan for projects (defaults to cwd)
+        workspace_paths: Workspace paths to scan for projects
         force: Kill existing server on the port if True
         ato_source: Source of the atopile binary
             ('explicit-path', 'from-setting', 'default')
@@ -836,9 +836,9 @@ def _run_server_impl(
             if result.returncode != 0:
                 sys.exit(result.returncode)
 
-    # Default to cwd if no workspace paths provided
-    if not workspace_paths:
-        workspace_paths = [Path.cwd()]
+    # Keep workspace list empty unless explicit paths were provided.
+    # This avoids scanning broad roots (for example "/") in empty-workspace sessions.
+    workspace_paths = workspace_paths or []
 
     # Check if port is already in use
     if is_port_in_use(port):

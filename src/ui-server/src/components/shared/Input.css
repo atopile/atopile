@@ -1,0 +1,76 @@
+/* ============================================
+   Input — text input primitive
+   Uses project CSS variables from _variables.css
+   ============================================ */
+
+.input {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  transition: border-color var(--transition-fast),
+              box-shadow var(--transition-fast);
+  outline: none;
+}
+
+/* ---- Placeholder ---- */
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ---- Focus ---- */
+
+.input:focus-visible {
+  border-color: var(--info);
+  box-shadow: 0 0 0 2px rgba(var(--ctp-blue-rgb), 0.25);
+}
+
+/* ---- Invalid ---- */
+
+.input[aria-invalid="true"],
+.input:invalid:not(:placeholder-shown) {
+  border-color: var(--error);
+}
+
+.input[aria-invalid="true"]:focus-visible {
+  box-shadow: 0 0 0 2px rgba(var(--ctp-red-rgb), 0.25);
+}
+
+/* ---- Disabled ---- */
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ---- File input ---- */
+
+.input[type="file"] {
+  padding: 0;
+}
+
+.input[type="file"]::file-selector-button {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 var(--spacing-md);
+  margin-right: var(--spacing-md);
+  border: 0;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+}

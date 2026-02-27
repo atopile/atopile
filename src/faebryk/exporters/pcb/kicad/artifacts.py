@@ -309,7 +309,9 @@ def export_pcb_summary(pcb_file: Path, summary_file: Path) -> None:
             layer_info = {
                 "name": layer.name,
                 "type": layer.type,
-                "thickness_mm": layer.thickness,
+                "thickness_mm": layer.thickness.thickness
+                if layer.thickness is not None
+                else None,
                 "material": layer.material,
             }
             if layer.color:
@@ -327,7 +329,9 @@ def export_pcb_summary(pcb_file: Path, summary_file: Path) -> None:
 
         # Calculate total board thickness
         total_thickness = sum(
-            layer.thickness for layer in stackup.layers if layer.thickness is not None
+            layer.thickness.thickness
+            for layer in stackup.layers
+            if layer.thickness is not None
         )
 
         summary["stackup"] = {

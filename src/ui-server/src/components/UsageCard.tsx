@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { ChevronDown, Code } from 'lucide-react'
-import { CopyableCodeBlock } from './shared'
+import { CopyableCodeBlock } from './shared/CopyableCodeBlock'
 import './UsageCard.css'
 
 interface UsageCardProps {

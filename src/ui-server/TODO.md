@@ -499,7 +499,7 @@ User reports the "build view tab" has disappeared. This refers to the Log Viewer
 
 ### Testing
 1. Open VS Code with atopile project
-2. Verify "Atopile Logs" appears in the panel selector (bottom area)
+2. Verify "atopile Logs" appears in the panel selector (bottom area)
 3. Trigger a build and verify logs appear
 4. Test level filters, search, and build selection
 

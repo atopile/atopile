@@ -1,6 +1,20 @@
 repos:
   - repo: local
     hooks:
+      - id: ban-title-case-atopile
+        name: ban-title-case-atopile
+        entry: '\bAtopile\b'
+        language: pygrep
+        types: [text]
+        exclude: >-
+          (?x)^(
+            \.pre-commit-config\.yaml|
+            test/runner/report\.html|
+            src/ui-server/src/types/schema\.json|
+            src/ui-server/src/types/generated\.ts|
+            src/ui-server/src/types/gen/schema\.json|
+            src/ui-server/src/types/gen/generated\.ts
+          )$
       - id: generate-library-init
         name: Generate library init
         entry: tools/library/gen_F.py

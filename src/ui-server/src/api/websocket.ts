@@ -262,6 +262,16 @@ function handleMessage(event: MessageEvent): void {
         // Action response (success/failure)
         // Result is nested in message.result from backend
         const result = message.result || message;
+        if (message.action === 'createProject' && result.success === true) {
+          const projectRootValue = (result as Record<string, unknown>)['project_root'];
+          const projectRoot = typeof projectRootValue === 'string' ? projectRootValue : null;
+          if (projectRoot) {
+            postMessage({
+              type: 'projectCreated',
+              projectRoot,
+            });
+          }
+        }
         const requestId = typeof message.payload?.requestId === 'string'
           ? message.payload.requestId
           : null;
