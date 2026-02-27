@@ -1637,17 +1637,30 @@ class PCB_Transformer:
         kicad.geo.apply_to_layers(obj, _flip_layer)
 
     @staticmethod
+    def rotate_kicad_vector(
+        dx: float, dy: float, degrees: float
+    ) -> tuple[float, float]:
+        """Rotate displacement vector (dx, dy) by *degrees* in KiCad's convention.
+
+        KiCad uses Y-down screen coordinates; positive degrees = CCW in screen space,
+        which corresponds to the matrix [[cos, sin], [-sin, cos]].
+        """
+        rad = radians(degrees)
+        cos_a, sin_a = cos(rad), sin(rad)
+        return cos_a * dx + sin_a * dy, -sin_a * dx + cos_a * dy
+
+    @staticmethod
     def rotate_object(obj: Any, cx: float, cy: float, delta_degrees: float) -> None:
         """Rotate all geometric points of a global PCB object around (cx, cy).
 
         Uses KiCad's coordinate convention (Y-down, positive angle = CCW in screen).
         """
-        rad = radians(delta_degrees)
-        cos_a, sin_a = cos(rad), sin(rad)
 
         def _rot(px: float, py: float) -> tuple[float, float]:
-            dx, dy = px - cx, py - cy
-            return cx + cos_a * dx + sin_a * dy, cy - sin_a * dx + cos_a * dy
+            ndx, ndy = PCB_Transformer.rotate_kicad_vector(
+                px - cx, py - cy, delta_degrees
+            )
+            return cx + ndx, cy + ndy
 
         match obj:
             case kicad.pcb.Segment():

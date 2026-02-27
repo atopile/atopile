@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import abc
-import math
 import time
 from pathlib import Path
 from typing import Any
@@ -74,6 +73,7 @@ def _build_uuid_index(pcb: kicad.pcb.KicadPcb) -> dict[str, Any]:
         pcb.gr_curves,
         pcb.gr_texts,
         pcb.gr_text_boxes,
+        getattr(pcb, "groups", []),
         getattr(pcb, "images", []),
         getattr(pcb, "tables", []),
     ]:
@@ -92,6 +92,16 @@ def _find_object_by_uuid(pcb: kicad.pcb.KicadPcb, uuid: str) -> Any:
     if obj is None:
         raise ValueError(f"Object with uuid {uuid!r} not found")
     return obj
+
+
+def _is_notouch(obj: Any) -> bool:
+    """Return True if obj is a footprint with the FBRK:notouch lock text."""
+    if not isinstance(obj, kicad.pcb.Footprint):
+        return False
+    return any(
+        getattr(t, "text", "") == "FBRK:notouch"
+        for t in (getattr(obj, "fp_texts", []) or [])
+    )
 
 
 def _get_object_center(obj: Any) -> tuple[float, float]:
@@ -137,113 +147,105 @@ def _get_object_center(obj: Any) -> tuple[float, float]:
 
 
 class MoveAction(Action):
-    """Move any PCB object by (dx, dy).
+    """Move any PCB object by (dx, dy). Undo applies the inverse delta."""
 
-    For footprints the absolute old position is saved for reliable undo/redo.
-    For all other object types the inverse delta is applied on undo.
-    """
-
-    def __init__(self, uuid: str, dx: float, dy: float) -> None:
-        self.uuid = uuid
+    def __init__(self, obj: Any, dx: float, dy: float) -> None:
+        self._obj = obj
         self.dx = dx
         self.dy = dy
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        obj = _find_object_by_uuid(pcb, self.uuid)
-        PCB_Transformer.move_object(obj, kicad.pcb.Xy(x=self.dx, y=self.dy))
+        PCB_Transformer.move_object(self._obj, kicad.pcb.Xy(x=self.dx, y=self.dy))
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        obj = _find_object_by_uuid(pcb, self.uuid)
-        PCB_Transformer.move_object(obj, kicad.pcb.Xy(x=-self.dx, y=-self.dy))
+        PCB_Transformer.move_object(self._obj, kicad.pcb.Xy(x=-self.dx, y=-self.dy))
 
 
 class RotateAction(Action):
-    """Rotate a PCB object by a delta angle (degrees).
+    """Rotate a footprint by a delta angle (degrees). No-op on non-footprints."""
 
-    Currently meaningful for footprints only; other types are no-ops.
-    """
-
-    def __init__(self, uuid: str, delta_degrees: float) -> None:
-        self.uuid = uuid
+    def __init__(self, obj: Any, delta_degrees: float) -> None:
+        self._obj = obj
         self.delta_degrees = delta_degrees
 
-    def _rotate(self, pcb: kicad.pcb.KicadPcb, delta: float) -> None:
+    def _rotate(self, delta: float) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        obj = _find_object_by_uuid(pcb, self.uuid)
-        if isinstance(obj, kicad.pcb.Footprint):
-            PCB_Transformer.rotate_fp(obj, delta)
+        if not isinstance(self._obj, kicad.pcb.Footprint):
+            return
+        if _is_notouch(self._obj):
+            return
+        PCB_Transformer.rotate_fp(self._obj, delta)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._rotate(pcb, self.delta_degrees)
+        self._rotate(self.delta_degrees)
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._rotate(pcb, -self.delta_degrees)
+        self._rotate(-self.delta_degrees)
 
 
 class FlipAction(Action):
     """Flip a footprint between front and back (internal geometry + layer change)."""
 
-    def __init__(self, uuid: str) -> None:
-        self.uuid = uuid
+    def __init__(self, obj: Any) -> None:
+        self._obj = obj
 
-    def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
+    def _flip(self) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        obj = _find_object_by_uuid(pcb, self.uuid)
-        PCB_Transformer._flip_obj(obj)
+        if _is_notouch(self._obj):
+            return
+        PCB_Transformer._flip_obj(self._obj)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._flip(pcb)
+        self._flip()
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._flip(pcb)  # Flip is its own inverse
+        self._flip()  # Flip is its own inverse
 
 
 class FlipObjectAction(Action):
     """Flip a global (non-footprint) PCB object by mirroring X around cx."""
 
-    def __init__(self, uuid: str, cx: float) -> None:
-        self.uuid = uuid
+    def __init__(self, obj: Any, cx: float) -> None:
+        self._obj = obj
         self.cx = cx
 
-    def _flip(self, pcb: kicad.pcb.KicadPcb) -> None:
+    def _flip(self) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        obj = _find_object_by_uuid(pcb, self.uuid)
-        PCB_Transformer.flip_object(obj, self.cx)
+        PCB_Transformer.flip_object(self._obj, self.cx)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._flip(pcb)
+        self._flip()
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._flip(pcb)  # X-mirror is its own inverse
+        self._flip()  # X-mirror is its own inverse
 
 
 class RotateObjectAction(Action):
     """Rotate a global (non-footprint) PCB object's geometry around a fixed point."""
 
-    def __init__(self, uuid: str, cx: float, cy: float, delta_degrees: float) -> None:
-        self.uuid = uuid
+    def __init__(self, obj: Any, cx: float, cy: float, delta_degrees: float) -> None:
+        self._obj = obj
         self.cx = cx
         self.cy = cy
         self.delta_degrees = delta_degrees
 
-    def _rotate(self, pcb: kicad.pcb.KicadPcb, delta: float) -> None:
+    def _rotate(self, delta: float) -> None:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
-        obj = _find_object_by_uuid(pcb, self.uuid)
-        PCB_Transformer.rotate_object(obj, self.cx, self.cy, delta)
+        PCB_Transformer.rotate_object(self._obj, self.cx, self.cy, delta)
 
     def execute(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._rotate(pcb, self.delta_degrees)
+        self._rotate(self.delta_degrees)
 
     def undo(self, pcb: kicad.pcb.KicadPcb) -> None:
-        self._rotate(pcb, -self.delta_degrees)
+        self._rotate(-self.delta_degrees)
 
 
 class CompositeAction(Action):
@@ -330,14 +332,10 @@ class PcbManager:
             objects = self._resolve_to_objects(request.uuids)
             if not objects:
                 return
-            actions: list[Action] = []
-            for obj in objects:
-                uid = str(getattr(obj, "uuid", "") or "").strip()
-                if not uid:
-                    continue
-                actions.append(MoveAction(uid, request.dx, request.dy))
-            if actions:
-                self.execute_action(CompositeAction(actions))
+            actions: list[Action] = [
+                MoveAction(obj, request.dx, request.dy) for obj in objects
+            ]
+            self.execute_action(CompositeAction(actions))
             return
 
         if isinstance(request, RotateCommand):
@@ -349,22 +347,19 @@ class PcbManager:
             cy = sum(c[1] for c in centers) / len(centers)
             actions = []
             for obj, (obj_cx, obj_cy) in zip(objects, centers):
-                uid = str(getattr(obj, "uuid", "") or "").strip()
-                if not uid:
-                    continue
                 if isinstance(obj, kicad.pcb.Footprint):
-                    # Footprint: rotate the fp locally + move its center to the orbit
+                    # Footprint: rotate locally + orbit around group centroid
                     dvx, dvy = obj_cx - cx, obj_cy - cy
                     rdvx, rdvy = _rotate_kicad_xy(dvx, dvy, request.delta_degrees)
                     move_dx = (cx + rdvx) - obj_cx
                     move_dy = (cy + rdvy) - obj_cy
                     if abs(move_dx) > 1e-9 or abs(move_dy) > 1e-9:
-                        actions.append(MoveAction(uid, move_dx, move_dy))
-                    actions.append(RotateAction(uid, request.delta_degrees))
+                        actions.append(MoveAction(obj, move_dx, move_dy))
+                    actions.append(RotateAction(obj, request.delta_degrees))
                 else:
-                    # Non-footprint: rotate all geometry points around group center
+                    # Non-footprint: rotate geometry around group centroid
                     actions.append(
-                        RotateObjectAction(uid, cx, cy, request.delta_degrees)
+                        RotateObjectAction(obj, cx, cy, request.delta_degrees)
                     )
             if actions:
                 self.execute_action(CompositeAction(actions))
@@ -378,18 +373,15 @@ class PcbManager:
             cx = sum(c[0] for c in centers) / len(centers)
             actions = []
             for obj, (obj_cx, _obj_cy) in zip(objects, centers):
-                uid = str(getattr(obj, "uuid", "") or "").strip()
-                if not uid:
-                    continue
                 if isinstance(obj, kicad.pcb.Footprint):
-                    # Footprint: _flip_obj handles internal geometry; translate X
+                    # Footprint: flip internal geometry + translate X to mirror position
                     move_dx = 2.0 * (cx - obj_cx)
-                    actions.append(FlipAction(uid))
+                    actions.append(FlipAction(obj))
                     if abs(move_dx) > 1e-9:
-                        actions.append(MoveAction(uid, move_dx, 0.0))
+                        actions.append(MoveAction(obj, move_dx, 0.0))
                 else:
-                    # Non-footprint: mirror all X coordinates around group center
-                    actions.append(FlipObjectAction(uid, cx))
+                    # Non-footprint: mirror all X coordinates around group centroid
+                    actions.append(FlipObjectAction(obj, cx))
             if actions:
                 self.execute_action(CompositeAction(actions))
 
@@ -460,23 +452,28 @@ class PcbManager:
     # --- Private helpers ---
 
     def _resolve_to_objects(self, uuids: list[str]) -> list[Any]:
-        """Expand group UUIDs to member objects; pass any other UUID through."""
+        """Expand group UUIDs to member objects (recursively); pass others through."""
         all_objects = _build_uuid_index(self.pcb)
-        groups_by_uuid = {
-            g.uuid: g for g in (getattr(self.pcb, "groups", []) or []) if g.uuid
-        }
         result: list[Any] = []
         seen: set[str] = set()
+
+        def _expand(uuid: str) -> None:
+            if uuid in seen:
+                return
+            seen.add(uuid)
+            obj = all_objects.get(uuid)
+            if obj is None:
+                return
+            # If the object has .members it's a KiCad group — recurse into it.
+            members = getattr(obj, "members", None)
+            if members is not None:
+                for member in members or []:
+                    _expand(str(member).strip())
+            else:
+                result.append(obj)
+
         for uuid in uuids:
-            if uuid in groups_by_uuid:
-                for member in groups_by_uuid[uuid].members or []:
-                    token = str(member).strip()
-                    if token in all_objects and token not in seen:
-                        seen.add(token)
-                        result.append(all_objects[token])
-            elif uuid in all_objects and uuid not in seen:
-                seen.add(uuid)
-                result.append(all_objects[uuid])
+            _expand(uuid)
         return result
 
     def _extract_vias(
@@ -1517,11 +1514,9 @@ def _safe_float(value) -> float | None:
 
 
 def _rotate_kicad_xy(x: float, y: float, rotation_deg: float) -> tuple[float, float]:
-    # Match frontend's KiCad rotation convention (clockwise in screen space).
-    rad = math.radians(-(rotation_deg or 0.0))
-    cos_t = math.cos(rad)
-    sin_t = math.sin(rad)
-    return (x * cos_t - y * sin_t, x * sin_t + y * cos_t)
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+    return PCB_Transformer.rotate_kicad_vector(x, y, rotation_deg)
 
 
 def _board_copper_layers(pcb: kicad.pcb.KicadPcb) -> list[str]:
