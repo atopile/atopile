@@ -12,10 +12,16 @@ import websockets
 from websockets.asyncio.server import ServerConnection
 
 from atopile.dataclasses import BuildRequest
+from atopile.model import artifacts, packages, parts_search, stdlib
 from atopile.model.build_queue import BuildQueue, _build_queue
-from atopile.model.builds import handle_get_builds, handle_start_build
+from atopile.model.builds import (
+    get_active_builds,
+    get_finished_builds,
+    handle_start_build,
+)
 from atopile.model.files import FileWatcher
-from atopile.model.projects import handle_get_projects
+from atopile.model.module_introspection import introspect_module_definition
+from atopile.model.projects import handle_get_modules, handle_get_projects
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +41,11 @@ class CoreSocket:
 
         try:
             # Send history on connect; active builds will arrive via on_change callbacks
-            _, previous = handle_get_builds()
+            current = get_active_builds()
+            previous = get_finished_builds()
+            await ws.send(
+                json.dumps({"type": "state", "key": "currentBuilds", "data": current})
+            )
             await ws.send(
                 json.dumps({"type": "state", "key": "previousBuilds", "data": previous})
             )
@@ -58,7 +68,9 @@ class CoreSocket:
             case "discoverProjects":
                 paths = [Path(p) for p in msg.get("paths", []) if p]
                 result = handle_get_projects(paths)
-                await self.broadcast_state("projects", result.model_dump())
+                await self.broadcast_state(
+                    "projects", [p.model_dump() for p in result.projects]
+                )
 
             case "listFiles":
                 project_root = msg.get("projectRoot", "")
@@ -77,6 +89,164 @@ class CoreSocket:
                     handle_start_build(request)
                 except ValueError as e:
                     log.warning("startBuild failed: %s", e)
+
+            case "getPackagesSummary":
+                project_root = msg.get("projectRoot", "")
+                root = Path(project_root) if project_root else None
+                result = await asyncio.to_thread(packages.handle_packages_summary, root)
+                await self.broadcast_state("packagesSummary", result.model_dump())
+
+            case "installPackage":
+                project_root = Path(msg.get("projectRoot", ""))
+                pkg_id = msg.get("packageId", "")
+                version = msg.get("version")
+                try:
+                    await asyncio.to_thread(
+                        packages.install_package_to_project,
+                        project_root,
+                        pkg_id,
+                        version,
+                    )
+                except Exception as e:
+                    log.warning("installPackage failed: %s", e)
+                result = await asyncio.to_thread(
+                    packages.handle_packages_summary, project_root
+                )
+                await self.broadcast_state("packagesSummary", result.model_dump())
+
+            case "removePackage":
+                project_root = Path(msg.get("projectRoot", ""))
+                pkg_id = msg.get("packageId", "")
+                try:
+                    await asyncio.to_thread(
+                        packages.remove_package_from_project,
+                        project_root,
+                        pkg_id,
+                    )
+                except Exception as e:
+                    log.warning("removePackage failed: %s", e)
+                result = await asyncio.to_thread(
+                    packages.handle_packages_summary, project_root
+                )
+                await self.broadcast_state("packagesSummary", result.model_dump())
+
+            case "getStdlib":
+                type_filter = msg.get("typeFilter")
+                search = msg.get("search")
+                result = await asyncio.to_thread(
+                    stdlib.handle_get_stdlib, type_filter, search
+                )
+                await self.broadcast_state("stdlibData", result.model_dump())
+
+            case "getStructure":
+                project_root = msg.get("projectRoot", "")
+                type_filter = msg.get("typeFilter")
+                modules_result = await asyncio.to_thread(
+                    handle_get_modules, project_root, type_filter
+                )
+                if modules_result:
+                    enriched = []
+                    for mod in modules_result.modules:
+                        try:
+                            enriched_mod = await asyncio.to_thread(
+                                introspect_module_definition,
+                                Path(project_root),
+                                mod,
+                            )
+                            enriched.append(enriched_mod)
+                        except Exception:
+                            enriched.append(mod)
+                    data = {
+                        "modules": [m.model_dump() for m in enriched],
+                        "total": len(enriched),
+                    }
+                else:
+                    data = {"modules": [], "total": 0}
+                await self.broadcast_state("structureData", data)
+
+            case "searchParts":
+                query = msg.get("query", "")
+                limit = msg.get("limit", 50)
+                parts, error = await asyncio.to_thread(
+                    parts_search.handle_search_parts,
+                    query,
+                    limit=limit,
+                )
+                await self.broadcast_state(
+                    "partsSearch", {"parts": parts, "error": error}
+                )
+
+            case "getInstalledParts":
+                project_root = msg.get("projectRoot", "")
+                parts = await asyncio.to_thread(
+                    parts_search.handle_list_installed_parts,
+                    project_root,
+                )
+                await self.broadcast_state("installedParts", {"parts": parts})
+
+            case "installPart":
+                project_root = msg.get("projectRoot", "")
+                lcsc = msg.get("lcsc", "")
+                try:
+                    await asyncio.to_thread(
+                        parts_search.handle_install_part,
+                        lcsc,
+                        project_root,
+                    )
+                except Exception as e:
+                    log.warning("installPart failed: %s", e)
+                parts = await asyncio.to_thread(
+                    parts_search.handle_list_installed_parts,
+                    project_root,
+                )
+                await self.broadcast_state("installedParts", {"parts": parts})
+
+            case "uninstallPart":
+                project_root = msg.get("projectRoot", "")
+                lcsc = msg.get("lcsc", "")
+                try:
+                    await asyncio.to_thread(
+                        parts_search.handle_uninstall_part,
+                        lcsc,
+                        project_root,
+                    )
+                except Exception as e:
+                    log.warning("uninstallPart failed: %s", e)
+                parts = await asyncio.to_thread(
+                    parts_search.handle_list_installed_parts,
+                    project_root,
+                )
+                await self.broadcast_state("installedParts", {"parts": parts})
+
+            case "getVariables":
+                project_root = msg.get("projectRoot", "")
+                target = msg.get("target", "default")
+                data = await asyncio.to_thread(
+                    artifacts.handle_get_variables,
+                    project_root,
+                    target,
+                )
+                await self.broadcast_state("variablesData", data or {"nodes": []})
+
+            case "getBom":
+                project_root = msg.get("projectRoot", "")
+                target = msg.get("target", "default")
+                data = await asyncio.to_thread(
+                    artifacts.handle_get_bom,
+                    project_root,
+                    target,
+                )
+                await self.broadcast_state(
+                    "bomData",
+                    data
+                    or {
+                        "components": [],
+                        "totalQuantity": 0,
+                        "uniqueParts": 0,
+                        "estimatedCost": None,
+                        "outOfStock": 0,
+                    },
+                )
 
             case action:
                 await ws.send(
@@ -105,9 +275,8 @@ class CoreSocket:
         build_queue.start()
 
     async def _push_builds(self) -> None:
-        current, previous = handle_get_builds()
-        await self.broadcast_state("currentBuilds", current)
-        await self.broadcast_state("previousBuilds", previous)
+        await self.broadcast_state("currentBuilds", get_active_builds())
+        await self.broadcast_state("previousBuilds", get_finished_builds())
 
     # -- Broadcasting ------------------------------------------------------
 

@@ -18,7 +18,7 @@ import {
   Terminal,
   GitBranch,
 } from "lucide-react";
-import { EmptyState, Spinner } from "../shared/components";
+import { EmptyState, CenteredSpinner } from "../shared/components";
 import { vscode } from "../shared/vscodeApi";
 import { WebviewWebSocketClient } from "../shared/webviewWebSocketClient";
 import type { FileNode } from "../../shared/types";
@@ -162,7 +162,8 @@ function TreeNode({
   );
 }
 
-export function FilesPanel({ projectRoot }: { projectRoot: string | null }) {
+export function FilesPanel() {
+  const { selectedProject: projectRoot } = WebviewWebSocketClient.useSubscribe("projectState");
   const projectFiles = WebviewWebSocketClient.useSubscribe("projectFiles");
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -199,18 +200,7 @@ export function FilesPanel({ projectRoot }: { projectRoot: string | null }) {
   }
 
   if (!projectFiles || projectFiles.length === 0) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-        }}
-      >
-        <Spinner size={14} />
-      </div>
-    );
+    return <CenteredSpinner />;
   }
 
   return (

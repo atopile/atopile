@@ -672,11 +672,9 @@ class PackageInfo(CamelModel):
     repository: Optional[str] = None
     license: Optional[str] = None
     installed: bool = False
-    installed_in: list[str] = Field(default_factory=list)  # List of project roots
     has_update: bool = False
     # Stats from registry (may be None if not fetched)
     downloads: Optional[int] = None
-    version_count: Optional[int] = None
     keywords: Optional[list[str]] = None
 
 
@@ -744,7 +742,6 @@ class PackageDetails(CamelModel):
     downloads_this_month: Optional[int] = None
     # Versions
     versions: list[PackageVersion] = Field(default_factory=list)
-    version_count: int = 0
     # Readme + build outputs
     readme: Optional[str] = None
     builds: Optional[list[str]] = None
@@ -754,7 +751,6 @@ class PackageDetails(CamelModel):
     # Installation status
     installed: bool = False
     installed_version: Optional[str] = None
-    installed_in: list[str] = Field(default_factory=list)
     # Dependencies
     dependencies: list[PackageDependency] = Field(default_factory=list)
 
@@ -773,7 +769,6 @@ class PackageSummaryItem(BaseModel):
     # Installation status
     installed: bool
     version: Optional[str] = None  # Installed version
-    installed_in: list[str] = Field(default_factory=list)
 
     # Registry info (pre-merged)
     latest_version: Optional[str] = None
@@ -788,15 +783,7 @@ class PackageSummaryItem(BaseModel):
 
     # Stats
     downloads: Optional[int] = None
-    version_count: Optional[int] = None
     keywords: list[str] = Field(default_factory=list)
-
-
-class RegistryStatus(CamelModel):
-    """Status of the registry connection for error visibility."""
-
-    available: bool
-    error: Optional[str] = None
 
 
 class PackagesResponse(CamelModel):
@@ -806,13 +793,12 @@ class PackagesResponse(CamelModel):
     total: int
 
 
-class PackagesSummaryResponse(CamelModel):
-    """Response for /api/packages/summary endpoint."""
+class PackagesSummaryData(CamelModel):
+    """Package summary data for the packages panel."""
 
     packages: list[PackageSummaryItem]
     total: int
     installed_count: int
-    registry_status: RegistryStatus
 
 
 class RegistrySearchResponse(CamelModel):
@@ -943,7 +929,7 @@ class StdLibItem(BaseModel):
     parameters: list[dict[str, str]] = Field(default_factory=list)
 
 
-class StdLibResponse(BaseModel):
+class StdLibData(BaseModel):
     """Response for /api/stdlib endpoint."""
 
     items: list[StdLibItem]

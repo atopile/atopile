@@ -6,6 +6,7 @@
 export { Alert, AlertTitle, AlertDescription } from './Alert'
 export { Badge, BadgeAsLink } from './Badge'
 export { Button } from './Button'
+export { CenteredSpinner } from './CenteredSpinner'
 export { Checkbox } from './Checkbox'
 export { CopyableCodeBlock } from './CopyableCodeBlock'
 export {
@@ -20,6 +21,8 @@ export { Input } from './Input'
 export { JsonView } from './JsonView'
 export { MetadataBar } from './MetadataBar'
 export { PanelSearchBox } from './PanelSearchBox'
+export { PanelTabs } from './PanelTabs'
+export type { PanelTab } from './PanelTabs'
 export { PublisherBadge } from './PublisherBadge'
 export { SearchBar, RegexSearchBar } from './SearchBar'
 export {
@@ -48,5 +51,9 @@ export {
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './Tooltip'
 export { TreeRowHeader } from './TreeRowHeader'
 export type { TreeRowHeaderProps } from './TreeRowHeader'
+export { typeIcon } from './TypeIcon'
 export { useResizeHandle } from './useResizeHandle'
 export { VersionSelector } from './VersionSelector'
+
+/* Side-effect CSS imports */
+import './PanelLayout.css'

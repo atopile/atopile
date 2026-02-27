@@ -12,10 +12,12 @@ export class WebviewManager implements vscode.WebviewViewProvider {
   private _panels = new Map<string, vscode.WebviewPanel>();
   private readonly _extensionUri: vscode.Uri;
   private readonly _hubPort: number;
+  private readonly _output: vscode.OutputChannel;
 
-  constructor(extensionUri: vscode.Uri, hubPort: number) {
+  constructor(extensionUri: vscode.Uri, hubPort: number, output: vscode.OutputChannel) {
     this._extensionUri = extensionUri;
     this._hubPort = hubPort;
+    this._output = output;
   }
 
   /** Called by VS Code when the sidebar view becomes visible. */
@@ -68,6 +70,12 @@ export class WebviewManager implements vscode.WebviewViewProvider {
 
   private _registerMessageHandler(webview: vscode.Webview): void {
     webview.onDidReceiveMessage(async (msg) => {
+      if (msg.type === "log" && typeof msg.message === "string") {
+        const prefix = msg.level === "error" ? "[Webview] ERR" : msg.level === "warn" ? "[Webview] WARN" : "[Webview]";
+        this._output.appendLine(`${prefix} ${msg.message}`);
+        return;
+      }
+
       if (msg.type === "openPanel" && typeof msg.panelId === "string") {
         this.openPanel(msg.panelId);
         return;

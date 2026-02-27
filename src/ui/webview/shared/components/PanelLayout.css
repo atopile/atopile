@@ -1,0 +1,92 @@
+/* ============================================
+   PanelLayout — shared sidebar panel CSS
+   ============================================ */
+
+/* Panel container */
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Scrollable content area */
+.sidebar-panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--spacing-xs);
+}
+
+/* Panel header bar */
+.sidebar-panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   Card row — shared card layout for list items
+   Used by PackagesPanel, PartsPanel, BOMPanel, etc.
+   ============================================ */
+
+.card-row {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-xs);
+  gap: 2px;
+}
+
+.card-row:hover {
+  background: var(--bg-hover);
+}
+
+.card-row-top {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.card-row-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-row-secondary {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.card-row-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.card-row-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+}

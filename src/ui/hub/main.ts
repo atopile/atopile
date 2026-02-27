@@ -29,7 +29,7 @@ class Hub {
       .split(":")
       .filter(Boolean);
 
-    store.set("coreStatus", { coreServerPort });
+    store.merge("coreStatus", { coreServerPort });
 
     webviewSocket
       .start(this._hubPort)

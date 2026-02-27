@@ -70,10 +70,10 @@ class FileWatcher:
         return nodes
 
     @staticmethod
-    def scan_and_serialize(project_root: str) -> dict:
+    def scan_and_serialize(project_root: str) -> list[dict]:
         root = Path(project_root)
         nodes = FileWatcher.scan(root) if root.is_dir() else []
-        return {"projectFiles": [n.model_dump(by_alias=True) for n in nodes]}
+        return [n.model_dump(by_alias=True) for n in nodes]
 
     @classmethod
     def start(

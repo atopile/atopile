@@ -7,7 +7,6 @@
 
 import WebSocket from "ws";
 import { store } from "./main";
-import type { Build, FileNode } from "../shared/types";
 import { WebSocketClient, type SocketLike } from "../shared/webSocketClient";
 
 export type OnConnectedCallback = () => void;
@@ -26,28 +25,28 @@ export class CoreWebSocketClient {
 
     this._client.onConnected = () => {
       console.log("Connected to core server");
-      store.set("coreStatus", { connected: true });
+      store.merge("coreStatus", { connected: true });
       onConnected?.();
     };
 
     this._client.onDisconnected = () => {
-      store.set("coreStatus", { connected: false });
+      store.merge("coreStatus", { connected: false });
     };
 
     this._client.onState = (key, data) => {
-      const payload = (data as Record<string, unknown>) ?? {};
       switch (key) {
         case "currentBuilds":
-          store.setArray("currentBuilds", (payload.currentBuilds ?? []) as Build[]);
-          break;
         case "previousBuilds":
-          store.setArray("previousBuilds", (payload.previousBuilds ?? []) as Build[]);
-          break;
-        case "projectFiles":
-          store.setArray("projectFiles", (payload.projectFiles ?? []) as FileNode[]);
-          break;
         case "projects":
-          store.set("projectState", { projects: payload.projects as any });
+        case "projectFiles":
+        case "packagesSummary":
+        case "partsSearch":
+        case "installedParts":
+        case "stdlibData":
+        case "structureData":
+        case "variablesData":
+        case "bomData":
+          store.set(key as any, data as any);
           break;
         default:
           console.warn(`Unknown state key from core: ${key}`);

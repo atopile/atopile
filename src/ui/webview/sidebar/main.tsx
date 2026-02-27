@@ -88,6 +88,7 @@ function DisconnectedOverlay({
 
 function App() {
   const projectState = WebviewWebSocketClient.useSubscribe("projectState");
+  const projects = WebviewWebSocketClient.useSubscribe("projects");
   const hubStatus = WebviewWebSocketClient.useSubscribe("hubStatus");
   const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
   const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
@@ -106,12 +107,12 @@ function App() {
   }, [isConnected]);
 
   const targets = useMemo(() => {
-    const match = projectState.projects.find(
+    const match = projects.find(
       (p) => p.root === projectState.selectedProject,
     );
     return match?.targets ?? [];
   }, [
-    projectState.projects,
+    projects,
     projectState.selectedProject,
   ]);
 
@@ -146,7 +147,7 @@ function App() {
   );
 
   const panelMap: Record<TabId, React.ReactNode> = {
-    files: <FilesPanel projectRoot={projectState.selectedProject} />,
+    files: <FilesPanel />,
     packages: <PackagesPanel />,
     parts: <PartsPanel />,
     library: <LibraryPanel />,
@@ -185,7 +186,7 @@ function App() {
           {/* Top section: selectors + action bar */}
           <div className="sidebar-top">
             <ProjectTargetSelector
-              projects={projectState.projects}
+              projects={projects}
               selectedProject={projectState.selectedProject}
               onSelectProject={(root) =>
                 webviewClient?.sendAction("selectProject", { projectRoot: root })

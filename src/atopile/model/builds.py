@@ -38,20 +38,14 @@ def _fix_interrupted_build(build: Build) -> Build:
     return build
 
 
-def handle_get_builds() -> tuple[dict, dict]:
-    """Query current (active) + previous (finished) builds from DB.
+def get_active_builds() -> list[dict]:
+    """Get currently active (queued/building) builds."""
+    return [b.model_dump() for b in BuildHistory.get_active()]
 
-    Returns (current_msg, previous_msg).
-    ``currentBuilds`` contains only in-flight builds (queued/building).
-    ``previousBuilds`` contains finished builds.
-    """
-    active = BuildHistory.get_active()
-    finished = BuildHistory.get_finished()
 
-    current_msg = {"currentBuilds": [b.model_dump() for b in active]}
-    previous_msg = {"previousBuilds": [b.model_dump() for b in finished]}
-
-    return current_msg, previous_msg
+def get_finished_builds() -> list[dict]:
+    """Get finished (succeeded/failed/cancelled) builds."""
+    return [b.model_dump() for b in BuildHistory.get_finished()]
 
 
 def validate_build_request(request: BuildRequest) -> str | None:
@@ -239,7 +233,8 @@ def handle_get_builds_by_project(
 
 __all__ = [
     "MaxConcurrentRequest",
-    "handle_get_builds",
+    "get_active_builds",
+    "get_finished_builds",
     "handle_start_build",
     "handle_cancel_build",
     "handle_get_build_queue_status",

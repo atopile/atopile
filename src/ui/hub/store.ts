@@ -17,24 +17,23 @@ export class Store {
     return this._state[key];
   }
 
-  /**
-   * Shallow-merge into a top-level state slice (e.g. "coreStatus", "projectState").
-   * Only the provided fields are updated; existing fields are preserved.
-   * To fully replace a slice, pass all its fields — or call `clear()` first.
-   */
-  set<K extends keyof StoreState>(key: K, partial: Partial<StoreState[K]>): void {
+  /** Fully replace a top-level state key. */
+  set<K extends keyof StoreState>(key: K, value: StoreState[K]): void {
     const oldValue = this._state[key];
-    const value = { ...oldValue, ...partial } as StoreState[K];
     if (JSON.stringify(oldValue) === JSON.stringify(value)) return;
-
     this._state[key] = value;
     this.onChange?.(key, value, oldValue);
   }
 
-  /** Replace an array-typed key wholesale. */
-  setArray<K extends keyof StoreState>(key: K, value: StoreState[K] & unknown[]): void {
+  /**
+   * Shallow-merge into a top-level state slice (e.g. "coreStatus", "projectState").
+   * Only the provided fields are updated; existing fields are preserved.
+   */
+  merge<K extends keyof StoreState>(key: K, partial: Partial<StoreState[K]>): void {
     const oldValue = this._state[key];
+    const value = { ...oldValue, ...partial } as StoreState[K];
     if (JSON.stringify(oldValue) === JSON.stringify(value)) return;
+
     this._state[key] = value;
     this.onChange?.(key, value, oldValue);
   }
@@ -44,4 +43,3 @@ export class Store {
     this.set(key, new StoreState()[key]);
   }
 }
-

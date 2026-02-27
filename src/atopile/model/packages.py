@@ -26,11 +26,10 @@ from atopile.dataclasses import (
     PackageInfo,
     PackageLayout,
     PackagesResponse,
-    PackagesSummaryResponse,
+    PackagesSummaryData,
     PackageSummaryItem,
     PackageVersion,
     RegistrySearchResponse,
-    RegistryStatus,
     SyncPackagesRequest,
     SyncPackagesResponse,
 )
@@ -189,11 +188,7 @@ def get_all_installed_packages_from_projects(
                     publisher=publisher,
                     version=pkg.version,
                     installed=True,
-                    installed_in=[project.root],
                 )
-            else:
-                if project.root not in packages_map[pkg.identifier].installed_in:
-                    packages_map[pkg.identifier].installed_in.append(project.root)
 
     return packages_map
 
@@ -278,7 +273,6 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
                     homepage=pkg.homepage,
                     repository=pkg.repository,
                     installed=False,
-                    installed_in=[],
                     downloads=pkg.downloads,
                 )
             )
@@ -318,7 +312,6 @@ def get_all_registry_packages() -> list[PackageInfo]:
                     homepage=pkg.homepage,
                     repository=pkg.repository,
                     installed=False,
-                    installed_in=[],
                     downloads=pkg.downloads,
                 )
             )
@@ -452,7 +445,6 @@ def get_package_details_from_registry(
             downloads_this_week=stats.this_week_downloads if stats else None,
             downloads_this_month=stats.this_month_downloads if stats else None,
             versions=versions,
-            version_count=len(versions),
             dependencies=dependencies,
             readme=readme,
             builds=getattr(pkg_info, "builds", None),
@@ -499,7 +491,6 @@ def enrich_packages_with_registry(
                 repository=reg.repository,
                 license=reg.license,
                 installed=True,
-                installed_in=pkg.installed_in,
             )
         else:
             enriched[identifier] = pkg
@@ -519,7 +510,6 @@ def handle_search_registry(
             if pkg.identifier in installed_map:
                 installed = installed_map[pkg.identifier]
                 pkg.installed = True
-                pkg.installed_in = installed.installed_in
                 pkg.version = installed.version
 
     return RegistrySearchResponse(
@@ -531,7 +521,7 @@ def handle_search_registry(
 
 def handle_packages_summary(
     project_root: Path | None,
-) -> PackagesSummaryResponse:
+) -> PackagesSummaryData:
     packages_map: dict[str, PackageSummaryItem] = {}
     installed_count = 0
 
@@ -545,10 +535,7 @@ def handle_packages_summary(
                 publisher=pkg.publisher,
                 installed=True,
                 version=pkg.version,
-                installed_in=pkg.installed_in,
             )
-
-    registry_status = RegistryStatus(available=True, error=None)
 
     try:
         registry_packages = get_all_registry_packages()
@@ -561,7 +548,6 @@ def handle_packages_summary(
                     publisher=existing.publisher,
                     installed=True,
                     version=existing.version,
-                    installed_in=existing.installed_in,
                     latest_version=reg_pkg.latest_version,
                     has_update=version_is_newer(
                         existing.version, reg_pkg.latest_version
@@ -572,7 +558,6 @@ def handle_packages_summary(
                     repository=reg_pkg.repository,
                     license=reg_pkg.license,
                     downloads=reg_pkg.downloads,
-                    version_count=reg_pkg.version_count,
                     keywords=reg_pkg.keywords or [],
                 )
             else:
@@ -589,15 +574,10 @@ def handle_packages_summary(
                     repository=reg_pkg.repository,
                     license=reg_pkg.license,
                     downloads=reg_pkg.downloads,
-                    version_count=reg_pkg.version_count,
                     keywords=reg_pkg.keywords or [],
                 )
 
     except Exception as exc:
-        registry_status = RegistryStatus(
-            available=False,
-            error=f"Registry unavailable: {exc}",
-        )
         log.warning(f"Registry fetch failed for packages summary: {exc}")
 
     packages_list = sorted(
@@ -605,11 +585,10 @@ def handle_packages_summary(
         key=lambda p: (not p.installed, -(p.downloads or 0), p.identifier.lower()),
     )
 
-    return PackagesSummaryResponse(
+    return PackagesSummaryData(
         packages=packages_list,
         total=len(packages_list),
         installed_count=installed_count,
-        registry_status=registry_status,
     )
 
 
@@ -676,12 +655,7 @@ def handle_get_packages(
     if include_registry:
         packages_map = enrich_packages_with_registry(packages_map)
 
-    if project_root:
-        packages_list = [
-            pkg for pkg in packages_map.values() if project_root in pkg.installed_in
-        ]
-    else:
-        packages_list = list(packages_map.values())
+    packages_list = list(packages_map.values())
 
     packages_list.sort(key=lambda p: p.identifier.lower())
 
@@ -707,7 +681,6 @@ def handle_get_package_details(
             installed = packages_map[package_id]
             details.installed = True
             details.installed_version = installed.version
-            details.installed_in = installed.installed_in
 
     return details
 

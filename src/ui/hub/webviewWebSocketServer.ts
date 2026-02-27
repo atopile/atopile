@@ -86,7 +86,7 @@ export class WebviewWebSocketServer {
     switch (msg.action) {
       case "selectProject": {
         const projectRoot = (msg.projectRoot as string) ?? null;
-        store.set("projectState", {
+        store.merge("projectState", {
           selectedProject: projectRoot,
           selectedTarget: null,
         });
@@ -103,7 +103,7 @@ export class WebviewWebSocketServer {
         return;
       }
       case "selectTarget": {
-        store.set("projectState", {
+        store.merge("projectState", {
           selectedTarget: (msg.target as string) ?? null,
         });
         return;
@@ -116,7 +116,7 @@ export class WebviewWebSocketServer {
         return;
       }
       case "resolverInfo": {
-        store.set("coreStatus", {
+        store.merge("coreStatus", {
           uvPath: msg.uvPath as string,
           atoBinary: msg.atoBinary as string,
           mode: msg.mode as "local" | "production",
@@ -125,25 +125,31 @@ export class WebviewWebSocketServer {
         return;
       }
       case "coreStartupError": {
-        store.set("coreStatus", { error: msg.message as string });
+        store.merge("coreStatus", { error: msg.message as string });
         coreSocket.stop();
         return;
       }
       case "extensionSettings": {
-        store.set("extensionSettings", {
+        store.merge("extensionSettings", {
           devPath: msg.devPath as string,
           autoInstall: msg.autoInstall as boolean,
         });
         return;
       }
       case "updateExtensionSetting": {
-        store.set("extensionSettings", {
+        store.merge("extensionSettings", {
           [msg.key as string]: msg.value,
         });
         return;
       }
+      case "setActiveFile": {
+        store.merge("projectState", {
+          activeFilePath: msg.filePath as string,
+        });
+        return;
+      }
       default: {
-        console.warn(`Unknown action: ${msg.action}`);
+        coreSocket.sendAction(msg.action, msg as Record<string, unknown>);
       }
     }
   }

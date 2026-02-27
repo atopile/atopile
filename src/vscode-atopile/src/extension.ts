@@ -43,7 +43,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const resolved = await resolveAtoBinary(resolver, version, output);
   if (!resolved) return;
 
-  webviewManager = new WebviewManager(context.extensionUri, hubPort);
+  webviewManager = new WebviewManager(context.extensionUri, hubPort, output);
   hubSocket.sendAction("resolverInfo", {
     uvPath: resolved.command,
     atoBinary: resolved.atoBinary ?? "",
@@ -53,6 +53,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerCommands(context, webviewManager);
   context.subscriptions.push(hubSocket, hub, output);
+
+  // Track active editor file for structure/context panels
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor) {
+        hubSocket?.sendAction("setActiveFile", { filePath: editor.document.uri.fsPath });
+      }
+    }),
+  );
+  // Send initial active file
+  if (vscode.window.activeTextEditor) {
+    hubSocket.sendAction("setActiveFile", {
+      filePath: vscode.window.activeTextEditor.document.uri.fsPath,
+    });
+  }
 
   const coreServer = await startCoreServer(resolved, portEnv, output, hubSocket);
   context.subscriptions.push(coreServer);
@@ -116,7 +131,9 @@ function registerCommands(
   wm: WebviewManager,
 ): void {
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(WebviewManager.sidebarViewId, wm),
+    vscode.window.registerWebviewViewProvider(WebviewManager.sidebarViewId, wm, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
 
     vscode.commands.registerCommand("atopile.openPanel", async () => {
       const pick = await vscode.window.showQuickPick(
