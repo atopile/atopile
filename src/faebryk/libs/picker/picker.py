@@ -427,6 +427,7 @@ class PickWorkItem:
     solver: Solver
     depth: int
     parent_key: PickNodeData | None = None
+    all_group_modules: set["F.Pickable.is_pickable"] | None = None
 
 
 def _pick_tree(
@@ -465,7 +466,8 @@ def _pick_tree(
         expanded: deque[PickWorkItem] = deque()
 
         for item in work_queue:
-            if not (relevant := _collect_relevant_params(item.modules)):
+            all_mods = item.all_group_modules or item.modules
+            if not (relevant := _collect_relevant_params(all_mods)):
                 continue
 
             g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
@@ -482,6 +484,7 @@ def _pick_tree(
                         solver=group_solver,
                         depth=item.depth,
                         parent_key=item.parent_key,
+                        all_group_modules=all_mods,
                     )
                 )
 
@@ -532,13 +535,15 @@ def _pick_tree(
                         solver=item.solver,
                         depth=item.depth + 1,
                         parent_key=node_data,
+                        all_group_modules=item.all_group_modules or item.modules,
                     )
                 )
             else:
                 # Final pick in this group — run one more simplify to catch
                 # contradictions from the last pick.
                 # Every other pick is verified by the next depth's expand phase.
-                relevant = _collect_relevant_params(item.modules)
+                all_mods = item.all_group_modules or item.modules
+                relevant = _collect_relevant_params(all_mods)
                 g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
                 item.solver.simplify(g, tg, terminal=False, relevant=relevant)
                 leaf_solvers.append(item.solver)
