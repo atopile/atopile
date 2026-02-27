@@ -558,3 +558,24 @@ Therefore, the optimization must be preserved by explicitly **splitting the edge
     ```
 
 This structural split perfectly preserves the 12-byte compaction optimization, eliminates the memory bandwidth bottleneck, and completely resolves the UUID translation corruption.
+
+### 11.7 Dense Index-Based Serialization (Resolving Sparse Bloat)
+
+An architectural review identified a state-leak and payload-bloat issue tied to the `UUIDBitSet`. Because `Node.counter` is a global monotonically increasing variable, extracting a tiny `GraphView` (e.g., 5 nodes) from a long-running process (e.g., global counter = 5,000,000) causes `dumps()` to serialize a massive 625 KB bitset of almost entirely zeroes just to carry the 5 active bits. Furthermore, this exposes internal process state to untrusted payload consumers.
+
+**The Optimization:**
+We abandon serializing bitsets and original UUIDs entirely. Instead, `dumps()` maps all active nodes to a strictly dense, 0-indexed local array (`0` to `node_count - 1`).
+
+1.  **Dumps (Dense Mapping):** 
+    Allocate a temporary sparse array `dense_map`. Iterate the `node_set`. For the *nth* active node found, write its `PackedNode` to the payload array, and record `dense_map[global_uuid] = n`.
+    When iterating edges, translate the `source` and `target` global UUIDs through the `dense_map` before writing the `PackedEdge`. The edge now points to the strict dense index in the payload array.
+2.  **Loads (Dense Unpacking):**
+    The payload no longer contains a `node_bitset`.
+    Allocate a tightly packed translation array sized exactly to `header.node_count` (e.g., 5 `u32` slots instead of 5,000,000).
+    Iterate the `PackedNode` array `0..node_count`. For each node, call `create_and_insert_node()`, and record `local_indices[n] = new_global_uuid`.
+    When iterating edges, translate the incoming `source`/`target` dense index via the `local_indices` array to wire the new edges to the correct local UUIDs.
+
+**Impact:**
+*   **Zero Bloat:** A 5-node subgraph payload is just a few dozen bytes, regardless of global counter states.
+*   **Deterministic:** Payloads are identical regardless of process history, eliminating state leaks.
+*   **Faster Loads:** `loads()` no longer allocates massive sparse translation arrays or parses bitsets. Memory allocations scale strictly with `node_count`, not `max_node_uuid`.
