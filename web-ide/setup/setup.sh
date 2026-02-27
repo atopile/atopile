@@ -62,8 +62,8 @@ rm -rf "${EXT_DIR}"/gulp
 rm -rf "${EXT_DIR}"/jake
 
 # Git — prevent clone/push/pull from the command palette
+# Keep git-base: OpenVSCode web workbench still activates it during startup.
 rm -rf "${EXT_DIR}"/git
-rm -rf "${EXT_DIR}"/git-base
 rm -rf "${EXT_DIR}"/github*
 
 # Copilot / Chat — built-in AI features not applicable in web-ide

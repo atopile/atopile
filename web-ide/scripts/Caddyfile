@@ -2,6 +2,12 @@
 	# Some clients (notably curl against raw IP) omit SNI. Use the configured
 	# public host as TLS fallback so handshakes still succeed.
 	default_sni {$WEB_IDE_PUBLIC_HOST:code-vm}
+
+	# Force HTTP/1.1 on the public listener.
+	# Firefox has shown intermittent WS failures (1006) with h2/h3 to OpenVSCode.
+	servers {
+		protocols h1
+	}
 }
 
 # Caddy reverse proxy routes:

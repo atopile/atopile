@@ -52,12 +52,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/src/src/faebryk/core/zig/.zig-cache \
     uv build --wheel --out-dir /wheels
 
+# Compute the semver exactly like release publishing (`ato --semver`) so
+# VSIX version tracks the built atopile binary version, not package.json's 0.0.0.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv run --no-project --with /wheels/*.whl ato --semver > /wheels/atopile.semver
+
 # ──────────────────────────────────────────────────────────────────
 # Stage 3: Build VS Code extension (VSIX)
 # ──────────────────────────────────────────────────────────────────
 FROM node:20-slim AS vsix-builder
 
 WORKDIR /src
+
+COPY --from=wheel-builder /wheels/atopile.semver /tmp/atopile.semver
 
 # Dep layer (cached unless lock files change)
 COPY src/vscode-atopile/package.json src/vscode-atopile/package-lock.json \
@@ -71,6 +78,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY src/vscode-atopile /src/src/vscode-atopile
 COPY src/ui-server /src/src/ui-server
 RUN --mount=type=cache,target=/root/.npm \
+    SEMVER="$(cat /tmp/atopile.semver)" && \
+    npm version --no-git-tag-version "$SEMVER" && \
     npm run vscode:prepublish && \
     mkdir -p /vsix && npx vsce package --out /vsix/
 
