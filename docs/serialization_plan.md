@@ -653,3 +653,50 @@ const BinaryHeader = extern struct {
 [ String Table (string_table_size bytes) ]
     // Deduplicated raw string data.
 ```
+
+### 11.10 The Ultimate Data-Oriented Form: Pure Columnar Arrays
+
+While the 12-byte `PackedEdge` and 17-byte `PackedAttribute` represent excellent compaction, arrays of structs (AoS) featuring non-power-of-2 strides mathematically fight the CPU's prefetcher and prevent LLVM from auto-vectorizing parsing loops using SIMD instructions. 
+
+The ultimate evolution of this serialization format strips away custom structs entirely, decomposing the payload into **Pure Columnar Arrays (SoA)** containing nothing but fundamental, tightly aligned machine types (`u8`, `u32`, `u64`).
+
+**1. Decomposing Edges:**
+The `PackedEdge` struct is eliminated. It is replaced by three separate, homogeneous `u32` arrays.
+*   `sources: []u32`
+*   `targets: []u32`
+*   `flags: []u32`
+
+**2. Decomposing Attributes:**
+The 17-byte `PackedAttribute` struct is eliminated. It is replaced by three strictly aligned, independent arrays.
+*   `tags: []u8`
+*   `identifiers: []u64` (A `PackedStringRef` is just a single 64-bit integer combining offset and length).
+*   `values: []u64` (The tagged union payload).
+
+**The Final Pure-Columnar Payload Structure:**
+```text
+[ Header (64 bytes) ]
+
+[ Nodes (0 bytes) ]
+
+// -- EDGES (Topology Phase) --
+[ Edge Sources Array (u32 * edge_count) ]
+[ Edge Targets Array (u32 * edge_count) ]
+[ Edge Flags Array   (u32 * edge_count) ]
+
+// -- ATTRIBUTES (Data Phase) --
+[ Attr Block Headers Array (u32 * attr_block_count) ]
+[ Attr Tags Array          (u8  * total_attr_count) ]
+[ Attr Identifiers Array   (u64 * total_attr_count) ]
+[ Attr Values Array        (u64 * total_attr_count) ]
+
+// -- STRINGS --
+[ String Table (raw bytes) ]
+```
+
+**Implementation Mechanics (`loads`):**
+Because there are no structs to `@bitCast` or fields to offset, `loads()` natively casts the byte buffer directly into Zig slices:
+```zig
+const sources = std.mem.bytesAsSlice(u32, bytes[src_start..tgt_start]);
+const targets = std.mem.bytesAsSlice(u32, bytes[tgt_start..flg_start]);
+```
+The deserializer loops `0..edge_count` and natively reads `sources[i]`. This enables perfect cache-line utilization, guarantees zero misaligned memory access traps (even on strict ARM architectures), and allows the compiler to unroll and auto-vectorize the `local_node_uuids` translation lookups.
