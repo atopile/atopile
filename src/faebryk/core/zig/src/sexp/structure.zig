@@ -52,16 +52,55 @@ pub const ErrorContext = struct {
     column: ?usize = null,
     end_line: ?usize = null,
     end_column: ?usize = null,
+    start_offset: ?usize = null,
+    end_offset: ?usize = null,
     sexp: ?SExp = null,
 
     source: ?[]const u8 = null,
     indent: usize = 0,
 
+    const LineCol = struct {
+        line: usize,
+        column: usize,
+    };
+
+    fn offsetToLineCol(source: []const u8, offset: usize) LineCol {
+        var line: usize = 1;
+        var column: usize = 1;
+        const capped = @min(offset, source.len);
+        var i: usize = 0;
+        while (i < capped) : (i += 1) {
+            if (source[i] == '\n') {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+        return .{ .line = line, .column = column };
+    }
+
     pub fn print_source(self: ErrorContext, source: []const u8, writer: anytype, indent: usize) !void {
+        var line_opt = self.line;
+        var col_opt = self.column;
+        var end_line_opt = self.end_line;
+        var end_col_opt = self.end_column;
+        if ((line_opt == null or col_opt == null or end_line_opt == null or end_col_opt == null) and
+            self.start_offset != null and self.end_offset != null)
+        {
+            const start_lc = offsetToLineCol(source, self.start_offset.?);
+            const end_lc = offsetToLineCol(source, self.end_offset.?);
+            line_opt = start_lc.line;
+            col_opt = start_lc.column;
+            end_line_opt = end_lc.line;
+            end_col_opt = end_lc.column;
+        }
+
+        const line_no = line_opt orelse return;
         var line_iter = std.mem.tokenizeScalar(u8, source, '\n');
         var current_line: usize = 1;
         while (line_iter.next()) |line_text| {
-            if (current_line == self.line) {
+            if (current_line == line_no) {
                 // Print indentation
                 try _print_indent(writer, indent);
                 try writer.print("Source: {s}\n", .{line_text});
@@ -71,12 +110,12 @@ pub const ErrorContext = struct {
                 try writer.print("        ", .{});
 
                 var i: usize = 1;
-                if (self.column) |col| {
+                if (col_opt) |col| {
                     while (i < col) : (i += 1) {
                         try writer.print(" ", .{});
                     }
-                    if (self.end_column) |end_col| {
-                        const len = if (self.end_line == self.line) end_col - col else line_text.len - col + 1;
+                    if (end_col_opt) |end_col| {
+                        const len = if (end_line_opt == line_opt) end_col - col else line_text.len - col + 1;
                         var j: usize = 0;
                         while (j < len) : (j += 1) {
                             try writer.print("^", .{});
@@ -95,7 +134,17 @@ pub const ErrorContext = struct {
     pub fn format(self: ErrorContext, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
-        try writer.print("ErrorContext(\n  Struct: {s},\n  Field: {?s},\n  Problem: {?s},\n  Location: {?d}:{?d} to {?d}:{?d}", .{ self.path, self.field_name, self.message, self.line, self.column, self.end_line, self.end_column });
+        try writer.print("ErrorContext(\n  Struct: {s},\n  Field: {?s},\n  Problem: {?s},\n  Location: {?d}:{?d} to {?d}:{?d},\n  Offsets: {?d}..{?d}", .{
+            self.path,
+            self.field_name,
+            self.message,
+            self.line,
+            self.column,
+            self.end_line,
+            self.end_column,
+            self.start_offset,
+            self.end_offset,
+        });
         if (self.source) |source| {
             try writer.print("\n", .{});
             try self.print_source(source, writer, self.indent + 2);
@@ -142,11 +191,10 @@ pub fn clearErrorContext() void {
 fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
     var ctx = base_ctx;
 
-    if (sexp.location) |location| {
-        ctx.line = @as(usize, location.start.line);
-        ctx.column = @as(usize, location.start.column);
-        ctx.end_line = @as(usize, location.end.line);
-        ctx.end_column = @as(usize, location.end.column);
+    if (sexp.location.isSet()) {
+        const location = sexp.location;
+        ctx.start_offset = @as(usize, location.start);
+        ctx.end_offset = @as(usize, location.end);
     }
     ctx.sexp = sexp;
 
@@ -497,7 +545,7 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                                 const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                 if (!std.mem.eql(u8, fname, scan_key)) continue;
                                 setCtx(T, items[scan_idx], field.name, null);
-                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
+                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = tokenizer.TokenLocation.none };
                                 try values.append(try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, fm));
                             }
                             @field(result.*, field.name) = try values.toOwnedSlice();
@@ -516,7 +564,7 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                                 const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                 if (!std.mem.eql(u8, fname, scan_key)) continue;
                                 setCtx(T, items[scan_idx], field.name, null);
-                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
+                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = tokenizer.TokenLocation.none };
                                 const val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, fm);
                                 const node = try allocator.create(NodeType);
                                 node.* = NodeType{ .data = val };
@@ -537,11 +585,11 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                     else if (!fields_set.isSet(field_idx) and kv_items.len >= 2) {
                         setCtx(T, items[i], field.name, null);
                         @field(result.*, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
-                            try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, fm)
+                            try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = tokenizer.TokenLocation.none }, fm)
                         else if (kv_items.len == 2 and !isSlice(field.type, true))
                             try decodeWithMetadata(field.type, allocator, kv_items[1], fm)
                         else
-                            try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, fm);
+                            try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = tokenizer.TokenLocation.none }, fm);
                         fields_set.set(field_idx);
                     }
                 }
@@ -604,7 +652,7 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                     }
                     if (looks_like_value and field.default_value_ptr == null) {
                         const value_items = items[idx + 1 ..];
-                        const value_sexp = if (value_items.len == 1) value_items[0] else SExp{ .value = .{ .list = @constCast(value_items) }, .location = null };
+                        const value_sexp = if (value_items.len == 1) value_items[0] else SExp{ .value = .{ .list = @constCast(value_items) }, .location = tokenizer.TokenLocation.none };
                         setCtx(T, value_sexp, field.name, null);
                         @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, fm);
                         fields_set.set(field_idx);
@@ -868,13 +916,13 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
                     // For i32 enums, output as number
                     var buf: [20]u8 = undefined;
                     const num_str = std.fmt.bufPrint(&buf, "{d}", .{@intFromEnum(value)}) catch unreachable;
-                    return SExp{ .value = .{ .number = allocator.dupe(u8, num_str) catch unreachable }, .location = null };
+                    return SExp{ .value = .{ .number = allocator.dupe(u8, num_str) catch unreachable }, .location = tokenizer.TokenLocation.none };
                 } else {
                     // For other enums, use symbol/string as before
                     if (metadata.symbol orelse true) {
-                        return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                        return SExp{ .value = .{ .symbol = field.name }, .location = tokenizer.TokenLocation.none };
                     } else {
-                        return SExp{ .value = .{ .string = field.name }, .location = null };
+                        return SExp{ .value = .{ .string = field.name }, .location = tokenizer.TokenLocation.none };
                     }
                 }
             }
@@ -886,7 +934,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     if (type_info == .pointer) {
         if (type_info.pointer.size == .slice and type_info.pointer.child == u8 and metadata.symbol orelse false) {
             // Encode as symbol instead of string
-            return SExp{ .value = .{ .symbol = value }, .location = null };
+            return SExp{ .value = .{ .symbol = value }, .location = tokenizer.TokenLocation.none };
         }
 
         // Special handling for slices of strings that should be encoded as symbols
@@ -899,9 +947,9 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
                 // This is [][]const u8 with symbol flag - encode each string as a symbol
                 var items = try allocator.alloc(SExp, value.len);
                 for (value, 0..) |str_val, i| {
-                    items[i] = SExp{ .value = .{ .symbol = str_val }, .location = null };
+                    items[i] = SExp{ .value = .{ .symbol = str_val }, .location = tokenizer.TokenLocation.none };
                 }
-                return SExp{ .value = .{ .list = items }, .location = null };
+                return SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
             }
         }
     }
@@ -914,12 +962,12 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
         },
         .optional => {
             if (value) |v| return try encode(allocator, v, metadata, name);
-            return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
+            return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = tokenizer.TokenLocation.none };
         },
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8) {
                 // Handle strings
-                return SExp{ .value = .{ .string = value }, .location = null };
+                return SExp{ .value = .{ .string = value }, .location = tokenizer.TokenLocation.none };
             } else if (ptr.size == .slice) {
                 return try encodeSlice(allocator, value, metadata, name);
             }
@@ -930,7 +978,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
             const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
             const duped = try allocator.alloc(u8, str.len);
             @memcpy(duped, str);
-            return SExp{ .value = .{ .number = duped }, .location = null };
+            return SExp{ .value = .{ .number = duped }, .location = tokenizer.TokenLocation.none };
         },
         .float => {
             var buf: [32]u8 = undefined;
@@ -945,17 +993,17 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
                 std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
             const duped = try allocator.alloc(u8, str.len);
             @memcpy(duped, str);
-            return SExp{ .value = .{ .number = duped }, .location = null };
+            return SExp{ .value = .{ .number = duped }, .location = tokenizer.TokenLocation.none };
         },
         .bool => {
             // Already handled by encodeStruct
             if (metadata.boolean_encoding == .parantheses_symbol) unreachable;
-            return SExp{ .value = .{ .symbol = if (value) "yes" else "no" }, .location = null };
+            return SExp{ .value = .{ .symbol = if (value) "yes" else "no" }, .location = tokenizer.TokenLocation.none };
         },
         .@"enum" => {
             inline for (std.meta.fields(T)) |field| {
                 if (@intFromEnum(value) == field.value) {
-                    return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                    return SExp{ .value = .{ .symbol = field.name }, .location = tokenizer.TokenLocation.none };
                 }
             }
             unreachable;
@@ -1086,7 +1134,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
         }
 
         if (comptime @TypeOf(fv) == bool and fm.boolean_encoding == .parantheses_symbol) {
-            if (fv) try items.append(SExp{ .value = .{ .symbol = fname }, .location = null });
+            if (fv) try items.append(SExp{ .value = .{ .symbol = fname }, .location = tokenizer.TokenLocation.none });
             continue;
         }
 
@@ -1094,21 +1142,21 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
     }
 
     const out = try items.toOwnedSlice();
-    return SExp{ .value = .{ .list = out }, .location = null };
+    return SExp{ .value = .{ .list = out }, .location = tokenizer.TokenLocation.none };
 }
 
 fn appendKeyValue(allocator: std.mem.Allocator, items: *std.array_list.Managed(SExp), key: []const u8, encoded: SExp) EncodeError!void {
     if (ast.getList(encoded)) |lst| {
         if (lst.len == 0) return; // omit empty list fields entirely
         var kv = try allocator.alloc(SExp, lst.len + 1);
-        kv[0] = SExp{ .value = .{ .symbol = key }, .location = null };
+        kv[0] = SExp{ .value = .{ .symbol = key }, .location = tokenizer.TokenLocation.none };
         for (lst, 0..) |it, i| kv[i + 1] = it;
-        try items.append(SExp{ .value = .{ .list = kv }, .location = null });
+        try items.append(SExp{ .value = .{ .list = kv }, .location = tokenizer.TokenLocation.none });
     } else {
         var kv2 = try allocator.alloc(SExp, 2);
-        kv2[0] = SExp{ .value = .{ .symbol = key }, .location = null };
+        kv2[0] = SExp{ .value = .{ .symbol = key }, .location = tokenizer.TokenLocation.none };
         kv2[1] = encoded;
-        try items.append(SExp{ .value = .{ .list = kv2 }, .location = null });
+        try items.append(SExp{ .value = .{ .list = kv2 }, .location = tokenizer.TokenLocation.none });
     }
 }
 
@@ -1118,7 +1166,7 @@ fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField
     for (value, 0..) |item, i| {
         items[i] = try encode(allocator, item, metadata, name);
     }
-    return SExp{ .value = .{ .list = items }, .location = null };
+    return SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
 }
 
 fn encodeLinkedList(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
@@ -1134,7 +1182,7 @@ fn encodeLinkedList(allocator: std.mem.Allocator, value: anytype, metadata: Sexp
         items[i] = try encode(allocator, n.data, metadata, name);
         i += 1;
     }
-    return SExp{ .value = .{ .list = items }, .location = null };
+    return SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
 }
 
 pub const input = union(enum) {
@@ -1328,7 +1376,7 @@ pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, sy
 
     // Prepend root symbol
     var items = try allocator.alloc(ast.SExp, encoded_items.len + 1);
-    items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = null };
+    items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = tokenizer.TokenLocation.none };
     for (encoded_items, 0..) |item, i| {
         items[i + 1] = item;
     }
@@ -1336,7 +1384,7 @@ pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, sy
     // encoded's top-level list container is no longer needed after the copy.
     allocator.free(encoded_items);
 
-    return ast.SExp{ .value = .{ .list = items }, .location = null };
+    return ast.SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
 }
 
 // Load a struct from an S-expression string with a wrapping symbol
@@ -1362,7 +1410,7 @@ fn decodeWrappedWithExpectedSymbol(comptime T: type, allocator: std.mem.Allocato
 
     // Create a new list without the symbol for decoding
     const contents = file_list[1..];
-    const table_sexp = ast.SExp{ .value = .{ .list = contents }, .location = null };
+    const table_sexp = ast.SExp{ .value = .{ .list = contents }, .location = tokenizer.TokenLocation.none };
 
     // Decode
     return try decodeWithMetadata(T, allocator, table_sexp, SexpField{});
@@ -1474,14 +1522,14 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
             const encoded_items = ast.getList(encoded).?;
 
             var items = try arena.allocator().alloc(ast.SExp, encoded_items.len + 1);
-            items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = null };
+            items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = tokenizer.TokenLocation.none };
 
             // Copy the encoded items
             for (encoded_items, 0..) |item, i| {
                 items[i + 1] = item;
             }
 
-            const wrapped = ast.SExp{ .value = .{ .list = items }, .location = null };
+            const wrapped = ast.SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
             sexp.* = wrapped;
         },
         .string, .path => {

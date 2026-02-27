@@ -15,12 +15,21 @@ pub const TokenType = enum {
     comment,
 };
 
-pub const TokenLocation = struct {
-    start: LocationInfo,
-    end: LocationInfo,
-};
-
 const LocationScalar = u32;
+
+pub const TokenLocation = struct {
+    start: LocationScalar,
+    end: LocationScalar,
+
+    pub const none = TokenLocation{
+        .start = std.math.maxInt(LocationScalar),
+        .end = std.math.maxInt(LocationScalar),
+    };
+
+    pub inline fn isSet(self: TokenLocation) bool {
+        return self.start != std.math.maxInt(LocationScalar) and self.end != std.math.maxInt(LocationScalar);
+    }
+};
 
 pub const LocationInfo = struct {
     line: LocationScalar,

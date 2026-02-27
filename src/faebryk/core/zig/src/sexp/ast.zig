@@ -4,7 +4,6 @@ const tokenizer = @import("tokenizer.zig");
 const Token = tokenizer.Token;
 const TokenType = tokenizer.TokenType;
 pub const TokenLocation = tokenizer.TokenLocation;
-const LocationInfo = tokenizer.LocationInfo;
 
 // S-Expression value type
 pub const SExpValue = union(enum) {
@@ -23,7 +22,7 @@ pub const SExpValue = union(enum) {
 // S-Expression with location
 pub const SExp = struct {
     value: SExpValue,
-    location: ?TokenLocation = null,
+    location: TokenLocation = TokenLocation.none,
 
     inline fn saturatingAdd(lhs: usize, rhs: usize) usize {
         return std.math.add(usize, lhs, rhs) catch std.math.maxInt(usize);
@@ -408,8 +407,9 @@ pub const Parser = struct {
     list_child_counts: []const u32,
     list_meta_cursor: usize,
     position: usize,
-    scan_offset: usize,
-    scan_location: LocationInfo,
+    list_pool: []SExp,
+    list_pool_cursor: usize,
+    use_list_pool: bool,
     allocator: std.mem.Allocator,
     copy_atoms: bool,
     track_locations: bool,
@@ -421,8 +421,9 @@ pub const Parser = struct {
             .list_child_counts = list_child_counts,
             .list_meta_cursor = 0,
             .position = 0,
-            .scan_offset = 0,
-            .scan_location = .{ .line = 1, .column = 1 },
+            .list_pool = &[_]SExp{},
+            .list_pool_cursor = 0,
+            .use_list_pool = false,
             .allocator = allocator,
             .copy_atoms = true,
             .track_locations = true,
@@ -436,8 +437,9 @@ pub const Parser = struct {
             .list_child_counts = list_child_counts,
             .list_meta_cursor = 0,
             .position = 0,
-            .scan_offset = 0,
-            .scan_location = .{ .line = 1, .column = 1 },
+            .list_pool = &[_]SExp{},
+            .list_pool_cursor = 0,
+            .use_list_pool = false,
             .allocator = allocator,
             .copy_atoms = false,
             .track_locations = true,
@@ -448,35 +450,11 @@ pub const Parser = struct {
         return token.slice(self.source);
     }
 
-    fn locationAtOffset(self: *Parser, target: usize) LocationInfo {
-        if (target < self.scan_offset) {
-            self.scan_offset = 0;
-            self.scan_location = .{ .line = 1, .column = 1 };
-        }
-
-        var offset = self.scan_offset;
-        var line = self.scan_location.line;
-        var column = self.scan_location.column;
-
-        while (offset < target and offset < self.source.len) : (offset += 1) {
-            const c = self.source[offset];
-            if (c == '\n') {
-                line = std.math.add(@TypeOf(line), line, 1) catch std.math.maxInt(@TypeOf(line));
-                column = 1;
-            } else {
-                column = std.math.add(@TypeOf(column), column, 1) catch std.math.maxInt(@TypeOf(column));
-            }
-        }
-
-        self.scan_offset = offset;
-        self.scan_location = .{ .line = line, .column = column };
-        return self.scan_location;
-    }
-
-    fn tokenLocation(self: *Parser, token: Token) TokenLocation {
-        const start = self.locationAtOffset(@as(usize, token.start));
-        const end = self.locationAtOffset(@as(usize, token.end));
-        return .{ .start = start, .end = end };
+    fn tokenLocation(_: *const Parser, token: Token) TokenLocation {
+        return .{
+            .start = token.start,
+            .end = token.end,
+        };
     }
 
     pub fn parse(self: *Parser) ParseError!?SExp {
@@ -486,7 +464,7 @@ pub const Parser = struct {
 
         const token = self.tokens[self.position];
         self.position += 1;
-        const token_location: ?TokenLocation = if (self.track_locations) self.tokenLocation(token) else null;
+        const token_location: TokenLocation = if (self.track_locations) self.tokenLocation(token) else TokenLocation.none;
         const token_value = self.tokenSlice(token);
 
         switch (token.type) {
@@ -537,21 +515,32 @@ pub const Parser = struct {
         }
     }
 
-    fn parseList(self: *Parser, start_location: ?TokenLocation) ParseError!SExp {
+    fn parseList(self: *Parser, start_location: TokenLocation) ParseError!SExp {
         if (self.list_meta_cursor >= self.list_child_counts.len) {
             return error.UnterminatedList;
         }
         const child_count = @as(usize, self.list_child_counts[self.list_meta_cursor]);
         self.list_meta_cursor += 1;
 
-        var items = try self.allocator.alloc(SExp, child_count);
+        var items: []SExp = undefined;
+        if (self.use_list_pool) {
+            const next_cursor = std.math.add(usize, self.list_pool_cursor, child_count) catch return error.OutOfMemory;
+            if (next_cursor > self.list_pool.len) return error.OutOfMemory;
+            items = self.list_pool[self.list_pool_cursor..next_cursor];
+            self.list_pool_cursor = next_cursor;
+        } else {
+            items = try self.allocator.alloc(SExp, child_count);
+        }
+
         var i: usize = 0;
-        errdefer {
-            var j: usize = 0;
-            while (j < i) : (j += 1) {
-                items[j].deinit(self.allocator);
+        if (!self.use_list_pool) {
+            errdefer {
+                var j: usize = 0;
+                while (j < i) : (j += 1) {
+                    items[j].deinit(self.allocator);
+                }
+                self.allocator.free(items);
             }
-            self.allocator.free(items);
         }
         while (i < child_count) : (i += 1) {
             items[i] = (try self.parse()) orelse return error.UnterminatedList;
@@ -564,11 +553,11 @@ pub const Parser = struct {
         if (next_token.type != .rparen) {
             return error.UnterminatedList;
         }
-        const end_location = if (self.track_locations) self.tokenLocation(next_token) else null;
-        const list_location: ?TokenLocation = if (self.track_locations) .{
-            .start = start_location.?.start,
-            .end = end_location.?.end,
-        } else null;
+        const end_location = if (self.track_locations) self.tokenLocation(next_token) else TokenLocation.none;
+        const list_location: TokenLocation = if (self.track_locations) .{
+            .start = start_location.start,
+            .end = end_location.end,
+        } else TokenLocation.none;
         self.position += 1;
         return SExp{ .value = .{ .list = items }, .location = list_location };
     }
@@ -597,8 +586,15 @@ pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: [
 pub fn parseBorrowedFast(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
     const child_counts = try buildListChildCounts(allocator, tokens);
     defer allocator.free(child_counts);
+    var total_child_slots: usize = 0;
+    for (child_counts) |count| {
+        total_child_slots = std.math.add(usize, total_child_slots, @as(usize, count)) catch return error.OutOfMemory;
+    }
+    const list_pool = try allocator.alloc(SExp, total_child_slots);
     var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
     parser.track_locations = false;
+    parser.use_list_pool = true;
+    parser.list_pool = list_pool;
     return try parser.parse() orelse return error.EmptyFile;
 }
 
