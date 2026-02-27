@@ -303,6 +303,11 @@ class StatusResponse(BaseModel):
     model: RenderModel | None = None
 
 
+class SelectionEvent(BaseModel):
+    uuids: list[str]
+
+
 class WsMessage(BaseModel):
     type: str
     model: RenderModel | None = None
+    uuids: list[str] | None = None

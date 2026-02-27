@@ -20,6 +20,14 @@ export class LayoutClient {
         return await resp.json() as RenderModel;
     }
 
+    async notifySelection(uuids: string[]): Promise<void> {
+        await fetch(`${this.baseUrl}${this.apiPrefix}/notify-selection`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uuids }),
+        });
+    }
+
     async executeAction(action: ActionCommand): Promise<StatusResponse> {
         const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
             method: "POST",

@@ -16,6 +16,7 @@ from atopile.layout_server.models import (
     FootprintSummary,
     RedoCommand,
     RenderModel,
+    SelectionEvent,
     StatusResponse,
     UndoCommand,
 )
@@ -95,6 +96,10 @@ def create_layout_router(
             )
         model = await service.save_and_broadcast()
         return StatusResponse(status="ok", code="ok", model=model)
+
+    @router.post(f"{api_prefix}/notify-selection", status_code=204)
+    async def notify_selection(event: SelectionEvent) -> None:
+        await service.set_selection(event.uuids)
 
     @router.websocket(ws_path)
     async def websocket_endpoint(websocket: WebSocket) -> None:

@@ -341,6 +341,10 @@ export class Editor {
         this.singleOverrideMode = false;
     }
 
+    private notifySelectionChanged(): void {
+        this.client.notifySelection(this.selectedUuids()).catch(() => {});
+    }
+
     private setSingleSelection(index: number, enterOverride: boolean) {
         this.selectionMode = "single";
         this.selectedFpIndex = index;
@@ -351,6 +355,7 @@ export class Editor {
         } else if (!this.groupIdByFpIndex.has(index)) {
             this.singleOverrideMode = false;
         }
+        this.notifySelectionChanged();
     }
 
     private setMultiSelection(indices: number[]) {
@@ -368,6 +373,7 @@ export class Editor {
         this.selectedGroupId = null;
         this.selectedFpIndex = -1;
         this.singleOverrideMode = false;
+        this.notifySelectionChanged();
     }
 
     private setGroupSelection(groupId: string) {
@@ -376,6 +382,7 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedMultiIndices = [];
         this.singleOverrideMode = false;
+        this.notifySelectionChanged();
     }
 
     private clearSelection(exitSingleOverride = false) {
@@ -390,6 +397,7 @@ export class Editor {
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
+        this.notifySelectionChanged();
     }
 
     private selectedGroup(): UiFootprintGroup | null {
