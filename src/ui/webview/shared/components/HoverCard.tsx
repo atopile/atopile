@@ -6,8 +6,6 @@ import {
   useCallback,
   useEffect,
   type ReactNode,
-  type ReactElement,
-  cloneElement,
 } from 'react'
 import './HoverCard.css'
 
@@ -82,10 +80,7 @@ export function HoverCard({ children }: HoverCardProps) {
 /* ---- HoverCardTrigger ---- */
 
 export interface HoverCardTriggerProps {
-  /** Content rendered as the trigger — either children or render prop */
   children?: ReactNode
-  /** Render a custom element as the trigger (receives hover handlers) */
-  render?: ReactElement
   /** Delay before opening in ms (default 200) */
   delay?: number
   /** Delay before closing in ms (default 200) */
@@ -95,7 +90,6 @@ export interface HoverCardTriggerProps {
 
 export function HoverCardTrigger({
   children,
-  render,
   delay = 200,
   closeDelay = 200,
   className = '',
@@ -115,14 +109,6 @@ export function HoverCardTrigger({
     onMouseLeave: hide,
     onFocus: show,
     onBlur: hide,
-  }
-
-  // render prop — clone the element with hover handlers
-  if (render) {
-    return cloneElement(render, {
-      ref: triggerRef,
-      ...handlers,
-    })
   }
 
   return (

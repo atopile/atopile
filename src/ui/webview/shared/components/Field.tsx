@@ -1,4 +1,4 @@
-import { forwardRef, useMemo, type HTMLAttributes, type ReactNode } from 'react'
+import { forwardRef, useMemo, type HTMLAttributes, type LabelHTMLAttributes, type ReactNode } from 'react'
 import './Field.css'
 
 /* ---- Field (root) ---- */
@@ -12,7 +12,7 @@ Field.displayName = 'Field'
 
 /* ---- FieldLabel ---- */
 
-export const FieldLabel = forwardRef<HTMLLabelElement, HTMLAttributes<HTMLLabelElement>>(
+export const FieldLabel = forwardRef<HTMLLabelElement, LabelHTMLAttributes<HTMLLabelElement>>(
   ({ className = '', ...props }, ref) => (
     <label ref={ref} className={`field-label ${className}`.trim()} {...props} />
   )

@@ -11,25 +11,23 @@ Before making any changes, review [`src/EXTENSION_ARCHITECTURE.md`](src/EXTENSIO
 
 ## Differences
 
-| Feature | Mainline (`atopile`) | Extension Rewrite (`atopile_extension`) | Status |
+| Status | Feature | Mainline (`atopile`) | Extension Rewrite (`atopile_extension`) |
 |---|---|---|---|
-| **Header** | Logo + "atopile" + version badge + settings gear (with dropdown for atopile source, local path, parallel builds, health indicator) | Logo + "atopile" only. No settings, no version, no health indicator | ✅ |
-| **Project selector** | Custom combobox with fuzzy search, keyboard nav, path display, "New Project" button | Simple `<Select>` dropdown, no search, no create | |
-| **Target selector** | Custom combobox with keyboard nav, entry point info, "New Build" button | Simple `<Select>` dropdown, no search, no create | |
-| **Action buttons** | Single row: Build \| KiCad \| 3D \| Layout \| Manufacture (with dividers) | Two buttons: "Build" + "Developer" | ✅ |
-| **Tabbed panels** | 7 tabs: Files, Packages, Parts, Lib, Struct, Params, BOM — with responsive icon-only mode, tooltips, loading spinners, badges | **None** — no tabs at all | ✅ |
-| **File Explorer** | Full tree with lazy-loading, context menu (rename/delete/create/duplicate) | **Missing** | |
-| **Packages panel** | Browse/install/uninstall packages, with detail slide-over panel | **Missing** | |
-| **Parts Search** | Component library search with detail view | **Missing** | |
-| **Standard Library** | Browse stdlib modules | **Missing** | |
-| **Structure panel** | Module/class tree from active file | **Missing** | |
-| **Variables panel** | Parameters/constraints display | **Missing** | |
-| **BOM panel** | Bill of materials table | **Missing** | |
-| **Build Queue** | Collapsible, resizable (mouse drag), with collapse/expand chevron, badge count, cancel button | Resizable (pointer drag), always shown, no collapse toggle, no cancel | |
-| **Build items** | Same general structure — expandable, status-colored left border, stage progress | Same — nearly identical visually | |
-| **Disconnected state** | Full overlay with troubleshooting steps, Discord link, restart button (5s grace period) | Simple "Connecting..." with spinner (no overlay) | |
-| **Detail panels** | Package detail, Parts detail, Manufacturing wizard slide in as overlay panels | **Missing** | |
-| **Connection status** | Green/red dot button in header showing "Connected"/"Disconnected" | Not shown | |
-| **Settings** | Gear icon dropdown: atopile version selector, local/release toggle, path input, browse button, parallel builds slider, health status | **Missing entirely** | |
-| **New Project form** | Full form: name, location (browse), license selector, description | **Missing** | |
-| **New Target form** | Full form: name, entry point (with autocomplete from modules), validation | **Missing** | |
+| ✅ | **Header** | Logo + "atopile" + version badge + settings gear (with dropdown for atopile source, local path, parallel builds, health indicator) | Logo + "atopile" only. No settings, no version, no health indicator |
+| 🟡 | **Project/Target selector** | Custom combobox with fuzzy search, keyboard nav, path display, "New Project"/"New Build" buttons | Simple `<Select>` dropdowns, no search, no create |
+| ✅ | **Action buttons** | Single row: Build \| KiCad \| 3D \| Layout \| Manufacture (with dividers) | Two buttons: "Build" + "Developer" |
+| ✅ | **Tabbed panels** | 7 tabs: Files, Packages, Parts, Lib, Struct, Params, BOM — with responsive icon-only mode, tooltips, loading spinners, badges | **None** — no tabs at all |
+| 🟡 | **File Explorer** | Full tree with lazy-loading, context menu (rename/delete/create/duplicate) | **Missing** |
+| | **Packages panel** | Browse/install/uninstall packages, with detail slide-over panel | **Missing** |
+| | **Parts Search** | Component library search with detail view | **Missing** |
+| | **Standard Library** | Browse stdlib modules | **Missing** |
+| | **Structure panel** | Module/class tree from active file | **Missing** |
+| | **Variables panel** | Parameters/constraints display | **Missing** |
+| | **BOM panel** | Bill of materials table | **Missing** |
+| 🟡 | **Build Queue** | Collapsible, resizable (mouse drag), with collapse/expand chevron, badge count, cancel button | Resizable (pointer drag), always shown, no collapse toggle, no cancel |
+| ✅ | **Disconnected state** | Full overlay with troubleshooting steps, Discord link, restart button (5s grace period) | Simple "Connecting..." with spinner (no overlay) |
+| | **Detail panels** | Package detail, Parts detail, Manufacturing wizard slide in as overlay panels | **Missing** |
+| | **Connection status** | Green/red dot button in header showing "Connected"/"Disconnected" | Not shown |
+| ✅ | **Settings** | Gear icon dropdown: atopile version selector, local/release toggle, path input, browse button, parallel builds slider, health status | **Missing entirely** |
+| | **New Project form** | Full form: name, location (browse), license selector, description | **Missing** |
+| | **New Target form** | Full form: name, entry point (with autocomplete from modules), validation | **Missing** |

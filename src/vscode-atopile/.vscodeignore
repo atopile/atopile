@@ -1,6 +1,11 @@
 src/
 out/
+node_modules/**
 *.ts
-*.map
+**/*.map
+bun.lock
+tsconfig.json
+.gitignore
 !dist/**/*.js
+!hub-dist/**/*.js
 !webview-dist/**

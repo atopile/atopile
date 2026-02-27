@@ -1,101 +1,101 @@
 {
-  "name": "atopile",
-  "displayName": "atopile",
-  "description": "atopile EDA tooling for VS Code",
-  "version": "0.0.0",
-  "publisher": "atopile",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "main": "./dist/extension.js",
-  "activationEvents": [
-    "onStartupFinished"
-  ],
-  "icon": "ato_logo_256x256.png",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "atopile-sidebar",
-          "title": "atopile",
-          "icon": "resources/atopile-icon.svg"
-        }
-      ]
+    "name": "atopile",
+    "displayName": "atopile",
+    "description": "atopile EDA tooling for VS Code",
+    "version": "0.0.0",
+    "publisher": "atopile",
+    "engines": {
+        "vscode": "^1.109.0"
     },
-    "views": {
-      "atopile-sidebar": [
-        {
-          "type": "webview",
-          "id": "atopile.sidebarView",
-          "name": "atopile"
-        }
-      ]
-    },
-    "languages": [
-      {
-        "id": "ato",
-        "aliases": [
-          "atopile",
-          "ato"
-        ],
-        "extensions": [
-          ".ato"
-        ],
-        "icon": {
-          "dark": "./ato_logo_256x256.png",
-          "light": "./ato_logo_256x256.png"
-        },
-        "configuration": "./language-configuration.json"
-      }
+    "main": "./dist/extension.js",
+    "activationEvents": [
+        "onStartupFinished"
     ],
-    "grammars": [
-      {
-        "language": "ato",
-        "scopeName": "source.ato",
-        "path": "./syntaxes/ato.tmLanguage.json"
-      }
-    ],
-    "configuration": {
-      "title": "atopile",
-      "properties": {
-        "atopile.devPath": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "description": "Path to a local atopile checkout. Enables local mode."
+    "icon": "ato_logo_256x256.png",
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "atopile-sidebar",
+                    "title": "atopile",
+                    "icon": "resources/atopile-icon.svg"
+                }
+            ]
         },
-        "atopile.autoInstall": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "description": "Auto-download uv if not found on PATH."
-        }
-      }
+        "views": {
+            "atopile-sidebar": [
+                {
+                    "type": "webview",
+                    "id": "atopile.sidebarView",
+                    "name": "atopile"
+                }
+            ]
+        },
+        "languages": [
+            {
+                "id": "ato",
+                "aliases": [
+                    "atopile",
+                    "ato"
+                ],
+                "extensions": [
+                    ".ato"
+                ],
+                "icon": {
+                    "dark": "./ato_logo_256x256.png",
+                    "light": "./ato_logo_256x256.png"
+                },
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "ato",
+                "scopeName": "source.ato",
+                "path": "./syntaxes/ato.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "title": "atopile",
+            "properties": {
+                "atopile.devPath": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "machine",
+                    "description": "Path to a local atopile checkout. Enables local mode."
+                },
+                "atopile.autoInstall": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "machine",
+                    "description": "Auto-download uv if not found on PATH."
+                }
+            }
+        },
+        "commands": [
+            {
+                "command": "atopile.openPanel",
+                "title": "atopile: Open Panel"
+            },
+            {
+                "command": "atopile.restart",
+                "title": "atopile: Restart Core Server"
+            }
+        ]
     },
-    "commands": [
-      {
-        "command": "atopile.openPanel",
-        "title": "atopile: Open Panel"
-      },
-      {
-        "command": "atopile.restart",
-        "title": "atopile: Restart Core Server"
-      }
-    ]
-  },
-  "scripts": {
-    "build": "bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --minify && cd ../webview && bun run build",
-    "watch": "concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --watch\" \"cd ../ui/webview && bun run watch\"",
-    "vscode:prepublish": "bun run build",
-    "package": "vsce package"
-  },
-  "devDependencies": {
-    "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
-    "@types/ws": "^8.5.0",
-    "@vscode/vsce": "^2.22.0",
-    "concurrently": "^8.2.0",
-    "typescript": "^5.3.0",
-    "ws": "^8.16.0"
-  }
+    "scripts": {
+        "build": "bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --minify && cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --minify && cd ../webview && bun run build",
+        "watch": "concurrently \"bun build src/extension.ts --outfile dist/extension.js --target node --format cjs --external vscode --watch\" \"cd ../ui/hub && bun build main.ts --outdir ../../vscode-atopile/hub-dist --target node --bundle --format cjs --watch\" \"cd ../ui/webview && bun run watch\"",
+        "vscode:prepublish": "bun run build",
+        "package": "vsce package"
+    },
+    "devDependencies": {
+        "@types/node": "^25.3.2",
+        "@types/vscode": "^1.109.0",
+        "@types/ws": "^8.18.1",
+        "@vscode/vsce": "^3.7.1",
+        "concurrently": "^9.2.1",
+        "typescript": "^5.9.3",
+        "ws": "^8.19.0"
+    }
 }

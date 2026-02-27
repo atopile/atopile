@@ -40,13 +40,148 @@ def _spawn_shell_with_venv(worktree_path: Path) -> None:
 
 @dev_app.command()
 @capture("cli:dev_compile_start", "cli:dev_compile_end")
-def compile():
-    """Compile Zig native extensions."""
-    print("compiling zig")
-    # import will trigger compilation
-    import faebryk.core.zig
+def compile(
+    target: str = typer.Argument(
+        "all",
+        help="Build target: all, zig, or vscode.",
+    ),
+):
+    """
+    Compile various components of the atopile extension.
+    Valid targets: all, zig, or vscode.
+    """
+    target = target.lower()
+    valid_targets = {"all", "zig", "vscode"}
+    if target not in valid_targets:
+        raise typer.BadParameter(
+            f"target must be one of: {', '.join(sorted(valid_targets))}"
+        )
 
-    _ = faebryk.core.zig
+    if target in {"all", "zig"}:
+        print("compiling zig")
+        # import will trigger compilation
+        import faebryk.core.zig
+
+        _ = faebryk.core.zig
+
+    if target in {"all", "vscode"}:
+        print("compiling vscode extension")
+        repo_root = Path(__file__).resolve().parents[3]
+        vscode_dir = repo_root / "src" / "vscode-atopile"
+        webview_dir = repo_root / "src" / "ui" / "webview"
+
+        if not vscode_dir.exists():
+            raise FileNotFoundError(
+                f"vscode extension directory not found: {vscode_dir}"
+            )
+
+        bun = shutil.which("bun")
+        if not bun:
+            home_bun = Path.home() / ".bun" / "bin" / "bun"
+            if home_bun.is_file():
+                bun = str(home_bun)
+            else:
+                typer.secho(
+                    "bun not found. Install with: "
+                    "curl -fsSL https://bun.sh/install | bash",
+                    fg=typer.colors.RED,
+                )
+                raise typer.Exit(1)
+
+        # Install dependencies if needed
+        if not (vscode_dir / "node_modules").exists():
+            subprocess.run([bun, "install"], cwd=vscode_dir, check=True)
+        if webview_dir.exists() and not (webview_dir / "node_modules").exists():
+            subprocess.run([bun, "install"], cwd=webview_dir, check=True)
+
+        # Update version with timestamp for dev builds
+        package_json_path = vscode_dir / "package.json"
+        package_json = json.loads(package_json_path.read_text())
+        original_version = package_json["version"]
+
+        timestamp = int(time.time())
+        dev_version = f"{original_version}-dev.{timestamp}"
+        package_json["version"] = dev_version
+        package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
+        print(f"version: {dev_version}")
+
+        try:
+            # Package the extension (vscode:prepublish runs build)
+            subprocess.run(
+                [bun, "run", "vsce", "package", "--allow-missing-repository"],
+                cwd=vscode_dir,
+                check=True,
+            )
+        finally:
+            # Restore original version
+            package_json["version"] = original_version
+            package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
+
+        # Find and report the generated .vsix file
+        vsix_files = list(vscode_dir.glob("*.vsix"))
+        if vsix_files:
+            vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
+            print(f"\nExtension packaged: {vsix_file}")
+            print(f"Install with: code --install-extension {vsix_file}")
+
+
+@dev_app.command()
+@capture("cli:dev_install_start", "cli:dev_install_end")
+def install(
+    ide: str = typer.Argument(
+        None,
+        help="IDE to install the extension for: 'cursor' or 'vscode'",
+    ),
+):
+    """
+    Install the locally built VS Code extension.
+
+    Installs the latest .vsix built by 'ato dev compile vscode'.
+    """
+    if ide in ("vscode", "code"):
+        cli = shutil.which("code") or "code"
+    elif ide == "cursor":
+        cli = shutil.which("cursor") or "cursor"
+    else:
+        typer.secho(
+            "Usage: ato dev install <cursor|vscode>",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    repo_root = Path(__file__).resolve().parents[3]
+    vscode_dir = repo_root / "src" / "vscode-atopile"
+
+    if not vscode_dir.exists():
+        raise typer.BadParameter(f"vscode extension directory not found: {vscode_dir}")
+
+    # Find the latest .vsix file
+    vsix_files = list(vscode_dir.glob("*.vsix"))
+    if not vsix_files:
+        typer.secho(
+            "No .vsix file found. Run 'ato dev compile vscode' first.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
+    print(f"Installing {vsix_file.name} using {cli}...")
+
+    # Install with --force to replace existing installation
+    result = subprocess.run(
+        [cli, "--install-extension", str(vsix_file), "--force"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        typer.secho(
+            f"Failed to install extension: {result.stderr}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    typer.secho("Extension installed!", fg=typer.colors.GREEN)
+    print("Remember to reload your extension!")
 
 
 @dev_app.command()
