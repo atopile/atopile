@@ -29,8 +29,7 @@ export function getNonce(): string {
  */
 export interface WebviewAssets {
     js: string | null;
-    css: string | null;
-    baseCss: string | null;
+    css: string[];
 }
 
 /**
@@ -40,35 +39,25 @@ export interface WebviewAssets {
  * 1. resources/webviews/ - production (packaged extension)
  * 2. webviews/dist/ - development
  */
-export function findWebviewAssets(extensionPath: string, webviewName: string): WebviewAssets {
-    const webviewsDir = path.join(extensionPath, 'resources', 'webviews');
+export function findWebviewAssets(
+    extensionPath: string,
+    webviewName: string,
+    stylesheetFiles: readonly string[],
+): WebviewAssets {
+    const productionDir = path.join(extensionPath, 'resources', 'webviews');
+    const devDir = path.join(extensionPath, 'webviews', 'dist');
+    const webviewsDir = fs.existsSync(productionDir) ? productionDir : devDir;
 
     if (!fs.existsSync(webviewsDir)) {
-        // Development mode: check webviews/dist
-        const devDir = path.join(extensionPath, 'webviews', 'dist');
-        if (!fs.existsSync(devDir)) {
-            return { js: null, css: null, baseCss: null };
-        }
-
-        const jsFile = path.join(devDir, `${webviewName}.js`);
-        const cssFile = path.join(devDir, `${webviewName}.css`);
-        const baseCssFile = path.join(devDir, 'index.css');
-
-        return {
-            js: fs.existsSync(jsFile) ? jsFile : null,
-            css: fs.existsSync(cssFile) ? cssFile : null,
-            baseCss: fs.existsSync(baseCssFile) ? baseCssFile : null,
-        };
+        return { js: null, css: [] };
     }
 
     const jsFile = path.join(webviewsDir, `${webviewName}.js`);
-    const cssFile = path.join(webviewsDir, `${webviewName}.css`);
-    const baseCssFile = path.join(webviewsDir, 'index.css');
-
     return {
         js: fs.existsSync(jsFile) ? jsFile : null,
-        css: fs.existsSync(cssFile) ? cssFile : null,
-        baseCss: fs.existsSync(baseCssFile) ? baseCssFile : null,
+        css: stylesheetFiles
+            .map(file => path.join(webviewsDir, file))
+            .filter(file => fs.existsSync(file)),
     };
 }
 
@@ -79,6 +68,7 @@ export interface WebviewHtmlOptions {
     webview: vscode.Webview;
     assets: WebviewAssets;
     title: string;
+    bootstrapScript?: string;
 }
 
 /**
@@ -90,7 +80,7 @@ export interface WebviewHtmlOptions {
  * - React app entry point
  */
 export function buildWebviewHtml(options: WebviewHtmlOptions): string {
-    const { webview, assets, title } = options;
+    const { webview, assets, title, bootstrapScript } = options;
 
     if (!assets.js) {
         return buildNotBuiltHtml();
@@ -98,8 +88,10 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
 
     const nonce = getNonce();
     const jsUri = webview.asWebviewUri(vscode.Uri.file(assets.js));
-    const baseCssUri = assets.baseCss ? webview.asWebviewUri(vscode.Uri.file(assets.baseCss)) : null;
-    const cssUri = assets.css ? webview.asWebviewUri(vscode.Uri.file(assets.css)) : null;
+    const cssUris = assets.css.map(cssPath => webview.asWebviewUri(vscode.Uri.file(cssPath)));
+    const bootstrapScriptTag = bootstrapScript
+        ? `<script nonce="${nonce}">${bootstrapScript}</script>`
+        : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -112,12 +104,13 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
         script-src 'nonce-${nonce}';
         font-src ${webview.cspSource};
         img-src ${webview.cspSource} https: http: data:;
+        connect-src ${webview.cspSource} https: http: ws: wss: blob:;
     ">
     <title>${title}</title>
-    ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
-    ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
+    ${cssUris.map(cssUri => `<link rel="stylesheet" href="${cssUri}">`).join('\n    ')}
 </head>
 <body>
+    ${bootstrapScriptTag}
     <div id="root"></div>
     <script nonce="${nonce}" type="module" src="${jsUri}"></script>
 </body>

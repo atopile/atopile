@@ -5,7 +5,7 @@
 import { useEffect } from 'react';
 import { useStore } from '../store';
 import { connect, disconnect, isConnected, sendAction } from '../api/websocket';
-import { initExtensionMessageListener, onExtensionMessage, postMessage } from '../api/vscodeApi';
+import { onExtensionMessage, postMessage, requestSelectionState } from '../api/vscodeApi';
 
 // Track pending glb-only builds to report success/failure to extension
 let pendingGlbBuildIds: Set<string> = new Set();
@@ -20,9 +20,6 @@ export function useConnection() {
   useEffect(() => {
     // Connect on mount
     connect();
-
-    // Initialize listener for messages from VS Code extension
-    initExtensionMessageListener();
 
     // Listen for action results to track glb-only build IDs
     const handleActionResult = (event: Event) => {
@@ -170,8 +167,33 @@ export function useConnection() {
           }
           break;
         }
+        case 'selectionState': {
+          const projectRoot = message.projectRoot ?? null;
+          const targetNames = message.targetNames ?? [];
+          const current = useStore.getState();
+          if (
+            current.selectedProjectRoot === projectRoot &&
+            current.selectedTargetNames.length === targetNames.length &&
+            current.selectedTargetNames.every((value, index) => value === targetNames[index])
+          ) {
+            break;
+          }
+          const selectedProjectName = projectRoot
+            ? (current.projects.find((project) => project.root === projectRoot)?.name ?? null)
+            : null;
+          useStore.setState({
+            selectedProjectRoot: projectRoot,
+            selectedTargetNames: [...targetNames],
+            selectedProjectName,
+          });
+          break;
+        }
       }
     });
+
+    // Ask the extension for the current selection so the store is populated
+    // before projects finish loading (avoids null→auto-select→correction cycle).
+    requestSelectionState();
 
     // Disconnect on unmount
     return () => {

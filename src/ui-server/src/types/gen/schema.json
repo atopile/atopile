@@ -3101,7 +3101,8 @@
           "log_view_current_id_changed",
           "open_layout",
           "open_kicad",
-          "open_3d"
+          "open_3d",
+          "open_pinout"
         ],
         "title": "EventType",
         "type": "string"

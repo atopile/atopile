@@ -126,6 +126,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.is_auto_generated,
         F.Pickable.is_pickable,
         F.requires_external_usage,
+        F.generate_pinout_details,
     }
 )
 

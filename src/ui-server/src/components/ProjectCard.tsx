@@ -285,9 +285,9 @@ interface ProjectCardProps {
 
   // Common props
   onOpenSource?: (projectId: string, entry: string) => void
-  onOpenKiCad?: (projectId: string, buildId: string) => void
-  onOpenLayout?: (projectId: string, buildId: string) => void
-  onOpen3D?: (projectId: string, buildId: string) => void
+  onOpenKiCad?: (projectId: string, targetName: string) => void
+  onOpenLayout?: (projectId: string, targetName: string) => void
+  onOpen3D?: (projectId: string, targetName: string) => void
   onFileClick?: (projectId: string, filePath: string) => void
 
   // Data props

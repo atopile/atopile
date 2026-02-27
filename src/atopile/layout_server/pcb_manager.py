@@ -270,16 +270,31 @@ class PcbManager:
 
     # --- Extraction ---
 
-    def get_render_model(self) -> RenderModel:
-        pcb = self.pcb
+    def get_render_model(self, footprint_uuid: str | None = None) -> RenderModel:
+        if footprint_uuid is None:
+            footprints = [self._extract_footprint(fp) for fp in self.pcb.footprints]
+            tracks = [self._extract_segment(seg) for seg in self.pcb.segments]
+            arcs = [self._extract_arc_segment(arc) for arc in self.pcb.arcs]
+            vias = [self._extract_via(via) for via in self.pcb.vias]
+            zones = [self._extract_zone(zone) for zone in self.pcb.zones]
+            nets = [NetModel(number=n.number, name=n.name) for n in self.pcb.nets]
+        else:
+            footprint = next(
+                (fp for fp in self.pcb.footprints if fp.uuid == footprint_uuid), None
+            )
+            if footprint is None:
+                raise ValueError(f"Footprint with uuid {footprint_uuid!r} not found")
+            footprints = [self._extract_footprint(footprint)]
+            tracks, arcs, vias, zones, nets = [], [], [], [], []
+
         return RenderModel(
-            board=self._extract_board(pcb),
-            footprints=[self._extract_footprint(fp) for fp in pcb.footprints],
-            tracks=[self._extract_segment(seg) for seg in pcb.segments],
-            arcs=[self._extract_arc_segment(arc) for arc in pcb.arcs],
-            vias=[self._extract_via(via) for via in pcb.vias],
-            zones=[self._extract_zone(zone) for zone in pcb.zones],
-            nets=[NetModel(number=n.number, name=n.name) for n in pcb.nets],
+            board=self._extract_board(self.pcb),
+            footprints=footprints,
+            tracks=tracks,
+            arcs=arcs,
+            vias=vias,
+            zones=zones,
+            nets=nets,
         )
 
     def get_footprints(self) -> list[FootprintSummary]:

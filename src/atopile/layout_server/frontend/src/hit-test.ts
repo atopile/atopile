@@ -59,3 +59,40 @@ export function hitTestFootprints(worldPos: Vec2, footprints: FootprintModel[]):
     }
     return -1;
 }
+
+/** Find which pad within a footprint is under a world-space point, returns pad index or -1 */
+export function hitTestPads(worldPos: Vec2, footprint: FootprintModel): number {
+    const fpAt = footprint.at;
+    // Transform worldPos into footprint-local coordinates
+    const DEG_TO_RAD = Math.PI / 180;
+    const rad = -(fpAt.r || 0) * DEG_TO_RAD;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dx = worldPos.x - fpAt.x;
+    const dy = worldPos.y - fpAt.y;
+    // Inverse rotation
+    const localX = dx * cos + dy * sin;
+    const localY = -dx * sin + dy * cos;
+
+    for (let i = footprint.pads.length - 1; i >= 0; i--) {
+        const pad = footprint.pads[i]!;
+        // Transform into pad-local coordinates
+        const padRad = -(pad.at.r || 0) * DEG_TO_RAD;
+        const pc = Math.cos(padRad), ps = Math.sin(padRad);
+        const pdx = localX - pad.at.x;
+        const pdy = localY - pad.at.y;
+        const plx = pdx * pc + pdy * ps;
+        const ply = -pdx * ps + pdy * pc;
+
+        const hw = pad.size.w / 2;
+        const hh = pad.size.h / 2;
+
+        if (pad.shape === "circle") {
+            if (plx * plx + ply * ply <= hw * hw) return i;
+        } else {
+            // rect, roundrect, oval — bounding box test
+            if (plx >= -hw && plx <= hw && ply >= -hh && ply <= hh) return i;
+        }
+    }
+    return -1;
+}

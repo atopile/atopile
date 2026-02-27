@@ -59,6 +59,7 @@ export interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openPinout?: { projectRoot: string; targetName: string } | null;
 }
 
 export interface ConnectionStatusMessage {
@@ -287,6 +288,12 @@ export interface AtopileSettingsResponseMessage {
   };
 }
 
+export interface SelectionStateMessage {
+  type: 'selectionState';
+  projectRoot: string | null;
+  targetNames: string[];
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -299,7 +306,8 @@ export type ExtensionToWebviewMessage =
   | ServerReadyMessage
   | FilesListedMessage
   | DirectoryLoadedMessage
-  | AtopileSettingsResponseMessage;
+  | AtopileSettingsResponseMessage
+  | SelectionStateMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -317,17 +325,21 @@ export function onExtensionMessage(handler: ExtensionMessageHandler): () => void
 }
 
 /**
- * Initialize listener for messages from the VS Code extension.
- * Call this once at app startup.
+ * Request the current selection state from the extension host.
+ * Call this after registering an onExtensionMessage handler so
+ * the response is received.
  */
-export function initExtensionMessageListener(): void {
-  if (typeof window === 'undefined') return;
+export function requestSelectionState(): void {
+  postToExtension({ type: 'requestSelectionState' });
+}
 
+// Auto-initialize the message listener at module load so messages arriving
+// before React effects are not lost.
+if (typeof window !== 'undefined') {
   window.addEventListener('message', (event) => {
     const message = event.data;
     if (!message || typeof message !== 'object') return;
 
-    // Handle messages from extension (triggerBuild, atopileInstalling, etc.)
     if (
       message.type === 'triggerBuild' ||
       message.type === 'atopileInstalling' ||
@@ -338,7 +350,8 @@ export function initExtensionMessageListener(): void {
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
       message.type === 'directoryLoaded' ||
-      message.type === 'atopileSettingsResponse'
+      message.type === 'atopileSettingsResponse' ||
+      message.type === 'selectionState'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);

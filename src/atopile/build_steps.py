@@ -53,6 +53,11 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
+from faebryk.exporters.pinout.pinout import (
+    export_pinout_csv,
+    export_pinout_json,
+    export_pinout_markdown,
+)
 from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
@@ -1156,6 +1161,30 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     )
 
 
+@muster.register(
+    "pinout",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_pinout(ctx: BuildStepContext) -> None:
+    """Generate pinout details for components with generate_pinout_details trait."""
+    app = ctx.require_app()
+    pinout_dir = config.build.paths.output_base.parent / "pinout"
+    report = export_pinout_json(
+        app,
+        pinout_dir / "pinout.json",
+        build_id=ctx.build_id,
+    )
+    export_pinout_csv(
+        report,
+        pinout_dir / "pinout.csv",
+    )
+    export_pinout_markdown(
+        report,
+        pinout_dir / "pinout.md",
+    )
+
+
 # @muster.register(
 #     "i2c-tree",
 #     dependencies=[build_design],
@@ -1179,6 +1208,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
         generate_variable_report,
         # generate_power_tree,
         generate_datasheets,
+        generate_pinout,
     ],
     virtual=True,
 )

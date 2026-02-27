@@ -91,13 +91,14 @@ def resolve_layout_path(project_root: Path, target_name: str) -> Path | None:
     if dir_candidate is not None:
         return dir_candidate
 
-    if layout_base.exists():
-        return layout_base
-
-    if layout_root.exists():
-        return layout_root
-
     return None
+
+
+def require_layout_path(project_root: Path, target_name: str) -> Path:
+    resolved = resolve_layout_path(project_root, target_name)
+    if not resolved:
+        raise ValueError(f"Layout not found for target: {target_name}")
+    return resolved
 
 
 def resolve_3d_path(project_root: Path, target_name: str) -> Path | None:

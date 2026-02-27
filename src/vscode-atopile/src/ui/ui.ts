@@ -5,6 +5,7 @@ import * as example from './example';
 import * as kicanvas from './kicanvas';
 import * as layoutEditor from './layout-editor';
 import * as modelviewer from './modelviewer';
+import * as pinoutTable from './pinout-table';
 import * as pcb from '../common/pcb';
 import * as threeDModel from '../common/3dmodel';
 import { traceInfo } from '../common/log/logging';
@@ -29,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext) {
         kicanvas.activate(context),
         layoutEditor.activate(context),
         modelviewer.activate(context),
+        pinoutTable.activate(context),
         pcb.activate(context),
         threeDModel.activate(context),
     ]);
@@ -41,6 +43,7 @@ export function deactivate() {
     kicanvas.deactivate();
     layoutEditor.deactivate();
     modelviewer.deactivate();
+    pinoutTable.deactivate();
     pcb.deactivate();
     threeDModel.deactivate();
 }

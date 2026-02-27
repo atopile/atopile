@@ -711,6 +711,7 @@ export enum EventType {
     Open3D = "open_3d",
     OpenKicad = "open_kicad",
     OpenLayout = "open_layout",
+    OpenPinout = "open_pinout",
     PackageModified = "package_modified",
     PackagesChanged = "packages_changed",
     PackagesDownloadsUpdated = "packages_downloads_updated",

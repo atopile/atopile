@@ -96,8 +96,8 @@ def create_app(pcb_path: Path) -> FastAPI:
     )
 
     @app.get("/api/render-model", response_model=RenderModel)
-    async def get_render_model() -> RenderModel:
-        return await asyncio.to_thread(manager.get_render_model)
+    async def get_render_model(footprint_uuid: str | None = None) -> RenderModel:
+        return await asyncio.to_thread(manager.get_render_model, footprint_uuid)
 
     @app.get(
         "/api/footprints",

@@ -16,12 +16,13 @@ import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
 import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
-import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
+import { getBuildTarget, getSelectionState, onSelectionStateChanged, setSelectedTargets, setSelectionState } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openLayoutEditor } from '../ui/layout-editor';
 import { openMigratePreview } from '../ui/migrate';
+import { openPinoutTable } from '../ui/pinout-table';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -33,6 +34,7 @@ interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openPinout?: { projectRoot: string; targetName: string } | null;
 }
 
 interface ConnectionStatusMessage {
@@ -179,6 +181,10 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+interface RequestSelectionStateMessage {
+  type: 'requestSelectionState';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -209,7 +215,8 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | RequestSelectionStateMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -268,6 +275,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           traceInfo('[SidebarProvider] atopile settings changed, notifying webview');
           this._sendAtopileSettings();
         }
+      })
+    );
+    this._disposables.push(
+      onSelectionStateChanged(() => {
+        this._postSelectionState();
       })
     );
   }
@@ -370,17 +382,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-    this._refreshWebview();
-    this._postWorkspaceRoot();
-    this._postActiveFile(vscode.window.activeTextEditor);
-    this._sendAtopileSettings();
-
     this._disposables.push(
       webviewView.webview.onDidReceiveMessage(
         (message: WebviewMessage) => this._handleWebviewMessage(message),
         undefined
       )
     );
+    this._refreshWebview();
+    this._postWorkspaceRoot();
+    this._postActiveFile(vscode.window.activeTextEditor);
+    this._sendAtopileSettings();
+    this._postSelectionState();
   }
 
   /**
@@ -440,6 +452,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     this._view.webview.postMessage(message);
+  }
+
+  private _postSelectionState(): void {
+    if (!this._view) {
+      return;
+    }
+    const selection = getSelectionState();
+    void this._view.webview.postMessage({
+      type: 'selectionState',
+      projectRoot: selection.projectRoot ?? null,
+      targetNames: selection.targetNames,
+    });
   }
 
   /**
@@ -520,6 +544,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceMilestone('sidebar webview ready');
         break;
       }
+      case 'requestSelectionState':
+        this._postSelectionState();
+        break;
       case 'showError':
         void vscode.window.showErrorMessage(message.message);
         break;
@@ -714,7 +741,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
     const projectRoot = message.projectRoot ?? null;
-    setProjectRoot(projectRoot ?? undefined);
+    const targetNames = message.targetNames ?? [];
+    const currentSelection = getSelectionState();
+    if (
+      currentSelection.projectRoot === (projectRoot ?? undefined) &&
+      currentSelection.targetNames.length === targetNames.length &&
+      currentSelection.targetNames.every((value, index) => value === targetNames[index])
+    ) {
+      return;
+    }
+    setSelectionState({
+      projectRoot: projectRoot ?? undefined,
+      targetNames,
+    });
 
     // Set up file watcher for the selected project
     if (projectRoot) {
@@ -727,8 +766,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     await loadBuilds();
     const builds = getBuilds();
     const projectBuilds = projectRoot ? builds.filter((build) => build.root === projectRoot) : [];
-    const selectedBuilds = message.targetNames.length
-      ? projectBuilds.filter((build) => message.targetNames.includes(build.name))
+    const selectedBuilds = targetNames.length
+      ? projectBuilds.filter((build) => targetNames.includes(build.name))
       : [];
     setSelectedTargets(selectedBuilds);
 
@@ -768,6 +807,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     if (msg.open3d) {
       void this._open3dPreview(msg.open3d);
+    }
+    if (msg.openPinout) {
+      setSelectionState({
+        projectRoot: msg.openPinout.projectRoot,
+        targetNames: [msg.openPinout.targetName],
+      });
+      void openPinoutTable();
     }
   }
 

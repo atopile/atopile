@@ -318,6 +318,32 @@ export interface StdLibItem {
   parameters: { name: string; type: string }[];
 }
 
+// --- Pinout Types (from /api/pinout endpoint) ---
+
+export interface PinInfo {
+  pin_name: string;
+  pin_number: string | null;
+  signal_type: string;
+  interfaces: string[];
+  is_connected: boolean;
+  net_name: string | null;
+  notes: string[];
+}
+
+export interface PinoutComponent {
+  name: string;
+  type_name: string;
+  footprint_uuid: string | null;
+  pins: PinInfo[];
+  warnings: string[];
+}
+
+export interface PinoutData {
+  version: string;
+  build_id: string | null;
+  components: PinoutComponent[];
+}
+
 // --- BOM Types (from /api/bom endpoint) ---
 
 export type BOMComponentType =
@@ -555,6 +581,7 @@ export interface AppState {
   openLayout?: string | null;
   openKicad?: string | null;
   open3D?: string | null;
+  openPinout?: { projectRoot: string; targetName: string } | null;
 
   // Test Explorer
   collectedTests: TestItem[];
