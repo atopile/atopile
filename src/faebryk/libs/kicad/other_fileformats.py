@@ -38,7 +38,11 @@ class JSON_File(DataClassJsonMixin):
 
     def dumps(self, path: PathLike | None = None):
         path = Path(path) if path else None
-        text = self.to_json(indent=4)  # type: ignore
+        # KiCad uses 2-space indentation
+        text = self.to_json(indent=2)  # type: ignore
+        # Add a trailing newline
+        if not text.endswith("\n"):
+            text += "\n"
         if path:
             path.write_text(text, encoding="utf-8")
         return text
