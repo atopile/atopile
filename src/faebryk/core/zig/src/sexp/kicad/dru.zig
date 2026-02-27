@@ -238,29 +238,17 @@ pub const Constraint = struct {
         var items = std.array_list.Managed(SExp).init(allocator);
 
         // First: constraint_type as symbol
-        inline for (std.meta.fields(E_constraint_type)) |field| {
-            if (@intFromEnum(self.constraint_type) == field.value) {
-                items.append(SExp{ .value = .{ .symbol = field.name }, .location = null }) catch return error.OutOfMemory;
-            }
-        }
+        items.append(SExp{ .value = .{ .symbol = @tagName(self.constraint_type) }, .location = null }) catch return error.OutOfMemory;
 
         switch (self.constraint_type) {
             .disallow => {
                 for (self.disallow_types) |dt| {
-                    inline for (std.meta.fields(E_disallow_type)) |field| {
-                        if (@intFromEnum(dt) == field.value) {
-                            items.append(SExp{ .value = .{ .symbol = field.name }, .location = null }) catch return error.OutOfMemory;
-                        }
-                    }
+                    items.append(SExp{ .value = .{ .symbol = @tagName(dt) }, .location = null }) catch return error.OutOfMemory;
                 }
             },
             .zone_connection => {
                 if (self.zone_connection_type) |zct| {
-                    inline for (std.meta.fields(E_zone_connection_type)) |field| {
-                        if (@intFromEnum(zct) == field.value) {
-                            items.append(SExp{ .value = .{ .symbol = field.name }, .location = null }) catch return error.OutOfMemory;
-                        }
-                    }
+                    items.append(SExp{ .value = .{ .symbol = @tagName(zct) }, .location = null }) catch return error.OutOfMemory;
                 }
             },
             .assertion => {
