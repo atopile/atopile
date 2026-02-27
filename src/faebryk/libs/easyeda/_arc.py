@@ -7,7 +7,7 @@ import math
 import re
 
 
-def _compute_arc(
+def compute_arc(
     start_x: float,
     start_y: float,
     radius_x: float,
@@ -87,7 +87,7 @@ def _compute_arc(
     return cx, cy, angle_extent
 
 
-def _arc_midpoint(
+def arc_midpoint(
     cx: float, cy: float, radius: float, angle_start: float, angle_end: float
 ) -> tuple[float, float]:
     mid_angle = (angle_start + angle_end) / 2
@@ -97,7 +97,7 @@ def _arc_midpoint(
     )
 
 
-def _parse_svg_path_for_arc(
+def parse_svg_path_for_arc(
     path: str,
 ) -> tuple[float, float, tuple[float, float, float, bool, bool, float, float]] | None:
     """Parse an SVG path containing M...A... for arc conversion."""
@@ -136,7 +136,7 @@ import pytest  # noqa: E402
 
 def test_compute_arc_quarter_circle():
     r = 5
-    cx, cy, extent = _compute_arc(
+    cx, cy, extent = compute_arc(
         start_x=r,
         start_y=0,
         radius_x=r,
@@ -153,7 +153,7 @@ def test_compute_arc_quarter_circle():
 
 
 def test_compute_arc_small():
-    cx, cy, extent = _compute_arc(
+    cx, cy, extent = compute_arc(
         start_x=10,
         start_y=0,
         radius_x=10,
@@ -170,25 +170,25 @@ def test_compute_arc_small():
 
 
 def test_compute_arc_zero_radius():
-    cx, cy, extent = _compute_arc(0, 0, 0, 0, 0, False, False, 1, 1)
+    cx, cy, _extent = compute_arc(0, 0, 0, 0, 0, False, False, 1, 1)
     assert math.isfinite(cx)
     assert math.isfinite(cy)
 
 
 def test_compute_arc_large_vs_small():
-    _, _, ext_small = _compute_arc(10, 0, 10, 10, 0, False, True, 0, 10)
-    _, _, ext_large = _compute_arc(10, 0, 10, 10, 0, True, True, 0, 10)
+    _, _, ext_small = compute_arc(10, 0, 10, 10, 0, False, True, 0, 10)
+    _, _, ext_large = compute_arc(10, 0, 10, 10, 0, True, True, 0, 10)
     assert abs(ext_large) > abs(ext_small)
 
 
 def test_compute_arc_sweep_direction():
-    _, _, ext_cw = _compute_arc(10, 0, 10, 10, 0, False, True, 0, 10)
-    _, _, ext_ccw = _compute_arc(10, 0, 10, 10, 0, False, False, 0, 10)
+    _, _, ext_cw = compute_arc(10, 0, 10, 10, 0, False, True, 0, 10)
+    _, _, ext_ccw = compute_arc(10, 0, 10, 10, 0, False, False, 0, 10)
     assert ext_cw * ext_ccw < 0
 
 
 def test_compute_arc_real_world():
-    cx, cy, extent = _compute_arc(
+    cx, cy, extent = compute_arc(
         start_x=3990.1575,
         start_y=3002.8605,
         radius_x=2.8648,

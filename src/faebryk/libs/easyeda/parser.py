@@ -6,7 +6,7 @@
 import json
 import logging
 
-from faebryk.libs.easyeda._units import _to_mm
+from faebryk.libs.easyeda._units import to_mm
 from faebryk.libs.easyeda.easyeda_types import (
     Ee3dModelInfo,
     EeFootprint,
@@ -94,8 +94,8 @@ def parse_footprint(cad_data: dict) -> EeFootprint:
 
     is_smd = cad_data.get("SMT") and "-TH_" not in pkg.get("title", "")
 
-    bbox_x = _to_mm(float(ee_data_str["head"]["x"]))
-    bbox_y = _to_mm(float(ee_data_str["head"]["y"]))
+    bbox_x = to_mm(float(ee_data_str["head"]["x"]))
+    bbox_y = to_mm(float(ee_data_str["head"]["y"]))
 
     fp = EeFootprint(
         name=ee_data_info["package"],
@@ -105,31 +105,30 @@ def parse_footprint(cad_data: dict) -> EeFootprint:
     )
 
     for line in ee_data_str["shape"]:
-        designator = line.split("~")[0]
-        fields = line.split("~")[1:]
-
-        if designator == "PAD":
-            fp.pads.append(_parse_pad(fields))
-        elif designator == "TRACK":
-            fp.tracks.append(_parse_track(fields))
-        elif designator == "HOLE":
-            fp.holes.append(_parse_hole(fields))
-        elif designator == "CIRCLE":
-            fp.circles.append(_parse_circle(fields))
-        elif designator == "ARC":
-            fp.arcs.append(_parse_arc(fields))
-        elif designator == "RECT":
-            fp.rects.append(_parse_rect(fields))
-        elif designator == "VIA":
-            fp.vias.append(_parse_via(fields))
-        elif designator == "TEXT":
-            fp.texts.append(_parse_text(fields))
-        elif designator == "SVGNODE":
-            fp.model_3d = _parse_3d_model(fields)
-        elif designator == "SOLIDREGION":
-            pass  # skip
-        else:
-            logger.warning(f"Unknown footprint designator: {designator}")
+        designator, *fields = line.split("~")
+        match designator:
+            case "PAD":
+                fp.pads.append(_parse_pad(fields))
+            case "TRACK":
+                fp.tracks.append(_parse_track(fields))
+            case "HOLE":
+                fp.holes.append(_parse_hole(fields))
+            case "CIRCLE":
+                fp.circles.append(_parse_circle(fields))
+            case "ARC":
+                fp.arcs.append(_parse_arc(fields))
+            case "RECT":
+                fp.rects.append(_parse_rect(fields))
+            case "VIA":
+                fp.vias.append(_parse_via(fields))
+            case "TEXT":
+                fp.texts.append(_parse_text(fields))
+            case "SVGNODE":
+                fp.model_3d = _parse_3d_model(fields)
+            case "SOLIDREGION":
+                pass
+            case _:
+                logger.warning(f"Unknown footprint designator: {designator}")
 
     return fp
 
@@ -137,18 +136,18 @@ def parse_footprint(cad_data: dict) -> EeFootprint:
 def _parse_pad(f: list[str]) -> EeFpPad:
     return EeFpPad(
         shape=_get(f, 0),
-        center_x=_to_mm(_float(_get(f, 1))),
-        center_y=_to_mm(_float(_get(f, 2))),
-        width=_to_mm(_float(_get(f, 3))),
-        height=_to_mm(_float(_get(f, 4))),
+        center_x=to_mm(_float(_get(f, 1))),
+        center_y=to_mm(_float(_get(f, 2))),
+        width=to_mm(_float(_get(f, 3))),
+        height=to_mm(_float(_get(f, 4))),
         layer_id=_int(_get(f, 5), default=1),
         net=_get(f, 6),
         number=_get(f, 7),
-        hole_radius=_to_mm(_float(_get(f, 8))),
+        hole_radius=to_mm(_float(_get(f, 8))),
         points=_get(f, 9),
         rotation=_float(_get(f, 10)),
         id=_get(f, 11),
-        hole_length=_to_mm(_float(_get(f, 12))),
+        hole_length=to_mm(_float(_get(f, 12))),
         hole_point=_get(f, 13),
         is_plated=_bool_field(_get(f, 14, "1")),
         is_locked=_bool_field(_get(f, 15)),
@@ -157,7 +156,7 @@ def _parse_pad(f: list[str]) -> EeFpPad:
 
 def _parse_track(f: list[str]) -> EeFpTrack:
     return EeFpTrack(
-        stroke_width=_to_mm(_float(_get(f, 0))),
+        stroke_width=to_mm(_float(_get(f, 0))),
         layer_id=_int(_get(f, 1), default=1),
         net=_get(f, 2),
         points=_get(f, 3),
@@ -168,9 +167,9 @@ def _parse_track(f: list[str]) -> EeFpTrack:
 
 def _parse_hole(f: list[str]) -> EeFpHole:
     return EeFpHole(
-        center_x=_to_mm(_float(_get(f, 0))),
-        center_y=_to_mm(_float(_get(f, 1))),
-        radius=_to_mm(_float(_get(f, 2))),
+        center_x=to_mm(_float(_get(f, 0))),
+        center_y=to_mm(_float(_get(f, 1))),
+        radius=to_mm(_float(_get(f, 2))),
         id=_get(f, 3),
         is_locked=_bool_field(_get(f, 4)),
     )
@@ -178,10 +177,10 @@ def _parse_hole(f: list[str]) -> EeFpHole:
 
 def _parse_circle(f: list[str]) -> EeFpCircle:
     return EeFpCircle(
-        center_x=_to_mm(_float(_get(f, 0))),
-        center_y=_to_mm(_float(_get(f, 1))),
-        radius=_to_mm(_float(_get(f, 2))),
-        stroke_width=_to_mm(_float(_get(f, 3))),
+        center_x=to_mm(_float(_get(f, 0))),
+        center_y=to_mm(_float(_get(f, 1))),
+        radius=to_mm(_float(_get(f, 2))),
+        stroke_width=to_mm(_float(_get(f, 3))),
         layer_id=_int(_get(f, 4), default=1),
         id=_get(f, 5),
         is_locked=_bool_field(_get(f, 6)),
@@ -190,7 +189,7 @@ def _parse_circle(f: list[str]) -> EeFpCircle:
 
 def _parse_arc(f: list[str]) -> EeFpArc:
     return EeFpArc(
-        stroke_width=_to_mm(_float(_get(f, 0))),
+        stroke_width=to_mm(_float(_get(f, 0))),
         layer_id=_int(_get(f, 1), default=1),
         net=_get(f, 2),
         path=_get(f, 3),
@@ -202,24 +201,24 @@ def _parse_arc(f: list[str]) -> EeFpArc:
 
 def _parse_rect(f: list[str]) -> EeFpRect:
     return EeFpRect(
-        pos_x=_to_mm(_float(_get(f, 0))),
-        pos_y=_to_mm(_float(_get(f, 1))),
-        width=_to_mm(_float(_get(f, 2))),
-        height=_to_mm(_float(_get(f, 3))),
+        pos_x=to_mm(_float(_get(f, 0))),
+        pos_y=to_mm(_float(_get(f, 1))),
+        width=to_mm(_float(_get(f, 2))),
+        height=to_mm(_float(_get(f, 3))),
         layer_id=_int(_get(f, 4), default=1),
         id=_get(f, 5),
         is_locked=_bool_field(_get(f, 6)),
-        stroke_width=_to_mm(_float(_get(f, 7))),
+        stroke_width=to_mm(_float(_get(f, 7))),
     )
 
 
 def _parse_via(f: list[str]) -> EeFpVia:
     return EeFpVia(
-        center_x=_to_mm(_float(_get(f, 0))),
-        center_y=_to_mm(_float(_get(f, 1))),
-        diameter=_to_mm(_float(_get(f, 2))),
+        center_x=to_mm(_float(_get(f, 0))),
+        center_y=to_mm(_float(_get(f, 1))),
+        diameter=to_mm(_float(_get(f, 2))),
         net=_get(f, 3),
-        radius=_to_mm(_float(_get(f, 4))),
+        radius=to_mm(_float(_get(f, 4))),
         id=_get(f, 5),
         is_locked=_bool_field(_get(f, 6)),
     )
@@ -228,14 +227,14 @@ def _parse_via(f: list[str]) -> EeFpVia:
 def _parse_text(f: list[str]) -> EeFpText:
     return EeFpText(
         type=_get(f, 0),
-        center_x=_to_mm(_float(_get(f, 1))),
-        center_y=_to_mm(_float(_get(f, 2))),
-        stroke_width=_to_mm(_float(_get(f, 3))),
+        center_x=to_mm(_float(_get(f, 1))),
+        center_y=to_mm(_float(_get(f, 2))),
+        stroke_width=to_mm(_float(_get(f, 3))),
         rotation=_float(_get(f, 4)),
         mirror=_get(f, 5),
         layer_id=_int(_get(f, 6), default=1),
         net=_get(f, 7),
-        font_size=_to_mm(_float(_get(f, 8))),
+        font_size=to_mm(_float(_get(f, 8))),
         text=_get(f, 9),
         text_path=_get(f, 10),
         is_displayed=_text_is_displayed(_get(f, 11, "1")),
@@ -310,29 +309,28 @@ def parse_symbol(cad_data: dict) -> EeSymbol:
 def _parse_symbol_shapes(shapes: list[str], unit: EeSymbolUnit) -> None:
     for line in shapes:
         designator = line.split("~")[0]
-
-        if designator == "P":
-            pin = _parse_sym_pin(line, unit.bbox_x, unit.bbox_y)
-            if pin:
-                unit.pins.append(pin)
-        elif designator == "R":
-            unit.rectangles.append(_parse_sym_rect(line))
-        elif designator == "C":
-            unit.circles.append(_parse_sym_circle(line))
-        elif designator == "E":
-            unit.ellipses.append(_parse_sym_ellipse(line))
-        elif designator == "A":
-            unit.arcs.append(_parse_sym_arc(line))
-        elif designator == "PL":
-            unit.polylines.append(_parse_sym_polyline(line, is_polygon=False))
-        elif designator == "PG":
-            unit.polylines.append(_parse_sym_polyline(line, is_polygon=True))
-        elif designator == "PT":
-            unit.paths.append(_parse_sym_path(line))
-        elif designator == "T":
-            pass  # text, not implemented
-        else:
-            logger.warning(f"Unknown symbol designator: {designator}")
+        match designator:
+            case "P":
+                if pin := _parse_sym_pin(line, unit.bbox_x, unit.bbox_y):
+                    unit.pins.append(pin)
+            case "R":
+                unit.rectangles.append(_parse_sym_rect(line))
+            case "C":
+                unit.circles.append(_parse_sym_circle(line))
+            case "E":
+                unit.ellipses.append(_parse_sym_ellipse(line))
+            case "A":
+                unit.arcs.append(_parse_sym_arc(line))
+            case "PL":
+                unit.polylines.append(_parse_sym_polyline(line, is_polygon=False))
+            case "PG":
+                unit.polylines.append(_parse_sym_polyline(line, is_polygon=True))
+            case "PT":
+                unit.paths.append(_parse_sym_path(line))
+            case "T":
+                pass
+            case _:
+                logger.warning(f"Unknown symbol designator: {designator}")
 
 
 def _parse_sym_pin(line: str, bbox_x: float, bbox_y: float) -> EeSymPin | None:
@@ -638,8 +636,8 @@ def test_parse_fp_resistor_basic_structure():
     fp = parse_footprint(_resistor_cad_data())
     assert fp.name == "R0603"
     assert fp.fp_type == "smd"
-    assert fp.bbox_x == pytest.approx(_to_mm(4000), abs=0.01)
-    assert fp.bbox_y == pytest.approx(_to_mm(3000), abs=0.01)
+    assert fp.bbox_x == pytest.approx(to_mm(4000), abs=0.01)
+    assert fp.bbox_y == pytest.approx(to_mm(3000), abs=0.01)
 
 
 def test_parse_fp_resistor_pad_count():
@@ -661,7 +659,7 @@ def test_parse_fp_resistor_pad_properties():
 def test_parse_fp_resistor_tracks():
     fp = parse_footprint(_resistor_cad_data())
     assert len(fp.tracks) == 2
-    assert fp.tracks[0].stroke_width == pytest.approx(_to_mm(0.6), abs=0.01)
+    assert fp.tracks[0].stroke_width == pytest.approx(to_mm(0.6), abs=0.01)
     assert fp.tracks[0].layer_id == 3
 
 

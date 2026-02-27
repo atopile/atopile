@@ -24,7 +24,7 @@ import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.libs.easyeda import api as easyeda_api
 from faebryk.libs.easyeda.api import EasyEDAModelNotFound, EasyEDAPartNotFound
-from faebryk.libs.easyeda.converter import build_footprint, build_symbol
+from faebryk.libs.easyeda.converter import FootprintBuilder, SymbolBuilder
 from faebryk.libs.easyeda.easyeda_types import Ee3dModelInfo, EeFootprint, EeSymbol
 from faebryk.libs.easyeda.parser import parse_footprint, parse_symbol
 from faebryk.libs.kicad.fileformats import kicad
@@ -192,7 +192,7 @@ class EasyEDAFootprint:
 
     @classmethod
     def from_api(cls, ee_fp: "EeFootprint", model_path: str | None):
-        fp_file = build_footprint(ee_fp, model_path)
+        fp_file = FootprintBuilder(ee_fp, model_path).build()
         return cls(fp_file)
 
     def dump(self, path: Path):
@@ -224,7 +224,7 @@ class EasyEDASymbol:
     @classmethod
     def from_api(cls, ee_sym: "EeSymbol"):
         fp_lib_name = not_none(ee_sym.info.lcsc_id)
-        sym_file = build_symbol(ee_sym, fp_lib_name)
+        sym_file = SymbolBuilder(ee_sym, fp_lib_name).build()
         return cls(sym_file)
 
     def serialize(self) -> bytes:

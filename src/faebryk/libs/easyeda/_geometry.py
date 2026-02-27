@@ -19,9 +19,7 @@ def _is_on_segment(
     )
 
 
-def _is_left(
-    x0: float, y0: float, x1: float, y1: float, px: float, py: float
-) -> bool:
+def _is_left(x0: float, y0: float, x1: float, y1: float, px: float, py: float) -> bool:
     return ((x1 - x0) * (py - y0) - (y1 - y0) * (px - x0)) > 0
 
 
@@ -45,7 +43,7 @@ def _is_point_in_polygon(
     return winding_number != 0
 
 
-def _is_circle_in_polygon(
+def is_circle_in_polygon(
     center: tuple[float, float],
     radius: float,
     polygon: list[tuple[float, float]],
@@ -64,7 +62,7 @@ def _is_circle_in_polygon(
     )
 
 
-def _find_anchor_position(
+def find_anchor_position(
     polygon: list[tuple[float, float]], radius: float
 ) -> tuple[float, float] | None:
     min_x = min(p[0] for p in polygon)
@@ -76,7 +74,7 @@ def _find_anchor_position(
     while x < max_x:
         y = min_y
         while y < max_y:
-            if _is_circle_in_polygon((x, y), radius, polygon):
+            if is_circle_in_polygon((x, y), radius, polygon):
                 return (x, y)
             y += STEP
         x += STEP

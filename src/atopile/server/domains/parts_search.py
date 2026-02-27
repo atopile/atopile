@@ -282,7 +282,7 @@ def _lib_fp_to_pcb_fp(
 def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
     """Fetch footprint data wrapped in a kicad_pcb file for viewing in kicanvas."""
     from faebryk.libs.easyeda import api as easyeda_api
-    from faebryk.libs.easyeda.converter import build_footprint
+    from faebryk.libs.easyeda.converter import FootprintBuilder
     from faebryk.libs.easyeda.parser import parse_footprint
     from faebryk.libs.kicad.fileformats import kicad
     from faebryk.libs.test.fileformats import PCBFILE
@@ -297,7 +297,7 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
         cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_str)
 
         ee_fp = parse_footprint(cad_data)
-        fp_file = build_footprint(ee_fp, model_path=None)
+        fp_file = FootprintBuilder(ee_fp, model_path=None).build()
 
         # Load template PCB and wrap the footprint in it (kicanvas needs kicad_pcb)
         template_pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
