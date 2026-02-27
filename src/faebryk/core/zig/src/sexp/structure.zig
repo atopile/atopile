@@ -951,7 +951,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
         .float => {
             var buf: [32]u8 = undefined;
             // round float to 6 decimal places
-            const rounded = std.math.round(value * 10e6) / 10e6;
+            const rounded = std.math.round(value * 1e6) / 1e6;
             const fucked = std.mem.eql(u8, name, "dashed_line_dash_ratio") or std.mem.eql(u8, name, "dashed_line_gap_ratio") or std.mem.eql(u8, name, "hpglpendiameter");
             const is_whole = rounded == @trunc(rounded);
             const needs_six_decimals = fucked and !is_whole;

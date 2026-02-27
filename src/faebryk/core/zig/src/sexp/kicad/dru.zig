@@ -97,7 +97,7 @@ pub const ValueWithUnit = struct {
     // Custom encode: concatenate value and unit into a single symbol (e.g., "0.4mm")
     pub fn encode(self: ValueWithUnit, allocator: std.mem.Allocator) structure.EncodeError!SExp {
         var buf: [32]u8 = undefined;
-        const rounded = std.math.round(self.value * 10e6) / 10e6;
+        const rounded = std.math.round(self.value * 1e6) / 1e6;
         const val_str = std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
         if (self.unit) |unit| {
             const combined = std.fmt.allocPrint(allocator, "{s}{s}", .{ val_str, unit }) catch return error.OutOfMemory;
