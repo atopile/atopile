@@ -18,7 +18,6 @@ This way we can add new modules without changing this file
 import faebryk.library.Collections as Collections
 from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.has_part_removed import has_part_removed
-import faebryk.library.TransmissionLine as TransmissionLine
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
@@ -87,6 +86,7 @@ from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.has_designator import has_designator
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
+import faebryk.library.TransmissionLine as TransmissionLine
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.AdjustableRegulator import AdjustableRegulator
 from faebryk.library.can_be_pulled import can_be_pulled
@@ -123,7 +123,6 @@ __all__ = [
     "Collections",
     "NumberDomain",
     "has_part_removed",
-    "TransmissionLine",
     "is_sink",
     "is_source",
     "Logic",
@@ -192,6 +191,7 @@ __all__ = [
     "MultiCapacitor",
     "has_designator",
     "FilterElectricalLC",
+    "TransmissionLine",
     "has_single_electric_reference",
     "AdjustableRegulator",
     "can_be_pulled",
