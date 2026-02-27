@@ -94,8 +94,10 @@ from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
+from faebryk.library.MDIO import MDIO
 from faebryk.library.MultiSPI import MultiSPI
 from faebryk.library.PDM import PDM
+from faebryk.library.RMII import RMII
 from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
@@ -197,8 +199,10 @@ __all__ = [
     "FilterElectricalRC",
     "I2S",
     "JTAG",
+    "MDIO",
     "MultiSPI",
     "PDM",
+    "RMII",
     "RS232",
     "SPI",
     "SWD",
