@@ -46,4 +46,6 @@ pub fn main() !void {
     try make_pyi(allocator, output_dir, graph_pyi, "graph", source_dir);
     const faebryk_pyi = @import("faebryk/faebryk_pyi.zig");
     try make_pyi(allocator, output_dir, faebryk_pyi, "faebryk", source_dir);
+    const fabll_pyi = @import("fabll/fabll_pyi.zig");
+    try make_pyi(allocator, output_dir, fabll_pyi, "fabll", source_dir);
 }

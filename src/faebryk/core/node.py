@@ -17,6 +17,7 @@ from typing import (
     Sequence,
     cast,
     override,
+    runtime_checkable,
 )
 
 import pytest
@@ -180,6 +181,141 @@ class ChildAccessor[T: NodeT](Protocol):
     def get(self) -> T: ...
 
 
+@runtime_checkable
+class ChildFieldLike(Protocol):
+    def _set_locator(self, locator: str | None) -> Any: ...
+    def get_identifier(self) -> str | None: ...
+    def _exec_to_typegraph(
+        self,
+        t: "TypeNodeBoundTG[Any, Any]",
+        type_field: bool = False,
+    ) -> Any: ...
+    def put_on_type(self) -> Any: ...
+    def mark_dependant(self) -> Any: ...
+    def is_dependant(self) -> bool: ...
+
+
+class TypeNodeBoundLike(Protocol):
+    def get_or_create_type(self) -> graph.BoundNode: ...
+
+
+@runtime_checkable
+class NodeLikeInstance(Protocol):
+    def get_instance(self) -> graph.BoundNode: ...
+
+
+@runtime_checkable
+class NodeLikeType(Protocol):
+    @classmethod
+    def bind_instance(cls, instance: graph.BoundNode) -> NodeLikeInstance: ...
+
+    @classmethod
+    def bind_typegraph(cls, tg: fbrk.TypeGraph) -> TypeNodeBoundLike: ...
+
+    @classmethod
+    def _type_identifier(cls) -> str: ...
+
+
+def _is_node_like_instance(value: Any) -> bool:
+    return isinstance(value, NodeLikeInstance)
+
+
+def _is_node_like_type(value: Any) -> bool:
+    if not isinstance(value, type):
+        return False
+    try:
+        return issubclass(value, NodeLikeType)
+    except TypeError:
+        return False
+
+
+def _is_child_field_like(value: Any) -> bool:
+    return isinstance(value, _ChildField) or (
+        callable(getattr(value, "_set_locator", None))
+        and callable(getattr(value, "get_identifier", None))
+        and callable(getattr(value, "_exec_to_typegraph", None))
+    )
+
+
+def _is_field_like(value: Any) -> bool:
+    return isinstance(value, Field) or _is_child_field_like(value)
+
+
+def _field_is_dependant(field: Any) -> bool:
+    if isinstance(field, Field):
+        return field._is_dependant
+
+    is_dependant = getattr(field, "is_dependant", None)
+    if callable(is_dependant):
+        try:
+            return bool(is_dependant())
+        except Exception:
+            return False
+
+    return bool(getattr(field, "_is_dependant", False))
+
+
+def _mark_field_dependant(field: Any) -> None:
+    if isinstance(field, Field):
+        field._is_dependant = True
+        return
+
+    mark_dependant = getattr(field, "mark_dependant", None)
+    if callable(mark_dependant):
+        try:
+            mark_dependant()
+            return
+        except Exception:
+            pass
+
+    try:
+        setattr(field, "_is_dependant", True)
+    except Exception:
+        pass
+
+
+def _field_get_identifier(field: Any) -> str | None:
+    get_identifier = getattr(field, "get_identifier", None)
+    if not callable(get_identifier):
+        raise FabLLException(f"Field {field} has no get_identifier()")
+    identifier = get_identifier()
+    if identifier is not None and not isinstance(identifier, str):
+        raise FabLLException(
+            f"Field {field} returned invalid identifier {identifier!r}"
+        )
+    return identifier
+
+
+def _field_get_nodetype(field: Any) -> type[Any] | None:
+    nodetype = getattr(field, "nodetype", None)
+    if isinstance(nodetype, type):
+        return nodetype
+
+    get_nodetype = getattr(field, "get_nodetype", None)
+    if callable(get_nodetype):
+        try:
+            resolved = get_nodetype()
+        except Exception:
+            return None
+        if isinstance(resolved, type):
+            return resolved
+
+    return None
+
+
+def _bind_contract_instance[T: NodeT](
+    nodetype: type[T], instance: graph.BoundNode
+) -> T:
+    if _is_node_like_type(nodetype):
+        return cast(T, nodetype.bind_instance(instance=instance))
+    return nodetype(instance=instance)
+
+
+def _contract_attributes_type(nodetype: type[Any]) -> type["NodeAttributes"]:
+    attrs = getattr(nodetype, "Attributes", NodeAttributes)
+    return cast(type["NodeAttributes"], attrs)
+
+
 class _ChildField[T: NodeT](Field, ChildAccessor[T]):
     """
     Stage 0: Child in a python class definition (pre-graph)
@@ -235,9 +371,8 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             )
         """
         for d in dependant:
-            d._is_dependant = (
-                True  # Mark as dependant to prevent duplicate registration
-            )
+            # Mark as dependant to prevent duplicate registration.
+            _mark_field_dependant(d)
             if identifier is not None:
                 d._set_locator(f"{identifier}_{_UniqueKey.get_str()}")
             else:
@@ -293,12 +428,13 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         if isinstance(nodetype, str):
             # TODO: Add checking similar to below for prelinked childfields
             return
-        if nodetype.Attributes is not NodeAttributes and not isinstance(
-            attributes, nodetype.Attributes
+        nodetype_attrs = _contract_attributes_type(cast(type[Any], nodetype))
+        if nodetype_attrs is not NodeAttributes and not isinstance(
+            attributes, nodetype_attrs
         ):
             raise FabLLException(
                 f"Attributes mismatch: {nodetype.__name__} expects"
-                f" {nodetype.Attributes} but got {type(attributes)}"
+                f" {nodetype_attrs} but got {type(attributes)}"
             )
 
     def _add_to_typegraph(self) -> graph.BoundNode:
@@ -318,7 +454,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
             )
         else:
             child_type_node = self.nodetype.bind_typegraph(
-                self.t.tg
+                tg=self.t.tg
             ).get_or_create_type()
             mc = self.t.tg.add_make_child(
                 type_node=self.t.get_or_create_type(),
@@ -353,7 +489,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 bound_node=instance, child_identifier=self.identifier
             )
         )
-        bound = self.nodetype(instance=child_instance)
+        bound = _bind_contract_instance(self.nodetype, child_instance)
         return bound
 
     def get_identifier(self) -> str | None:
@@ -393,7 +529,7 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
                 bound_node=self.instance, child_identifier=self.identifier
             )
         )
-        bound = self.nodetype(instance=child_instance)
+        bound = _bind_contract_instance(self.nodetype, child_instance)
         return bound
 
     def __repr__(self) -> str:
@@ -401,6 +537,33 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
             f"InstanceChildBoundInstance(nodetype={self.nodetype.__qualname__},"
             f" identifier={self.identifier},"
             f" instance={self.instance})"
+        )
+
+
+class InstanceChildBoundInstanceDynamic(ChildAccessor["Node[Any]"]):
+    """
+    Stage 2 for child fields that do not expose a static Python nodetype.
+    """
+
+    def __init__(self, identifier: str | None, instance: graph.BoundNode) -> None:
+        self.identifier = identifier
+        self.instance = instance
+
+    def get(self) -> "Node[Any]":
+        if self.identifier is None:
+            raise FabLLException("Can only be called on named children")
+
+        child_instance = not_none(
+            fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=self.instance, child_identifier=self.identifier
+            )
+        )
+        return Node.bind_instance_resolved(instance=child_instance)
+
+    def __repr__(self) -> str:
+        return (
+            "InstanceChildBoundInstanceDynamic("
+            f"identifier={self.identifier}, instance={self.instance})"
         )
 
 
@@ -420,7 +583,7 @@ class TypeChildBoundInstance[T: NodeT]:
         self.identifier: str = None  # type: ignore
         self._instance = t.get_or_create_type()
 
-        if nodetype.Attributes is not NodeAttributes:
+        if _contract_attributes_type(nodetype) is not NodeAttributes:
             raise FabLLException(
                 f"Can't have Child with custom Attributes: {nodetype.__name__}"
             )
@@ -436,7 +599,7 @@ class TypeChildBoundInstance[T: NodeT]:
                 bound_node=instance, child_identifier=self.identifier
             )
         )
-        bound = self.nodetype(instance=child_instance)
+        bound = _bind_contract_instance(self.nodetype, child_instance)
         return bound
 
 
@@ -452,7 +615,7 @@ class _EdgeField(Field):
         super().__init__(identifier=identifier)
         for arg in [lhs, rhs]:
             for r in arg:
-                if not (isinstance(r, (_ChildField, str))) and not (
+                if not (_is_child_field_like(r) or isinstance(r, str)) and not (
                     isinstance(r, type) and issubclass(r, Node)
                 ):
                     raise FabLLException(
@@ -467,8 +630,8 @@ class _EdgeField(Field):
         # TODO dont think we can assert here, raise FabLLException
         resolved_path: list[str | fbrk.EdgeTraversal] = []
         for field in path:
-            if isinstance(field, _ChildField):
-                resolved_path.append(not_none(field.get_identifier()))
+            if _is_child_field_like(field):
+                resolved_path.append(not_none(_field_get_identifier(field)))
             elif isinstance(field, type) and issubclass(field, Node):
                 resolved_path.append(f"<<{field._type_identifier()}")
             else:
@@ -485,8 +648,8 @@ class _EdgeField(Field):
         # TODO: consolidate resolution logic between type_fields and instance_fields
 
         for segment in path:
-            if isinstance(segment, _ChildField):
-                segment = segment.get_identifier()
+            if _is_child_field_like(segment):
+                segment = _field_get_identifier(segment)
             elif isinstance(segment, type) and issubclass(segment, Node):
                 segment = f"<<{segment._type_identifier()}"
             elif segment == SELF_OWNER_PLACEHOLDER[0]:
@@ -576,7 +739,7 @@ class ListField(Field, list[Field]):
         locator = self.get_locator()
         for i, f in enumerate(self):
             f_id = f"{locator}[{i}]" if locator is not None else None
-            f._set_locator(locator=f_id)
+            f._set_locator(f_id)
         return self
 
 
@@ -774,6 +937,29 @@ class NodeMeta(type):
             pass
         return super().__setattr__(name, value)
 
+    @override
+    def __instancecheck__(cls, instance: Any) -> bool:
+        if super().__instancecheck__(instance):
+            return True
+        node_cls = globals().get("Node")
+        if node_cls is None or cls is not node_cls:
+            return False
+        if not _is_node_like_instance(instance):
+            return False
+        try:
+            return isinstance(instance.get_instance(), graph.BoundNode)
+        except Exception:
+            return False
+
+    @override
+    def __subclasscheck__(cls, subclass: type[Any]) -> bool:
+        if super().__subclasscheck__(subclass):
+            return True
+        node_cls = globals().get("Node")
+        if node_cls is None or cls is not node_cls:
+            return False
+        return _is_node_like_type(subclass)
+
 
 _ATTR_UNSET = object()
 
@@ -868,7 +1054,7 @@ def lazy_proxy(f: Callable[[Any], Any], name: str) -> type[_LazyProxyPerf]:
 class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     Attributes = NodeAttributes
     _type_cache: dict[tuple[int, int], graph.BoundNode] = {}
-    __fields: dict[str, Field] = {}
+    __fields: dict[str, Any] = {}
     __proxys: list[type[_LazyProxyPerf]] = []
     _seen_types = dict[str, type["NodeT"]]()
     _override_type_identifier: str | None = None
@@ -883,6 +1069,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             p = pt(self)
             super().__setattr__(pt.__name__, p)
 
+    @staticmethod
+    def zig_stub(method: Callable[..., Any]) -> Callable[..., Any]:
+        # Backwards-compatible no-op marker while zig dispatch lives outside Node.
+        return method
+
     @once
     def _load_fields(self) -> None:
         instance = self.instance
@@ -894,6 +1085,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     identifier=field.get_identifier(),
                     instance=instance,
                 )
+                setattr(self, locator, child)
+            elif _is_child_field_like(field):
+                identifier = _field_get_identifier(field)
+                nodetype = _field_get_nodetype(field)
+                if nodetype is not None:
+                    child = InstanceChildBoundInstance(
+                        nodetype=nodetype,
+                        identifier=identifier,
+                        instance=instance,
+                    )
+                else:
+                    child = InstanceChildBoundInstanceDynamic(
+                        identifier=identifier,
+                        instance=instance,
+                    )
                 setattr(self, locator, child)
             elif isinstance(field, Traits.ImpliedTrait):
                 bound_implied_trait = field.bind(node=self)
@@ -911,6 +1117,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                             instance=instance,
                         )
                         list_attr.append(child)
+                    elif _is_child_field_like(nested_field):
+                        identifier = _field_get_identifier(nested_field)
+                        nodetype = _field_get_nodetype(nested_field)
+                        if nodetype is not None:
+                            child = InstanceChildBoundInstance(
+                                nodetype=nodetype,
+                                identifier=identifier,
+                                instance=instance,
+                            )
+                        else:
+                            child = InstanceChildBoundInstanceDynamic(
+                                identifier=identifier,
+                                instance=instance,
+                            )
+                        list_attr.append(child)
                 setattr(self, locator, list_attr)
             elif isinstance(field, EdgeFactoryField):
                 edge_factory_field = InstanceBoundEdgeFactory(
@@ -922,15 +1143,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
         # be subclassed further.
-        if len(cls.__mro__) > len(Node.__mro__) + 1 and not getattr(
-            cls, "__COPY_TYPE__", False
-        ):
-            # mro(): [Leaf, NodeType, object] is allowed (len==3),
-            # deeper (len>3) is forbidden
-            raise FabLLException(
-                f"NodeType subclasses cannot themselves be subclassed "
-                f"more than one level deep (found: {cls.__mro__})"
-            )
+        if not getattr(cls, "__COPY_TYPE__", False):
+            node_index = cls.__mro__.index(Node)
+            intermediate_bases = cls.__mro__[1:node_index]
+            invalid_bases = [
+                base
+                for base in intermediate_bases
+                if not getattr(base, "__NODE_MIXIN__", False)
+            ]
+            # Allow explicit Node mixins (e.g. Zig runtime adapters), but keep
+            # forbidding inheriting from concrete Node subclasses.
+            if invalid_bases:
+                invalid_names = ", ".join(base.__name__ for base in invalid_bases)
+                raise FabLLException(
+                    f"NodeType subclasses cannot themselves be subclassed "
+                    f"(invalid base chain: {invalid_names}; mro={cls.__mro__})"
+                )
+
         super().__init_subclass__()
         cls._type_cache = {}
         cls.__fields = {}
@@ -985,6 +1214,31 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         cls._seen_types[t_id] = cls
 
     @classmethod
+    def _resolve_contract_type(cls, t: type[Any]) -> type["Node"]:
+        if isinstance(t, type) and issubclass(t, Node):
+            return cast(type["Node"], t)
+
+        if _is_node_like_type(t):
+            type_name = t._type_identifier()
+        elif isinstance(t, type):
+            type_name = t.__name__
+        else:
+            type_name = None
+
+        if type_name and (resolved := cls._seen_types.get(type_name)):
+            return resolved
+
+        raise FabLLException(f"Type {t} is not a registered fabll.Node contract type")
+
+    @classmethod
+    def bind_instance_resolved(cls, instance: graph.BoundNode) -> "Node":
+        bound = cls.bind_instance(instance=instance)
+        type_name = bound.get_type_name()
+        if type_name and (resolved := cls._seen_types.get(type_name)):
+            return resolved.bind_instance(instance=instance)
+        return bound
+
+    @classmethod
     def _rename_type(cls, name: str) -> None:
         # delete registration
         old_t_id = cls._type_identifier()
@@ -1008,11 +1262,19 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _exec_field(
         cls,
         t: "TypeNodeBoundTG[Self, T]",
-        field: Field,
+        field: Any,
         type_field: bool = False,
         source_chunk_node: "Node | None" = None,
     ) -> None:
-        type_field = type_field or field._type_child
+        field_type_child = bool(getattr(field, "_type_child", False))
+        if not field_type_child:
+            is_type_child = getattr(field, "is_type_child", None)
+            if callable(is_type_child):
+                try:
+                    field_type_child = bool(is_type_child())
+                except Exception:
+                    field_type_child = False
+        type_field = type_field or field_type_child
         if isinstance(field, _ChildField):
             identifier = field.get_identifier()
             for dependant in field._prepend_dependants:
@@ -1027,17 +1289,32 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     raise FabLLException(
                         f"Type reference not resolved for child {identifier}"
                     )
-                child_nodetype: type[NodeT] = field.nodetype
-                child_instance = child_nodetype.bind_typegraph(tg=t.tg).create_instance(
-                    g=t.tg.get_graph_view(),
-                    attributes=field.attributes,
+                child_nodetype: type[Any] = field.nodetype
+                bound_child_type = child_nodetype.bind_typegraph(tg=t.tg)
+                if (
+                    field.attributes is not None
+                    and isinstance(child_nodetype, type)
+                    and issubclass(child_nodetype, Node)
+                ):
+                    child_instance = bound_child_type.create_instance(
+                        g=t.tg.get_graph_view(),
+                        attributes=field.attributes,
+                    )
+                else:
+                    child_instance = bound_child_type.create_instance(
+                        g=t.tg.get_graph_view()
+                    )
+                child_bound_node = (
+                    child_instance.instance
+                    if hasattr(child_instance, "instance")
+                    else child_instance.get_instance()
                 )
                 fbrk.EdgeComposition.add_child(
                     bound_node=t.get_or_create_type(),
-                    child=child_instance.instance.node(),
+                    child=child_bound_node.node(),
                     child_identifier=identifier,
                 )
-                if source_chunk_node is not None:
+                if source_chunk_node is not None and isinstance(child_instance, Node):
                     child_instance.add_source_chunk_trait(source_chunk_node)
             else:
                 mc = t.MakeChild(
@@ -1064,6 +1341,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     type_field=type_field,
                     source_chunk_node=source_chunk_node,
                 )
+        elif _is_child_field_like(field):
+            exec_to_typegraph = getattr(field, "_exec_to_typegraph")
+            exec_to_typegraph(t=t, type_field=type_field)
         elif isinstance(field, _EdgeField):
             if type_field:
                 type_node = t.get_or_create_type()
@@ -1110,7 +1390,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # TODO the __fields is a hack
         if name.startswith("__") or name.endswith("__fields"):
             return
-        if isinstance(value, Field):
+        if _is_field_like(value):
             # Skip fields that are already registered (e.g., loop variables pointing
             # to fields already in a list). This prevents the same _ChildField from
             # being registered twice under different locators.
@@ -1121,17 +1401,20 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             # Flatten nested lists (e.g., from multiple MakeConnectionEdge calls)
             # MakeConnectionEdge returns list[_EdgeField], so a list of those calls
             # produces list[list[_EdgeField]] which needs flattening
-            flattened: list[Field] = []
+            flattened: list[Any] = []
             for item in value:
-                if isinstance(item, Field):
+                if _is_field_like(item):
                     flattened.append(item)
-                elif isinstance(item, list) and all(isinstance(c, Field) for c in item):
+                elif isinstance(item, list) and all(_is_field_like(c) for c in item):
                     flattened.extend(item)
-            if flattened and all(isinstance(c, Field) for c in flattened):
-                cls._add_field(locator=name, field=ListField(fields=flattened))
+            if flattened and all(_is_field_like(c) for c in flattened):
+                cls._add_field(
+                    locator=name,
+                    field=ListField(fields=cast(list[Field], flattened)),
+                )
 
     @classmethod
-    def _is_field_registered(cls, field: Field) -> bool:
+    def _is_field_registered(cls, field: Any) -> bool:
         """
         Check if a field is already registered, either directly, as part of a list,
         or as a dependant of another field.
@@ -1139,7 +1422,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         fields.
         """
         # Fast path: field was already added as a dependant
-        if field._is_dependant:
+        if _field_is_dependant(field):
             return True
         for registered in cls.__fields.values():
             if registered is field:
@@ -1150,10 +1433,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return False
 
     @classmethod
-    def _add_field(cls, locator: str, field: Field):
+    def _add_field(cls, locator: str, field: Any):
         # TODO check if identifier is already in use
         assert locator not in cls.__fields, f"Field {locator} already exists"
-        field._set_locator(locator=locator)
+        field._set_locator(locator)
         cls.__fields[locator] = field
         cls.__proxys.append(lazy_proxy(f=cls._load_fields, name=locator))
 
@@ -1177,6 +1460,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     @classmethod
     def MakeChild(cls) -> _ChildField[Self]:
         return _ChildField(cls)
+
+    @classmethod
+    def MakeChild_SetSuperset(cls, ref: "RefPath", *values: Any) -> "_ChildField[Any]":
+        raise NotImplementedError(
+            f"{cls.__name__}.MakeChild_SetSuperset is not implemented"
+        )
 
     def setup(self) -> Self:
         return self
@@ -1463,7 +1752,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             return False
         # a bit of a hack, but this should be fast
         # also internally thats exactly what would happen
-        return any(tn == t._type_identifier() for t in type_node)
+        for t in type_node:
+            if _is_node_like_type(t):
+                if tn == t._type_identifier():
+                    return True
+                continue
+            try:
+                resolved = Node._resolve_contract_type(cast(type[Any], t))
+            except FabLLException:
+                continue
+            if tn == resolved._type_identifier():
+                return True
+        return False
 
     @classmethod
     def istypeof(cls, node: "NodeT") -> bool:
@@ -1678,12 +1978,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if check and not self.isinstance(t):
             # TODO other exception
             raise FabLLException(f"Node {self} is not an instance of {t}")
-        return t(self.instance)
+        if isinstance(t, type) and Node in t.__mro__:
+            return t(self.instance)
+        if _is_node_like_type(t):
+            return cast(N, t.bind_instance(instance=self.instance))
+        raise FabLLException(f"Type {t} does not provide bind_instance()")
 
     def try_cast[N: NodeT](self, t: type[N]) -> N | None:
         if not self.isinstance(t):
             return None
-        return t.bind_instance(self.instance)
+        if not _is_node_like_type(t):
+            return None
+        return cast(N, t.bind_instance(instance=self.instance))
 
     def __repr__(self) -> str:
         cls_name = type(self).__name__
@@ -1818,7 +2124,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
 
 type NodeT = Node[Any]
-RefPath = list[str | _ChildField[Any] | type[NodeT]]
+RefPath = list[str | _ChildField[Any] | ChildFieldLike | type[NodeT]]
 
 SELF_OWNER_PLACEHOLDER: RefPath = [""]
 """
@@ -1854,9 +2160,18 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         # this is some optimization to avoid binding
         # you would think bind is fast, but python works in mysterious ways
 
-        if typenode := t._type_cache.get(TypeNodeBoundTG._get_tg_hash(tg)):
+        if isinstance(t, type) and issubclass(t, Node):
+            if typenode := t._type_cache.get(TypeNodeBoundTG._get_tg_hash(tg)):
+                return typenode
+            return t.bind_typegraph(tg).get_or_create_type()
+
+        if _is_node_like_type(t):
+            return t.bind_typegraph(tg=tg).get_or_create_type()
+
+        resolved = Node._resolve_contract_type(cast(type[Any], t))
+        if typenode := resolved._type_cache.get(TypeNodeBoundTG._get_tg_hash(tg)):
             return typenode
-        return t.bind_typegraph(tg).get_or_create_type()
+        return resolved.bind_typegraph(tg).get_or_create_type()
 
     def get_or_create_type(self) -> graph.BoundNode:
         """

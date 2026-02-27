@@ -52,7 +52,10 @@ export fn PyInit_pyzig() ?*py.PyObject {
     const graph_py = @import("graph/graph_py.zig");
     _ = add_module(nested, "graph", graph_py) orelse return null;
     const faebryk_py = @import("faebryk/faebryk_py.zig");
+    // Keep faebryk registration after graph so faebryk wrappers can resolve graph wrapper types.
     _ = add_module(nested, "faebryk", faebryk_py) orelse return null;
+    const fabll_py = @import("fabll/fabll_py.zig");
+    _ = add_module(nested, "fabll", fabll_py) orelse return null;
 
     return root;
 }

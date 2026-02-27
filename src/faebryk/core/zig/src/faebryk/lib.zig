@@ -11,3 +11,4 @@ pub const edgebuilder = @import("edgebuilder.zig");
 pub const nodebuilder = @import("nodebuilder.zig");
 pub const operand = @import("operand.zig");
 pub const pathfinder = @import("pathfinder.zig");
+pub const fabll = @import("fabll.zig");

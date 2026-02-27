@@ -15,6 +15,9 @@ ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
 TEST_NAME_PATTERN = re.compile(r'^test "([^"]+)"', re.MULTILINE)
 TEST_BLOCK_PATTERN = re.compile(r'^test "')
+BUILD_ZIG_ERROR_PATH_PATTERN = re.compile(
+    r"(?P<path>/[^\s:]+/src/faebryk/core/zig/build\.zig):\d+:\d+: error:"
+)
 
 
 def file_contains_pattern(path: Path, pattern: re.Pattern[str] | str) -> bool:
@@ -92,6 +95,36 @@ def run_zig_binary(
     return subprocess.run(cmd, capture_output=True)
 
 
+def augment_compile_error(error_text: str) -> str:
+    notes: list[str] = []
+    match = BUILD_ZIG_ERROR_PATH_PATTERN.search(error_text)
+    if match:
+        actual_build = Path(match.group("path"))
+        expected_build = (ZIG_SRC_DIR / "build.zig").resolve()
+        try:
+            actual_resolved = actual_build.resolve()
+        except OSError:
+            actual_resolved = actual_build
+        if actual_resolved != expected_build:
+            notes.append(
+                "Detected compile output from a different checkout.\n"
+                f"Expected: {expected_build}\n"
+                f"Actual:   {actual_resolved}\n"
+                "If `ato dev test` is running stale workers from another "
+                "repo/worktree, "
+                "stop those worker processes and rerun."
+            )
+    if "sanitize_c" in error_text and "type 'bool' has no members" in error_text:
+        notes.append(
+            "Detected a Zig `sanitize_c` API mismatch in the active checkout. "
+            "This usually means tests are being executed by workers on an older "
+            "branch/toolchain."
+        )
+    if not notes:
+        return error_text
+    return error_text + "\n\n" + "\n\n".join(notes)
+
+
 # Per-process cache: skip zig build cache check for already-compiled files
 _compiled: dict[Path, str | None] = {}  # zig_file -> compile_error or None
 
@@ -101,7 +134,7 @@ def _ensure_compiled(zig_file: Path, release_mode: str = "ReleaseFast") -> Path:
     if zig_file not in _compiled:
         test_bin, result = compile_zig_test_binary(zig_file, release_mode=release_mode)
         if result.returncode != 0:
-            err = result.stderr.decode(errors="replace")
+            err = augment_compile_error(result.stderr.decode(errors="replace"))
             _compiled[zig_file] = err
         else:
             _compiled[zig_file] = None
