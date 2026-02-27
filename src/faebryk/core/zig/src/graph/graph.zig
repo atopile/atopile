@@ -1153,6 +1153,7 @@ pub const GraphView = struct {
     ///
     /// Edges are a flat 12-byte topology-only array with translated source/target indices.
     /// Attributes carry 6-byte back-pointer headers (owner_index + is_node_owner + in_use).
+    /// self_node is always assigned dense index 0 (implicit root).
     /// Strings are deduplicated via interning.
     pub fn dumps(g: *@This(), allocator: std.mem.Allocator) SerializationError![]u8 {
         const DaEntry = struct { da_uuid: u32, owner_index: u32, is_node: bool };
@@ -1177,17 +1178,24 @@ pub const GraphView = struct {
 
         const node_count = g.node_set.get_count();
 
-        // Build node map in a single pass, collect DA entries for nodes with attributes
+        // Assign self_node to dense index 0 (implicit root guarantee)
         var next_node_idx: u32 = 0;
-        var self_node_index: u32 = 0;
+        {
+            const self_uuid = g.self_node.uuid;
+            dense_node_map[self_uuid] = 0;
+            const da_uuid = Nodes[self_uuid].dynamic.uuid;
+            if (da_uuid != 0) {
+                da_entries.append(.{ .da_uuid = da_uuid, .owner_index = 0, .is_node = true }) catch return error.OutOfMemory;
+            }
+            next_node_idx = 1;
+        }
+
+        // Build node map for remaining nodes, collect DA entries
         {
             var i: u32 = 0;
             while (i < g.node_set.capacity) : (i += 1) {
-                if (g.node_set.data[i]) {
+                if (g.node_set.data[i] and i != g.self_node.uuid) {
                     dense_node_map[i] = next_node_idx;
-                    if (i == g.self_node.uuid) {
-                        self_node_index = next_node_idx;
-                    }
                     const da_uuid = Nodes[i].dynamic.uuid;
                     if (da_uuid != 0) {
                         da_entries.append(.{ .da_uuid = da_uuid, .owner_index = next_node_idx, .is_node = true }) catch return error.OutOfMemory;
@@ -1260,7 +1268,6 @@ pub const GraphView = struct {
         const header = BinaryHeader{
             .magic_number = MAGIC,
             .version = FORMAT_VERSION,
-            .self_node_index = self_node_index,
             .node_count = node_count,
             .edge_count = edge_count,
             .attr_block_count = attr_block_count,
@@ -1458,9 +1465,9 @@ pub const GraphView = struct {
             }
         }
 
-        // Step 8: Set self_node from packed index
-        if (header.self_node_index >= node_count) return error.MalformedPayload;
-        g.self_node = .{ .uuid = local_node_uuids[header.self_node_index] };
+        // Step 8: Set self_node — implicit root is always dense index 0
+        if (node_count == 0) return error.MalformedPayload;
+        g.self_node = .{ .uuid = local_node_uuids[0] };
 
         return g;
     }
@@ -1484,6 +1491,9 @@ pub const GraphView = struct {
 // Attributes carry 6-byte back-pointer headers (owner_index, is_node_owner,
 // in_use) pointing back to their owning node or edge. Strings are
 // deduplicated via interning.
+//
+// self_node is implicit: dumps() always assigns it dense index 0, and
+// loads() assigns the first created node as self_node.
 //
 // loads() splits into a Topology Phase (create nodes + edges) and a
 // Data Phase (attach attributes via back-pointers).
@@ -1534,16 +1544,15 @@ const MAGIC: u32 = 0x52494E53; // "RINS"
 const FORMAT_VERSION: u32 = 1;
 
 /// 64-byte header (one cache line) with reserved slots for forward compatibility.
-/// All indices are 0-based positions.
+/// self_node is implicit: dumps() always assigns it dense index 0.
 const BinaryHeader = extern struct {
     magic_number: u32, // must be MAGIC (0x52494E53)
     version: u32, // FORMAT_VERSION
-    self_node_index: u32, // index of self_node in packed node list
     node_count: u32, // number of nodes
     edge_count: u32, // total edges (flat array)
     attr_block_count: u32, // number of DA blocks in attr stream
     string_table_size: u32, // byte size of string table
-    _reserved: [9]u32 = .{0} ** 9, // 36 bytes → exactly 64 total
+    _reserved: [10]u32 = .{0} ** 10, // 40 bytes → exactly 64 total
 };
 
 /// Reference into the string table: bytes[offset..offset+length].
@@ -2094,7 +2103,7 @@ test "serialization: malicious payload rejection" {
         const bad_header = BinaryHeader{
             .magic_number = 0xDEADBEEF,
             .version = FORMAT_VERSION,
-            .self_node_index = 0,
+
             .node_count = 0,
             .edge_count = 0,
             .attr_block_count = 0,
@@ -2110,7 +2119,7 @@ test "serialization: malicious payload rejection" {
         const bad_header = BinaryHeader{
             .magic_number = MAGIC,
             .version = 99,
-            .self_node_index = 0,
+
             .node_count = 0,
             .edge_count = 0,
             .attr_block_count = 0,
@@ -2126,7 +2135,7 @@ test "serialization: malicious payload rejection" {
         const bad_header = BinaryHeader{
             .magic_number = MAGIC,
             .version = FORMAT_VERSION,
-            .self_node_index = 0,
+
             .node_count = 0,
             .edge_count = 10, // claims 10 edges but buffer is only header
             .attr_block_count = 0,
@@ -2152,7 +2161,7 @@ test "serialization: malicious payload rejection" {
         const hdr = BinaryHeader{
             .magic_number = MAGIC,
             .version = FORMAT_VERSION,
-            .self_node_index = 0,
+
             .node_count = 0,
             .edge_count = 1,
             .attr_block_count = 0,
@@ -2581,7 +2590,7 @@ test "serialization: packed index out of bounds" {
         const hdr = BinaryHeader{
             .magic_number = MAGIC,
             .version = FORMAT_VERSION,
-            .self_node_index = 0,
+
             .node_count = 2,
             .edge_count = 1,
             .attr_block_count = 0,
@@ -2614,7 +2623,7 @@ test "serialization: attr index out of bounds" {
         const hdr = BinaryHeader{
             .magic_number = MAGIC,
             .version = FORMAT_VERSION,
-            .self_node_index = 0,
+
             .node_count = 1,
             .edge_count = 0,
             .attr_block_count = 1,
@@ -2645,7 +2654,7 @@ test "serialization: invalid attr owner type" {
         const hdr = BinaryHeader{
             .magic_number = MAGIC,
             .version = FORMAT_VERSION,
-            .self_node_index = 0,
+
             .node_count = 1,
             .edge_count = 0,
             .attr_block_count = 1,
