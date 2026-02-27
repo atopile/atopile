@@ -187,6 +187,7 @@ function paintZones(
     hidden: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
+    if (hidden.has("__type:zones")) return;
     for (const zone of model.zones) {
         const sortedFilledPolygons = [...zone.filled_polygons].sort(
             (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById),
@@ -300,6 +301,7 @@ function paintTracks(
     hidden: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
+    if (hidden.has("__type:tracks")) return;
     const byLayer = new Map<string, TrackModel[]>();
     for (const track of model.tracks) {
         const ln = track.layer;
@@ -328,6 +330,7 @@ function paintVias(
     hidden: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
+    if (hidden.has("__type:tracks")) return;
     // Copper layers: annular ring or filled circle
     const byCopperLayer = new Map<string, ViaModel[]>();
     for (const via of vias) {
@@ -525,6 +528,7 @@ function paintGlobalDrawings(
     mode: GlobalDrawingPaintMode,
     layerById: Map<string, LayerModel>,
 ) {
+    if (hidden.has("__type:other")) return;
     const byLayer = new Map<string, DrawingModel[]>();
     for (const drawing of model.drawings) {
         const ln = drawing.layer;
@@ -580,13 +584,15 @@ function paintFootprint(
             arr.push({ pad, hole });
         }
     }
-    for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
-        for (const drawing of drawings) {
-            paintDrawing(layer, fp.at, drawing, r, g, b, a);
+    if (!hidden.has("__type:other")) {
+        for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
+            const [r, g, b, a] = getLayerColor(layerName, layerById);
+            const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+            for (const drawing of drawings) {
+                paintDrawing(layer, fp.at, drawing, r, g, b, a);
+            }
+            renderer.end_layer();
         }
-        renderer.end_layer();
     }
     const padsByLayer = new Map<string, PadModel[]>();
     for (const pad of fp.pads) {
@@ -605,28 +611,32 @@ function paintFootprint(
             layerPads.push(pad);
         }
     }
-    for (const [layerName, layerPads] of sortedLayerEntries(padsByLayer, layerById)) {
-        const layer = renderer.start_layer(`fp:${fp.uuid}:pads:${layerName}`);
-        for (const pad of layerPads) {
-            paintPad(layer, fp.at, pad, layerName, layerById);
+    if (!hidden.has("__type:pads")) {
+        for (const [layerName, layerPads] of sortedLayerEntries(padsByLayer, layerById)) {
+            const layer = renderer.start_layer(`fp:${fp.uuid}:pads:${layerName}`);
+            for (const pad of layerPads) {
+                paintPad(layer, fp.at, pad, layerName, layerById);
+            }
+            renderer.end_layer();
         }
-        renderer.end_layer();
+        for (const [layerName, holeEntries] of sortedLayerEntries(padHolesByLayer, layerById)) {
+            const [r, g, b, a] = getLayerColor(layerName, layerById);
+            const layer = renderer.start_layer(`fp:${fp.uuid}:pad-drill:${layerName}`);
+            for (const { pad, hole } of holeEntries) {
+                paintPadHole(layer, fp.at, pad, hole, r, g, b, a);
+            }
+            renderer.end_layer();
+        }
     }
-    for (const [layerName, holeEntries] of sortedLayerEntries(padHolesByLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.start_layer(`fp:${fp.uuid}:pad-drill:${layerName}`);
-        for (const { pad, hole } of holeEntries) {
-            paintPadHole(layer, fp.at, pad, hole, r, g, b, a);
+    if (!hidden.has("__type:other")) {
+        for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
+            const [r, g, b, a] = getLayerColor(layerName, layerById);
+            const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
+            for (const drawing of drawings) {
+                paintDrawing(layer, fp.at, drawing, r, g, b, a);
+            }
+            renderer.end_layer();
         }
-        renderer.end_layer();
-    }
-    for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.start_layer(`fp:${fp.uuid}:${layerName}`);
-        for (const drawing of drawings) {
-            paintDrawing(layer, fp.at, drawing, r, g, b, a);
-        }
-        renderer.end_layer();
     }
     paintPadAnnotations(renderer, fp, hidden, layerById);
 }
@@ -637,6 +647,7 @@ function paintPadAnnotations(
     hidden: Set<string>,
     layerById: Map<string, LayerModel>,
 ) {
+    if (hidden.has("__type:pads")) return;
     if (fp.pads.length === 0) return;
     if (fp.pad_names.length === 0 && fp.pad_numbers.length === 0) return;
     const layerGeometry = buildPadAnnotationGeometry(fp, hidden);

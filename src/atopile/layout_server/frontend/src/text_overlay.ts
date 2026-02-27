@@ -175,37 +175,17 @@ export function renderTextOverlay(
     ctx.clearRect(0, 0, width, height);
     if (!model || camera.zoom < 0.2) return;
 
-    for (const text of model.texts) {
-        if (!text.text.trim()) continue;
-        const layerName = text.layer;
-        if (!layerName) continue;
-        if (hiddenLayers.has(layerName)) continue;
-        drawStrokeText(ctx, camera, layerById, width, height, {
-            text: text.text,
-            worldX: text.at.x,
-            worldY: text.at.y,
-            rotationDeg: text.at.r || 0,
-            textWidth: text.size?.w ?? 1.0,
-            textHeight: text.size?.h ?? 1.0,
-            thickness: text.thickness ?? null,
-            layerName,
-            justify: text.justify,
-        });
-    }
-
-    for (const fp of model.footprints) {
-        for (const text of fp.texts) {
+    if (!hiddenLayers.has("__type:other")) {
+        for (const text of model.texts) {
             if (!text.text.trim()) continue;
             const layerName = text.layer;
             if (!layerName) continue;
             if (hiddenLayers.has(layerName)) continue;
-            const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
-            const textRotation = (fp.at.r || 0) + (text.at.r || 0);
             drawStrokeText(ctx, camera, layerById, width, height, {
                 text: text.text,
-                worldX: worldPos.x,
-                worldY: worldPos.y,
-                rotationDeg: textRotation,
+                worldX: text.at.x,
+                worldY: text.at.y,
+                rotationDeg: text.at.r || 0,
                 textWidth: text.size?.w ?? 1.0,
                 textHeight: text.size?.h ?? 1.0,
                 thickness: text.thickness ?? null,
@@ -213,7 +193,32 @@ export function renderTextOverlay(
                 justify: text.justify,
             });
         }
+    }
 
+    for (const fp of model.footprints) {
+        if (!hiddenLayers.has("__type:other")) {
+            for (const text of fp.texts) {
+                if (!text.text.trim()) continue;
+                const layerName = text.layer;
+                if (!layerName) continue;
+                if (hiddenLayers.has(layerName)) continue;
+                const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
+                const textRotation = (fp.at.r || 0) + (text.at.r || 0);
+                drawStrokeText(ctx, camera, layerById, width, height, {
+                    text: text.text,
+                    worldX: worldPos.x,
+                    worldY: worldPos.y,
+                    rotationDeg: textRotation,
+                    textWidth: text.size?.w ?? 1.0,
+                    textHeight: text.size?.h ?? 1.0,
+                    thickness: text.thickness ?? null,
+                    layerName,
+                    justify: text.justify,
+                });
+            }
+        }
+
+        if (hiddenLayers.has("__type:pads")) continue;
         const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers);
         const orderedLayers = [...annotationsByLayer.keys()].sort((a, b) => {
             const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;

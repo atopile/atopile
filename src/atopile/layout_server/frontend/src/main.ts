@@ -16,6 +16,15 @@ const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 // Persistent UI state across rebuilds
 let panelCollapsed = false;
 const collapsedGroups = new Set<string>();
+let objectTypesExpanded = false;
+
+const OBJECT_TYPES = [
+    { id: "__type:zones",  label: "Zones",         color: "#5a8a3a" },
+    { id: "__type:tracks", label: "Tracks & Vias", color: "#c05030" },
+    { id: "__type:pads",   label: "Pads",          color: "#a07020" },
+    { id: "__type:other",  label: "Text & shapes", color: "#4080a0" },
+] as const;
+const OBJECT_TYPE_IDS = OBJECT_TYPES.map(t => t.id);
 
 interface LayerGroup {
     group: string;
@@ -119,6 +128,97 @@ function buildLayerPanel() {
 
     const content = document.createElement("div");
     content.className = "layer-panel-content";
+
+    // — Objects section (Zones / Tracks & Vias / Pads / Text & shapes) —
+    const objGroupRow = document.createElement("div");
+    objGroupRow.className = "layer-group-header";
+
+    const objChevron = document.createElement("span");
+    objChevron.className = "layer-chevron";
+    objChevron.textContent = objectTypesExpanded ? "\u25BE" : "\u25B8";
+
+    const objSwatch = document.createElement("span");
+    objSwatch.className = "layer-swatch";
+    objSwatch.style.background = "linear-gradient(135deg, #5a8a3a 50%, #c05030 50%)";
+
+    const objLabel = document.createElement("span");
+    objLabel.className = "layer-group-name";
+    objLabel.textContent = "Objects";
+
+    objGroupRow.appendChild(objChevron);
+    objGroupRow.appendChild(objSwatch);
+    objGroupRow.appendChild(objLabel);
+
+    function updateObjGroupVisual() {
+        const allVis = OBJECT_TYPE_IDS.every(id => editor.isLayerVisible(id));
+        const allHid = OBJECT_TYPE_IDS.every(id => !editor.isLayerVisible(id));
+        objGroupRow.style.opacity = allVis ? "1" : allHid ? "0.3" : "0.6";
+    }
+    updateObjGroupVisual();
+
+    const objChildContainer = document.createElement("div");
+    objChildContainer.className = "layer-group-children";
+    if (!objectTypesExpanded) {
+        objChildContainer.style.maxHeight = "0";
+    }
+
+    objChevron.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (objectTypesExpanded) {
+            objectTypesExpanded = false;
+            objChevron.textContent = "\u25B8";
+            objChildContainer.style.maxHeight = objChildContainer.scrollHeight + "px";
+            requestAnimationFrame(() => { objChildContainer.style.maxHeight = "0"; });
+        } else {
+            objectTypesExpanded = true;
+            objChevron.textContent = "\u25BE";
+            objChildContainer.style.maxHeight = objChildContainer.scrollHeight + "px";
+            const onEnd = () => {
+                objChildContainer.style.maxHeight = "";
+                objChildContainer.removeEventListener("transitionend", onEnd);
+            };
+            objChildContainer.addEventListener("transitionend", onEnd);
+        }
+    });
+
+    objGroupRow.addEventListener("click", () => {
+        const allVis = OBJECT_TYPE_IDS.every(id => editor.isLayerVisible(id));
+        editor.setLayersVisible([...OBJECT_TYPE_IDS], !allVis);
+        updateObjGroupVisual();
+        objChildContainer.querySelectorAll<HTMLElement>(".layer-row").forEach((row, i) => {
+            updateRowVisual(row, editor.isLayerVisible(OBJECT_TYPE_IDS[i]!));
+        });
+    });
+
+    for (const objType of OBJECT_TYPES) {
+        const row = document.createElement("div");
+        row.className = "layer-row";
+
+        const swatch = document.createElement("span");
+        swatch.className = "layer-swatch";
+        swatch.style.background = objType.color;
+
+        const label = document.createElement("span");
+        label.textContent = objType.label;
+
+        row.appendChild(swatch);
+        row.appendChild(label);
+
+        updateRowVisual(row, editor.isLayerVisible(objType.id));
+
+        row.addEventListener("click", () => {
+            const vis = !editor.isLayerVisible(objType.id);
+            editor.setLayerVisible(objType.id, vis);
+            updateRowVisual(row, vis);
+            updateObjGroupVisual();
+        });
+
+        objChildContainer.appendChild(row);
+    }
+
+    content.appendChild(objGroupRow);
+    content.appendChild(objChildContainer);
+    // — end Objects section —
 
     const layers = editor.getLayerModels();
     const layerById = new Map(layers.map(layer => [layer.id, layer]));
