@@ -123,19 +123,15 @@ async def get_requirements(
 ):
     """Get simulation requirements results for a build target."""
     try:
-        result = await asyncio.to_thread(
-            artifacts_domain.handle_get_requirements, project_root, target
+        raw = await asyncio.to_thread(
+            artifacts_domain.handle_get_requirements_raw, project_root, target
         )
-        if result is None:
+        if raw is None:
             raise HTTPException(
                 status_code=404,
                 detail="Requirements file not found. Run build with simulation first.",
             )
-        safe_result = _sanitize_floats(result)
-        return Response(
-            content=json.dumps(safe_result, separators=(",", ":")),
-            media_type="application/json",
-        )
+        return Response(content=raw, media_type="application/json")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

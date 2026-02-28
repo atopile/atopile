@@ -185,7 +185,6 @@ interface OpenRequirementDetailMessage {
   requirementId: string;
   projectRoot: string;
   target: string;
-  requirementData?: unknown;
   buildTime?: string;
   initialSearch?: string;
 }
@@ -732,7 +731,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           requirementId: message.requirementId,
           projectRoot: message.projectRoot,
           target: message.target,
-          requirementData: message.requirementData,
           buildTime: message.buildTime,
           initialSearch: message.initialSearch,
         });

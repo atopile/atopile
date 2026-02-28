@@ -2172,10 +2172,15 @@ def _plot_sweep_chart(
 
     fig = go.Figure()
 
+    has_limits = (
+        (min_val is not None and max_val is not None)
+        or (scale_min is not None and scale_max is not None)
+    )
+
     for idx, (label, x_vals, y_vals, passed_list) in enumerate(series):
         line_color = colors[idx % len(colors)]
         # Per-point marker colors based on pass/fail
-        if min_val is not None and max_val is not None:
+        if has_limits:
             marker_colors = [
                 "#35b779" if (p is True) else "#d62728"
                 for p in passed_list
@@ -2194,8 +2199,34 @@ def _plot_sweep_chart(
             ),
         ))
 
-    # Pass band
-    if min_val is not None and max_val is not None:
+    # Pass band — proportional (diagonal) or static (horizontal)
+    scale_min = req.get_limit_scale_min()
+    scale_max = req.get_limit_scale_max()
+
+    if scale_min is not None and scale_max is not None:
+        # Diagonal limit lines proportional to sweep parameter
+        all_x = sorted(set(x for _, xv, _, _ in series for x in xv))
+        if all_x:
+            x_line = [all_x[0], all_x[-1]]
+            fig.add_trace(go.Scatter(
+                x=x_line, y=[x * scale_min for x in x_line],
+                mode="lines", name=f"LSL ({scale_min}x)",
+                line=dict(color="#888888", dash="dot", width=1.5),
+            ))
+            fig.add_trace(go.Scatter(
+                x=x_line, y=[x * scale_max for x in x_line],
+                mode="lines", name=f"USL ({scale_max}x)",
+                line=dict(color="#888888", dash="dot", width=1.5),
+            ))
+            # Shaded pass band between diagonals
+            fig.add_trace(go.Scatter(
+                x=x_line + x_line[::-1],
+                y=[x * scale_min for x in x_line]
+                + [x * scale_max for x in x_line[::-1]],
+                fill="toself", fillcolor="rgba(0,128,0,0.08)",
+                line=dict(width=0), showlegend=False,
+            ))
+    elif min_val is not None and max_val is not None:
         fig.add_hrect(
             y0=min_val, y1=max_val,
             fillcolor="green", opacity=0.08, line_width=0,
@@ -2215,7 +2246,7 @@ def _plot_sweep_chart(
     all_y = []
     for _, _, yv, pl in series:
         all_y.extend(zip(yv, pl))
-    if min_val is not None and max_val is not None:
+    if has_limits:
         n_pass = sum(1 for _, p in all_y if p is True)
         n_total = len(all_y)
     else:

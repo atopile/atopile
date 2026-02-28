@@ -56,7 +56,9 @@ module DesignValidation:
     iload_step.param_name = "ILOAD"
     iload_step.param_values = "0.5,1,2,3,4,5"
     iload_step.param_unit = "A"
-    iload_step.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(200m {ILOAD} 5.2m 10u 10u 0.4m 100m)"
+    iload_step.remove_elements = "r_load"
+    iload_step.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(100m {ILOAD} 5.2m 1u 1u 0.4m 100m)"
+    iload_step.extra_spice = "Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     iload_step.time_start = 5ms
     iload_step.time_stop = 6ms
     iload_step.time_step = 100ns
@@ -69,6 +71,7 @@ module DesignValidation:
     iload_sweep.param_unit = "A"
     iload_sweep.remove_elements = "r_load"
     iload_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC {ILOAD}"
+    iload_sweep.extra_spice = "Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     iload_sweep.time_start = 5ms
     iload_sweep.time_stop = 5.2ms
     iload_sweep.time_step = 100ns

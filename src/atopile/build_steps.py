@@ -1654,15 +1654,16 @@ def _measure_sweep_points(
     context_nets: list[str],
     env_bounds: tuple[float | None, float | None],
     req_bounds: tuple[float | None, float | None],
-    sweep_relative: bool = False,
+    limit_scale: tuple[float | None, float | None] = (None, None),
 ) -> tuple[list[dict], float]:
     """Measure all sweep points and return (point_data, worst_case_actual).
 
     Shared by both multi-DUT and single-DUT sweep measurement paths.
 
-    When *sweep_relative* is True, each point's ``actual`` is adjusted to
-    ``measured - paramValue`` so that the requirement checks deviation from
-    the swept parameter rather than the absolute value.
+    When *limit_scale* is ``(scale_min, scale_max)`` with both non-None,
+    each point's pass/fail bounds are ``(pval * scale_min, pval * scale_max)``
+    and the worst-case is the point with the largest relative deviation from
+    its per-point center.  Otherwise static *req_bounds* are used.
     """
     import math
 
@@ -1673,6 +1674,8 @@ def _measure_sweep_points(
     )
 
     env_min, env_max = env_bounds
+    scale_min, scale_max = limit_scale
+    use_proportional = scale_min is not None and scale_max is not None
     point_data: list[dict] = []
 
     for pval, point_result in sorted(sweep_dict.items()):
@@ -1696,27 +1699,43 @@ def _measure_sweep_points(
             )
         except Exception:
             continue
-        if sweep_relative:
-            v = v - pval
         point_data.append({"paramValue": pval, "actual": v})
 
     if not point_data:
         return point_data, float("nan")
 
-    actuals = [sp["actual"] for sp in point_data]
-    s_min, s_max = req_bounds
-    if s_min is not None and s_max is not None:
-        mid = (s_min + s_max) / 2
-        worst = max(actuals, key=lambda v: abs(v - mid))
+    if use_proportional:
+        # Per-point bounds scale with the swept parameter value
+        worst = point_data[0]["actual"]
+        worst_dev = 0.0
         for sp in point_data:
+            pval = sp["paramValue"]
+            pt_min = pval * scale_min
+            pt_max = pval * scale_max
+            pt_center = (pt_min + pt_max) / 2
             sp["passed"] = (
                 math.isfinite(sp["actual"])
-                and s_min <= sp["actual"] <= s_max
+                and pt_min <= sp["actual"] <= pt_max
             )
+            dev = abs(sp["actual"] - pt_center)
+            if dev > worst_dev:
+                worst_dev = dev
+                worst = sp["actual"]
     else:
-        worst = actuals[-1]
-        for sp in point_data:
-            sp["passed"] = False
+        actuals = [sp["actual"] for sp in point_data]
+        s_min, s_max = req_bounds
+        if s_min is not None and s_max is not None:
+            mid = (s_min + s_max) / 2
+            worst = max(actuals, key=lambda v: abs(v - mid))
+            for sp in point_data:
+                sp["passed"] = (
+                    math.isfinite(sp["actual"])
+                    and s_min <= sp["actual"] <= s_max
+                )
+        else:
+            worst = actuals[-1]
+            for sp in point_data:
+                sp["passed"] = False
 
     return point_data, worst
 
@@ -2522,6 +2541,10 @@ def _render_chart(
             max_val = None
 
     net_label = _format_net_name(y_net)
+    scale_min = req.get_limit_scale_min()
+    scale_max = req.get_limit_scale_max()
+    use_proportional = scale_min is not None and scale_max is not None
+
     if is_envelope:
         # Envelope plot: upper/lower smooth lines with shaded fill
         fig.add_trace(
@@ -2548,7 +2571,15 @@ def _render_chart(
         )
     else:
         # Determine pass/fail colors
-        if min_val is not None and max_val is not None:
+
+        if use_proportional:
+            colors = [
+                "#35b779"
+                if x * scale_min <= y <= x * scale_max
+                else "#d62728"
+                for x, y in zip(x_vals, y_vals)
+            ]
+        elif min_val is not None and max_val is not None:
             colors = [
                 "#35b779" if min_val <= y <= max_val else "#d62728"
                 for y in y_vals
@@ -2571,8 +2602,27 @@ def _render_chart(
             )
         )
 
-    # Pass band
-    if min_val is not None and max_val is not None and show_limits:
+    # Pass band — proportional (diagonal) or static (horizontal)
+    if show_limits and use_proportional and x_vals:
+        x_line = [x_vals[0], x_vals[-1]]
+        fig.add_trace(go.Scatter(
+            x=x_line, y=[x * scale_min for x in x_line],
+            mode="lines", name=f"LSL ({scale_min}x)",
+            line=dict(color="#888888", dash="dot", width=1.5),
+        ))
+        fig.add_trace(go.Scatter(
+            x=x_line, y=[x * scale_max for x in x_line],
+            mode="lines", name=f"USL ({scale_max}x)",
+            line=dict(color="#888888", dash="dot", width=1.5),
+        ))
+        fig.add_trace(go.Scatter(
+            x=x_line + x_line[::-1],
+            y=[x * scale_min for x in x_line]
+            + [x * scale_max for x in x_line[::-1]],
+            fill="toself", fillcolor="rgba(0,128,0,0.08)",
+            line=dict(width=0), showlegend=False,
+        ))
+    elif min_val is not None and max_val is not None and show_limits:
         if is_envelope:
             # Envelope plots show raw signal min/max on the y-axis.
             # The limits are peak-to-peak values, so draw them as
@@ -3223,7 +3273,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                     dut_result, sig_key, measurement,
                                     settling_tol, tran_start, dut_ctx,
                                     env_bounds, req_bounds,
-                                    sweep_relative=req.get_sweep_relative(),
+                                    limit_scale=req.get_limit_scale(),
                                 )
                                 if dut_sp_data:
                                     actuals_per_dut[dut_name] = worst
@@ -3398,7 +3448,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                                     _dr, _sk, measurement,
                                     settling_tol, tran_start,
                                     _dc, env_bounds, req_bounds,
-                                    sweep_relative=req.get_sweep_relative(),
+                                    limit_scale=req.get_limit_scale(),
                                 )
                                 if _spd:
                                     _xv = [
@@ -3500,7 +3550,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         sim_result, sig_key, measurement,
                         settling_tol, tran_start, resolved_ctx,
                         env_bounds, _safe_get_bounds(req),
-                        sweep_relative=req.get_sweep_relative(),
+                        limit_scale=req.get_limit_scale(),
                     )
                 else:
                     logger.warning(

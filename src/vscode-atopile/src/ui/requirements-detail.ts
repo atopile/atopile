@@ -17,7 +17,6 @@ export interface RequirementDetailOptions {
   requirementId: string;
   projectRoot?: string;
   target?: string;
-  requirementData?: unknown;
   buildTime?: string;
   initialSearch?: string;
 }
@@ -168,7 +167,6 @@ function getProdHtml(webview: vscode.Webview, extensionPath: string, options: Re
     window.__ATOPILE_REQUIREMENT_ID__ = ${JSON.stringify(options.requirementId)};
     window.__ATOPILE_PROJECT_ROOT__ = ${JSON.stringify(options.projectRoot || '')};
     window.__ATOPILE_TARGET__ = ${JSON.stringify(options.target || 'default')};
-    ${options.requirementData ? `window.__ATOPILE_REQUIREMENT_DATA__ = ${JSON.stringify(options.requirementData)};` : ''}
     ${options.buildTime ? `window.__ATOPILE_BUILD_TIME__ = ${JSON.stringify(options.buildTime)};` : ''}
     window.__ATOPILE_INITIAL_SEARCH__ = ${JSON.stringify(options.initialSearch || '')};
   </script>

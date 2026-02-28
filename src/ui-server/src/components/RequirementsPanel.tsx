@@ -43,7 +43,6 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
       requirementId: '__ALL__',
       projectRoot: selectedProjectRoot ?? '',
       target: selectedTargetNames?.[0] ?? 'default',
-      requirementData: requirementsData,
       buildTime: requirementsData?.buildTime ?? '',
       initialSearch: reqData?.name ?? '',
     });
@@ -55,7 +54,6 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
       requirementId: '__ALL__',
       projectRoot: selectedProjectRoot ?? '',
       target: selectedTargetNames?.[0] ?? 'default',
-      requirementData: requirementsData,
       buildTime: requirementsData?.buildTime ?? '',
       initialSearch: '',
     });

@@ -207,10 +207,11 @@ class Requirement(fabll.Node):
     # Multi-DUT: auto-compute min/max from VOUT as vout*(1 +/- pct/100)
     vout_tolerance_pct = F.Parameters.StringParameter.MakeChild()
 
-    # Sweep relative mode: when true, each sweep point's actual value is
-    # computed as (measured - paramValue).  Useful for checking that a measured
-    # quantity tracks a swept design parameter (e.g. frequency error).
-    sweep_relative = F.Parameters.StringParameter.MakeChild()
+    # Proportional sweep limits: each sweep point's pass/fail bounds are
+    # (paramValue * scale_min) to (paramValue * scale_max).
+    # Plot shows diagonal limit lines instead of horizontal ones.
+    limit_scale_min = F.Parameters.StringParameter.MakeChild()
+    limit_scale_max = F.Parameters.StringParameter.MakeChild()
 
     # Plot references (comma-separated ato variable names of LineChart siblings)
     required_plot = F.Parameters.StringParameter.MakeChild()
@@ -491,9 +492,14 @@ class Requirement(fabll.Node):
     def get_vout_tolerance_pct(self) -> float | None:
         return self._extract_float(self.vout_tolerance_pct)
 
-    def get_sweep_relative(self) -> bool:
-        raw = self.sweep_relative.get().try_extract_singleton()
-        return raw is not None and raw.lower() in ("true", "1", "yes")
+    def get_limit_scale_min(self) -> float | None:
+        return self._extract_float(self.limit_scale_min)
+
+    def get_limit_scale_max(self) -> float | None:
+        return self._extract_float(self.limit_scale_max)
+
+    def get_limit_scale(self) -> tuple[float | None, float | None]:
+        return (self.get_limit_scale_min(), self.get_limit_scale_max())
 
     def get_required_plot_names(self) -> list[str]:
         """Get required plot variable names (comma-separated)."""

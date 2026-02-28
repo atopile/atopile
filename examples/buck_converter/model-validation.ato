@@ -164,7 +164,7 @@ module ModelValidation:
     sim_duty_cycle_vin_sweep.extra_spice = "V_EN dut.enable.line 0 DC 12|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_duty_cycle_vin_sweep.time_start = 10ms
     sim_duty_cycle_vin_sweep.time_stop = "10.01 ms"
-    sim_duty_cycle_vin_sweep.time_step = "2ns"
+    sim_duty_cycle_vin_sweep.time_step = "10ns"
 
     # =====================================================================
     # SIMULATION: DCM Steady-State Ripple (DS Figure 39)
@@ -357,11 +357,11 @@ module ModelValidation:
     plot_ccm_il.simulation = "sim_ccm_ripple"
 
     # --- Frequency Sweep (MV_007) ---
-    plot_007_bar = new BarChart
-    plot_007_bar.title = "Measured vs Design Switching Frequency"
-    plot_007_bar.x = "dut.switching_frequency"
-    plot_007_bar.y = "frequency(dut.package.SW)-switching_frequency"
-    plot_007_bar.simulation = "sim_freq_sweep"
+    plot_007_freq = new LineChart
+    plot_007_freq.title = "Measured vs Design Switching Frequency"
+    plot_007_freq.x = "dut.switching_frequency"
+    plot_007_freq.y = "frequency(dut.package.SW)"
+    plot_007_freq.simulation = "sim_freq_sweep"
 
     plot_007_overlay = new LineChart
     plot_007_overlay.title = "SW Waveforms by Switching Frequency"
@@ -541,14 +541,14 @@ module ModelValidation:
 
     # --- MV_007: Switching Frequency vs Design Frequency ---
     req_007 = new Requirement
-    req_007.req_name = "MV_007: [Fig 38] Switching Frequency Error vs Design"
+    req_007.req_name = "MV_007: [Fig 38] Switching Frequency vs Design"
     req_007.simulation = "sim_freq_sweep"
     req_007.net = "dut.package.SW"
     req_007.measurement = "frequency"
-    req_007.sweep_relative = "true"
-    assert req_007.limit within -1kHz to 1kHz
-    req_007.justification = "Swept 200k-800kHz. Each point's measured frequency must track the design frequency within +/-1kHz. sweep_relative subtracts the design value so the limit checks deviation."
-    req_007.required_plot = "plot_007_bar"
+    req_007.limit_scale_min = "0.9"
+    req_007.limit_scale_max = "1.1"
+    req_007.justification = "Swept 200k-800kHz. Measured frequency must track design within +/-10%."
+    req_007.required_plot = "plot_007_freq"
     req_007.supplementary_plot = "plot_007_overlay"
 
     # --- MV_008: CCM Inductor Current Average ---

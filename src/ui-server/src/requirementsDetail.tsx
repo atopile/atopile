@@ -14,7 +14,6 @@ initializeTheme();
 
 type WindowGlobals = Window & {
   __ATOPILE_REQUIREMENT_ID__?: string;
-  __ATOPILE_REQUIREMENT_DATA__?: RequirementsData;
   __ATOPILE_BUILD_TIME__?: string;
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
@@ -46,13 +45,12 @@ function getWsStateUrl(): string | null {
 }
 
 function App() {
-  const initialAllData = w.__ATOPILE_REQUIREMENT_DATA__ as RequirementsData | undefined;
   const initialBuildTime = w.__ATOPILE_BUILD_TIME__ ?? '';
   const initialSearch = w.__ATOPILE_INITIAL_SEARCH__ ?? '';
   const buildTarget = w.__ATOPILE_TARGET__ ?? '';
 
-  const [allData, setAllData] = useState<RequirementsData | null>(initialAllData ?? null);
-  const [buildTime, setBuildTime] = useState(initialAllData?.buildTime ?? initialBuildTime);
+  const [allData, setAllData] = useState<RequirementsData | null>(null);
+  const [buildTime, setBuildTime] = useState(initialBuildTime);
   const [search, setSearch] = useState(initialSearch);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -70,7 +68,9 @@ function App() {
     }
   }, []);
 
-  // Fetch latest data on mount (ensures fresh data when target changes)
+  // Fetch requirements via API on mount.  Data is no longer embedded in
+  // the HTML to avoid serialising ~10 MB through postMessage + DOM.
+  // The raw-file API endpoint is fast enough for initial load.
   useEffect(() => {
     refresh();
   }, [refresh]);
