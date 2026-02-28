@@ -357,7 +357,7 @@ fn tokenizeWorker(context: *WorkerContext) void {
     }
 }
 
-// Simple parallel tokenizer for benchmarking
+// Simple parallel tokenizer path
 pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
     const cpu_count = try std.Thread.getCpuCount();
 
@@ -368,33 +368,76 @@ pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
         return _tokenize(allocator, data);
     }
 
-    // Split data into chunks
-    var chunks = try allocator.alloc([]const u8, thread_count);
-    defer allocator.free(chunks);
-    var chunk_starts = try allocator.alloc(usize, thread_count);
-    defer allocator.free(chunk_starts);
+    // Compute split points on "safe" newlines (outside quoted strings).
+    // This prevents chunk boundaries from splitting a single string token.
+    const desired_split_count = thread_count - 1;
+    var split_points = try allocator.alloc(usize, desired_split_count);
+    defer allocator.free(split_points);
+    var split_count: usize = 0;
+
     const chunk_size = data.len / thread_count;
+    var next_target = chunk_size;
+    var in_string = false;
+    var escaped = false;
+    var in_comment = false;
+    for (data, 0..) |c, i| {
+        var safe_newline = false;
+        if (in_comment) {
+            if (c == '\n') {
+                in_comment = false;
+                safe_newline = true;
+            }
+        } else if (in_string) {
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+        } else {
+            switch (c) {
+                '"' => in_string = true,
+                ';' => in_comment = true,
+                '\n' => safe_newline = true,
+                else => {},
+            }
+        }
+
+        if (safe_newline and split_count < desired_split_count and i >= next_target) {
+            split_points[split_count] = i;
+            split_count += 1;
+            next_target += chunk_size;
+        }
+    }
+
+    const actual_thread_count = split_count + 1;
+    if (actual_thread_count == 1) {
+        return _tokenize(allocator, data);
+    }
+
+    // Split data into chunks
+    var chunks = try allocator.alloc([]const u8, actual_thread_count);
+    defer allocator.free(chunks);
+    var chunk_starts = try allocator.alloc(usize, actual_thread_count);
+    defer allocator.free(chunk_starts);
+
     var start: usize = 0;
-    for (0..thread_count) |i| {
+    for (0..actual_thread_count) |i| {
         chunk_starts[i] = start;
-        const target_end = @min(start + chunk_size, data.len);
-        var end = target_end;
-
-        // Find safe boundary (newline)
-        while (end < data.len and data[end] != '\n') : (end += 1) {}
-
+        const end = if (i < split_count) split_points[i] else data.len;
         chunks[i] = data[start..end];
         start = end;
     }
 
     // Create contexts and threads
-    var contexts = try allocator.alloc(WorkerContext, thread_count);
+    var contexts = try allocator.alloc(WorkerContext, actual_thread_count);
     defer allocator.free(contexts);
 
-    var threads = try allocator.alloc(std.Thread, thread_count);
+    var threads = try allocator.alloc(std.Thread, actual_thread_count);
     defer allocator.free(threads);
 
-    for (0..thread_count) |i| {
+    for (0..actual_thread_count) |i| {
         contexts[i] = .{
             .data = chunks[i],
             .base_offset = narrowLocation(chunk_starts[i]),
