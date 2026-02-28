@@ -3291,6 +3291,7 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                         passed = False
                     else:
                         min_v, max_v = req_bounds
+                        ls_min, ls_max = req.get_limit_scale()
                         if min_v is not None and max_v is not None:
                             mid = (min_v + max_v) / 2
                             actual = max(
@@ -3300,6 +3301,14 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                             passed = (
                                 not math.isnan(actual)
                                 and min_v <= actual <= max_v
+                            )
+                        elif ls_min is not None and ls_max is not None and mdut_sweep_points:
+                            actual = next(iter(
+                                actuals_per_dut.values()
+                            ), float("nan"))
+                            passed = all(
+                                sp.get("passed", False)
+                                for sp in mdut_sweep_points
                             )
                         else:
                             actual = next(iter(
@@ -3560,11 +3569,15 @@ def verify_requirements_step(ctx: BuildStepContext) -> None:
                     continue
 
                 min_v, max_v = _safe_get_bounds(req)
+                ls_min, ls_max = req.get_limit_scale()
                 if min_v is not None and max_v is not None:
                     passed = (
                         not math.isnan(actual)
                         and min_v <= actual <= max_v
                     )
+                elif ls_min is not None and ls_max is not None and sweep_point_data:
+                    # Proportional limits: overall pass = all sweep points pass
+                    passed = all(sp.get("passed", False) for sp in sweep_point_data)
                 else:
                     loc = _source_loc(req)
                     logger.warning(
