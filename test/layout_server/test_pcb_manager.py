@@ -145,15 +145,12 @@ def test_get_render_model_esp32(manager_esp32: PcbManager):
         for footprint in model.footprints
         for pad in footprint.pads
     )
-    assert any((d.layer or "").endswith(".Drill") for d in model.drawings)
+    # Vias carry drill and copper layer info in ViaModel (not as DrawingModel).
+    assert any(via.drill_layers for via in model.vias)
+    assert any(via.copper_layers for via in model.vias)
+    # Through-hole pads carry drill info in PadModel.hole.
     assert any(
-        (d.layer or "").endswith(".Cu") and (d.filled or d.width > 0)
-        for d in model.drawings
-    )
-    assert any(
-        (d.layer or "").endswith(".Drill")
-        for footprint in model.footprints
-        for d in footprint.drawings
+        pad.hole is not None for footprint in model.footprints for pad in footprint.pads
     )
 
 

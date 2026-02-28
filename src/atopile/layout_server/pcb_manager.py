@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -384,6 +385,34 @@ class PcbManager:
                     actions.append(FlipObjectAction(obj, cx))
             if actions:
                 self.execute_action(CompositeAction(actions))
+
+    # --- Convenience wrappers (used by tests and simple callers) ---
+
+    def move_footprint(self, uuid: str, x: float, y: float) -> None:
+        """Move footprint to absolute position (x, y)."""
+        fps = self.get_footprints()
+        fp = next((f for f in fps if f.uuid == uuid), None)
+        if fp is None:
+            raise ValueError(f"Footprint {uuid!r} not found")
+        self.dispatch_action(
+            MoveCommand(command="move", uuids=[uuid], dx=x - fp.x, dy=y - fp.y)
+        )
+
+    def rotate_footprint(self, uuid: str, delta_degrees: float) -> None:
+        """Rotate footprint by delta_degrees."""
+        fps = self.get_footprints()
+        if not any(f.uuid == uuid for f in fps):
+            raise ValueError(f"Footprint {uuid!r} not found")
+        self.dispatch_action(
+            RotateCommand(command="rotate", uuids=[uuid], delta_degrees=delta_degrees)
+        )
+
+    def flip_footprint(self, uuid: str) -> None:
+        """Flip footprint between F.Cu and B.Cu."""
+        fps = self.get_footprints()
+        if not any(f.uuid == uuid for f in fps):
+            raise ValueError(f"Footprint {uuid!r} not found")
+        self.dispatch_action(FlipCommand(command="flip", uuids=[uuid]))
 
     def was_recently_saved(self, threshold: float = 2.0) -> bool:
         """Check if we saved within the last `threshold` seconds."""
@@ -1457,6 +1486,132 @@ PAD_NET_STROKE_MAX = 0.20
 PAD_NET_GENERIC_TOKENS = {"input", "output", "line", "net"}
 PAD_NET_PREFIXES = ("power_in-", "power_vbus-", "power-")
 PAD_NET_TRUNCATE_LENGTHS = (16, 12, 10, 8, 6, 5, 4, 3, 2, 1)
+
+
+def _estimate_stroke_text_advance(text: str) -> float:
+    """Approximate Newstroke advance units for a single-line label."""
+    if not text:
+        return 0.6
+
+    narrow = set("1Iil|!.,:;'`")
+    wide = set("MW@%#")
+    advance = 0.0
+    for ch in text:
+        if ch == " ":
+            advance += 0.6
+        elif ch in narrow:
+            advance += 0.45
+        elif ch in wide:
+            advance += 0.95
+        else:
+            advance += 0.72
+    return max(advance, 0.6)
+
+
+def _fit_text_inside_pad(
+    text: str, pad_w: float, pad_h: float
+) -> tuple[float, float, float] | None:
+    """Return (char_w, char_h, thickness) fitted to pad size."""
+    if pad_w <= 0 or pad_h <= 0:
+        return None
+
+    usable_w = max(0.0, pad_w * PAD_NET_FIT_MARGIN)
+    usable_h = max(0.0, pad_h * PAD_NET_FIT_MARGIN)
+    if usable_w <= 0 or usable_h <= 0:
+        return None
+
+    vertical = usable_h > usable_w
+    major = usable_h if vertical else usable_w
+    minor = usable_w if vertical else usable_h
+
+    char_w_ratio = PAD_NET_CHAR_W_RATIO
+    advance_units = _estimate_stroke_text_advance(text)
+    max_h_by_width = major / max(advance_units * char_w_ratio, 1e-6)
+    char_h = min(minor * PAD_NET_MINOR_FIT, max_h_by_width * PAD_NET_MAJOR_FIT)
+    char_h *= PAD_NET_CHAR_SCALE
+
+    if char_h < PAD_NET_MIN_CHAR_H:
+        return None
+
+    char_w = char_h * char_w_ratio
+    thickness = min(
+        PAD_NET_STROKE_MAX,
+        max(PAD_NET_STROKE_MIN, char_h * PAD_NET_STROKE_SCALE),
+    )
+    return (char_w, char_h, thickness)
+
+
+def _pad_net_text_candidates(text: str) -> list[str]:
+    base = text.strip()
+    if not base:
+        return []
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add(candidate: str) -> None:
+        token = candidate.strip()
+        if not token or token in seen:
+            return
+        seen.add(token)
+        candidates.append(token)
+
+    add(base)
+
+    normalized = base
+    for prefix in PAD_NET_PREFIXES:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+    add(normalized)
+
+    tokens = [t for t in normalized.replace("/", "-").split("-") if t.strip()]
+    for token in reversed(tokens):
+        if token.lower() in PAD_NET_GENERIC_TOKENS:
+            continue
+        add(token)
+        add(token.replace("[", "").replace("]", ""))
+
+    for max_len in PAD_NET_TRUNCATE_LENGTHS:
+        if len(normalized) > max_len:
+            add(normalized[:max_len])
+
+    return candidates
+
+
+def _fit_pad_net_text(
+    text: str, pad_w: float, pad_h: float
+) -> tuple[str, tuple[float, float, float]] | None:
+    """Try to fit ``text`` (or a shorter fallback) inside a pad of the given size.
+
+    Returns ``(label, (char_w, char_h, thickness))`` for the first candidate
+    that fits, or ``None`` if even a single character does not fit.
+    """
+    for candidate in _pad_net_text_candidates(text):
+        fitted = _fit_text_inside_pad(candidate, pad_w, pad_h)
+        if fitted is not None:
+            return (candidate, fitted)
+    return None
+
+
+def _pad_net_text_rotation(
+    total_pad_rotation_deg: float, pad_w: float, pad_h: float
+) -> float:
+    """Snap pad net label rotation to world 0 or +90 degrees.
+
+    - Symmetric pads always return 0.
+    - Non-symmetric pads consider total pad rotation (footprint + pad).
+    """
+    if pad_w <= 0 or pad_h <= 0:
+        return 0.0
+    if abs(pad_w - pad_h) <= 1e-6:
+        return 0.0
+
+    long_axis_deg = (
+        total_pad_rotation_deg if pad_w > pad_h else total_pad_rotation_deg + 90.0
+    )
+    axis_x = abs(math.cos(math.radians(long_axis_deg)))
+    axis_y = abs(math.sin(math.radians(long_axis_deg)))
+    return 90.0 if axis_y > axis_x else 0.0
 
 
 def _pad_net_text_layers(

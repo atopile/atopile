@@ -1044,7 +1044,7 @@ class PCB_Transformer:
         for obj in chain(fp.fp_texts, fp.propertys):
             obj.at.r = ((obj.at.r or 0) + angle) % 360
 
-        fp.at.r = (fp.at.r or 0) + angle
+        fp.at.r = ((fp.at.r or 0) + angle) % 360
 
     @staticmethod
     def move_fp(fp: KiCadPCBFootprint, coord: kicad.pcb.Xyr, layer: str):
