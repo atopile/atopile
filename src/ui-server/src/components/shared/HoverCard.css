@@ -1,0 +1,31 @@
+/* ============================================
+   HoverCard — rich hover popover
+   Stays open while hovering trigger or content
+   ============================================ */
+
+.hover-card-trigger {
+  display: inline-flex;
+}
+
+.hover-card-content {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  width: 280px;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--vscode-editorHoverWidget-background, var(--bg-secondary));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border-subtle));
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px var(--shadow-color);
+
+  /* enter animation */
+  opacity: 0;
+  animation: hover-card-in 0.15s ease-out forwards;
+}
+
+@keyframes hover-card-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

@@ -1,7 +1,7 @@
 // @ts-nocheck — remark-gfm missing type declarations
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CopyableCodeBlock } from './shared'
+import { CopyableCodeBlock } from './shared/CopyableCodeBlock'
 
 interface MarkdownRendererProps {
   content: string
