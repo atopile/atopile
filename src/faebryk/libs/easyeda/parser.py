@@ -17,7 +17,10 @@ from faebryk.libs.easyeda.easyeda_types import (
     EeFpRect,
     EeFpText,
     EeFpTrack,
+    EeFpType,
     EeFpVia,
+    EePadShape,
+    EePinType,
     EeSymArc,
     EeSymbol,
     EeSymbolInfo,
@@ -99,7 +102,7 @@ def parse_footprint(cad_data: dict) -> EeFootprint:
 
     fp = EeFootprint(
         name=ee_data_info["package"],
-        fp_type="smd" if is_smd else "tht",
+        fp_type=EeFpType.SMD if is_smd else EeFpType.THT,
         bbox_x=bbox_x,
         bbox_y=bbox_y,
     )
@@ -135,7 +138,7 @@ def parse_footprint(cad_data: dict) -> EeFootprint:
 
 def _parse_pad(f: list[str]) -> EeFpPad:
     return EeFpPad(
-        shape=_get(f, 0),
+        shape=EePadShape(_get(f, 0)),
         center_x=to_mm(_float(_get(f, 1))),
         center_y=to_mm(_float(_get(f, 2))),
         width=to_mm(_float(_get(f, 3))),
@@ -225,8 +228,10 @@ def _parse_via(f: list[str]) -> EeFpVia:
 
 
 def _parse_text(f: list[str]) -> EeFpText:
+    # Visibility: type "N" means non-visible, which overrides the display field.
+    text_type = _get(f, 0)
+    displayed = _text_is_displayed(_get(f, 11, "1"))
     return EeFpText(
-        type=_get(f, 0),
         center_x=to_mm(_float(_get(f, 1))),
         center_y=to_mm(_float(_get(f, 2))),
         stroke_width=to_mm(_float(_get(f, 3))),
@@ -237,7 +242,7 @@ def _parse_text(f: list[str]) -> EeFpText:
         font_size=to_mm(_float(_get(f, 8))),
         text=_get(f, 9),
         text_path=_get(f, 10),
-        is_displayed=_text_is_displayed(_get(f, 11, "1")),
+        visible=displayed and text_type != "N",
         id=_get(f, 12),
         is_locked=_bool_field(_get(f, 13)),
     )
@@ -374,10 +379,11 @@ def _parse_sym_pin(line: str, bbox_x: float, bbox_y: float) -> EeSymPin | None:
     number = settings[2].replace(" ", "") if len(settings) > 2 else ""
 
     # Pin type
-    pin_type_raw = settings[1] if len(settings) > 1 else "0"
-    pin_type = _int(pin_type_raw)
-    if pin_type not in (0, 1, 2, 3, 4):
-        pin_type = 0
+    pin_type_raw = _int(settings[1] if len(settings) > 1 else "0")
+    try:
+        pin_type = EePinType(pin_type_raw)
+    except ValueError:
+        pin_type = EePinType.UNSPECIFIED
 
     return EeSymPin(
         name=pin_name,
@@ -635,7 +641,7 @@ def test_int_helper():
 def test_parse_fp_resistor_basic_structure():
     fp = parse_footprint(_resistor_cad_data())
     assert fp.name == "R0603"
-    assert fp.fp_type == "smd"
+    assert fp.fp_type == EeFpType.SMD
     assert fp.bbox_x == pytest.approx(to_mm(4000), abs=0.01)
     assert fp.bbox_y == pytest.approx(to_mm(3000), abs=0.01)
 
@@ -649,8 +655,8 @@ def test_parse_fp_resistor_pad_properties():
     fp = parse_footprint(_resistor_cad_data())
     pad1 = next(p for p in fp.pads if p.number == "1")
     pad2 = next(p for p in fp.pads if p.number == "2")
-    assert pad1.shape == "RECT"
-    assert pad2.shape == "RECT"
+    assert pad1.shape == EePadShape.RECT
+    assert pad2.shape == EePadShape.RECT
     assert pad1.layer_id == 1
     assert pad1.hole_radius == 0
     assert pad2.hole_radius == 0
@@ -691,7 +697,7 @@ def test_parse_fp_solidregion_skipped():
 
 def test_parse_fp_tht_pads():
     fp = parse_footprint(_tht_cad_data())
-    assert fp.fp_type == "tht"
+    assert fp.fp_type == EeFpType.THT
     assert len(fp.pads) == 8
     for pad in fp.pads:
         assert pad.hole_radius > 0, f"THT pad {pad.number} should have hole"

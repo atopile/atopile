@@ -2,6 +2,30 @@
 # SPDX-License-Identifier: MIT
 
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+# ── Enums ────────────────────────────────────────────────────────────────────
+
+
+class EePadShape(str, Enum):
+    ELLIPSE = "ELLIPSE"
+    RECT = "RECT"
+    OVAL = "OVAL"
+    POLYGON = "POLYGON"
+
+
+class EeFpType(str, Enum):
+    SMD = "smd"
+    THT = "tht"
+
+
+class EePinType(int, Enum):
+    UNSPECIFIED = 0
+    INPUT = 1
+    OUTPUT = 2
+    BIDIRECTIONAL = 3
+    POWER = 4
 
 
 # ── Footprint types ──────────────────────────────────────────────────────────
@@ -9,7 +33,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class EeFpPad:
-    shape: str  # ELLIPSE, RECT, OVAL, POLYGON
+    shape: EePadShape
     center_x: float  # mm
     center_y: float  # mm
     width: float  # mm
@@ -81,7 +105,6 @@ class EeFpVia:
 
 @dataclass
 class EeFpText:
-    type: str  # "N" for non-visible, etc.
     center_x: float  # mm
     center_y: float  # mm
     stroke_width: float  # mm
@@ -92,7 +115,7 @@ class EeFpText:
     font_size: float  # mm
     text: str
     text_path: str
-    is_displayed: bool
+    visible: bool
     id: str
     is_locked: bool
 
@@ -124,7 +147,7 @@ class Ee3dModelInfo:
 @dataclass
 class EeFootprint:
     name: str
-    fp_type: str  # "smd" or "tht"
+    fp_type: EeFpType
     bbox_x: float  # mm
     bbox_y: float  # mm
     pads: list[EeFpPad] = field(default_factory=list)
@@ -148,7 +171,7 @@ class EeSymPin:
     pos_x: float  # EE units
     pos_y: float  # EE units
     rotation: int
-    pin_type: int  # 0=unspecified, 1=input, 2=output, 3=bidirectional, 4=power
+    pin_type: EePinType
     has_dot: bool
     has_clock: bool
     length: int  # in EE pixel units

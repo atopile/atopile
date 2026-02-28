@@ -40,7 +40,10 @@ from faebryk.libs.easyeda.easyeda_types import (
     EeFpRect,
     EeFpText,
     EeFpTrack,
+    EeFpType,
     EeFpVia,
+    EePadShape,
+    EePinType,
     EeSymArc,
     EeSymbol,
     EeSymCircle,
@@ -57,10 +60,10 @@ logger = logging.getLogger(__name__)
 # ── Constants ────────────────────────────────────────────────────────────────
 
 _KI_PAD_SHAPE = {
-    "ELLIPSE": kicad.pcb.E_pad_shape.CIRCLE,
-    "RECT": kicad.pcb.E_pad_shape.RECT,
-    "OVAL": kicad.pcb.E_pad_shape.OVAL,
-    "POLYGON": kicad.pcb.E_pad_shape.CUSTOM,
+    EePadShape.ELLIPSE: kicad.pcb.E_pad_shape.CIRCLE,
+    EePadShape.RECT: kicad.pcb.E_pad_shape.RECT,
+    EePadShape.OVAL: kicad.pcb.E_pad_shape.OVAL,
+    EePadShape.POLYGON: kicad.pcb.E_pad_shape.CUSTOM,
 }
 
 _KI_PAD_LAYERS: dict[int, list[str]] = {
@@ -100,11 +103,11 @@ _KI_LAYERS: dict[int, str] = {
 }
 
 _KI_PIN_TYPE = {
-    0: kicad.schematic.E_pin_type.UNSPECIFIED,
-    1: kicad.schematic.E_pin_type.INPUT,
-    2: kicad.schematic.E_pin_type.OUTPUT,
-    3: kicad.schematic.E_pin_type.BIDIRECTIONAL,
-    4: kicad.schematic.E_pin_type.POWER_IN,
+    EePinType.UNSPECIFIED: kicad.schematic.E_pin_type.UNSPECIFIED,
+    EePinType.INPUT: kicad.schematic.E_pin_type.INPUT,
+    EePinType.OUTPUT: kicad.schematic.E_pin_type.OUTPUT,
+    EePinType.BIDIRECTIONAL: kicad.schematic.E_pin_type.BIDIRECTIONAL,
+    EePinType.POWER: kicad.schematic.E_pin_type.POWER_IN,
 }
 
 
@@ -272,14 +275,14 @@ class FootprintBuilder:
                 max_dist_hole = max(hr * 2, hl)
                 if height - max_dist_hole >= width - max_dist_hole:
                     drill = kicad.pcb.PadDrill(
-                        shape="oval",
+                        shape=kicad.pcb.E_pad_drill_shape.OVAL,
                         size_x=round(hr * 2, 2),
                         size_y=hl,
                         offset=None,
                     )
                 else:
                     drill = kicad.pcb.PadDrill(
-                        shape="oval",
+                        shape=kicad.pcb.E_pad_drill_shape.OVAL,
                         size_x=hl,
                         size_y=round(hr * 2, 2),
                         offset=None,
@@ -294,9 +297,9 @@ class FootprintBuilder:
 
         # Custom polygon pad
         primitives = None
-        point_list = [fp_to_ki(p) for p in re.findall(r"\S+", ee_pad.points)]
 
-        if shape == kicad.pcb.E_pad_shape.CUSTOM and point_list:
+        if shape == kicad.pcb.E_pad_shape.CUSTOM and ee_pad.points:
+            point_list = [fp_to_ki(p) for p in ee_pad.points.split()]
             width = KI_PAD_SIZE_MIN
             height = KI_PAD_SIZE_MIN
             orientation = 0
@@ -365,7 +368,7 @@ class FootprintBuilder:
         layer_str = self._track_layer(ee_track.layer_id)
         stroke = self._stroke(ee_track.stroke_width)
 
-        point_list = [fp_to_ki(p) for p in re.findall(r"\S+", ee_track.points)]
+        point_list = [fp_to_ki(p) for p in ee_track.points.split()]
         lines = []
         for i in range(0, len(point_list) - 2, 2):
             sx, sy = self._xy(point_list[i], point_list[i + 1])
@@ -520,13 +523,13 @@ class FootprintBuilder:
 
     def _convert_text(self, ee_text: EeFpText) -> kicad.pcb.FpText:
         layer = self._layer(ee_text.layer_id)
-        if ee_text.type == "N":
+        if not ee_text.visible:
             layer = layer.replace(".SilkS", ".Fab")
         mirror = layer.startswith("B")
         justify = kicad.pcb.Justify(
-            justify1="left",
+            justify1=kicad.pcb.E_justify.LEFT,
             justify2=None,
-            justify3="mirror" if mirror else None,
+            justify3=kicad.pcb.E_justify.MIRROR if mirror else None,
         )
         tx, ty = self._xy(ee_text.center_x, ee_text.center_y)
         return kicad.pcb.FpText(
@@ -538,7 +541,7 @@ class FootprintBuilder:
                 r=angle_to_ki(ee_text.rotation) or None,
             ),
             layer=kicad.pcb.TextLayer(layer=layer, knockout=None),
-            hide=True if not ee_text.is_displayed else None,
+            hide=True if not ee_text.visible else None,
             uuid=kicad.gen_uuid(),
             effects=_ki_effects(
                 font=_ki_font(
@@ -562,11 +565,11 @@ class FootprintBuilder:
 
         offset_x = round(tx - self._bbox_x, 2)
         offset_y = -round(ty - self._bbox_y, 2)
-        offset_z = -round(tz, 2) if self._fp.fp_type == "smd" else 0
+        offset_z = -round(tz, 2) if self._fp.fp_type == EeFpType.SMD else 0
 
         # LEGACY: SMD 3D model X/Y offset zeroed to match original
         # easyeda2kicad output.
-        if self._fp.fp_type == "smd" or re.search(r"[cCrR]0201", self._fp.name):
+        if self._fp.fp_type == EeFpType.SMD or re.search(r"[cCrR]0201", self._fp.name):
             offset_x = 0
             offset_y = 0
 
@@ -667,7 +670,7 @@ class FootprintBuilder:
                 path=None,
                 layer="F.Cu",
                 propertys=properties,
-                attr=(["smd"] if ee_fp.fp_type == "smd" else ["through_hole"]),
+                attr=(["smd"] if ee_fp.fp_type == EeFpType.SMD else ["through_hole"]),
                 fp_circles=circles,
                 fp_lines=lines,
                 fp_arcs=arcs,
@@ -838,7 +841,7 @@ class SymbolBuilder:
         bbox_x: float,
         bbox_y: float,
     ) -> kicad.schematic.Polyline | None:
-        raw_pts = re.findall(r"\S+", ee_polyline.points)
+        raw_pts = ee_polyline.points.split()
         coords = [
             sym_xy(
                 float(raw_pts[i]),
@@ -857,7 +860,7 @@ class SymbolBuilder:
     def _convert_path(
         self, ee_path: EeSymPath, bbox_x: float, bbox_y: float
     ) -> kicad.schematic.Polyline | None:
-        raw_pts = re.findall(r"\S+", ee_path.paths)
+        raw_pts = ee_path.paths.split()
         coords: list[tuple[float, float]] = []
         i = 0
         while i < len(raw_pts):
@@ -1110,8 +1113,8 @@ def test_build_fp_resistor_pads():
     result = FootprintBuilder(fp).build()
     assert len(result.footprint.pads) == 2
     for pad in result.footprint.pads:
-        assert pad.type == "smd"
-        assert pad.shape == "rect"
+        assert pad.type == kicad.pcb.E_pad_type.SMD
+        assert pad.shape == kicad.pcb.E_pad_shape.RECT
         assert pad.drill is None
 
 
@@ -1176,7 +1179,7 @@ def test_build_fp_tht_attr():
 def test_build_fp_tht_pads_have_drill():
     fp = parse_footprint(_tht_cad_data())
     result = FootprintBuilder(fp).build()
-    tht_pads = [p for p in result.footprint.pads if p.type == "thru_hole"]
+    tht_pads = [p for p in result.footprint.pads if p.type == kicad.pcb.E_pad_type.THRU_HOLE]
     # 8 signal pads + 1 hole (also thru_hole per old behavior)
     assert len(tht_pads) == 9
     for pad in tht_pads:
@@ -1188,7 +1191,7 @@ def test_build_fp_tht_pad_layers():
     fp = parse_footprint(_tht_cad_data())
     result = FootprintBuilder(fp).build()
     for pad in result.footprint.pads:
-        if pad.type == "thru_hole":
+        if pad.type == kicad.pcb.E_pad_type.THRU_HOLE:
             assert "*.Cu" in pad.layers
             assert "*.Mask" in pad.layers
 
@@ -1330,10 +1333,10 @@ def test_kicad_opamp_sym_dumps():
 
 
 def test_pad_number_with_parentheses():
-    fp = EeFootprint(name="TEST", fp_type="smd", bbox_x=0, bbox_y=0)
+    fp = EeFootprint(name="TEST", fp_type=EeFpType.SMD, bbox_x=0, bbox_y=0)
     fp.pads.append(
         EeFpPad(
-            shape="RECT",
+            shape=EePadShape.RECT,
             center_x=0,
             center_y=0,
             width=1,
@@ -1356,10 +1359,10 @@ def test_pad_number_with_parentheses():
 
 
 def test_polygon_pad():
-    fp = EeFootprint(name="TEST", fp_type="smd", bbox_x=0, bbox_y=0)
+    fp = EeFootprint(name="TEST", fp_type=EeFpType.SMD, bbox_x=0, bbox_y=0)
     fp.pads.append(
         EeFpPad(
-            shape="POLYGON",
+            shape=EePadShape.POLYGON,
             center_x=0.5,
             center_y=0.5,
             width=1,
@@ -1379,12 +1382,12 @@ def test_polygon_pad():
     )
     result = FootprintBuilder(fp).build()
     pad = result.footprint.pads[0]
-    assert pad.shape == "custom"
+    assert pad.shape == kicad.pcb.E_pad_shape.CUSTOM
     assert pad.primitives is not None
 
 
 def test_rectangle_to_lines():
-    fp = EeFootprint(name="TEST", fp_type="smd", bbox_x=0, bbox_y=0)
+    fp = EeFootprint(name="TEST", fp_type=EeFpType.SMD, bbox_x=0, bbox_y=0)
     fp.rects.append(
         EeFpRect(
             pos_x=1,
@@ -1402,7 +1405,7 @@ def test_rectangle_to_lines():
 
 
 def test_hole_to_thru_hole():
-    fp = EeFootprint(name="TEST", fp_type="tht", bbox_x=0, bbox_y=0)
+    fp = EeFootprint(name="TEST", fp_type=EeFpType.THT, bbox_x=0, bbox_y=0)
     fp.holes.append(
         EeFpHole(
             center_x=5,
@@ -1415,17 +1418,17 @@ def test_hole_to_thru_hole():
     result = FootprintBuilder(fp).build()
     assert len(result.footprint.pads) == 1
     pad = result.footprint.pads[0]
-    assert pad.type == "thru_hole"
+    assert pad.type == kicad.pcb.E_pad_type.THRU_HOLE
     assert pad.name == ""
     assert pad.drill is not None
     assert pad.drill.size_x == pytest.approx(3.0, abs=0.01)
 
 
 def test_oval_drill():
-    fp = EeFootprint(name="TEST", fp_type="tht", bbox_x=0, bbox_y=0)
+    fp = EeFootprint(name="TEST", fp_type=EeFpType.THT, bbox_x=0, bbox_y=0)
     fp.pads.append(
         EeFpPad(
-            shape="ELLIPSE",
+            shape=EePadShape.ELLIPSE,
             center_x=5,
             center_y=5,
             width=3,
@@ -1446,7 +1449,7 @@ def test_oval_drill():
     result = FootprintBuilder(fp).build()
     pad = result.footprint.pads[0]
     assert pad.drill is not None
-    assert pad.drill.shape == "oval"
+    assert pad.drill.shape == kicad.pcb.E_pad_drill_shape.OVAL
 
 
 def _make_test_sym(pin: EeSymPin) -> EeSymbol:
@@ -1473,7 +1476,7 @@ def _make_test_pin(**kwargs: object) -> EeSymPin:
         pos_x=350,
         pos_y=290,
         rotation=180,
-        pin_type=0,
+        pin_type=EePinType.UNSPECIFIED,
         has_dot=False,
         has_clock=False,
         length=10,
@@ -1483,7 +1486,7 @@ def _make_test_pin(**kwargs: object) -> EeSymPin:
 
 
 def test_symbol_pin_name_overbar():
-    sym = _make_test_sym(_make_test_pin(name="RESET#", pin_type=1))
+    sym = _make_test_sym(_make_test_pin(name="RESET#", pin_type=EePinType.INPUT))
     pin = (
         SymbolBuilder(sym, fp_lib_name="lib")
         .build()

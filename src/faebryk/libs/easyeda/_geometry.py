@@ -43,28 +43,43 @@ def _is_point_in_polygon(
     return winding_number != 0
 
 
+# Precomputed unit circle offsets for 12-point circle approximation.
+_CIRCLE_OFFSETS = [
+    (math.cos(2 * math.pi * i / 12), math.sin(2 * math.pi * i / 12))
+    for i in range(12)
+]
+
+
 def is_circle_in_polygon(
     center: tuple[float, float],
     radius: float,
     polygon: list[tuple[float, float]],
 ) -> bool:
-    # Approximate circle with 12-sided polygon
+    """Check if a circle (approximated by 12 boundary points) lies within a polygon."""
     cx, cy = center
     return all(
-        _is_point_in_polygon(
-            (
-                cx + radius * math.cos(2 * math.pi * i / 12),
-                cy + radius * math.sin(2 * math.pi * i / 12),
-            ),
-            polygon,
-        )
-        for i in range(12)
+        _is_point_in_polygon((cx + radius * dx, cy + radius * dy), polygon)
+        for dx, dy in _CIRCLE_OFFSETS
     )
 
 
 def find_anchor_position(
     polygon: list[tuple[float, float]], radius: float
 ) -> tuple[float, float] | None:
+    """Find a position inside the polygon that can contain a circle of given radius.
+
+    Tries the centroid first (O(n)), then falls back to a grid search.
+    """
+    n = len(polygon)
+    if n == 0:
+        return None
+
+    # Try centroid first — works for most convex and many concave polygons.
+    centroid = (sum(p[0] for p in polygon) / n, sum(p[1] for p in polygon) / n)
+    if is_circle_in_polygon(centroid, radius, polygon):
+        return centroid
+
+    # Fall back to grid search.
     min_x = min(p[0] for p in polygon)
     max_x = max(p[0] for p in polygon)
     min_y = min(p[1] for p in polygon)

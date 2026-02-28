@@ -8,7 +8,7 @@ import math
 
 def to_mm(dim: float) -> float:
     """Convert EasyEDA internal units to mm."""
-    return float(dim) * 10 * 0.0254
+    return dim * 0.254
 
 
 def fp_to_ki(dim: str | float) -> float:
@@ -46,7 +46,7 @@ MIN_STROKE_W = 0.01
 import pytest  # noqa: E402
 
 
-def testto_mm():
+def test_to_mm():
     assert to_mm(0) == 0
     # 100 * 10 * 0.0254 = 25.4
     assert to_mm(100) == pytest.approx(25.4, abs=0.01)
