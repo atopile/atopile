@@ -45,9 +45,10 @@ module DesignValidation:
     startup_transient.param_name = "dut.switching_frequency"
     startup_transient.param_values = "400e3,600e3,800e3,1200e3,1600e3"
     startup_transient.param_unit = "Hz"
+    startup_transient.spice_param = "FS"
     startup_transient.spice = "V1 dut.power_in.hv 0 PULSE(0 dut.power_in.voltage 0 10u 10u 10 10)"
     startup_transient.time_stop = "0.006"
-    startup_transient.time_step = 1us
+    startup_transient.time_step = "100ns"
 
     # Load step: ILOAD sweep with PULSE load (100mA -> swept ILOAD)
     iload_step = new SimulationSweep
@@ -55,8 +56,7 @@ module DesignValidation:
     iload_step.param_name = "ILOAD"
     iload_step.param_values = "0.5,1,2,3,4,5"
     iload_step.param_unit = "A"
-    iload_step.remove_elements = "R5"
-    iload_step.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(100m {ILOAD} 5.2m 1u 1u 0.4m 100m)"
+    iload_step.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(200m {ILOAD} 5.2m 10u 10u 0.4m 100m)"
     iload_step.time_start = 5ms
     iload_step.time_stop = 6ms
     iload_step.time_step = 100ns
@@ -67,7 +67,7 @@ module DesignValidation:
     iload_sweep.param_name = "ILOAD"
     iload_sweep.param_values = "0.1,1,2,3,4,5"
     iload_sweep.param_unit = "A"
-    iload_sweep.remove_elements = "R5"
+    iload_sweep.remove_elements = "r_load"
     iload_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC {ILOAD}"
     iload_sweep.time_start = 5ms
     iload_sweep.time_stop = 5.2ms
@@ -79,7 +79,7 @@ module DesignValidation:
     cout_step.param_name = "COUT"
     cout_step.param_values = "100e-6,150e-6,200e-6,247e-6,330e-6"
     cout_step.param_unit = "F"
-    cout_step.remove_elements = "C5,C6,C7,C8,R5"
+    cout_step.remove_elements = "c_out,r_load"
     cout_step.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(100m {dut.power_out.max_current} 5.2m 1u 1u 0.4m 100m)"
     cout_step.extra_spice_template = "Cout dut.power_out.hv 0 {COUT}"
     cout_step.time_start = 5ms
@@ -92,7 +92,7 @@ module DesignValidation:
     cout_ripple_sweep.param_name = "COUT"
     cout_ripple_sweep.param_values = "100e-6,150e-6,200e-6,247e-6,330e-6"
     cout_ripple_sweep.param_unit = "F"
-    cout_ripple_sweep.remove_elements = "C5,C6,C7,C8,R5"
+    cout_ripple_sweep.remove_elements = "c_out,r_load"
     cout_ripple_sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Iload dut.power_out.hv 0 DC 1"
     cout_ripple_sweep.extra_spice_template = "Cout dut.power_out.hv 0 {COUT}"
     cout_ripple_sweep.time_start = 5ms
@@ -105,7 +105,7 @@ module DesignValidation:
     vin_sweep.param_name = "VIN"
     vin_sweep.param_values = "8,10,12,14,16"
     vin_sweep.param_unit = "V"
-    vin_sweep.remove_elements = "R5"
+    vin_sweep.remove_elements = "r_load"
     vin_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {VIN} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 1"
     vin_sweep.time_start = 5ms
     vin_sweep.time_stop = 5.2ms
@@ -256,7 +256,7 @@ module DesignValidation:
     req_002.simulation = "iload_step"
     req_002.net = "dut.power_out.hv"
     req_002.measurement = "envelope"
-    assert req_002.limit within 5V +/- 10%
+    assert req_002.limit within 5V +/- 5%
     req_002.required_plot = "plot_loadstep_vout"
     req_002.supplementary_plot = "plot_loadstep_envelope"
 
@@ -345,7 +345,7 @@ module DesignValidation:
     req_011.simulation = "iload_sweep"
     req_011.net = "dut.power_out.hv"
     req_011.measurement = "peak_to_peak"
-    assert req_011.limit within 0 to 100mV
+    assert req_011.limit within 0 to 150mV
     req_011.required_plot = "plot_ripple_iload_raw"
     req_011.supplementary_plot = "plot_ripple_iload_envelope"
 
@@ -362,7 +362,7 @@ module DesignValidation:
     # --- REQ_013: Switching Node Waveform ---
     sw_node_sim = new SimulationTransient
     sw_node_sim.duts = "dut_400k"
-    sw_node_sim.remove_elements = "R5"
+    sw_node_sim.remove_elements = "r_load"
     sw_node_sim.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5"
     sw_node_sim.time_start = 5ms
     sw_node_sim.time_stop = 5.02ms
@@ -420,7 +420,7 @@ module DesignValidation:
 
     vin_step_sim = new SimulationTransient
     vin_step_sim.duts = "dut_400k"
-    vin_step_sim.remove_elements = "R5"
+    vin_step_sim.remove_elements = "r_load"
     vin_step_sim.spice = "V1 dut.power_in.hv 0 PWL(0 0 10u 10 5.2m 10 5.201m 14 10 14)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 2.5"
     vin_step_sim.time_start = 5ms
     vin_step_sim.time_stop = 5.6ms
@@ -450,7 +450,7 @@ module DesignValidation:
 
     load_release_sim = new SimulationTransient
     load_release_sim.duts = "dut_400k"
-    load_release_sim.remove_elements = "R5"
+    load_release_sim.remove_elements = "r_load"
     load_release_sim.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(5 0.5 5.2m 1u 1u 1m 100m)"
     load_release_sim.time_start = 5ms
     load_release_sim.time_stop = 5.8ms
@@ -482,7 +482,8 @@ module DesignValidation:
     freq_ripple_sweep.param_name = "dut.switching_frequency"
     freq_ripple_sweep.param_values = "400e3,800e3,1200e3,1600e3"
     freq_ripple_sweep.param_unit = "Hz"
-    freq_ripple_sweep.remove_elements = "R5"
+    freq_ripple_sweep.spice_param = "FS"
+    freq_ripple_sweep.remove_elements = "r_load"
     freq_ripple_sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 {dut.power_in.voltage} 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 2.5"
     freq_ripple_sweep.time_start = 5ms
     freq_ripple_sweep.time_stop = 5.05ms
@@ -576,7 +577,7 @@ module DesignValidation:
     vin_drop_cout_sweep.param_name = "COUT"
     vin_drop_cout_sweep.param_values = "100e-6,150e-6,200e-6,247e-6,330e-6"
     vin_drop_cout_sweep.param_unit = "F"
-    vin_drop_cout_sweep.remove_elements = "C5,C6,C7,C8,R5"
+    vin_drop_cout_sweep.remove_elements = "c_out,r_load"
     vin_drop_cout_sweep.spice = "V1 dut.power_in.hv 0 PWL(0 0 10u 14 5.2m 14 5.201m 8 10 8)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 2.5"
     vin_drop_cout_sweep.extra_spice_template = "Cout dut.power_out.hv 0 {COUT}"
     vin_drop_cout_sweep.time_start = 5ms

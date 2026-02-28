@@ -115,6 +115,8 @@ class SpiceNetlist:
     _lines: list[str] = field(default_factory=list)
     _control: list[str] = field(default_factory=list)
     _subcircuit_defs: list[str] = field(default_factory=list)
+    component_map: dict[str, str] = field(default_factory=dict)
+    """Maps ato relative component path → SPICE designator (e.g. ``r_load`` → ``R5``)."""
 
     def add_resistor(self, name: str, node_p: str, node_n: str, value: float | str) -> None:
         """Add a resistor element.
@@ -171,6 +173,12 @@ class SpiceNetlist:
     def to_string(self) -> str:
         """Render the complete SPICE netlist as a string."""
         lines = [f"* {self.title}"]
+        # Embed component map as comments for round-trip through file
+        if self.component_map:
+            lines.append("* @component_map: " + ",".join(
+                f"{path}={designator}"
+                for path, designator in sorted(self.component_map.items())
+            ))
         # Subcircuit definitions go first (before element lines)
         for block in self._subcircuit_defs:
             lines.append(block)
@@ -447,6 +455,7 @@ class Circuit:
         new_netlist = SpiceNetlist(title=self._netlist.title)
         new_netlist._lines = list(self._netlist._lines)
         new_netlist._subcircuit_defs = list(self._netlist._subcircuit_defs)
+        new_netlist.component_map = dict(self._netlist.component_map)
         return Circuit(new_netlist)
 
     def set_source(self, name: str, source_spec: str) -> None:
@@ -538,7 +547,13 @@ class Circuit:
             spice_content = net.to_string()
             spice_file.write_text(spice_content)
 
-            _run_ngspice_subprocess(str(spice_file), timeout=300)
+            proc = _run_ngspice_subprocess(str(spice_file), timeout=300)
+            if not data_file.exists():
+                raise RuntimeError(
+                    f"ngspice produced no output data file.\n"
+                    f"stderr: {proc.stderr[-2000:] if proc.stderr else '(empty)'}\n"
+                    f"stdout (last 2000): {proc.stdout[-2000:] if proc.stdout else '(empty)'}"
+                )
             return _parse_wrdata(data_file, signals)
 
     def add_element(self, line: str) -> None:
@@ -546,12 +561,38 @@ class Circuit:
         self._netlist._lines.append(line)
 
     def remove_element(self, name: str) -> None:
-        """Remove an element by name from the netlist."""
-        prefix = name.upper() + " "
-        self._netlist._lines = [
-            l for l in self._netlist._lines
-            if not l.upper().startswith(prefix)
-        ]
+        """Remove an element by name or ato component path from the netlist.
+
+        If *name* matches an ato component path in the component map,
+        all corresponding SPICE designators are removed.  A bare path
+        like ``c_out`` also matches array entries (``c_out.0``, etc.).
+        Falls back to direct SPICE designator matching (e.g. ``R5``).
+        """
+        cmap = self._netlist.component_map
+
+        # Collect SPICE designators to remove
+        designators: list[str] = []
+
+        if name in cmap:
+            # Exact match: e.g. "r_load" → "R5"
+            designators.append(cmap[name])
+        else:
+            # Prefix match for arrays: e.g. "c_out" matches "c_out.0", "c_out.1", ...
+            prefix_with_dot = name + "."
+            for path, desig in cmap.items():
+                if path.startswith(prefix_with_dot):
+                    designators.append(desig)
+
+        if not designators:
+            # No component_map match — treat as raw SPICE designator (backward compat)
+            designators.append(name)
+
+        for desig in designators:
+            prefix = desig.upper() + " "
+            self._netlist._lines = [
+                l for l in self._netlist._lines
+                if not l.upper().startswith(prefix)
+            ]
 
     def modify_instance_param(self, param_name: str, value: float) -> None:
         """Modify a parameter on subcircuit instances (X elements).
@@ -822,6 +863,14 @@ def _load_spice_circuit(path: Path | str) -> SpiceNetlist:
         if stripped.startswith("*"):
             if netlist.title == "Untitled":
                 netlist.title = stripped.lstrip("* ").strip() or "Untitled"
+            # Parse embedded component map
+            if "* @component_map:" in stripped:
+                map_str = stripped.split("@component_map:", 1)[1].strip()
+                for entry in map_str.split(","):
+                    entry = entry.strip()
+                    if "=" in entry:
+                        path, designator = entry.split("=", 1)
+                        netlist.component_map[path.strip()] = designator.strip()
             if in_subckt:
                 subckt_block.append(stripped)
             continue
@@ -882,25 +931,55 @@ def _sanitize_net_name(name: str) -> str:
 def _get_nominal_value(param_node) -> float | None:
     """Extract the nominal (center) value of a numeric parameter.
 
-    Uses the NumericParameter.try_extract_superset() method (same pattern
-    as the power_tree exporter). Returns the midpoint of [min, max] range,
-    or None if the parameter is unconstrained or infinite.
+    Tries multiple extraction paths to handle different solver states:
+
+    1. ``try_extract_superset()`` — works when solver has resolved constraints
+       to a finite [min, max] range (e.g. direct assignments like ``10uF +/- 20%``).
+    2. ``has_part_picked.get_attribute()`` — uses the picked part's stored
+       attribute value when the solver hasn't resolved constraints (e.g.
+       individually-picked components).
+
+    Note: MultiCapacitor children (for-loop-constrained) currently don't get
+    resolved by either path because the solver doesn't simplify for-loop
+    constraints and the individual children don't have their own
+    has_part_picked trait. These must be added via extra_spice for now.
 
     Args:
-        param_node: A NumericParameter node (e.g. resistor.resistance.get()).
+        param_node: A NumericParameter node (e.g. resistor.capacitance.get()).
     """
+    import faebryk.library._F as F
+
+    # Path 1: direct superset extraction (works for most resolved parameters)
     try:
         numbers = param_node.try_extract_superset()
-        if numbers is None:
-            return None
-        min_val = numbers.get_min_value()
-        max_val = numbers.get_max_value()
-        if math.isinf(min_val) or math.isinf(max_val):
-            return None
-        return (min_val + max_val) / 2.0
+        if numbers is not None:
+            min_val = numbers.get_min_value()
+            max_val = numbers.get_max_value()
+            if not math.isinf(min_val) and not math.isinf(max_val):
+                return (min_val + max_val) / 2.0
     except Exception as e:
-        logger.debug(f"Failed to extract parameter value: {e}")
-        return None
+        logger.debug(f"_get_nominal_value path 1 (try_extract_superset) failed: {e}")
+
+    # Path 2: from picked part attribute on the direct parent module
+    try:
+        parent_info = param_node.get_parent()
+        if parent_info:
+            parent_module = parent_info[0]
+            param_name = parent_info[1]
+            part_picked = parent_module.get_trait(F.Pickable.has_part_picked)
+            attr_lit = part_picked.get_attribute(param_name)
+            if attr_lit is not None:
+                lit_parent = attr_lit.get_parent()
+                if lit_parent:
+                    numbers_node = lit_parent[0]
+                    min_val = numbers_node.get_min_value()
+                    max_val = numbers_node.get_max_value()
+                    if not math.isinf(min_val) and not math.isinf(max_val):
+                        return (min_val + max_val) / 2.0
+    except Exception as e:
+        logger.debug(f"_get_nominal_value path 2 (has_part_picked) failed: {e}")
+
+    return None
 
 
 def _resolve_param_bindings(
@@ -1072,6 +1151,18 @@ def generate_spice_netlist(
             if electrical_to_net[node_key] == ground_net_name:
                 electrical_to_net[node_key] = "0"
 
+    # Helper: compute relative component path from root for the component map
+    root_full_name = root.get_full_name(include_uuid=False) or ""
+
+    def _rel_path(component) -> str | None:
+        """Relative path of *component* from the netlist scope root."""
+        full = component.get_full_name(include_uuid=False)
+        if not full:
+            return None
+        if root_full_name and full.startswith(root_full_name + "."):
+            return full[len(root_full_name) + 1:]
+        return full
+
     # 6. Find and add Resistors
     r_counter = 1
     for resistor in root.get_children(direct_only=False, types=F.Resistor):
@@ -1087,7 +1178,11 @@ def generate_spice_netlist(
 
         pin0 = pins[0].get()
         pin1 = pins[1].get()
-        netlist.add_resistor(f"R{r_counter}", _net(pin0), _net(pin1), resistance)
+        designator = f"R{r_counter}"
+        netlist.add_resistor(designator, _net(pin0), _net(pin1), resistance)
+        rel = _rel_path(resistor)
+        if rel:
+            netlist.component_map[rel] = designator
         r_counter += 1
 
     # 7. Find and add Capacitors
@@ -1105,7 +1200,11 @@ def generate_spice_netlist(
 
         pin0 = pins[0].get()
         pin1 = pins[1].get()
-        netlist.add_capacitor(f"C{c_counter}", _net(pin0), _net(pin1), capacitance)
+        designator = f"C{c_counter}"
+        netlist.add_capacitor(designator, _net(pin0), _net(pin1), capacitance)
+        rel = _rel_path(capacitor)
+        if rel:
+            netlist.component_map[rel] = designator
         c_counter += 1
 
     # 8. Find and add Inductors
@@ -1123,7 +1222,11 @@ def generate_spice_netlist(
 
         pin0 = pins[0].get()
         pin1 = pins[1].get()
-        netlist.add_inductor(f"L{l_counter}", _net(pin0), _net(pin1), inductance)
+        designator = f"L{l_counter}"
+        netlist.add_inductor(designator, _net(pin0), _net(pin1), inductance)
+        rel = _rel_path(inductor)
+        if rel:
+            netlist.component_map[rel] = designator
         l_counter += 1
 
     # 9. Find and add subcircuit instances for nodes with has_spice_model trait
@@ -1150,7 +1253,23 @@ def generate_spice_netlist(
             pin_map = trait.get_pin_map()
             param_overrides = trait.get_params()
             # Resolve dynamic param_bindings (e.g. FS -> switching_frequency)
+            # 1. Check has_spice_model's own param_bindings (backwards compat)
             bindings = trait.get_param_bindings()
+            # 2. If empty, walk ancestors for has_spice_param_bindings trait
+            if not bindings:
+                current = node
+                while current is not None:
+                    try:
+                        ancestor_trait = current.get_trait(
+                            F.has_spice_param_bindings
+                        )
+                        bindings = ancestor_trait.get_bindings()
+                        if bindings:
+                            break
+                    except Exception:
+                        pass
+                    parent_info = current.get_parent()
+                    current = parent_info[0] if parent_info else None
             if bindings:
                 resolved = _resolve_param_bindings(node, bindings)
                 param_overrides.update(resolved)
@@ -1239,12 +1358,22 @@ def generate_spice_netlist(
                 f"{k}={v}" for k, v in param_overrides.items()
             )
 
-        x_line = f"X{x_counter} {' '.join(pin_nets)} {subckt_name}{param_str}"
+        designator = f"X{x_counter}"
+        x_line = f"{designator} {' '.join(pin_nets)} {subckt_name}{param_str}"
         netlist.add_raw(x_line)
+        rel = _rel_path(node)
+        if rel:
+            netlist.component_map[rel] = designator
         logger.info(
-            f"Added subcircuit instance X{x_counter} "
+            f"Added subcircuit instance {designator} "
             f"({subckt_name}) for {node.get_full_name(include_uuid=False)}"
         )
         x_counter += 1
+
+    if netlist.component_map:
+        logger.info(
+            "Component map: "
+            + ", ".join(f"{p}={d}" for p, d in sorted(netlist.component_map.items()))
+        )
 
     return netlist, net_aliases

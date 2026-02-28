@@ -115,7 +115,7 @@
 		(uuid "042aa13a-5ff9-4f5c-b404-742f4642524b")
 		(at 0 0 0)
 		(property "Reference" "U1"
-			(at 0 -6.77)
+			(at 0 -6.77 0)
 			(layer "F.SilkS")
 			(hide yes)
 			(uuid "c47af62a-58c1-427e-b48a-b2fc5136f20b")
@@ -127,7 +127,7 @@
 			)
 		)
 		(property "Value" ""
-			(at 0 6.77)
+			(at 0 6.77 0)
 			(layer "F.Fab")
 			(uuid "36d2df9e-b817-4235-ac09-177ec89b2d08")
 			(effects
@@ -155,11 +155,17 @@
 			(hide yes)
 			(uuid "d19125cc-16d2-4399-9de2-055f4642524b")
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_1810131310_Texas-Instruments-TPS54560DDAR_C31966.pdf"
+		(property "Datasheet" "https://lcsc.com/datasheet/lcsc_datasheet_2410121845_TI-TPS54560DDAR_C31966.pdf"
 			(at 0 0 0)
-			(layer "User.9")
+			(layer "F.Fab")
 			(hide yes)
 			(uuid "f05b60e1-35a1-4c86-8dea-9f824642524b")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
 		)
 		(property "atopile_address" "dut_400k.package"
 			(at 0 0 0)
@@ -173,6 +179,18 @@
 			(hide yes)
 			(uuid "7ec02962-8921-4804-bb01-b8d04642524b")
 		)
+		(property "Description" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5ab1dabd-4342-43d6-a5ae-a521cea9e501")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
 		(attr smd)
 		(fp_line
 			(start -2.53 1.52)
@@ -182,8 +200,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "7c5f3c6f-ebcb-4762-b763-5d300935401f")
 		)
 		(fp_line
@@ -194,8 +210,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "e87acdb6-71c8-4335-aedc-aa9d92be0eff")
 		)
 		(fp_line
@@ -206,8 +220,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "e2a501d3-bbcd-4c4f-9922-9c05bfccfd50")
 		)
 		(fp_line
@@ -218,8 +230,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "7eeacdbd-0f77-4fb5-a885-7897b41e2a59")
 		)
 		(fp_circle
@@ -229,8 +239,8 @@
 				(width 0.06)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(locked no)
 			(uuid "aa809e89-cef0-4a53-9dab-32523f7f2b3b")
 		)
 		(fp_circle
@@ -240,8 +250,8 @@
 				(width 0.3)
 				(type solid)
 			)
+			(fill no)
 			(layer "Cmts.User")
-			(locked no)
 			(uuid "21c4294b-a4f5-45ed-a3e1-46426d4a6983")
 		)
 		(fp_circle
@@ -251,8 +261,8 @@
 				(width 0.3)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.SilkS")
-			(locked no)
 			(uuid "c165fd89-1c89-47f0-a382-fc8914762a68")
 		)
 		(fp_circle
@@ -262,12 +272,12 @@
 				(width 0.3)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.SilkS")
-			(locked no)
 			(uuid "827e9c0c-f2b9-4845-9016-bf03b870428d")
 		)
-		(fp_text user "%R"
-			(at 0 0)
+		(fp_text user "${REFERENCE}"
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "28bb6609-fb1d-453f-a921-dcc495a09308")
 			(effects
@@ -275,103 +285,124 @@
 					(size 1 1)
 					(thickness 0.15)
 				)
+				(hide yes)
+			)
+		)
+		(fp_text user "${REFERENCE}"
+			(at 0 -6.77 0)
+			(layer "F.SilkS")
+			(uuid "55fc923e-c90c-45e8-ac1a-2218ed784b9a")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(hide yes)
 			)
 		)
 		(pad "1" smd oval
-			(at -1.91 2.77 0)
+			(at -1.91 2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 29 "hv")
 			(uuid "7e9ab308-3f8a-49de-afe5-fe46a865f2e0")
 		)
 		(pad "2" smd oval
-			(at -0.63 2.77 0)
+			(at -0.63 2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 34 "power_in-hv")
 			(uuid "36854f64-9982-4976-bd3a-0c0ce8cf12fb")
 		)
 		(pad "3" smd oval
-			(at 0.63 2.77 0)
+			(at 0.63 2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 35 "EN")
 			(uuid "fef2795a-666b-4537-b757-32c1bbb700ea")
 		)
 		(pad "4" smd oval
-			(at 1.9 2.77 0)
+			(at 1.9 2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 55 "RT_CLK")
 			(uuid "e524f2f1-1a47-447b-bc23-817e56bc88c8")
 		)
 		(pad "8" smd oval
-			(at -1.91 -2.77 0)
+			(at -1.91 -2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 31 "cathode")
 			(uuid "1b39d88d-e7bf-4609-89a1-fb90604ec607")
 		)
 		(pad "7" smd oval
-			(at -0.63 -2.77 0)
+			(at -0.63 -2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 33 "anode")
 			(uuid "9d7fba7e-e8d8-4bc6-bcbf-4c91a2902c20")
 		)
 		(pad "6" smd oval
-			(at 0.63 -2.77 0)
+			(at 0.63 -2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 32 "c_comp1-power-hv")
 			(uuid "3ec9135d-a208-4d15-870d-8ff49e24184f")
 		)
 		(pad "5" smd oval
-			(at 1.9 -2.77 0)
+			(at 1.9 -2.77)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 36 "FB")
 			(uuid "5758e224-f325-4ef7-811c-7c7ea93d259d")
 		)
 		(pad "9" smd rect
-			(at 0 0 0)
+			(at 0 0)
 			(size 2 2)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 33 "anode")
 			(uuid "3eed34b7-d212-4a93-8881-1efda27e2d3f")
 		)
-		(pad "" thru_hole circle
-			(at 0.5 -0.5)
-			(size 0.61 0.61)
-			(drill 0.3)
-			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "2823bf05-7f38-4b40-9e66-570fe4009366")
-		)
-		(pad "" thru_hole circle
+		(pad "9" thru_hole circle
 			(at -0.5 -0.5)
 			(size 0.61 0.61)
 			(drill 0.3)
 			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "e3dec621-0654-4cd6-a972-a50079befdee")
+			(remove_unused_layers no)
+			(net 33 "anode")
+			(uuid "e11bb2af-c1c1-45c0-bbd4-8a5f8ba49095")
 		)
-		(pad "" thru_hole circle
+		(pad "9" thru_hole circle
 			(at -0.5 0.5)
 			(size 0.61 0.61)
 			(drill 0.3)
 			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "d8bfdb25-afff-4865-9dd3-c7a6eccb5e12")
+			(remove_unused_layers no)
+			(net 33 "anode")
+			(uuid "a264268d-7f34-49c2-bb62-6a567e0d4d6b")
 		)
-		(pad "" thru_hole circle
+		(pad "9" thru_hole circle
+			(at 0.5 -0.5)
+			(size 0.61 0.61)
+			(drill 0.3)
+			(layers "*.Cu" "*.Paste" "*.Mask")
+			(remove_unused_layers no)
+			(net 33 "anode")
+			(uuid "e9c83f67-7e69-46c7-8891-42aed2dc3252")
+		)
+		(pad "9" thru_hole circle
 			(at 0.5 0.5)
 			(size 0.61 0.61)
 			(drill 0.3)
 			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "01dc1808-88ea-477f-bdf9-579b56135b30")
+			(remove_unused_layers no)
+			(net 33 "anode")
+			(uuid "28162f38-9d18-4fc3-84d2-52f9da71ca66")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/Texas_Instruments_TPS54560DDAR/39.STEP"
+		(model "${KIPRJMOD}/../../parts/Texas_Instruments_TPS54560DDAR/SOIC-8_L4.9-W3.9-H1.7-LS6.0-P1.27.step"
 			(offset
-				(xyz 0 0 -0)
+				(xyz 0 0 0)
 			)
 			(scale
 				(xyz 1 1 1)
@@ -386,7 +417,7 @@
 		(uuid "a071435b-90cc-4e83-8d4d-0a5d4642524b")
 		(at 10 0 0)
 		(property "Reference" "D1"
-			(at 0 -4)
+			(at 0 -4 0)
 			(layer "F.SilkS")
 			(hide yes)
 			(uuid "b277e7f6-b319-4a6f-97f3-e1d5a27ac339")
@@ -398,7 +429,7 @@
 			)
 		)
 		(property "Value" ""
-			(at 0 4)
+			(at 0 4 0)
 			(layer "F.Fab")
 			(uuid "ca444c3b-4d9c-40a5-8566-5e85095606e6")
 			(effects
@@ -426,7 +457,7 @@
 			(hide yes)
 			(uuid "bf7e9363-e045-4448-9060-db374642524b")
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_1811141732_STMicroelectronics-STPS340U_C50706.pdf"
+		(property "Datasheet" "https://lcsc.com/datasheet/lcsc_datasheet_2410010132_ST-STPS340U_C50706.pdf"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -453,8 +484,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "4457cfe0-29b0-4f22-b5f4-c3151560d637")
 		)
 		(fp_line
@@ -465,8 +494,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "11dc4020-c7d2-4e67-a284-313f040a03d1")
 		)
 		(fp_line
@@ -477,8 +504,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "02c3a202-e0f2-4be0-a057-32fc2190f9e0")
 		)
 		(fp_line
@@ -489,8 +514,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "38119773-e89b-43d8-968f-e22f6277ddf3")
 		)
 		(fp_line
@@ -501,8 +524,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "0fed8d44-0576-4914-9430-ee71f5267166")
 		)
 		(fp_circle
@@ -512,12 +533,12 @@
 				(width 0.06)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(locked no)
 			(uuid "37593280-ce33-4153-94fe-ceebc2c035ac")
 		)
 		(fp_text user "%R"
-			(at 0 0)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "3967b464-6fb3-4217-8885-9749f7a1546f")
 			(effects
@@ -525,6 +546,18 @@
 					(size 1 1)
 					(thickness 0.15)
 				)
+			)
+		)
+		(fp_text user "${REFERENCE}"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(uuid "45a54e19-d071-49e7-88b9-dc705caa6441")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(hide yes)
 			)
 		)
 		(pad "2" smd rect
@@ -541,10 +574,9 @@
 			(net 31 "cathode")
 			(uuid "68d0c33c-d9db-499e-a7de-322fbdfee7e1")
 		)
-		(embedded_fonts no)
 		(model "${KIPRJMOD}/../../parts/STMicroelectronics_STPS340U/SMB_L4.6-W3.6-LS5.3-RD.step"
 			(offset
-				(xyz 0 0 -0)
+				(xyz 0 0 0)
 			)
 			(scale
 				(xyz 1 1 1)

@@ -15,30 +15,13 @@ interface PlotToolbarProps {
 
 type PlotFieldDef = { key: string; label: string; placeholder: string };
 
-const LINE_CHART_FIELDS: PlotFieldDef[] = [
+const PLOT_FIELDS: PlotFieldDef[] = [
   { key: 'title', label: 'Title', placeholder: 'Chart Title' },
-  { key: 'x', label: 'X Axis', placeholder: 'time, frequency, or dut.param' },
+  { key: 'x', label: 'X Axis', placeholder: 'time, frequency, or sweep param' },
   { key: 'y', label: 'Y Axis', placeholder: 'dut.net or measurement(net)' },
   { key: 'y_secondary', label: 'Y Secondary', placeholder: 'Optional secondary signal' },
   { key: 'color', label: 'Color by', placeholder: 'Sweep param or dut' },
   { key: 'plot_limits', label: 'Show Limits', placeholder: 'true or false' },
-];
-
-const BAR_CHART_FIELDS: PlotFieldDef[] = [
-  { key: 'title', label: 'Title', placeholder: 'Chart Title' },
-  { key: 'x', label: 'X Axis', placeholder: 'Sweep param name (e.g. COUT)' },
-  { key: 'y', label: 'Y Axis', placeholder: 'measurement(net)' },
-  { key: 'plot_limits', label: 'Show Limits', placeholder: 'true or false' },
-];
-
-function fieldsForType(plotType: string | undefined): PlotFieldDef[] {
-  if (plotType === 'BarChart') return BAR_CHART_FIELDS;
-  return LINE_CHART_FIELDS;
-}
-
-const PLOT_TYPES = [
-  { value: 'LineChart', label: 'Line Chart' },
-  { value: 'BarChart', label: 'Bar Chart' },
 ];
 
 /** Relayout the Plotly chart inside a container to an explicit width/height */
@@ -197,17 +180,13 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
   onFieldChange: (field: string, value: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [currentType, setCurrentType] = useState(meta.plotType || 'LineChart');
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fields = fieldsForType(currentType);
-
   const [drafts, setDrafts] = useState<Record<string, string>>(() => {
     const d: Record<string, string> = {};
-    // Initialize from all possible fields
-    for (const f of [...LINE_CHART_FIELDS, ...BAR_CHART_FIELDS]) {
+    for (const f of PLOT_FIELDS) {
       d[f.key] = (meta as Record<string, string | undefined>)[f.key] ?? '';
     }
     return d;
@@ -228,21 +207,6 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
     setSaving(null);
   };
 
-  const handleTypeChange = async (newType: string) => {
-    if (newType === currentType) return;
-    setSaving('plot_type');
-    setError(null);
-    try {
-      await onFieldChange('plot_type', newType);
-      setCurrentType(newType);
-      setSaved('plot_type');
-      setTimeout(() => setSaved(prev => prev === 'plot_type' ? null : prev), 1500);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to change type');
-    }
-    setSaving(null);
-  };
-
   return (
     <div className="plot-popover" onClick={e => e.stopPropagation()}>
       <div className="plot-popover-header">
@@ -251,26 +215,7 @@ function PlotFieldsPopover({ meta, onFieldChange, onClose }: {
         <button className="plot-popover-close" onClick={onClose}>&times;</button>
       </div>
       <div className="plot-popover-body">
-        {/* Plot type selector */}
-        <div className="plot-popover-row">
-          <label className="plot-popover-label">Type</label>
-          <div className="plot-popover-input-wrap">
-            <select
-              className="ric-edit-control ric-edit-select"
-              value={currentType}
-              onChange={e => handleTypeChange(e.target.value)}
-              disabled={saving === 'plot_type'}
-            >
-              {PLOT_TYPES.map(pt => (
-                <option key={pt.value} value={pt.value}>{pt.label}</option>
-              ))}
-            </select>
-            {saving === 'plot_type' && <span className="plot-popover-status saving">...</span>}
-            {saved === 'plot_type' && <span className="plot-popover-status saved">ok</span>}
-          </div>
-        </div>
-        {/* Type-specific fields */}
-        {fields.map(f => (
+        {PLOT_FIELDS.map(f => (
           <div className="plot-popover-row" key={f.key}>
             <label className="plot-popover-label">{f.label}</label>
             <div className="plot-popover-input-wrap">

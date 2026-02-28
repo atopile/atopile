@@ -187,6 +187,7 @@ interface OpenRequirementDetailMessage {
   target: string;
   requirementData?: unknown;
   buildTime?: string;
+  initialSearch?: string;
 }
 
 interface UpdateRequirementsPanelMessage {
@@ -733,6 +734,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           target: message.target,
           requirementData: message.requirementData,
           buildTime: message.buildTime,
+          initialSearch: message.initialSearch,
         });
         break;
       case 'updateRequirementsPanel':

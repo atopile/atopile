@@ -1,0 +1,78 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+import SimulationSweep
+from "buck_converter.ato" import TI_TPS54560
+
+# =============================================================================
+# Design Validation — Efficiency vs Load Current
+#
+# Sweeps load current at each input voltage (12V, 24V, 36V, 48V).
+# Each sweep uses V_LSENSE as output current sensor for efficiency calc.
+# X1 pin order: BOOT COMP EN GND SW RT_CLK VIN FB
+# =============================================================================
+
+module DesignValidation:
+    "TPS54560 design validation — efficiency vs load across input voltages."
+
+    dut = new TI_TPS54560
+
+    # -----------------------------------------------------------------
+    # Efficiency sweep: VIN=12V, sweep ILOAD
+    # -----------------------------------------------------------------
+    eff_vin12 = new SimulationSweep
+    eff_vin12.param_name = "ILOAD"
+    eff_vin12.param_values = "0.1,0.25,0.5,1,2,3,4,5"
+    eff_vin12.param_unit = "A"
+    eff_vin12.spice = "V1 dut_power_in_hv 0 PULSE(0 12 0 10u 10u 10 10)"
+    eff_vin12.time_start = 10e-3
+    eff_vin12.time_stop = 10.5e-3
+    eff_vin12.time_step = 500e-9
+    eff_vin12.remove_elements = "package,r_en_bot"
+    eff_vin12.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # Efficiency sweep: VIN=24V, sweep ILOAD
+    # -----------------------------------------------------------------
+    eff_vin24 = new SimulationSweep
+    eff_vin24.param_name = "ILOAD"
+    eff_vin24.param_values = "0.1,0.25,0.5,1,2,3,4,5"
+    eff_vin24.param_unit = "A"
+    eff_vin24.spice = "V1 dut_power_in_hv 0 PULSE(0 24 0 10u 10u 10 10)"
+    eff_vin24.time_start = 10e-3
+    eff_vin24.time_stop = 10.5e-3
+    eff_vin24.time_step = 500e-9
+    eff_vin24.remove_elements = "package,r_en_bot"
+    eff_vin24.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # Efficiency sweep: VIN=36V, sweep ILOAD
+    # -----------------------------------------------------------------
+    eff_vin36 = new SimulationSweep
+    eff_vin36.param_name = "ILOAD"
+    eff_vin36.param_values = "0.1,0.25,0.5,1,2,3,4,5"
+    eff_vin36.param_unit = "A"
+    eff_vin36.spice = "V1 dut_power_in_hv 0 PULSE(0 36 0 10u 10u 10 10)"
+    eff_vin36.time_start = 10e-3
+    eff_vin36.time_stop = 10.5e-3
+    eff_vin36.time_step = 500e-9
+    eff_vin36.remove_elements = "package,r_en_bot"
+    eff_vin36.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+    # -----------------------------------------------------------------
+    # Efficiency sweep: VIN=48V, sweep ILOAD
+    # -----------------------------------------------------------------
+    eff_vin48 = new SimulationSweep
+    eff_vin48.param_name = "ILOAD"
+    eff_vin48.param_values = "0.1,0.25,0.5,1,2,3,4,5"
+    eff_vin48.param_unit = "A"
+    eff_vin48.spice = "V1 dut_power_in_hv 0 PULSE(0 48 0 10u 10u 10 10)"
+    eff_vin48.time_start = 10e-3
+    eff_vin48.time_stop = 10.5e-3
+    eff_vin48.time_step = 500e-9
+    eff_vin48.remove_elements = "package,r_en_bot"
+    eff_vin48.extra_spice_template = "X1 dut_package_boot dut_package_comp dut_package_en 0 dut_package_sw dut_package_rt_clk dut_power_in_hv dut_package_fb TPS54560_TRANS FS=400k|V_LSENSE dut_power_out_hv lsense_node 0|I_LOAD lsense_node 0 DC {ILOAD}"
+
+
+module DesignValidationEntry from DesignValidation:
+    "Entry point for design validation build target."
+    pass

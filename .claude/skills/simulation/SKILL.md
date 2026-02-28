@@ -80,7 +80,7 @@ sim.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
 sim.time_start = 5ms                # measurement window start (sim still runs from t=0)
 sim.time_stop = 10ms                # simulation stop time
 sim.time_step = 100ns               # timestep
-sim.remove_elements = "R5"          # comma-separated elements to remove from netlist
+sim.remove_elements = "r_load"      # comma-separated ato component paths to remove from netlist
 sim.extra_spice = "Iload dut.power_out.hv 0 DC 5"  # pipe-separated extra SPICE lines
 ```
 
@@ -95,7 +95,7 @@ sweep.param_name = "ILOAD"                    # parameter name
 sweep.param_values = "0.5,1,2,3,4,5"          # comma-separated values
 sweep.param_unit = "A"                         # unit for display
 sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"  # fixed source
-sweep.remove_elements = "R5"
+sweep.remove_elements = "r_load"
 sweep.extra_spice_template = "I_LOAD dut.power_out.hv 0 DC {ILOAD}"  # {PARAM} substituted
 sweep.time_start = 5ms
 sweep.time_stop = 5.5ms
@@ -146,7 +146,7 @@ dc_sim.spice = "V1 dut.power_in.hv 0 DC 12"
 | `duts` | DUT instance name(s), comma-separated. Enables dot notation in SPICE lines. | `"dut"`, `"dut_400k"` |
 | `spice` | Fixed SPICE source definition (pipe-separated for multiple lines) | `"V1 net 0 DC 12"` |
 | `extra_spice` | Additional fixed SPICE elements (pipe-separated) | `"Iload net 0 DC 5"` |
-| `remove_elements` | Comma-separated element names to remove from auto-generated netlist | `"R5,R3"` |
+| `remove_elements` | Comma-separated ato component paths to remove from netlist (e.g. `r_load`, `c_out` for arrays) | `"r_load,r_en"` |
 | `time_start` | Measurement window start time (simulation runs from t=0) | `5ms` |
 | `time_stop` | Simulation stop time | `10ms` |
 | `time_step` | Simulation timestep | `100ns` |
@@ -220,7 +220,7 @@ This replaces the deprecated `min_val`/`max_val`/`typical` string fields.
 | Field | Description | Example |
 |-------|-------------|---------|
 | `extra_spice` | Pipe-separated SPICE lines to inject | `"R_LOAD out 0 50"` |
-| `remove_elements` | Comma-separated elements to remove | `"R5,C3"` |
+| `remove_elements` | Comma-separated ato component paths to remove | `"r_load,c_out"` |
 
 ## Measurement Types
 
@@ -580,7 +580,7 @@ module ModelValidation:
     sim_001 = new SimulationTransient
     sim_001.duts = "dut"
     sim_001.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_001.remove_elements = "R5"
+    sim_001.remove_elements = "r_load"
     sim_001.extra_spice = "Iload dut.power_out.hv 0 DC 5"
     sim_001.time_start = 10ms
     sim_001.time_stop = 10.1ms
@@ -608,7 +608,7 @@ module ModelValidation:
     sim_002.param_values = "0.5,1,2,3,4,5"
     sim_002.param_unit = "A"
     sim_002.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_002.remove_elements = "R5"
+    sim_002.remove_elements = "r_load"
     sim_002.extra_spice_template = "I_LOAD dut.power_out.hv 0 DC {ILOAD}"
     sim_002.time_start = 10ms
     sim_002.time_stop = 10.5ms

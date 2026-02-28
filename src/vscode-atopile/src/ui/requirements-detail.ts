@@ -19,18 +19,21 @@ export interface RequirementDetailOptions {
   target?: string;
   requirementData?: unknown;
   buildTime?: string;
+  initialSearch?: string;
 }
 
 export function openRequirementDetail(extensionUri: vscode.Uri, options: RequirementDetailOptions): void {
   const extensionPath = extensionUri.fsPath;
-  const { requirementId } = options;
-  const isAllMode = requirementId === '__ALL__';
-  const panelTitle = isAllMode ? 'All Requirements' : `Requirement: ${requirementId}`;
+  // Always use all-requirements mode
+  options.requirementId = '__ALL__';
+  const target = options.target || 'default';
+  const panelTitle = `${target} Requirements`;
 
   if (panel) {
-    // Reuse existing panel, update content
-    panel.title = panelTitle;
-    panel.webview.html = getProdHtml(panel.webview, extensionPath, options);
+    // Panel already open — send search update instead of regenerating HTML
+    if (options.initialSearch !== undefined) {
+      panel.webview.postMessage({ type: 'setSearch', search: options.initialSearch });
+    }
     panel.reveal(vscode.ViewColumn.One);
     return;
   }
@@ -167,6 +170,7 @@ function getProdHtml(webview: vscode.Webview, extensionPath: string, options: Re
     window.__ATOPILE_TARGET__ = ${JSON.stringify(options.target || 'default')};
     ${options.requirementData ? `window.__ATOPILE_REQUIREMENT_DATA__ = ${JSON.stringify(options.requirementData)};` : ''}
     ${options.buildTime ? `window.__ATOPILE_BUILD_TIME__ = ${JSON.stringify(options.buildTime)};` : ''}
+    window.__ATOPILE_INITIAL_SEARCH__ = ${JSON.stringify(options.initialSearch || '')};
   </script>
 </head>
 <body>

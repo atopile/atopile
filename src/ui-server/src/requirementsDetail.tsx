@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { RequirementsDetailPage } from './components/RequirementsDetailPage';
 import { RequirementsAllPage } from './components/RequirementsAllPage';
 import { initializeTheme } from './hooks/useTheme';
 import { preloadPlotly } from './components/requirements/charts';
 import { fetchRequirements } from './components/requirements/api';
-import type { RequirementData, RequirementsData } from './components/requirements/types';
+import type { RequirementsData } from './components/requirements/types';
 import './styles/index.css';
 
 // Start loading Plotly immediately — runs in parallel with React mount
@@ -15,22 +14,16 @@ initializeTheme();
 
 type WindowGlobals = Window & {
   __ATOPILE_REQUIREMENT_ID__?: string;
-  __ATOPILE_REQUIREMENT_DATA__?: RequirementData | RequirementsData;
+  __ATOPILE_REQUIREMENT_DATA__?: RequirementsData;
   __ATOPILE_BUILD_TIME__?: string;
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
   __ATOPILE_PROJECT_ROOT__?: string;
   __ATOPILE_TARGET__?: string;
+  __ATOPILE_INITIAL_SEARCH__?: string;
 };
 
 const w = window as WindowGlobals;
-
-function getRequirementId(): string {
-  const params = new URLSearchParams(window.location.search);
-  const fromParam = params.get('requirementId');
-  if (fromParam) return fromParam;
-  return w.__ATOPILE_REQUIREMENT_ID__ ?? '';
-}
 
 /** Derive a WebSocket URL from the injected globals. */
 function getWsStateUrl(): string | null {
@@ -52,22 +45,15 @@ function getWsStateUrl(): string | null {
   return null;
 }
 
-const requirementId = getRequirementId();
-const isAllMode = requirementId === '__ALL__';
-
 function App() {
   const initialAllData = w.__ATOPILE_REQUIREMENT_DATA__ as RequirementsData | undefined;
   const initialBuildTime = w.__ATOPILE_BUILD_TIME__ ?? '';
+  const initialSearch = w.__ATOPILE_INITIAL_SEARCH__ ?? '';
+  const buildTarget = w.__ATOPILE_TARGET__ ?? '';
 
-  const [allData, setAllData] = useState<RequirementsData | null>(
-    isAllMode ? (initialAllData ?? null) : null,
-  );
+  const [allData, setAllData] = useState<RequirementsData | null>(initialAllData ?? null);
   const [buildTime, setBuildTime] = useState(initialAllData?.buildTime ?? initialBuildTime);
-
-  // For detail mode
-  const [detailData, setDetailData] = useState<RequirementData | null>(
-    !isAllMode ? (w.__ATOPILE_REQUIREMENT_DATA__ as RequirementData ?? null) : null,
-  );
+  const [search, setSearch] = useState(initialSearch);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -77,16 +63,8 @@ function App() {
       const data = await fetchRequirements();
       if (!data) return;
       const typed = data as unknown as RequirementsData;
-      if (isAllMode) {
-        setAllData(typed);
-        setBuildTime(typed.buildTime ?? '');
-      } else {
-        const match = typed.requirements.find((r: RequirementData) => r.id === requirementId);
-        if (match) {
-          setDetailData(match);
-          setBuildTime(typed.buildTime ?? '');
-        }
-      }
+      setAllData(typed);
+      setBuildTime(typed.buildTime ?? '');
     } catch (err) {
       console.warn('[RequirementsDetail] refresh failed:', err);
     }
@@ -98,12 +76,11 @@ function App() {
   }, [refresh]);
 
   // Listen for messages from the VS Code extension (e.g. target/data changes
-  // triggered by sidebar refresh or build target switch)
+  // triggered by sidebar refresh or build target switch, or search updates)
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (msg?.type === 'requirementsUpdated') {
-        // Update the target if it changed, then re-fetch
         if (msg.target) {
           (window as WindowGlobals).__ATOPILE_TARGET__ = msg.target;
         }
@@ -111,6 +88,8 @@ function App() {
           (window as WindowGlobals).__ATOPILE_PROJECT_ROOT__ = msg.projectRoot;
         }
         refresh();
+      } else if (msg?.type === 'setSearch') {
+        setSearch(msg.search ?? '');
       }
     };
     window.addEventListener('message', handler);
@@ -130,7 +109,6 @@ function App() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // Subscribe to events
         ws.send(JSON.stringify({ type: 'subscribe' }));
       };
 
@@ -165,21 +143,13 @@ function App() {
     };
   }, [refresh]);
 
-  if (isAllMode) {
-    return (
-      <RequirementsAllPage
-        requirements={allData?.requirements ?? []}
-        buildTime={buildTime}
-        simStats={allData?.simStats}
-      />
-    );
-  }
-
   return (
-    <RequirementsDetailPage
-      requirementId={requirementId}
-      injectedData={detailData}
-      injectedBuildTime={buildTime}
+    <RequirementsAllPage
+      requirements={allData?.requirements ?? []}
+      buildTime={buildTime}
+      simStats={allData?.simStats}
+      initialSearch={search}
+      buildTarget={buildTarget}
     />
   );
 }

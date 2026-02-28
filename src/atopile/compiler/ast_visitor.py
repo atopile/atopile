@@ -98,8 +98,8 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.Simulations.SimulationTransient,
         F.Simulations.SimulationSweep,
         F.Simulations.SimulationAC,
-        F.Plots.LineChart,
-        F.Plots.BarChart,
+        F.LineChart,
+        F.BarChart,
         F.RS232,
         F.SPI,
         F.SPIFlash,
@@ -133,6 +133,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.Pickable.is_pickable,
         F.requires_external_usage,
         F.has_spice_model,
+        F.has_spice_param_bindings,
     }
 )
 

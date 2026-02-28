@@ -1,20 +1,25 @@
 /**
  * Shared requirement card components and hooks used by both
- * RequirementsAllPage (multi-requirement) and RequirementsDetailPage (single).
+ * RequirementsAllPage (multi-requirement view).
  */
 import { useRef, useEffect, useState, useCallback } from 'react';
 import type { RequirementData } from './types';
 import { formatEng, formatBuildTime, parseLimitExpr, reEvalPassFail, measureTran, parseValueWithUnit, goToSource } from './helpers';
 import { renderSpecAtSize, renderTransientPlot, renderDCPlot, renderBodePlot, renderSweepPlot, purgePlot, injectLimitShapes, applyPlotFieldToSpec } from './charts';
 import { EditableField, MEASUREMENT_OPTIONS, CAPTURE_OPTIONS } from './EditableField';
-import { updateRequirement, rerunSimulation, rerunSingleSimulation } from './api';
+import { updateRequirement, rerunSimulation } from './api';
 import { PlotToolbar, GoToSourceIcon } from './PlotToolbar';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Fields that change plot rendering but don't need a new simulation */
+/** Plot fields that can be auto-updated without a rebuild */
+const PLOT_AUTO_UPDATE_FIELDS = new Set([
+  'title', 'plot_limits',
+]);
+
+/** All plot fields (non-auto-update ones require a rebuild) */
 const PLOT_FIELDS = new Set([
   'title', 'x', 'y', 'y_secondary', 'color', 'plot_limits', 'simulation',
   'required_plot', 'supplementary_plot',
@@ -167,58 +172,28 @@ export function useRequirementEditing(
     if (!req) return;
     setRerunning(true);
     try {
-      const isSweep = req.sweepPoints && req.sweepPoints.length > 0;
-      const canSingleRerun = !isSweep && req.netlistPath && req.capture === 'transient'
-        && (req.spice || req.sourceSpec);
-      if (canSingleRerun) {
-        const result = await rerunSingleSimulation({
-          netlist_path: req.netlistPath!,
-          spice_sources: req.spice || req.sourceSpec || '',
-          sim_type: 'transient',
-          net: req.net,
-          measurement: req.measurement,
-          tran_start: req.tranStart ?? 0,
-          tran_stop: req.tranStop ?? 100e-6,
-          tran_step: req.tranStep ?? 1e-9,
-          settling_tolerance: req.settlingTolerance ?? null,
-          context_nets: req.contextNets || [],
-          min_val: req.minVal,
-          max_val: req.maxVal,
-          dut_name: req.dutName ?? null,
-          dut_params: req.dutParams ?? null,
-          remove_elements: req.removeElements ?? null,
-        });
-        setReq(prev => prev ? {
-          ...prev,
-          actual: result.actual,
-          passed: result.passed,
-          timeSeries: result.timeSeries,
-        } : prev);
-        setLimitVersion(v => v + 1);
-      } else {
-        await rerunSimulation();
-      }
+      await rerunSimulation();
       setStale(false);
     } catch (err) {
-      console.error('Rerun failed:', err);
-      try {
-        await rerunSimulation();
-        setStale(false);
-      } catch {
-        // Both failed
-      }
+      console.error('Rebuild failed:', err);
     }
     finally { setRerunning(false); }
   }, [req]);
 
   const handlePlotFieldChange = useCallback((specIdx: number, field: string, value: string) => {
-    setReq(prev => {
-      if (!prev || !prev.plotSpecs || !prev.plotSpecs[specIdx]) return prev;
-      const newSpecs = [...prev.plotSpecs];
-      newSpecs[specIdx] = applyPlotFieldToSpec(newSpecs[specIdx], field, value, prev.timeSeries);
-      return { ...prev, plotSpecs: newSpecs };
-    });
-    setLimitVersion(v => v + 1);
+    if (PLOT_AUTO_UPDATE_FIELDS.has(field)) {
+      // Auto-update title and limits in-place without rebuild
+      setReq(prev => {
+        if (!prev || !prev.plotSpecs || !prev.plotSpecs[specIdx]) return prev;
+        const newSpecs = [...prev.plotSpecs];
+        newSpecs[specIdx] = applyPlotFieldToSpec(newSpecs[specIdx], field, value, prev.timeSeries);
+        return { ...prev, plotSpecs: newSpecs };
+      });
+      setLimitVersion(v => v + 1);
+    } else {
+      // Other plot changes (y signal, color, simulation, etc.) require rebuild
+      setStale(true);
+    }
   }, []);
 
   const handlePlotDirty = useCallback(() => {
@@ -275,25 +250,25 @@ export function SimConfigFields({
           {(req.tranStart != null && req.tranStart !== 0) && (
             <div className="ric-row">
               <span className="ric-label">Start</span>
-              <EditableField value={String(req.tranStart)} displayValue={formatEng(req.tranStart, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_start', v)} />
+              <EditableField value={formatEng(req.tranStart!, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_start', v)} />
             </div>
           )}
           {req.tranStop != null && (
             <div className="ric-row">
               <span className="ric-label">Stop</span>
-              <EditableField value={String(req.tranStop)} displayValue={formatEng(req.tranStop, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_stop', v)} />
+              <EditableField value={formatEng(req.tranStop!, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_stop', v)} />
             </div>
           )}
           {req.tranStep != null && (
             <div className="ric-row">
               <span className="ric-label">Step</span>
-              <EditableField value={String(req.tranStep)} displayValue={formatEng(req.tranStep, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_step', v)} />
+              <EditableField value={formatEng(req.tranStep!, 's')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('tran_step', v)} />
             </div>
           )}
           {req.settlingTolerance != null && (
             <div className="ric-row">
               <span className="ric-label">Settling tol.</span>
-              <EditableField value={String(req.settlingTolerance)} displayValue={`${(req.settlingTolerance * 100).toFixed(1)}%`} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('settling_tolerance', v)} />
+              <EditableField value={`${(req.settlingTolerance! * 100).toFixed(1)}%`} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('settling_tolerance', v)} />
             </div>
           )}
         </>
@@ -304,13 +279,13 @@ export function SimConfigFields({
           {req.acStartFreq != null && (
             <div className="ric-row">
               <span className="ric-label">Start freq</span>
-              <EditableField value={String(req.acStartFreq)} displayValue={formatEng(req.acStartFreq, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_start_freq', v)} />
+              <EditableField value={formatEng(req.acStartFreq!, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_start_freq', v)} />
             </div>
           )}
           {req.acStopFreq != null && (
             <div className="ric-row">
               <span className="ric-label">Stop freq</span>
-              <EditableField value={String(req.acStopFreq)} displayValue={formatEng(req.acStopFreq, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_stop_freq', v)} />
+              <EditableField value={formatEng(req.acStopFreq!, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_stop_freq', v)} />
             </div>
           )}
           {req.acPointsPerDec != null && (
@@ -328,7 +303,7 @@ export function SimConfigFields({
           {req.acMeasureFreq != null && (
             <div className="ric-row">
               <span className="ric-label">Meas. freq</span>
-              <EditableField value={String(req.acMeasureFreq)} displayValue={formatEng(req.acMeasureFreq, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_measure_freq', v)} />
+              <EditableField value={formatEng(req.acMeasureFreq!, 'Hz')} className="ric-value" enabled={canEdit} onSave={v => onFieldChange('ac_measure_freq', v)} />
             </div>
           )}
           {req.acRefNet != null && (
@@ -414,17 +389,14 @@ export function RequirementCardBody({
   const outerRef = useRef<HTMLDivElement>(null);
   const plotRefs = useRef<(HTMLDivElement | null)[]>([]);
   const containerRefs = useRef<({ current: HTMLDivElement | null })[]>([]);
-  const [, setPlotDim] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
 
-    // Use explicit dimensions for consistent rendering
     const plotW = layout === 'list' ? 776 : 376;
     const plotH = Math.round(plotW * 9 / 16);
     const dim = { width: plotW, height: plotH };
-    setPlotDim(dim);
 
     for (let i = 0; i < plotCount; i++) {
       const el = plotRefs.current[i];
@@ -481,9 +453,9 @@ export function RequirementCardBody({
 
           {stale && (
             <div className="ric-section ric-rerun-bar">
-              <span className="ric-dirty">Simulation config changed — rerun to see new results</span>
+              <span className="ric-dirty">Config changed — rebuild to see new results</span>
               <button className={`ric-rerun-btn ${rerunning ? 'ric-saving' : ''}`} onClick={handleRerun} disabled={rerunning}>
-                {rerunning ? 'Running...' : 'Rerun Simulation'}
+                {rerunning ? 'Building...' : 'Rebuild'}
               </button>
             </div>
           )}

@@ -1,6 +1,7 @@
 #pragma experiment("BRIDGE_CONNECT")
 #pragma experiment("MODULE_TEMPLATING")
 #pragma experiment("FOR_LOOP")
+#pragma experiment("TRAITS")
 
 import Resistor
 import Capacitor
@@ -9,6 +10,7 @@ import Diode
 import Inductor
 import ElectricLogic
 import ElectricPower
+import has_spice_param_bindings
 
 from "parts/Texas_Instruments_TPS54560DDAR/Texas_Instruments_TPS54560DDAR.ato" import Texas_Instruments_TPS54560DDAR_package
 from "parts/STMicroelectronics_STPS340U/STMicroelectronics_STPS340U.ato" import STMicroelectronics_STPS340U
@@ -26,6 +28,8 @@ module TI_TPS54560:
 
     switching_frequency: hertz
     switching_frequency.default = 400kHz +/- 5%
+
+    trait has_spice_param_bindings<bindings="FS:switching_frequency">
 
     uvlo_threshold: voltage
     uvlo_threshold.default = 6.5V
@@ -130,6 +134,6 @@ module TPS54560_Reference from TI_TPS54560:
     r_top.resistance = 53.6kohm +/- 1%
 
     r_load = new Resistor
-    r_load.resistance = 1kohm +/- 5%
+    r_load.resistance = 10kohm +/- 5%
     r_load.package = "1210"
     power_out.hv ~> r_load ~> power_out.lv

@@ -16,8 +16,33 @@ from pathlib import Path
 
 import faebryk.library._F as F
 from faebryk.exporters.simulation.ngspice import ACResult, Circuit, TransientResult
+from faebryk.library.Plots import (
+    _compute_settling_milestones,
+    _interpolate_at_freq,
+    _viridis_hex,
+    auto_scale_time as _auto_scale_time,
+    downsample_trace as _downsample_trace,
+    extract_plot_specs as _extract_plot_specs,
+    format_eng as _format_eng,
+    signal_unit as _signal_unit,
+)
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Canonical valid values (used for validation in build_steps.py and here)
+# ---------------------------------------------------------------------------
+
+VALID_TRAN_MEASUREMENTS = {
+    "final_value", "average", "settling_time", "peak_to_peak",
+    "overshoot", "rms", "frequency", "duty_cycle", "max", "min",
+    "sweep", "efficiency", "envelope",
+}
+VALID_AC_MEASUREMENTS = {
+    "gain_db", "phase_deg", "bandwidth_3db", "bode_plot",
+}
+VALID_MEASUREMENTS = VALID_TRAN_MEASUREMENTS | VALID_AC_MEASUREMENTS
+VALID_CAPTURE_TYPES = {"dcop", "transient", "ac"}
 
 
 @dataclass
@@ -33,6 +58,8 @@ class RequirementResult:
     resolved_ctx_nets: list[str] | None = None
     plot_specs: list[dict] | None = None
     sweep_points: list[dict] | None = None  # [{paramValue, actual, passed}, ...]
+    extra_traces: list[tuple[str, list[float], list[float]]] | None = None
+    # [(label, time_scaled, signal_data), ...] — extra DUT overlays
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +284,12 @@ def _measure_tran(
             return sig_max
         return sig_min
 
-    # Default: final value
+    # Default: final value — warn about the unrecognized measurement name
+    logger.warning(
+        f"Unknown transient measurement '{measurement}'. "
+        f"Valid measurements: {', '.join(sorted(VALID_TRAN_MEASUREMENTS))}. "
+        f"Falling back to final_value."
+    )
     return signal_data[-1]
 
 
@@ -300,25 +332,7 @@ def _ac_group_key(req: F.Requirement) -> tuple:
     )
 
 
-def _interpolate_at_freq(
-    freq: list[float], values: list[float], target: float
-) -> float:
-    """Log-frequency interpolation of values at target frequency."""
-    if not freq or target <= 0:
-        return float("nan")
-    if target <= freq[0]:
-        return values[0]
-    if target >= freq[-1]:
-        return values[-1]
-    for i in range(len(freq) - 1):
-        if freq[i] <= target <= freq[i + 1]:
-            # Log-scale interpolation on frequency axis
-            log_f0 = math.log10(freq[i])
-            log_f1 = math.log10(freq[i + 1])
-            log_ft = math.log10(target)
-            t = (log_ft - log_f0) / (log_f1 - log_f0) if log_f1 != log_f0 else 0.0
-            return values[i] + t * (values[i + 1] - values[i])
-    return values[-1]
+# _interpolate_at_freq imported from faebryk.library.Plots
 
 
 def _measure_ac(
@@ -713,87 +727,9 @@ def verify_requirements(
 # Plotting
 # ---------------------------------------------------------------------------
 
-# SI prefix table for engineering notation
-_SI_PREFIXES = [
-    (1e-15, "f"),
-    (1e-12, "p"),
-    (1e-9, "n"),
-    (1e-6, "u"),
-    (1e-3, "m"),
-    (1.0, ""),
-    (1e3, "k"),
-    (1e6, "M"),
-    (1e9, "G"),
-]
-
-
-def _auto_scale_time(t_max: float) -> tuple[float, str]:
-    """Choose time unit scale factor and label."""
-    if t_max <= 0:
-        return 1.0, "s"
-    if t_max < 1e-6:
-        return 1e9, "ns"
-    if t_max < 1e-3:
-        return 1e6, "us"
-    if t_max < 1.0:
-        return 1e3, "ms"
-    return 1.0, "s"
-
-
-def _signal_unit(key: str) -> str:
-    """Infer unit type from signal key: 'V' for voltage, 'A' for current."""
-    if key.startswith("i("):
-        return "A"
-    return "V"
-
-
-def _format_eng(value: float, unit: str) -> str:
-    """Format a value in engineering notation with SI prefix.
-
-    Examples:
-        _format_eng(7.5, "V")   → "7.500 V"
-        _format_eng(0.3, "s")   → "300.0 ms"
-        _format_eng(12.5, "%")  → "12.50%"
-    """
-    if unit == "%":
-        return f"{value:.2f}%"
-
-    abs_val = abs(value)
-    if abs_val == 0:
-        return f"0.000 {unit}"
-
-    for threshold, prefix in _SI_PREFIXES:
-        if abs_val < threshold * 1000:
-            scaled = value / threshold
-            return f"{scaled:.4g} {prefix}{unit}"
-
-    # Fallback for very large values
-    return f"{value:.4g} {unit}"
-
-
-def _viridis_hex(n: int) -> list[str]:
-    """Return *n* evenly-spaced hex colors from the Viridis colorscale."""
-    _LUT = [
-        (68, 1, 84), (72, 26, 108), (71, 47, 126), (65, 68, 135),
-        (57, 86, 140), (49, 104, 142), (42, 120, 142), (35, 137, 142),
-        (31, 154, 138), (34, 170, 127), (53, 186, 109), (86, 199, 83),
-        (122, 209, 55), (165, 218, 32), (210, 226, 27), (253, 231, 37),
-    ]
-    if n <= 0:
-        return []
-    if n == 1:
-        return [f"#{_LUT[8][0]:02x}{_LUT[8][1]:02x}{_LUT[8][2]:02x}"]
-    result: list[str] = []
-    for i in range(n):
-        t = i / (n - 1) * (len(_LUT) - 1)
-        lo = int(t)
-        hi = min(lo + 1, len(_LUT) - 1)
-        frac = t - lo
-        r = int(_LUT[lo][0] + frac * (_LUT[hi][0] - _LUT[lo][0]))
-        g = int(_LUT[lo][1] + frac * (_LUT[hi][1] - _LUT[lo][1]))
-        b = int(_LUT[lo][2] + frac * (_LUT[hi][2] - _LUT[lo][2]))
-        result.append(f"#{r:02x}{g:02x}{b:02x}")
-    return result
+# Plotting utilities imported from faebryk.library.Plots
+# (_format_eng, _signal_unit, _auto_scale_time, _viridis_hex,
+#  _compute_settling_milestones, _interpolate_at_freq are imported at top)
 
 
 _CTX_COLORS = _viridis_hex(4)
@@ -811,7 +747,11 @@ def _setup_common_plot(
     str,  # t_unit
     bool,  # has_secondary_y
 ]:
-    """Create figure, plot NUT + context signals, return figure and data."""
+    """Create figure, plot NUT + context signals, return figure and data.
+
+    When ``result.extra_traces`` is set, each extra DUT is overlaid with a
+    viridis color and context signals are suppressed to keep the chart clean.
+    """
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
@@ -841,18 +781,28 @@ def _setup_common_plot(
     else:
         nut_signal = tran_data[net_key]
 
-    # Partition context signals by unit
-    same_unit: list[str] = []
-    diff_unit: list[str] = []
-    for ctx_net in context_nets:
-        ctx_key = (
-            f"v({ctx_net})" if not ctx_net.startswith(("v(", "i(")) else ctx_net
-        )
-        if ctx_key in tran_data:
-            if _signal_unit(ctx_key) == nut_unit:
-                same_unit.append(ctx_key)
-            else:
-                diff_unit.append(ctx_key)
+    extra = result.extra_traces or []
+    is_multi = bool(extra)
+    n_traces = 1 + len(extra)
+    trace_colors = _viridis_hex(n_traces)
+
+    # Skip context signals for multi-DUT to keep chart clean
+    if is_multi:
+        same_unit: list[str] = []
+        diff_unit: list[str] = []
+    else:
+        # Partition context signals by unit
+        same_unit = []
+        diff_unit = []
+        for ctx_net in context_nets:
+            ctx_key = (
+                f"v({ctx_net})" if not ctx_net.startswith(("v(", "i(")) else ctx_net
+            )
+            if ctx_key in tran_data:
+                if _signal_unit(ctx_key) == nut_unit:
+                    same_unit.append(ctx_key)
+                else:
+                    diff_unit.append(ctx_key)
 
     has_secondary = bool(diff_unit)
     if has_secondary:
@@ -860,7 +810,7 @@ def _setup_common_plot(
     else:
         fig = go.Figure()
 
-    # NUT signal (thick blue) — use ato address as label when available
+    # NUT signal — use viridis color, ato address as label when available
     nut_label = result.display_net if result.display_net else net_key
     fig.add_trace(
         go.Scatter(
@@ -868,12 +818,25 @@ def _setup_common_plot(
             y=nut_signal,
             mode="lines",
             name=nut_label,
-            line=dict(color="#31688e", width=3),
+            line=dict(color=trace_colors[0], width=3),
         ),
         secondary_y=False if has_secondary else None,
     )
 
-    # Same-unit context signals (thin, left axis)
+    # Extra DUT traces (multi-DUT overlay)
+    for i, (label, ex_time, ex_signal) in enumerate(extra):
+        fig.add_trace(
+            go.Scatter(
+                x=ex_time,
+                y=ex_signal,
+                mode="lines",
+                name=label,
+                line=dict(color=trace_colors[i + 1], width=2),
+            ),
+            secondary_y=False if has_secondary else None,
+        )
+
+    # Same-unit context signals (thin, left axis) — single-DUT only
     for i, ctx_key in enumerate(same_unit):
         c = _CTX_COLORS[i % len(_CTX_COLORS)]
         fig.add_trace(
@@ -891,7 +854,7 @@ def _setup_common_plot(
         f"Voltage ({nut_unit})" if nut_unit == "V" else f"Current ({nut_unit})"
     )
 
-    # Different-unit context signals (right axis)
+    # Different-unit context signals (right axis) — single-DUT only
     if has_secondary:
         for i, ctx_key in enumerate(diff_unit):
             c = _CTX_COLORS[(i + len(same_unit)) % len(_CTX_COLORS)]
@@ -973,28 +936,7 @@ def _add_time_limit_labels(
     )
 
 
-def _downsample_trace(trace_json: dict, max_points: int = 2000) -> dict:
-    """Downsample a Plotly trace dict to at most max_points for JSON size."""
-    x = trace_json.get("x")
-    y = trace_json.get("y")
-    if not isinstance(x, (list, tuple)) or len(x) <= max_points:
-        return trace_json
-    step = max(1, len(x) // max_points)
-    trace_json = dict(trace_json)
-    trace_json["x"] = x[::step]
-    trace_json["y"] = y[::step] if isinstance(y, (list, tuple)) else y
-    return trace_json
-
-
-def _extract_plot_specs(fig: "go.Figure") -> list[dict] | None:
-    """Extract Plotly figure specs (data + layout) for JSON embedding."""
-    try:
-        return [{
-            "data": [_downsample_trace(t.to_plotly_json()) for t in fig.data],
-            "layout": fig.layout.to_plotly_json(),
-        }]
-    except Exception:
-        return None
+# _downsample_trace, _extract_plot_specs imported from faebryk.library.Plots
 
 
 def _finalize_plot(
@@ -1015,7 +957,7 @@ def _finalize_plot(
     badge = ""
     if passed is not None:
         badge_text = "PASS" if passed else "FAIL"
-        badge_color = "#2ecc71" if passed else "#e74c3c"
+        badge_color = "#35b779" if passed else "#d62728"
         badge = f"  <span style='color:{badge_color};font-size:14px'>[{badge_text}]</span>"
 
     fig.update_layout(
@@ -1028,7 +970,7 @@ def _finalize_plot(
         height=540,
         template="plotly_white",
         showlegend=True,
-        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top", traceorder="normal"),
+        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top", traceorder="normal", orientation="v"),
     )
 
     if time_scaled:
@@ -1043,30 +985,7 @@ def _finalize_plot(
     return _extract_plot_specs(fig)
 
 
-def _compute_settling_milestones(
-    signal_data: list[float],
-    time_data: list[float],
-    final: float,
-) -> list[tuple[float, float, str]]:
-    """Compute 90%, 95%, 99% settling times.
-
-    Returns list of (time, tolerance_pct, label) tuples.
-    """
-    if final == 0:
-        return []
-
-    milestones = []
-    for pct, tol in [(90, 0.10), (95, 0.05), (99, 0.01)]:
-        band = abs(final * tol)
-        settled_time = 0.0
-        for i in range(len(signal_data) - 1, -1, -1):
-            if abs(signal_data[i] - final) > band:
-                settled_time = time_data[i] if i < len(time_data) else float("inf")
-                break
-        if settled_time != float("inf"):
-            milestones.append((settled_time, pct, f"{pct}%"))
-    return milestones
-
+# _compute_settling_milestones imported from faebryk.library.Plots
 
 # ---------------------------------------------------------------------------
 # Per-measurement plot functions
@@ -1098,7 +1017,7 @@ def _plot_final_value(
 
     # Actual value line and marker
     actual = result.actual
-    marker_color = "#2ecc71" if result.passed else "#e74c3c"
+    marker_color = "#35b779" if result.passed else "#d62728"
     fig.add_hline(y=actual, line=dict(color=marker_color, dash="dash", width=1.5),
                   opacity=0.7)
     fig.add_trace(go.Scatter(
@@ -1238,7 +1157,7 @@ def _plot_settling_time(
     # Actual settling time vertical line
     actual = result.actual
     actual_scaled = actual * scale
-    settle_color = "#2ecc71" if result.passed else "#e74c3c"
+    settle_color = "#35b779" if result.passed else "#d62728"
     fig.add_vline(x=actual_scaled, line=dict(color=settle_color, dash="dash",
                   width=2), opacity=0.8)
     fig.add_annotation(
@@ -1307,20 +1226,20 @@ def _plot_peak_to_peak(
     fig.add_trace(go.Scatter(
         x=[time_scaled[peak_idx]], y=[peak_val],
         mode="markers",
-        marker=dict(color="#e74c3c", size=12, symbol="triangle-up"),
+        marker=dict(color="#31688e", size=12, symbol="triangle-up"),
         name=f"Peak = {_format_eng(peak_val, nut_unit)}",
     ))
     fig.add_trace(go.Scatter(
         x=[time_scaled[trough_idx]], y=[trough_val],
         mode="markers",
-        marker=dict(color="#3498db", size=12, symbol="triangle-down"),
+        marker=dict(color="#35b779", size=12, symbol="triangle-down"),
         name=f"Trough = {_format_eng(trough_val, nut_unit)}",
     ))
 
     # Horizontal lines at peak and trough
-    fig.add_hline(y=peak_val, line=dict(color="#e74c3c", dash="dot", width=1),
+    fig.add_hline(y=peak_val, line=dict(color="#31688e", dash="dot", width=1),
                   opacity=0.4)
-    fig.add_hline(y=trough_val, line=dict(color="#3498db", dash="dot", width=1),
+    fig.add_hline(y=trough_val, line=dict(color="#35b779", dash="dot", width=1),
                   opacity=0.4)
 
     # P-P label at midpoint
@@ -1347,13 +1266,13 @@ def _plot_peak_to_peak(
         x=time_scaled[peak_idx], y=peak_val,
         text=f"@ {_format_eng(peak_time, 's')}",
         showarrow=True, arrowhead=0, ax=10, ay=-15,
-        font=dict(color="#e74c3c", size=9),
+        font=dict(color="#31688e", size=9),
     )
     fig.add_annotation(
         x=time_scaled[trough_idx], y=trough_val,
         text=f"@ {_format_eng(trough_time, 's')}",
         showarrow=True, arrowhead=0, ax=10, ay=15,
-        font=dict(color="#3498db", size=9),
+        font=dict(color="#35b779", size=9),
     )
 
     # Info box
@@ -1428,7 +1347,7 @@ def _plot_overshoot(
     fig.add_trace(go.Scatter(
         x=[time_scaled[peak_idx]], y=[peak_val],
         mode="markers",
-        marker=dict(color="#e74c3c", size=10),
+        marker=dict(color="#31688e", size=10),
         showlegend=False,
     ))
 
@@ -1438,16 +1357,16 @@ def _plot_overshoot(
         ax=time_scaled[peak_idx], ay=final,
         xref="x", yref="y", axref="x", ayref="y",
         showarrow=True, arrowhead=3, arrowsize=1.5, arrowwidth=1.5,
-        arrowcolor="#e74c3c", text="",
+        arrowcolor="#31688e", text="",
     )
     fig.add_annotation(
         x=time_scaled[peak_idx], y=(peak_val + final) / 2,
         text=f"<b>OS = {actual:.2f}%</b>",
-        showarrow=False, font=dict(color="#e74c3c", size=11),
+        showarrow=False, font=dict(color="#31688e", size=11),
         xanchor="left", xshift=8,
     )
 
-    # Red fill where signal exceeds final
+    # Fill where signal exceeds final
     fill_y_upper = [s if s > final else final for s in nut_signal]
     fig.add_trace(go.Scatter(
         x=time_scaled, y=[final] * len(nut_signal),
@@ -1456,7 +1375,7 @@ def _plot_overshoot(
     fig.add_trace(go.Scatter(
         x=time_scaled, y=fill_y_upper,
         mode="lines", line=dict(width=0), fill="tonexty",
-        fillcolor="rgba(231,76,60,0.15)", showlegend=False,
+        fillcolor="rgba(49,104,142,0.15)", showlegend=False,
     ))
 
     # Info box
@@ -1587,7 +1506,7 @@ def _plot_frequency(
         opacity=0.4,
     )
 
-    marker_color = "#2ecc71" if result.passed else "#e74c3c"
+    marker_color = "#35b779" if result.passed else "#d62728"
 
     # Highlight one cycle: two consecutive rising edges with a
     # double-arrow showing the measured period.
@@ -1673,7 +1592,7 @@ def _finalize_ac_plot(
     badge = ""
     if passed is not None:
         badge_text = "PASS" if passed else "FAIL"
-        badge_color = "#2ecc71" if passed else "#e74c3c"
+        badge_color = "#35b779" if passed else "#d62728"
         badge = f"  <span style='color:{badge_color};font-size:14px'>[{badge_text}]</span>"
 
     fig.update_layout(
@@ -1686,7 +1605,7 @@ def _finalize_ac_plot(
         height=540,
         template="plotly_white",
         showlegend=True,
-        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top", traceorder="normal"),
+        legend=dict(font=dict(size=10), x=0.01, y=0.99, xanchor="left", yanchor="top", traceorder="normal", orientation="v"),
     )
     fig.write_html(str(path))
     return _extract_plot_specs(fig)
@@ -1748,7 +1667,7 @@ def _plot_ac_gain_db(
     # Marker at measure_freq
     if measure_freq:
         actual = result.actual
-        marker_color = "#2ecc71" if result.passed else "#e74c3c"
+        marker_color = "#35b779" if result.passed else "#d62728"
         fig.add_trace(
             go.Scatter(
                 x=[measure_freq], y=[actual], mode="markers+text",
@@ -1773,7 +1692,7 @@ def _plot_ac_gain_db(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=phase, mode="lines",
-            name="Phase", line=dict(color="#5ec962", width=2),
+            name="Phase", line=dict(color="#35b779", width=2),
         ),
         row=2, col=1,
     )
@@ -1836,7 +1755,7 @@ def _plot_ac_phase_deg(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=phase, mode="lines",
-            name="Phase", line=dict(color="#5ec962", width=2),
+            name="Phase", line=dict(color="#35b779", width=2),
         ),
         row=2, col=1,
     )
@@ -1852,7 +1771,7 @@ def _plot_ac_phase_deg(
     # Marker at measure_freq
     if measure_freq:
         actual = result.actual
-        marker_color = "#2ecc71" if result.passed else "#e74c3c"
+        marker_color = "#35b779" if result.passed else "#d62728"
         fig.add_trace(
             go.Scatter(
                 x=[measure_freq], y=[actual], mode="markers+text",
@@ -1946,13 +1865,13 @@ def _plot_ac_bandwidth_3db(
 
     # -3dB threshold line
     fig.add_hline(
-        y=threshold, line=dict(color="#e74c3c", dash="dot", width=1.5), opacity=0.6,
+        y=threshold, line=dict(color="#35b779", dash="dot", width=1.5), opacity=0.6,
     )
 
     # -3dB crossing point — the main feature
     if not math.isnan(actual) and actual > 0:
         bw_gain = _interpolate_at_freq(ac_data.freq, gain, actual)
-        marker_color = "#2ecc71" if result.passed else "#e74c3c"
+        marker_color = "#35b779" if result.passed else "#d62728"
 
         # Large labeled data point at the crossing
         fig.add_trace(
@@ -2069,7 +1988,7 @@ def _plot_ac_bode_plot(
     fig.add_trace(
         go.Scatter(
             x=ac_data.freq, y=phase, mode="lines",
-            name="Phase (deg)", line=dict(color="#5ec962", width=2),
+            name="Phase (deg)", line=dict(color="#35b779", width=2),
         ),
         row=2, col=1,
     )
@@ -2093,7 +2012,7 @@ def _plot_ac_bode_plot(
         fig.add_trace(
             go.Scatter(
                 x=[bw_freq], y=[bw_gain_val], mode="markers",
-                marker=dict(color="#e74c3c", size=10, symbol="circle",
+                marker=dict(color="#35b779", size=10, symbol="circle",
                             line=dict(color="white", width=2)),
                 name=f"-3 dB @ {bw_freq:.3g} Hz",
                 showlegend=True,
@@ -2103,11 +2022,11 @@ def _plot_ac_bode_plot(
         fig.add_annotation(
             x=bw_freq, y=bw_gain_val, xref="x", yref="y",
             text=f"-3 dB | {bw_freq:.3g} Hz",
-            showarrow=True, arrowhead=2, arrowcolor="#e74c3c",
+            showarrow=True, arrowhead=2, arrowcolor="#35b779",
             ax=50, ay=-30,
-            font=dict(color="#e74c3c", size=11),
+            font=dict(color="#35b779", size=11),
             bgcolor="rgba(255,255,255,0.85)",
-            bordercolor="#e74c3c", borderwidth=1, borderpad=3,
+            bordercolor="#35b779", borderwidth=1, borderpad=3,
         )
 
     fig.update_xaxes(type="log", row=1, col=1)
@@ -2180,7 +2099,7 @@ def _plot_sweep(
 
     # End marker with actual value
     actual = result.actual
-    marker_color = "#2ecc71" if result.passed else "#e74c3c"
+    marker_color = "#35b779" if result.passed else "#d62728"
     fig.add_trace(go.Scatter(
         x=[sweep_signal[-1]], y=[nut_signal[-1]],
         mode="markers+text",
@@ -2205,6 +2124,133 @@ def _plot_sweep(
 
     subtitle = f"Measurement: sweep | Final: {_format_eng(actual, nut_unit)}"
     return _finalize_ac_plot(fig, req.get_name(), subtitle, path, result.passed)
+
+
+def _sweep_y_unit(measurement: str, net: str) -> str:
+    """Infer the Y-axis unit for a sweep plot based on measurement type."""
+    if measurement == "efficiency":
+        return "%"
+    if measurement in ("settling_time",):
+        return "s"
+    if measurement in ("frequency",):
+        return "Hz"
+    if measurement in ("duty_cycle",):
+        return ""
+    if net.startswith("i("):
+        return "A"
+    return "V"
+
+
+def _plot_sweep_chart(
+    result: RequirementResult,
+    series: list[tuple[str, list[float], list[float], list[bool | None]]],
+    path: Path,
+) -> list[dict] | None:
+    """Unified sweep plot: measurement vs sweep-param, one series per DUT.
+
+    *series* is ``[(label, x_vals, y_vals, passed_list), ...]``.
+    For single-DUT there is just one entry; for multi-DUT there are N.
+    """
+    import plotly.graph_objects as go
+
+    if not series:
+        return None
+
+    req = result.requirement
+    measurement = req.get_measurement()
+    raw_net = req.get_net()
+
+    try:
+        min_val = req.get_min_val()
+        max_val = req.get_max_val()
+    except Exception:
+        min_val = max_val = None
+
+    n_series = len(series)
+    colors = _viridis_hex(max(n_series, 1))
+    y_unit = _sweep_y_unit(measurement, raw_net)
+
+    fig = go.Figure()
+
+    for idx, (label, x_vals, y_vals, passed_list) in enumerate(series):
+        line_color = colors[idx % len(colors)]
+        # Per-point marker colors based on pass/fail
+        if min_val is not None and max_val is not None:
+            marker_colors = [
+                "#35b779" if (p is True) else "#d62728"
+                for p in passed_list
+            ]
+        else:
+            marker_colors = [line_color] * len(y_vals)
+
+        fig.add_trace(go.Scatter(
+            x=x_vals, y=y_vals,
+            mode="lines+markers",
+            name=label,
+            line=dict(color=line_color, width=2.5),
+            marker=dict(
+                color=marker_colors, size=10,
+                line=dict(color="white", width=2),
+            ),
+        ))
+
+    # Pass band
+    if min_val is not None and max_val is not None:
+        fig.add_hrect(
+            y0=min_val, y1=max_val,
+            fillcolor="green", opacity=0.08, line_width=0,
+        )
+        fig.add_hline(
+            y=min_val, line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"LSL {min_val:.4g}",
+            annotation_position="bottom right",
+        )
+        fig.add_hline(
+            y=max_val, line=dict(color="#888888", dash="dot", width=1.5),
+            annotation_text=f"USL {max_val:.4g}",
+            annotation_position="top right",
+        )
+
+    # Count pass/fail across all series
+    all_y = []
+    for _, _, yv, pl in series:
+        all_y.extend(zip(yv, pl))
+    if min_val is not None and max_val is not None:
+        n_pass = sum(1 for _, p in all_y if p is True)
+        n_total = len(all_y)
+    else:
+        n_pass = 0
+        n_total = len(all_y)
+    overall_pass = n_pass == n_total and n_total > 0
+
+    status = "ALL PASS" if overall_pass else f"{n_total - n_pass} FAIL"
+    status_color = "#35b779" if overall_pass else "#d62728"
+    badge = f"  <span style='color:{status_color};font-size:14px'>[{status}]</span>"
+    dut_info = f"{n_series} DUT(s) | " if n_series > 1 else ""
+    title_text = (
+        f"<b>{req.get_name()}</b>{badge}"
+        f"<br><span style='font-size:12px;color:gray'>"
+        f"{dut_info}{n_pass}/{n_total} points | "
+        f"{measurement.replace('_', ' ')}</span>"
+    )
+
+    fig.update_layout(
+        title=dict(text=title_text, x=0.5),
+        xaxis_title="Sweep Parameter",
+        yaxis_title=f"{measurement.replace('_', ' ')} ({y_unit})",
+        template="plotly_white",
+        width=960,
+        height=540,
+        showlegend=True,
+        legend=dict(
+            font=dict(size=10), x=0.01, y=0.99,
+            xanchor="left", yanchor="top", traceorder="normal",
+            orientation="v",
+        ),
+    )
+
+    fig.write_html(str(path))
+    return _extract_plot_specs(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -2235,6 +2281,9 @@ def plot_requirement(
     tran_data: TransientResult | None,
     path: str | Path,
     ac_data: ACResult | None = None,
+    sweep_series: (
+        list[tuple[str, list[float], list[float], list[bool | None]]] | None
+    ) = None,
 ) -> list[dict] | None:
     """Generate a per-requirement plot.
 
@@ -2242,7 +2291,8 @@ def plot_requirement(
     requirement's measurement type. Each measurement gets a tailored
     visualization.
 
-    For AC requirements, pass ac_data instead of tran_data.
+    For AC requirements, pass *ac_data* instead of *tran_data*.
+    For sweep plots (single or multi-DUT), pass *sweep_series*.
     """
     try:
         import plotly  # noqa: F401
@@ -2253,6 +2303,10 @@ def plot_requirement(
     path = Path(path)
     req = result.requirement
     measurement = req.get_measurement()
+
+    # Sweep chart (parameter-vs-measurement)
+    if sweep_series is not None:
+        return _plot_sweep_chart(result, sweep_series, path)
 
     # AC plots
     ac_plot_fn = _AC_PLOT_DISPATCH.get(measurement)
@@ -2364,20 +2418,13 @@ def verify_requirements_scoped(
 
     import faebryk.core.node as fabll
     from faebryk.exporters.simulation.ngspice import generate_spice_netlist
+    from faebryk.exporters.simulation.simulation_runner import (
+        _find_simulation_scope,
+    )
 
     reqs = app.get_children(direct_only=False, types=F.Requirement)
     if not reqs:
         return [], {}, {}
-
-    def _find_simulation_scope(node: fabll.Node) -> fabll.Node:
-        """Walk up from a node to find the nearest ancestor with Electrical children."""
-        current = node
-        while current is not None:
-            if current.get_children(direct_only=False, types=F.Electrical):
-                return current
-            parent_info = current.get_parent()
-            current = parent_info[0] if parent_info is not None else None
-        return app
 
     # Group requirements by simulation scope
     # get_parent() returns (parent_node, child_name) tuple
@@ -2385,7 +2432,7 @@ def verify_requirements_scoped(
     for req in reqs:
         parent_info = req.get_parent()
         parent = parent_info[0] if parent_info is not None else app
-        scope = _find_simulation_scope(parent)
+        scope = _find_simulation_scope(parent, app)
         scope_groups[scope].append(req)
 
     all_results: list[RequirementResult] = []

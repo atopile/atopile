@@ -107,7 +107,11 @@ def signal_unit(key: str) -> str:
 
 
 def _viridis_hex(n: int) -> list[str]:
-    """Return *n* evenly-spaced hex colors from the Viridis colorscale."""
+    """Return *n* evenly-spaced hex colors from the Viridis colorscale.
+
+    The dark-purple and bright-yellow extremes are trimmed for better
+    contrast on both dark and light backgrounds.
+    """
     # 16-stop Viridis LUT — enough for smooth interpolation.
     _LUT = [
         (68, 1, 84), (72, 26, 108), (71, 47, 126), (65, 68, 135),
@@ -115,19 +119,22 @@ def _viridis_hex(n: int) -> list[str]:
         (31, 154, 138), (34, 170, 127), (53, 186, 109), (86, 199, 83),
         (122, 209, 55), (165, 218, 32), (210, 226, 27), (253, 231, 37),
     ]
+    # Trim ends: skip first and last stop for better dark/light contrast.
+    _TRIM = _LUT[1:-1]
     if n <= 0:
         return []
     if n == 1:
-        return [f"#{_LUT[8][0]:02x}{_LUT[8][1]:02x}{_LUT[8][2]:02x}"]
+        mid = len(_TRIM) // 2
+        return [f"#{_TRIM[mid][0]:02x}{_TRIM[mid][1]:02x}{_TRIM[mid][2]:02x}"]
     result: list[str] = []
     for i in range(n):
-        t = i / (n - 1) * (len(_LUT) - 1)
+        t = i / (n - 1) * (len(_TRIM) - 1)
         lo = int(t)
-        hi = min(lo + 1, len(_LUT) - 1)
+        hi = min(lo + 1, len(_TRIM) - 1)
         frac = t - lo
-        r = int(_LUT[lo][0] + frac * (_LUT[hi][0] - _LUT[lo][0]))
-        g = int(_LUT[lo][1] + frac * (_LUT[hi][1] - _LUT[lo][1]))
-        b = int(_LUT[lo][2] + frac * (_LUT[hi][2] - _LUT[lo][2]))
+        r = int(_TRIM[lo][0] + frac * (_TRIM[hi][0] - _TRIM[lo][0]))
+        g = int(_TRIM[lo][1] + frac * (_TRIM[hi][1] - _TRIM[lo][1]))
+        b = int(_TRIM[lo][2] + frac * (_TRIM[hi][2] - _TRIM[lo][2]))
         result.append(f"#{r:02x}{g:02x}{b:02x}")
     return result
 
@@ -181,6 +188,38 @@ def _interpolate_at_freq(
 
 
 # ---------------------------------------------------------------------------
+# Plotly serialisation helpers
+# ---------------------------------------------------------------------------
+
+
+def downsample_trace(trace_json: dict, max_points: int = 2000) -> dict:
+    """Downsample a Plotly trace dict to at most max_points for JSON size."""
+    x = trace_json.get("x")
+    y = trace_json.get("y")
+    if not isinstance(x, (list, tuple)) or len(x) <= max_points:
+        return trace_json
+    trace_json = dict(trace_json)
+    step = max(1, len(x) // max_points)
+    trace_json["x"] = x[::step]
+    trace_json["y"] = y[::step] if isinstance(y, (list, tuple)) else y
+    return trace_json
+
+
+def extract_plot_specs(fig: "go.Figure", meta: dict | None = None) -> list[dict] | None:
+    """Extract Plotly figure specs (data + layout) for JSON embedding."""
+    try:
+        spec: dict = {
+            "data": [downsample_trace(t.to_plotly_json()) for t in fig.data],
+            "layout": fig.layout.to_plotly_json(),
+        }
+        if meta:
+            spec["meta"] = meta
+        return [spec]
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # SweepPoint dataclass (used by build_steps.py for sweep rendering)
 # ---------------------------------------------------------------------------
 
@@ -194,121 +233,3 @@ class SweepPoint:
     passed: bool
 
 
-# ---------------------------------------------------------------------------
-# LineChart — declarative chart node with x/y/color fields
-# ---------------------------------------------------------------------------
-
-
-class LineChart(fabll.Node):
-    """Declarative line chart: x/y/color specify data axes.
-
-    Usage in ato::
-
-        plot_vout = new LineChart
-        plot_vout.title = "Output Voltage Startup"
-        plot_vout.x = "time"
-        plot_vout.y = "dut.power_out.hv"
-
-        req_001 = new Requirement
-        req_001.required_plot = "plot_vout"
-    """
-
-    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-    _is_plot = fabll.Traits.MakeEdge(F.is_plot.MakeChild())
-
-    title = F.Parameters.StringParameter.MakeChild()
-    x = F.Parameters.StringParameter.MakeChild()              # "time", "frequency", "dut.param"
-    y = F.Parameters.StringParameter.MakeChild()               # "dut.net", "measurement(net)"
-    y_secondary = F.Parameters.StringParameter.MakeChild()     # secondary y-axis signal
-    color = F.Parameters.StringParameter.MakeChild()           # "dut" or omitted
-    simulation = F.Parameters.StringParameter.MakeChild()      # simulation name override
-    plot_limits = F.Parameters.StringParameter.MakeChild()     # "true" (default) or "false"
-    y_range = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)  # y-axis range
-
-    def get_title(self) -> str | None:
-        try:
-            return self.title.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_x(self) -> str | None:
-        try:
-            return self.x.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_y(self) -> str | None:
-        try:
-            return self.y.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_y_secondary(self) -> str | None:
-        try:
-            return self.y_secondary.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_color(self) -> str | None:
-        try:
-            return self.color.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_simulation(self) -> str | None:
-        try:
-            return self.simulation.get().try_extract_singleton()
-        except Exception:
-            return None
-
-
-# ---------------------------------------------------------------------------
-# BarChart — declarative bar chart node with x/y fields
-# ---------------------------------------------------------------------------
-
-
-class BarChart(fabll.Node):
-    """Declarative bar chart: x=sweep param, y=measurement(net).
-
-    Usage in ato::
-
-        plot_bar = new BarChart
-        plot_bar.title = "Peak-to-Peak vs Capacitance"
-        plot_bar.x = "COUT"
-        plot_bar.y = "peak_to_peak(dut.power_out.hv)"
-
-        req.required_plot = "plot_bar"
-    """
-
-    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-    _is_plot = fabll.Traits.MakeEdge(F.is_plot.MakeChild())
-
-    title = F.Parameters.StringParameter.MakeChild()
-    x = F.Parameters.StringParameter.MakeChild()   # sweep param name
-    y = F.Parameters.StringParameter.MakeChild()    # "measurement(net)"
-    simulation = F.Parameters.StringParameter.MakeChild()    # simulation name override
-    plot_limits = F.Parameters.StringParameter.MakeChild()   # "true" (default) or "false"
-
-    def get_title(self) -> str | None:
-        try:
-            return self.title.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_x(self) -> str | None:
-        try:
-            return self.x.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_y(self) -> str | None:
-        try:
-            return self.y.get().try_extract_singleton()
-        except Exception:
-            return None
-
-    def get_simulation(self) -> str | None:
-        try:
-            return self.simulation.get().try_extract_singleton()
-        except Exception:
-            return None

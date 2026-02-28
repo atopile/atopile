@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { RequirementData, FilterType, SimStatData } from './requirements/types';
 import { goToSource, filterRequirements, computeRequirementStats } from './requirements/helpers';
 import { EditableField } from './requirements/EditableField';
@@ -9,6 +9,8 @@ interface RequirementsAllPageProps {
   requirements: RequirementData[];
   buildTime: string;
   simStats?: SimStatData[];
+  initialSearch?: string;
+  buildTarget?: string;
 }
 
 const FILTER_LABELS: Record<FilterType, string> = {
@@ -125,10 +127,17 @@ function SimTimingChart({ stats }: { stats: SimStatData[] }) {
 
 type LayoutMode = 'grid' | 'list';
 
-export function RequirementsAllPage({ requirements, buildTime, simStats }: RequirementsAllPageProps) {
+export function RequirementsAllPage({ requirements, buildTime, simStats, initialSearch, buildTarget }: RequirementsAllPageProps) {
   const [filter, setFilter] = useState<FilterType>('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [layout, setLayout] = useState<LayoutMode>('grid');
+
+  // Sync search when initialSearch changes (e.g. clicking a different requirement in sidebar)
+  useEffect(() => {
+    if (initialSearch !== undefined) {
+      setSearch(initialSearch);
+    }
+  }, [initialSearch]);
 
   const sorted = useMemo(
     () => [...requirements].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
@@ -143,7 +152,7 @@ export function RequirementsAllPage({ requirements, buildTime, simStats }: Requi
     <div className="rall-root">
       <div className="rall-header">
         <div className="rall-title">
-          All Requirements
+          {buildTarget || 'All'} Requirements
           <span className="req-sidebar-badge">{sorted.length}</span>
         </div>
         <div className="rall-summary">

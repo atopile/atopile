@@ -168,7 +168,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_1810131310_Texas-Instruments-TPS54560DDAR_C31966.pdf"
+		(property "Datasheet" "https://lcsc.com/datasheet/lcsc_datasheet_2410121845_TI-TPS54560DDAR_C31966.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -267,8 +267,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "6aa69ab4-25eb-45d6-9448-5de5d64715e7")
 		)
 		(fp_line
@@ -279,8 +277,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "ac583097-4978-4d6a-b8ff-ac36a7384744")
 		)
 		(fp_line
@@ -291,8 +287,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "31fd003c-7d54-478b-aafd-458c5e62d93f")
 		)
 		(fp_line
@@ -303,8 +297,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "2ea5d020-81e3-4c5c-b193-5fb8d6e985f7")
 		)
 		(fp_circle
@@ -314,8 +306,8 @@
 				(width 0.3)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.SilkS")
-			(locked no)
 			(uuid "17551c44-f767-4a17-8607-61b2278a05b1")
 		)
 		(fp_circle
@@ -325,8 +317,8 @@
 				(width 0.3)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.SilkS")
-			(locked no)
 			(uuid "6eba5208-eb32-4066-bbcd-85a32ff3ebcb")
 		)
 		(fp_circle
@@ -336,8 +328,8 @@
 				(width 0.3)
 				(type solid)
 			)
+			(fill no)
 			(layer "Cmts.User")
-			(locked no)
 			(uuid "ce28eb38-1760-4e1f-85e0-4ee373f88f47")
 		)
 		(fp_circle
@@ -347,11 +339,11 @@
 				(width 0.06)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(locked no)
 			(uuid "c1192c81-46eb-4e39-b75a-f458373bce42")
 		)
-		(fp_text user "%R"
+		(fp_text user "${REFERENCE}"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(uuid "f0366c06-7c36-4663-8652-bf9f6f22f19a")
@@ -360,103 +352,124 @@
 					(size 1 1)
 					(thickness 0.15)
 				)
+				(hide yes)
+			)
+		)
+		(fp_text user "${REFERENCE}"
+			(at 0 -6.77 90)
+			(layer "F.SilkS")
+			(uuid "44c9a415-bd6c-4a4e-94a9-02219d188a38")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(hide yes)
 			)
 		)
 		(pad "1" smd oval
 			(at -1.91 2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 15 "hv")
 			(uuid "e4267807-4288-4bd1-b450-fe68b0f793b2")
 		)
 		(pad "2" smd oval
 			(at -0.63 2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 2 "c_in-power-hv")
 			(uuid "64e2521e-9349-40c0-ac72-cf18b5d34bcb")
 		)
 		(pad "3" smd oval
 			(at 0.63 2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 1 "EN")
 			(uuid "bb53fdda-303b-4309-b51b-c4f49e884b85")
 		)
 		(pad "4" smd oval
 			(at 1.9 2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 17 "RT_CLK")
 			(uuid "89d91ce4-443f-4d18-b4d5-940870fed057")
 		)
 		(pad "5" smd oval
 			(at 1.9 -2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 6 "FB")
 			(uuid "c763e540-bb99-4606-befb-172bbce458fc")
 		)
 		(pad "6" smd oval
 			(at 0.63 -2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 16 "c_comp1-power-hv")
 			(uuid "d821035e-5921-4891-ab45-505c5cc19e1d")
 		)
 		(pad "7" smd oval
 			(at -0.63 -2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 14 "anode")
 			(uuid "0dc8af04-dbe8-45db-a8c7-60f3b6274b9e")
 		)
 		(pad "8" smd oval
 			(at -1.91 -2.77 90)
 			(size 0.57 2.04)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 13 "cathode")
 			(uuid "495dc415-42f5-4050-b8a8-097dfbc9cabb")
 		)
 		(pad "9" smd rect
 			(at 0 0 90)
 			(size 2 2)
-			(layers "F.Cu" "F.Paste" "F.Mask")
+			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net 14 "anode")
 			(uuid "19f6df68-de99-4f25-91e4-553f4793caa5")
 		)
-		(pad "" thru_hole circle
-			(at 0.5 -0.5 90)
-			(size 0.61 0.61)
-			(drill 0.3)
-			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "9329084d-a1c7-42a1-a82b-e97d60193bd6")
-		)
-		(pad "" thru_hole circle
+		(pad "9" thru_hole circle
 			(at -0.5 -0.5 90)
 			(size 0.61 0.61)
 			(drill 0.3)
 			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "acf5fc5f-f0b0-4276-a788-9c50bc4d5be7")
+			(remove_unused_layers no)
+			(net 14 "anode")
+			(uuid "a96e32b2-1f51-4372-9568-8deeb6409d4a")
 		)
-		(pad "" thru_hole circle
+		(pad "9" thru_hole circle
 			(at -0.5 0.5 90)
 			(size 0.61 0.61)
 			(drill 0.3)
 			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "b862f363-edfb-4f56-9219-a86d319ffb50")
+			(remove_unused_layers no)
+			(net 14 "anode")
+			(uuid "66de391c-f4bd-449e-bd42-0b909ad1e033")
 		)
-		(pad "" thru_hole circle
+		(pad "9" thru_hole circle
+			(at 0.5 -0.5 90)
+			(size 0.61 0.61)
+			(drill 0.3)
+			(layers "*.Cu" "*.Paste" "*.Mask")
+			(remove_unused_layers no)
+			(net 14 "anode")
+			(uuid "ec0a6dc5-b57e-4846-a018-0f8893573d81")
+		)
+		(pad "9" thru_hole circle
 			(at 0.5 0.5 90)
 			(size 0.61 0.61)
 			(drill 0.3)
 			(layers "*.Cu" "*.Paste" "*.Mask")
-			(uuid "4221dd03-78bc-4777-b702-b3744a6ddc0c")
+			(remove_unused_layers no)
+			(net 14 "anode")
+			(uuid "576d3e41-f1ae-4687-ad7e-dd0fe9bda673")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/Texas_Instruments_TPS54560DDAR/39.STEP"
+		(model "${KIPRJMOD}/../../parts/Texas_Instruments_TPS54560DDAR/SOIC-8_L4.9-W3.9-H1.7-LS6.0-P1.27.step"
 			(offset
-				(xyz 0 0 -0)
+				(xyz 0 0 0)
 			)
 			(scale
 				(xyz 1 1 1)
@@ -723,7 +736,7 @@
 		(uuid "acf7b71d-146a-4bba-b65e-29a94642524b")
 		(at 0 0 0)
 		(property "Reference" "D1"
-			(at 0 -4)
+			(at 0 -4 0)
 			(layer "F.SilkS")
 			(hide yes)
 			(uuid "b0ed2235-7fb3-498d-b44b-05f87bf11d6a")
@@ -735,7 +748,7 @@
 			)
 		)
 		(property "Value" ""
-			(at 0 4)
+			(at 0 4 0)
 			(layer "F.Fab")
 			(hide no)
 			(uuid "6dbff4c9-a187-48ab-999a-f3180d784363")
@@ -764,7 +777,7 @@
 			(hide yes)
 			(uuid "a72160b0-2773-47d4-ab80-e71b4642524b")
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_1811141732_STMicroelectronics-STPS340U_C50706.pdf"
+		(property "Datasheet" "https://lcsc.com/datasheet/lcsc_datasheet_2410010132_ST-STPS340U_C50706.pdf"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -791,8 +804,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "da40d1ee-0537-4856-a3ad-26eb7b31abd9")
 		)
 		(fp_line
@@ -803,8 +814,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "5fcf442e-c1ab-4303-8795-c7a63289171b")
 		)
 		(fp_line
@@ -815,8 +824,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "e370c846-632e-4270-b784-0a162996ac31")
 		)
 		(fp_line
@@ -827,8 +834,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "43c5bb57-467d-4b4f-afe9-c57741b03d0c")
 		)
 		(fp_line
@@ -839,8 +844,6 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(layers "F.SilkS")
-			(locked no)
 			(uuid "a946e95f-825f-488c-a34b-6ef5f83f9a16")
 		)
 		(fp_circle
@@ -850,12 +853,12 @@
 				(width 0.06)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(locked no)
 			(uuid "7f2a2bb9-8a15-41d7-bfab-ae460f6c3b72")
 		)
 		(fp_text user "%R"
-			(at 0 0)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "4b050b42-2045-4e27-bfcc-6e51cb4ed0a4")
 			(effects
@@ -863,6 +866,18 @@
 					(size 1 1)
 					(thickness 0.15)
 				)
+			)
+		)
+		(fp_text user "${REFERENCE}"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(uuid "1712cfb1-50b2-444b-8a1c-94d6e3cb6972")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(hide yes)
 			)
 		)
 		(pad "2" smd rect
@@ -879,10 +894,9 @@
 			(net 13 "cathode")
 			(uuid "d81ee5b6-e109-4341-b536-d5a342177ecf")
 		)
-		(embedded_fonts no)
 		(model "${KIPRJMOD}/../../parts/STMicroelectronics_STPS340U/SMB_L4.6-W3.6-LS5.3-RD.step"
 			(offset
-				(xyz 0 0 -0)
+				(xyz 0 0 0)
 			)
 			(scale
 				(xyz 1 1 1)

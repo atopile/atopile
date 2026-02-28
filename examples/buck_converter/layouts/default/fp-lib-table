@@ -490,4 +490,18 @@
 		(options "")
 		(descr "atopile: part lib: UNI_ROYAL_1210W2J0102T5E")
 	)
+	(lib
+		(name "Samsung_Electro_Mechanics_CL31A476MPHNNNE")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL31A476MPHNNNE")
+		(options "")
+		(descr "atopile: part lib: Samsung_Electro_Mechanics_CL31A476MPHNNNE")
+	)
+	(lib
+		(name "YAGEO_RC1210FR_0710KL")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/YAGEO_RC1210FR_0710KL")
+		(options "")
+		(descr "atopile: part lib: YAGEO_RC1210FR_0710KL")
+	)
 )

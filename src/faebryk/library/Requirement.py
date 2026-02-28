@@ -207,6 +207,11 @@ class Requirement(fabll.Node):
     # Multi-DUT: auto-compute min/max from VOUT as vout*(1 +/- pct/100)
     vout_tolerance_pct = F.Parameters.StringParameter.MakeChild()
 
+    # Sweep relative mode: when true, each sweep point's actual value is
+    # computed as (measured - paramValue).  Useful for checking that a measured
+    # quantity tracks a swept design parameter (e.g. frequency error).
+    sweep_relative = F.Parameters.StringParameter.MakeChild()
+
     # Plot references (comma-separated ato variable names of LineChart siblings)
     required_plot = F.Parameters.StringParameter.MakeChild()
     supplementary_plot = F.Parameters.StringParameter.MakeChild()
@@ -404,6 +409,14 @@ class Requirement(fabll.Node):
         from faebryk.library.Simulations import _extract_float
         return _extract_float(param)
 
+    @staticmethod
+    def _extract_text(param) -> str | None:
+        """Return the raw text value of a StringParameter (as written in .ato)."""
+        try:
+            return param.get().try_extract_singleton()
+        except Exception:
+            return None
+
     def get_tran_step(self) -> float | None:
         return self._extract_float(self.tran_step)
 
@@ -412,6 +425,15 @@ class Requirement(fabll.Node):
 
     def get_tran_start(self) -> float | None:
         return self._extract_float(self.tran_start)
+
+    def get_tran_step_text(self) -> str | None:
+        return self._extract_text(self.tran_step)
+
+    def get_tran_stop_text(self) -> str | None:
+        return self._extract_text(self.tran_stop)
+
+    def get_tran_start_text(self) -> str | None:
+        return self._extract_text(self.tran_start)
 
     def get_source_override(self) -> tuple[str, str] | None:
         name = self.source_name.get().try_extract_singleton()
@@ -456,20 +478,22 @@ class Requirement(fabll.Node):
 
     def get_extra_spice(self) -> list[str]:
         """Get extra SPICE lines to inject (pipe-separated)."""
-        raw = self.extra_spice.get().try_extract_singleton()
-        if raw is None:
-            return []
-        return [line.strip() for line in raw.split("|") if line.strip()]
+        from faebryk.library.Simulations import _parse_pipe_list
+
+        return _parse_pipe_list(self.extra_spice)
 
     def get_remove_elements(self) -> list[str]:
         """Get element names to remove from the netlist (comma-separated)."""
-        raw = self.remove_elements.get().try_extract_singleton()
-        if raw is None:
-            return []
-        return [name.strip() for name in raw.split(",") if name.strip()]
+        from faebryk.library.Simulations import _parse_comma_list
+
+        return _parse_comma_list(self.remove_elements)
 
     def get_vout_tolerance_pct(self) -> float | None:
         return self._extract_float(self.vout_tolerance_pct)
+
+    def get_sweep_relative(self) -> bool:
+        raw = self.sweep_relative.get().try_extract_singleton()
+        return raw is not None and raw.lower() in ("true", "1", "yes")
 
     def get_required_plot_names(self) -> list[str]:
         """Get required plot variable names (comma-separated)."""

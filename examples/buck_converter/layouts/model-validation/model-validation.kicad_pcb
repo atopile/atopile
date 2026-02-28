@@ -1,7 +1,7 @@
 (kicad_pcb
 	(version 20241229)
 	(generator "atopile")
-	(generator_version "0.14.1004-post1.dev27+g61bab0b53.d20260222010737")
+	(generator_version "0.14.1004-post1.dev25+g65348d5dc.d20260218211358")
 	(general
 		(thickness 1.6)
 		(legacy_teardrops no)

@@ -368,7 +368,7 @@ def handle_rerun_single(
         # This is the maximum internal timestep for convergence — NOT the
         # output step.  Using tran_step * 25 was far too small and caused
         # ngspice to produce millions of data points → OOM / SIGKILL.
-        TMAX = 50e-9
+        TMAX = 25e-9
         result = circuit.tran(
             step=tran_step,
             stop=tran_stop,

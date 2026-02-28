@@ -18,6 +18,12 @@ export interface RequirementData {
   tranStart?: number;
   tranStop?: number;
   tranStep?: number;
+  /** Original ato text for transient start (e.g. "4ms") */
+  tranStartText?: string;
+  /** Original ato text for transient stop (e.g. "5ms") */
+  tranStopText?: string;
+  /** Original ato text for transient step (e.g. "200ns") */
+  tranStepText?: string;
   timeSeries: TimeSeriesData | null;
   frequencySeries: FrequencySeriesData | null;
   sweepPoints?: SweepPointData[];

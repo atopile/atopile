@@ -15,13 +15,13 @@ from "buck_converter.ato" import TPS54560_Reference
 #
 # DUT: 5V/5A output, 12V nominal input, 400kHz switching (DS Figure 33)
 #
-# Netlist element map (from ato build):
-#   R1=r_bottom(10.2k) R2=r_comp(16.9k) R3=r_en(442k) R4=r_en_bot(90.9k)
-#   R5=r_load(1k) R6=r_rt(243k) R7=r_top(53.6k)
-#   C1=c_boot(100n) C2=c_comp(4.7n) C3=c_comp1(47p) C4=c_in(10u)
-#   C5-C8=c_out(4x47u) — NOTE: MultiCapacitor values don't resolve in SPICE,
+# Component map (auto-generated, ato path → SPICE designator):
+#   r_bottom→R1(10.2k)  r_comp→R2(16.9k)  r_en→R3(442k)  r_en_bot→R4(90.9k)
+#   r_load→R5(1k)  r_rt→R6(243k)  r_top→R7(53.6k)
+#   c_boot→C1(100n)  c_comp→C2(4.7n)  c_comp1→C3(47p)  c_in→C4(10u)
+#   c_out→C5-C8(4x47u) — NOTE: MultiCapacitor values don't resolve in SPICE,
 #   so output caps are manually added via extra_spice on each simulation.
-#   L1=inductor(6.8u)  X1=TPS54560_TRANS(FS=param_bindings)
+#   inductor→L1(6.8u)  package→X1(TPS54560_TRANS)
 #
 # Known model limitations:
 #   - Ideal voltage sources: input ripple always 0 (Figs 41-42 not testable)
@@ -48,8 +48,8 @@ module ModelValidation:
     sim_startup_en = new SimulationTransient
     sim_startup_en.duts = "dut"
     sim_startup_en.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_startup_en.remove_elements = "R3,R4"
-    sim_startup_en.extra_spice = "V_EN dut.enable.line 0 PULSE(0 12 1e-3 10u 10u 10 10)|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
+    sim_startup_en.remove_elements = "r_en,r_en_bot,r_load"
+    sim_startup_en.extra_spice = "V_EN dut.enable.line 0 PULSE(0 12 1e-3 10u 10u 10 10)|R_LOAD dut.power_out.hv 0 100|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_startup_en.time_stop = 10ms
     sim_startup_en.time_step = 2us
 
@@ -65,8 +65,8 @@ module ModelValidation:
     sim_startup_freq_sweep.param_values = "200e3,400e3,600e3,800e3"
     sim_startup_freq_sweep.param_unit = "Hz"
     sim_startup_freq_sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_startup_freq_sweep.remove_elements = "R3,R4"
-    sim_startup_freq_sweep.extra_spice = "V_EN dut.enable.line 0 PULSE(0 12 1e-3 10u 10u 10 10)|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
+    sim_startup_freq_sweep.remove_elements = "r_en,r_en_bot,r_load"
+    sim_startup_freq_sweep.extra_spice = "V_EN dut.enable.line 0 PULSE(0 12 1e-3 10u 10u 10 10)|R_LOAD dut.power_out.hv 0 100|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_startup_freq_sweep.time_stop = 10ms
     sim_startup_freq_sweep.time_step = 2us
 
@@ -95,7 +95,7 @@ module ModelValidation:
     sim_load_transient_sweep.param_values = "1,2,3,4,5"
     sim_load_transient_sweep.param_unit = "A"
     sim_load_transient_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 PULSE(0.5 {ILOAD} 7m 1u 1u 3m 20m)"
-    sim_load_transient_sweep.remove_elements = "R3,R4,R5"
+    sim_load_transient_sweep.remove_elements = "r_en,r_en_bot,r_load"
     sim_load_transient_sweep.extra_spice = "V_EN dut.enable.line 0 DC 12|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_load_transient_sweep.time_start = 6ms
     sim_load_transient_sweep.time_stop = 12ms
@@ -109,7 +109,7 @@ module ModelValidation:
     sim_line_transient = new SimulationTransient
     sim_line_transient.duts = "dut"
     sim_line_transient.spice = "V1 dut.power_in.hv 0 PULSE(8 40 15e-3 1u 1u 5e-3 20e-3)"
-    sim_line_transient.remove_elements = "R3,R4,R5"
+    sim_line_transient.remove_elements = "r_en,r_en_bot,r_load"
     sim_line_transient.extra_spice = "V_EN dut.enable.line 0 DC 12|Iload dut.power_out.hv 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_line_transient.time_start = 12ms
     sim_line_transient.time_stop = 20ms
@@ -124,7 +124,7 @@ module ModelValidation:
     sim_ccm_ripple = new SimulationTransient
     sim_ccm_ripple.duts = "dut"
     sim_ccm_ripple.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_ccm_ripple.remove_elements = "R3,R4,R5"
+    sim_ccm_ripple.remove_elements = "r_en,r_en_bot,r_load"
     sim_ccm_ripple.extra_spice = "V_EN dut.enable.line 0 DC 12|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_ccm_ripple.time_start = 10ms
     sim_ccm_ripple.time_stop = 10.05ms
@@ -142,7 +142,7 @@ module ModelValidation:
     sim_freq_sweep.param_values = "200e3,400e3,600e3,800e3"
     sim_freq_sweep.param_unit = "Hz"
     sim_freq_sweep.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_freq_sweep.remove_elements = "R3,R4,R5"
+    sim_freq_sweep.remove_elements = "r_en,r_en_bot,r_load"
     sim_freq_sweep.extra_spice = "V_EN dut.enable.line 0 DC 12|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_freq_sweep.time_start = 10ms
     sim_freq_sweep.time_stop = 10.05ms
@@ -160,11 +160,11 @@ module ModelValidation:
     sim_duty_cycle_vin_sweep.param_values = "8,12,24,36,48"
     sim_duty_cycle_vin_sweep.param_unit = "V"
     sim_duty_cycle_vin_sweep.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {VIN} 0 10u 10u 10 10)"
-    sim_duty_cycle_vin_sweep.remove_elements = "R3,R4,R5"
+    sim_duty_cycle_vin_sweep.remove_elements = "r_en,r_en_bot,r_load"
     sim_duty_cycle_vin_sweep.extra_spice = "V_EN dut.enable.line 0 DC 12|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_duty_cycle_vin_sweep.time_start = 10ms
-    sim_duty_cycle_vin_sweep.time_stop = 10.05ms
-    sim_duty_cycle_vin_sweep.time_step = 10ns
+    sim_duty_cycle_vin_sweep.time_stop = "10.01 ms"
+    sim_duty_cycle_vin_sweep.time_step = "2ns"
 
     # =====================================================================
     # SIMULATION: DCM Steady-State Ripple (DS Figure 39)
@@ -174,7 +174,7 @@ module ModelValidation:
     sim_dcm_ripple = new SimulationTransient
     sim_dcm_ripple.duts = "dut"
     sim_dcm_ripple.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_dcm_ripple.remove_elements = "R3,R4,R5"
+    sim_dcm_ripple.remove_elements = "r_en,r_en_bot,r_load"
     sim_dcm_ripple.extra_spice = "V_EN dut.enable.line 0 DC 12|R_LOAD_DCM dut.power_out.hv 0 50|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_dcm_ripple.time_start = 20ms
     sim_dcm_ripple.time_stop = 20.5ms
@@ -189,7 +189,7 @@ module ModelValidation:
     sim_psm_ripple = new SimulationTransient
     sim_psm_ripple.duts = "dut"
     sim_psm_ripple.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_psm_ripple.remove_elements = "R3,R4,R5"
+    sim_psm_ripple.remove_elements = "r_en,r_en_bot,r_load"
     sim_psm_ripple.extra_spice = "V_EN dut.enable.line 0 DC 12|R_LOAD_PSM dut.power_out.hv 0 250|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_psm_ripple.time_start = 15ms
     sim_psm_ripple.time_stop = 25ms
@@ -204,7 +204,7 @@ module ModelValidation:
     sim_low_dropout = new SimulationTransient
     sim_low_dropout.duts = "dut"
     sim_low_dropout.spice = "V1 dut.power_in.hv 0 PULSE(0 7 0 10u 10u 10 10)"
-    sim_low_dropout.remove_elements = "R3,R4,R5"
+    sim_low_dropout.remove_elements = "r_en,r_en_bot,r_load"
     sim_low_dropout.extra_spice = "V_EN dut.enable.line 0 DC 5|Iload dut.power_out.hv 0 DC 1|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_low_dropout.time_start = 15ms
     sim_low_dropout.time_stop = 15.1ms
@@ -221,7 +221,7 @@ module ModelValidation:
     sim_load_regulation.param_values = "0.5,1,2,3,4,5"
     sim_load_regulation.param_unit = "A"
     sim_load_regulation.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_load_regulation.remove_elements = "R3,R4,R5"
+    sim_load_regulation.remove_elements = "r_en,r_en_bot,r_load"
     sim_load_regulation.extra_spice_template = "V_EN dut.enable.line 0 DC 12|I_LOAD dut.power_out.hv 0 DC {ILOAD}|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_load_regulation.time_start = 10ms
     sim_load_regulation.time_stop = 10.5ms
@@ -238,7 +238,7 @@ module ModelValidation:
     sim_line_regulation.param_values = "8,12,24,36,48,60"
     sim_line_regulation.param_unit = "V"
     sim_line_regulation.spice_template = "V1 dut.power_in.hv 0 PULSE(0 {VIN} 0 10u 10u 10 10)"
-    sim_line_regulation.remove_elements = "R3,R4,R5"
+    sim_line_regulation.remove_elements = "r_en,r_en_bot,r_load"
     sim_line_regulation.extra_spice = "V_EN dut.enable.line 0 DC 12|Iload dut.power_out.hv 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_line_regulation.time_start = 10ms
     sim_line_regulation.time_stop = 10.5ms
@@ -254,7 +254,7 @@ module ModelValidation:
     sim_ocp = new SimulationTransient
     sim_ocp.duts = "dut"
     sim_ocp.spice = "V1 dut.power_in.hv 0 PULSE(0 12 0 10u 10u 10 10)"
-    sim_ocp.remove_elements = "R3,R4,R5"
+    sim_ocp.remove_elements = "r_en,r_en_bot,r_load"
     sim_ocp.extra_spice = "V_EN dut.enable.line 0 DC 12|Iload dut.power_out.hv 0 DC 8|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_ocp.time_start = 10ms
     sim_ocp.time_stop = 10.05ms
@@ -308,7 +308,7 @@ module ModelValidation:
     plot_004_overlay = new LineChart
     plot_004_overlay.title = "Load Transient Traces by ILOAD"
     plot_004_overlay.x = "time"
-    plot_004_overlay.y = "ac_coupled(dut.power_out.hv)"
+    plot_004_overlay.y = "dut.power_out.hv"
     plot_004_overlay.y_secondary = "i(vsense)"
     plot_004_overlay.color = "ILOAD"
     plot_004_overlay.simulation = "sim_load_transient_sweep"
@@ -360,7 +360,7 @@ module ModelValidation:
     plot_007_bar = new BarChart
     plot_007_bar.title = "Measured vs Design Switching Frequency"
     plot_007_bar.x = "dut.switching_frequency"
-    plot_007_bar.y = "frequency(dut.package.SW)"
+    plot_007_bar.y = "frequency(dut.package.SW)-switching_frequency"
     plot_007_bar.simulation = "sim_freq_sweep"
 
     plot_007_overlay = new LineChart
@@ -477,8 +477,8 @@ module ModelValidation:
     req_001.simulation = "sim_startup_en"
     req_001.net = "dut.power_out.hv"
     req_001.measurement = "final_value"
-    assert req_001.limit within 4.75V to 5.30V
-    req_001.justification = "DS Fig 37: EN-controlled startup must reach ~5V regulation. Light load (~5mA via R5) may cause slight overshoot to ~5.26V due to Eco-mode pulse-skipping at low current."
+    assert req_001.limit within 4.75V to 5.25V
+    req_001.justification = "DS Fig 37: EN-controlled startup must reach ~5V regulation. 100 ohm load (50mA) avoids eco-mode pulse-skipping for clean startup."
     req_001.required_plot = "plot_001"
 
     # --- MV_002: Startup Settling Time vs Frequency ---
@@ -490,8 +490,9 @@ module ModelValidation:
     req_002.simulation = "sim_startup_freq_sweep"
     req_002.net = "dut.power_out.hv"
     req_002.measurement = "settling_time"
+    req_002.settling_tolerance = "0.02"
     assert req_002.limit within 2ms to 10ms
-    req_002.justification = "DS Eq 6: tss=1024/fsw. At 200kHz settling is ~5ms (no overshoot). At 400-800kHz settling is ~8ms due to overshoot recovery — higher frequencies overshoot to ~5.5V and take similar time to damp. The settling_time metric captures total time to final regulation, not just soft-start."
+    req_002.justification = "DS Eq 6: tss=1024/fsw. At 200kHz settling is ~5ms. At 800kHz settling is ~2ms. 100 ohm load (50mA) avoids eco-mode. 2% settling tolerance for DCM ripple."
     req_002.required_plot = "plot_002_settling"
     req_002.supplementary_plot = "plot_002_overlay"
 
@@ -540,12 +541,13 @@ module ModelValidation:
 
     # --- MV_007: Switching Frequency vs Design Frequency ---
     req_007 = new Requirement
-    req_007.req_name = "MV_007: [Fig 38] Switching Frequency vs Design Frequency"
+    req_007.req_name = "MV_007: [Fig 38] Switching Frequency Error vs Design"
     req_007.simulation = "sim_freq_sweep"
     req_007.net = "dut.package.SW"
     req_007.measurement = "frequency"
-    assert req_007.limit within 180kHz to 880kHz
-    req_007.justification = "Swept 200k-800kHz. Per-point data shows perfect tracking (200k->200k, 400k->400k, etc.). Broad 180k-880kHz limits cover full sweep range; the BarChart visually confirms 1:1 correlation between design and measured frequency at each point."
+    req_007.sweep_relative = "true"
+    assert req_007.limit within -1kHz to 1kHz
+    req_007.justification = "Swept 200k-800kHz. Each point's measured frequency must track the design frequency within +/-1kHz. sweep_relative subtracts the design value so the limit checks deviation."
     req_007.required_plot = "plot_007_bar"
     req_007.supplementary_plot = "plot_007_overlay"
 

@@ -25,6 +25,7 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 import faebryk.library.Measurements as Measurements
 from faebryk.library.Mechanical import Mechanical
+import faebryk.library.Plots as Plots
 from faebryk.library.Signal import Signal
 from faebryk.library.is_spice_simulation import is_spice_simulation
 from faebryk.library.is_app_root import is_app_root
@@ -36,9 +37,11 @@ from faebryk.library.has_source_chunk import has_source_chunk
 import faebryk.library.Parameters as Parameters
 from faebryk.library.has_name_override import has_name_override
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
+from faebryk.library.BarChart import BarChart
 import faebryk.library.Expressions as Expressions
 import faebryk.library.Footprints as Footprints
 import faebryk.library.Pickable as Pickable
+from faebryk.library.Requirement import Requirement
 from faebryk.library.SerializableMetadata import SerializableMetadata
 import faebryk.library.Simulations as Simulations
 from faebryk.library.has_datasheet import has_datasheet
@@ -48,6 +51,7 @@ from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_solver import has_solver
 from faebryk.library.has_spice_model import has_spice_model
+from faebryk.library.has_spice_param_bindings import has_spice_param_bindings
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_auto_generated import is_auto_generated
 import faebryk.library.Units as Units
@@ -55,6 +59,7 @@ import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
+from faebryk.library.LineChart import LineChart
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
@@ -63,7 +68,6 @@ from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-import faebryk.library.Plots as Plots
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
@@ -78,7 +82,6 @@ from faebryk.library.MountingHole import MountingHole
 from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
-from faebryk.library.Requirement import Requirement
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.CapacitorPolarized import CapacitorPolarized
 from faebryk.library.Comparator import Comparator
@@ -137,6 +140,7 @@ __all__ = [
     "Logic",
     "Measurements",
     "Mechanical",
+    "Plots",
     "Signal",
     "is_spice_simulation",
     "is_app_root",
@@ -148,9 +152,11 @@ __all__ = [
     "Parameters",
     "has_name_override",
     "can_bridge_by_name",
+    "BarChart",
     "Expressions",
     "Footprints",
     "Pickable",
+    "Requirement",
     "SerializableMetadata",
     "Simulations",
     "has_datasheet",
@@ -160,6 +166,7 @@ __all__ = [
     "has_package_requirements",
     "has_solver",
     "has_spice_model",
+    "has_spice_param_bindings",
     "has_usage_example",
     "is_auto_generated",
     "Units",
@@ -167,6 +174,7 @@ __all__ = [
     "implements_design_check",
     "Electrical",
     "has_net_name_suggestion",
+    "LineChart",
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",
@@ -175,7 +183,6 @@ __all__ = [
     "is_sum_bus_parameter",
     "Filter",
     "Lead",
-    "Plots",
     "has_net_name_affix",
     "requires_external_usage",
     "XtalIF",
@@ -190,7 +197,6 @@ __all__ = [
     "Net",
     "Resistor",
     "TestPoint",
-    "Requirement",
     "Capacitor",
     "CapacitorPolarized",
     "Comparator",

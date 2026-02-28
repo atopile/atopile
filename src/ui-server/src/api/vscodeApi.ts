@@ -174,6 +174,7 @@ export interface OpenRequirementDetailMessage {
   target: string;
   requirementData?: unknown;
   buildTime?: string;
+  initialSearch?: string;
 }
 
 export interface UpdateRequirementsPanelMessage {

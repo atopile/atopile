@@ -143,7 +143,7 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
   });
 
   // Viridis-sampled context colors
-  const ctxColors = ['#440154', '#31688e', '#35ba6d', '#fde725'];
+  const ctxColors = ['#481a6c', '#287e8e', '#4bc35b', '#d2e21b'];
   (req.contextNets || []).forEach((cn, i) => {
     const ck = cn.startsWith('v(') || cn.startsWith('i(') ? cn : `v(${cn})`;
     if (ts.signals[ck]) {
@@ -210,9 +210,13 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
       { x: 0.98, y: req.actual ?? 0, xref: 'paper', yref: 'y', text: `${formatEng(req.actual ?? NaN, req.unit)}`, showarrow: false, font: { size: 8, color: req.passed ? colors.success : colors.error }, xanchor: 'right', yanchor: 'bottom' },
     );
-    const span = req.maxVal - req.minVal;
-    const pad = span * 0.5;
-    (layout.yaxis as Record<string, unknown>).range = [req.minVal - pad, req.maxVal + pad];
+    const sigMin = nutSignal.length > 0 ? Math.min(...nutSignal) : req.minVal;
+    const sigMax = nutSignal.length > 0 ? Math.max(...nutSignal) : req.maxVal;
+    const visibleMin = Math.min(req.minVal, sigMin);
+    const visibleMax = Math.max(req.maxVal, sigMax);
+    const span = visibleMax - visibleMin;
+    const pad = span * 0.15;
+    (layout.yaxis as Record<string, unknown>).range = [visibleMin - pad, visibleMax + pad];
   }
 
   if (req.measurement === 'settling_time') {
@@ -273,11 +277,13 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
       bgcolor: 'rgba(0,0,0,0.6)', borderpad: 3,
     });
     const halfMax = (req.maxVal != null && isFinite(req.maxVal)) ? req.maxVal / 2 : (peak - trough) / 2;
-    const visibleTop = Math.max(peak, center + halfMax);
-    const visibleBot = Math.min(trough, center - halfMax);
-    const span = visibleTop - visibleBot;
-    const pad = span * 0.15;
-    (layout.yaxis as Record<string, unknown>).range = [visibleBot - pad, visibleTop + pad];
+    const usl = center + halfMax;
+    const lsl = center - halfMax;
+    const visibleTop = Math.max(peak, usl);
+    const visibleBot = Math.min(trough, lsl);
+    const limitSpan = usl - lsl;
+    const pad = Math.max(limitSpan * 0.1, (visibleTop - visibleBot) * 0.1);
+    (layout.yaxis as Record<string, unknown>).range = [Math.min(visibleBot, lsl) - pad, Math.max(visibleTop, usl) + pad];
   }
 
   if (req.measurement === 'overshoot') {
@@ -317,7 +323,10 @@ export async function renderTransientPlot(el: HTMLDivElement, req: RequirementDa
 export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, size?: { width: number; height: number }) {
   const Plotly = await getPlotly();
   const colors = themeColors();
-  const range = req.maxVal - req.minVal;
+  const actual = req.actual ?? 0;
+  const visibleMin = Math.min(req.minVal, actual);
+  const visibleMax = Math.max(req.maxVal, actual);
+  const range = visibleMax - visibleMin;
   const padding = range * 0.3;
 
   const dcLabel = legendLabel(req.displayNet || req.net, req.measurement);
@@ -344,7 +353,7 @@ export async function renderDCPlot(el: HTMLDivElement, req: RequirementData, siz
     xaxis: {
       ...baseLayout(colors).xaxis,
       title: { text: req.unit, font: { size: 9, color: colors.muted } },
-      range: [req.minVal - padding, req.maxVal + padding],
+      range: [visibleMin - padding, visibleMax + padding],
     },
     yaxis: { visible: false, fixedrange: true },
     shapes: [
@@ -393,7 +402,7 @@ export async function renderBodePlot(el: HTMLDivElement, req: RequirementData, s
     type: 'scatter',
     mode: 'lines',
     name: 'Phase (deg)',
-    line: { color: '#5ec962', width: 2 },
+    line: { color: '#35b779', width: 2 },
     xaxis: 'x',
     yaxis: 'y2',
   });
@@ -629,6 +638,26 @@ export async function rerenderWithLimits(
   return updated;
 }
 
+/** Extract the y-data extent from trace data arrays (primary y-axis only). */
+function traceYExtent(data: Record<string, unknown>[]): [number, number] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const trace of data) {
+    // Skip traces on secondary y-axis
+    if (trace.yaxis && trace.yaxis !== 'y') continue;
+    const yArr = trace.y;
+    if (Array.isArray(yArr)) {
+      for (const v of yArr) {
+        if (typeof v === 'number' && isFinite(v)) {
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+      }
+    }
+  }
+  return [lo, hi];
+}
+
 /**
  * Inject/replace limit shapes in a pre-built plotSpec using req.minVal/maxVal.
  * Strips existing Python-generated limit shapes (red lines, green rects) and
@@ -639,15 +668,32 @@ export function injectLimitShapes(
   spec: { data: Record<string, unknown>[]; layout: Record<string, unknown> },
   req: RequirementData,
 ): { data: Record<string, unknown>[]; layout: Record<string, unknown> } {
-  if (req.minVal == null || req.maxVal == null) return spec;
-  if (!isFinite(req.minVal) || !isFinite(req.maxVal)) return spec;
+  // When we skip limit injection (no valid limits, or supplementary without
+  // plot_limits), ensure the y-axis auto-fits all data by removing any
+  // explicit range the Python spec may have set and enabling autorange.
+  const ensureAutorange = (s: typeof spec) => {
+    const cloned = JSON.parse(JSON.stringify(s)) as typeof spec;
+    const [dMin, dMax] = traceYExtent(cloned.data);
+    if (isFinite(dMin) && isFinite(dMax)) {
+      const span = dMax - dMin || Math.abs(dMax) || 1;
+      const pad = span * 0.1;
+      (cloned.layout.yaxis as Record<string, unknown>).range = [dMin - pad, dMax + pad];
+    } else {
+      delete (cloned.layout.yaxis as Record<string, unknown>).range;
+      (cloned.layout.yaxis as Record<string, unknown>).autorange = true;
+    }
+    return cloned;
+  };
+
+  if (req.minVal == null || req.maxVal == null) return ensureAutorange(spec);
+  if (!isFinite(req.minVal) || !isFinite(req.maxVal)) return ensureAutorange(spec);
 
   // Supplementary plots: no limits unless explicitly opted in via plot_limits
   const meta = (spec as Record<string, unknown>).meta as PlotMeta | undefined;
   if (meta?.role === 'supplementary') {
     const pl = meta.plot_limits?.toLowerCase();
     if (pl !== 'true' && pl !== '1' && pl !== 'yes' && pl !== 'on') {
-      return spec;
+      return ensureAutorange(spec);
     }
   }
 
@@ -723,6 +769,15 @@ export function injectLimitShapes(
         { x: 0.02, y: center - halfMin, xref: 'paper', yref: 'y', text: `LSL ±${formatEng(halfMin, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
       );
     }
+    // Set y-axis range to include both limits AND all data
+    const usl = center + halfMax;
+    const lsl = center - halfMax;
+    const [ppDataMin, ppDataMax] = traceYExtent(cloned.data);
+    const ppVisMin = isFinite(ppDataMin) ? Math.min(lsl, ppDataMin) : lsl;
+    const ppVisMax = isFinite(ppDataMax) ? Math.max(usl, ppDataMax) : usl;
+    const limitSpan = ppVisMax - ppVisMin;
+    const pad = limitSpan * 0.1;
+    (layout.yaxis as Record<string, unknown>).range = [ppVisMin - pad, ppVisMax + pad];
   } else {
     // Standard: horizontal limits at min/max
     shapes.push(
@@ -734,6 +789,13 @@ export function injectLimitShapes(
       { x: 0.02, y: req.minVal, xref: 'paper', yref: 'y', text: `LSL ${formatEng(req.minVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'bottom' },
       { x: 0.02, y: req.maxVal, xref: 'paper', yref: 'y', text: `USL ${formatEng(req.maxVal, req.unit)}`, showarrow: false, font: { size: 7, color: colors.muted }, xanchor: 'left', yanchor: 'top' },
     );
+    // Set y-axis range to include both limits AND all data
+    const [dataMin, dataMax] = traceYExtent(cloned.data);
+    const visibleMin = isFinite(dataMin) ? Math.min(req.minVal, dataMin) : req.minVal;
+    const visibleMax = isFinite(dataMax) ? Math.max(req.maxVal, dataMax) : req.maxVal;
+    const stdSpan = visibleMax - visibleMin;
+    const stdPad = stdSpan * 0.1;
+    (layout.yaxis as Record<string, unknown>).range = [visibleMin - stdPad, visibleMax + stdPad];
   }
 
   return cloned;
@@ -869,7 +931,7 @@ export async function resizePlot(el: HTMLDivElement) {
  * Unified plot renderer for a single requirement.
  * Clears `container`, creates child wrappers, and renders using plotSpecs
  * (preferred) or falls back to measurement-specific renderers.
- * Used by both RequirementsAllPage and RequirementsDetailPage.
+ * Used by RequirementsAllPage.
  */
 export async function renderRequirementPlot(
   container: HTMLDivElement,

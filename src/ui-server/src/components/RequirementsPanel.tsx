@@ -40,11 +40,12 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
     const reqData = requirementsData?.requirements.find(r => r.id === id);
     postMessage({
       type: 'openRequirementDetail',
-      requirementId: id,
+      requirementId: '__ALL__',
       projectRoot: selectedProjectRoot ?? '',
       target: selectedTargetNames?.[0] ?? 'default',
-      requirementData: reqData ?? undefined,
+      requirementData: requirementsData,
       buildTime: requirementsData?.buildTime ?? '',
+      initialSearch: reqData?.name ?? '',
     });
   }, [selectedProjectRoot, selectedTargetNames, requirementsData]);
 
@@ -56,6 +57,7 @@ export function RequirementsPanel({ isExpanded }: RequirementsPanelProps) {
       target: selectedTargetNames?.[0] ?? 'default',
       requirementData: requirementsData,
       buildTime: requirementsData?.buildTime ?? '',
+      initialSearch: '',
     });
   }, [selectedProjectRoot, selectedTargetNames, requirementsData]);
 

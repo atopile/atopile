@@ -139,9 +139,13 @@ def _run_transient_parallel(
     stop = sim_node.get_time_stop()
     start = sim_node.get_time_start() or 0
     if step is None or stop is None:
+        parent = sim_node.get_parent()
+        sim_name = parent[1] if parent else "unknown"
         raise ValueError(
-            f"Transient simulation missing time_step or time_stop "
-            f"(step={step}, stop={stop})"
+            f"Transient simulation '{sim_name}': missing time_step or time_stop "
+            f"(step={step}, stop={stop}). "
+            f"Hint: use bare numeric values like time_step = 2e-7, "
+            f"time_stop = 1e-2"
         )
 
     result = circuit.tran(step=step, stop=stop, start=start, signals=None, uic=True, tmax=TMAX)
@@ -186,7 +190,14 @@ def _run_ac_parallel(
     stop = sim_node.get_stop_freq()
     ppd = sim_node.get_points_per_dec() or 100
     if start is None or stop is None:
-        raise ValueError("AC simulation missing start_freq or stop_freq")
+        parent = sim_node.get_parent()
+        sim_name = parent[1] if parent else "unknown"
+        raise ValueError(
+            f"AC simulation '{sim_name}': missing start_freq or stop_freq "
+            f"(start_freq={start}, stop_freq={stop}). "
+            f"Hint: use bare numeric values like start_freq = 1, "
+            f"stop_freq = 1e7"
+        )
 
     result = circuit.ac(
         start_freq=start, stop_freq=stop, points_per_decade=ppd, signals=None
@@ -274,7 +285,14 @@ def _run_sweep_sequential(
     stop = sim_node.get_time_stop()
     start = sim_node.get_time_start() or 0
     if step is None or stop is None:
-        raise ValueError("Sweep simulation missing time_step or time_stop")
+        parent = sim_node.get_parent()
+        sim_name = parent[1] if parent else "unknown"
+        raise ValueError(
+            f"Sweep simulation '{sim_name}': missing time_step or time_stop "
+            f"(step={step}, stop={stop}). "
+            f"Hint: use bare numeric values like time_step = 2e-7, "
+            f"time_stop = 1e-2"
+        )
 
     sweep_results: dict[float, object] = {}
     for pval in param_values:
@@ -388,11 +406,13 @@ def _resolve_sweep_param_binding(
 ) -> str | None:
     """Find the SPICE parameter name that binds to an ato parameter.
 
-    Scans ``has_spice_model`` traits on the DUT and its descendants for
-    ``param_bindings`` entries whose ato-side name matches *ato_param_name*.
+    Scans ``has_spice_model`` and ``has_spice_param_bindings`` traits on the
+    DUT and its descendants for entries whose ato-side name matches
+    *ato_param_name*.
 
     Returns the SPICE param name (e.g. ``"FS"``) or ``None``.
     """
+    # Check has_spice_model traits
     for node in dut_node.get_children(
         direct_only=False,
         types=fabll.Node,
@@ -404,6 +424,20 @@ def _resolve_sweep_param_binding(
         for spice_param, ato_name in bindings.items():
             if ato_name == ato_param_name:
                 return spice_param
+
+    # Check has_spice_param_bindings traits
+    for node in dut_node.get_children(
+        direct_only=False,
+        types=fabll.Node,
+        include_root=True,
+        required_trait=F.has_spice_param_bindings,
+    ):
+        trait = node.get_trait(F.has_spice_param_bindings)
+        bindings = trait.get_bindings()
+        for spice_param, ato_name in bindings.items():
+            if ato_name == ato_param_name:
+                return spice_param
+
     return None
 
 
@@ -535,9 +569,9 @@ def _run_single_dut_sweep_point_task(
             signals=None, uic=True, tmax=TMAX,
         )
         return (pval, result)
-    except Exception:
+    except Exception as exc:
         logger.warning(
-            f"Sweep point {pval} for DUT '{dut_name}' failed — skipping",
+            f"Sweep point {pval} for DUT '{dut_name}' failed: {exc}",
             exc_info=True,
         )
         return (pval, None)
@@ -668,7 +702,12 @@ def run_simulations_scoped(
                 stop = sim_node.get_time_stop() or 0
                 start = sim_node.get_time_start() or 0
                 param_name = sim_node.get_param_name() or ""
-                if param_name.startswith("dut."):
+
+                # 1. Check explicit spice_param on the sweep node
+                spice_param_override = sim_node.get_spice_param()
+
+                # 2. Fall back to param_bindings on DUT descendants
+                if not spice_param_override and param_name.startswith("dut."):
                     ato_param = param_name[4:]
                     for dn in dut_names:
                         dn_node = _find_child_by_name(parent, dn)
@@ -677,11 +716,13 @@ def run_simulations_scoped(
                                 dn_node, ato_param
                             )
                             if spice_param_override:
-                                logger.info(
-                                    f"  Sweep '{param_name}' → SPICE param "
-                                    f"'{spice_param_override}' override"
-                                )
                                 break
+
+                if spice_param_override:
+                    logger.info(
+                        f"  Sweep '{param_name}' → SPICE param "
+                        f"'{spice_param_override}' override"
+                    )
 
             _prepared.append(dict(
                 sim_node=sim_node, sim_name=sim_name, sim_type=sim_type,
