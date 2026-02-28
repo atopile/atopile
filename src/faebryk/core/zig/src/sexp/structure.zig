@@ -1197,6 +1197,154 @@ pub const output = union(enum) {
     sexp: *?SExp,
 };
 
+fn writeEscapedString(writer: anytype, str: []const u8) !void {
+    try writer.writeByte('"');
+    var last_char: u8 = 0;
+    for (str) |c| {
+        if (c == '"' and last_char != '\\') try writer.writeByte('\\');
+        try writer.writeByte(c);
+        last_char = c;
+    }
+    try writer.writeByte('"');
+}
+
+fn valueEncodesAsList(value: anytype, metadata: SexpField, name: []const u8) bool {
+    const T = @TypeOf(value);
+    const type_info = @typeInfo(T);
+
+    return switch (type_info) {
+        .optional => if (value) |v| valueEncodesAsList(v, metadata, name) else true,
+        .@"struct" => true,
+        .pointer => |ptr| ptr.size == .slice and ptr.child != u8,
+        else => false,
+    };
+}
+
+fn listWouldWriteAnyItems(value: anytype, metadata: SexpField, name: []const u8) bool {
+    const T = @TypeOf(value);
+    const type_info = @typeInfo(T);
+
+    switch (type_info) {
+        .optional => {
+            if (value) |v| return listWouldWriteAnyItems(v, metadata, name);
+            return false;
+        },
+        .@"struct" => {
+            if (comptime isLinkedList(T)) {
+                return value.first != null;
+            }
+            return structBodyWouldWriteAnyItems(value);
+        },
+        .pointer => |ptr| {
+            if (ptr.size == .slice and ptr.child != u8) {
+                return value.len > 0;
+            }
+            return false;
+        },
+        else => return false,
+    }
+}
+
+fn keyValueWouldWrite(value: anytype, metadata: SexpField, name: []const u8) bool {
+    if (valueEncodesAsList(value, metadata, name)) {
+        return listWouldWriteAnyItems(value, metadata, name);
+    }
+    return true;
+}
+
+fn structBodyWouldWriteAnyItems(value: anytype) bool {
+    const T = @TypeOf(value);
+    const fields = std.meta.fields(T);
+    const sorted_indices = comptime sortFieldIndices(T);
+
+    inline for (sorted_indices) |idx| {
+        const f = fields[idx];
+        const fm = comptime getSexpMetadata(T, f.name);
+        const fv = @field(value, f.name);
+
+        if (fm.positional) {
+            if (comptime isOptional(f.type)) {
+                if (fv != null) return true;
+            } else if (!((comptime isSlice(f.type, false)) and fv.len == 0)) {
+                return true;
+            }
+            continue;
+        }
+
+        if (fm.multidict) {
+            if (comptime isSlice(@TypeOf(fv), false)) {
+                if (fv.len > 0) return true;
+            } else if (comptime isLinkedList(@TypeOf(fv))) {
+                if (fv.first != null) return true;
+            }
+            continue;
+        }
+
+        if (comptime isOptional(@TypeOf(fv))) {
+            if (fv) |vv| {
+                if (keyValueWouldWrite(vv, fm, f.name)) return true;
+            }
+            continue;
+        }
+
+        if (comptime @TypeOf(fv) == bool and fm.boolean_encoding == .parantheses_symbol) {
+            if (fv) return true;
+            continue;
+        }
+
+        if (keyValueWouldWrite(fv, fm, f.name)) return true;
+    }
+
+    return false;
+}
+
+fn writeEncodedListItemsToWriter(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    value: anytype,
+    metadata: SexpField,
+    name: []const u8,
+    emit_leading_space: bool,
+) !bool {
+    const T = @TypeOf(value);
+    const type_info = @typeInfo(T);
+
+    switch (type_info) {
+        .optional => {
+            if (value) |v| {
+                return try writeEncodedListItemsToWriter(allocator, writer, v, metadata, name, emit_leading_space);
+            }
+            return false;
+        },
+        .@"struct" => {
+            if (comptime isLinkedList(T)) {
+                var wrote_any = false;
+                var it = value.first;
+                while (it) |node| : (it = node.next) {
+                    if (wrote_any or emit_leading_space) try writer.writeByte(' ');
+                    try writeEncodedValueToWriter(allocator, writer, node.data, metadata, name);
+                    wrote_any = true;
+                }
+                return wrote_any;
+            }
+            return writeStructBodyStreamed(allocator, writer, value, emit_leading_space);
+        },
+        .pointer => |ptr| {
+            if (ptr.size == .slice and ptr.child != u8) {
+                var wrote_any = false;
+                for (value) |item| {
+                    if (wrote_any or emit_leading_space) try writer.writeByte(' ');
+                    try writeEncodedValueToWriter(allocator, writer, item, metadata, name);
+                    wrote_any = true;
+                }
+                return wrote_any;
+            }
+            return false;
+        },
+        else => return false,
+    }
+}
+
 fn writeEncodedValueToWriter(
     allocator: std.mem.Allocator,
     writer: anytype,
@@ -1204,10 +1352,104 @@ fn writeEncodedValueToWriter(
     metadata: SexpField,
     name: []const u8,
 ) !void {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const encoded = try encode(arena.allocator(), value, metadata, name);
-    try encoded.str(writer);
+    const T = @TypeOf(value);
+    const type_info = @typeInfo(T);
+
+    if (type_info == .@"enum") {
+        const enum_info = @typeInfo(T).@"enum";
+        const tag_type_info = @typeInfo(enum_info.tag_type);
+        const is_i32_backed = switch (tag_type_info) {
+            .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+            else => false,
+        };
+
+        inline for (std.meta.fields(T)) |field| {
+            if (@intFromEnum(value) == field.value) {
+                if (is_i32_backed) {
+                    var enum_buf: [20]u8 = undefined;
+                    const enum_num = std.fmt.bufPrint(&enum_buf, "{d}", .{@intFromEnum(value)}) catch return error.OutOfMemory;
+                    try writer.writeAll(enum_num);
+                } else if (metadata.symbol orelse true) {
+                    try writer.writeAll(field.name);
+                } else {
+                    try writeEscapedString(writer, field.name);
+                }
+                return;
+            }
+        }
+        unreachable;
+    }
+
+    if (type_info == .pointer) {
+        if (type_info.pointer.size == .slice and type_info.pointer.child == u8 and metadata.symbol orelse false) {
+            try writer.writeAll(value);
+            return;
+        }
+    }
+
+    switch (type_info) {
+        .@"struct" => {
+            if (comptime isLinkedList(T)) {
+                try writer.writeByte('(');
+                var wrote_any = false;
+                var it = value.first;
+                while (it) |node| : (it = node.next) {
+                    if (wrote_any) try writer.writeByte(' ');
+                    try writeEncodedValueToWriter(allocator, writer, node.data, metadata, name);
+                    wrote_any = true;
+                }
+                try writer.writeByte(')');
+            } else {
+                try writer.writeByte('(');
+                _ = try writeStructBodyStreamed(allocator, writer, value, false);
+                try writer.writeByte(')');
+            }
+        },
+        .optional => {
+            if (value) |v| {
+                try writeEncodedValueToWriter(allocator, writer, v, metadata, name);
+            } else {
+                try writer.writeAll("()");
+            }
+        },
+        .pointer => |ptr| {
+            if (ptr.size == .slice and ptr.child == u8) {
+                try writeEscapedString(writer, value);
+            } else if (ptr.size == .slice) {
+                try writer.writeByte('(');
+                for (value, 0..) |item, i| {
+                    if (i > 0) try writer.writeByte(' ');
+                    try writeEncodedValueToWriter(allocator, writer, item, metadata, name);
+                }
+                try writer.writeByte(')');
+            } else {
+                return error.InvalidType;
+            }
+        },
+        .int => {
+            var int_buf: [32]u8 = undefined;
+            const int_str = std.fmt.bufPrint(&int_buf, "{d}", .{value}) catch return error.OutOfMemory;
+            try writer.writeAll(int_str);
+        },
+        .float => {
+            var float_buf: [32]u8 = undefined;
+            const rounded = std.math.round(value * 10e6) / 10e6;
+            const needs_fixed_precision = (std.mem.eql(u8, name, "dashed_line_dash_ratio") or
+                std.mem.eql(u8, name, "dashed_line_gap_ratio") or
+                std.mem.eql(u8, name, "hpglpendiameter")) and rounded != @trunc(rounded);
+            const float_str = if (needs_fixed_precision)
+                std.fmt.bufPrint(&float_buf, "{d:.6}", .{rounded}) catch return error.OutOfMemory
+            else
+                std.fmt.bufPrint(&float_buf, "{d}", .{rounded}) catch return error.OutOfMemory;
+            try writer.writeAll(float_str);
+        },
+        .bool => {
+            if (metadata.boolean_encoding == .parantheses_symbol) unreachable;
+            try writer.writeAll(if (value) "yes" else "no");
+        },
+        .@"enum" => unreachable,
+        else => return error.UnexpectedType,
+    }
 }
 
 fn writeEncodedKeyValueToWriter(
@@ -1219,28 +1461,17 @@ fn writeEncodedKeyValueToWriter(
     name: []const u8,
     prepend_space: bool,
 ) !bool {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const encoded = try encode(arena.allocator(), value, metadata, name);
-
-    if (ast.getList(encoded)) |lst| {
-        if (lst.len == 0) return false;
-        if (prepend_space) try writer.writeByte(' ');
-        try writer.writeByte('(');
-        try writer.writeAll(key);
-        for (lst) |item| {
-            try writer.writeByte(' ');
-            try item.str(writer);
-        }
-        try writer.writeByte(')');
-        return true;
-    }
+    if (!keyValueWouldWrite(value, metadata, name)) return false;
 
     if (prepend_space) try writer.writeByte(' ');
     try writer.writeByte('(');
     try writer.writeAll(key);
-    try writer.writeByte(' ');
-    try encoded.str(writer);
+    if (valueEncodesAsList(value, metadata, name)) {
+        _ = try writeEncodedListItemsToWriter(allocator, writer, value, metadata, name, true);
+    } else {
+        try writer.writeByte(' ');
+        try writeEncodedValueToWriter(allocator, writer, value, metadata, name);
+    }
     try writer.writeByte(')');
     return true;
 }
