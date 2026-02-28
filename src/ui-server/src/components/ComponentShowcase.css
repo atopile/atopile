@@ -1,0 +1,79 @@
+/* ============================================
+   ComponentShowcase — layout for component gallery
+   ============================================ */
+
+/* Override _base.css overflow:hidden so the showcase page scrolls */
+html:has(.showcase),
+html:has(.showcase) body,
+html:has(.showcase) #root {
+  overflow: auto;
+  height: auto;
+}
+
+.showcase {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--spacing-xl) var(--spacing-lg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+}
+
+.showcase h1 {
+  font-size: var(--font-size-xl, 20px);
+  font-weight: 700;
+  margin-bottom: var(--spacing-xl);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: var(--spacing-md);
+}
+
+.showcase-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.showcase-section h2 {
+  font-size: var(--font-size-lg, 16px);
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-primary);
+}
+
+.showcase-section h3 {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.showcase-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.showcase-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.showcase-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+}
+
+.showcase-divider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--spacing-lg) 0;
+}

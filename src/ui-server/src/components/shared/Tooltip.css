@@ -1,0 +1,34 @@
+/* ============================================
+   Tooltip — hover/focus popover
+   Matches VS Code hover-widget styling
+   ============================================ */
+
+.tooltip-trigger {
+  display: inline-flex;
+}
+
+.tooltip-content {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  max-width: 280px;
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--bg-primary);
+  background: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px var(--shadow-color);
+  pointer-events: none;
+  white-space: normal;
+  word-wrap: break-word;
+
+  /* enter animation */
+  opacity: 0;
+  animation: tooltip-in 0.1s ease-out forwards;
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

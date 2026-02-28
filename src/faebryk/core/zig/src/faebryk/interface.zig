@@ -184,6 +184,7 @@ fn ensure_is_interface_type(tg: *TypeGraph) !BoundNodeReference {
         return trait_type;
     }
     const trait_type = try tg.add_type(is_interface_type_name);
+    try tg.mark_constructable(trait_type);
     try Trait.mark_as_trait(trait_type);
     return trait_type;
 }
@@ -191,7 +192,9 @@ fn ensure_is_interface_type(tg: *TypeGraph) !BoundNodeReference {
 fn init_test_types(tg: *TypeGraph) !TestTypes {
     const is_interface = try ensure_is_interface_type(tg);
     const electrical = try tg.add_type("Electrical");
+    try tg.mark_constructable(electrical);
     const generic = try tg.add_type("Generic");
+    try tg.mark_constructable(generic);
     const electric_power = try tg.add_type("ElectricPower");
     return .{
         .is_interface = is_interface,
@@ -246,6 +249,7 @@ test "basic" {
 
     var tg = TypeGraph.init(&g);
     const electrical_type = try tg.add_type("Electrical");
+    try tg.mark_constructable(electrical_type);
 
     const bn1 = try instantiate_interface(&tg, electrical_type);
     const bn2 = try instantiate_interface(&tg, electrical_type);
@@ -351,6 +355,7 @@ test "self_connect" {
 
     var tg = TypeGraph.init(&g);
     const electrical_type = try tg.add_type("Electrical");
+    try tg.mark_constructable(electrical_type);
     const bn1 = try instantiate_interface(&tg, electrical_type);
     const bn2 = try instantiate_interface(&tg, electrical_type);
 
@@ -396,10 +401,12 @@ test "simple_electric_power_hierarchy" {
 
     const electric_signal = try tg.add_type("ElectricSignal");
 
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
-    _ = try tg.add_make_child(electric_signal, test_types.electrical, "line", null, false);
-    _ = try tg.add_make_child(electric_signal, test_types.electric_power, "reference", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null);
+    try tg.mark_constructable(test_types.electric_power);
+    _ = try tg.add_make_child(electric_signal, test_types.electrical, "line", null);
+    _ = try tg.add_make_child(electric_signal, test_types.electric_power, "reference", null);
+    try tg.mark_constructable(electric_signal);
 
     const EP_1 = try instantiate_interface(&tg, test_types.electric_power);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
@@ -443,8 +450,9 @@ test "down_connect" {
     const test_types = try init_test_types(&tg);
     // const LinkType = try tg.add_type("Link");
 
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null);
+    try tg.mark_constructable(test_types.electric_power);
 
     const EP_1 = try instantiate_interface(&tg, test_types.electric_power);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
@@ -503,6 +511,7 @@ test "no_connect_cases" {
 
     var tg = TypeGraph.init(&g);
     const GenericType = try tg.add_type("Generic");
+    try tg.mark_constructable(GenericType);
 
     const bn1 = try instantiate_interface(&tg, GenericType);
     const bn2 = try instantiate_interface(&tg, GenericType);
@@ -638,8 +647,9 @@ test "hierarchy_short" {
     var tg = TypeGraph.init(&g);
     const test_types = try init_test_types(&tg);
 
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null);
+    try tg.mark_constructable(test_types.electric_power);
 
     const electric_power = try instantiate_interface(&tg, test_types.electric_power);
     const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
@@ -669,8 +679,9 @@ test "indirect_short" {
     var tg = TypeGraph.init(&g);
     const test_types = try init_test_types(&tg);
 
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null);
+    try tg.mark_constructable(test_types.electric_power);
 
     const ep0 = try instantiate_interface(&tg, test_types.electric_power);
     const ep1 = try instantiate_interface(&tg, test_types.electric_power);
@@ -703,8 +714,9 @@ test "shallow_filter_allows_alternative_route" {
     var tg = TypeGraph.init(&g);
     const test_types = try init_test_types(&tg);
 
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
-    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null);
+    try tg.mark_constructable(test_types.electric_power);
 
     const start_parent = try instantiate_interface(&tg, test_types.electric_power);
     const start_child = EdgeComposition.get_child_by_identifier(start_parent, "HV").?;
@@ -735,16 +747,20 @@ test "chains_mixed_shallow_nested" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const ElType = try tg.add_type("El");
     const LineType = try tg.add_type("Line");
-    const RefType = try tg.add_type("Ref");
+    try tg.mark_constructable(LineType);
     const HVType = try tg.add_type("HV");
+    try tg.mark_constructable(HVType);
     const LVType = try tg.add_type("LV");
-
-    _ = try tg.add_make_child(ElType, LineType, "line", null, false);
-    _ = try tg.add_make_child(ElType, RefType, "reference", null, false);
-    _ = try tg.add_make_child(RefType, HVType, "hv", null, false);
-    _ = try tg.add_make_child(RefType, LVType, "lv", null, false);
+    try tg.mark_constructable(LVType);
+    const RefType = try tg.add_type("Ref");
+    _ = try tg.add_make_child(RefType, HVType, "hv", null);
+    _ = try tg.add_make_child(RefType, LVType, "lv", null);
+    try tg.mark_constructable(RefType);
+    const ElType = try tg.add_type("El");
+    _ = try tg.add_make_child(ElType, LineType, "line", null);
+    _ = try tg.add_make_child(ElType, RefType, "reference", null);
+    try tg.mark_constructable(ElType);
 
     var el: [3]graph.BoundNodeReference = undefined;
     for (&el) |*slot| slot.* = try instantiate_interface(&tg, ElType);
@@ -801,11 +817,12 @@ test "split_flip_negative" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const HighType = try tg.add_type("High");
     const LowType = try tg.add_type("Low");
-
-    _ = try tg.add_make_child(HighType, LowType, "lower1", null, false);
-    _ = try tg.add_make_child(HighType, LowType, "lower2", null, false);
+    try tg.mark_constructable(LowType);
+    const HighType = try tg.add_type("High");
+    _ = try tg.add_make_child(HighType, LowType, "lower1", null);
+    _ = try tg.add_make_child(HighType, LowType, "lower2", null);
+    try tg.mark_constructable(HighType);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try instantiate_interface(&tg, HighType);
@@ -831,12 +848,14 @@ test "up_connect_simple_two_negative" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const HighType = try tg.add_type("High");
     const Lower1Type = try tg.add_type("Lower1");
+    try tg.mark_constructable(Lower1Type);
     const Lower2Type = try tg.add_type("Lower2");
-
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null, false);
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null, false);
+    try tg.mark_constructable(Lower2Type);
+    const HighType = try tg.add_type("High");
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null);
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null);
+    try tg.mark_constructable(HighType);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try instantiate_interface(&tg, HighType);
@@ -965,17 +984,17 @@ test "type_graph_pathfinder" {
     var tg = TypeGraph.init(&g);
 
     // Build I2C type hierarchy: Sensor -> I2C -> {SCL, SDA}
-    const I2C = try tg.add_type("I2C");
-    const Sensor = try tg.add_type("Sensor");
     const I2C_SCL = try tg.add_type("I2C_SCL");
+    try tg.mark_constructable(I2C_SCL);
     const I2C_SDA = try tg.add_type("I2C_SDA");
-
-    // I2C has dedicated SCL and SDA child types
-    _ = try tg.add_make_child(I2C, I2C_SCL, "scl", null, false);
-    _ = try tg.add_make_child(I2C, I2C_SDA, "sda", null, false);
-
-    // Sensor has an I2C interface
-    _ = try tg.add_make_child(Sensor, I2C, null, null, false);
+    try tg.mark_constructable(I2C_SDA);
+    const I2C = try tg.add_type("I2C");
+    _ = try tg.add_make_child(I2C, I2C_SCL, "scl", null);
+    _ = try tg.add_make_child(I2C, I2C_SDA, "sda", null);
+    try tg.mark_constructable(I2C);
+    const Sensor = try tg.add_type("Sensor");
+    _ = try tg.add_make_child(Sensor, I2C, null, null);
+    try tg.mark_constructable(Sensor);
 
     // Create sensor instances
     const sensor1 = try instantiate_interface(&tg, Sensor);

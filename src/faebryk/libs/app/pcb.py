@@ -153,11 +153,11 @@ def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
     PREFERRED_SOLDERMASK_COLOR = "Black"
     PREFERRED_COPPER_FINISH = "ENIG"
 
+    def make_thickness(value: float) -> kicad.pcb.Thickness:
+        return kicad.pcb.Thickness(thickness=value, locked=None)
+
     setup = kicad_pcb.setup
     changed = False
-
-    def _thickness(value: float) -> kicad.pcb.Thickness:
-        return kicad.pcb.Thickness(thickness=value, locked=None)
 
     # Create stackup if missing
     if setup.stackup is None:
@@ -185,7 +185,7 @@ def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
                     name="F.Mask",
                     type="Top Solder Mask",
                     color=PREFERRED_SOLDERMASK_COLOR,
-                    thickness=_thickness(0.01),
+                    thickness=make_thickness(0.01),
                     material="Solder mask",
                     epsilon_r=3.3,
                     loss_tangent=None,
@@ -194,7 +194,7 @@ def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
                     name="F.Cu",
                     type="copper",
                     color=None,
-                    thickness=_thickness(0.035),
+                    thickness=make_thickness(0.035),
                     material=None,
                     epsilon_r=None,
                     loss_tangent=None,
@@ -203,7 +203,7 @@ def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
                     name="dielectric 1",
                     type="core",
                     color=None,
-                    thickness=_thickness(1.51),
+                    thickness=make_thickness(1.51),
                     material="FR4",
                     epsilon_r=4.5,
                     loss_tangent=0.02,
@@ -212,7 +212,7 @@ def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
                     name="B.Cu",
                     type="copper",
                     color=None,
-                    thickness=_thickness(0.035),
+                    thickness=make_thickness(0.035),
                     material=None,
                     epsilon_r=None,
                     loss_tangent=None,
@@ -221,7 +221,7 @@ def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
                     name="B.Mask",
                     type="Bottom Solder Mask",
                     color=PREFERRED_SOLDERMASK_COLOR,
-                    thickness=_thickness(0.01),
+                    thickness=make_thickness(0.01),
                     material="Solder mask",
                     epsilon_r=3.3,
                     loss_tangent=None,

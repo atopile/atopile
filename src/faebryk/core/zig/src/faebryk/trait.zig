@@ -254,7 +254,9 @@ test "basic" {
     var tg = TypeGraph.init(&g);
 
     const trait_type = try tg.add_type("ExampleTrait");
+    try tg.mark_constructable(trait_type);
     const trait_type2 = try tg.add_type("ExampleTrait2");
+    try tg.mark_constructable(trait_type2);
     const bn1 = g.create_and_insert_node();
 
     const implements_type_node = tg.get_ImplementsType();
