@@ -1571,7 +1571,7 @@ fn writeStructBodyStreamed(allocator: std.mem.Allocator, writer: anytype, value:
     return wrote_any;
 }
 
-pub fn encodeWrappedStreamForBenchmark(
+pub fn encodeWrappedStream(
     data: anytype,
     allocator: std.mem.Allocator,
     symbol_name: []const u8,
@@ -1589,7 +1589,7 @@ pub fn encodeWrappedStreamForBenchmark(
 //
 // The returned SExp is intended for allocator/lifetime-managed usage (e.g. arena
 // allocators). It may contain symbol slices that are not individually owned.
-pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) !ast.SExp {
+pub fn encodeWrapped(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) !ast.SExp {
     // Encode the data into the struct body list
     const encoded = try encode(allocator, data, SexpField{}, symbol_name);
     const encoded_items = ast.getList(encoded).?;
@@ -1605,6 +1605,21 @@ pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, sy
     allocator.free(encoded_items);
 
     return ast.SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
+}
+
+// Backward-compatible benchmark alias.
+pub fn encodeWrappedStreamForBenchmark(
+    data: anytype,
+    allocator: std.mem.Allocator,
+    symbol_name: []const u8,
+    writer: anytype,
+) !void {
+    try encodeWrappedStream(data, allocator, symbol_name, writer);
+}
+
+// Backward-compatible benchmark alias.
+pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) !ast.SExp {
+    return encodeWrapped(data, allocator, symbol_name);
 }
 
 // Load a struct from an S-expression string with a wrapping symbol
@@ -1755,7 +1770,7 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
         .string, .path => {
             var raw = std.array_list.Managed(u8).init(allocator);
             defer raw.deinit();
-            try encodeWrappedStreamForBenchmark(data, allocator, symbol_name, raw.writer());
+            try encodeWrappedStream(data, allocator, symbol_name, raw.writer());
             const out_str = try ast.SExp.prettify_sexp_string(allocator, raw.items);
             switch (out) {
                 .string => |s| {
