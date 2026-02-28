@@ -209,6 +209,9 @@ fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
             } else {
                 @compileError("Nested wrapper missing data/top pointer");
             }
+            if (comptime @hasField(PType, "owned")) {
+                typed_obj.owned = false;
+            }
 
             return pyobj;
         }
@@ -327,6 +330,7 @@ fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const u8,
                         const NestedWrapper = pyzig.PyObjectWrapper(ChildType);
                         const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
                         wrapper.data = &field_ptr.*.?;
+                        wrapper.owned = false;
                         return pyobj;
                     },
                     .@"enum" => {
@@ -547,6 +551,7 @@ fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, c
             const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
             wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
             wrapper.data = nested_data;
+            wrapper.owned = false;
             return pyobj;
         }
     }.impl;

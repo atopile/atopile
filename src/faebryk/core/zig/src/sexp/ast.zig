@@ -633,6 +633,13 @@ pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: [
 }
 
 // Parse without duplicating symbol/number/comment atoms and skip location tracking.
+//
+// IMPORTANT ownership contract:
+// - Returned atoms borrow from `source` and must not outlive `source`.
+// - List storage is carved from allocator-owned pool storage and is intended for
+//   arena-style lifetime management.
+// - Do not call `SExp.deinit()` on the returned tree.
+//
 // This is the fastest/lower-memory path for decode-only pipelines.
 pub fn parseBorrowedFast(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
     const child_counts = try buildListChildCounts(allocator, tokens);
