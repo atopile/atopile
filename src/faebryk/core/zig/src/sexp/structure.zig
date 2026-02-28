@@ -1197,17 +1197,6 @@ pub const output = union(enum) {
     sexp: *?SExp,
 };
 
-fn writeEscapedString(writer: anytype, str: []const u8) !void {
-    try writer.writeByte('"');
-    var last_char: u8 = 0;
-    for (str) |c| {
-        if (c == '"' and last_char != '\\') try writer.writeByte('\\');
-        try writer.writeByte(c);
-        last_char = c;
-    }
-    try writer.writeByte('"');
-}
-
 fn valueEncodesAsList(value: anytype, metadata: SexpField, name: []const u8) bool {
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
@@ -1372,7 +1361,7 @@ fn writeEncodedValueToWriter(
                 } else if (metadata.symbol orelse true) {
                     try writer.writeAll(field.name);
                 } else {
-                    try writeEscapedString(writer, field.name);
+                    try ast.writeEscapedString(field.name, writer);
                 }
                 return;
             }
@@ -1414,7 +1403,7 @@ fn writeEncodedValueToWriter(
         },
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8) {
-                try writeEscapedString(writer, value);
+                try ast.writeEscapedString(value, writer);
             } else if (ptr.size == .slice) {
                 try writer.writeByte('(');
                 for (value, 0..) |item, i| {

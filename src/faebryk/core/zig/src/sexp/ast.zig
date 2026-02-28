@@ -276,7 +276,7 @@ pub const SExp = struct {
         switch (self.value) {
             .symbol => |s| try writer.print("{s}", .{s}),
             .number => |n| try writer.print("{s}", .{n}),
-            .string => |s| try _write_escaped_string(s, writer),
+            .string => |s| try writeEscapedString(s, writer),
             .comment => |c| try writer.print(";{s}", .{c}),
             .list => |items| {
                 try writer.writeAll("(");
@@ -316,7 +316,7 @@ pub const SExp = struct {
 // TODO: string escaping is super slow, consider using single quotes instead in the params
 
 // Helper function to escape quotes in strings
-fn _write_escaped_string(str: []const u8, writer: anytype) !void {
+pub fn writeEscapedString(str: []const u8, writer: anytype) !void {
     // Count the number of quotes to determine the required size
     try writer.writeByte('"');
     var last_char: u8 = 0;
@@ -584,15 +584,13 @@ pub const Parser = struct {
         }
 
         var i: usize = 0;
-        if (!self.use_list_pool) {
-            errdefer {
-                var j: usize = 0;
-                while (j < i) : (j += 1) {
-                    items[j].deinit(self.allocator);
-                }
-                self.allocator.free(items);
+        errdefer if (!self.use_list_pool) {
+            var j: usize = 0;
+            while (j < i) : (j += 1) {
+                items[j].deinit(self.allocator);
             }
-        }
+            self.allocator.free(items);
+        };
         while (i < child_count) : (i += 1) {
             items[i] = (try self.parse()) orelse return error.UnterminatedList;
         }
