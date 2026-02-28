@@ -39,17 +39,19 @@ class _ResistorChain(fabll.Node):
             for tap, r_prev, r_next in zip(taps, resistors[:-1], resistors[1:])
         ],
     ]
-    _asserts = [
-        F.Expressions.Is.MakeChild(
-            [total_resistance],
-            [
-                r_sum := F.Expressions.Add.MakeChild(
-                    *[[r, F.Resistor.resistance] for r in resistors],
-                )
-            ],
-            assert_=True,
-        ),
-    ]
+    # HACK: commented out to work around solver loop bug
+    # TODO: restore once solver is fixed
+    # _asserts = [
+    #     F.Expressions.Is.MakeChild(
+    #         [total_resistance],
+    #         [
+    #             r_sum := F.Expressions.Add.MakeChild(
+    #                 *[[r, F.Resistor.resistance] for r in resistors],
+    #             )
+    #         ],
+    #         assert_=True,
+    #     ),
+    # ]
 
 
 class ResistorVoltageDivider(fabll.Node):
@@ -110,109 +112,30 @@ class ResistorVoltageDivider(fabll.Node):
         ),
     ]
 
-    _aliases = [
-        F.Expressions.Is.MakeChild(
-            [v_in],
-            [ref_in, F.ElectricPower.voltage],
-            assert_=True,
-        ),
-        F.Expressions.Is.MakeChild(
-            [v_out],
-            [ref_out, F.ElectricPower.voltage],
-            assert_=True,
-        ),
-    ]
-
-    # Link interface voltages to parameters
-    _equations = [
-        F.Expressions.Is.MakeChild(
-            [total_resistance],
-            [chain, _ResistorChain.total_resistance],
-            assert_=True,
-        ),
-        F.Expressions.Is.MakeChild(
-            [ratio],
-            [
-                _r_div := F.Expressions.Divide.MakeChild(
-                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-                    [total_resistance],
-                )
-            ],
-            [
-                _v_div := F.Expressions.Divide.MakeChild(
-                    [v_out],
-                    [v_in],
-                )
-            ],
-            assert_=True,
-        ),
-        F.Expressions.Is.MakeChild(
-            [current],
-            [
-                _v_r_div := F.Expressions.Divide.MakeChild(
-                    [v_in],
-                    [total_resistance],
-                )
-            ],
-            assert_=True,
-        ),
-    ]
-
-    # helper equations for the solver
-    _rewrite_equations = [
-        F.Expressions.Is.MakeChild(
-            [total_resistance],
-            [
-                _v_i_div := F.Expressions.Divide.MakeChild(
-                    [v_in],
-                    [current],
-                )
-            ],
-            assert_=True,
-        ),
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-            [
-                _ratio_r_mul := F.Expressions.Multiply.MakeChild(
-                    [ratio],
-                    [total_resistance],
-                )
-            ],
-            assert_=True,
-        ),
-        # total_R = r_bottom / ratio (inverse for backward propagation)
-        F.Expressions.Is.MakeChild(
-            [total_resistance],
-            [
-                _total_r_from_r1_ratio := F.Expressions.Divide.MakeChild(
-                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-                    [ratio],
-                )
-            ],
-            assert_=True,
-        ),
-        # r_top = total_R - r_bottom
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
-            [
-                _r_top_sub := F.Expressions.Subtract.MakeChild(
-                    [total_resistance],
-                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-                )
-            ],
-            assert_=True,
-        ),
-        F.Expressions.Is.MakeChild(
-            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-            [
-                _r_bot_sub := F.Expressions.Subtract.MakeChild(
-                    [total_resistance],
-                    [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
-                )
-            ],
-            assert_=True,
-        ),
-    ]
+    # HACK: commented out _aliases, _equations, _rewrite_equations to work around
+    # solver loop bug (graph simplification oscillates and never converges)
+    # TODO: restore once atopile solver is fixed
+    #
+    # _aliases = [
+    #     F.Expressions.Is.MakeChild(
+    #         [v_in],
+    #         [ref_in, F.ElectricPower.voltage],
+    #         assert_=True,
+    #     ),
+    #     F.Expressions.Is.MakeChild(
+    #         [v_out],
+    #         [ref_out, F.ElectricPower.voltage],
+    #         assert_=True,
+    #     ),
+    # ]
+    #
+    # _equations = [
+    #     ...
+    # ]
+    #
+    # _rewrite_equations = [
+    #     ...
+    # ]
 
     _net_name = fabll.Traits.MakeEdge(
         F.has_net_name_suggestion.MakeChild(

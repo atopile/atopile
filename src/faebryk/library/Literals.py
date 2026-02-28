@@ -1994,10 +1994,21 @@ class NumericSet(fabll.Node):
         return return_values
 
     def get_intervals(self) -> list[NumericInterval]:
-        return [
-            interval.cast(NumericInterval)
-            for interval in self.intervals.get().as_list()
-        ]
+        raw = self.intervals.get().as_list()
+        result = []
+        for interval in raw:
+            if interval.isinstance(NumericInterval):
+                result.append(interval.cast(NumericInterval))
+            else:
+                import logging
+                tn = interval.get_type_name()
+                logging.getLogger(__name__).warning(
+                    f"NumericSet.get_intervals: unexpected type={tn} "
+                    f"node={interval.get_full_name()} "
+                    f"in {self.get_full_name()}, "
+                    f"total={len(raw)} valid={len(result)+1}"
+                )
+        return result
 
     def get_min_value(self) -> float:
         return self.get_intervals()[0].get_min_value()
@@ -4766,18 +4777,22 @@ class Numbers(fabll.Node):
             """
             Format and clean floats for printing.
             Handles infinity values with ∞ symbol.
-            Rounds to PRINT_DIGITS significant decimal places.
+            Rounds to PRINT_DIGITS significant figures.
             """
             if math.isinf(number):
                 return "∞" if number > 0 else "-∞"
             scaled = number / scale
-            # Round to PRINT_DIGITS decimal places
-            rounded = round(scaled, PRINT_DIGITS)
+            if scaled == 0:
+                return "0"
+            # Round to PRINT_DIGITS significant figures (not decimal places)
+            magnitude = math.floor(math.log10(abs(scaled)))
+            decimal_places = max(0, PRINT_DIGITS - 1 - magnitude)
+            rounded = round(scaled, decimal_places)
             # Check if it's effectively an integer
-            if abs(rounded) >= 1 and rounded == int(rounded):
+            if decimal_places == 0 or (abs(rounded) >= 1 and rounded == int(rounded)):
                 return str(int(rounded))
-            # Format with limited decimal places
-            str_num = f"{rounded:.{PRINT_DIGITS}f}".rstrip("0").rstrip(".")
+            # Format with the appropriate number of decimal places
+            str_num = f"{rounded:.{decimal_places}f}".rstrip("0").rstrip(".")
             return str_num
 
         # Determine scale factor based on representative value

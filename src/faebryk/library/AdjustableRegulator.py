@@ -65,29 +65,25 @@ class AdjustableRegulator(fabll.Node):
         ),
     ]
 
-    # Parameter linkages and constraints
-    _constraints = [
-        # Link input_voltage/output_voltage to power interface voltages
-        F.Expressions.Is.MakeChild(
-            [input_voltage], [power_in, F.ElectricPower.voltage], assert_=True
-        ),
-        F.Expressions.Is.MakeChild(
-            [output_voltage], [power_out, F.ElectricPower.voltage], assert_=True
-        ),
-        # v_in/v_out are aliases for input_voltage/output_voltage
-        F.Expressions.Is.MakeChild([v_in], [input_voltage], assert_=True),
-        F.Expressions.Is.MakeChild([v_out], [output_voltage], assert_=True),
-        # Feedback divider constraints:
-        # Link divider v_in to output_voltage (divider measures output)
-        F.Expressions.Is.MakeChild(
-            [feedback_divider, F.ResistorVoltageDivider.v_in],
-            [output_voltage],
-            assert_=True,
-        ),
-        # Link divider v_out to reference_voltage
-        F.Expressions.Is.MakeChild(
-            [feedback_divider, F.ResistorVoltageDivider.v_out],
-            [reference_voltage],
-            assert_=True,
-        ),
-    ]
+    # HACK: commented out to work around solver loop bug
+    # TODO: restore once atopile solver is fixed
+    # _constraints = [
+    #     F.Expressions.Is.MakeChild(
+    #         [input_voltage], [power_in, F.ElectricPower.voltage], assert_=True
+    #     ),
+    #     F.Expressions.Is.MakeChild(
+    #         [output_voltage], [power_out, F.ElectricPower.voltage], assert_=True
+    #     ),
+    #     F.Expressions.Is.MakeChild([v_in], [input_voltage], assert_=True),
+    #     F.Expressions.Is.MakeChild([v_out], [output_voltage], assert_=True),
+    #     F.Expressions.Is.MakeChild(
+    #         [feedback_divider, F.ResistorVoltageDivider.v_in],
+    #         [output_voltage],
+    #         assert_=True,
+    #     ),
+    #     F.Expressions.Is.MakeChild(
+    #         [feedback_divider, F.ResistorVoltageDivider.v_out],
+    #         [reference_voltage],
+    #         assert_=True,
+    #     ),
+    # ]
