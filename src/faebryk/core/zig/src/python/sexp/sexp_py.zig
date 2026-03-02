@@ -238,6 +238,7 @@ fn generateModule(
 
             // Parse the S-expression string
             const file = FileType.loads(persistent_allocator, .{ .string = input_copy }) catch |err| {
+                defer persistent_allocator.free(input_copy);
                 const ctx = sexp.structure.getErrorContext();
                 var buf: [2048]u8 = undefined;
 
@@ -339,6 +340,7 @@ fn generateModule(
 
             // Use the registered File type that was stored during module registration
             const type_obj = registered_file_type orelse {
+                persistent_allocator.free(input_copy);
                 py.PyErr_SetString(py.PyExc_ValueError, "File type not registered in module");
                 return null;
             };
@@ -347,7 +349,10 @@ fn generateModule(
 
             // Allocate Python object
             const pyobj = py.PyType_GenericAlloc(type_obj, 0);
-            if (pyobj == null) return null;
+            if (pyobj == null) {
+                persistent_allocator.free(input_copy);
+                return null;
+            }
 
             // Set the data
             const wrapper = @as(*bind.PyObjectWrapper(FileType), @ptrCast(@alignCast(pyobj)));
@@ -356,6 +361,7 @@ fn generateModule(
 
             // Allocate persistent memory for the data
             wrapper.data = persistent_allocator.create(FileType) catch {
+                persistent_allocator.free(input_copy);
                 py.Py_DECREF(pyobj.?);
                 py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate FileType wrapper data");
                 return null;
