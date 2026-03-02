@@ -352,10 +352,16 @@ fn generateModule(
             // Set the data
             const wrapper = @as(*bind.PyObjectWrapper(FileType), @ptrCast(@alignCast(pyobj)));
             wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
+            wrapper.owned = false;
 
             // Allocate persistent memory for the data
-            wrapper.data = persistent_allocator.create(FileType) catch return null;
+            wrapper.data = persistent_allocator.create(FileType) catch {
+                py.Py_DECREF(pyobj.?);
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate FileType wrapper data");
+                return null;
+            };
             wrapper.data.* = file;
+            wrapper.owned = true;
 
             return pyobj;
         }
