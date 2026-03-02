@@ -6,10 +6,43 @@ import sys
 from pathlib import Path
 from shutil import which
 from tempfile import gettempdir
+import subprocess
 
 import platformdirs
+from platformdirs.windows import Windows
 
 from faebryk.libs.util import find, not_none, once, try_or
+
+def get_windows_env_path(var) -> str:
+    """
+    Gets an environment variable path from windows as a wsl path (ie /mnt/c/...)
+    """
+    try:
+        path = subprocess.check_output(
+            f'wslpath "$(cmd.exe /C \'echo %{var}%\' 2>/dev/null | tr -d \'\\r\')"',
+            shell=True,
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        return path
+    except subprocess.CalledProcessError:
+        return None 
+
+@once
+def is_wsl() -> bool:
+    """
+    Returns true if running via wsl and windows path env can be found.
+    """
+    if not Path('/proc/sys/fs/binfmt_misc/WSLInterop').exists():
+        return False
+    env = {}
+    for var in {"APPDATA", "LOCALAPPDATA", "USERPROFILE"}:
+        if (path:= get_windows_env_path(var)) is not None:
+            env[var] = path
+        else:
+            return False
+    os.environ.update(env)
+    return True
 
 # @kicad10
 KICAD_VERSION = "9.0"
@@ -28,10 +61,14 @@ match sys.platform:
         # TODO: check on a windows machine
         GLOBAL_FP_DIR_PATH = Path(appdata) / "kicad" / KICAD_VERSION / "footprints"
     case "linux":
-        GLOBAL_FP_LIB_PATH = (
-            Path("~/.config/kicad").expanduser() / KICAD_VERSION / "fp-lib-table"
-        )
-        GLOBAL_FP_DIR_PATH = Path("/usr/share/kicad/footprints")
+        if is_wsl():
+            GLOBAL_FP_LIB_PATH = Path(Windows(roaming=True).user_config_dir) / "kicad" / KICAD_VERSION / "fp-lib-table"
+            GLOBAL_FP_DIR_PATH = Path(get_windows_env_path("ProgramFiles")) / "kicad" / KICAD_VERSION / "share/kicad/footprints"
+        else:
+            GLOBAL_FP_LIB_PATH = (
+                Path("~/.config/kicad").expanduser() / KICAD_VERSION / "fp-lib-table"
+            )
+            GLOBAL_FP_DIR_PATH = Path("/usr/share/kicad/footprints")
     case "darwin":
         GLOBAL_FP_LIB_PATH = (
             Path("~/Library/Preferences/kicad").expanduser()
@@ -49,6 +86,11 @@ match sys.platform:
 def find_pcbnew() -> Path:
     """Figure out what to call for the pcbnew CLI."""
     if sys.platform.startswith("linux"):
+        if is_wsl():
+            path = Path(get_windows_env_path("ProgramFiles")) / "KiCad" / KICAD_VERSION / "bin/pcbnew.exe" 
+            if path.exists():
+                return path
+
         path = which("pcbnew")
         if path is None:
             raise FileNotFoundError("Could not find pcbnew executable")
@@ -60,11 +102,9 @@ def find_pcbnew() -> Path:
         base = Path(not_none(os.getenv("ProgramFiles"))) / "KiCad"
     else:
         raise NotImplementedError(f"Unsupported platform: {sys.platform}")
-
     if path := list(base.glob("**/pcbnew")):
         # TODO: find the best version
         return path[0]
-
     raise FileNotFoundError("Could not find pcbnew executable")
 
 
@@ -78,12 +118,16 @@ def get_config_path():
         # macos
         "~/Library/Preferences/kicad/",
     ]
+    if is_wsl():
+        try:
+            kicad_config_search_path.append(Path(Windows("kicad", roaming=True).user_config_dir).parent)
+        except ValueError:
+            pass
 
     mapped_paths = [
         (Path(p).expanduser().resolve() / KICAD_VERSION)
         for p in kicad_config_search_path
     ]
-
     return find(
         mapped_paths,
         lambda p: p.exists(),
@@ -111,6 +155,15 @@ def get_plugin_paths(legacy: bool = False):
         # linux
         platformdirs.user_data_dir("kicad"),
     ]
+
+    if is_wsl():
+        try:
+            kicad_config_search_path.extend([
+                Path(Windows().user_documents_dir) / "KiCad",
+                Path(Windows().user_documents_dir).parent / "OneDrive/Documents/KiCad"
+                ])
+        except ValueError:
+            pass
 
     plugin_suffix = "scripting/plugins" if legacy else "plugins"
 
@@ -154,5 +207,10 @@ def get_ipc_socket_path():
     # windows / linux
     if sys.platform.startswith("win"):
         return Path(gettempdir()) / "kicad"
+    elif is_wsl():
+        try:
+            return Path(Windows("kicad").user_runtime_dir)
+        except ValueError:
+            pass
     # macos / linux
     return Path("/tmp") / "kicad"
