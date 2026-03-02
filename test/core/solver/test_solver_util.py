@@ -20,10 +20,7 @@ from faebryk.core.solver.mutator import (
     is_relevant,
 )
 from faebryk.core.solver.solver import Solver
-from faebryk.core.solver.utils import (
-    Contradiction,
-    ContradictionByLiteral,
-)
+from faebryk.core.solver.utils import ContradictionByLiteral
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from faebryk.libs.util import not_none
@@ -392,7 +389,9 @@ def test_contradiction_message_superset():
 
     solver = Solver()
 
-    with pytest.raises(Contradiction, match=r"Deduced predicate to false"):
+    with pytest.raises(
+        ContradictionByLiteral, match=r"Lower bound not contained in upper bound"
+    ):
         solver.simplify(E.tg, E.g, terminal=True)
 
 
