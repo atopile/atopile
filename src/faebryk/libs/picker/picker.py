@@ -434,7 +434,7 @@ def _pick_tree(
     solver: Solver,
     picker_lib,
     progress: Advancable | None,
-) -> Tree[PickNodeData]:
+) -> tuple[Tree[PickNodeData], list[Solver], list[Solver]]:
     """
     Pick all modules using breadth-first iteration with batched API calls.
 
@@ -442,10 +442,24 @@ def _pick_tree(
     1. Expand: Find independent groups for all work items at current level
     2. Batch fetch: Collect candidates for all modules at this level
     3. Pick and advance: Select parts, prepare work items for next level
+
+    Returns the pick tree, the leaf solvers (one per independent group,
+    each fully solved including the final pick's constraints), and
+    parent solvers that must be kept alive until leaf solvers are committed.
     """
-    work_queue = deque([PickWorkItem(initial_modules, solver, depth=0)])
     pick_tree: Tree[PickNodeData] = Tree()
     subtrees: dict[PickNodeData | None, Tree[PickNodeData]] = {None: pick_tree}
+    leaf_solvers: list[Solver] = []
+    # Keep all solvers alive to prevent GC from destroying Zig-backed graphs
+    # that forked solvers may still reference
+    _solver_keepalive: list[Solver] = []
+
+    # Pre-group before any solving — each group gets a fresh solver so initial
+    # solves are on smaller parameter sets
+    initial_groups = find_independent_groups(initial_modules)
+    work_queue = deque(
+        [PickWorkItem(group, Solver(), depth=0) for group in initial_groups]
+    )
 
     while work_queue:
         expanded: deque[PickWorkItem] = deque()
@@ -459,6 +473,7 @@ def _pick_tree(
 
             groups = find_independent_groups(item.modules)
             group_solvers = [next(item.solver.fork()) for _ in range(len(groups))]
+            _solver_keepalive.append(item.solver)
 
             for group, group_solver in zip(groups, group_solvers):
                 expanded.append(
@@ -519,10 +534,18 @@ def _pick_tree(
                         parent_key=node_data,
                     )
                 )
+            else:
+                # Final pick in this group — run one more simplify to catch
+                # contradictions from the last pick.
+                # Every other pick is verified by the next depth's expand phase.
+                relevant = _collect_relevant_params(item.modules)
+                g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+                item.solver.simplify(g, tg, terminal=False, relevant=relevant)
+                leaf_solvers.append(item.solver)
 
         work_queue = next_queue
 
-    return pick_tree
+    return pick_tree, leaf_solvers, _solver_keepalive
 
 
 def pick_topologically(
@@ -561,11 +584,18 @@ def pick_topologically(
 
     timings.add("setup")
 
+    leaf_solvers: list[Solver] = []
     with timings.measure("pick tree"):
         if all_modules := set(tree.keys()):
-            pick_tree: Tree[PickNodeData] = _pick_tree(
-                all_modules, solver, picker_lib, progress
-            )
+            try:
+                pick_tree, leaf_solvers, _solver_keepalive = _pick_tree(
+                    all_modules, solver, picker_lib, progress
+                )
+            except Contradiction as e:
+                error_msg = _format_pcb_contradiction_error(
+                    e, tg=next(iter(tree_backup)).tg
+                )
+                raise PickVerificationError(error_msg, *tree_backup) from e
             logger.info(
                 "Picking tree (d=depth, b=branching_factor):\n" + pick_tree.pretty()
             )
@@ -575,18 +605,8 @@ def pick_topologically(
     if _pick_count:
         logger.info(f"Picked parts in {timings.get_formatted('pick tree')}")
 
-    if relevant := _collect_relevant_params(tree_backup):
-        g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
-
-        with timings.measure("verify design"):
-            logger.info("Verify design")
-            try:
-                solver.simplify(g, tg, terminal=True, relevant=relevant)
-            except Contradiction as e:
-                error_msg = _format_pcb_contradiction_error(e, tg)
-                raise PickVerificationError(error_msg, *tree_backup) from e
-        solver.commit()
-        logger.info(f"Verified design in {timings.get_formatted('verify design')}")
+    for leaf_solver in leaf_solvers:
+        leaf_solver.commit()
 
 
 # TODO should be a Picker
