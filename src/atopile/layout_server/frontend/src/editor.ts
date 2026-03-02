@@ -852,6 +852,9 @@ export class Editor {
             if (e.button !== 0) return;
 
             if (this.isBoxSelecting) {
+                // Box selection is a new selection gesture — always exit
+                // single-override mode so subsequent clicks respect groups.
+                this.singleOverrideMode = false;
                 const selectionBox = this.currentBoxSelection();
                 if (this.model && selectionBox) {
                     const selected = hitTestFootprintsInBox(selectionBox, this.model.footprints);
