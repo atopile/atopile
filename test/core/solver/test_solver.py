@@ -1758,6 +1758,55 @@ def test_mapping(A_value: int):
     assert _extract_and_check(B, res.data.mutation_map, mapping[A_value])
 
 
+@pytest.mark.parametrize("A_value", [5, 10, 15])
+def test_mapping_makechild(A_value: int):
+    """Same as test_mapping but using the declarative MakeChild pattern."""
+    E = BoundExpressions()
+
+    X = E.lit_op_range_from_center_rel((100, E.U.dl), 0.1).as_literal.force_get()
+    Y = E.lit_op_range_from_center_rel((200, E.U.dl), 0.1).as_literal.force_get()
+    Z = E.lit_op_range_from_center_rel((300, E.U.dl), 0.1).as_literal.force_get()
+
+    mapping_expected = {5: X, 10: Y, 15: Z}
+
+    class _App(fabll.Node):
+        A = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        B = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+
+        _constraints = [
+            F.Expressions.Mapping.MakeChild(
+                left=[A],
+                right=[B],
+                mapping=[
+                    (
+                        F.Literals.Numbers.MakeChild_SingleValue(5),
+                        F.Literals.Numbers.MakeChild_FromCenterRel(100, 0.1),
+                    ),
+                    (
+                        F.Literals.Numbers.MakeChild_SingleValue(10),
+                        F.Literals.Numbers.MakeChild_FromCenterRel(200, 0.1),
+                    ),
+                    (
+                        F.Literals.Numbers.MakeChild_SingleValue(15),
+                        F.Literals.Numbers.MakeChild_FromCenterRel(300, 0.1),
+                    ),
+                ],
+            ),
+        ]
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+    A_op = app.A.get().can_be_operand.get()
+    B_op = app.B.get().can_be_operand.get()
+
+    E.is_subset(A_op, E.lit_op_single(A_value), assert_=True)
+
+    solver = Solver()
+    res = cast(Solver.SolverState, solver.simplify_for(A_op, B_op))
+    assert _extract_and_check(A_op, res.data.mutation_map, A_value)
+    assert _extract_and_check(B_op, res.data.mutation_map, mapping_expected[A_value])
+
+
 @pytest.mark.parametrize("op", [F.Expressions.Subtract.c, F.Expressions.Add.c])
 def test_subtract_zero(op):
     E = BoundExpressions()

@@ -3176,6 +3176,41 @@ ExpressionNodes = (
 
 class Mapping:
     @staticmethod
+    def MakeChild(
+        left: fabll.RefPath,
+        right: fabll.RefPath,
+        mapping: Sequence[tuple[fabll._ChildField, fabll._ChildField]],
+        assert_: bool = True,
+    ) -> fabll._ChildField["And"]:
+        implies_fields = []
+
+        for lit_key, lit_val in mapping:
+            # Condition: left is subset of lit_key
+            condition = IsSubset.MakeChild(left, [lit_key])
+            condition.add_dependant(lit_key, before=True)
+
+            # Consequence: right is subset of lit_val
+            consequence = IsSubset.MakeChild(right, [lit_val])
+            consequence.add_dependant(lit_val, before=True)
+
+            # Implication: condition => consequence
+            implies = Implies.MakeChild([condition], [consequence])
+            implies.add_dependant(condition, before=True)
+            implies.add_dependant(consequence, before=True)
+
+            implies_fields.append(implies)
+
+        # And: all implications
+        out = And.MakeChild(*[[impl] for impl in implies_fields])
+        for impl in implies_fields:
+            out.add_dependant(impl, before=True)
+
+        if assert_:
+            out.add_dependant(fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]))
+
+        return out
+
+    @staticmethod
     def operation_switch_case_implications(
         cases: Iterable[tuple["is_expression", "is_expression"]],
     ) -> "is_expression":
@@ -3392,6 +3427,59 @@ def test_expr_makechild():
     assert sub.subtrahends.get().as_list() == ops[1:]
 
     assert app
+
+
+def test_mapping_makechild():
+    from enum import Enum
+
+    from faebryk.library.Units import Meter
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class Material(Enum):
+        FR4 = "FR4"
+        ALUMINIUM = "ALUMINIUM"
+
+    class _TestNode(fabll.Node):
+        material = F.Parameters.EnumParameter.MakeChild(enum_t=Material)
+        max_width = F.Parameters.NumericParameter.MakeChild(unit=Meter)
+
+        _constraints = [
+            Mapping.MakeChild(
+                left=[material],
+                right=[max_width],
+                mapping=[
+                    (
+                        F.Literals.AbstractEnums.MakeChild(Material.FR4),
+                        F.Literals.Numbers.MakeChild(min=0, max=0.670, unit=Meter),
+                    ),
+                    (
+                        F.Literals.AbstractEnums.MakeChild(Material.ALUMINIUM),
+                        F.Literals.Numbers.MakeChild(min=0, max=0.602, unit=Meter),
+                    ),
+                ],
+            ),
+        ]
+
+    # Verify the node instantiates successfully with the Mapping constraint
+    node = _TestNode.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Verify the parameters are accessible
+    assert node.material.get() is not None
+    assert node.max_width.get() is not None
+
+    # Verify the And expression was created with the is_predicate trait (asserted)
+    and_nodes = node.get_children(direct_only=True, types=And, tg=tg)
+    assert len(and_nodes) == 1, f"Expected 1 And node, got {len(and_nodes)}"
+
+    # The And should have 2 operands (one Implies per mapping entry)
+    and_node = and_nodes[0]
+    operands = and_node.operands.get().as_list()
+    assert len(operands) == 2, f"Expected 2 operands, got {len(operands)}"
+
+    # The And should be asserted (has is_predicate trait)
+    assert and_node.has_trait(is_predicate)
 
 
 if __name__ == "__main__":
