@@ -198,6 +198,12 @@ fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
     }
     ctx.sexp = sexp;
 
+    // If caller did not provide a message, attach a concise S-expression preview.
+    if (ctx.message == null) {
+        const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
+        if (preview) |p| ctx.message = p;
+    }
+
     current_error_context = ctx;
 }
 
@@ -1583,28 +1589,6 @@ pub fn encodeWrappedStream(
         // Body already emitted with separators.
     }
     try writer.writeByte(')');
-}
-
-// Encode data into a wrapped S-expression without prettifying.
-//
-// The returned SExp is intended for allocator/lifetime-managed usage (e.g. arena
-// allocators). It may contain symbol slices that are not individually owned.
-pub fn encodeWrapped(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) !ast.SExp {
-    // Encode the data into the struct body list
-    const encoded = try encode(allocator, data, SexpField{}, symbol_name);
-    const encoded_items = ast.getList(encoded).?;
-
-    // Prepend root symbol
-    var items = try allocator.alloc(ast.SExp, encoded_items.len + 1);
-    items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = tokenizer.TokenLocation.none };
-    for (encoded_items, 0..) |item, i| {
-        items[i + 1] = item;
-    }
-
-    // encoded's top-level list container is no longer needed after the copy.
-    allocator.free(encoded_items);
-
-    return ast.SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
 }
 
 // Load a struct from an S-expression string with a wrapping symbol

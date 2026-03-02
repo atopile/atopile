@@ -5,6 +5,27 @@ const sexp = @import("sexp");
 const py = pyzig.pybindings;
 const bind = pyzig.pyzig;
 
+const LineCol = struct {
+    line: usize,
+    column: usize,
+};
+
+fn offsetToLineCol(source: []const u8, offset: usize) LineCol {
+    var line: usize = 1;
+    var column: usize = 1;
+    const capped = @min(offset, source.len);
+    var i: usize = 0;
+    while (i < capped) : (i += 1) {
+        if (source[i] == '\n') {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    return .{ .line = line, .column = column };
+}
+
 // Generic module generation function
 fn generateModule(
     comptime name: [:0]const u8,
@@ -228,14 +249,28 @@ fn generateModule(
                         std.fmt.allocPrint(std.heap.c_allocator, " field '{s}'", .{f}) catch ""
                     else
                         "";
-                    const has_loc = c.line != null;
-                    const loc = if (has_loc) std.fmt.allocPrint(std.heap.c_allocator, " at {d}:{?d}", .{ c.line.?, c.column }) catch "" else "";
+
+                    var line_opt = c.line;
+                    var col_opt = c.column;
+                    var end_col_opt = c.end_column;
+                    if ((line_opt == null or col_opt == null) and c.start_offset != null) {
+                        const lc = offsetToLineCol(input_str, c.start_offset.?);
+                        line_opt = lc.line;
+                        col_opt = lc.column;
+                    }
+                    if (end_col_opt == null and c.end_offset != null and line_opt != null) {
+                        const end_lc = offsetToLineCol(input_str, c.end_offset.?);
+                        if (end_lc.line == line_opt.?) end_col_opt = end_lc.column;
+                    }
+
+                    const has_loc = line_opt != null and col_opt != null;
+                    const loc = if (has_loc) std.fmt.allocPrint(std.heap.c_allocator, " at {d}:{d}", .{ line_opt.?, col_opt.? }) catch "" else "";
                     const detail = c.message orelse "";
 
                     // Find the error line in input_copy
                     var line_text: []const u8 = "";
                     if (has_loc) {
-                        const ln: usize = c.line.?;
+                        const ln: usize = line_opt.?;
                         var idx: usize = 0;
                         var current: usize = 1;
                         var start: usize = 0;
@@ -262,8 +297,8 @@ fn generateModule(
                     var caret_buf: [256]u8 = undefined;
                     var caret_len: usize = 0;
                     if (has_loc) {
-                        const col: usize = c.column orelse 1;
-                        const underline_len: usize = if (c.end_column) |ec| @max(@as(usize, 1), ec - col) else 1;
+                        const col: usize = col_opt.?;
+                        const underline_len: usize = if (end_col_opt) |ec| @max(@as(usize, 1), ec - col) else 1;
                         // Avoid overflow
                         const spaces = @min(col - 1, caret_buf.len);
                         var i: usize = 0;
