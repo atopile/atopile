@@ -209,6 +209,21 @@ class AutolayoutService:
             project_root=target_files.project_root,
         )
 
+        # Auto-detect reuse blocks with internal routing and preserve them
+        metadata_path = work_dir / "reuse_block_metadata.json"
+        if metadata_path.exists():
+            reuse_meta = json.loads(metadata_path.read_text(encoding="utf-8"))
+            has_internal_routing = any(
+                block.get("internal_net_ids")
+                for block in reuse_meta.values()
+            )
+            if has_internal_routing:
+                merged_constraints.setdefault("preserve_existing_routing", True)
+                log.info(
+                    "Detected reuse blocks with internal routing; "
+                    "setting preserve_existing_routing=True"
+                )
+
         job = AutolayoutJob(
             job_id=job_id,
             project_root=str(target_files.project_root),
