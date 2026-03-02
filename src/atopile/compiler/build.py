@@ -546,8 +546,11 @@ class Linker:
                 if target is None:
                     from atopile.compiler import DslRichException
 
+                    msg = f"Symbol `{type_id}` is not defined in this scope"
+                    if type_id in self._stdlib or type_id in self._stdlib_ato_files:
+                        msg += f". Did you forget `import {type_id}`?"
                     raise DslRichException(
-                        f"Symbol `{type_id}` is not defined in this scope",
+                        msg,
                         original=DslUndefinedSymbolError(),
                         source_node=source_node,
                         traceback=traceback_stack,
