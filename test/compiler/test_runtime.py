@@ -264,7 +264,9 @@ class TestForLoopsRuntime:
             )
 
     def test_for_loop_nested_error(self):
-        with pytest.raises(DslException, match="Invalid statement in for loop"):
+        with pytest.raises(
+            DslException, match="Invalid/Unsupported statement in for loop"
+        ):
             build_instance(
                 """
                 #pragma experiment("FOR_LOOP")
@@ -371,7 +373,7 @@ class TestForLoopsRuntime:
         )
 
         text = template.format(stmt=stmt)
-        with pytest.raises(DslException, match="Invalid statement"):
+        with pytest.raises(DslException, match="Invalid/Unsupported statement"):
             build_instance(text, "App")
 
     def test_for_loop_large(self):

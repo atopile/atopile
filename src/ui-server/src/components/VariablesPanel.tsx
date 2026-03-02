@@ -5,7 +5,9 @@ import {
   AlertTriangle, Loader2, Check
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
-import { PanelSearchBox, EmptyState, TreeRowHeader } from './shared'
+import { PanelSearchBox } from './shared/PanelSearchBox'
+import { EmptyState } from './shared/EmptyState'
+import { TreeRowHeader } from './shared/TreeRowHeader'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
