@@ -22,6 +22,8 @@ from atopile.model.build_queue import (
     _build_queue,
 )
 from atopile.model.model_state import model_state
+from atopile.server import path_utils
+from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
@@ -288,6 +290,30 @@ def _handle_build_sync(payload: dict) -> dict:
             "message": f"Queued {len(build_ids)} builds for {build_label}",
             "build_ids": build_ids,
         }
+
+
+def _resolve_build_target(
+    project_root: str, build_id: str, payload: dict
+) -> tuple[str | None, str | None]:
+    target_name = payload.get("targetName") or payload.get("target")
+    resolved_project_root = project_root
+
+    if build_id:
+        build_info = builds_domain.handle_get_build_info(build_id)
+        if isinstance(build_info, dict):
+            target_name = (
+                target_name
+                or build_info.get("target")
+                or build_info.get("name")
+                or build_info.get("build_name")
+            )
+            resolved_project_root = (
+                resolved_project_root
+                or build_info.get("project_root")
+                or build_info.get("projectRoot")
+            )
+
+    return target_name, resolved_project_root
 
 
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:

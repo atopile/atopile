@@ -107,7 +107,7 @@ def exec_pure_literal_operands(
     lits_nodes = [o.switch_cast() for o in lits]
     try:
         return expr_type_.run(g=g, tg=tg, *lits_nodes)
-    except (ValueError, NotImplementedError, ZeroDivisionError, TypeError):
+    except ValueError, NotImplementedError, ZeroDivisionError, TypeError:
         return None
 
 

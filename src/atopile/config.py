@@ -1195,7 +1195,7 @@ class Config:
         # Check if we're in an interactive terminal session (cross-platform)
         try:
             self.interactive = sys.stdout.isatty() and sys.stdin.isatty()
-        except (AttributeError, ValueError):
+        except AttributeError, ValueError:
             # If we can't determine, default to True for better user experience
             self.interactive = True
 

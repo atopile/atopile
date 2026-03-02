@@ -37,7 +37,9 @@ class C_deeppcb_board_file(JSON_File):
 
     name: str = ""
     rules: list[dict[str, Any]] = field(default_factory=list)
-    resolution: dict[str, Any] = field(default_factory=lambda: {"unit": "mm", "value": 1000})
+    resolution: dict[str, Any] = field(
+        default_factory=lambda: {"unit": "mm", "value": 1000}
+    )
     boundary: dict[str, Any] = field(default_factory=dict)
 
     padstacks: list[dict[str, Any]] = field(default_factory=list)

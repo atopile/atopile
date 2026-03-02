@@ -304,7 +304,9 @@ def _read_stream_with_limit(
             break
         total += len(chunk)
         if total > max_bytes:
-            raise scope_error_cls(f"Datasheet exceeds max size limit ({max_bytes} bytes)")
+            raise scope_error_cls(
+                f"Datasheet exceeds max size limit ({max_bytes} bytes)"
+            )
         chunks.append(chunk)
     return b"".join(chunks)
 

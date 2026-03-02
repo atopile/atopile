@@ -8,6 +8,7 @@ from atopile.dataclasses import BuildStatus
 from atopile.logging import normalize_log_audience, normalize_log_levels
 from atopile.model.build_queue import _build_queue
 
+
 def _active_or_pending_build_ids() -> set[str]:
     state = _build_queue.get_queue_state()
     active = state.get("active", [])

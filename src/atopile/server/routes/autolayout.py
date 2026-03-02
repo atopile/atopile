@@ -239,9 +239,7 @@ async def start_webhook_gateway(
 ) -> WebhookGatewayResponse:
     """Start a webhook-only dev gateway and optional cloudflared tunnel."""
     manager = get_autolayout_webhook_gateway_manager()
-    internal_base_url = (
-        request.internal_api_base_url or default_internal_api_base_url()
-    )
+    internal_base_url = request.internal_api_base_url or default_internal_api_base_url()
     try:
         status = await asyncio.to_thread(
             manager.start,

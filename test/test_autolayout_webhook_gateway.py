@@ -41,7 +41,9 @@ def test_webhook_gateway_forwards_only_deeppcb_path() -> None:
             return
 
     upstream_server = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
-    upstream_thread = threading.Thread(target=upstream_server.serve_forever, daemon=True)
+    upstream_thread = threading.Thread(
+        target=upstream_server.serve_forever, daemon=True
+    )
     upstream_thread.start()
     upstream_port = int(upstream_server.server_address[1])
 
@@ -66,9 +68,7 @@ def test_webhook_gateway_forwards_only_deeppcb_path() -> None:
         assert isinstance(body, bytes)
         assert json.loads(body.decode("utf-8")) == {"state": "running"}
 
-        disallowed_url = (
-            f"http://{status['gateway_host']}:{status['gateway_port']}/api/autolayout/jobs"
-        )
+        disallowed_url = f"http://{status['gateway_host']}:{status['gateway_port']}/api/autolayout/jobs"
         blocked = requests.post(disallowed_url, json={"x": 1}, timeout=5)
         assert blocked.status_code == 404
     finally:
@@ -155,7 +155,9 @@ def test_gateway_webhook_updates_job_and_agent_reads_status(
             return
 
     upstream_server = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
-    upstream_thread = threading.Thread(target=upstream_server.serve_forever, daemon=True)
+    upstream_thread = threading.Thread(
+        target=upstream_server.serve_forever, daemon=True
+    )
     upstream_thread.start()
     upstream_port = int(upstream_server.server_address[1])
 

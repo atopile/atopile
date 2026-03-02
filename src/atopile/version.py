@@ -115,7 +115,7 @@ def get_latest_atopile_version() -> Version | None:
             )
         response.raise_for_status()
         version_str = response.json()["info"]["version"]
-    except (KeyError, HTTPError):
+    except KeyError, HTTPError:
         log.debug("Failed to get latest version")
         return None
 

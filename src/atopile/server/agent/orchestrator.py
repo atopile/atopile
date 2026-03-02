@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import inspect
-import json
 import logging
 import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
-
-log = logging.getLogger(__name__)
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
@@ -34,11 +29,11 @@ from atopile.server.agent.orchestrator_helpers import (
     _compute_network_retry_delay_s,
     _compute_rate_limit_retry_delay_s,
     _consume_steering_updates,
+    _emit_progress,
+    _emit_trace,
     _extract_function_calls,
     _extract_sdk_error_text,
     _extract_text,
-    _emit_progress,
-    _emit_trace,
     _is_context_length_exceeded,
     _limit_tool_output_for_model,
     _loop_has_concrete_progress,
@@ -48,16 +43,18 @@ from atopile.server.agent.orchestrator_helpers import (
     _response_model_to_dict,
     _sanitize_tool_output_for_model,
     _shrink_function_call_outputs_payload,
-    _summarize_response_for_trace,
     _summarize_function_call_for_trace,
+    _summarize_response_for_trace,
     _summarize_tool_result_for_trace,
-    _tool_call_signature,
     _to_trace_preview,
+    _tool_call_signature,
     _trim_user_message,
     _truncate_middle,
 )
 from atopile.server.agent.orchestrator_prompt import SYSTEM_PROMPT
 from atopile.server.domains import artifacts as artifacts_domain
+
+log = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 SteeringMessagesCallback = Callable[[], list[str]]
@@ -258,9 +255,7 @@ class AgentOrchestrator:
         self.api_retry_max_delay_s = float(
             os.getenv("ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0")
         )
-        default_skills_dir = (
-            Path(__file__).resolve().parents[4] / ".claude" / "skills"
-        )
+        default_skills_dir = Path(__file__).resolve().parents[4] / ".claude" / "skills"
         self.skills_dir = default_skills_dir
         self.fixed_skill_ids = ["agent", "ato"]
         self.fixed_skill_token_budgets = _parse_fixed_skill_token_budgets(
@@ -685,7 +680,9 @@ class AgentOrchestrator:
                 progress_callback=progress_callback,
                 trace_callback=trace_callback,
             )
-            next_response_id = self._response_id_or_none(next_response) or last_response_id
+            next_response_id = (
+                self._response_id_or_none(next_response) or last_response_id
+            )
             return next_response, next_response_id, None
 
         text = _extract_text(response)
@@ -719,12 +716,16 @@ class AgentOrchestrator:
                 "tool_calls_total": len(traces),
             },
         )
-        return None, last_response_id, self._build_turn_result(
-            text=text,
-            traces=traces,
-            last_response_id=last_response_id,
-            skill_state=skill_state,
-            telemetry=telemetry,
+        return (
+            None,
+            last_response_id,
+            self._build_turn_result(
+                text=text,
+                traces=traces,
+                last_response_id=last_response_id,
+                skill_state=skill_state,
+                telemetry=telemetry,
+            ),
         )
 
     async def _process_function_calls(
@@ -1835,7 +1836,7 @@ class AgentOrchestrator:
             )
         except APIStatusError:
             return None
-        except (APIConnectionError, APITimeoutError):
+        except APIConnectionError, APITimeoutError:
             return None
         body = _response_model_to_dict(compacted)
         compacted_id = body.get("id")
@@ -1860,7 +1861,6 @@ class AgentOrchestrator:
                 timeout=self.timeout_s,
             )
         return self._client
-
 
 
 def _build_turn_instructions(

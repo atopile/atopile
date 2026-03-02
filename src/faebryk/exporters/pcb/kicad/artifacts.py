@@ -33,7 +33,7 @@ def githash_layout(layout: Path, out: Path) -> Path:
             .decode("ascii")
             .strip()
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except subprocess.CalledProcessError, FileNotFoundError:
         logger.warning("Could not get git hash, using 'unknown'")
         git_hash = "unknown"
 

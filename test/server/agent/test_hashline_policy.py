@@ -1,19 +1,22 @@
 """Agent module tests moved from colocated runtime modules."""
 
-import pytest
-
 import re
 from io import BytesIO
 from pathlib import Path
 
+import pytest
+
 from atopile.server.agent import policy, policy_datasheet
 from atopile.server.agent.policy_datasheet import _lcsc_wmsc_url
+
 
 def _anchor(line: int, text: str) -> str:
     return f"{line}:{policy.compute_line_hash(line, text)}"
 
+
 def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
+
 
 def test_format_hashline_content_shape() -> None:
     output = policy.format_hashline_content(["alpha", "beta"], start_line=10)
@@ -21,6 +24,7 @@ def test_format_hashline_content_shape() -> None:
 
     assert re.fullmatch(r"10:[0-9a-f]{4}\|alpha", lines[0])
     assert re.fullmatch(r"11:[0-9a-f]{4}\|beta", lines[1])
+
 
 def test_parse_line_anchor_tolerates_copied_suffix() -> None:
     assert policy.parse_line_anchor("7:beef|value") == policy.LineAnchor(
@@ -31,6 +35,7 @@ def test_parse_line_anchor_tolerates_copied_suffix() -> None:
         line=7,
         hash="beef",
     )
+
 
 def test_apply_hashline_set_line(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
@@ -57,6 +62,7 @@ def test_apply_hashline_set_line(tmp_path: Path) -> None:
     assert result["_ui"]["edit_diff"]["path"] == "main.ato"
     assert file_path.read_text(encoding="utf-8") == "a\nB\nc\n"
 
+
 def test_apply_hashline_replace_range(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\nc\nd\n")
@@ -79,6 +85,7 @@ def test_apply_hashline_replace_range(tmp_path: Path) -> None:
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nX\nY\nd\n"
 
+
 def test_apply_hashline_insert_after(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\n")
@@ -99,6 +106,7 @@ def test_apply_hashline_insert_after(tmp_path: Path) -> None:
     assert result["operations_applied"] == 1
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nx\ny\nb\n"
+
 
 def test_apply_hashline_rejects_overlapping_operations(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
@@ -125,6 +133,7 @@ def test_apply_hashline_rejects_overlapping_operations(tmp_path: Path) -> None:
             ],
         )
 
+
 def test_apply_hashline_rejects_noop_edits(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     _write(file_path, "a\nb\n")
@@ -142,6 +151,7 @@ def test_apply_hashline_rejects_noop_edits(tmp_path: Path) -> None:
                 }
             ],
         )
+
 
 def test_apply_hashline_mismatch_includes_remap_hints(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
@@ -168,6 +178,7 @@ def test_apply_hashline_mismatch_includes_remap_hints(tmp_path: Path) -> None:
     assert "Quick fix - replace stale refs:" in message
     assert f"2:dead -> 2:{actual}" in message
 
+
 def test_read_file_chunk_resolves_legacy_deps_path(tmp_path: Path) -> None:
     package_file = (
         tmp_path
@@ -187,13 +198,10 @@ def test_read_file_chunk_resolves_legacy_deps_path(tmp_path: Path) -> None:
         max_lines=20,
     )
 
-    assert (
-        result["path"] == ".ato/modules/atopile/sensirion-sht45/sensirion-sht45.ato"
-    )
-    assert (
-        result["resolved_from"] == ".ato/modules/atopile/sensirion-sht45/sht45.ato"
-    )
+    assert result["path"] == ".ato/modules/atopile/sensirion-sht45/sensirion-sht45.ato"
+    assert result["resolved_from"] == ".ato/modules/atopile/sensirion-sht45/sht45.ato"
     assert "1:" in result["content"]
+
 
 def test_read_file_chunk_missing_path_includes_package_suggestions(
     tmp_path: Path,
@@ -214,6 +222,7 @@ def test_read_file_chunk_missing_path_includes_package_suggestions(
             max_lines=20,
         )
 
+
 def test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
     detected = policy_datasheet._detect_datasheet_format(
         source_value="https://example.com/datasheet.pdf",
@@ -222,6 +231,7 @@ def test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
     )
     assert detected == "html"
 
+
 def test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes() -> None:
     detected = policy_datasheet._detect_datasheet_format(
         source_value="https://example.com/datasheet.pdf",
@@ -229,6 +239,7 @@ def test_detect_datasheet_format_preserves_pdf_hint_for_non_html_bytes() -> None
         raw_bytes=b"PK\x03\x04not-html",
     )
     assert detected == "pdf"
+
 
 def test_create_path_supports_directories_and_allowed_files(
     tmp_path: Path,
@@ -251,9 +262,11 @@ def test_create_path_supports_directories_and_allowed_files(
     roadmap_text = (tmp_path / "plans" / "roadmap.md").read_text(encoding="utf-8")
     assert roadmap_text.startswith("# Roadmap")
 
+
 def test_create_path_rejects_disallowed_extensions(tmp_path: Path) -> None:
     with pytest.raises(policy.ScopeError, match="Only .ato, .md, .py"):
         policy.create_path(tmp_path, "plans/notes.txt", kind="file", content="")
+
 
 def test_create_path_restricts_python_files_to_fabll_modules(
     tmp_path: Path,
@@ -270,6 +283,7 @@ def test_create_path_restricts_python_files_to_fabll_modules(
     assert created["path"] == "src/faebryk/library/NewModule.py"
     assert created["extension"] == ".py"
     assert created["created"] is True
+
 
 def test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
     tmp_path: Path,
@@ -300,6 +314,7 @@ def test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
             url="https://example.com/datasheet.pdf",
         )
 
+
 def test__lcsc_wmsc_url_extracts_part_number() -> None:
     url = (
         "https://www.lcsc.com/datasheet/"
@@ -308,8 +323,10 @@ def test__lcsc_wmsc_url_extracts_part_number() -> None:
     fallback = _lcsc_wmsc_url(url)
     assert fallback == "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/C521608.pdf"
 
+
 def test__lcsc_wmsc_url_ignores_non_lcsc_urls() -> None:
     assert _lcsc_wmsc_url("https://www.st.com/resource/doc.pdf") is None
+
 
 def test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
     monkeypatch: pytest.MonkeyPatch,

@@ -141,7 +141,7 @@ def cli(
                     resource.RLIMIT_CORE,
                     (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
                 )
-            except (ValueError, OSError):
+            except ValueError, OSError:
                 pass  # Best effort - may fail if system limit is lower
 
         args = [arg for arg in sys.argv if arg != "--safe"]

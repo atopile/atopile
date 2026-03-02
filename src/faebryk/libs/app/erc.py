@@ -114,7 +114,7 @@ def _format_source_info(source_chunk: "AST.SourceChunk | None") -> str:
         try:
             with open(file_path) as f:
                 lines = f.read().splitlines()
-        except (FileNotFoundError, OSError):
+        except FileNotFoundError, OSError:
             return source_header
 
         context = 2

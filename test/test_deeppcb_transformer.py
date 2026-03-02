@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -180,7 +179,9 @@ def test_kicad_deeppcb_roundtrip_native_reconstruction(pcb_path: Path) -> None:
 @pytest.mark.parametrize("pcb_path", EXAMPLE_PCBS, ids=lambda p: str(p))
 def test_kicad_deeppcb_roundtrip_parity_on_supported_primitives(pcb_path: Path) -> None:
     original = kicad.loads(kicad.pcb.PcbFile, pcb_path).kicad_pcb
-    board = DeepPCB_Transformer.from_kicad_file(kicad.loads(kicad.pcb.PcbFile, pcb_path))
+    board = DeepPCB_Transformer.from_kicad_file(
+        kicad.loads(kicad.pcb.PcbFile, pcb_path)
+    )
     roundtrip = DeepPCB_Transformer.to_kicad_file(board).kicad_pcb
 
     diff = kicad.compare_without_uuid(original, roundtrip)
@@ -301,7 +302,7 @@ def test_kicad_deeppcb_strict_roundtrip_pad_fidelity(tmp_path: Path) -> None:
     assert abs(p1.size.w - 1.2) < TOL, f"Pad 1 width: {p1.size.w}"
     assert abs(p1.size.h - 0.6) < TOL, f"Pad 1 height: {p1.size.h}"
     assert p1.drill is None
-    p1_layers = [str(l) for l in p1.layers]
+    p1_layers = [str(ly) for ly in p1.layers]
     assert "F.Cu" in p1_layers
     assert "F.Mask" in p1_layers
     assert "F.Paste" in p1_layers
@@ -316,7 +317,7 @@ def test_kicad_deeppcb_strict_roundtrip_pad_fidelity(tmp_path: Path) -> None:
     assert abs(dims2[0] - 0.9) < TOL, f"Pad 2 minor dim: {dims2[0]}"
     assert abs(dims2[1] - 1.8) < TOL, f"Pad 2 major dim: {dims2[1]}"
     assert p2.drill is None
-    p2_layers = [str(l) for l in p2.layers]
+    p2_layers = [str(ly) for ly in p2.layers]
     assert "F.Cu" in p2_layers
     assert "F.Mask" in p2_layers
     assert "F.Paste" in p2_layers
@@ -329,7 +330,7 @@ def test_kicad_deeppcb_strict_roundtrip_pad_fidelity(tmp_path: Path) -> None:
     assert abs(p3.size.h - 1.6) < TOL, f"Pad 3 height: {p3.size.h}"
     assert p3.drill is not None, "Pad 3 should have drill"
     assert abs(p3.drill.size_x - 0.8) < TOL, f"Pad 3 drill: {p3.drill.size_x}"
-    p3_layers = [str(l) for l in p3.layers]
+    p3_layers = [str(ly) for ly in p3.layers]
     assert "*.Cu" in p3_layers or ("F.Cu" in p3_layers and "B.Cu" in p3_layers)
     assert "F.Mask" in p3_layers
     assert "B.Mask" in p3_layers
@@ -346,7 +347,7 @@ def test_kicad_deeppcb_strict_roundtrip_pad_fidelity(tmp_path: Path) -> None:
     drill_sizes = sorted([p4.drill.size_x, p4.drill.size_y or p4.drill.size_x])
     assert abs(drill_sizes[0] - 0.6) < TOL, f"Pad 4 drill minor: {drill_sizes[0]}"
     assert abs(drill_sizes[1] - 1.0) < TOL, f"Pad 4 drill major: {drill_sizes[1]}"
-    p4_layers = [str(l) for l in p4.layers]
+    p4_layers = [str(ly) for ly in p4.layers]
     assert "*.Cu" in p4_layers or ("F.Cu" in p4_layers and "B.Cu" in p4_layers)
     assert "F.Mask" in p4_layers
     assert "B.Mask" in p4_layers
@@ -367,7 +368,8 @@ def test_kicad_deeppcb_strict_roundtrip_counts(pcb_path: Path, tmp_path: Path) -
     roundtrip = DeepPCB_Transformer.to_internal_pcb(loaded)
 
     assert len(roundtrip.footprints) == len(original.footprints), (
-        f"Footprint count mismatch: {len(roundtrip.footprints)} vs {len(original.footprints)}"
+        f"Footprint count mismatch: "
+        f"{len(roundtrip.footprints)} vs {len(original.footprints)}"
     )
 
     for orig_fp, rt_fp in zip(original.footprints, roundtrip.footprints):
@@ -396,9 +398,7 @@ def test_reuse_block_preserves_all_padstacks(pcb_path: Path, tmp_path: Path) -> 
     pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
 
     # Generate without reuse blocks (all padstacks preserved)
-    board_no_reuse = DeepPCB_Transformer.from_kicad_file(
-        pcb_file, provider_strict=True
-    )
+    board_no_reuse = DeepPCB_Transformer.from_kicad_file(pcb_file, provider_strict=True)
     all_padstack_ids = {ps["id"] for ps in board_no_reuse.padstacks}
 
     # Generate with reuse blocks
@@ -423,15 +423,9 @@ def test_reuse_block_preserves_all_padstacks(pcb_path: Path, tmp_path: Path) -> 
 
     # Through-hole padstacks specifically must be preserved
     th_no_reuse = {
-        ps["id"]
-        for ps in board_no_reuse.padstacks
-        if ps.get("layers") == [0, 1]
+        ps["id"] for ps in board_no_reuse.padstacks if ps.get("layers") == [0, 1]
     }
-    th_reuse = {
-        ps["id"]
-        for ps in board_reuse.padstacks
-        if ps.get("layers") == [0, 1]
-    }
+    th_reuse = {ps["id"] for ps in board_reuse.padstacks if ps.get("layers") == [0, 1]}
     missing_th = th_no_reuse - th_reuse
     assert not missing_th, (
         f"Through-hole padstacks dropped by reuse blocks: {missing_th}"

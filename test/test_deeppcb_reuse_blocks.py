@@ -349,9 +349,7 @@ def project_dir(tmp_path: Path) -> Path:
 
 def test_collapse_identifies_reuse_groups(project_dir: Path) -> None:
     """from_kicad_pcb should detect reuse groups and produce synthetic components."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     metadata: dict = {}
     board = DeepPCB_Transformer.from_kicad_pcb(
         parent_pcb.kicad_pcb,
@@ -368,7 +366,9 @@ def test_collapse_identifies_reuse_groups(project_dir: Path) -> None:
 
     # Synthetic block component should exist
     block_components = [
-        c for c in board.components if "REUSE_BLOCK:myblock" in str(c.get("partNumber", ""))
+        c
+        for c in board.components
+        if "REUSE_BLOCK:myblock" in str(c.get("partNumber", ""))
     ]
     assert len(block_components) == 1
 
@@ -388,9 +388,7 @@ def test_collapse_identifies_reuse_groups(project_dir: Path) -> None:
 
 def test_collapse_filters_internal_wires(project_dir: Path) -> None:
     """Internal wires/vias should be filtered out during collapse."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     metadata: dict = {}
 
     # Without reuse blocks (no project_root): all 4 wires
@@ -413,9 +411,7 @@ def test_collapse_filters_internal_wires(project_dir: Path) -> None:
 
 def test_synthetic_component_has_external_pins(project_dir: Path) -> None:
     """Synthetic block component should have pins for all pads (external + internal)."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     metadata: dict = {}
     board = DeepPCB_Transformer.from_kicad_pcb(
         parent_pcb.kicad_pcb,
@@ -457,14 +453,14 @@ def test_collapse_expand_roundtrip(project_dir: Path) -> None:
     Uses provider_strict=True because that's the production path and the only
     mode that round-trips atopile_address via the ``@@`` component-id encoding.
     """
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     # Record original state
     orig_fp_count = len(original.footprints)
-    orig_fp_addrs = sorted(filter(None, (_get_fp_addr(fp) for fp in original.footprints)))
+    orig_fp_addrs = sorted(
+        filter(None, (_get_fp_addr(fp) for fp in original.footprints))
+    )
 
     # Step 1: Collapse (provider_strict to preserve atopile_address)
     metadata: dict = {}
@@ -480,7 +476,9 @@ def test_collapse_expand_roundtrip(project_dir: Path) -> None:
     result_pcb = DeepPCB_Transformer.to_internal_pcb(board)
 
     # At this point we have a synthetic footprint + external footprints
-    synth_fps = [fp for fp in result_pcb.footprints if str(fp.name).startswith("REUSE_BLOCK:")]
+    synth_fps = [
+        fp for fp in result_pcb.footprints if str(fp.name).startswith("REUSE_BLOCK:")
+    ]
     assert len(synth_fps) == 1
 
     # Step 3: Expand
@@ -496,15 +494,15 @@ def test_collapse_expand_roundtrip(project_dir: Path) -> None:
     assert len(result_pcb.footprints) == orig_fp_count
 
     # All original atopile_addresses should be present
-    expanded_addrs = sorted(filter(None, (_get_fp_addr(fp) for fp in result_pcb.footprints)))
+    expanded_addrs = sorted(
+        filter(None, (_get_fp_addr(fp) for fp in result_pcb.footprints))
+    )
     assert expanded_addrs == orig_fp_addrs
 
 
 def test_collapse_expand_preserves_external_nets(project_dir: Path) -> None:
     """External net assignments should survive collapse/expand."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     # Collapse
@@ -545,9 +543,7 @@ def test_collapse_expand_preserves_external_nets(project_dir: Path) -> None:
 
 def test_collapse_expand_adds_internal_routing(project_dir: Path) -> None:
     """Internal routing from sub-PCB should be added during expansion."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     # Collapse
@@ -572,9 +568,7 @@ def test_collapse_expand_adds_internal_routing(project_dir: Path) -> None:
 
 def test_no_reuse_blocks_without_project_root(project_dir: Path) -> None:
     """Without project_root, no reuse block processing should happen."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     board = DeepPCB_Transformer.from_kicad_pcb(parent_pcb.kicad_pcb)
 
     # All 4 footprints should be present
@@ -589,9 +583,7 @@ def test_no_reuse_blocks_without_project_root(project_dir: Path) -> None:
 
 def test_sub_net_map_built_correctly(project_dir: Path) -> None:
     """The sub-PCB net map should correctly map sub nets to parent nets."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     metadata: dict = {}
     DeepPCB_Transformer.from_kicad_pcb(
         parent_pcb.kicad_pcb,
@@ -612,9 +604,7 @@ def test_sub_net_map_built_correctly(project_dir: Path) -> None:
 
 def test_provider_strict_collapse(project_dir: Path) -> None:
     """Collapse with provider_strict should produce valid provider JSON."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     metadata: dict = {}
     board = DeepPCB_Transformer.from_kicad_pcb(
         parent_pcb.kicad_pcb,
@@ -625,7 +615,9 @@ def test_provider_strict_collapse(project_dir: Path) -> None:
 
     # Should still have the synthetic block
     block_components = [
-        c for c in board.components if "REUSE_BLOCK:myblock" in str(c.get("partNumber", ""))
+        c
+        for c in board.components
+        if "REUSE_BLOCK:myblock" in str(c.get("partNumber", ""))
     ]
     assert len(block_components) == 1
 
@@ -636,9 +628,7 @@ def test_provider_strict_collapse(project_dir: Path) -> None:
 
 def test_collapse_filters_internal_zones(project_dir: Path) -> None:
     """Zones on internal nets should be filtered during collapse."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
 
     # Without reuse blocks: all zones present (2 zones)
     board_no_reuse = DeepPCB_Transformer.from_kicad_pcb(parent_pcb.kicad_pcb)
@@ -657,9 +647,7 @@ def test_collapse_filters_internal_zones(project_dir: Path) -> None:
 
 def test_expand_copies_arcs_from_sub_pcb(project_dir: Path) -> None:
     """Arc segments from sub-PCB should be copied during expansion."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     metadata: dict = {}
@@ -678,9 +666,7 @@ def test_expand_copies_arcs_from_sub_pcb(project_dir: Path) -> None:
 
 def test_expand_copies_zones_from_sub_pcb(project_dir: Path) -> None:
     """Zones from sub-PCB should be copied during expansion with net remap."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     metadata: dict = {}
@@ -706,9 +692,7 @@ def test_expand_copies_zones_from_sub_pcb(project_dir: Path) -> None:
 
 def test_expand_copies_vias_from_sub_pcb(project_dir: Path) -> None:
     """Vias from sub-PCB should be copied during expansion."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     metadata: dict = {}
@@ -727,9 +711,7 @@ def test_expand_copies_vias_from_sub_pcb(project_dir: Path) -> None:
 
 def test_expand_copies_graphics_from_sub_pcb(project_dir: Path) -> None:
     """Graphics (gr_lines etc.) from sub-PCB should be copied during expansion."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     # Count original gr_lines (4 Edge.Cuts lines)
@@ -752,9 +734,7 @@ def test_expand_copies_graphics_from_sub_pcb(project_dir: Path) -> None:
 
 def test_reuse_block_protected_flag(project_dir: Path) -> None:
     """Synthetic reuse block components should be marked protected."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     metadata: dict = {}
     board = DeepPCB_Transformer.from_kicad_pcb(
         parent_pcb.kicad_pcb,
@@ -763,17 +743,17 @@ def test_reuse_block_protected_flag(project_dir: Path) -> None:
     )
 
     block_components = [
-        c for c in board.components if "REUSE_BLOCK:myblock" in str(c.get("partNumber", ""))
+        c
+        for c in board.components
+        if "REUSE_BLOCK:myblock" in str(c.get("partNumber", ""))
     ]
     assert len(block_components) == 1
     assert block_components[0]["protected"] is True
 
 
 def test_expand_no_duplicate_internal_routing(project_dir: Path) -> None:
-    """Collapse → serialize → deserialize → expand should not double internal routing."""
-    parent_pcb = kicad.loads(
-        kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb"
-    )
+    """Collapse/serialize/deserialize/expand: no double internal routing."""
+    parent_pcb = kicad.loads(kicad.pcb.PcbFile, project_dir / "parent.kicad_pcb")
     original = parent_pcb.kicad_pcb
 
     # Collapse
@@ -806,6 +786,8 @@ def test_expand_no_duplicate_internal_routing(project_dir: Path) -> None:
             break
 
     if internal_net_num is not None:
-        internal_segments = [s for s in result_pcb.segments if s.net == internal_net_num]
+        internal_segments = [
+            s for s in result_pcb.segments if s.net == internal_net_num
+        ]
         # Sub-PCB has exactly 1 segment on internal net — should not be doubled
         assert len(internal_segments) == 1

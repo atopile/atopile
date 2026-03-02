@@ -49,7 +49,7 @@ def dashboard_server(tmp_path: Path, quickstart_project: Path):
             if resp.status_code == 200:
                 started = True
                 break
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        except requests.exceptions.ConnectionError, requests.exceptions.Timeout:
             pass
         time.sleep(0.1)
 

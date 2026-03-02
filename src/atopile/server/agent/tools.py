@@ -31,9 +31,9 @@ from atopile.server import module_introspection
 from atopile.server.agent import policy
 from atopile.server.agent.tool_autolayout_web_helpers import (
     _apply_component_highlight_overlay,
+    _archive_autolayout_iteration,
     _autolayout_recommended_action,
     _autolayout_state_value,
-    _archive_autolayout_iteration,
     _choose_autolayout_candidate_id,
     _default_screenshot_layers,
     _discover_downloaded_artifacts,
@@ -62,11 +62,10 @@ from atopile.server.agent.tool_build_helpers import (
     _trim_message,
 )
 from atopile.server.agent.tool_layout import (
-    _LayoutComponentRecord,
-    _footprint_reference,
     _layout_component_payload,
     _layout_get_component_position,
     _layout_set_component_position,
+    _LayoutComponentRecord,
     _resolve_highlight_components,
     _resolve_layout_file_for_tool,
 )
@@ -88,8 +87,6 @@ from atopile.server.domains import problems as problems_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains import stdlib as stdlib_domain
 from atopile.server.domains.autolayout.models import (
-    AutolayoutCandidate,
-    AutolayoutJob,
     AutolayoutState,
 )
 from atopile.server.domains.autolayout.service import get_autolayout_service
@@ -129,6 +126,7 @@ _EXPECTED_MANUFACTURING_OUTPUT_KEYS: tuple[str, ...] = (
 _AUTOLAYOUT_MAX_TIMEOUT_MINUTES = 2
 _AUTOLAYOUT_WEBHOOK_PATH = "/api/autolayout/webhooks/deeppcb"
 _AUTOLAYOUT_TUNNEL_PROVIDERS = {"cloudflared", "none"}
+
 
 def _datasheet_cache_key(*, project_root: Path, source_type: str, source: str) -> str:
     root = str(project_root.resolve())
@@ -273,9 +271,7 @@ async def _read_first_datasheet_from_urls(
             return datasheet_bytes, metadata, candidate_url
         except Exception as exc:
             last_error = exc
-            attempted_errors.append(
-                _trim_message(f"{candidate_url} -> {exc}", 320)
-            )
+            attempted_errors.append(_trim_message(f"{candidate_url} -> {exc}", 320))
 
     details = "; ".join(attempted_errors[:3]) or "unknown"
     raise policy.ScopeError(
@@ -316,7 +312,6 @@ def _resolve_web_search_max_age_hours(arguments: dict[str, Any]) -> int | None:
         return None
     max_age_hours = int(raw_max_age_hours)
     return max(-1, min(max_age_hours, 24 * 365))
-
 
 
 def _get_openai_file_client() -> AsyncOpenAI:
@@ -394,8 +389,6 @@ async def _upload_openai_user_file(
         max_entries=_OPENAI_FILE_CACHE_MAX_ENTRIES,
     )
     return file_id, False
-
-
 
 
 def _count_modules_by_type(modules: list[dict[str, Any]]) -> dict[str, int]:
@@ -503,7 +496,6 @@ def _resolve_build_target(project_root: Path, build_target: str) -> Any:
     return build_cfg
 
 
-
 def _expected_screenshot_outputs(
     *,
     project_root: Path,
@@ -531,7 +523,6 @@ def _expected_screenshot_outputs(
         outputs["paths"]["3d"] = str(three_d)
         outputs["exists"]["3d"] = three_d.exists()
     return outputs
-
 
 
 def _stdlib_matches_child_query(item: Any, query: str) -> bool:
@@ -589,13 +580,9 @@ def _ensure_tool_registry_consistency(definitions: list[dict[str, Any]]) -> None
     if missing_handlers or missing_schemas:
         parts: list[str] = []
         if missing_handlers:
-            parts.append(
-                "schema without handler: " + ", ".join(missing_handlers[:20])
-            )
+            parts.append("schema without handler: " + ", ".join(missing_handlers[:20]))
         if missing_schemas:
-            parts.append(
-                "handler without schema: " + ", ".join(missing_schemas[:20])
-            )
+            parts.append("handler without schema: " + ", ".join(missing_schemas[:20]))
         raise RuntimeError("Tool registry/schema mismatch: " + " | ".join(parts))
 
 
@@ -610,8 +597,6 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         _TOOL_REGISTRY_VALIDATED = True
 
     return definitions
-
-
 
 
 ToolHandler = Callable[[dict[str, Any], Path, AppContext], Awaitable[dict[str, Any]]]
@@ -630,14 +615,20 @@ def get_tool_names() -> list[str]:
     """Return registered runtime tool handler names."""
     return sorted(_TOOL_HANDLERS.keys())
 
+
 @_register_tool("project_list_files")
-async def _tool_project_list_files(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_list_files(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     limit = int(arguments.get("limit", 300))
     files = await asyncio.to_thread(policy.list_context_files, project_root, limit)
     return {"files": files, "total": len(files)}
 
+
 @_register_tool("project_read_file")
-async def _tool_project_read_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_read_file(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     return await asyncio.to_thread(
         policy.read_file_chunk,
         project_root,
@@ -646,8 +637,11 @@ async def _tool_project_read_file(arguments: dict[str, Any], project_root: Path,
         max_lines=int(arguments.get("max_lines", 220)),
     )
 
+
 @_register_tool("project_search")
-async def _tool_project_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     matches = await asyncio.to_thread(
         policy.search_in_files,
         project_root,
@@ -659,8 +653,11 @@ async def _tool_project_search(arguments: dict[str, Any], project_root: Path, ct
         "total": len(matches),
     }
 
+
 @_register_tool("web_search")
-async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_web_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     query = str(arguments.get("query", "")).strip()
     if not query:
         raise ValueError("query is required")
@@ -710,12 +707,13 @@ async def _tool_web_search(arguments: dict[str, Any], project_root: Path, ctx: A
             f"(HTTP timeout={timeout_s:.0f}s)"
         ) from exc
 
+
 @_register_tool("examples_list")
-async def _tool_examples_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_examples_list(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     limit = int(arguments.get("limit", 60))
-    include_without_ato_yaml = bool(
-        arguments.get("include_without_ato_yaml", False)
-    )
+    include_without_ato_yaml = bool(arguments.get("include_without_ato_yaml", False))
     examples_root = _resolve_examples_root(project_root)
     projects = _collect_example_projects(
         examples_root,
@@ -729,8 +727,11 @@ async def _tool_examples_list(arguments: dict[str, Any], project_root: Path, ctx
         "returned": len(returned),
     }
 
+
 @_register_tool("examples_search")
-async def _tool_examples_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_examples_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     query = str(arguments.get("query", "")).strip()
     if not query:
         raise ValueError("query is required")
@@ -748,8 +749,11 @@ async def _tool_examples_search(arguments: dict[str, Any], project_root: Path, c
         "total": len(matches),
     }
 
+
 @_register_tool("examples_read_ato")
-async def _tool_examples_read_ato(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_examples_read_ato(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     example = str(arguments.get("example", "")).strip()
     examples_root = _resolve_examples_root(project_root)
     example_project_root = _resolve_example_project(examples_root, example)
@@ -771,8 +775,11 @@ async def _tool_examples_read_ato(arguments: dict[str, Any], project_root: Path,
         **chunk,
     }
 
+
 @_register_tool("package_ato_list")
-async def _tool_package_ato_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_package_ato_list(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     package_query = (
         str(arguments.get("package_query")).strip()
         if isinstance(arguments.get("package_query"), str)
@@ -793,8 +800,11 @@ async def _tool_package_ato_list(arguments: dict[str, Any], project_root: Path, 
         limit=limit,
     )
 
+
 @_register_tool("package_ato_search")
-async def _tool_package_ato_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_package_ato_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     query = str(arguments.get("query", "")).strip()
     if not query:
         raise ValueError("query is required")
@@ -819,8 +829,11 @@ async def _tool_package_ato_search(arguments: dict[str, Any], project_root: Path
         limit=limit,
     )
 
+
 @_register_tool("package_ato_read")
-async def _tool_package_ato_read(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_package_ato_read(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     package_identifier = str(arguments.get("package_identifier", "")).strip()
     if not package_identifier:
         raise ValueError("package_identifier is required")
@@ -840,8 +853,11 @@ async def _tool_package_ato_read(arguments: dict[str, Any], project_root: Path, 
         max_lines=max_lines,
     )
 
+
 @_register_tool("project_list_modules")
-async def _tool_project_list_modules(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_list_modules(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     type_filter = arguments.get("type_filter")
     limit = int(arguments.get("limit", 200))
     response = await asyncio.to_thread(
@@ -851,9 +867,7 @@ async def _tool_project_list_modules(arguments: dict[str, Any], project_root: Pa
     )
     if response is None:
         return {"modules": [], "total": 0, "returned": 0, "types": {}}
-    modules = [module.model_dump(by_alias=True) for module in response.modules][
-        :limit
-    ]
+    modules = [module.model_dump(by_alias=True) for module in response.modules][:limit]
     return {
         "modules": modules,
         "total": response.total,
@@ -861,8 +875,11 @@ async def _tool_project_list_modules(arguments: dict[str, Any], project_root: Pa
         "types": _count_modules_by_type(modules),
     }
 
+
 @_register_tool("project_module_children")
-async def _tool_project_module_children(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_module_children(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     entry_point = str(arguments.get("entry_point", "")).strip()
     if not entry_point:
         raise ValueError("entry_point is required")
@@ -888,8 +905,11 @@ async def _tool_project_module_children(arguments: dict[str, Any], project_root:
         "counts": _count_module_children(children),
     }
 
+
 @_register_tool("stdlib_list")
-async def _tool_stdlib_list(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_stdlib_list(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     type_filter = arguments.get("type_filter")
     search = arguments.get("search")
     child_query = arguments.get("child_query")
@@ -934,8 +954,11 @@ async def _tool_stdlib_list(arguments: dict[str, Any], project_root: Path, ctx: 
         ],
     }
 
+
 @_register_tool("stdlib_get_item")
-async def _tool_stdlib_get_item(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_stdlib_get_item(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     item_id = str(arguments.get("item_id", "")).strip()
     if not item_id:
         raise ValueError("item_id is required")
@@ -948,8 +971,11 @@ async def _tool_stdlib_get_item(arguments: dict[str, Any], project_root: Path, c
         "item": item.model_dump(),
     }
 
+
 @_register_tool("project_edit_file")
-async def _tool_project_edit_file(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_edit_file(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     edits = arguments.get("edits")
     if not isinstance(edits, list):
         raise ValueError("edits must be a list")
@@ -960,8 +986,11 @@ async def _tool_project_edit_file(arguments: dict[str, Any], project_root: Path,
         edits,
     )
 
+
 @_register_tool("project_create_path")
-async def _tool_project_create_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_create_path(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     content = arguments.get("content", "")
     if content is None:
         content = ""
@@ -978,8 +1007,11 @@ async def _tool_project_create_path(arguments: dict[str, Any], project_root: Pat
         parents=bool(arguments.get("parents", True)),
     )
 
+
 @_register_tool("project_move_path")
-async def _tool_project_move_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_move_path(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     return await asyncio.to_thread(
         policy.rename_path,
         project_root,
@@ -988,8 +1020,11 @@ async def _tool_project_move_path(arguments: dict[str, Any], project_root: Path,
         overwrite=bool(arguments.get("overwrite", False)),
     )
 
+
 @_register_tool("project_delete_path")
-async def _tool_project_delete_path(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_project_delete_path(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     return await asyncio.to_thread(
         policy.delete_path,
         project_root,
@@ -997,8 +1032,11 @@ async def _tool_project_delete_path(arguments: dict[str, Any], project_root: Pat
         recursive=bool(arguments.get("recursive", True)),
     )
 
+
 @_register_tool("parts_search")
-async def _tool_parts_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_parts_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     parts, error = await asyncio.to_thread(
         parts_domain.handle_search_parts,
         str(arguments.get("query", "")).strip(),
@@ -1006,8 +1044,11 @@ async def _tool_parts_search(arguments: dict[str, Any], project_root: Path, ctx:
     )
     return {"parts": parts, "total": len(parts), "error": error}
 
+
 @_register_tool("parts_install")
-async def _tool_parts_install(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_parts_install(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     lcsc_id = str(arguments.get("lcsc_id", "")).strip().upper()
     result = await asyncio.to_thread(
         parts_domain.handle_install_part,
@@ -1024,8 +1065,11 @@ async def _tool_parts_install(arguments: dict[str, Any], project_root: Path, ctx
         **result,
     }
 
+
 @_register_tool("datasheet_read")
-async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_datasheet_read(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     raw_lcsc_id = arguments.get("lcsc_id")
     raw_url = arguments.get("url")
     raw_path = arguments.get("path")
@@ -1036,11 +1080,7 @@ async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ct
         if isinstance(raw_lcsc_id, str) and raw_lcsc_id.strip()
         else None
     )
-    url = (
-        str(raw_url).strip()
-        if isinstance(raw_url, str) and raw_url.strip()
-        else None
-    )
+    url = str(raw_url).strip() if isinstance(raw_url, str) and raw_url.strip() else None
     path = (
         str(raw_path).strip()
         if isinstance(raw_path, str) and raw_path.strip()
@@ -1206,9 +1246,7 @@ async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ct
     result_payload = {
         "found": True,
         "query": query,
-        "message": (
-            "Datasheet uploaded and attached for model-native PDF reasoning."
-        ),
+        "message": ("Datasheet uploaded and attached for model-native PDF reasoning."),
         "openai_file_id": file_id,
         "openai_file_cached": cached,
         "datasheet_cache_hit": False,
@@ -1248,8 +1286,11 @@ async def _tool_datasheet_read(arguments: dict[str, Any], project_root: Path, ct
 
     return result_payload
 
+
 @_register_tool("packages_search")
-async def _tool_packages_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_packages_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     result = await asyncio.to_thread(
         packages_domain.handle_search_registry,
         str(arguments.get("query", "")),
@@ -1257,8 +1298,11 @@ async def _tool_packages_search(arguments: dict[str, Any], project_root: Path, c
     )
     return result.model_dump(by_alias=True)
 
+
 @_register_tool("packages_install")
-async def _tool_packages_install(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_packages_install(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     identifier = str(arguments.get("identifier", ""))
     version = arguments.get("version")
     clean_version = str(version) if isinstance(version, str) and version else None
@@ -1275,8 +1319,11 @@ async def _tool_packages_install(arguments: dict[str, Any], project_root: Path, 
         "message": "Package installed",
     }
 
+
 @_register_tool("build_run")
-async def _tool_build_run(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_build_run(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     targets = arguments.get("targets") or []
     if not isinstance(targets, list):
         raise ValueError("targets must be a list")
@@ -1299,29 +1346,29 @@ async def _tool_build_run(arguments: dict[str, Any], project_root: Path, ctx: Ap
     response = await asyncio.to_thread(builds_domain.handle_start_build, request)
     return response.model_dump(by_alias=True)
 
+
 @_register_tool("build_create")
-async def _tool_build_create(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_build_create(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     request = AddBuildTargetRequest(
         project_root=str(project_root),
         name=str(arguments.get("name", "")),
         entry=str(arguments.get("entry", "")),
     )
-    result = await asyncio.to_thread(
-        projects_domain.handle_add_build_target, request
-    )
+    result = await asyncio.to_thread(projects_domain.handle_add_build_target, request)
     return result.model_dump(by_alias=True)
 
+
 @_register_tool("build_rename")
-async def _tool_build_rename(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_build_rename(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     request = UpdateBuildTargetRequest(
         project_root=str(project_root),
         old_name=str(arguments.get("old_name", "")),
-        new_name=(
-            str(arguments["new_name"]) if arguments.get("new_name") else None
-        ),
-        new_entry=(
-            str(arguments["new_entry"]) if arguments.get("new_entry") else None
-        ),
+        new_name=(str(arguments["new_name"]) if arguments.get("new_name") else None),
+        new_entry=(str(arguments["new_entry"]) if arguments.get("new_entry") else None),
     )
     result = await asyncio.to_thread(
         projects_domain.handle_update_build_target,
@@ -1329,17 +1376,18 @@ async def _tool_build_rename(arguments: dict[str, Any], project_root: Path, ctx:
     )
     return result.model_dump(by_alias=True)
 
+
 @_register_tool("build_logs_search")
-async def _tool_build_logs_search(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_build_logs_search(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     limit = int(arguments.get("limit", 200))
     build_id = arguments.get("build_id")
     raw_query = arguments.get("query")
     query = raw_query.strip().lower() if isinstance(raw_query, str) else ""
     stage = arguments.get("stage")
     stage_filter = (
-        str(stage).strip()
-        if isinstance(stage, str) and str(stage).strip()
-        else None
+        str(stage).strip() if isinstance(stage, str) and str(stage).strip() else None
     )
     log_levels = _parse_build_log_levels(arguments.get("log_levels"))
     audience = _parse_build_log_audience(arguments.get("audience"))
@@ -1347,9 +1395,7 @@ async def _tool_build_logs_search(arguments: dict[str, Any], project_root: Path,
     if not build_id:
         builds = await asyncio.to_thread(BuildHistory.get_all, min(limit, 120))
         active_ids = _active_or_pending_build_ids()
-        normalized = [
-            _normalize_history_build(build, active_ids) for build in builds
-        ]
+        normalized = [_normalize_history_build(build, active_ids) for build in builds]
         if query:
             normalized = [
                 build
@@ -1389,9 +1435,7 @@ async def _tool_build_logs_search(arguments: dict[str, Any], project_root: Path,
 
     if query:
         logs = [
-            entry
-            for entry in logs
-            if query in str(entry.get("message", "")).lower()
+            entry for entry in logs if query in str(entry.get("message", "")).lower()
         ]
 
     synthesized_stub = False
@@ -1436,8 +1480,11 @@ async def _tool_build_logs_search(arguments: dict[str, Any], project_root: Path,
         },
     }
 
+
 @_register_tool("design_diagnostics")
-async def _tool_design_diagnostics(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_design_diagnostics(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     max_problems = int(arguments.get("max_problems", 25))
     max_failure_logs = int(arguments.get("max_failure_logs", 50))
 
@@ -1507,13 +1554,9 @@ async def _tool_design_diagnostics(arguments: dict[str, Any], project_root: Path
             "Inspect latest_failed_build and latest_failure_logs before rerunning."
         )
     if problems.error_count > 0:
-        recommendations.append(
-            "Resolve top ERROR-level problems before full rebuild."
-        )
+        recommendations.append("Resolve top ERROR-level problems before full rebuild.")
     if not recommendations:
-        recommendations.append(
-            "No immediate blockers detected by quick diagnostics."
-        )
+        recommendations.append("No immediate blockers detected by quick diagnostics.")
 
     return {
         "project_root": str(project_root),
@@ -1552,7 +1595,9 @@ def _resolve_internal_api_base_url(arguments: dict[str, Any]) -> str:
 
 
 @_register_tool("autolayout_webhook_gateway")
-async def _tool_autolayout_webhook_gateway(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_autolayout_webhook_gateway(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     _ = (project_root, ctx)
     action = str(arguments.get("action", "status")).strip().lower()
     if action not in {"start", "status", "stop"}:
@@ -1606,11 +1651,12 @@ async def _tool_autolayout_webhook_gateway(arguments: dict[str, Any], project_ro
     status = await asyncio.to_thread(manager.status)
     return {"action": "status", "status": status}
 
+
 @_register_tool("autolayout_run")
-async def _tool_autolayout_run(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    build_target = (
-        str(arguments.get("build_target", "default")).strip() or "default"
-    )
+async def _tool_autolayout_run(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    build_target = str(arguments.get("build_target", "default")).strip() or "default"
 
     raw_constraints = arguments.get("constraints")
     if raw_constraints is None:
@@ -1796,8 +1842,11 @@ async def _tool_autolayout_run(arguments: dict[str, Any], project_root: Path, ct
         ),
     }
 
+
 @_register_tool("autolayout_status")
-async def _tool_autolayout_status(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_autolayout_status(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     requested_job_id = arguments.get("job_id")
     job_id = (
         str(requested_job_id).strip()
@@ -1930,8 +1979,11 @@ async def _tool_autolayout_status(arguments: dict[str, Any], project_root: Path,
         "recent_jobs": recent_summaries,
     }
 
+
 @_register_tool("autolayout_fetch_to_layout")
-async def _tool_autolayout_fetch_to_layout(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_autolayout_fetch_to_layout(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     requested_job_id = arguments.get("job_id")
     job_id = (
         str(requested_job_id).strip()
@@ -2117,8 +2169,11 @@ async def _tool_autolayout_fetch_to_layout(arguments: dict[str, Any], project_ro
         "job": applied.to_dict(),
     }
 
+
 @_register_tool("autolayout_request_screenshot")
-async def _tool_autolayout_request_screenshot(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_autolayout_request_screenshot(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     from faebryk.exporters.pcb.kicad.artifacts import (
         KicadCliExportError,
         export_3d_board_render,
@@ -2232,8 +2287,11 @@ async def _tool_autolayout_request_screenshot(arguments: dict[str, Any], project
         },
     }
 
+
 @_register_tool("layout_get_component_position")
-async def _tool_layout_get_component_position(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_layout_get_component_position(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     target = str(arguments.get("target", "default")).strip() or "default"
     address = str(arguments.get("address", "")).strip()
     if not address:
@@ -2248,8 +2306,11 @@ async def _tool_layout_get_component_position(arguments: dict[str, Any], project
         fuzzy_limit=fuzzy_limit,
     )
 
+
 @_register_tool("layout_set_component_position")
-async def _tool_layout_set_component_position(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_layout_set_component_position(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     target = str(arguments.get("target", "default")).strip() or "default"
     address = str(arguments.get("address", "")).strip()
     if not address:
@@ -2288,8 +2349,11 @@ async def _tool_layout_set_component_position(arguments: dict[str, Any], project
         fuzzy_limit=fuzzy_limit,
     )
 
+
 @_register_tool("layout_run_drc")
-async def _tool_layout_run_drc(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_layout_run_drc(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     from faebryk.libs.kicad.drc import run_drc
 
     target = str(arguments.get("target", "default")).strip() or "default"
@@ -2352,9 +2416,7 @@ async def _tool_layout_run_drc(arguments: dict[str, Any], project_root: Path, ct
                 continue
 
             items_payload: list[dict[str, Any]] = []
-            for item in list(getattr(entry, "items", []) or [])[
-                :max_items_per_finding
-            ]:
+            for item in list(getattr(entry, "items", []) or [])[:max_items_per_finding]:
                 position = getattr(item, "pos", None)
                 items_payload.append(
                     {
@@ -2376,9 +2438,7 @@ async def _tool_layout_run_drc(arguments: dict[str, Any], project_root: Path, ct
                     "category": category_name,
                     "severity": severity or None,
                     "type": violation_type or None,
-                    "description": str(
-                        getattr(entry, "description", "") or ""
-                    ).strip(),
+                    "description": str(getattr(entry, "description", "") or "").strip(),
                     "item_count": len(list(getattr(entry, "items", []) or [])),
                     "items": items_payload,
                 }
@@ -2428,16 +2488,15 @@ async def _tool_layout_run_drc(arguments: dict[str, Any], project_root: Path, ct
         "findings_truncated": total_findings > len(findings),
     }
 
+
 @_register_tool("autolayout_configure_board_intent")
-async def _tool_autolayout_configure_board_intent(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
-    build_target = (
-        str(arguments.get("build_target", "default")).strip() or "default"
-    )
+async def _tool_autolayout_configure_board_intent(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    build_target = str(arguments.get("build_target", "default")).strip() or "default"
     enable_ground_pours = bool(arguments.get("enable_ground_pours", True))
     plane_nets = _normalize_plane_nets(arguments.get("plane_nets"))
-    plane_mode = (
-        str(arguments.get("plane_mode", "solid")).strip().lower() or "solid"
-    )
+    plane_mode = str(arguments.get("plane_mode", "solid")).strip().lower() or "solid"
     if plane_mode not in {"solid", "hatched"}:
         raise ValueError("plane_mode must be one of: solid, hatched")
 
@@ -2467,9 +2526,7 @@ async def _tool_autolayout_configure_board_intent(arguments: dict[str, Any], pro
     )
     preserve_existing_raw = arguments.get("preserve_existing_routing")
     preserve_existing_routing = (
-        bool(preserve_existing_raw)
-        if isinstance(preserve_existing_raw, bool)
-        else None
+        bool(preserve_existing_raw) if isinstance(preserve_existing_raw, bool) else None
     )
     notes = arguments.get("notes")
     notes_clean = (
@@ -2485,15 +2542,12 @@ async def _tool_autolayout_configure_board_intent(arguments: dict[str, Any], pro
         raise ValueError("Invalid ato.yaml: missing builds mapping")
     if build_target not in builds:
         known = ", ".join(sorted(str(key) for key in builds.keys()))
-        raise ValueError(
-            f"Unknown build_target '{build_target}'. Available: {known}"
-        )
+        raise ValueError(f"Unknown build_target '{build_target}'. Available: {known}")
 
     build_cfg = builds.get(build_target)
     if not isinstance(build_cfg, dict):
         raise ValueError(
-            "Unsupported build target shape for "
-            f"'{build_target}'; expected mapping."
+            f"Unsupported build target shape for '{build_target}'; expected mapping."
         )
 
     autolayout_cfg = build_cfg.get("autolayout")
@@ -2558,8 +2612,11 @@ async def _tool_autolayout_configure_board_intent(arguments: dict[str, Any], pro
         ),
     }
 
+
 @_register_tool("report_bom")
-async def _tool_report_bom(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_report_bom(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     target = str(arguments.get("target", "default"))
     data = await asyncio.to_thread(
         artifacts_domain.handle_get_bom, str(project_root), target
@@ -2587,8 +2644,11 @@ async def _tool_report_bom(arguments: dict[str, Any], project_root: Path, ctx: A
         ),
     }
 
+
 @_register_tool("report_variables")
-async def _tool_report_variables(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_report_variables(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     target = str(arguments.get("target", "default"))
     data = await asyncio.to_thread(
         artifacts_domain.handle_get_variables,
@@ -2620,8 +2680,11 @@ async def _tool_report_variables(arguments: dict[str, Any], project_root: Path, 
         ),
     }
 
+
 @_register_tool("manufacturing_generate")
-async def _tool_manufacturing_generate(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_manufacturing_generate(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     target = str(arguments.get("target", "default")).strip() or "default"
     frozen = bool(arguments.get("frozen", False))
 
@@ -2630,9 +2693,7 @@ async def _tool_manufacturing_generate(arguments: dict[str, Any], project_root: 
         include_targets = ["mfg-data"]
     elif isinstance(raw_include_targets, list):
         include_targets = [
-            str(value).strip()
-            for value in raw_include_targets
-            if str(value).strip()
+            str(value).strip() for value in raw_include_targets if str(value).strip()
         ]
     else:
         raise ValueError("include_targets must be a list")
@@ -2644,9 +2705,7 @@ async def _tool_manufacturing_generate(arguments: dict[str, Any], project_root: 
         exclude_targets: list[str] = []
     elif isinstance(raw_exclude_targets, list):
         exclude_targets = [
-            str(value).strip()
-            for value in raw_exclude_targets
-            if str(value).strip()
+            str(value).strip() for value in raw_exclude_targets if str(value).strip()
         ]
     else:
         raise ValueError("exclude_targets must be a list")
@@ -2696,8 +2755,11 @@ async def _tool_manufacturing_generate(arguments: dict[str, Any], project_root: 
         ),
     }
 
+
 @_register_tool("manufacturing_summary")
-async def _tool_manufacturing_summary(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+async def _tool_manufacturing_summary(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
     target = str(arguments.get("target", "default"))
     quantity = int(arguments.get("quantity", 10))
 
@@ -2725,6 +2787,7 @@ async def _tool_manufacturing_summary(arguments: dict[str, Any], project_root: P
             "assembly_cost": estimate.assembly_cost,
         },
     }
+
 
 async def execute_tool(
     *,

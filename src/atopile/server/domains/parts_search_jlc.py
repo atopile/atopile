@@ -134,7 +134,7 @@ def _parse_price_list(prices: list[dict]) -> tuple[float | None, list[dict]]:
         price_value = price.get("productPrice")
         try:
             price_value = float(price_value) if price_value is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             price_value = None
         normalized.append({"qFrom": q_from, "qTo": q_to, "price": price_value})
         if unit_cost is None and q_from in (None, 0, 1):

@@ -8,6 +8,7 @@ from atopile.server.agent.tool_definitions_project import (
     get_project_tool_definitions,
 )
 
+
 def get_tool_definitions() -> list[dict[str, Any]]:
     """OpenAI Responses API function-tool definitions."""
     return [

@@ -915,7 +915,7 @@ class _ConfigFlagBase[T]:
         else:
             try:
                 res = self._convert(raw_val)
-            except (ValueError, KeyError):
+            except ValueError, KeyError:
                 print(
                     f"Invalid environment variable for "
                     f"{self.name}: {raw_val}. Check your environment variables!"
@@ -1392,7 +1392,7 @@ def in_debug_session() -> bool:
 
         return debugpy.is_client_connected()
 
-    except (ImportError, ModuleNotFoundError):
+    except ImportError, ModuleNotFoundError:
         pass
 
     return False
@@ -3107,7 +3107,7 @@ def _run_gdb_linux(test_bin: Path | None) -> None:
                 capture_output=True,
                 check=True,
             )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             print("coredumpctl not available or no core dump found")
             return
 
@@ -3127,7 +3127,7 @@ def _run_gdb_linux(test_bin: Path | None) -> None:
                 capture_output=True,
                 check=True,
             )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             print("Failed to dump core file with coredumpctl")
             return
 

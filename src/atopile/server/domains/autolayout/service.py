@@ -29,8 +29,8 @@ from atopile.server.domains.autolayout.models import (
     utc_now_iso,
 )
 from atopile.server.events import event_bus
-from faebryk.exporters.pcb.deeppcb.transformer import DeepPCB_Transformer
 from faebryk.exporters.pcb.autolayout.deeppcb import DeepPCBAutolayout
+from faebryk.exporters.pcb.deeppcb.transformer import DeepPCB_Transformer
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.paths import get_log_dir
 
@@ -214,8 +214,7 @@ class AutolayoutService:
         if metadata_path.exists():
             reuse_meta = json.loads(metadata_path.read_text(encoding="utf-8"))
             has_internal_routing = any(
-                block.get("internal_net_ids")
-                for block in reuse_meta.values()
+                block.get("internal_net_ids") for block in reuse_meta.values()
             )
             if has_internal_routing:
                 merged_constraints.setdefault("preserve_existing_routing", True)
@@ -570,9 +569,7 @@ class AutolayoutService:
         metadata_path = Path(job.work_dir or ".") / "reuse_block_metadata.json"
         if metadata_path.exists():
             try:
-                reuse_metadata = json.loads(
-                    metadata_path.read_text(encoding="utf-8")
-                )
+                reuse_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                 if reuse_metadata:
                     parsed = kicad.loads(kicad.pcb.PcbFile, downloaded_layout)
                     DeepPCB_Transformer.expand_reuse_blocks(
@@ -660,7 +657,9 @@ class AutolayoutService:
                 )
                 return
 
-            raw_jobs = raw_payload.get("jobs", []) if isinstance(raw_payload, dict) else []
+            raw_jobs = (
+                raw_payload.get("jobs", []) if isinstance(raw_payload, dict) else []
+            )
             if not isinstance(raw_jobs, list):
                 return
 
@@ -726,7 +725,9 @@ class AutolayoutService:
             reverse=True,
         )
         keep_ids = {job.job_id for job in ordered[: self._max_persisted_jobs]}
-        self._jobs = {job_id: job for job_id, job in self._jobs.items() if job_id in keep_ids}
+        self._jobs = {
+            job_id: job for job_id, job in self._jobs.items() if job_id in keep_ids
+        }
 
     def _find_reusable_job_locked(
         self,
@@ -1028,10 +1029,7 @@ class AutolayoutService:
         if job.state == previous_state:
             return
 
-        if (
-            job.state == AutolayoutState.AWAITING_SELECTION
-            and len(job.candidates) > 0
-        ):
+        if job.state == AutolayoutState.AWAITING_SELECTION and len(job.candidates) > 0:
             event_bus.emit_sync(
                 "autolayout_candidate_ready",
                 {
@@ -1107,7 +1105,7 @@ def _candidate_limit_from_options(options: dict[str, Any]) -> int | None:
         raw_value = options.get(key)
         try:
             value = int(raw_value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if value < 1:
             return None

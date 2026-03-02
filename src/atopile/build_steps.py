@@ -36,6 +36,9 @@ from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
+from faebryk.exporters.pcb.deeppcb.artifacts import (
+    export_deeppcb,
+)
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
     export_3d_board_render,
@@ -47,9 +50,6 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_step,
     export_svg,
     githash_layout,
-)
-from faebryk.exporters.pcb.deeppcb.artifacts import (
-    export_deeppcb,
 )
 from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (

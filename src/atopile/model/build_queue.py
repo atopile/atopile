@@ -67,9 +67,7 @@ log = logging.getLogger(__name__)
 
 # Build queue configuration
 MAX_CONCURRENT_BUILDS = 4
-COMPLETED_BUILD_RETENTION_S = float(
-    os.getenv("ATO_BUILD_COMPLETED_RETENTION_S", "30")
-)
+COMPLETED_BUILD_RETENTION_S = float(os.getenv("ATO_BUILD_COMPLETED_RETENTION_S", "30"))
 STALE_BUILD_THRESHOLD_S = float(os.getenv("ATO_BUILD_STALE_SECONDS", "600"))
 
 
@@ -184,7 +182,7 @@ def _run_build_subprocess(
                         resource.RLIMIT_CORE,
                         (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
                     )
-                except (ValueError, OSError):
+                except ValueError, OSError:
                     pass
 
             preexec_fn = enable_core_dumps

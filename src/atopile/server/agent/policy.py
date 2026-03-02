@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from atopile.dataclasses import AppContext
-from atopile.server.agent import policy_datasheet
-from atopile.server.agent import policy_scope
+from atopile.server.agent import policy_datasheet, policy_scope
 
 _MAX_WRITE_FILE_BYTES = 600_000
 _MAX_UI_DIFF_BYTES = 220_000

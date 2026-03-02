@@ -22,6 +22,7 @@ def _resolve_build_target(project_root: Path, build_target: str) -> Any:
         raise ValueError(f"Unknown build target '{build_target}'. Available: {known}")
     return build_cfg
 
+
 def _rotate_xy(x: float, y: float, angle_deg: float) -> tuple[float, float]:
     angle_rad = math.radians(angle_deg)
     cos_a = math.cos(angle_rad)
@@ -335,6 +336,7 @@ def _resolve_highlight_components(
         resolved.append(lookup.record)
 
     return resolved, unresolved
+
 
 @dataclass
 class _LayoutComponentRecord:

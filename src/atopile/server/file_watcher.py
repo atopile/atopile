@@ -248,7 +248,7 @@ class _EventDispatcher(PatternMatchingEventHandler):
         """Return SHA-256 hex digest of a file, or None if unreadable."""
         try:
             return hashlib.sha256(path.read_bytes()).hexdigest()
-        except (OSError, IOError):
+        except OSError, IOError:
             return None
 
     def _filter_by_hash(self, result: FileChangeResult) -> FileChangeResult:

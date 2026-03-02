@@ -30,6 +30,7 @@ def _trim_message(text: str | None, limit: int = 2200) -> str:
         return text
     return text[: limit - 3].rstrip() + "..."
 
+
 def _extract_candidate_id(candidate: Any) -> str | None:
     if isinstance(candidate, AutolayoutCandidate):
         return candidate.candidate_id
@@ -339,8 +340,6 @@ def _svg_tag(namespace: str, local_name: str) -> str:
     return local_name
 
 
-
-
 def _apply_component_highlight_overlay(
     *,
     base_svg_path: Path,
@@ -626,9 +625,7 @@ def _exa_web_search(
             payload["contents"] = {"text": {"max_characters": max_characters}}
     elif content_mode == "highlights":
         highlights_chars = 2_000 if max_characters is None else max_characters
-        payload["contents"] = {
-            "highlights": {"max_characters": highlights_chars}
-        }
+        payload["contents"] = {"highlights": {"max_characters": highlights_chars}}
     if max_age_hours is not None:
         payload["maxAgeHours"] = max_age_hours
 
@@ -705,5 +702,3 @@ def _exa_web_search(
         "cost_dollars": body.get("costDollars"),
         "source": "exa",
     }
-
-

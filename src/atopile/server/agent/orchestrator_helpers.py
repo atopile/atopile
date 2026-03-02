@@ -6,19 +6,27 @@ import hashlib
 import inspect
 import json
 import logging
-import os
 import re
 from pathlib import Path
-from typing import Any
-
-log = logging.getLogger(__name__)
+from typing import TYPE_CHECKING, Any
 
 from openai import APIStatusError
+
+if TYPE_CHECKING:
+    from atopile.server.agent.orchestrator import (
+        ProgressCallback,
+        SteeringMessagesCallback,
+        ToolTrace,
+        TraceCallback,
+    )
+
+log = logging.getLogger(__name__)
 
 _RETRY_AFTER_TEXT_PATTERN = re.compile(
     r"Please try again in\s*(\d+(?:\.\d+)?)\s*(ms|s)\b",
     re.IGNORECASE,
 )
+
 
 def _response_model_to_dict(response: Any) -> dict[str, Any]:
     if isinstance(response, dict):
@@ -120,8 +128,6 @@ def _is_context_length_exceeded(exc: APIStatusError) -> bool:
                 return True
     text = _extract_sdk_error_text(exc).lower()
     return "context_length_exceeded" in text or "context window" in text
-
-
 
 
 def _normalize_skill_id(value: str) -> str:
@@ -242,7 +248,7 @@ def _build_prompt_cache_key(
                 continue
             try:
                 cap = int(raw_cap)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             pairs.append((_normalize_skill_id(raw_skill_id), cap))
         skill_caps = ",".join(f"{skill_id}:{cap}" for skill_id, cap in sorted(pairs))

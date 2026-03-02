@@ -754,7 +754,7 @@ class BuildLogger(BaseLogger):
             try:
                 project_path = str(config.project.paths.root.resolve())
                 target = config.build.name if hasattr(config, "build") else "cli"
-            except (RuntimeError, AttributeError):
+            except RuntimeError, AttributeError:
                 project_path, target = "cli", "default"
 
             env_build_id = os.environ.get("ATO_BUILD_ID")

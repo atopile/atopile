@@ -224,7 +224,7 @@ def test_single_projects(
     try:
         sync_project(prj_path)
         build_project(prj_path, request=request)
-    except (InstallError, BuildError):
+    except InstallError, BuildError:
         if skip_reason:
             pytest.skip(f"xfail: {skip_reason}")
         else:
@@ -312,7 +312,7 @@ def test_package(
     try:
         sync_project(test_package_path)
         build_project(test_package_path, request=request)
-    except (InstallError, BuildError):
+    except InstallError, BuildError:
         if skip_reason:
             pytest.skip(f"xfail: {skip_reason}")
         else:

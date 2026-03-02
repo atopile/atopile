@@ -16,8 +16,6 @@ from typing import Any
 
 import httpx
 
-log = logging.getLogger(__name__)
-
 from atopile.server.domains.autolayout.models import (
     AutolayoutCandidate,
     AutolayoutState,
@@ -40,6 +38,8 @@ from faebryk.libs.deeppcb import (
 from faebryk.libs.deeppcb import (
     _redact_sensitive_values as _lib_redact_sensitive_values,
 )
+
+log = logging.getLogger(__name__)
 
 
 class DeepPCBAutolayout:
@@ -870,11 +870,7 @@ class DeepPCBAutolayout:
 
         # Revision 0 is always the original board (unmodified). Skip it so
         # callers only see actual placement/routing results.
-        return [
-            candidate
-            for order, _, candidate in ranked_candidates
-            if order != 0
-        ]
+        return [candidate for order, _, candidate in ranked_candidates if order != 0]
 
     def _parse_candidates(self, payload: dict[str, Any]) -> list[AutolayoutCandidate]:
         lists = _all_lists(payload)
@@ -1054,7 +1050,9 @@ class DeepPCBAutolayout:
         if self.config.webhook_url and self.config.webhook_url.strip():
             return self.config.webhook_url.strip()
 
-        if str(request.options.get("allow_insecure_webhook_defaults", "")).strip().lower() in {
+        if str(
+            request.options.get("allow_insecure_webhook_defaults", "")
+        ).strip().lower() in {
             "1",
             "true",
             "yes",
@@ -1112,7 +1110,7 @@ class DeepPCBAutolayout:
                 continue
             try:
                 return float(raw)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
         return None
 

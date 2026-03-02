@@ -27,6 +27,7 @@ def _lazy_kicad_transformer():
         _get_all_geos = get_all_geos
     return _PCB_Transformer, _get_all_geos
 
+
 log = logging.getLogger(__name__)
 
 
@@ -126,8 +127,12 @@ class DeepPCB_Transformer:
         project_root: Path | None = None,
         reuse_block_metadata_out: dict[str, Any] | None = None,
     ) -> C_deeppcb_board_file:
-        copper_layers = [layer for layer in pcb.layers if str(layer.name).endswith(".Cu")]
-        copper_layer_index = {layer.name: idx for idx, layer in enumerate(copper_layers)}
+        copper_layers = [
+            layer for layer in pcb.layers if str(layer.name).endswith(".Cu")
+        ]
+        copper_layer_index = {
+            layer.name: idx for idx, layer in enumerate(copper_layers)
+        }
 
         board = C_deeppcb_board_file(
             name="",
@@ -164,7 +169,9 @@ class DeepPCB_Transformer:
 
         # Server requires at least one via definition even for placement-only.
         if not via_definitions:
-            default_via_id = "Via[0-1]_0.6:0.3mm" if provider_strict else "Via_600000:300000"
+            default_via_id = (
+                "Via[0-1]_0.6:0.3mm" if provider_strict else "Via_600000:300000"
+            )
             via_definitions.append(default_via_id)
 
         component_definitions: dict[str, dict[str, Any]] = {}
@@ -184,7 +191,6 @@ class DeepPCB_Transformer:
 
         # ── Reuse block pre-processing ──
         grouped_fp_uuids: set[str] = set()
-        internal_net_numbers: set[int] = set()
 
         if project_root is not None:
             block_result = cls._collapse_reuse_blocks(
@@ -196,7 +202,6 @@ class DeepPCB_Transformer:
             )
             if block_result is not None:
                 grouped_fp_uuids = block_result["grouped_fp_uuids"]
-                internal_net_numbers = block_result["internal_net_numbers"]
                 component_definitions.update(block_result["definitions"])
                 components.extend(block_result["components"])
                 padstacks.update(block_result["padstacks"])
@@ -262,7 +267,9 @@ class DeepPCB_Transformer:
                     continue
                 reference_property = {
                     "value": str(getattr(prop, "value", component_id)),
-                    "at": cls._xy_to_point(getattr(prop, "at", kicad.pcb.Xyr(x=0.0, y=0.0, r=0.0))),
+                    "at": cls._xy_to_point(
+                        getattr(prop, "at", kicad.pcb.Xyr(x=0.0, y=0.0, r=0.0))
+                    ),
                     "rotation": cls._export_rotation(
                         getattr(getattr(prop, "at", None), "r", None),
                         provider_strict=provider_strict,
@@ -275,12 +282,49 @@ class DeepPCB_Transformer:
                             "font": (
                                 {
                                     "size": [
-                                        float(getattr(getattr(getattr(prop.effects, "font", None), "size", None), "w", 1.0) or 1.0),
-                                        float(getattr(getattr(getattr(prop.effects, "font", None), "size", None), "h", 1.0) or 1.0),
+                                        float(
+                                            getattr(
+                                                getattr(
+                                                    getattr(prop.effects, "font", None),
+                                                    "size",
+                                                    None,
+                                                ),
+                                                "w",
+                                                1.0,
+                                            )
+                                            or 1.0
+                                        ),
+                                        float(
+                                            getattr(
+                                                getattr(
+                                                    getattr(prop.effects, "font", None),
+                                                    "size",
+                                                    None,
+                                                ),
+                                                "h",
+                                                1.0,
+                                            )
+                                            or 1.0
+                                        ),
                                     ],
-                                    "thickness": float(getattr(getattr(prop.effects, "font", None), "thickness", 0.15) or 0.15),
-                                    "bold": getattr(getattr(prop.effects, "font", None), "bold", None),
-                                    "italic": getattr(getattr(prop.effects, "font", None), "italic", None),
+                                    "thickness": float(
+                                        getattr(
+                                            getattr(prop.effects, "font", None),
+                                            "thickness",
+                                            0.15,
+                                        )
+                                        or 0.15
+                                    ),
+                                    "bold": getattr(
+                                        getattr(prop.effects, "font", None),
+                                        "bold",
+                                        None,
+                                    ),
+                                    "italic": getattr(
+                                        getattr(prop.effects, "font", None),
+                                        "italic",
+                                        None,
+                                    ),
                                 }
                                 if getattr(prop.effects, "font", None) is not None
                                 else None
@@ -288,9 +332,15 @@ class DeepPCB_Transformer:
                             "hide": getattr(prop.effects, "hide", None),
                             "justify": (
                                 {
-                                    "justify1": getattr(prop.effects.justify, "justify1", None),
-                                    "justify2": getattr(prop.effects.justify, "justify2", None),
-                                    "justify3": getattr(prop.effects.justify, "justify3", None),
+                                    "justify1": getattr(
+                                        prop.effects.justify, "justify1", None
+                                    ),
+                                    "justify2": getattr(
+                                        prop.effects.justify, "justify2", None
+                                    ),
+                                    "justify3": getattr(
+                                        prop.effects.justify, "justify3", None
+                                    ),
                                 }
                                 if getattr(prop.effects, "justify", None) is not None
                                 else None
@@ -318,9 +368,7 @@ class DeepPCB_Transformer:
                 }
             )
 
-            defn_dedup = component_definitions[definition_id].get(
-                "_dedup_pin_map", {}
-            )
+            defn_dedup = component_definitions[definition_id].get("_dedup_pin_map", {})
             for pad_index, pad in enumerate(fp.pads):
                 if pad.net is None:
                     continue
@@ -332,9 +380,7 @@ class DeepPCB_Transformer:
                     pad_index,
                     cls._pin_id(pad, pad_index, provider_strict=provider_strict),
                 )
-                pins_by_net.setdefault(net_id, []).append(
-                    f"{component_id}-{pin_id}"
-                )
+                pins_by_net.setdefault(net_id, []).append(f"{component_id}-{pin_id}")
 
         # Clean up internal bookkeeping before storing definitions.
         for defn in component_definitions.values():
@@ -365,7 +411,9 @@ class DeepPCB_Transformer:
                 "name": net_name_by_number.get(number, ""),
                 "pins": sorted(set(pins_by_net.get(net_id, []))),
             }
-            for number, net_id in sorted(net_id_by_number.items(), key=lambda item: item[0])
+            for number, net_id in sorted(
+                net_id_by_number.items(), key=lambda item: item[0]
+            )
         ]
 
         board.wires = [
@@ -384,7 +432,9 @@ class DeepPCB_Transformer:
             {
                 "position": cls._xy_to_point(via.at),
                 "netId": net_id_by_number.get(int(via.net), str(int(via.net))),
-                "padstack": cls._via_definition_id(via, provider_strict=provider_strict),
+                "padstack": cls._via_definition_id(
+                    via, provider_strict=provider_strict
+                ),
                 "free": getattr(via, "free", None),
             }
             for via in pcb.vias
@@ -392,7 +442,6 @@ class DeepPCB_Transformer:
 
         board.planes = []
         for zone in pcb.zones:
-            zone_net = int(getattr(zone, "net", 0) or 0)
             if provider_strict and getattr(zone, "keepout", None) is not None:
                 continue
             poly = getattr(zone, "polygon", None)
@@ -423,7 +472,10 @@ class DeepPCB_Transformer:
             for layer_name in layer_names:
                 board.planes.append(
                     {
-                        "netId": net_id_by_number.get(int(getattr(zone, "net", 0) or 0), str(int(getattr(zone, "net", 0) or 0))),
+                        "netId": net_id_by_number.get(
+                            int(getattr(zone, "net", 0) or 0),
+                            str(int(getattr(zone, "net", 0) or 0)),
+                        ),
                         "netName": getattr(zone, "net_name", None),
                         "zoneLayer": (
                             layer_name
@@ -441,13 +493,17 @@ class DeepPCB_Transformer:
                         "connectPads": (
                             {
                                 "mode": getattr(zone.connect_pads, "mode", None),
-                                "clearance": getattr(zone.connect_pads, "clearance", None),
+                                "clearance": getattr(
+                                    zone.connect_pads, "clearance", None
+                                ),
                             }
                             if getattr(zone, "connect_pads", None) is not None
                             else None
                         ),
                         "minThickness": getattr(zone, "min_thickness", None),
-                        "filledAreasThickness": getattr(zone, "filled_areas_thickness", None),
+                        "filledAreasThickness": getattr(
+                            zone, "filled_areas_thickness", None
+                        ),
                         "keepout": (
                             {
                                 "tracks": getattr(zone.keepout, "tracks", None),
@@ -461,7 +517,9 @@ class DeepPCB_Transformer:
                         ),
                         "placement": (
                             {
-                                "sourceType": getattr(zone.placement, "source_type", None),
+                                "sourceType": getattr(
+                                    zone.placement, "source_type", None
+                                ),
                                 "source": getattr(zone.placement, "source", None),
                                 "enabled": getattr(zone.placement, "enabled", None),
                                 "sheetname": getattr(zone.placement, "sheetname", None),
@@ -473,7 +531,9 @@ class DeepPCB_Transformer:
                             {
                                 "enable": getattr(zone.fill, "enable", None),
                                 "thermalGap": getattr(zone.fill, "thermal_gap", None),
-                                "thermalBridgeWidth": getattr(zone.fill, "thermal_bridge_width", None),
+                                "thermalBridgeWidth": getattr(
+                                    zone.fill, "thermal_bridge_width", None
+                                ),
                             }
                             if getattr(zone, "fill", None) is not None
                             else None
@@ -482,9 +542,13 @@ class DeepPCB_Transformer:
                 )
 
         if include_lossless_source:
-            board.metadata["kicad_pcb_sexp"] = kicad.dumps(kicad.pcb.PcbFile(kicad_pcb=pcb))
+            board.metadata["kicad_pcb_sexp"] = kicad.dumps(
+                kicad.pcb.PcbFile(kicad_pcb=pcb)
+            )
         if getattr(pcb, "embedded_fonts", None) is not None:
-            board.metadata["kicad_embedded_fonts"] = getattr(pcb, "embedded_fonts", None)
+            board.metadata["kicad_embedded_fonts"] = getattr(
+                pcb, "embedded_fonts", None
+            )
         if provider_strict:
             cls._normalize_provider_board(board)
 
@@ -748,7 +812,9 @@ class DeepPCB_Transformer:
                     fill=fill,
                     polygon=kicad.pcb.Polygon(
                         pts=kicad.pcb.Pts(
-                            xys=[cls._point_to_xy(point, resolution) for point in points]
+                            xys=[
+                                cls._point_to_xy(point, resolution) for point in points
+                            ]
                         ),
                         solder_mask_margin=None,
                         stroke=None,
@@ -784,7 +850,9 @@ class DeepPCB_Transformer:
             definition = definition_by_id.get(definition_id, {})
             position = component.get("position", [0, 0])
             component_rotation = component.get("rotation")
-            rotation = float(component_rotation) if component_rotation is not None else None
+            rotation = (
+                float(component_rotation) if component_rotation is not None else None
+            )
             side = str(component.get("side", "FRONT")).upper()
             layer = "B.Cu" if side == "BACK" else "F.Cu"
 
@@ -800,7 +868,9 @@ class DeepPCB_Transformer:
                 ]
                 pad_layers = [index_to_layer.get(idx, "F.Cu") for idx in layers_idx]
                 stored_layers = padstack.get("kicadLayers")
-                has_kicad_layers = isinstance(stored_layers, list) and bool(stored_layers)
+                has_kicad_layers = isinstance(stored_layers, list) and bool(
+                    stored_layers
+                )
                 if has_kicad_layers:
                     pad_layers = [str(layer) for layer in stored_layers]
                 if not pad_layers:
@@ -825,7 +895,9 @@ class DeepPCB_Transformer:
                 ):
                     size_w = float(stored_size[0])
                     size_h = float(stored_size[1])
-                pad_shape = str(padstack.get("kicadShape") or cls._pad_shape(padstack.get("shape")))
+                pad_shape = str(
+                    padstack.get("kicadShape") or cls._pad_shape(padstack.get("shape"))
+                )
                 has_hole = padstack.get("hole") is not None
                 pad_type = str(
                     padstack.get("kicadPadType")
@@ -875,9 +947,7 @@ class DeepPCB_Transformer:
                         if isinstance(hole_r, (int, float)):
                             pad_drill = kicad.pcb.PadDrill(
                                 shape=None,
-                                size_x=cls._from_unit(
-                                    float(hole_r) * 2.0, resolution
-                                ),
+                                size_x=cls._from_unit(float(hole_r) * 2.0, resolution),
                                 size_y=None,
                                 offset=None,
                             )
@@ -904,12 +974,8 @@ class DeepPCB_Transformer:
                                 and isinstance(hole_pts[0], list)
                                 and isinstance(hole_pts[1], list)
                             ):
-                                adx = abs(
-                                    float(hole_pts[1][0]) - float(hole_pts[0][0])
-                                )
-                                ady = abs(
-                                    float(hole_pts[1][1]) - float(hole_pts[0][1])
-                                )
+                                adx = abs(float(hole_pts[1][0]) - float(hole_pts[0][0]))
+                                ady = abs(float(hole_pts[1][1]) - float(hole_pts[0][1]))
                                 if adx > ady:
                                     size_x, size_y = major_mm, minor_mm
                                 else:
@@ -940,8 +1006,12 @@ class DeepPCB_Transformer:
                         type=pad_type,
                         shape=pad_shape,
                         at=kicad.pcb.Xyr(
-                            x=cls._from_unit(float(pin.get("position", [0, 0])[0]), resolution),
-                            y=cls._from_unit(float(pin.get("position", [0, 0])[1]), resolution),
+                            x=cls._from_unit(
+                                float(pin.get("position", [0, 0])[0]), resolution
+                            ),
+                            y=cls._from_unit(
+                                float(pin.get("position", [0, 0])[1]), resolution
+                            ),
                             r=(
                                 float(pin.get("rotation"))
                                 if pin.get("rotation") is not None
@@ -1042,7 +1112,9 @@ class DeepPCB_Transformer:
 
             pcb.footprints.append(
                 kicad.pcb.Footprint(
-                    name=str(component.get("partNumber", definition_id or component_id)),
+                    name=str(
+                        component.get("partNumber", definition_id or component_id)
+                    ),
                     layer=layer,
                     uuid=kicad.gen_uuid(),
                     at=kicad.pcb.Xyr(
@@ -1090,7 +1162,10 @@ class DeepPCB_Transformer:
         pcb.targets = []
         pcb.tables = []
         pcb.generateds = []
-        if isinstance(board_file.metadata, dict) and "kicad_embedded_fonts" in board_file.metadata:
+        if (
+            isinstance(board_file.metadata, dict)
+            and "kicad_embedded_fonts" in board_file.metadata
+        ):
             pcb.embedded_fonts = board_file.metadata.get("kicad_embedded_fonts")
         return pcb
 
@@ -1103,15 +1178,13 @@ class DeepPCB_Transformer:
         return deeppcb.dumps(board_file, path)
 
     @staticmethod
-    def _infer_non_copper_layers(
-        copper_layers: list[str], pad_type: str
-    ) -> list[str]:
+    def _infer_non_copper_layers(copper_layers: list[str], pad_type: str) -> list[str]:
         """Add standard non-copper layers when kicadLayers hint is absent."""
         layers = list(copper_layers)
         if pad_type in {"thru_hole", "np_thru_hole"}:
             if "*.Cu" not in layers:
                 # Ensure all-copper wildcard
-                layers = ["*.Cu"] + [l for l in layers if not l.endswith(".Cu")]
+                layers = ["*.Cu"] + [ly for ly in layers if not ly.endswith(".Cu")]
             if "F.Mask" not in layers:
                 layers.append("F.Mask")
             if "B.Mask" not in layers:
@@ -1175,7 +1248,9 @@ class DeepPCB_Transformer:
         points = shape.get("points")
         if not isinstance(points, list):
             return []
-        parsed = [point for point in points if isinstance(point, list) and len(point) >= 2]
+        parsed = [
+            point for point in points if isinstance(point, list) and len(point) >= 2
+        ]
         if parsed and parsed[0] != parsed[-1]:
             parsed.append(parsed[0])
         return parsed
@@ -1190,8 +1265,12 @@ class DeepPCB_Transformer:
         if shape.get("type") == "polyline":
             points = shape.get("points", [])
             if isinstance(points, list) and len(points) >= 2:
-                xs = [float(p[0]) for p in points if isinstance(p, list) and len(p) >= 2]
-                ys = [float(p[1]) for p in points if isinstance(p, list) and len(p) >= 2]
+                xs = [
+                    float(p[0]) for p in points if isinstance(p, list) and len(p) >= 2
+                ]
+                ys = [
+                    float(p[1]) for p in points if isinstance(p, list) and len(p) >= 2
+                ]
                 if xs and ys:
                     return max(max(xs) - min(xs), max(ys) - min(ys)) / 2.0
         return default
@@ -1259,8 +1338,12 @@ class DeepPCB_Transformer:
         if shape_type == "polyline":
             points = shape.get("points", [])
             if isinstance(points, list):
-                xs = [float(p[0]) for p in points if isinstance(p, list) and len(p) >= 2]
-                ys = [float(p[1]) for p in points if isinstance(p, list) and len(p) >= 2]
+                xs = [
+                    float(p[0]) for p in points if isinstance(p, list) and len(p) >= 2
+                ]
+                ys = [
+                    float(p[1]) for p in points if isinstance(p, list) and len(p) >= 2
+                ]
                 if xs and ys:
                     return max(xs) - min(xs), max(ys) - min(ys)
         return default, default
@@ -1335,7 +1418,11 @@ class DeepPCB_Transformer:
             points = shape.get("points", [])
             if not isinstance(points, list) or len(points) < 2:
                 continue
-            xy_points = [cls._point_to_xy(point, resolution) for point in points if isinstance(point, list) and len(point) >= 2]
+            xy_points = [
+                cls._point_to_xy(point, resolution)
+                for point in points
+                if isinstance(point, list) and len(point) >= 2
+            ]
             if len(xy_points) < 2:
                 continue
 
@@ -1370,7 +1457,9 @@ class DeepPCB_Transformer:
         return fp_lines, fp_arcs, fp_circles, fp_polys
 
     @classmethod
-    def _layer_indices(cls, layers: Iterable[str], copper_layer_index: dict[str, int]) -> list[int]:
+    def _layer_indices(
+        cls, layers: Iterable[str], copper_layer_index: dict[str, int]
+    ) -> list[int]:
         indices: list[int] = []
         for layer in layers:
             if layer in copper_layer_index:
@@ -1440,15 +1529,18 @@ class DeepPCB_Transformer:
         drill_id = ""
         if isinstance(drill_payload, dict):
             drill_id = (
-                f"_D{drill_payload.get('shape')}:{drill_payload.get('sizeX')}:{drill_payload.get('sizeY')}"
+                f"_D{drill_payload.get('shape')}"
+                f":{drill_payload.get('sizeX')}"
+                f":{drill_payload.get('sizeY')}"
             )
 
         if provider_strict and shape == "custom":
             layer_suffix = "0_1" if len(layers) > 1 else "0"
             size_w_i = cls._to_unit(size_w) // 1000
             size_h_i = cls._to_unit(size_h) // 1000
+            pad_name = str(getattr(pad, "name", "0"))
             padstack_id = (
-                f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_{size_w_i}_{size_h_i}_L{layer_suffix}"
+                f"Padstack_Pad_{pad_name}_{size_w_i}_{size_h_i}_L{layer_suffix}"
             )
             width = cls._to_unit(min(size_w, size_h))
             travel = max(0.0, (max(size_w, size_h) - min(size_w, size_h)) / 2.0)
@@ -1461,7 +1553,10 @@ class DeepPCB_Transformer:
             half_w = cls._to_unit(size_w / 2.0) // 1000
             half_h = cls._to_unit(size_h / 2.0) // 1000
             layer_suffix = "0_1" if len(layers) > 1 else "0"
-            padstack_id = f"Padstack_Rectangle_{-half_w}_{-half_h}_{half_w}_{half_h}_L{layer_suffix}"
+            padstack_id = (
+                f"Padstack_Rectangle_{-half_w}_{-half_h}"
+                f"_{half_w}_{half_h}_L{layer_suffix}"
+            )
             geom = {
                 "type": "rectangle",
                 "lowerLeft": [-cls._to_unit(size_w / 2.0), -cls._to_unit(size_h / 2.0)],
@@ -1476,8 +1571,15 @@ class DeepPCB_Transformer:
                 "width": width,
             }
             layer_suffix = "0_1" if len(layers) > 1 else "0"
-            padstack_id = f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
-        elif provider_strict and shape == "circle" and drill_payload is not None and len(layers) > 1:
+            padstack_id = (
+                f"Padstack_Pad_{str(getattr(pad, 'name', '0'))}_L{layer_suffix}"
+            )
+        elif (
+            provider_strict
+            and shape == "circle"
+            and drill_payload is not None
+            and len(layers) > 1
+        ):
             radius = max(size_w, size_h) / 2.0
             geom = {
                 "type": "circle",
@@ -1500,7 +1602,7 @@ class DeepPCB_Transformer:
             }
             padstack_id = (
                 f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
-                f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
+                f"_L{','.join(map(str, layers))}_RAW{raw_layers_id}{drill_id}"
             )
         else:
             half_w = cls._to_unit(size_w / 2.0)
@@ -1517,9 +1619,13 @@ class DeepPCB_Transformer:
             }
             padstack_id = (
                 f"Padstack_{shape}_{pad_type}_{cls._to_unit(size_w)}x{cls._to_unit(size_h)}"
-                f"_L{','.join(map(str,layers))}_RAW{raw_layers_id}{drill_id}"
+                f"_L{','.join(map(str, layers))}_RAW{raw_layers_id}{drill_id}"
             )
-        if provider_strict and strict_scope and shape not in {"rect", "rectangle", "custom", "oval"}:
+        if (
+            provider_strict
+            and strict_scope
+            and shape not in {"rect", "rectangle", "custom", "oval"}
+        ):
             padstack_id = f"{padstack_id}_{strict_scope}"
         padstack: dict[str, Any] = {
             "id": padstack_id,
@@ -1548,7 +1654,9 @@ class DeepPCB_Transformer:
                     }
                 ]
                 drill_shape_str = str(drill_payload.get("shape", "") or "")
-                if "oval" in drill_shape_str or (drill_y > 0 and abs(drill_x - drill_y) > 0.001):
+                if "oval" in drill_shape_str or (
+                    drill_y > 0 and abs(drill_x - drill_y) > 0.001
+                ):
                     # Oval/slot drill hole.
                     minor = min(drill_x, drill_y)
                     travel = max(0.0, (max(drill_x, drill_y) - minor) / 2.0)
@@ -1628,7 +1736,8 @@ class DeepPCB_Transformer:
     def _definition_id(fp: Any, *, provider_strict: bool = False) -> str:
         if provider_strict:
             return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}"
-        return f"{fp.name}__{'BACK' if str(fp.layer).startswith('B.') else 'FRONT'}__{fp.uuid}"
+        side = "BACK" if str(fp.layer).startswith("B.") else "FRONT"
+        return f"{fp.name}__{side}__{fp.uuid}"
 
     @staticmethod
     def _component_id(fp: Any, *, provider_strict: bool = False) -> str:
@@ -1728,12 +1837,17 @@ class DeepPCB_Transformer:
             )
 
         for circle in getattr(fp, "fp_circles", []):
-            radius = ((float(circle.end.x) - float(circle.center.x)) ** 2 + (float(circle.end.y) - float(circle.center.y)) ** 2) ** 0.5
+            radius = (
+                (float(circle.end.x) - float(circle.center.x)) ** 2
+                + (float(circle.end.y) - float(circle.center.y)) ** 2
+            ) ** 0.5
             shapes.append(
                 {
                     "type": "circle",
                     "layer": circle.layer,
-                    "strokeWidth": float(circle.stroke.width) if circle.stroke else None,
+                    "strokeWidth": float(circle.stroke.width)
+                    if circle.stroke
+                    else None,
                     "strokeType": str(circle.stroke.type) if circle.stroke else None,
                     "fill": circle.fill,
                     "locked": circle.locked,
@@ -1806,15 +1920,25 @@ class DeepPCB_Transformer:
             arc_pts: list[list[int]] = []
             D = 2.0 * (sx * (my - ey) + mx * (ey - sy) + ex * (sy - my))
             if abs(D) > 1e-9:
-                cx = ((sx**2 + sy**2) * (my - ey) + (mx**2 + my**2) * (ey - sy) + (ex**2 + ey**2) * (sy - my)) / D
-                cy = ((sx**2 + sy**2) * (ex - mx) + (mx**2 + my**2) * (sx - ex) + (ex**2 + ey**2) * (mx - sx)) / D
+                cx = (
+                    (sx**2 + sy**2) * (my - ey)
+                    + (mx**2 + my**2) * (ey - sy)
+                    + (ex**2 + ey**2) * (sy - my)
+                ) / D
+                cy = (
+                    (sx**2 + sy**2) * (ex - mx)
+                    + (mx**2 + my**2) * (sx - ex)
+                    + (ex**2 + ey**2) * (mx - sx)
+                ) / D
                 r = math.hypot(sx - cx, sy - cy)
                 a_start = math.atan2(sy - cy, sx - cx)
                 a_mid = math.atan2(my - cy, mx - cx)
                 a_end = math.atan2(ey - cy, ex - cx)
+
                 # Determine sweep direction via the mid-point.
                 def _norm(a: float) -> float:
                     return a % (2.0 * math.pi)
+
                 ccw_sweep = (_norm(a_end - a_start)) % (2.0 * math.pi)
                 cw_sweep = (2.0 * math.pi - ccw_sweep) % (2.0 * math.pi)
                 mid_ccw = (_norm(a_mid - a_start)) % (2.0 * math.pi)
@@ -1954,7 +2078,11 @@ class DeepPCB_Transformer:
                 "id": "__default__",
                 "trackWidth": 200,
                 "clearance": 200,
-                "viaDefinition": (board.viaDefinitions[0] if board.viaDefinitions else "Via[0-1]_0.6:0.3mm"),
+                "viaDefinition": (
+                    board.viaDefinitions[0]
+                    if board.viaDefinitions
+                    else "Via[0-1]_0.6:0.3mm"
+                ),
                 "nets": [str(net.get("id", "")) for net in board.nets],
             }
         ]
@@ -2124,8 +2252,10 @@ class DeepPCB_Transformer:
         def pxy(point: Any) -> Any:
             if not (isinstance(point, list) and len(point) >= 2):
                 return point
-            return [int(round(float(point[0]) * 1000.0)),
-                    -int(round(float(point[1]) * 1000.0))]
+            return [
+                int(round(float(point[0]) * 1000.0)),
+                -int(round(float(point[1]) * 1000.0)),
+            ]
 
         def scale_scalar(v: Any) -> Any:
             if isinstance(v, (int, float)):
@@ -2221,8 +2351,7 @@ class DeepPCB_Transformer:
                 holes = shape.get("holes")
                 if isinstance(holes, list):
                     shape["holes"] = [
-                        [pxy(p) for p in h] if isinstance(h, list) else h
-                        for h in holes
+                        [pxy(p) for p in h] if isinstance(h, list) else h for h in holes
                     ]
                 points_in_shape(shape)
 
@@ -2274,7 +2403,9 @@ class DeepPCB_Transformer:
         # Step 1 – Parse sub-addresses and group footprints ───────────
         sub_pcb_cache: dict[str, Any] = {}
         fp_to_group: dict[str, str] = {}
-        fp_to_sub_addr: dict[str, tuple[str, str]] = {}  # uuid -> (pcb_addr, module_addr)
+        fp_to_sub_addr: dict[
+            str, tuple[str, str]
+        ] = {}  # uuid -> (pcb_addr, module_addr)
         groups: dict[str, list[Any]] = {}  # group_name -> [fp, ...]
 
         for fp in pcb.footprints:
@@ -2497,9 +2628,7 @@ class DeepPCB_Transformer:
                         provider_strict=provider_strict,
                     ),
                     "side": (
-                        "BACK"
-                        if str(anchor_fp.layer).startswith("B.")
-                        else "FRONT"
+                        "BACK" if str(anchor_fp.layer).startswith("B.") else "FRONT"
                     ),
                     "partNumber": f"REUSE_BLOCK:{group_name}",
                     "protected": True,
@@ -2509,9 +2638,7 @@ class DeepPCB_Transformer:
             # Address map: module_address → parent atopile_address
             addr_map: dict[str, str] = {}
             for fp in group_fps:
-                ato_addr = Property.try_get_property(
-                    fp.propertys, "atopile_address"
-                )
+                ato_addr = Property.try_get_property(fp.propertys, "atopile_address")
                 _, module_addr = fp_to_sub_addr[fp.uuid]
                 if ato_addr:
                     addr_map[module_addr] = ato_addr
@@ -2521,20 +2648,12 @@ class DeepPCB_Transformer:
                 sub_pcb, pcb, addr_map, group_external_nets
             )
 
-            # Find the anchor's module address for sub-PCB position lookup.
-            anchor_ato_addr = Property.try_get_property(
-                anchor_fp.propertys, "atopile_address"
-            )
-            _, anchor_module_addr = fp_to_sub_addr.get(
-                anchor_fp.uuid, (None, None)
-            )
+            _, anchor_module_addr = fp_to_sub_addr.get(anchor_fp.uuid, (None, None))
             # Look up anchor position in the sub-PCB.
             sub_anchor_x, sub_anchor_y = 0.0, 0.0
             if anchor_module_addr:
                 for sfp in sub_pcb.footprints:
-                    saddr = Property.try_get_property(
-                        sfp.propertys, "atopile_address"
-                    )
+                    saddr = Property.try_get_property(sfp.propertys, "atopile_address")
                     if saddr == anchor_module_addr:
                         sub_anchor_x = float(sfp.at.x)
                         sub_anchor_y = float(sfp.at.y)
@@ -2556,8 +2675,7 @@ class DeepPCB_Transformer:
                 "footprint_addr_map": addr_map,
                 "external_pin_map": external_pin_map,
                 "internal_net_ids": [
-                    net_id_by_number.get(n, str(n))
-                    for n in group_internal_nets
+                    net_id_by_number.get(n, str(n)) for n in group_internal_nets
                 ],
                 "sub_net_map": sub_net_map,
             }
@@ -2687,9 +2805,7 @@ class DeepPCB_Transformer:
                 parent_net_numbers[net.name] = net.number
 
         # Track the highest net number for creating new internal nets
-        max_net_number = max(
-            (net.number for net in pcb.nets), default=0
-        )
+        max_net_number = max((net.number for net in pcb.nets), default=0)
 
         for synth_fp in synthetic_fps:
             group_name = str(synth_fp.name).removeprefix("REUSE_BLOCK:")
@@ -2720,9 +2836,7 @@ class DeepPCB_Transformer:
             # Load sub-PCB
             sub_pcb_path = project_root / block_info["pcb_address"]
             try:
-                sub_pcb = kicad.loads(
-                    kicad.pcb.PcbFile, sub_pcb_path
-                ).kicad_pcb
+                sub_pcb = kicad.loads(kicad.pcb.PcbFile, sub_pcb_path).kicad_pcb
             except Exception:
                 log.error("Failed to load sub-PCB %s", sub_pcb_path)
                 continue
@@ -2791,9 +2905,7 @@ class DeepPCB_Transformer:
                             # Find the parent net name
                             parent_name = sub_net_map.get(pad.net.name)
                             if parent_name is None:
-                                parent_name = (
-                                    f"__block_{group_name}__{pad.net.name}"
-                                )
+                                parent_name = f"__block_{group_name}__{pad.net.name}"
                             pad.net = kicad.pcb.Net(
                                 number=new_net_num,
                                 name=parent_name,
@@ -2819,19 +2931,13 @@ class DeepPCB_Transformer:
 
             if internal_parent_nets:
                 pcb.segments = [
-                    s for s in pcb.segments
-                    if s.net not in internal_parent_nets
+                    s for s in pcb.segments if s.net not in internal_parent_nets
                 ]
-                pcb.arcs = [
-                    a for a in pcb.arcs
-                    if a.net not in internal_parent_nets
-                ]
-                pcb.vias = [
-                    v for v in pcb.vias
-                    if v.net not in internal_parent_nets
-                ]
+                pcb.arcs = [a for a in pcb.arcs if a.net not in internal_parent_nets]
+                pcb.vias = [v for v in pcb.vias if v.net not in internal_parent_nets]
                 pcb.zones = [
-                    z for z in pcb.zones
+                    z
+                    for z in pcb.zones
                     if int(getattr(z, "net", 0) or 0) not in internal_parent_nets
                 ]
 
@@ -2850,9 +2956,7 @@ class DeepPCB_Transformer:
                 if isinstance(new_track, kicad.pcb.Zone):
                     parent_name = sub_net_map.get(sub_net_name)
                     if parent_name is None:
-                        parent_name = (
-                            f"__block_{group_name}__{sub_net_name}"
-                        )
+                        parent_name = f"__block_{group_name}__{sub_net_name}"
                     new_track.net_name = parent_name
                 PCB_Transformer.move_object(new_track, offset)
 

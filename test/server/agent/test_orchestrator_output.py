@@ -1,7 +1,5 @@
 """Agent module tests moved from colocated runtime modules."""
 
-import pytest
-
 import asyncio
 import json
 from pathlib import Path
@@ -10,18 +8,18 @@ import httpx
 from openai import APIStatusError
 
 from atopile.dataclasses import AppContext
-from atopile.server.agent.orchestrator_helpers import _extract_retry_after_delay_s
 from atopile.server.agent.orchestrator import (
     AgentOrchestrator,
     ToolTrace,
     _build_function_call_outputs_for_model,
     _build_prompt_cache_key,
-    _build_session_primer,
     _build_worker_loop_guard_message,
     _sanitize_tool_output_for_model,
     _tool_call_signature,
     _trim_user_message,
 )
+from atopile.server.agent.orchestrator_helpers import _extract_retry_after_delay_s
+
 
 def test_sanitize_tool_output_removes_internal_keys() -> None:
     payload = {
@@ -48,6 +46,7 @@ def test_sanitize_tool_output_removes_internal_keys() -> None:
     assert "_private" not in sanitized["nested"]
     assert sanitized["nested"]["items"][0] == {"ok": True}
 
+
 def test_build_function_call_outputs_attaches_datasheet_file() -> None:
     outputs = _build_function_call_outputs_for_model(
         call_id="call_123",
@@ -70,6 +69,7 @@ def test_build_function_call_outputs_attaches_datasheet_file() -> None:
         "file_id": "file-abc123",
     }
 
+
 def test_build_function_call_outputs_nudges_after_parts_install() -> None:
     outputs = _build_function_call_outputs_for_model(
         call_id="call_456",
@@ -88,6 +88,7 @@ def test_build_function_call_outputs_nudges_after_parts_install() -> None:
     text = outputs[1]["content"][0]["text"]
     assert "parts_install completed" in text
     assert "datasheet_read next" in text
+
 
 def _make_api_status_error(
     *,
@@ -109,14 +110,14 @@ def _make_api_status_error(
         body=body,
     )
 
+
 def test_extract_retry_after_delay_from_message_text() -> None:
     exc = _make_api_status_error(
         status_code=429,
         body={
             "error": {
                 "message": (
-                    "Rate limit reached. Please try again in 578ms. "
-                    "Visit dashboard."
+                    "Rate limit reached. Please try again in 578ms. Visit dashboard."
                 ),
                 "code": "rate_limit_exceeded",
             }
@@ -126,6 +127,7 @@ def test_extract_retry_after_delay_from_message_text() -> None:
     assert delay_s is not None
     assert delay_s == 0.578
 
+
 def test_responses_create_retries_on_429(monkeypatch) -> None:
     orchestrator = AgentOrchestrator()
     sleep_calls: list[float] = []
@@ -133,9 +135,7 @@ def test_responses_create_retries_on_429(monkeypatch) -> None:
     async def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
 
-    monkeypatch.setattr(
-        "atopile.server.agent.orchestrator.asyncio.sleep", fake_sleep
-    )
+    monkeypatch.setattr("atopile.server.agent.orchestrator.asyncio.sleep", fake_sleep)
 
     class StubResponses:
         def __init__(self) -> None:
@@ -169,6 +169,7 @@ def test_responses_create_retries_on_429(monkeypatch) -> None:
     assert result["id"] == "resp_ok"
     assert stub_client.responses.calls == 2
     assert sleep_calls == [0.25]
+
 
 def test_responses_create_compacts_and_retries_on_context_overflow() -> None:
     orchestrator = AgentOrchestrator()
@@ -224,6 +225,7 @@ def test_responses_create_compacts_and_retries_on_context_overflow() -> None:
     assert isinstance(events, list)
     assert len(events) == 1
 
+
 def test_prompt_cache_key_is_stable_for_same_inputs() -> None:
     key_a = _build_prompt_cache_key(
         project_path=Path("/tmp/demo"),
@@ -240,6 +242,7 @@ def test_prompt_cache_key_is_stable_for_same_inputs() -> None:
     assert key_a == key_b
     assert key_a.startswith("atopile-agent:")
 
+
 def test_trim_user_message_preserves_head_and_tail() -> None:
     message = "A" * 120 + "B" * 120
     trimmed = _trim_user_message(message, max_chars=120)
@@ -247,6 +250,7 @@ def test_trim_user_message_preserves_head_and_tail() -> None:
     assert "truncated" in trimmed.lower()
     assert trimmed.startswith("A")
     assert trimmed.endswith("B")
+
 
 def test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
     traces = [
@@ -259,9 +263,7 @@ def test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
         for _ in range(6)
     ]
     signatures = [
-        _tool_call_signature(
-            tool_name="project_read_file", args={"path": "main.ato"}
-        )
+        _tool_call_signature(tool_name="project_read_file", args={"path": "main.ato"})
         for _ in range(6)
     ]
 
@@ -276,6 +278,7 @@ def test_build_worker_loop_guard_message_detects_repetitive_discovery() -> None:
 
     assert message is not None
     assert "repetitive" in message.lower()
+
 
 def test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
     traces = [
@@ -295,8 +298,7 @@ def test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
         )
     ]
     signatures = [
-        _tool_call_signature(tool_name=trace.name, args=trace.args)
-        for trace in traces
+        _tool_call_signature(tool_name=trace.name, args=trace.args) for trace in traces
     ]
 
     message = _build_worker_loop_guard_message(
@@ -309,6 +311,7 @@ def test_build_worker_loop_guard_message_ignores_execution_progress() -> None:
     )
 
     assert message is None
+
 
 def test_run_worker_turn_stops_repetitive_discovery_loop(
     monkeypatch,
@@ -371,6 +374,7 @@ def test_run_worker_turn_stops_repetitive_discovery_loop(
     assert "repetitive discovery loop" in result.text.lower()
     assert len(result.tool_traces) >= 4
     assert call_counter["count"] >= 4
+
 
 def test_run_worker_turn_stops_on_repeated_tool_failures(
     monkeypatch,
@@ -441,6 +445,7 @@ def test_run_worker_turn_stops_on_repeated_tool_failures(
 
     assert "repeated tool failures" in result.text.lower()
     assert len(result.tool_traces) >= 2
+
 
 def test_run_worker_turn_stops_after_no_concrete_progress(
     monkeypatch,

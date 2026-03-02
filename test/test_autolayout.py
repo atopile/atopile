@@ -1,6 +1,6 @@
+import os
 import shutil
 import uuid
-import os
 from pathlib import Path
 
 import pytest

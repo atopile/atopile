@@ -1,11 +1,11 @@
 """Agent module tests moved from colocated runtime modules."""
 
-import pytest
-
 import asyncio
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import pytest
 
 from atopile.dataclasses import (
     AppContext,
@@ -19,13 +19,16 @@ from atopile.server.domains.autolayout.models import (
     utc_now_iso,
 )
 
+
 def _run(coro):
     return asyncio.run(coro)
+
 
 @pytest.fixture(autouse=True)
 def _clear_agent_tool_caches() -> None:
     tools._openai_file_cache.clear()
     tools._datasheet_read_cache.clear()
+
 
 def test_tool_definitions_advertise_hashline_editor() -> None:
     names = {tool_def["name"] for tool_def in tools.get_tool_definitions()}
@@ -56,6 +59,7 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
 
+
 def test_execute_tool_allows_read_tool(tmp_path: Path) -> None:
     (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
 
@@ -70,6 +74,7 @@ def test_execute_tool_allows_read_tool(tmp_path: Path) -> None:
 
     assert result["path"] == "main.ato"
     assert "module App:" in result["content"]
+
 
 def test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
@@ -138,6 +143,7 @@ def test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> No
     assert captured["max_characters"] == 10_000
     assert captured["max_age_hours"] is None
 
+
 def test_execute_tool_allows_layout_screenshot(
     monkeypatch,
     tmp_path: Path,
@@ -185,16 +191,19 @@ def test_execute_tool_allows_layout_screenshot(
     assert result["success"] is True
     assert Path(result["screenshot_paths"]["2d"]).exists()
 
+
 @dataclass
 class _FakeAt:
     x: float
     y: float
     r: float
 
+
 @dataclass
 class _FakeFootprint:
     at: _FakeAt
     layer: str
+
 
 def _make_layout_record(
     *,
@@ -215,6 +224,7 @@ def _make_layout_record(
         rotation_deg=r,
         footprint=footprint,
     )
+
 
 def test_layout_get_component_position_returns_exact_match(
     monkeypatch,
@@ -256,6 +266,7 @@ def test_layout_get_component_position_returns_exact_match(
     assert result["component"]["reference"] == "U1"
     assert result["component"]["x_mm"] == pytest.approx(12.5)
     assert result["component"]["rotation_deg"] == pytest.approx(90.0)
+
 
 def test_layout_get_component_position_returns_fuzzy_suggestions(
     monkeypatch,
@@ -303,6 +314,7 @@ def test_layout_get_component_position_returns_fuzzy_suggestions(
     assert result["suggestions"]
     assert result["suggestions"][0]["reference"] == "U1"
     assert result["suggestions"][0]["score"] >= 0.35
+
 
 def test_layout_set_component_position_supports_absolute_and_relative(
     monkeypatch,
@@ -403,6 +415,7 @@ def test_layout_set_component_position_supports_absolute_and_relative(
     assert relative["delta"]["dy_mm"] == pytest.approx(2.0)
     assert relative["delta"]["drotation_deg"] == pytest.approx(10.0)
 
+
 def test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> None:
     examples_root = tmp_path / "examples"
     quickstart = examples_root / "quickstart"
@@ -455,6 +468,7 @@ def test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> Non
     assert read["path"] == "quickstart.ato"
     assert "module App:" in read["content"]
 
+
 def test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
     file_path.write_text("a\nb\n", encoding="utf-8")
@@ -472,6 +486,7 @@ def test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
     lines = result["content"].splitlines()
     assert re.fullmatch(r"1:[0-9a-f]{4}\|a", lines[0])
     assert re.fullmatch(r"2:[0-9a-f]{4}\|b", lines[1])
+
 
 def test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
     file_path = tmp_path / "main.ato"
@@ -500,6 +515,7 @@ def test_project_edit_file_executes_atomic_edit(tmp_path: Path) -> None:
     assert result["operations_applied"] == 1
     assert result["first_changed_line"] == 2
     assert file_path.read_text(encoding="utf-8") == "a\nB\nc\n"
+
 
 def test_project_move_and_delete_path_execute(tmp_path: Path) -> None:
     source = tmp_path / "notes.md"
@@ -530,6 +546,7 @@ def test_project_move_and_delete_path_execute(tmp_path: Path) -> None:
     assert deleted["path"] == "docs/notes.md"
     assert deleted["deleted"] is True
     assert not (tmp_path / "docs" / "notes.md").exists()
+
 
 def test_project_create_and_move_path_execute(tmp_path: Path) -> None:
     created_dir = _run(
@@ -589,6 +606,7 @@ def test_project_create_and_move_path_execute(tmp_path: Path) -> None:
     assert moved["new_path"] == "docs/notes.md"
     assert (tmp_path / "docs" / "notes.md").exists()
 
+
 def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
         assert lcsc_id == "C521608"
@@ -598,9 +616,7 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
             "path": "/tmp/project/elec/src/parts/stm32g4/stm32g4.ato",
         }
 
-    monkeypatch.setattr(
-        tools.parts_domain, "handle_install_part", fake_install_part
-    )
+    monkeypatch.setattr(tools.parts_domain, "handle_install_part", fake_install_part)
 
     result = _run(
         tools.execute_tool(
@@ -614,6 +630,7 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     assert result["success"] is True
     assert result["lcsc_id"] == "C521608"
     assert "datasheet_read" in result["implementation_hint"]
+
 
 def test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
@@ -946,6 +963,7 @@ def test_autolayout_fetch_to_layout_archives_iteration(
     assert "autolayout_iterations" in archived
     assert Path(archived).exists()
 
+
 def test_autolayout_fetch_to_layout_waits_while_running(
     monkeypatch,
     tmp_path: Path,
@@ -1011,6 +1029,7 @@ def test_autolayout_fetch_to_layout_waits_while_running(
     assert apply_called is False
     assert select_called is False
 
+
 def test_autolayout_status_without_job_id_returns_project_summary(
     monkeypatch,
     tmp_path: Path,
@@ -1066,6 +1085,7 @@ def test_autolayout_status_without_job_id_returns_project_summary(
     assert result["total_jobs"] == 2
     assert result["jobs"][0]["job_id"] == "al-new"
     assert result["jobs"][0]["recommended_action"] == "fetch_candidate_to_layout"
+
 
 def test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
     monkeypatch,
@@ -1166,6 +1186,7 @@ def test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
     assert result["job_id"] == "al-new"
     assert result["selected_candidate_id"] == "cand-1"
 
+
 def test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
     monkeypatch,
     tmp_path: Path,
@@ -1222,6 +1243,7 @@ def test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
     assert result["latest_job_id"] == "al-recent"
     assert result["jobs"][0]["job_id"] == "al-recent"
 
+
 def test_autolayout_status_unknown_job_returns_recent_summary(
     monkeypatch,
     tmp_path: Path,
@@ -1270,6 +1292,7 @@ def test_autolayout_status_unknown_job_returns_recent_summary(
     assert result["job_id"] == "al-recovered"
     assert result["latest_job_id"] == "al-recent"
     assert result["jobs"][0]["job_id"] == "al-recent"
+
 
 def test_autolayout_request_screenshot_renders_images(
     monkeypatch,
@@ -1344,6 +1367,7 @@ def test_autolayout_request_screenshot_renders_images(
     assert Path(result["screenshot_paths"]["2d"]).exists()
     assert Path(result["screenshot_paths"]["3d"]).exists()
 
+
 def test_autolayout_request_screenshot_uses_default_bottom_layers(
     monkeypatch,
     tmp_path: Path,
@@ -1394,6 +1418,7 @@ def test_autolayout_request_screenshot_uses_default_bottom_layers(
     assert result["layers"] == ["B.Cu", "B.Paste", "B.Mask", "Edge.Cuts"]
     assert captured["layers"] == "B.Cu,B.Paste,B.Mask,Edge.Cuts"
 
+
 def test_autolayout_configure_board_intent_updates_ato_yaml(
     tmp_path: Path,
 ) -> None:
@@ -1437,13 +1462,12 @@ def test_autolayout_configure_board_intent_updates_ato_yaml(
     assert after["stackup_intent"]["board_thickness_mm"] == 1.6
     assert after["preserve_existing_routing"] is True
 
+
 def test_datasheet_read_uploads_pdf_and_returns_file_id(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    def fake_get_cached_datasheet_path(
-        lcsc_id: str, project_root: str
-    ) -> str | None:
+    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
         assert lcsc_id == "C521608"
         assert project_root == str(tmp_path)
         return str(
@@ -1515,13 +1539,12 @@ def test_datasheet_read_uploads_pdf_and_returns_file_id(
     assert result["lcsc_id"] == "C521608"
     assert result["resolution"]["mode"] == "install_cache"
 
+
 def test_datasheet_read_falls_back_when_graph_resolution_fails(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    def fake_get_cached_datasheet_path(
-        lcsc_id: str, project_root: str
-    ) -> str | None:
+    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
         assert lcsc_id == "C521608"
         assert project_root == str(tmp_path)
         return None
@@ -1599,15 +1622,14 @@ def test_datasheet_read_falls_back_when_graph_resolution_fails(
     assert result["resolution"]["mode"] == "parts_api_fallback"
     assert result["resolution"]["fallback_sources"][0]["source"] == "parts_api"
 
+
 def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     counters = {"cache_lookup": 0, "read": 0, "upload": 0}
 
-    def fake_get_cached_datasheet_path(
-        lcsc_id: str, project_root: str
-    ) -> str | None:
+    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
         counters["cache_lookup"] += 1
         assert lcsc_id == "C123456"
         assert project_root == str(tmp_path)
@@ -1695,15 +1717,14 @@ def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     assert second["query"] == "second query"
     assert counters == {"cache_lookup": 1, "read": 1, "upload": 1}
 
+
 def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     read_attempts: list[str] = []
 
-    def fake_get_cached_datasheet_path(
-        lcsc_id: str, project_root: str
-    ) -> str | None:
+    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
         assert lcsc_id == "C5360602"
         assert project_root == str(tmp_path)
         return None
@@ -1809,9 +1830,8 @@ def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
         "https://example.com/dead.pdf",
         "https://example.com/working.pdf",
     ]
-    assert result["resolution"]["url_fallback"]["selected_url"].endswith(
-        "/working.pdf"
-    )
+    assert result["resolution"]["url_fallback"]["selected_url"].endswith("/working.pdf")
+
 
 def test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
     captured: dict[str, object] = {}
@@ -1845,6 +1865,7 @@ def test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
     assert captured["include_targets"] == ["power-tree"]
     assert captured["exclude_targets"] == ["mfg-data"]
 
+
 def test_report_bom_returns_summary_fields(monkeypatch) -> None:
     def fake_get_bom(project_root: str, target: str):
         assert project_root == "/tmp/project"
@@ -1874,6 +1895,7 @@ def test_report_bom_returns_summary_fields(monkeypatch) -> None:
     assert result["summary"]["records_count"] == 2
     assert "designator" in result["summary"]["sample_fields"]
 
+
 def test_report_variables_not_found_returns_actionable_message(
     monkeypatch,
 ) -> None:
@@ -1899,6 +1921,7 @@ def test_report_variables_not_found_returns_actionable_message(
 
     assert result["found"] is False
     assert "build_run" in result["message"]
+
 
 def test_manufacturing_generate_queues_mfg_data_build(monkeypatch) -> None:
     captured: dict[str, object] = {}
@@ -1973,6 +1996,7 @@ def test_manufacturing_generate_queues_mfg_data_build(monkeypatch) -> None:
         "exclude_targets": [],
     }
 
+
 def test_build_logs_search_defaults_to_non_debug_levels(monkeypatch) -> None:
     @dataclass
     class FakeBuild:
@@ -2038,6 +2062,7 @@ def test_build_logs_search_defaults_to_non_debug_levels(monkeypatch) -> None:
     assert result["filters"]["log_levels"] == ["INFO", "WARNING", "ERROR", "ALERT"]
     assert result["stage_summary"]["counts"]["failed"] == 1
 
+
 def test_build_logs_search_honors_explicit_filters(monkeypatch) -> None:
     @dataclass
     class FakeBuild:
@@ -2097,6 +2122,7 @@ def test_build_logs_search_honors_explicit_filters(monkeypatch) -> None:
     assert result["filters"]["stage"] == "compile"
     assert result["filters"]["log_levels"] == ["DEBUG"]
 
+
 def test_build_logs_search_null_query_does_not_filter_to_literal_none(
     monkeypatch,
 ) -> None:
@@ -2147,6 +2173,7 @@ def test_build_logs_search_null_query_does_not_filter_to_literal_none(
     assert result["logs"][0]["message"] == "compile started"
     assert result["filters"]["query"] is None
 
+
 def test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
     @dataclass
     class FakeItem:
@@ -2185,9 +2212,7 @@ def test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
         return None
 
     monkeypatch.setattr(tools.stdlib_domain, "handle_get_stdlib", fake_get_stdlib)
-    monkeypatch.setattr(
-        tools.stdlib_domain, "handle_get_stdlib_item", fake_get_item
-    )
+    monkeypatch.setattr(tools.stdlib_domain, "handle_get_stdlib_item", fake_get_item)
 
     listed = _run(
         tools.execute_tool(
@@ -2216,6 +2241,7 @@ def test_stdlib_tools_execute_with_expected_shape(monkeypatch) -> None:
     )
     assert found["found"] is True
     assert found["item"]["id"] == "USB_C"
+
 
 def test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
     @dataclass
@@ -2278,9 +2304,7 @@ def test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
         assert max_depth == 2
         return [FakeChild(name="i2c", item_type="interface", children=[])]
 
-    monkeypatch.setattr(
-        tools.projects_domain, "handle_get_modules", fake_get_modules
-    )
+    monkeypatch.setattr(tools.projects_domain, "handle_get_modules", fake_get_modules)
     monkeypatch.setattr(
         tools.module_introspection,
         "introspect_module",
@@ -2310,6 +2334,7 @@ def test_project_module_tools_execute_with_expected_shape(monkeypatch) -> None:
     )
     assert children["found"] is True
     assert children["counts"]["interface"] == 1
+
 
 def test_build_logs_search_returns_stub_for_silent_failure(monkeypatch) -> None:
     @dataclass
@@ -2362,6 +2387,7 @@ def test_build_logs_search_returns_stub_for_silent_failure(monkeypatch) -> None:
     assert result["total"] == 1
     assert "No log lines were captured" in result["logs"][0]["message"]
     assert result["status"] == "failed"
+
 
 def test_build_logs_search_normalizes_interrupted_history(monkeypatch) -> None:
     @dataclass

@@ -567,10 +567,10 @@ def create_app(
         agent as agent_routes,
     )
     from atopile.server.routes import (
-        autolayout as autolayout_routes,
+        artifacts as artifacts_routes,
     )
     from atopile.server.routes import (
-        artifacts as artifacts_routes,
+        autolayout as autolayout_routes,
     )
     from atopile.server.routes import (
         builds as builds_routes,
@@ -774,7 +774,7 @@ def is_atopile_server_running(port: int) -> bool:
     try:
         response = requests.get(f"http://127.0.0.1:{port}/health", timeout=2)
         return response.status_code == 200 and response.json().get("status") == "ok"
-    except (requests.RequestException, ValueError):
+    except requests.RequestException, ValueError:
         return False
 
 

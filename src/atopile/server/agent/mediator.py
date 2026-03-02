@@ -5,12 +5,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from atopile.server.agent import tools
 from atopile.server.agent.mediator_catalog import (
     _TOOL_DIRECTORY,
     ToolDirectoryItem,
     available_tool_names,
-    get_tool_directory_items,
 )
 from atopile.server.agent.mediator_inference import (
     _extract_context_id,
@@ -20,15 +18,6 @@ from atopile.server.agent.mediator_inference import (
     _reason_from_matches,
     _stale_after_seconds,
     _summarize_result,
-)
-from atopile.server.agent.mediator_patterns import (
-    _AUTOLAYOUT_JOB_ID_RE,
-    _BUILD_ID_RE,
-    _ENTRY_POINT_RE,
-    _FILE_RE,
-    _LCSC_RE,
-    _PACKAGE_RE,
-    _PDF_FILE_RE,
 )
 
 

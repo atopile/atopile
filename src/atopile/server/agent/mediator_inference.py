@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from atopile.server.agent.mediator_catalog import _TOOL_DIRECTORY
 from atopile.server.agent.mediator_patterns import (
     _AUTOLAYOUT_JOB_ID_RE,
     _BUILD_ID_RE,
@@ -15,6 +14,7 @@ from atopile.server.agent.mediator_patterns import (
     _PACKAGE_RE,
     _PDF_FILE_RE,
 )
+
 
 def _stale_after_seconds(tool_name: str) -> float:
     if tool_name.startswith("build") or tool_name.startswith("design_"):
@@ -88,7 +88,12 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
     if name in {"project_rename_path", "project_move_path"}:
         old_path = result.get("old_path")
         new_path = result.get("new_path")
-        if isinstance(old_path, str) and isinstance(new_path, str) and old_path and new_path:
+        if (
+            isinstance(old_path, str)
+            and isinstance(new_path, str)
+            and old_path
+            and new_path
+        ):
             return f"renamed {old_path} -> {new_path}"
         return "path renamed"
     if name == "project_delete_path":

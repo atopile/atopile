@@ -18,6 +18,7 @@ _PACKAGE_REFERENCE_MAX_FILES_SCANNED = max(
     min(_PACKAGE_REFERENCE_MAX_FILES_SCANNED, 200_000),
 )
 
+
 def _resolve_examples_root(project_root: Path) -> Path:
     """Resolve the curated examples directory used for reference `.ato` code."""
     candidates: list[Path] = []
@@ -370,7 +371,7 @@ def _search_package_reference_files(
         file_path = Path(str(record["absolute_path"]))
         try:
             text = file_path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError, OSError:
             continue
 
         for line_no, line in enumerate(text.splitlines(), start=1):
@@ -506,6 +507,3 @@ def _read_package_reference_file(
         "path_in_package": str(Path(selected_rel_path).relative_to(package_clean)),
         **chunk,
     }
-
-
-

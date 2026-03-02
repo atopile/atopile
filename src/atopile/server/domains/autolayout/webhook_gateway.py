@@ -272,9 +272,7 @@ class AutolayoutWebhookGatewayManager:
                     self.send_header("content-type", "application/json")
                     self.end_headers()
                     self.wfile.write(
-                        json.dumps({"detail": "Request body too large"}).encode(
-                            "utf-8"
-                        )
+                        json.dumps({"detail": "Request body too large"}).encode("utf-8")
                     )
                     return
                 body = self.rfile.read(content_length) if content_length else b""
@@ -305,9 +303,9 @@ class AutolayoutWebhookGatewayManager:
                     self.send_header("content-type", "application/json")
                     self.end_headers()
                     self.wfile.write(
-                        json.dumps(
-                            {"detail": "Failed to forward webhook"}
-                        ).encode("utf-8")
+                        json.dumps({"detail": "Failed to forward webhook"}).encode(
+                            "utf-8"
+                        )
                     )
                     return
 

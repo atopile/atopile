@@ -95,7 +95,7 @@ def _rewrite_venv_paths(source_root: Path, worktree_path: Path) -> None:
                 if b"\x00" in data[:512]:
                     continue
                 text = data.decode("utf-8", errors="strict")
-            except (UnicodeDecodeError, OSError):
+            except UnicodeDecodeError, OSError:
                 continue
             if source_str in text:
                 script.write_text(text.replace(source_str, dest_str))

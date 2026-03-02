@@ -148,7 +148,9 @@ def test_create_board_uses_json_input_fields(tmp_path: Path, monkeypatch):
         captured["kwargs"] = kwargs
         return "board-uuid"
 
-    monkeypatch.setattr(provider, "_upload_board_file", lambda _: "https://tmp/board.deeppcb")
+    monkeypatch.setattr(
+        provider, "_upload_board_file", lambda _: "https://tmp/board.deeppcb"
+    )
     monkeypatch.setattr(provider, "_request_payload", fake_request_payload)
     board_id = provider._create_board(request)
 
