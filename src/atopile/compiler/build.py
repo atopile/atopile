@@ -548,7 +548,10 @@ class Linker:
 
                     msg = f"Symbol `{type_id}` is not defined in this scope"
                     if type_id in self._stdlib or type_id in self._stdlib_ato_files:
-                        msg += f". Did you forget `import {type_id}`?"
+                        msg += (
+                            f". Use `import {type_id}` to use"
+                            f" `{type_id}` from the standard library"
+                        )
                     raise DslRichException(
                         msg,
                         original=DslUndefinedSymbolError(),

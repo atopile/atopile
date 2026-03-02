@@ -897,7 +897,8 @@ def test_forward_reference():
 
     # stdlib type without import -> error with helpful hint
     with pytest.raises(
-        DslRichException, match=r"Did you forget `import Resistor`\?"
+        DslRichException,
+        match=r"Use `import Resistor` to use `Resistor` from the standard library",
     ) as e:
         build_type(
             """
