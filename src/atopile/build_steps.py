@@ -32,6 +32,7 @@ from atopile.logging_utils import get_status_style, print_bar
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.bom.json_bom import write_json_bom
+from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
@@ -1203,6 +1204,18 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "datasheets",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_datasheets(ctx: BuildStepContext) -> None:
+    app = ctx.require_app()
+    export_datasheets(
+        app, config.build.paths.documentation / "datasheets", progress=None
+    )
+
+
+@muster.register(
     "default",
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
@@ -1210,6 +1223,7 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,
+        generate_datasheets,
     ],
     virtual=True,
 )

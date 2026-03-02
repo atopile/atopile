@@ -6,9 +6,8 @@ import re
 from io import BytesIO
 from pathlib import Path
 
-from faebryk.libs.datasheets import lcsc_wmsc_url
-
 from atopile.server.agent import policy, policy_datasheet
+from atopile.server.agent.policy_datasheet import _lcsc_wmsc_url
 
 def _anchor(line: int, text: str) -> str:
     return f"{line}:{policy.compute_line_hash(line, text)}"
@@ -301,16 +300,16 @@ def test_read_datasheet_file_rejects_non_pdf_payload_from_pdf_url(
             url="https://example.com/datasheet.pdf",
         )
 
-def test_lcsc_wmsc_url_extracts_part_number() -> None:
+def test__lcsc_wmsc_url_extracts_part_number() -> None:
     url = (
         "https://www.lcsc.com/datasheet/"
         "lcsc_datasheet_2304140030_STMicroelectronics-STM32G474RET6_C521608.pdf"
     )
-    fallback = lcsc_wmsc_url(url)
+    fallback = _lcsc_wmsc_url(url)
     assert fallback == "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/C521608.pdf"
 
-def test_lcsc_wmsc_url_ignores_non_lcsc_urls() -> None:
-    assert lcsc_wmsc_url("https://www.st.com/resource/doc.pdf") is None
+def test__lcsc_wmsc_url_ignores_non_lcsc_urls() -> None:
+    assert _lcsc_wmsc_url("https://www.st.com/resource/doc.pdf") is None
 
 def test_read_datasheet_bytes_from_url_falls_back_to_wmsc_pdf(
     monkeypatch: pytest.MonkeyPatch,

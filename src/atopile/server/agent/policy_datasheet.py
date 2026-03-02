@@ -13,8 +13,6 @@ from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
-from faebryk.libs.datasheets import lcsc_wmsc_url
-
 _MAX_DATASHEET_BYTES = 30_000_000
 _MAX_DATASHEET_PAGES = 25
 _MAX_DATASHEET_CHARS = 50_000
@@ -22,6 +20,19 @@ _MIN_DATASHEET_CHARS = 500
 _MAX_DATASHEET_SNIPPETS = 8
 _DATASHEET_FETCH_TIMEOUT_S = 45
 _DATASHEET_FETCH_RETRIES = 2
+
+_LCSC_ID_RE = re.compile(r"[Cc](\d{3,})")
+
+
+def _lcsc_wmsc_url(url: str) -> str | None:
+    """Convert an LCSC product page URL to the stable wmsc direct PDF URL."""
+    if "lcsc.com" not in url.lower() or "wmsc.lcsc.com" in url.lower():
+        return None
+    match = _LCSC_ID_RE.search(url)
+    if not match:
+        return None
+    lcsc_id = f"C{match.group(1)}"
+    return f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
 
 
 def read_datasheet_file(
@@ -218,7 +229,7 @@ def _read_datasheet_bytes_from_url(
         raise scope_error_cls("datasheet url is missing host")
 
     candidate_urls = [cleaned]
-    if wmsc_url := lcsc_wmsc_url(cleaned):
+    if wmsc_url := _lcsc_wmsc_url(cleaned):
         if wmsc_url not in candidate_urls:
             candidate_urls.append(wmsc_url)
 
@@ -262,9 +273,9 @@ def _read_datasheet_bytes_from_url(
                 continue
 
             if _looks_like_html_content(raw):
-                fallback = lcsc_wmsc_url(final_url)
+                fallback = _lcsc_wmsc_url(final_url)
                 if fallback is None:
-                    fallback = lcsc_wmsc_url(candidate_url)
+                    fallback = _lcsc_wmsc_url(candidate_url)
                 if fallback:
                     if fallback not in candidate_urls:
                         candidate_urls.append(fallback)
