@@ -191,6 +191,7 @@ pub fn MutableLinkedList(comptime T: type) type {
                     const Wrap = pyzig_mod.PyObjectWrapper(T);
                     const w: *Wrap = @ptrCast(@alignCast(pyobj));
                     w.data = item;
+                    w.owned = false;
                     return pyobj;
                 },
                 .@"enum" => {
