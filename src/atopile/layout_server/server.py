@@ -108,6 +108,8 @@ def create_layout_router(
             while True:
                 await websocket.receive_text()
         except WebSocketDisconnect:
+            pass
+        finally:
             service.remove_ws_client(websocket)
 
     return router

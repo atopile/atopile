@@ -433,6 +433,68 @@ export class Editor {
         return [];
     }
 
+    /** Restore all model positions from the saved drag start state. */
+    private revertDragPositions() {
+        if (!this.model) return;
+        if (this.dragStartPositions) {
+            for (const index of this.dragTargetIndices) {
+                const fp = this.model.footprints[index];
+                const start = this.dragStartPositions.get(index);
+                if (fp && start) { fp.at.x = start.x; fp.at.y = start.y; }
+            }
+        }
+        if (this.dragStartTrackPositions) {
+            for (const uuid of this.dragTargetTrackUuids) {
+                const idx = this.trackIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const track = this.model.tracks[idx];
+                const start = this.dragStartTrackPositions.get(uuid);
+                if (!track || !start) continue;
+                track.start.x = start.sx; track.start.y = start.sy;
+                track.end.x = start.ex; track.end.y = start.ey;
+                if (track.mid && start.mx !== undefined && start.my !== undefined) {
+                    track.mid.x = start.mx; track.mid.y = start.my;
+                }
+            }
+        }
+        if (this.dragStartViaPositions) {
+            for (const uuid of this.dragTargetViaUuids) {
+                const idx = this.viaIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const via = this.model.vias[idx];
+                const start = this.dragStartViaPositions.get(uuid);
+                if (via && start) { via.at.x = start.x; via.at.y = start.y; }
+            }
+        }
+        if (this.dragStartDrawingCoords) {
+            for (const uuid of this.dragTargetDrawingUuids) {
+                const idx = this.drawingIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const drawing = this.model.drawings[idx];
+                const coords = this.dragStartDrawingCoords.get(uuid);
+                if (drawing && coords) applyDeltaToDrawing(drawing, coords, 0, 0);
+            }
+        }
+        if (this.dragStartTextPositions) {
+            for (const uuid of this.dragTargetTextUuids) {
+                const idx = this.textIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const text = this.model.texts[idx];
+                const start = this.dragStartTextPositions.get(uuid);
+                if (text && start) { text.at.x = start.x; text.at.y = start.y; }
+            }
+        }
+        if (this.dragStartZoneCoords) {
+            for (const uuid of this.dragTargetZoneUuids) {
+                const idx = this.zoneIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const zone = this.model.zones[idx];
+                const coords = this.dragStartZoneCoords.get(uuid);
+                if (zone && coords) applyDeltaToZone(zone, coords, 0, 0);
+            }
+        }
+    }
+
     private clearDragState() {
         this.isDragging = false;
         this.dragStartWorld = null;
@@ -871,6 +933,9 @@ export class Editor {
     private setupKeyboardHandlers() {
         window.addEventListener("keydown", async (e: KeyboardEvent) => {
             if (e.key === "Escape") {
+                if (this.isDragging) {
+                    this.revertDragPositions();
+                }
                 this.clearSelection(true);
                 this.repaintWithSelection();
                 return;

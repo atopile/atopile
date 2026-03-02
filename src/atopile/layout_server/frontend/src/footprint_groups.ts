@@ -142,7 +142,7 @@ export function buildGroupIndex(model: RenderModel): {
                 drawingsWithUuid: [...Array(model.drawings.length).keys()].filter(i => model.drawings[i]?.uuid).length,
             });
         }
-        if (memberIndices.length < 2 && graphicMemberUuids.length === 0 && textMemberUuids.length === 0) continue;
+        if (memberIndices.length < 2 && graphicMemberUuids.length === 0 && textMemberUuids.length === 0 && zoneMemberUuids.length === 0) continue;
 
         // Compute bounding box of all graphic members (used for hit-testing graphic-only groups).
         let graphicBBox: BBox | null = null;
