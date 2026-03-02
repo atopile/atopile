@@ -1032,11 +1032,11 @@ class ASTVisitor:
         new_spec: NewChildSpec,
         source_chunk_node: AST.SourceChunk | None = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
-        # FIXME: linker should handle this
-        # Check if module type is in stdlib or an imported python module
+        # Check if module type is in stdlib (only when explicitly imported)
+        # or an imported python module
         module_fabll_type = (
             self._stdlib_allowlist.get(new_spec.type_identifier)
-            if new_spec.type_identifier is not None
+            if new_spec.type_identifier is not None and new_spec.symbol is not None
             else None
         )
         if (
