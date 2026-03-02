@@ -22,7 +22,38 @@ pub const SExpValue = union(enum) {
 // S-Expression with location
 pub const SExp = struct {
     value: SExpValue,
-    location: ?TokenLocation = null,
+    location: TokenLocation = TokenLocation.none,
+
+    inline fn saturatingAdd(lhs: usize, rhs: usize) usize {
+        return std.math.add(usize, lhs, rhs) catch std.math.maxInt(usize);
+    }
+
+    fn isShortFormTokenName(token: []const u8) bool {
+        return std.mem.eql(u8, token, "font") or
+            std.mem.eql(u8, token, "stroke") or
+            std.mem.eql(u8, token, "fill") or
+            std.mem.eql(u8, token, "teardrop") or
+            std.mem.eql(u8, token, "offset") or
+            std.mem.eql(u8, token, "rotate") or
+            std.mem.eql(u8, token, "scale");
+    }
+
+    fn estimatedSerializedLen(self: SExp) usize {
+        return switch (self.value) {
+            .symbol => |s| s.len,
+            .number => |n| n.len,
+            .comment => |c| saturatingAdd(1, c.len),
+            .string => |s| saturatingAdd(2, saturatingAdd(s.len, s.len)),
+            .list => |items| blk: {
+                var total: usize = 2; // Opening and closing parenthesis.
+                for (items, 0..) |item, i| {
+                    if (i > 0) total = saturatingAdd(total, 1);
+                    total = saturatingAdd(total, item.estimatedSerializedLen());
+                }
+                break :blk total;
+            },
+        };
+    }
 
     pub fn deinit(self: *SExp, allocator: std.mem.Allocator) void {
         switch (self.value) {
@@ -75,7 +106,8 @@ pub const SExp = struct {
 
         var formatted = std.array_list.Managed(u8).init(allocator);
         defer formatted.deinit();
-        try formatted.ensureTotalCapacity(source.len);
+        const estimated_out = saturatingAdd(source.len, saturatingAdd(source.len / 3, 64));
+        try formatted.ensureTotalCapacity(estimated_out);
 
         var cursor: usize = 0;
         var list_depth: usize = 0;
@@ -116,22 +148,11 @@ pub const SExp = struct {
         const isShortFormToken = struct {
             fn call(src: []const u8, pos: usize) bool {
                 var seek = pos + 1;
-                var token = std.array_list.Managed(u8).init(std.heap.page_allocator);
-                defer token.deinit();
-
                 while (seek < src.len and std.ascii.isAlphabetic(src[seek])) {
-                    token.append(src[seek]) catch return false;
                     seek += 1;
                 }
-
-                const token_str = token.items;
-                return std.mem.eql(u8, token_str, "font") or
-                    std.mem.eql(u8, token_str, "stroke") or
-                    std.mem.eql(u8, token_str, "fill") or
-                    std.mem.eql(u8, token_str, "teardrop") or
-                    std.mem.eql(u8, token_str, "offset") or
-                    std.mem.eql(u8, token_str, "rotate") or
-                    std.mem.eql(u8, token_str, "scale");
+                if (seek <= pos + 1) return false;
+                return isShortFormTokenName(src[pos + 1 .. seek]);
             }
         }.call;
 
@@ -255,7 +276,7 @@ pub const SExp = struct {
         switch (self.value) {
             .symbol => |s| try writer.print("{s}", .{s}),
             .number => |n| try writer.print("{s}", .{n}),
-            .string => |s| try _write_escaped_string(s, writer),
+            .string => |s| try writeEscapedString(s, writer),
             .comment => |c| try writer.print(";{s}", .{c}),
             .list => |items| {
                 try writer.writeAll("(");
@@ -271,6 +292,7 @@ pub const SExp = struct {
     pub fn pretty(self: SExp, allocator: std.mem.Allocator) ![]const u8 {
         var in = std.array_list.Managed(u8).init(allocator);
         defer in.deinit();
+        try in.ensureTotalCapacity(self.estimatedSerializedLen());
 
         try self.str(in.writer());
         const out = try prettify_sexp_string(allocator, in.items);
@@ -294,7 +316,7 @@ pub const SExp = struct {
 // TODO: string escaping is super slow, consider using single quotes instead in the params
 
 // Helper function to escape quotes in strings
-fn _write_escaped_string(str: []const u8, writer: anytype) !void {
+pub fn writeEscapedString(str: []const u8, writer: anytype) !void {
     // Count the number of quotes to determine the required size
     try writer.writeByte('"');
     var last_char: u8 = 0;
@@ -326,16 +348,163 @@ pub const ParseError = error{
     EmptyFile,
 };
 
-pub const Parser = struct {
-    tokens: []const Token,
-    position: usize,
-    allocator: std.mem.Allocator,
+const ListFrame = struct {
+    meta_idx: usize,
+    child_count: u32,
+};
 
-    pub fn init(allocator: std.mem.Allocator, tokens: []const Token) Parser {
+const OverflowEntry = struct {
+    idx: u32,
+    count: u32,
+};
+
+const ListChildCounts = struct {
+    counts16: []u16,
+    overflow_entries: []OverflowEntry,
+
+    fn deinit(self: ListChildCounts, allocator: std.mem.Allocator) void {
+        allocator.free(self.counts16);
+        allocator.free(self.overflow_entries);
+    }
+};
+
+fn countListNodes(tokens: []const Token) usize {
+    var count: usize = 0;
+    for (tokens) |token| {
+        if (token.type == .lparen) count += 1;
+    }
+    return count;
+}
+
+fn incrementTopChildCount(stack: *std.array_list.Managed(ListFrame)) void {
+    if (stack.items.len == 0) return;
+    var top = &stack.items[stack.items.len - 1];
+    if (top.child_count != std.math.maxInt(u32)) {
+        top.child_count += 1;
+    }
+}
+
+fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) ParseError!ListChildCounts {
+    const list_count = countListNodes(tokens);
+    var child_counts16 = try allocator.alloc(u16, list_count);
+    errdefer allocator.free(child_counts16);
+    @memset(child_counts16, 0);
+    var overflow_builder = std.array_list.Managed(OverflowEntry).init(allocator);
+    defer overflow_builder.deinit();
+
+    var stack = std.array_list.Managed(ListFrame).init(allocator);
+    defer stack.deinit();
+
+    var next_meta: usize = 0;
+    for (tokens) |token| {
+        switch (token.type) {
+            .lparen => {
+                incrementTopChildCount(&stack);
+                try stack.append(.{
+                    .meta_idx = next_meta,
+                    .child_count = 0,
+                });
+                next_meta += 1;
+            },
+            .rparen => {
+                const frame = stack.pop() orelse return error.UnexpectedRightParen;
+                if (frame.child_count <= std.math.maxInt(u16)) {
+                    child_counts16[frame.meta_idx] = @as(u16, @intCast(frame.child_count));
+                } else {
+                    child_counts16[frame.meta_idx] = std.math.maxInt(u16);
+                    try overflow_builder.append(.{
+                        .idx = @as(u32, @intCast(frame.meta_idx)),
+                        .count = frame.child_count,
+                    });
+                }
+            },
+            else => incrementTopChildCount(&stack),
+        }
+    }
+
+    if (stack.items.len != 0) return error.UnterminatedList;
+    std.sort.pdq(OverflowEntry, overflow_builder.items, {}, struct {
+        fn lessThan(_: void, lhs: OverflowEntry, rhs: OverflowEntry) bool {
+            return lhs.idx < rhs.idx;
+        }
+    }.lessThan);
+    return .{
+        .counts16 = child_counts16,
+        .overflow_entries = try overflow_builder.toOwnedSlice(),
+    };
+}
+
+pub const Parser = struct {
+    source: []const u8,
+    tokens: []const Token,
+    list_child_counts16: []const u16,
+    overflow_entries: []const OverflowEntry,
+    overflow_cursor: usize,
+    list_meta_cursor: usize,
+    position: usize,
+    list_pool: []SExp,
+    list_pool_cursor: usize,
+    use_list_pool: bool,
+    allocator: std.mem.Allocator,
+    copy_atoms: bool,
+    track_locations: bool,
+
+    pub fn init(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: ListChildCounts) Parser {
         return .{
+            .source = source,
             .tokens = tokens,
+            .list_child_counts16 = list_child_counts.counts16,
+            .overflow_entries = list_child_counts.overflow_entries,
+            .overflow_cursor = 0,
+            .list_meta_cursor = 0,
             .position = 0,
+            .list_pool = &[_]SExp{},
+            .list_pool_cursor = 0,
+            .use_list_pool = false,
             .allocator = allocator,
+            .copy_atoms = true,
+            .track_locations = true,
+        };
+    }
+
+    pub fn initBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token, list_child_counts: ListChildCounts) Parser {
+        return .{
+            .source = source,
+            .tokens = tokens,
+            .list_child_counts16 = list_child_counts.counts16,
+            .overflow_entries = list_child_counts.overflow_entries,
+            .overflow_cursor = 0,
+            .list_meta_cursor = 0,
+            .position = 0,
+            .list_pool = &[_]SExp{},
+            .list_pool_cursor = 0,
+            .use_list_pool = false,
+            .allocator = allocator,
+            .copy_atoms = false,
+            .track_locations = true,
+        };
+    }
+
+    fn listChildCountAt(self: *Parser, idx: usize) ParseError!usize {
+        if (idx >= self.list_child_counts16.len) return error.UnterminatedList;
+        const raw = self.list_child_counts16[idx];
+        if (raw != std.math.maxInt(u16)) return @as(usize, raw);
+
+        if (self.overflow_cursor >= self.overflow_entries.len) return error.UnterminatedList;
+        const entry = self.overflow_entries[self.overflow_cursor];
+        if (entry.idx != @as(u32, @intCast(idx))) return error.UnterminatedList;
+        self.overflow_cursor += 1;
+        return @as(usize, entry.count);
+    }
+
+    fn tokenSlice(self: *const Parser, token: Token) []const u8 {
+        return token.slice(self.source);
+    }
+
+    fn tokenLocation(_: *const Parser, token: Token) TokenLocation {
+        return .{
+            .start = token.start,
+            .end = token.end,
         };
     }
 
@@ -346,71 +515,149 @@ pub const Parser = struct {
 
         const token = self.tokens[self.position];
         self.position += 1;
+        const token_location: TokenLocation = if (self.track_locations) self.tokenLocation(token) else TokenLocation.none;
+        const token_value = self.tokenSlice(token);
 
         switch (token.type) {
-            .lparen => return try self.parseList(token.location),
+            .lparen => return try self.parseList(token_location),
             .rparen => return error.UnexpectedRightParen,
             .symbol => {
-                // CRITICAL FIX: Duplicate symbol to prevent use-after-free
-                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
-                @memcpy(duped, token.value);
-                return SExp{ .value = .{ .symbol = duped }, .location = token.location };
+                if (self.copy_atoms) {
+                    // Duplicate symbol to prevent use-after-free.
+                    const duped = self.allocator.alloc(u8, token_value.len) catch return error.OutOfMemory;
+                    @memcpy(duped, token_value);
+                    return SExp{ .value = .{ .symbol = duped }, .location = token_location };
+                }
+                return SExp{ .value = .{ .symbol = token_value }, .location = token_location };
             },
             .number => {
-                // CRITICAL FIX: Duplicate number to prevent use-after-free
-                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
-                @memcpy(duped, token.value);
-                return SExp{ .value = .{ .number = duped }, .location = token.location };
+                if (self.copy_atoms) {
+                    // Duplicate number to prevent use-after-free.
+                    const duped = self.allocator.alloc(u8, token_value.len) catch return error.OutOfMemory;
+                    @memcpy(duped, token_value);
+                    return SExp{ .value = .{ .number = duped }, .location = token_location };
+                }
+                return SExp{ .value = .{ .number = token_value }, .location = token_location };
             },
             .string => {
-                // CRITICAL FIX: Duplicate string to prevent use-after-free
-                // token.value points to the input buffer which may be freed later
-                const val = try _unescape_string(self.allocator, token.value);
-                const duped = self.allocator.alloc(u8, val.len) catch return error.OutOfMemory;
-                @memcpy(duped, val);
-                return SExp{ .value = .{ .string = duped }, .location = token.location };
+                // token value points to the input buffer which may be freed later
+                const string_inner = if (token_value.len >= 2) token_value[1 .. token_value.len - 1] else token_value;
+                if (std.mem.indexOfScalar(u8, string_inner, '\\') == null) {
+                    if (self.copy_atoms) {
+                        const duped = self.allocator.alloc(u8, string_inner.len) catch return error.OutOfMemory;
+                        @memcpy(duped, string_inner);
+                        return SExp{ .value = .{ .string = duped }, .location = token_location };
+                    }
+                    return SExp{ .value = .{ .string = string_inner }, .location = token_location };
+                }
+                const val = try _unescape_string(self.allocator, string_inner);
+                return SExp{ .value = .{ .string = val }, .location = token_location };
             },
             //.string => return SExp{ .value = .{ .string = try _unescape_string(self.allocator, token.value) }, .location = token.location },
             .comment => {
-                // CRITICAL FIX: Duplicate comment to prevent use-after-free
-                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
-                @memcpy(duped, token.value);
-                return SExp{ .value = .{ .comment = duped }, .location = token.location };
+                if (self.copy_atoms) {
+                    // Duplicate comment to prevent use-after-free.
+                    const duped = self.allocator.alloc(u8, token_value.len) catch return error.OutOfMemory;
+                    @memcpy(duped, token_value);
+                    return SExp{ .value = .{ .comment = duped }, .location = token_location };
+                }
+                return SExp{ .value = .{ .comment = token_value }, .location = token_location };
             },
         }
     }
 
     fn parseList(self: *Parser, start_location: TokenLocation) ParseError!SExp {
-        var items = std.array_list.Managed(SExp).init(self.allocator);
-        defer items.deinit();
+        if (self.list_meta_cursor >= self.list_child_counts16.len) {
+            return error.UnterminatedList;
+        }
+        const child_count = try self.listChildCountAt(self.list_meta_cursor);
+        self.list_meta_cursor += 1;
 
-        while (self.position < self.tokens.len) {
-            const next_token = self.tokens[self.position];
-
-            if (next_token.type == .rparen) {
-                const end_location = next_token.location;
-                self.position += 1;
-                return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = .{
-                    .start = start_location.start,
-                    .end = end_location.end,
-                } };
-            }
-
-            if (try self.parse()) |sexp| {
-                try items.append(sexp);
-            } else {
-                break;
-            }
+        var items: []SExp = undefined;
+        if (self.use_list_pool) {
+            const next_cursor = std.math.add(usize, self.list_pool_cursor, child_count) catch return error.OutOfMemory;
+            if (next_cursor > self.list_pool.len) return error.OutOfMemory;
+            items = self.list_pool[self.list_pool_cursor..next_cursor];
+            self.list_pool_cursor = next_cursor;
+        } else {
+            items = try self.allocator.alloc(SExp, child_count);
         }
 
-        return error.UnterminatedList;
+        var i: usize = 0;
+        errdefer if (!self.use_list_pool) {
+            var j: usize = 0;
+            while (j < i) : (j += 1) {
+                items[j].deinit(self.allocator);
+            }
+            self.allocator.free(items);
+        };
+        while (i < child_count) : (i += 1) {
+            items[i] = (try self.parse()) orelse return error.UnterminatedList;
+        }
+
+        if (self.position >= self.tokens.len) {
+            return error.UnterminatedList;
+        }
+        const next_token = self.tokens[self.position];
+        if (next_token.type != .rparen) {
+            return error.UnterminatedList;
+        }
+        const end_location = if (self.track_locations) self.tokenLocation(next_token) else TokenLocation.none;
+        const list_location: TokenLocation = if (self.track_locations) .{
+            .start = start_location.start,
+            .end = end_location.end,
+        } else TokenLocation.none;
+        self.position += 1;
+        return SExp{ .value = .{ .list = items }, .location = list_location };
     }
 };
 
 // Parse with arena allocator for better performance!
 // Parse a single S-expression
-pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!SExp {
-    var parser = Parser.init(allocator, tokens);
+pub fn parse(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
+    const child_counts = try buildListChildCounts(allocator, tokens);
+    defer child_counts.deinit(allocator);
+    var parser = Parser.init(allocator, source, tokens, child_counts);
+    return try parser.parse() orelse return error.EmptyFile;
+}
+
+// Parse without duplicating symbol/number/comment atoms.
+// Callers must ensure token storage outlives the returned SExp.
+pub fn parseBorrowed(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
+    const child_counts = try buildListChildCounts(allocator, tokens);
+    defer child_counts.deinit(allocator);
+    var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
+    return try parser.parse() orelse return error.EmptyFile;
+}
+
+// Parse without duplicating symbol/number/comment atoms and skip location tracking.
+//
+// IMPORTANT ownership contract:
+// - Returned atoms borrow from `source` and must not outlive `source`.
+// - List storage is carved from allocator-owned pool storage and is intended for
+//   arena-style lifetime management.
+// - Do not call `SExp.deinit()` on the returned tree.
+//
+// This is the fastest/lower-memory path for decode-only pipelines.
+pub fn parseBorrowedFast(allocator: std.mem.Allocator, source: []const u8, tokens: []const Token) ParseError!SExp {
+    const child_counts = try buildListChildCounts(allocator, tokens);
+    defer child_counts.deinit(allocator);
+    var total_child_slots: usize = 0;
+    var overflow_idx: usize = 0;
+    for (child_counts.counts16) |count16| {
+        if (count16 == std.math.maxInt(u16)) {
+            const count = child_counts.overflow_entries[overflow_idx].count;
+            overflow_idx += 1;
+            total_child_slots = std.math.add(usize, total_child_slots, @as(usize, count)) catch return error.OutOfMemory;
+        } else {
+            total_child_slots = std.math.add(usize, total_child_slots, @as(usize, count16)) catch return error.OutOfMemory;
+        }
+    }
+    const list_pool = try allocator.alloc(SExp, total_child_slots);
+    var parser = Parser.initBorrowed(allocator, source, tokens, child_counts);
+    parser.track_locations = false;
+    parser.use_list_pool = true;
+    parser.list_pool = list_pool;
     return try parser.parse() orelse return error.EmptyFile;
 }
 
