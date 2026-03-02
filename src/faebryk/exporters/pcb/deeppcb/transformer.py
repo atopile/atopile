@@ -696,14 +696,12 @@ class DeepPCB_Transformer:
                     hole_r = hole_shape.get("radius")
                     if not isinstance(hole_r, (int, float)):
                         raise ValueError(
-                            f"Via padstack {padstack_id!r} has no drill or "
-                            f"hole radius"
+                            f"Via padstack {padstack_id!r} has no drill or hole radius"
                         )
                     drill_radius = float(hole_r)
                 else:
                     raise ValueError(
-                        f"Via padstack {padstack_id!r} has no drill or hole "
-                        f"field"
+                        f"Via padstack {padstack_id!r} has no drill or hole field"
                     )
             layer_ids = [
                 index_to_layer.get(int(i), "F.Cu")
