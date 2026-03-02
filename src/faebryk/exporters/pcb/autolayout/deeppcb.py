@@ -1081,7 +1081,10 @@ class DeepPCBAutolayout:
         if self.config.webhook_token and self.config.webhook_token.strip():
             return self.config.webhook_token.strip()
 
-        return secrets.token_urlsafe(32)
+        # Auto-generate and persist so the service can validate incoming webhooks.
+        token = secrets.token_urlsafe(32)
+        request.options["webhook_token"] = token
+        return token
 
     def _extract_string(self, payload: Any, keys: tuple[str, ...]) -> str | None:
         lookup = {key.lower() for key in keys}

@@ -261,11 +261,22 @@ class AutolayoutWebhookGatewayManager:
                     )
                     return
 
+                max_body_bytes = 1_048_576  # 1 MB
                 content_length_raw = self.headers.get("content-length", "0")
                 try:
                     content_length = max(0, int(content_length_raw))
                 except ValueError:
                     content_length = 0
+                if content_length > max_body_bytes:
+                    self.send_response(413)
+                    self.send_header("content-type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(
+                        json.dumps({"detail": "Request body too large"}).encode(
+                            "utf-8"
+                        )
+                    )
+                    return
                 body = self.rfile.read(content_length) if content_length else b""
 
                 upstream_url = f"{internal_base_url}{webhook_path}"
@@ -295,7 +306,7 @@ class AutolayoutWebhookGatewayManager:
                     self.end_headers()
                     self.wfile.write(
                         json.dumps(
-                            {"detail": f"Failed to forward webhook: {exc}"}
+                            {"detail": "Failed to forward webhook"}
                         ).encode("utf-8")
                     )
                     return

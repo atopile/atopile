@@ -25,6 +25,86 @@ The branch adds two major features: (1) a DeepPCB autolayout integration and (2)
 
 ---
 
+## 0. Webhook Integration (ae7b870e) — Needs Work
+
+The webhook commit adds a dev gateway + tunnel system for receiving DeepPCB callbacks. The architecture is sound but has security gaps, a critical token persistence bug, and very thin test coverage.
+
+### Architecture
+
+```
+DeepPCB API --POST--> cloudflared quick tunnel --> local gateway HTTP server
+  --> forward POST to /api/autolayout/webhooks/deeppcb (FastAPI)
+  --> service.handle_deeppcb_webhook() --> job state update --> event_bus --> UI
+```
+
+The gateway (`webhook_gateway.py`, 448 lines) runs a `ThreadingHTTPServer` that only accepts POSTs to the webhook path, optionally fronted by a `cloudflared` quick tunnel for public ingress. It's explicitly labeled "Dev" throughout — not production infrastructure.
+
+### Critical Issues
+
+**0.1 Auto-generated webhook token is never persisted (HIGH)**
+`deeppcb.py:_webhook_token()` — When no explicit token is provided, `secrets.token_urlsafe(32)` is generated and sent to DeepPCB, but **never written back** to `request.options`. When the webhook arrives, `service._expected_webhook_token_locked()` looks in `job.options` for the token, finds nothing, returns `None`, and **token validation is skipped entirely** (the `if expected_token:` guard at `service.py:406` is not entered).
+
+The agent-driven path (`auto_setup_webhook=True`) works correctly because it generates the token upfront and passes it explicitly. But direct API usage or manual config hits this bug.
+
+**Fix:** `_webhook_token()` should write the generated token back into `request.options["webhook_token"]` before returning.
+
+**0.2 No auto-apply triggered by webhook completion (HIGH)**
+`service.py:handle_deeppcb_webhook` (lines 373-443) does NOT call `_should_auto_apply` / `_auto_apply_candidate` after updating job state, unlike `refresh_job` and `start_job` which both do. Jobs with `auto_apply: true` will not auto-apply when the completion webhook arrives — the user must manually trigger a status check.
+
+### Security Gaps
+
+**0.3 Gateway does not validate tokens (MEDIUM)**
+The gateway blindly forwards any POST to the webhook path. Token validation only happens downstream in the service. This means the build server can be probed/DoS'd through the tunnel by anyone who discovers the URL.
+
+**0.4 No request body size limit (MEDIUM)**
+`webhook_gateway.py:264-269` — The handler reads `content_length` bytes with no upper bound. Combined with `ThreadingHTTPServer` (thread-per-connection), this is an OOM vector.
+
+**0.5 Dev endpoints have no access control (MEDIUM)**
+The `/dev/webhook-gateway/start`, `/status`, `/stop` routes have no authentication. Anyone with network access to the build server can start/stop tunnels and read the webhook token (which is included in status output at line 83).
+
+**0.6 Error messages leak internal URLs (LOW)**
+`webhook_gateway.py:296-300` — The 502 response includes the full exception string, potentially revealing internal network topology.
+
+### Missing Functionality
+
+**0.7 No tunnel health monitoring or auto-reconnect**
+If `cloudflared` crashes, the tunnel is gone. No automatic restart, no heartbeat, no proactive notification to the user. Jobs silently stop receiving webhook updates and remain in `RUNNING` state indefinitely.
+
+**0.8 `poll_provider_on_refresh` defaults to False**
+When the webhook path fails, calling `refresh_job` won't help either — it returns cached state without polling the provider. There is no active fallback mechanism by default.
+
+### Test Coverage — Very Thin
+
+| Area | Tested? |
+|------|---------|
+| Gateway forwards POST to correct path | Yes |
+| Gateway blocks non-webhook paths | Yes |
+| Gateway start/status/stop lifecycle | Yes |
+| Gateway + service e2e (updates job) | Partial — bypasses FastAPI route, token not exercised |
+| `handle_deeppcb_webhook` happy path | Yes — fake provider, only `provider_job_ref` matching |
+| Invalid token rejection | Yes — only global config token |
+| **Missing token rejection** | **No** |
+| **Token from parsed payload (`update.token`)** | **No** |
+| **Per-job vs global token priority** | **No** |
+| **`_extract_deeppcb_webhook_token` (route layer)** | **No** — security-relevant, 4 header + 4 body extraction paths |
+| **No-matching-job webhook response** | **No** |
+| **Multiple jobs with same `provider_job_ref`** | **No** |
+| **Cloudflared tunnel lifecycle** | **No** — all tests use `tunnel_provider="none"` |
+| **Gateway 502 error forwarding** | **No** |
+| **Webhook for FAILED/CANCELLED/APPLIED states** | **No** |
+| **FastAPI route integration (HTTP-level)** | **No** |
+
+### Recommendations
+
+1. **Fix the token persistence bug** — `_webhook_token()` must write back to `request.options`
+2. **Add auto-apply to `handle_deeppcb_webhook`** — copy the pattern from `refresh_job`
+3. **Add body size limit** to the gateway handler (e.g., 1MB cap)
+4. **Add `_extract_deeppcb_webhook_token` unit tests** — this is the auth boundary
+5. **Add "no matching job" and "missing token" tests** — basic validation paths
+6. **Consider gating `/dev/` routes** behind a dev-mode flag or localhost check
+
+---
+
 ## 1. Autolayout / DeepPCB Integration
 
 ### Architecture (Good)

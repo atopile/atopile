@@ -435,7 +435,10 @@ class AutolayoutService:
             job.message = update.status.message
             job.progress = update.status.progress
             if update.status.candidates:
-                job.candidates = _dedupe_candidates(update.status.candidates)
+                job.candidates = _limit_candidates_for_options(
+                    _dedupe_candidates(update.status.candidates),
+                    job.options,
+                )
                 if job.state == AutolayoutState.COMPLETED:
                     job.state = AutolayoutState.AWAITING_SELECTION
             if job.state in {AutolayoutState.FAILED, AutolayoutState.CANCELLED}:
@@ -446,9 +449,11 @@ class AutolayoutService:
             job.mark_updated()
             self._persist_jobs_locked()
             self._emit_job_event(job)
+            should_auto_apply = _should_auto_apply(job)
+            candidate_id = _choose_auto_apply_candidate_id(job.candidates)
             self._emit_job_transition_events_locked(job, previous_state)
 
-            return {
+            result = {
                 "accepted": True,
                 "matched": True,
                 "job_id": job.job_id,
@@ -456,6 +461,11 @@ class AutolayoutService:
                 "provider_job_ref": job.provider_job_ref,
                 "candidate_count": len(job.candidates),
             }
+
+        if should_auto_apply and candidate_id:
+            self._auto_apply_candidate(job.job_id, candidate_id)
+            result["auto_applied"] = True
+        return result
 
     def list_candidates(
         self,
