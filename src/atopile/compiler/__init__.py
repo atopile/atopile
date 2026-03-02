@@ -140,11 +140,22 @@ class DslRichException(DslException):
 
         loc = source_chunk.loc.get()
         start_line = loc.get_start_line()
+        start_col = loc.get_start_col()
         end_line = loc.get_end_line()
 
         # Try to extract filepath from source_chunk if file_path is None
         if file_path is None:
             file_path = ASTVisitor._extract_filepath_from_source_node(source_chunk)
+
+        # Build clickable source location header: Source: /abs/path:line:col
+        if file_path is not None:
+            source_info = str(file_path.resolve())
+            source_info += f":{start_line}"
+            if start_col:
+                source_info += f":{start_col}"
+        else:
+            source_info = f"memory:{start_line}"
+        header = Text("Source: ", style="bold") + Text(source_info, style="magenta")
 
         code = None
         if file_path is not None:
@@ -157,11 +168,6 @@ class DslRichException(DslException):
         if code is None:
             # Fallback to the text stored in the SourceChunk
             code = source_chunk.get_text()
-            display_path = str(file_path) if file_path else "memory"
-
-            header = Text("  File ", style="dim")
-            header.append(f'"{display_path}"', style="dim")
-            header.append(f", line {start_line}", style="dim")
 
             return [
                 header,
@@ -176,11 +182,6 @@ class DslRichException(DslException):
                     background_color="default",
                 ),
             ]
-
-        display_path = str(file_path)
-        header = Text("  File ", style="dim")
-        header.append(f'"{display_path}"', style="dim")
-        header.append(f", line {start_line}", style="dim")
 
         return [
             header,
