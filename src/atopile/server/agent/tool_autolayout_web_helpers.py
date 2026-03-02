@@ -214,29 +214,13 @@ def _discover_downloaded_artifacts(
 
     artifacts: dict[str, str] = {}
 
-    # Prefer candidate-id-prefixed artifacts, then fallback to the newest file
-    # by suffix for provider responses that do not preserve candidate_id in name.
-    def _pick_path(suffix: str) -> Path | None:
-        preferred = downloads_dir / f"{candidate_id}{suffix}"
-        if preferred.exists():
-            return preferred
-
-        matches = sorted(
-            downloads_dir.glob(f"*{suffix}"),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
-        if matches:
-            return matches[0]
-        return None
-
     for key, suffix in (
         ("kicad_pcb", ".kicad_pcb"),
         ("zip", ".zip"),
     ):
-        chosen = _pick_path(suffix)
-        if chosen is not None:
-            artifacts[key] = str(chosen)
+        path = downloads_dir / f"{candidate_id}{suffix}"
+        if path.exists():
+            artifacts[key] = str(path)
 
     return artifacts
 

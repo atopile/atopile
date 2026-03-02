@@ -813,8 +813,7 @@ class AutolayoutService:
 
         schematic_path = layout_path.with_suffix(".kicad_sch")
         if not schematic_path.exists():
-            fallback = build_cfg.paths.output_base.with_suffix(".kicad_sch")
-            schematic_path = fallback if fallback.exists() else None
+            schematic_path = None
 
         autolayout_cfg = build_cfg.autolayout
         provider_name = "deeppcb"

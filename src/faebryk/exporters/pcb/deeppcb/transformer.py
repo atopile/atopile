@@ -688,17 +688,23 @@ class DeepPCB_Transformer:
             if drill_raw is not None:
                 drill_radius = float(drill_raw)
             else:
-                # Fallback: extract drill from hole field (strict mode)
+                # Strict-mode boards store drill geometry in the hole field
+                # rather than a separate drill scalar.
                 hole = padstack.get("hole")
                 if isinstance(hole, dict):
                     hole_shape = hole.get("shape", {})
                     hole_r = hole_shape.get("radius")
-                    if isinstance(hole_r, (int, float)):
-                        drill_radius = float(hole_r)
-                    else:
-                        drill_radius = max(radius / 2.0, 150)
+                    if not isinstance(hole_r, (int, float)):
+                        raise ValueError(
+                            f"Via padstack {padstack_id!r} has no drill or "
+                            f"hole radius"
+                        )
+                    drill_radius = float(hole_r)
                 else:
-                    drill_radius = max(radius / 2.0, 150)
+                    raise ValueError(
+                        f"Via padstack {padstack_id!r} has no drill or hole "
+                        f"field"
+                    )
             layer_ids = [
                 index_to_layer.get(int(i), "F.Cu")
                 for i in padstack.get("layers", [0, 1])
@@ -938,8 +944,8 @@ class DeepPCB_Transformer:
                         ),
                     )
                 elif padstack.get("hole") is not None:
-                    # Fallback: reconstruct drill from hole field (strict mode
-                    # strips kicadDrill but preserves the hole geometry).
+                    # Strict-mode boards store drill geometry in the hole field
+                    # rather than kicadDrill.
                     hole_shape = padstack["hole"].get("shape", {})
                     hole_type = str(hole_shape.get("type", ""))
                     if hole_type == "circle":
@@ -2822,15 +2828,9 @@ class DeepPCB_Transformer:
             new_x = float(synth_fp.at.x)
             new_y = float(synth_fp.at.y)
             resolution = cls.RESOLUTION_VALUE
-            sub_anchor = block_info.get("sub_anchor_position")
-            if sub_anchor:
-                sub_ax = float(sub_anchor[0]) / resolution
-                sub_ay = float(sub_anchor[1]) / resolution
-            else:
-                # Fallback: assume sub-PCB anchor is at parent position
-                orig_pos = block_info["anchor_position"]
-                sub_ax = float(orig_pos[0]) / resolution
-                sub_ay = float(orig_pos[1]) / resolution
+            sub_anchor = block_info["sub_anchor_position"]
+            sub_ax = float(sub_anchor[0]) / resolution
+            sub_ay = float(sub_anchor[1]) / resolution
             offset = kicad.pcb.Xy(x=new_x - sub_ax, y=new_y - sub_ay)
 
             # Load sub-PCB
