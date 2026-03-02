@@ -8,6 +8,28 @@ pub fn PyObjectWrapper(comptime T: type) type {
     return struct {
         ob_base: py.PyObject_HEAD,
         data: *T,
+        owned: bool = false,
+    };
+}
+
+fn genStructDealloc(comptime WrapperType: type) type {
+    return struct {
+        pub fn impl(self: *py.PyObject) callconv(.c) void {
+            const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
+            if (@hasField(WrapperType, "owned") and wrapper_obj.owned) {
+                std.heap.c_allocator.destroy(wrapper_obj.data);
+                wrapper_obj.owned = false;
+            }
+
+            if (py.Py_TYPE(self)) |type_obj| {
+                if (type_obj.tp_free) |free_fn_any| {
+                    const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
+                    free_fn(self);
+                    return;
+                }
+            }
+            py._Py_Dealloc(self);
+        }
     };
 }
 
@@ -88,6 +110,7 @@ pub fn wrap_in_python(comptime T: type, comptime override_name: ?[*:0]const u8) 
         pub const generated_repr = genStruct.genStructRepr(WrapperType, T);
         pub const generated_field_names = genStruct.genStructFieldNames(T);
         pub const generated_zig_address = genZigAddress(WrapperType, T);
+        pub const generated_dealloc = genStructDealloc(WrapperType);
 
         pub const generated_methods = [_]py.PyMethodDef{
             generated_field_names.method(),
@@ -105,6 +128,7 @@ pub fn wrap_in_python(comptime T: type, comptime override_name: ?[*:0]const u8) 
             .tp_getset = @as([*]py.PyGetSetDef, @ptrCast(@constCast(&generated_getset.getset))),
             .tp_methods = @as([*]py.PyMethodDef, @ptrCast(@constCast(&generated_methods))),
             .tp_init = @ptrCast(&generated_init.impl),
+            .tp_dealloc = @ptrCast(&generated_dealloc.impl),
         };
     };
 }
@@ -381,5 +405,8 @@ pub fn wrap_obj(
     const wrapper = @as(*Wrapper, @ptrCast(@alignCast(pyobj)));
     wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
     wrapper.data = data_ptr;
+    if (comptime @hasField(Wrapper, "owned")) {
+        wrapper.owned = false;
+    }
     return pyobj;
 }
