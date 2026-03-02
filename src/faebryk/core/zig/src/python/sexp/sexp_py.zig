@@ -265,7 +265,15 @@ fn generateModule(
 
                     const has_loc = line_opt != null and col_opt != null;
                     const loc = if (has_loc) std.fmt.allocPrint(std.heap.c_allocator, " at {d}:{d}", .{ line_opt.?, col_opt.? }) catch "" else "";
-                    const detail = c.message orelse "";
+                    var detail_alloc: ?[]u8 = null;
+                    defer if (detail_alloc) |p| std.heap.c_allocator.free(p);
+                    const detail: []const u8 = c.message orelse blk_detail: {
+                        if (c.sexp) |s| {
+                            detail_alloc = sexp.structure.formatSexpPreviewForError(std.heap.c_allocator, s) catch null;
+                            if (detail_alloc) |p| break :blk_detail p;
+                        }
+                        break :blk_detail "";
+                    };
 
                     // Find the error line in input_copy
                     var line_text: []const u8 = "";

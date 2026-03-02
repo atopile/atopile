@@ -134,10 +134,19 @@ pub const ErrorContext = struct {
     pub fn format(self: ErrorContext, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
+        var problem: ?[]const u8 = self.message;
+        var preview_alloc: ?[]u8 = null;
+        defer if (preview_alloc) |p| std.heap.page_allocator.free(p);
+        if (problem == null) {
+            if (self.sexp) |s| {
+                preview_alloc = formatSexpPreview(std.heap.page_allocator, s) catch null;
+                if (preview_alloc) |p| problem = p;
+            }
+        }
         try writer.print("ErrorContext(\n  Struct: {s},\n  Field: {?s},\n  Problem: {?s},\n  Location: {?d}:{?d} to {?d}:{?d},\n  Offsets: {?d}..{?d}", .{
             self.path,
             self.field_name,
-            self.message,
+            problem,
             self.line,
             self.column,
             self.end_line,
@@ -198,12 +207,6 @@ fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
     }
     ctx.sexp = sexp;
 
-    // If caller did not provide a message, attach a concise S-expression preview.
-    if (ctx.message == null) {
-        const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
-        if (preview) |p| ctx.message = p;
-    }
-
     current_error_context = ctx;
 }
 
@@ -237,6 +240,10 @@ fn formatSexpPreview(allocator: std.mem.Allocator, sexp: SExp) ![]u8 {
 
     try formatSexpPreviewInternal(sexp, &buf, 0, 50); // max 50 chars
     return try buf.toOwnedSlice();
+}
+
+pub fn formatSexpPreviewForError(allocator: std.mem.Allocator, sexp: SExp) ![]u8 {
+    return formatSexpPreview(allocator, sexp);
 }
 
 fn formatSexpPreviewInternal(sexp: SExp, buf: *std.array_list.Managed(u8), depth: usize, max_len: usize) !void {
