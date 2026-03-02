@@ -1607,21 +1607,6 @@ pub fn encodeWrapped(data: anytype, allocator: std.mem.Allocator, symbol_name: [
     return ast.SExp{ .value = .{ .list = items }, .location = tokenizer.TokenLocation.none };
 }
 
-// Backward-compatible benchmark alias.
-pub fn encodeWrappedStreamForBenchmark(
-    data: anytype,
-    allocator: std.mem.Allocator,
-    symbol_name: []const u8,
-    writer: anytype,
-) !void {
-    try encodeWrappedStream(data, allocator, symbol_name, writer);
-}
-
-// Backward-compatible benchmark alias.
-pub fn encodeWrappedForBenchmark(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) !ast.SExp {
-    return encodeWrapped(data, allocator, symbol_name);
-}
-
 // Load a struct from an S-expression string with a wrapping symbol
 fn decodeWrappedWithExpectedSymbol(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, expected_symbol: []const u8) !T {
     // The file structure is (symbol_name ...)

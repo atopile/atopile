@@ -220,17 +220,7 @@ fn generateModule(
                 const ctx = sexp.structure.getErrorContext();
                 var buf: [2048]u8 = undefined;
 
-                // Map error to short name
-                const err_name = switch (err) {
-                    error.MissingField => "MissingField",
-                    error.UnexpectedType => "UnexpectedType",
-                    error.UnexpectedValue => "UnexpectedValue",
-                    error.InvalidValue => "InvalidValue",
-                    error.DuplicateKey => "DuplicateKey",
-                    error.AssertionFailed => "AssertionFailed",
-                    error.OutOfMemory => "OutOfMemory",
-                    else => "Error",
-                };
+                const err_name = @errorName(err);
 
                 // Extract a source snippet for the current line
                 const msg = if (ctx) |c| blk: {
