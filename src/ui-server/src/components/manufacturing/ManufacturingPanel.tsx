@@ -57,13 +57,6 @@ interface BuildStep {
   message?: string;
 }
 
-const TERMINAL_AUTO_LAYOUT_STATES = new Set([
-  'awaiting_selection',
-  'completed',
-  'failed',
-  'cancelled',
-]);
-
 // Format price with appropriate decimal places for very cheap parts
 function formatPrice(value: number): string {
   if (value < 0.01) return `$${value.toFixed(4)}`;
@@ -647,7 +640,7 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
       syncAutolayoutJob(jobPayload);
       const normalized = normalizeAutolayoutJob(jobPayload);
       if (normalized.state === 'awaiting_selection' && normalized.candidates.length === 0) {
-        await handleRefreshAutolayoutCandidates(normalized.job_id, true);
+        await handleRefreshAutolayoutCandidates(normalized.job_id, false);
       }
 
       return normalized;
@@ -700,21 +693,75 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
   }, [selectedBuild, syncAutolayoutJob]);
 
   useEffect(() => {
-    if (!autolayoutJob) return;
-    if (TERMINAL_AUTO_LAYOUT_STATES.has(autolayoutJob.state)) return;
+    const handleAutolayoutEvent = (rawEvent: Event) => {
+      if (!(rawEvent instanceof CustomEvent)) return;
+      const detail = rawEvent.detail as Record<string, unknown> | null;
+      if (!detail) return;
 
-    const interval = window.setInterval(() => {
-      void handleRefreshAutolayoutStatus(true).catch((error) => {
-        setAutolayoutError(
-          error instanceof Error ? error.message : 'Failed to refresh autolayout status'
-        );
-      });
-    }, 3000);
+      const eventProjectRoot =
+        (typeof detail.projectRoot === 'string' && detail.projectRoot) ||
+        (typeof detail.project_root === 'string' && detail.project_root) ||
+        null;
+      const eventBuildTarget =
+        (typeof detail.buildTarget === 'string' && detail.buildTarget) ||
+        (typeof detail.build_target === 'string' && detail.build_target) ||
+        null;
+      const eventJobId =
+        (typeof detail.jobId === 'string' && detail.jobId) ||
+        (typeof detail.job_id === 'string' && detail.job_id) ||
+        null;
 
-    return () => {
-      window.clearInterval(interval);
+      if (
+        selectedBuild &&
+        eventProjectRoot &&
+        eventProjectRoot !== selectedBuild.projectRoot
+      ) {
+        return;
+      }
+      if (
+        selectedBuild &&
+        eventBuildTarget &&
+        eventBuildTarget !== selectedBuild.targetName
+      ) {
+        return;
+      }
+
+      if (autolayoutJob?.job_id && eventJobId && eventJobId === autolayoutJob.job_id) {
+        void handleRefreshAutolayoutStatus(false).catch((error) => {
+          setAutolayoutError(
+            error instanceof Error ? error.message : 'Failed to refresh autolayout status'
+          );
+        });
+        return;
+      }
+
+      if (!selectedBuild) return;
+
+      void api.autolayout
+        .listJobs(selectedBuild.projectRoot)
+        .then((response) => {
+          const rawJobs = Array.isArray(response.jobs)
+            ? (response.jobs as Record<string, unknown>[])
+            : [];
+          const jobs = rawJobs
+            .map((job) => normalizeAutolayoutJob(job))
+            .filter((job) => job.build_target === selectedBuild.targetName);
+          const latest = jobs[0];
+          if (!latest) return;
+          syncAutolayoutJob(latest as unknown as Record<string, unknown>);
+        })
+        .catch((error) => {
+          setAutolayoutError(
+            error instanceof Error ? error.message : 'Failed to refresh autolayout status'
+          );
+        });
     };
-  }, [autolayoutJob, handleRefreshAutolayoutStatus]);
+
+    window.addEventListener('atopile:autolayout_event', handleAutolayoutEvent);
+    return () => {
+      window.removeEventListener('atopile:autolayout_event', handleAutolayoutEvent);
+    };
+  }, [autolayoutJob, handleRefreshAutolayoutStatus, selectedBuild, syncAutolayoutJob]);
 
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {

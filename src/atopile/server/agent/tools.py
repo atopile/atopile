@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 from collections import OrderedDict
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -92,6 +93,10 @@ from atopile.server.domains.autolayout.models import (
     AutolayoutState,
 )
 from atopile.server.domains.autolayout.service import get_autolayout_service
+from atopile.server.domains.autolayout.webhook_gateway import (
+    default_internal_api_base_url,
+    get_autolayout_webhook_gateway_manager,
+)
 
 _openai_file_client: AsyncOpenAI | None = None
 _OPENAI_FILE_CACHE_MAX_ENTRIES = max(
@@ -122,6 +127,8 @@ _EXPECTED_MANUFACTURING_OUTPUT_KEYS: tuple[str, ...] = (
     "pcb_summary",
 )
 _AUTOLAYOUT_MAX_TIMEOUT_MINUTES = 2
+_AUTOLAYOUT_WEBHOOK_PATH = "/api/autolayout/webhooks/deeppcb"
+_AUTOLAYOUT_TUNNEL_PROVIDERS = {"cloudflared", "none"}
 
 def _datasheet_cache_key(*, project_root: Path, source_type: str, source: str) -> str:
     root = str(project_root.resolve())
@@ -1525,6 +1532,80 @@ async def _tool_design_diagnostics(arguments: dict[str, Any], project_root: Path
         "recommendations": recommendations,
     }
 
+
+def _resolve_autolayout_tunnel_provider(arguments: dict[str, Any]) -> str:
+    raw_value = arguments.get("tunnel_provider")
+    if raw_value is None:
+        return "cloudflared"
+    provider = str(raw_value).strip().lower()
+    if provider not in _AUTOLAYOUT_TUNNEL_PROVIDERS:
+        allowed = ", ".join(sorted(_AUTOLAYOUT_TUNNEL_PROVIDERS))
+        raise ValueError(f"tunnel_provider must be one of: {allowed}")
+    return provider
+
+
+def _resolve_internal_api_base_url(arguments: dict[str, Any]) -> str:
+    raw = arguments.get("internal_api_base_url")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().rstrip("/")
+    return default_internal_api_base_url()
+
+
+@_register_tool("autolayout_webhook_gateway")
+async def _tool_autolayout_webhook_gateway(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
+    _ = (project_root, ctx)
+    action = str(arguments.get("action", "status")).strip().lower()
+    if action not in {"start", "status", "stop"}:
+        raise ValueError("action must be one of: start, status, stop")
+
+    manager = get_autolayout_webhook_gateway_manager()
+
+    if action == "start":
+        tunnel_provider = _resolve_autolayout_tunnel_provider(arguments)
+        internal_base_url = _resolve_internal_api_base_url(arguments)
+        gateway_host = (
+            str(arguments.get("gateway_host", "127.0.0.1")).strip() or "127.0.0.1"
+        )
+        gateway_port = int(arguments.get("gateway_port", 0))
+        requested_token = arguments.get("webhook_token")
+        webhook_token = (
+            str(requested_token).strip()
+            if isinstance(requested_token, str) and requested_token.strip()
+            else secrets.token_urlsafe(32)
+        )
+
+        status = await asyncio.to_thread(
+            manager.start,
+            internal_base_url=internal_base_url,
+            webhook_path=_AUTOLAYOUT_WEBHOOK_PATH,
+            tunnel_provider=tunnel_provider,
+            gateway_host=gateway_host,
+            gateway_port=gateway_port,
+            webhook_token=webhook_token,
+        )
+        service = get_autolayout_service()
+        if isinstance(status.get("webhook_url"), str):
+            await asyncio.to_thread(
+                service.configure_deeppcb_webhook_defaults,
+                webhook_url=str(status["webhook_url"]),
+                webhook_token=str(status.get("webhook_token") or ""),
+            )
+        return {
+            "action": "start",
+            "status": status,
+            "next_step": (
+                "Pass status.webhook_url and status.webhook_token to autolayout_run, "
+                "or run autolayout_run with auto_setup_webhook=true."
+            ),
+        }
+
+    if action == "stop":
+        status = await asyncio.to_thread(manager.stop)
+        return {"action": "stop", "status": status}
+
+    status = await asyncio.to_thread(manager.status)
+    return {"action": "status", "status": status}
+
 @_register_tool("autolayout_run")
 async def _tool_autolayout_run(arguments: dict[str, Any], project_root: Path, ctx: AppContext) -> dict[str, Any]:
     build_target = (
@@ -1612,7 +1693,76 @@ async def _tool_autolayout_run(arguments: dict[str, Any], project_root: Path, ct
             bool(arguments.get("resume_stop_first", True)),
         )
 
+    auto_setup_webhook = bool(arguments.get("auto_setup_webhook", False))
+    webhook_setup: dict[str, Any] | None = None
+    has_webhook_url = any(
+        isinstance(options.get(key), str) and str(options.get(key)).strip()
+        for key in ("webhook_url", "webhookUrl", "webHookUrl")
+    )
+    if auto_setup_webhook and not has_webhook_url:
+        tunnel_provider = _resolve_autolayout_tunnel_provider(arguments)
+        internal_base_url = _resolve_internal_api_base_url(arguments)
+        gateway_host = (
+            str(arguments.get("gateway_host", "127.0.0.1")).strip() or "127.0.0.1"
+        )
+        gateway_port = int(arguments.get("gateway_port", 0))
+        requested_setup_token = options.get("webhook_token") or options.get(
+            "webhookToken"
+        )
+        setup_token = (
+            str(requested_setup_token).strip()
+            if isinstance(requested_setup_token, str)
+            and str(requested_setup_token).strip()
+            else secrets.token_urlsafe(32)
+        )
+        manager = get_autolayout_webhook_gateway_manager()
+        webhook_setup = await asyncio.to_thread(
+            manager.start,
+            internal_base_url=internal_base_url,
+            webhook_path=_AUTOLAYOUT_WEBHOOK_PATH,
+            tunnel_provider=tunnel_provider,
+            gateway_host=gateway_host,
+            gateway_port=gateway_port,
+            webhook_token=setup_token,
+        )
+        setup_webhook_url = str(webhook_setup.get("webhook_url", "")).strip()
+        if not setup_webhook_url:
+            raise RuntimeError(
+                "Auto webhook setup failed: no webhook_url returned by gateway."
+            )
+        options.setdefault("webhook_url", setup_webhook_url)
+        setup_webhook_token = webhook_setup.get("webhook_token")
+        if isinstance(setup_webhook_token, str) and setup_webhook_token.strip():
+            options.setdefault("webhook_token", setup_webhook_token.strip())
+
+    resolved_webhook_url = next(
+        (
+            str(options.get(key)).strip()
+            for key in ("webhook_url", "webhookUrl", "webHookUrl")
+            if isinstance(options.get(key), str) and str(options.get(key)).strip()
+        ),
+        None,
+    )
+    resolved_webhook_token = next(
+        (
+            str(options.get(key)).strip()
+            for key in ("webhook_token", "webhookToken", "webHookToken")
+            if isinstance(options.get(key), str) and str(options.get(key)).strip()
+        ),
+        None,
+    )
+
     service = get_autolayout_service()
+    if (
+        resolved_webhook_url
+        and hasattr(service, "configure_deeppcb_webhook_defaults")
+        and callable(getattr(service, "configure_deeppcb_webhook_defaults"))
+    ):
+        await asyncio.to_thread(
+            service.configure_deeppcb_webhook_defaults,
+            webhook_url=resolved_webhook_url,
+            webhook_token=resolved_webhook_token,
+        )
     job = await asyncio.to_thread(
         service.start_job,
         str(project_root),
@@ -1636,6 +1786,9 @@ async def _tool_autolayout_run(arguments: dict[str, Any], project_root: Path, ct
         "options": dict(job.options),
         "constraints": dict(job.constraints),
         "background": True,
+        "webhook_setup": webhook_setup,
+        "webhook_url": resolved_webhook_url,
+        "webhook_token_configured": bool(resolved_webhook_token),
         "job": job.to_dict(),
         "next_step": (
             "Use autolayout_status with this job_id to monitor candidates, "
@@ -1651,7 +1804,7 @@ async def _tool_autolayout_status(arguments: dict[str, Any], project_root: Path,
         if isinstance(requested_job_id, str) and str(requested_job_id).strip()
         else ""
     )
-    refresh = bool(arguments.get("refresh", True))
+    refresh = bool(arguments.get("refresh", False))
     include_candidates = bool(arguments.get("include_candidates", True))
     wait_seconds = max(0, int(arguments.get("wait_seconds", 0)))
     poll_interval_seconds = max(
@@ -1709,7 +1862,7 @@ async def _tool_autolayout_status(arguments: dict[str, Any], project_root: Path,
 
     polls = 0
     waited_seconds = 0
-    if refresh and wait_seconds > 0:
+    if wait_seconds > 0:
         while (
             _autolayout_state_value(job.state)
             in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}
@@ -1721,7 +1874,10 @@ async def _tool_autolayout_status(arguments: dict[str, Any], project_root: Path,
             await asyncio.sleep(sleep_for)
             waited_seconds += sleep_for
             polls += 1
-            job = await asyncio.to_thread(service.refresh_job, job_id)
+            job = await asyncio.to_thread(
+                service.refresh_job if refresh else service.get_job,
+                job_id,
+            )
 
     candidates_payload: list[dict[str, Any]] = []
     if include_candidates:

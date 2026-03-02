@@ -458,6 +458,19 @@ def _infer_prefilled_args(
             args["resume_board_id"] = resume_id.group(0)
         return args
 
+    if tool_name == "autolayout_webhook_gateway":
+        args: dict[str, Any] = {}
+        if any(token in lower for token in ("stop", "disable", "shutdown")):
+            args["action"] = "stop"
+            return args
+        if any(token in lower for token in ("start", "setup", "enable")):
+            args["action"] = "start"
+            if "local only" in lower or "no tunnel" in lower:
+                args["tunnel_provider"] = "none"
+            return args
+        args["action"] = "status"
+        return args
+
     if tool_name == "autolayout_status":
         args: dict[str, Any] = {}
         if any(token in lower for token in ("periodic", "check in", "monitor", "wait")):

@@ -439,6 +439,31 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         typical_output="recent_builds, latest_failure_logs, problems",
         keywords=["diagnostic", "explain failure", "lint", "health check"],
     ),
+    "autolayout_webhook_gateway": ToolDirectoryItem(
+        name="autolayout_webhook_gateway",
+        category="autolayout",
+        purpose="Manage webhook-only dev tunnel for DeepPCB callbacks.",
+        tooltip=(
+            "Start/status/stop a local gateway that only exposes the DeepPCB "
+            "webhook endpoint publicly (via cloudflared or local-only mode)."
+        ),
+        inputs=[
+            "action",
+            "tunnel_provider",
+            "internal_api_base_url",
+            "gateway_host",
+            "gateway_port",
+            "webhook_token",
+        ],
+        typical_output="status.webhook_url, status.running, status.gateway_port",
+        keywords=[
+            "webhook gateway",
+            "cloudflared",
+            "deeppcb webhook",
+            "tunnel",
+            "public webhook",
+        ],
+    ),
     "autolayout_run": ToolDirectoryItem(
         name="autolayout_run",
         category="autolayout",
