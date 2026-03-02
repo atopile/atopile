@@ -75,6 +75,8 @@ class DeferredExecutor:
         self._resolve_inheritance()
         self._execute_retypes()
         self._visitor._execute_for_loops()
+        for type_node in self._type_roots.values():
+            self._tg.mark_constructable(type_node=type_node)
 
     def _resolve_inheritance(self) -> None:
         """
@@ -142,10 +144,9 @@ class DeferredExecutor:
                 )
 
             # Apply inheritance
-            self._tg.copy_type_structure(
+            self._tg.merge_types(
                 target=item.derived_type,
                 source=parent_type,
-                skip_identifiers=list(item.auto_generated_ids),
             )
 
     def _execute_retypes(self) -> None:
