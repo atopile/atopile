@@ -4700,14 +4700,26 @@ class Numbers(fabll.Node):
             raise ValueError(f"Invalid unit data: {unit_data}")
 
         # Create the Numbers instance
+        # Values from the API are already in base SI units.
+        # We set has_unit (for dimensional correctness) but NOT has_display_unit,
+        # so that pretty_str() will auto-scale with SI prefixes (e.g. 220nF
+        # instead of 0F).
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
             values=parsed_intervals
         )
         result = cls.create_instance(g=g, tg=tg)
-        # The values are in base SI units
-        return result.setup(
-            numeric_set=numeric_set, unit=is_unit.to_base_units(unit, g=g, tg=tg)
-        )
+        result.numeric_set_ptr.get().point(numeric_set)
+
+        base_unit = is_unit.to_base_units(unit, g=g, tg=tg)
+        if base_unit and not base_unit.is_dimensionless():
+            from faebryk.library.Units import has_unit as has_unit_trait
+
+            base_unit = base_unit.copy_into(g=g)
+            fabll.Traits.create_and_add_instance_to(result, has_unit_trait).setup(
+                is_unit=base_unit
+            )
+
+        return result
 
     def pretty_str(
         self, show_tolerance: bool = True, force_center: bool = False
@@ -4780,36 +4792,44 @@ class Numbers(fabll.Node):
             str_num = f"{rounded:.{PRINT_DIGITS}f}".rstrip("0").rstrip(".")
             return str_num
 
+        def find_rep_value() -> float | None:
+            """Find a representative value for SI prefix scaling."""
+            if numeric_set.is_singleton():
+                return numeric_set.get_min_value()
+            if intervals:
+                for iv in intervals:
+                    min_v, max_v = iv.get_min_value(), iv.get_max_value()
+                    if not math.isinf(min_v) and not math.isinf(max_v):
+                        return (min_v + max_v) / 2
+                    elif not math.isinf(min_v):
+                        return min_v
+                    elif not math.isinf(max_v):
+                        return max_v
+            return None
+
         # Determine scale factor based on representative value
         # When display unit is explicitly set, use it directly without SI prefix
         # auto-scaling
         scale = 1
         prefix = ""
+        need_si_autoscale = False
         if has_explicit_display_unit:
-            # Display unit is explicitly set - use it directly, no additional
-            # auto-scaling
-            # The scale incorporates the display unit conversion
+            # Display unit is explicitly set - use it directly
             scale = 1.0 / display_unit_conversion
-        elif base_unit_symbol and base_unit_symbol not in ("", "dimensionless"):
-            # No display unit - use SI prefix auto-scaling
-            # Find a representative value for scaling
-            rep_value = None
-            if numeric_set.is_singleton():
-                rep_value = numeric_set.get_min_value()
-            elif intervals:
-                # Use center of first finite interval
-                for iv in intervals:
-                    min_v, max_v = iv.get_min_value(), iv.get_max_value()
-                    if not math.isinf(min_v) and not math.isinf(max_v):
-                        rep_value = (min_v + max_v) / 2
-                        break
-                    elif not math.isinf(min_v):
-                        rep_value = min_v
-                        break
-                    elif not math.isinf(max_v):
-                        rep_value = max_v
-                        break
 
+            # If the value would round to 0 at this scale, fall back to SI
+            # auto-scaling. e.g. 220nF stored as 2.2e-7F: round(2.2e-7, 3)=0
+            rep = find_rep_value()
+            if rep is not None and rep != 0 and round(rep / scale, PRINT_DIGITS) == 0:
+                need_si_autoscale = True
+
+        if need_si_autoscale or (
+            not has_explicit_display_unit
+            and base_unit_symbol
+            and base_unit_symbol not in ("", "dimensionless")
+        ):
+            # Use SI prefix auto-scaling
+            rep_value = find_rep_value()
             if rep_value is not None and rep_value != 0:
                 scale, prefix = get_scale_factor(rep_value)
 
@@ -6440,6 +6460,26 @@ class TestNumbers:
         assert isinstance(deserialized_numbers, Numbers)
         assert deserialized_numbers.get_numeric_set().get_min_value() == 2.0
         assert deserialized_numbers.get_numeric_set().get_max_value() == 8.0
+
+    def test_pretty_str_small_base_unit_value(self):
+        """Test that small values in base units (e.g. 220nF as Farads) don't
+        display as 0F but fall back to SI auto-scaling."""
+        from faebryk.library.Units import Farad
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        farad_instance = Farad.bind_typegraph(tg=tg).create_instance(g=g)
+        farad_unit = farad_instance.is_unit.get()
+
+        # 220nF = 2.2e-7 F, with 20% tolerance
+        lit = Numbers.create_instance(g=g, tg=tg)
+        lit.setup_from_min_max(min=1.76e-7, max=2.64e-7, unit=farad_unit)
+        result = lit.pretty_str()
+        # Should use SI prefix (nF), not display as 0F
+        assert "n" in result, f"Expected SI prefix 'n' in '{result}'"
+        assert result.startswith("0") is False, f"Should not start with 0: '{result}'"
+        assert "F" in result, f"Expected unit 'F' in '{result}'"
 
 
 @dataclass
