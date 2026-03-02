@@ -266,6 +266,9 @@ class _TypeContextStack:
         self._tg = tg
         self._state = state
         self._traceback_stack = traceback_stack
+        # Per-type set of identifiers created by explicit declarations (e.g. `x: ohm`).
+        # Assignments skip MakeChild creation when the field was already declared.
+        self._declared_identifiers: dict[str, set[str]] = {}
 
     @contextmanager
     def enter(
@@ -280,6 +283,7 @@ class _TypeContextStack:
             yield
         finally:
             self._stack.pop()
+            self._declared_identifiers.pop(type_identifier, None)
 
     def current(self) -> tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str]:
         if not self._stack:
@@ -296,6 +300,16 @@ class _TypeContextStack:
             )
             is not None
         )
+
+    def mark_declared(self, identifier: str) -> None:
+        """Record that a field was explicitly declared in the current type."""
+        _, _, type_id = self.current()
+        self._declared_identifiers.setdefault(type_id, set()).add(identifier)
+
+    def is_declared(self, identifier: str) -> bool:
+        """Check if a field was explicitly declared in the current type."""
+        _, _, type_id = self.current()
+        return identifier in self._declared_identifiers.get(type_id, set())
 
     def get_alias(self, name: str) -> FieldPath | None:
         """Get a pin alias from the current type's persistent aliases."""
@@ -381,7 +395,7 @@ class _TypeContextStack:
         assert action.child_field is not None
 
         action.child_field._set_locator(action.get_identifier())
-        action.child_field._soft_create = action.soft_create
+
         fabll.Node._exec_field(
             t=bound_tg,
             field=action.child_field,
@@ -867,13 +881,6 @@ class ASTVisitor:
         self._state.type_bound_tgs[type_identifier] = type_node_bound_tg
         self._state.constraining_expr_types[type_identifier] = constraint_expr
 
-        # Capture compiler-internal identifiers before we process statements
-        auto_generated_ids = frozenset(
-            id
-            for id, _ in self._tg.collect_make_children(type_node=type_node)
-            if id is not None
-        )
-
         # Capture inheritance relationship for deferred resolution
         if (super_type_name := node.get_super_type_ref_name()) is not None:
             super_symbol = self._scope_stack.try_resolve_symbol(super_type_name)
@@ -892,7 +899,6 @@ class ASTVisitor:
                     derived_name=module_name,
                     parent_ref=(import_ref if import_ref else super_type_name),
                     source_order=len(self._state.pending_inheritance),
-                    auto_generated_ids=auto_generated_ids,
                     source_node=node,
                 )
             )
@@ -1206,14 +1212,20 @@ class ASTVisitor:
                             f"Field `{target_path}` is not defined in scope",
                             node,
                         )
+                # If this identifier was explicitly declared in this type
+                # (e.g. `resistance: ohm`), skip creating a duplicate MakeChild
+                # and only add the constraint.
+                param_child = param_spec.param_child
+                if target_path.is_singleton() and self._type_stack.is_declared(
+                    target_path.leaf.identifier
+                ):
+                    param_child = None
+
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
-                    param_child=param_spec.param_child,
+                    param_child=param_child,
                     constraint_operand=param_spec.operand,
                     constraint_expr=self._type_stack.constraint_expr,
-                    # parameter assignment implicitly creates the parameter, if it
-                    # doesn't exist already
-                    soft_create=True,
                     source_chunk_node=node.source.get(),
                 )
             case _:
@@ -1682,6 +1694,8 @@ class ASTVisitor:
         except F.Units.UnitNotFoundError as e:
             self._raise(DslValueError, str(e), node)
         target_path = self.visit_FieldRef(node.get_field_ref())
+        if target_path.is_singleton():
+            self._type_stack.mark_declared(target_path.leaf.identifier)
         return ActionsFactory.parameter_actions(
             target_path=target_path,
             param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),

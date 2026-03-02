@@ -996,9 +996,11 @@ class TestEdgeTraversalPathResolution:
         tg = fbrk.TypeGraph.create(g=g)
 
         Electrical = tg.add_type(identifier="Electrical")
+        tg.mark_constructable(type_node=Electrical)
         Resistor = tg.add_type(identifier="Resistor")
         tg.add_make_child(type_node=Resistor, child_type=Electrical, identifier="p1")
         tg.add_make_child(type_node=Resistor, child_type=Electrical, identifier="p2")
+        tg.mark_constructable(type_node=Resistor)
 
         # String path should work
         ref = tg.ensure_child_reference(type_node=Resistor, path=["p1"], validate=False)
@@ -3376,21 +3378,28 @@ class TestBlockInheritance:
         assert "a" in identifiers, "Inherited field 'a' should exist"
         assert "b" in identifiers, "Own field 'b' should exist"
 
-    def test_redefinition_errors(self):
-        """Redefining a parent field in derived type raises an error."""
-        with pytest.raises(ValueError, match="Child already exists"):
-            build_type(
-                """
-                import Electrical
+    def test_redefinition_overrides_silently(self):
+        """Redefining a parent field in derived type: derived wins silently."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
 
-                module Base:
-                    x = new Electrical
+            module Base:
+                x = new Electrical
 
-                module Derived from Base:
-                    x = new Electrical
-                """,
-                link=True,
-            )
+            module Derived from Base:
+                x = new Electrical
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["Derived"]
+        identifiers = {
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=derived_type)
+            if identifier is not None
+        }
+        assert "x" in identifiers, "Derived should have 'x'"
 
 
 class TestRetypeOperator:
@@ -3502,18 +3511,19 @@ class TestRetypeOperator:
         assert isinstance(e.value.original, DslUndefinedSymbolError)
 
 
-class TestSoftHardMakeChild:
-    """Tests for soft/hard MakeChild parameter creation semantics.
+class TestMakeChildDeduplication:
+    """Tests for MakeChild creation and inheritance deduplication.
 
-    Parameters can be created explicitly (hard) or implicitly (soft):
-    - Hard: explicit declaration like `resistance: ohm`
-    - Soft: implicit from assignment like `resistance = 10kohm`
+    These tests match the legacy (v0.12) behavior except where noted.
 
-    Resolution rules (post-inheritance):
-    1. If hard exists, discard soft for same identifier
-    2. If only soft, keep first one
-    3. Multiple hard for same identifier -> error
-    4. Constraints always apply to surviving MakeChild
+    - Explicit declarations (`resistance: ohm`) create a MakeChild.
+    - Implicit assignments (`resistance = 10kohm`) create a MakeChild, unless
+      the identifier was already explicitly declared in the same type.
+    - Duplicate explicit declarations for the same identifier are an error.
+    - Duplicate implicit assignments for the same identifier are an error.
+      (Legacy silently kept the first; now an error.)
+    - During inheritance, `merge_types` deduplicates: if the derived type already
+      has a child with the same identifier as the parent, the derived's version wins.
     """
 
     def test_explicit_declaration_only(self):
@@ -3533,7 +3543,7 @@ class TestSoftHardMakeChild:
         assert "resistance" in identifiers
 
     def test_implicit_declaration_only(self):
-        """Implicit declaration (soft) creates parameter with constraint."""
+        """Implicit assignment creates parameter with constraint."""
         import faebryk.core.node as fabll
         import faebryk.library._F as F
 
@@ -3567,8 +3577,8 @@ class TestSoftHardMakeChild:
     def test_explicit_then_implicit_same_block(self):
         """Explicit declaration followed by implicit constraint in same block.
 
-        The explicit (hard) MakeChild should be kept, implicit (soft) discarded,
-        and constraint should apply to the explicit parameter.
+        The explicit MakeChild should be kept, assignment should not create
+        a duplicate, and constraint should apply to the declared parameter.
         """
         import faebryk.core.faebrykpy as fbrk
         import faebryk.core.node as fabll
@@ -3614,11 +3624,10 @@ class TestSoftHardMakeChild:
         )
 
     def test_inherited_explicit_with_implicit_constraint(self):
-        """Child constrains inherited explicit parameter with implicit assignment.
+        """Derived type constrains inherited explicit parameter.
 
-        Parent has explicit `resistance: ohm`, child does `resistance = 10kohm`.
-        Child's soft MakeChild should be discarded; only one 'resistance' remains.
-        (Constraint transfer to inherited parameter is a separate concern)
+        Parent has `resistance: ohm`, derived has `resistance = 10kohm`.
+        merge_types deduplicates: derived's MakeChild wins, only one 'resistance'.
         """
         g, tg, stdlib, result = build_type(
             """
@@ -3633,7 +3642,7 @@ class TestSoftHardMakeChild:
 
         derived_type = result.state.type_roots["Derived"]
 
-        # Should have exactly one 'resistance' MakeChild (inherited, not duplicated)
+        # Should have exactly one 'resistance' MakeChild (derived wins over parent)
         resistance_count = sum(
             1
             for id, _ in tg.collect_make_children(type_node=derived_type)
@@ -3643,54 +3652,8 @@ class TestSoftHardMakeChild:
             f"Expected 1 'resistance' MakeChild, got {resistance_count}"
         )
 
-    def test_multiple_implicit_same_identifier_keeps_first(self):
-        """Multiple implicit (soft) declarations keep the first one.
-
-        When the same identifier is assigned multiple times implicitly,
-        only the first soft MakeChild is kept. Parameter will be constrained
-        to an empty numeric interval.
-        """
-        g, tg, stdlib, result = build_type(
-            """
-            module App:
-                resistance = 10kohm
-                resistance = 20kohm
-            """,
-            link=True,
-        )
-
-        app_type = result.state.type_roots["App"]
-
-        # Should have exactly one 'resistance' MakeChild
-        resistance_count = sum(
-            1
-            for id, _ in tg.collect_make_children(type_node=app_type)
-            if id == "resistance"
-        )
-        assert resistance_count == 1, (
-            f"Expected 1 'resistance' MakeChild, got {resistance_count}"
-        )
-
-        import faebryk.library._F as F
-
-        instance = tg.instantiate_node(type_node=app_type, attributes={})
-
-        assert (
-            F.Parameters.NumericParameter.bind_instance(
-                not_none(
-                    fbrk.EdgeComposition.get_child_by_identifier(
-                        bound_node=instance, child_identifier="resistance"
-                    )
-                )
-            )
-            .force_extract_superset()
-            .get_numeric_set()
-            .get_intervals()
-            == []
-        )
-
     def test_multiple_explicit_same_identifier_errors(self):
-        """Multiple explicit (hard) declarations for same identifier is an error."""
+        """Multiple explicit declarations for same identifier is an error."""
         with pytest.raises(DslException, match="resistance"):
             build_type(
                 """
@@ -3701,11 +3664,26 @@ class TestSoftHardMakeChild:
                 link=True,
             )
 
-    def test_inherited_implicit_with_child_implicit(self):
-        """Both parent and child have implicit declarations.
+    def test_multiple_implicit_same_identifier_errors(self):
+        """Multiple implicit assignments for same identifier is an error.
 
-        Parent's implicit becomes hard after copy, child's implicit should add
-        constraint to the inherited parameter.
+        Legacy silently kept the first and discarded the second.
+        Now duplicate MakeChild nodes are caught by validate_type.
+        """
+        with pytest.raises(DslException, match="resistance"):
+            build_type(
+                """
+                module App:
+                    resistance = 10kohm
+                    resistance = 20kohm
+                """,
+                link=True,
+            )
+
+    def test_inherited_implicit_with_child_implicit(self):
+        """Both parent and child have implicit assignments for same identifier.
+
+        Derived's MakeChild wins during merge_types; parent's is skipped.
         """
         g, tg, stdlib, result = build_type(
             """
@@ -3721,7 +3699,7 @@ class TestSoftHardMakeChild:
 
         derived_type = result.state.type_roots["Derived"]
 
-        # Should have exactly one 'resistance' MakeChild
+        # Should have exactly one 'resistance' MakeChild (derived wins)
         resistance_count = sum(
             1
             for id, _ in tg.collect_make_children(type_node=derived_type)
