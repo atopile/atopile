@@ -105,10 +105,7 @@ class DeepPCBAutolayout:
 
         response = None
         status_errors: list[str] = []
-        templates = [self.config.status_path_template]
-        if self.config.bearer_token:
-            templates.append(self.config.alt_status_path_template)
-        for template in templates:
+        for template in [self.config.status_path_template]:
             path = template.format(task_id=external_job_id)
             try:
                 response = self._request_json("GET", path)
@@ -209,10 +206,12 @@ class DeepPCBAutolayout:
                     candidate_id=candidate_id,
                 ),
             ]
-            params: dict[str, str] = {"type": "KicadFile"}
+            base_params: dict[str, str] = {}
             if revision:
-                params["revision"] = revision
+                base_params["revision"] = revision
 
+            # Always download JSON format; we convert to KiCad ourselves.
+            params = {**base_params, "type": "JsonFile"}
             for path in download_paths:
                 try:
                     response = self._request_raw("GET", path, params=params)
@@ -483,8 +482,6 @@ class DeepPCBAutolayout:
         attempt_variants: list[tuple[str, dict[str, str] | None]] = [
             (self.config.confirm_path_template, None),
         ]
-        if self.config.bearer_token:
-            attempt_variants.append((self.config.alt_confirm_path_template, None))
 
         retries = max(1, int(self.config.confirm_retries))
         last_errors: list[str] = []
@@ -559,8 +556,6 @@ class DeepPCBAutolayout:
         attempt_variants: list[tuple[str, dict[str, str] | None]] = [
             (self.config.resume_path_template, None),
         ]
-        if self.config.bearer_token:
-            attempt_variants.append((self.config.alt_resume_path_template, None))
 
         errors: list[str] = []
         for template, override_headers in attempt_variants:
@@ -640,8 +635,6 @@ class DeepPCBAutolayout:
             "/api/v1/boards/{task_id}/details",
             self.config.status_path_template,
         ]
-        if self.config.bearer_token:
-            endpoints.append(self.config.alt_status_path_template)
 
         for endpoint in endpoints:
             try:
@@ -739,10 +732,10 @@ class DeepPCBAutolayout:
 
         head = content[:256].lstrip()
         if head.startswith(b"{") or head.startswith(b"["):
-            raise RuntimeError(
-                "DeepPCB returned a JSON artifact for candidate download. "
-                "Only KiCad artifacts are supported for apply."
-            )
+            # DeepPCB JSON board file (.deeppcb) – save and return as-is.
+            output_path = out_dir / f"{candidate_id}.deeppcb"
+            output_path.write_bytes(content)
+            return output_path
 
         output_path = out_dir / f"{candidate_id}.kicad_pcb"
         output_path.write_bytes(content)
@@ -856,7 +849,13 @@ class DeepPCBAutolayout:
         if any(order > float("-inf") for order, _, _ in ranked_candidates):
             ranked_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
-        return [candidate for _, _, candidate in ranked_candidates]
+        # Revision 0 is always the original board (unmodified). Skip it so
+        # callers only see actual placement/routing results.
+        return [
+            candidate
+            for order, _, candidate in ranked_candidates
+            if order != 0
+        ]
 
     def _parse_candidates(self, payload: dict[str, Any]) -> list[AutolayoutCandidate]:
         lists = _all_lists(payload)
@@ -1139,25 +1138,14 @@ class DeepPCBAutolayout:
         deadline = time.time() + 30.0
         while time.time() < deadline:
             payload = None
-            for template in (
-                self.config.status_path_template,
-                self.config.alt_status_path_template,
-            ):
-                if (
-                    template == self.config.alt_status_path_template
-                    and not self.config.bearer_token
-                ):
-                    continue
-                try:
-                    payload = self._request_payload(
-                        "GET",
-                        template.format(task_id=board_id),
-                        headers={"accept": "application/json"},
-                    )
-                    break
-                except Exception:
-                    log.debug("Board status poll failed", exc_info=True)
-                    continue
+            try:
+                payload = self._request_payload(
+                    "GET",
+                    self.config.status_path_template.format(task_id=board_id),
+                    headers={"accept": "application/json"},
+                )
+            except Exception:
+                log.debug("Board status poll failed", exc_info=True)
 
             if payload is None:
                 return

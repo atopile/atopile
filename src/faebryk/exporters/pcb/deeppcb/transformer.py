@@ -1,10 +1,33 @@
 from __future__ import annotations
 
+import logging
+import math
 from collections.abc import Iterable
+from itertools import chain
+from pathlib import Path
 from typing import Any
 
 from faebryk.libs.deeppcb_fileformats import C_deeppcb_board_file, deeppcb
 from faebryk.libs.kicad.fileformats import Property, kicad
+
+# Lazy imports for expand_reuse_blocks to avoid circular dependency at module level.
+_PCB_Transformer = None
+_get_all_geos = None
+
+
+def _lazy_kicad_transformer():
+    global _PCB_Transformer, _get_all_geos
+    if _PCB_Transformer is None:
+        from faebryk.exporters.pcb.kicad.transformer import (
+            PCB_Transformer,
+            get_all_geos,
+        )
+
+        _PCB_Transformer = PCB_Transformer
+        _get_all_geos = get_all_geos
+    return _PCB_Transformer, _get_all_geos
+
+log = logging.getLogger(__name__)
 
 
 class DeepPCB_Transformer:
@@ -82,11 +105,15 @@ class DeepPCB_Transformer:
         *,
         include_lossless_source: bool = False,
         provider_strict: bool = False,
+        project_root: Path | None = None,
+        reuse_block_metadata_out: dict[str, Any] | None = None,
     ) -> C_deeppcb_board_file:
         return cls.from_kicad_pcb(
             pcb_file.kicad_pcb,
             include_lossless_source=include_lossless_source,
             provider_strict=provider_strict,
+            project_root=project_root,
+            reuse_block_metadata_out=reuse_block_metadata_out,
         )
 
     @classmethod
@@ -96,6 +123,8 @@ class DeepPCB_Transformer:
         *,
         include_lossless_source: bool = False,
         provider_strict: bool = False,
+        project_root: Path | None = None,
+        reuse_block_metadata_out: dict[str, Any] | None = None,
     ) -> C_deeppcb_board_file:
         copper_layers = [layer for layer in pcb.layers if str(layer.name).endswith(".Cu")]
         copper_layer_index = {layer.name: idx for idx, layer in enumerate(copper_layers)}
@@ -126,15 +155,17 @@ class DeepPCB_Transformer:
 
         via_definitions: list[str] = []
         for via in pcb.vias:
-            via_id = cls._via_definition_id(via, provider_strict=provider_strict)
+            via_id, via_padstack = cls._padstack_from_via(
+                via, copper_layer_index, provider_strict=provider_strict
+            )
+            padstacks.setdefault(via_id, via_padstack)
             if via_id not in via_definitions:
                 via_definitions.append(via_id)
-            padstack_id, padstack = cls._padstack_from_via(
-                via,
-                copper_layer_index,
-                provider_strict=provider_strict,
-            )
-            padstacks.setdefault(padstack_id, padstack)
+
+        # Server requires at least one via definition even for placement-only.
+        if not via_definitions:
+            default_via_id = "Via[0-1]_0.6:0.3mm" if provider_strict else "Via_600000:300000"
+            via_definitions.append(default_via_id)
 
         component_definitions: dict[str, dict[str, Any]] = {}
         components: list[dict[str, Any]] = []
@@ -151,16 +182,52 @@ class DeepPCB_Transformer:
 
         pins_by_net: dict[str, list[str]] = {}
 
+        # ── Reuse block pre-processing ──
+        grouped_fp_uuids: set[str] = set()
+        internal_net_numbers: set[int] = set()
+
+        if project_root is not None:
+            block_result = cls._collapse_reuse_blocks(
+                pcb,
+                project_root,
+                copper_layer_index=copper_layer_index,
+                net_id_by_number=net_id_by_number,
+                provider_strict=provider_strict,
+            )
+            if block_result is not None:
+                grouped_fp_uuids = block_result["grouped_fp_uuids"]
+                internal_net_numbers = block_result["internal_net_numbers"]
+                component_definitions.update(block_result["definitions"])
+                components.extend(block_result["components"])
+                padstacks.update(block_result["padstacks"])
+                for net_id, pin_list in block_result["pins_by_net"].items():
+                    pins_by_net.setdefault(net_id, []).extend(pin_list)
+                if reuse_block_metadata_out is not None:
+                    reuse_block_metadata_out.update(block_result["metadata"])
+
         for fp in pcb.footprints:
+            if fp.uuid in grouped_fp_uuids:
+                continue
             definition_id = cls._definition_id(fp, provider_strict=provider_strict)
             if definition_id not in component_definitions:
                 definition_pins = []
+                seen_pin_ids: dict[str, int] = {}
+                dedup_pin_map: dict[int, str] = {}  # pad_index -> deduped pin_id
                 for pad_index, pad in enumerate(fp.pads):
                     pin_id = cls._pin_id(
                         pad,
                         pad_index,
                         provider_strict=provider_strict,
                     )
+                    # Deduplicate pin IDs for provider output (e.g. ESP32
+                    # has 9 pads named "41" which DeepPCB rejects).
+                    if provider_strict:
+                        if pin_id in seen_pin_ids:
+                            seen_pin_ids[pin_id] += 1
+                            pin_id = f"{pin_id}_{seen_pin_ids[pin_id]}"
+                        else:
+                            seen_pin_ids[pin_id] = 0
+                    dedup_pin_map[pad_index] = pin_id
                     padstack_id, padstack = cls._padstack_from_pad(
                         pad,
                         copper_layer_index,
@@ -185,6 +252,7 @@ class DeepPCB_Transformer:
                     "outline": cls._footprint_outline(fp),
                     "pins": definition_pins,
                     "keepouts": [],
+                    "_dedup_pin_map": dedup_pin_map,
                 }
 
             component_id = cls._component_id(fp, provider_strict=provider_strict)
@@ -250,6 +318,9 @@ class DeepPCB_Transformer:
                 }
             )
 
+            defn_dedup = component_definitions[definition_id].get(
+                "_dedup_pin_map", {}
+            )
             for pad_index, pad in enumerate(fp.pads):
                 if pad.net is None:
                     continue
@@ -257,10 +328,17 @@ class DeepPCB_Transformer:
                 net_id = net_id_by_number.get(net_number)
                 if not net_id:
                     continue
+                pin_id = defn_dedup.get(
+                    pad_index,
+                    cls._pin_id(pad, pad_index, provider_strict=provider_strict),
+                )
                 pins_by_net.setdefault(net_id, []).append(
-                    f"{component_id}-{cls._pin_id(pad, pad_index, provider_strict=provider_strict)}"
+                    f"{component_id}-{pin_id}"
                 )
 
+        # Clean up internal bookkeeping before storing definitions.
+        for defn in component_definitions.values():
+            defn.pop("_dedup_pin_map", None)
         board.componentDefinitions = sorted(
             component_definitions.values(),
             key=lambda d: str(d["id"]),
@@ -314,6 +392,7 @@ class DeepPCB_Transformer:
 
         board.planes = []
         for zone in pcb.zones:
+            zone_net = int(getattr(zone, "net", 0) or 0)
             if provider_strict and getattr(zone, "keepout", None) is not None:
                 continue
             poly = getattr(zone, "polygon", None)
@@ -354,7 +433,11 @@ class DeepPCB_Transformer:
                         "name": getattr(zone, "name", None),
                         "priority": getattr(zone, "priority", None),
                         "layer": copper_layer_index.get(layer_name, 0),
-                        "shape": {"type": "polygon", "points": points},
+                        "shape": {
+                            "type": "polygonWithHoles",
+                            "outline": points,
+                            "holes": [],
+                        },
                         "connectPads": (
                             {
                                 "mode": getattr(zone.connect_pads, "mode", None),
@@ -419,6 +502,9 @@ class DeepPCB_Transformer:
         cls,
         board_file: C_deeppcb_board_file,
     ):
+        resolution = cls._resolution_value(board_file)
+        if resolution == 1000:
+            cls._reverse_provider_coordinates(board_file)
         pcb = kicad.loads(kicad.pcb.PcbFile, cls._BLANK_PCB_TEMPLATE).kicad_pcb
         resolution = cls._resolution_value(board_file)
 
@@ -534,7 +620,21 @@ class DeepPCB_Transformer:
             padstack_id = str(via.get("padstack", ""))
             padstack = padstack_by_id.get(padstack_id, {})
             radius = cls._shape_radius(padstack.get("shape"), default=300)
-            drill_radius = float(padstack.get("drill", max(radius / 2.0, 150)))
+            drill_raw = padstack.get("drill")
+            if drill_raw is not None:
+                drill_radius = float(drill_raw)
+            else:
+                # Fallback: extract drill from hole field (strict mode)
+                hole = padstack.get("hole")
+                if isinstance(hole, dict):
+                    hole_shape = hole.get("shape", {})
+                    hole_r = hole_shape.get("radius")
+                    if isinstance(hole_r, (int, float)):
+                        drill_radius = float(hole_r)
+                    else:
+                        drill_radius = max(radius / 2.0, 150)
+                else:
+                    drill_radius = max(radius / 2.0, 150)
             layer_ids = [
                 index_to_layer.get(int(i), "F.Cu")
                 for i in padstack.get("layers", [0, 1])
@@ -568,7 +668,7 @@ class DeepPCB_Transformer:
             shape = plane.get("shape")
             if not isinstance(shape, dict):
                 continue
-            points = shape.get("points")
+            points = shape.get("outline") or shape.get("points")
             if not isinstance(points, list) or not points:
                 continue
             layer_id = index_to_layer.get(int(plane.get("layer", 0)), "F.Cu")
@@ -700,7 +800,8 @@ class DeepPCB_Transformer:
                 ]
                 pad_layers = [index_to_layer.get(idx, "F.Cu") for idx in layers_idx]
                 stored_layers = padstack.get("kicadLayers")
-                if isinstance(stored_layers, list) and stored_layers:
+                has_kicad_layers = isinstance(stored_layers, list) and bool(stored_layers)
+                if has_kicad_layers:
                     pad_layers = [str(layer) for layer in stored_layers]
                 if not pad_layers:
                     pad_layers = ["F.Cu", "B.Cu"]
@@ -725,14 +826,23 @@ class DeepPCB_Transformer:
                     size_w = float(stored_size[0])
                     size_h = float(stored_size[1])
                 pad_shape = str(padstack.get("kicadShape") or cls._pad_shape(padstack.get("shape")))
+                has_hole = padstack.get("hole") is not None
                 pad_type = str(
                     padstack.get("kicadPadType")
                     or (
-                        "thru_hole"
+                        (
+                            "np_thru_hole"
+                            if has_hole and net_ref is None
+                            else "thru_hole"
+                        )
                         if "F.Cu" in pad_layers and "B.Cu" in pad_layers
                         else "smd"
                     )
                 )
+
+                # Infer non-copper layers when kicadLayers hint was stripped
+                if not has_kicad_layers:
+                    pad_layers = cls._infer_non_copper_layers(pad_layers, pad_type)
 
                 drill_payload = padstack.get("kicadDrill")
                 pad_drill = None
@@ -755,6 +865,63 @@ class DeepPCB_Transformer:
                             else None
                         ),
                     )
+                elif padstack.get("hole") is not None:
+                    # Fallback: reconstruct drill from hole field (strict mode
+                    # strips kicadDrill but preserves the hole geometry).
+                    hole_shape = padstack["hole"].get("shape", {})
+                    hole_type = str(hole_shape.get("type", ""))
+                    if hole_type == "circle":
+                        hole_r = hole_shape.get("radius")
+                        if isinstance(hole_r, (int, float)):
+                            pad_drill = kicad.pcb.PadDrill(
+                                shape=None,
+                                size_x=cls._from_unit(
+                                    float(hole_r) * 2.0, resolution
+                                ),
+                                size_y=None,
+                                offset=None,
+                            )
+                    elif hole_type == "path":
+                        hole_width = hole_shape.get("width")
+                        hole_pts = hole_shape.get("points", [])
+                        if isinstance(hole_width, (int, float)):
+                            minor_mm = cls._from_unit(float(hole_width), resolution)
+                            pt_dist = 0.0
+                            if (
+                                isinstance(hole_pts, list)
+                                and len(hole_pts) >= 2
+                                and isinstance(hole_pts[0], list)
+                                and isinstance(hole_pts[1], list)
+                            ):
+                                dx = float(hole_pts[1][0]) - float(hole_pts[0][0])
+                                dy = float(hole_pts[1][1]) - float(hole_pts[0][1])
+                                pt_dist = math.sqrt(dx * dx + dy * dy)
+                            major_mm = minor_mm + cls._from_unit(pt_dist, resolution)
+                            # Determine axis from point direction
+                            if (
+                                isinstance(hole_pts, list)
+                                and len(hole_pts) >= 2
+                                and isinstance(hole_pts[0], list)
+                                and isinstance(hole_pts[1], list)
+                            ):
+                                adx = abs(
+                                    float(hole_pts[1][0]) - float(hole_pts[0][0])
+                                )
+                                ady = abs(
+                                    float(hole_pts[1][1]) - float(hole_pts[0][1])
+                                )
+                                if adx > ady:
+                                    size_x, size_y = major_mm, minor_mm
+                                else:
+                                    size_x, size_y = minor_mm, major_mm
+                            else:
+                                size_x, size_y = minor_mm, major_mm
+                            pad_drill = kicad.pcb.PadDrill(
+                                shape="oval",
+                                size_x=size_x,
+                                size_y=size_y,
+                                offset=None,
+                            )
 
                 options_payload = padstack.get("kicadOptions")
                 pad_options = None
@@ -935,6 +1102,33 @@ class DeepPCB_Transformer:
     def dumps(board_file: C_deeppcb_board_file, path=None) -> str:
         return deeppcb.dumps(board_file, path)
 
+    @staticmethod
+    def _infer_non_copper_layers(
+        copper_layers: list[str], pad_type: str
+    ) -> list[str]:
+        """Add standard non-copper layers when kicadLayers hint is absent."""
+        layers = list(copper_layers)
+        if pad_type in {"thru_hole", "np_thru_hole"}:
+            if "*.Cu" not in layers:
+                # Ensure all-copper wildcard
+                layers = ["*.Cu"] + [l for l in layers if not l.endswith(".Cu")]
+            if "F.Mask" not in layers:
+                layers.append("F.Mask")
+            if "B.Mask" not in layers:
+                layers.append("B.Mask")
+        elif pad_type == "smd":
+            if "F.Cu" in layers and "B.Cu" not in layers:
+                if "F.Paste" not in layers:
+                    layers.append("F.Paste")
+                if "F.Mask" not in layers:
+                    layers.append("F.Mask")
+            elif "B.Cu" in layers and "F.Cu" not in layers:
+                if "B.Paste" not in layers:
+                    layers.append("B.Paste")
+                if "B.Mask" not in layers:
+                    layers.append("B.Mask")
+        return layers
+
     @classmethod
     def _to_unit(cls, mm: float) -> int:
         return int(round(mm * cls.RESOLUTION_VALUE))
@@ -1006,13 +1200,63 @@ class DeepPCB_Transformer:
     def _shape_size(shape: Any, default: float) -> tuple[float, float]:
         if not isinstance(shape, dict):
             return default, default
-        if shape.get("type") == "circle":
+        shape_type = shape.get("type")
+        if shape_type == "circle":
             radius = shape.get("radius")
             if isinstance(radius, (int, float)):
                 diameter = float(radius) * 2.0
                 return diameter, diameter
             return default, default
-        if shape.get("type") == "polyline":
+        if shape_type == "rectangle":
+            lower_left = shape.get("lowerLeft")
+            upper_right = shape.get("upperRight")
+            if (
+                isinstance(lower_left, list)
+                and isinstance(upper_right, list)
+                and len(lower_left) >= 2
+                and len(upper_right) >= 2
+            ):
+                w = abs(float(upper_right[0]) - float(lower_left[0]))
+                h = abs(float(upper_right[1]) - float(lower_left[1]))
+                return w, h
+        if shape_type == "path":
+            # Oval pad: minor dimension = width, major = width + distance between
+            # the two path endpoints.  The forward path sets
+            # travel = (max_dim - min_dim) / 2 and points [[0, travel], [0, -travel]]
+            # so point_distance = 2*travel and major = minor + point_distance.
+            width = shape.get("width")
+            if isinstance(width, (int, float)):
+                minor = float(width)
+                points = shape.get("points", [])
+                point_dist = 0.0
+                if isinstance(points, list) and len(points) >= 2:
+                    p0 = points[0]
+                    p1 = points[1]
+                    if (
+                        isinstance(p0, list)
+                        and isinstance(p1, list)
+                        and len(p0) >= 2
+                        and len(p1) >= 2
+                    ):
+                        dx = float(p1[0]) - float(p0[0])
+                        dy = float(p1[1]) - float(p0[1])
+                        point_dist = math.sqrt(dx * dx + dy * dy)
+                major = minor + point_dist
+                # Determine axis orientation from point direction
+                if isinstance(points, list) and len(points) >= 2:
+                    p0, p1 = points[0], points[1]
+                    if (
+                        isinstance(p0, list)
+                        and isinstance(p1, list)
+                        and len(p0) >= 2
+                        and len(p1) >= 2
+                    ):
+                        dx = abs(float(p1[0]) - float(p0[0]))
+                        dy = abs(float(p1[1]) - float(p0[1]))
+                        if dx > dy:
+                            return major, minor  # major axis is X
+                return minor, major  # major axis is Y (default)
+        if shape_type == "polyline":
             points = shape.get("points", [])
             if isinstance(points, list):
                 xs = [float(p[0]) for p in points if isinstance(p, list) and len(p) >= 2]
@@ -1027,6 +1271,8 @@ class DeepPCB_Transformer:
             shape_type = str(shape.get("type", "")).lower()
             if shape_type == "circle":
                 return "circle"
+            if shape_type == "path":
+                return "oval"
             if shape_type in {"rect", "rectangle", "polyline", "polygon"}:
                 return "rect"
         return "circle"
@@ -1275,7 +1521,7 @@ class DeepPCB_Transformer:
             )
         if provider_strict and strict_scope and shape not in {"rect", "rectangle", "custom", "oval"}:
             padstack_id = f"{padstack_id}_{strict_scope}"
-        return padstack_id, {
+        padstack: dict[str, Any] = {
             "id": padstack_id,
             "shape": geom,
             "layers": layers,
@@ -1288,6 +1534,45 @@ class DeepPCB_Transformer:
             "kicadDrill": drill_payload,
             "kicadOptions": options_payload,
         }
+        # Through-hole pads need hole + pads fields for DeepPCB.
+        if provider_strict and len(layers) > 1 and drill_payload is not None:
+            drill_x = float(drill_payload.get("sizeX", 0.0) or 0.0)
+            drill_y_raw = drill_payload.get("sizeY")
+            drill_y = float(drill_y_raw) if drill_y_raw is not None else drill_x
+            if drill_x > 0 or drill_y > 0:
+                padstack["pads"] = [
+                    {
+                        "shape": dict(geom),
+                        "layerFrom": layers[0],
+                        "layerTo": layers[-1],
+                    }
+                ]
+                drill_shape_str = str(drill_payload.get("shape", "") or "")
+                if "oval" in drill_shape_str or (drill_y > 0 and abs(drill_x - drill_y) > 0.001):
+                    # Oval/slot drill hole.
+                    minor = min(drill_x, drill_y)
+                    travel = max(0.0, (max(drill_x, drill_y) - minor) / 2.0)
+                    if drill_x < drill_y:
+                        pts = [[0, cls._to_unit(travel)], [0, -cls._to_unit(travel)]]
+                    else:
+                        pts = [[cls._to_unit(travel), 0], [-cls._to_unit(travel), 0]]
+                    padstack["hole"] = {
+                        "shape": {
+                            "type": "path",
+                            "points": pts,
+                            "width": cls._to_unit(minor),
+                        },
+                    }
+                else:
+                    drill_r = cls._to_unit(max(drill_x, drill_y) / 2.0)
+                    padstack["hole"] = {
+                        "shape": {
+                            "type": "circle",
+                            "center": [0, 0],
+                            "radius": drill_r,
+                        },
+                    }
+        return padstack_id, padstack
 
     @classmethod
     def _padstack_from_via(
@@ -1301,26 +1586,42 @@ class DeepPCB_Transformer:
         drill = float(getattr(via, "drill", 0.0) or 0.0)
         layers = cls._layer_indices(getattr(via, "layers", []), copper_layer_index)
         via_id = cls._via_definition_id(via, provider_strict=provider_strict)
-        return via_id, {
+        radius = cls._to_unit(size / 2.0)
+        shape = {"type": "circle", "center": [0, 0], "radius": radius}
+        padstack: dict[str, Any] = {
             "id": via_id,
-            "shape": {
-                "type": "circle",
-                "center": [0, 0],
-                "radius": cls._to_unit(size / 2.0),
-            },
+            "shape": shape,
             "layers": layers,
             "allowVia": False if provider_strict else True,
-            "drill": None if provider_strict else cls._to_unit(drill / 2.0),
         }
+        if provider_strict:
+            # DeepPCB format requires hole + pads for via padstacks.
+            # hole uses drill radius; pads use outer pad radius.
+            drill_radius = cls._to_unit(drill / 2.0) if drill else radius
+            padstack["pads"] = [
+                {
+                    "shape": {"type": "circle", "center": [0, 0], "radius": radius},
+                    "layerFrom": layers[0] if layers else 0,
+                    "layerTo": layers[-1] if layers else 1,
+                }
+            ]
+            padstack["hole"] = {
+                "shape": {"type": "circle", "center": [0, 0], "radius": drill_radius},
+            }
+        else:
+            padstack["drill"] = cls._to_unit(drill / 2.0)
+        return via_id, padstack
 
     @classmethod
     def _via_definition_id(cls, via: Any, *, provider_strict: bool = False) -> str:
-        size = cls._to_unit(float(getattr(via, "size", 0.0) or 0.0))
-        drill = cls._to_unit(float(getattr(via, "drill", 0.0) or 0.0))
+        size_mm = float(getattr(via, "size", 0.0) or 0.0)
+        drill_mm = float(getattr(via, "drill", 0.0) or 0.0)
         if provider_strict:
             layers = list(getattr(via, "layers", []) or ["F.Cu", "B.Cu"])
             layer_suffix = "0-1" if len(layers) > 1 else "0"
-            return f"Via[{layer_suffix}]_{size//1000}:{drill//1000}mm"
+            return f"Via[{layer_suffix}]_{size_mm:.4g}:{drill_mm:.4g}mm"
+        size = cls._to_unit(size_mm)
+        drill = cls._to_unit(drill_mm)
         return f"Via_{size}:{drill}"
 
     @staticmethod
@@ -1476,30 +1777,126 @@ class DeepPCB_Transformer:
 
     @classmethod
     def _edge_cuts_points(cls, pcb: Any) -> list[list[int]]:
-        points: list[list[int]] = []
+        """Build an ordered polyline from Edge.Cuts geometry.
+
+        Collects lines and arcs, chains them end-to-end, and samples
+        arcs into polyline segments so the boundary is a proper polygon.
+        """
+        import math
+
+        # Collect segments as (start_pt, end_pt, interior_pts) tuples.
+        # interior_pts are extra points along arcs.
+        segments: list[tuple[list[int], list[int], list[list[int]]]] = []
 
         for line in getattr(pcb, "gr_lines", []):
             if str(getattr(line, "layer", "")) != "Edge.Cuts":
                 continue
-            points.append(cls._xy_to_point(line.start))
-            points.append(cls._xy_to_point(line.end))
+            segments.append(
+                (cls._xy_to_point(line.start), cls._xy_to_point(line.end), [])
+            )
 
         for arc in getattr(pcb, "gr_arcs", []):
             if str(getattr(arc, "layer", "")) != "Edge.Cuts":
                 continue
-            points.append(cls._xy_to_point(arc.start))
-            points.append(cls._xy_to_point(arc.mid))
-            points.append(cls._xy_to_point(arc.end))
+            # Compute arc center from start, mid, end using circumcircle.
+            sx, sy = float(arc.start.x), float(arc.start.y)
+            mx, my = float(arc.mid.x), float(arc.mid.y)
+            ex, ey = float(arc.end.x), float(arc.end.y)
+
+            arc_pts: list[list[int]] = []
+            D = 2.0 * (sx * (my - ey) + mx * (ey - sy) + ex * (sy - my))
+            if abs(D) > 1e-9:
+                cx = ((sx**2 + sy**2) * (my - ey) + (mx**2 + my**2) * (ey - sy) + (ex**2 + ey**2) * (sy - my)) / D
+                cy = ((sx**2 + sy**2) * (ex - mx) + (mx**2 + my**2) * (sx - ex) + (ex**2 + ey**2) * (mx - sx)) / D
+                r = math.hypot(sx - cx, sy - cy)
+                a_start = math.atan2(sy - cy, sx - cx)
+                a_mid = math.atan2(my - cy, mx - cx)
+                a_end = math.atan2(ey - cy, ex - cx)
+                # Determine sweep direction via the mid-point.
+                def _norm(a: float) -> float:
+                    return a % (2.0 * math.pi)
+                ccw_sweep = (_norm(a_end - a_start)) % (2.0 * math.pi)
+                cw_sweep = (2.0 * math.pi - ccw_sweep) % (2.0 * math.pi)
+                mid_ccw = (_norm(a_mid - a_start)) % (2.0 * math.pi)
+                if mid_ccw <= ccw_sweep:
+                    sweep = ccw_sweep
+                    direction = 1.0
+                else:
+                    sweep = cw_sweep
+                    direction = -1.0
+                # Sample arc into ~16 segments per full circle.
+                n_samples = max(4, int(abs(sweep) / (2.0 * math.pi) * 16))
+                for i in range(1, n_samples):
+                    t = a_start + direction * sweep * i / n_samples
+                    px = cx + r * math.cos(t)
+                    py = cy + r * math.sin(t)
+                    arc_pts.append(cls._xy_to_point_raw(px, py))
+            else:
+                # Degenerate arc (collinear points) — just use midpoint.
+                arc_pts.append(cls._xy_to_point(arc.mid))
+
+            segments.append(
+                (cls._xy_to_point(arc.start), cls._xy_to_point(arc.end), arc_pts)
+            )
 
         for poly in getattr(pcb, "gr_polys", []):
             if str(getattr(poly, "layer", "")) != "Edge.Cuts":
                 continue
-            for xy in poly.pts.xys:
-                points.append(cls._xy_to_point(xy))
+            poly_pts = [cls._xy_to_point(xy) for xy in poly.pts.xys]
+            for i in range(len(poly_pts) - 1):
+                segments.append((poly_pts[i], poly_pts[i + 1], []))
+            if len(poly_pts) > 1:
+                segments.append((poly_pts[-1], poly_pts[0], []))
 
-        if points and points[0] != points[-1]:
-            points.append(points[0])
-        return points
+        if not segments:
+            return []
+
+        # Chain segments end-to-end to form an ordered polygon.
+        EPS = cls._to_unit(0.01)  # 0.01mm tolerance
+
+        def _close(a: list[int], b: list[int]) -> bool:
+            return abs(a[0] - b[0]) <= EPS and abs(a[1] - b[1]) <= EPS
+
+        ordered: list[list[int]] = []
+        remaining = list(segments)
+        # Start with first segment.
+        seg = remaining.pop(0)
+        ordered.append(seg[0])
+        ordered.extend(seg[2])
+        ordered.append(seg[1])
+
+        while remaining:
+            tail = ordered[-1]
+            found = False
+            for i, seg in enumerate(remaining):
+                if _close(tail, seg[0]):
+                    remaining.pop(i)
+                    ordered.extend(seg[2])
+                    ordered.append(seg[1])
+                    found = True
+                    break
+                if _close(tail, seg[1]):
+                    # Reverse this segment.
+                    remaining.pop(i)
+                    ordered.extend(reversed(seg[2]))
+                    ordered.append(seg[0])
+                    found = True
+                    break
+            if not found:
+                # Disconnected — append remaining segments as-is.
+                seg = remaining.pop(0)
+                ordered.append(seg[0])
+                ordered.extend(seg[2])
+                ordered.append(seg[1])
+
+        # Close the polygon.
+        if ordered and not _close(ordered[0], ordered[-1]):
+            ordered.append(ordered[0])
+        return ordered
+
+    @classmethod
+    def _xy_to_point_raw(cls, x: float, y: float) -> list[int]:
+        return [cls._to_unit(x), cls._to_unit(y)]
 
     @classmethod
     def _edge_cuts_segments(cls, pcb: Any) -> list[dict[str, Any]]:
@@ -1557,10 +1954,12 @@ class DeepPCB_Transformer:
                 "id": "__default__",
                 "trackWidth": 200,
                 "clearance": 200,
-                "viaDefinition": (board.viaDefinitions[0] if board.viaDefinitions else ""),
+                "viaDefinition": (board.viaDefinitions[0] if board.viaDefinitions else "Via[0-1]_0.6:0.3mm"),
                 "nets": [str(net.get("id", "")) for net in board.nets],
             }
         ]
+        if not board.viaDefinitions:
+            board.viaDefinitions = ["Via[0-1]_0.6:0.3mm"]
         board.planes = [
             {
                 "layer": int(plane.get("layer", 0)),
@@ -1575,12 +1974,34 @@ class DeepPCB_Transformer:
             # Provider canonical output does not include component reference property.
             comp.pop("referenceProperty", None)
 
+        # Strip non-DeepPCB fields from outline shapes in component definitions.
+        _extra_shape_keys = {"layer", "strokeWidth", "strokeType", "fill", "locked"}
+        for defn in board.componentDefinitions:
+            outline = defn.get("outline")
+            if isinstance(outline, dict):
+                shapes = (
+                    outline.get("shapes", [])
+                    if outline.get("type") == "multi"
+                    else [outline]
+                )
+                for shape in shapes:
+                    if isinstance(shape, dict):
+                        for k in _extra_shape_keys:
+                            shape.pop(k, None)
+
+        via_def_ids = set(board.viaDefinitions) if board.viaDefinitions else set()
         for padstack in board.padstacks:
-            padstack["allowVia"] = False
+            padstack["allowVia"] = str(padstack.get("id", "")) in via_def_ids
             # Internal reconstruction hints are non-canonical for provider JSON.
             for key in list(padstack.keys()):
                 if key.startswith("kicad"):
                     padstack.pop(key, None)
+
+        # Strip null/non-canonical fields from vias.
+        for via in board.vias:
+            for key in list(via.keys()):
+                if via[key] is None:
+                    via.pop(key)
 
         cls._provider_scale_flip_coordinates(board)
 
@@ -1608,10 +2029,16 @@ class DeepPCB_Transformer:
             if isinstance(shape.get("width"), (int, float)):
                 shape["width"] = int(round(float(shape["width"]) / 1000.0))
             lower_left = shape.get("lowerLeft")
-            if isinstance(lower_left, list):
-                shape["lowerLeft"] = pxy(lower_left)
             upper_right = shape.get("upperRight")
-            if isinstance(upper_right, list):
+            if isinstance(lower_left, list) and isinstance(upper_right, list):
+                ll = pxy(lower_left)
+                ur = pxy(upper_right)
+                # Y-flip can swap lowerLeft/upperRight; normalise so ll.y < ur.y
+                shape["lowerLeft"] = [min(ll[0], ur[0]), min(ll[1], ur[1])]
+                shape["upperRight"] = [max(ll[0], ur[0]), max(ll[1], ur[1])]
+            elif isinstance(lower_left, list):
+                shape["lowerLeft"] = pxy(lower_left)
+            elif isinstance(upper_right, list):
                 shape["upperRight"] = pxy(upper_right)
 
         boundary = board.boundary if isinstance(board.boundary, dict) else {}
@@ -1632,6 +2059,13 @@ class DeepPCB_Transformer:
             points_in_shape(padstack.get("shape"))
             if isinstance(padstack.get("drill"), (int, float)):
                 padstack["drill"] = int(round(float(padstack["drill"]) / 1000.0))
+            # Scale nested hole/pads shapes (used by via padstacks)
+            hole = padstack.get("hole")
+            if isinstance(hole, dict):
+                points_in_shape(hole.get("shape"))
+            for pad_entry in padstack.get("pads", []):
+                if isinstance(pad_entry, dict):
+                    points_in_shape(pad_entry.get("shape"))
 
         for definition in board.componentDefinitions:
             for pin in definition.get("pins", []):
@@ -1667,4 +2101,803 @@ class DeepPCB_Transformer:
         for plane in board.planes:
             shape = plane.get("shape")
             if isinstance(shape, dict):
+                # polygonWithHoles uses "outline" and "holes" instead of "points"
+                outline = shape.get("outline")
+                if isinstance(outline, list):
+                    shape["outline"] = [pxy(p) for p in outline]
+                holes = shape.get("holes")
+                if isinstance(holes, list):
+                    shape["holes"] = [
+                        [pxy(p) for p in hole] if isinstance(hole, list) else hole
+                        for hole in holes
+                    ]
                 points_in_shape(shape)
+
+    @classmethod
+    def _reverse_provider_coordinates(cls, board: C_deeppcb_board_file) -> None:
+        """Reverse the provider scale+flip applied by _provider_scale_flip_coordinates.
+
+        Converts resolution-1000 / Y-negated provider data back to resolution-1e6
+        / Y-as-is internal representation so that to_internal_pcb can process it.
+        """
+
+        def pxy(point: Any) -> Any:
+            if not (isinstance(point, list) and len(point) >= 2):
+                return point
+            return [int(round(float(point[0]) * 1000.0)),
+                    -int(round(float(point[1]) * 1000.0))]
+
+        def scale_scalar(v: Any) -> Any:
+            if isinstance(v, (int, float)):
+                return int(round(float(v) * 1000.0))
+            return v
+
+        def points_in_shape(shape: Any) -> None:
+            if not isinstance(shape, dict):
+                return
+            pts = shape.get("points")
+            if isinstance(pts, list):
+                shape["points"] = [pxy(p) for p in pts]
+            center = shape.get("center")
+            if isinstance(center, list):
+                shape["center"] = pxy(center)
+            if isinstance(shape.get("radius"), (int, float)):
+                shape["radius"] = scale_scalar(shape["radius"])
+            if isinstance(shape.get("width"), (int, float)):
+                shape["width"] = scale_scalar(shape["width"])
+            lower_left = shape.get("lowerLeft")
+            upper_right = shape.get("upperRight")
+            if isinstance(lower_left, list) and isinstance(upper_right, list):
+                ll = pxy(lower_left)
+                ur = pxy(upper_right)
+                shape["lowerLeft"] = [min(ll[0], ur[0]), min(ll[1], ur[1])]
+                shape["upperRight"] = [max(ll[0], ur[0]), max(ll[1], ur[1])]
+
+        # Boundary
+        boundary = board.boundary if isinstance(board.boundary, dict) else {}
+        bshape = boundary.get("shape")
+        if isinstance(bshape, dict):
+            points_in_shape(bshape)
+        segs = boundary.get("segments")
+        if isinstance(segs, list):
+            for seg in segs:
+                if isinstance(seg, dict):
+                    if isinstance(seg.get("start"), list):
+                        seg["start"] = pxy(seg["start"])
+                    if isinstance(seg.get("end"), list):
+                        seg["end"] = pxy(seg["end"])
+
+        # Padstacks
+        for padstack in board.padstacks:
+            points_in_shape(padstack.get("shape"))
+            if isinstance(padstack.get("drill"), (int, float)):
+                padstack["drill"] = scale_scalar(padstack["drill"])
+            hole = padstack.get("hole")
+            if isinstance(hole, dict):
+                points_in_shape(hole.get("shape"))
+            for pad_entry in padstack.get("pads", []):
+                if isinstance(pad_entry, dict):
+                    points_in_shape(pad_entry.get("shape"))
+
+        # Component definitions
+        for definition in board.componentDefinitions:
+            for pin in definition.get("pins", []):
+                if isinstance(pin, dict) and isinstance(pin.get("position"), list):
+                    pin["position"] = pxy(pin["position"])
+            outline = definition.get("outline")
+            if isinstance(outline, dict):
+                if outline.get("type") == "multi":
+                    for shape in outline.get("shapes", []):
+                        points_in_shape(shape)
+                else:
+                    points_in_shape(outline)
+
+        # Components
+        for comp in board.components:
+            if isinstance(comp.get("position"), list):
+                comp["position"] = pxy(comp["position"])
+
+        # Wires
+        for wire in board.wires:
+            if isinstance(wire.get("start"), list):
+                wire["start"] = pxy(wire["start"])
+            if isinstance(wire.get("end"), list):
+                wire["end"] = pxy(wire["end"])
+            if isinstance(wire.get("width"), (int, float)):
+                wire["width"] = scale_scalar(wire["width"])
+
+        # Vias
+        for via in board.vias:
+            if isinstance(via.get("position"), list):
+                via["position"] = pxy(via["position"])
+
+        # Planes
+        for plane in board.planes:
+            shape = plane.get("shape")
+            if isinstance(shape, dict):
+                outline = shape.get("outline")
+                if isinstance(outline, list):
+                    shape["outline"] = [pxy(p) for p in outline]
+                holes = shape.get("holes")
+                if isinstance(holes, list):
+                    shape["holes"] = [
+                        [pxy(p) for p in h] if isinstance(h, list) else h
+                        for h in holes
+                    ]
+                points_in_shape(shape)
+
+        # Update resolution to internal value
+        board.resolution = {"unit": "mm", "value": 1000000}
+
+    # ── Reuse block support ─────────────────────────────────────────────
+
+    @staticmethod
+    def _pad_absolute_position(fp: Any, pad: Any) -> tuple[float, float]:
+        """Compute the absolute board position of a pad (accounting for fp rotation)."""
+        fp_x = float(fp.at.x)
+        fp_y = float(fp.at.y)
+        fp_r = float(getattr(fp.at, "r", 0.0) or 0.0)
+
+        pad_x = float(pad.at.x)
+        pad_y = float(pad.at.y)
+
+        if fp_r:
+            angle = math.radians(-fp_r)
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
+            pad_x, pad_y = (
+                pad_x * cos_a - pad_y * sin_a,
+                pad_x * sin_a + pad_y * cos_a,
+            )
+
+        return fp_x + pad_x, fp_y + pad_y
+
+    @classmethod
+    def _collapse_reuse_blocks(
+        cls,
+        pcb: Any,
+        project_root: Path,
+        *,
+        copper_layer_index: dict[str, int],
+        net_id_by_number: dict[int, str],
+        provider_strict: bool = False,
+    ) -> dict[str, Any] | None:
+        """Collapse reuse blocks into synthetic components.
+
+        Scans footprints for ``atopile_subaddresses``, groups them by reuse
+        block, classifies nets as internal/external, and produces synthetic
+        deeppcb component definitions + instances that represent each block
+        as a single placeable unit.
+
+        Returns ``None`` when no reuse blocks are found.
+        """
+        # Step 1 – Parse sub-addresses and group footprints ───────────
+        sub_pcb_cache: dict[str, Any] = {}
+        fp_to_group: dict[str, str] = {}
+        fp_to_sub_addr: dict[str, tuple[str, str]] = {}  # uuid -> (pcb_addr, module_addr)
+        groups: dict[str, list[Any]] = {}  # group_name -> [fp, ...]
+
+        for fp in pcb.footprints:
+            raw = Property.try_get_property(fp.propertys, "atopile_subaddresses")
+            if not raw:
+                continue
+
+            sub_entries: list[tuple[str, str]] = []
+            for addr_str in raw.removeprefix("[").removesuffix("]").split(", "):
+                addr_str = addr_str.strip()
+                if not addr_str or ":" not in addr_str:
+                    continue
+                pcb_addr, module_addr = addr_str.split(":", 1)
+                sub_entries.append((pcb_addr, module_addr))
+
+            if not sub_entries:
+                continue
+
+            # Load sub-PCBs into cache
+            loaded: dict[tuple[str, str], Any] = {}
+            for pcb_addr, module_addr in sub_entries:
+                if pcb_addr not in sub_pcb_cache:
+                    path = project_root / pcb_addr
+                    if not path.exists():
+                        continue
+                    try:
+                        sub_pcb_cache[pcb_addr] = kicad.loads(
+                            kicad.pcb.PcbFile, path
+                        ).kicad_pcb
+                    except Exception:
+                        log.debug("Failed to load sub-PCB %s", pcb_addr)
+                        continue
+                if pcb_addr in sub_pcb_cache:
+                    loaded[(pcb_addr, module_addr)] = sub_pcb_cache[pcb_addr]
+
+            if not loaded:
+                continue
+
+            # Prefer sub-PCBs with tracks, then higher-level modules
+            candidates = loaded
+            if any(sub.segments for sub in candidates.values()):
+                candidates = {k: v for k, v in loaded.items() if v.segments}
+            chosen_key = max(
+                candidates,
+                key=lambda k: len(k[1].split(".")),
+            )
+            chosen_pcb_addr, chosen_module_addr = chosen_key
+
+            ato_addr = Property.try_get_property(fp.propertys, "atopile_address")
+            if not ato_addr:
+                continue
+
+            suffix = "." + chosen_module_addr
+            if not ato_addr.endswith(suffix):
+                continue
+            group_name = ato_addr[: -len(suffix)]
+
+            fp_to_group[fp.uuid] = group_name
+            fp_to_sub_addr[fp.uuid] = (chosen_pcb_addr, chosen_module_addr)
+            groups.setdefault(group_name, []).append(fp)
+
+        if not groups:
+            return None
+
+        # Step 2 – Classify nets ──────────────────────────────────────
+        grouped_fp_uuids: set[str] = set(fp_to_group.keys())
+
+        # For each net, track connections inside/outside each group.
+        net_group_membership: dict[int, set[str]] = {}
+        net_has_ungrouped: set[int] = set()
+
+        for fp in pcb.footprints:
+            group = fp_to_group.get(fp.uuid)
+            for pad in fp.pads:
+                if pad.net is None:
+                    continue
+                net_num = int(getattr(pad.net, "number", 0) or 0)
+                if net_num == 0:
+                    continue
+                if group is not None:
+                    net_group_membership.setdefault(net_num, set()).add(group)
+                else:
+                    net_has_ungrouped.add(net_num)
+
+        # Step 3 – Build synthetic components per group ───────────────
+        all_internal_nets: set[int] = set()
+        definitions: dict[str, dict[str, Any]] = {}
+        synthetic_components: list[dict[str, Any]] = []
+        synthetic_padstacks: dict[str, dict[str, Any]] = {}
+        synthetic_pins_by_net: dict[str, list[str]] = {}
+        metadata: dict[str, Any] = {}
+
+        for group_name, group_fps in groups.items():
+            pcb_addr = fp_to_sub_addr[group_fps[0].uuid][0]
+            sub_pcb = sub_pcb_cache[pcb_addr]
+
+            # Classify nets for this group
+            group_internal_nets: set[int] = set()
+            group_external_nets: set[int] = set()
+            for net_num, groups_set in net_group_membership.items():
+                if group_name not in groups_set:
+                    continue
+                if groups_set == {group_name} and net_num not in net_has_ungrouped:
+                    group_internal_nets.add(net_num)
+                else:
+                    group_external_nets.add(net_num)
+            all_internal_nets |= group_internal_nets
+
+            # Anchor footprint (largest by pad count)
+            anchor_fp = max(group_fps, key=lambda fp: len(fp.pads))
+            anchor_x = float(anchor_fp.at.x)
+            anchor_y = float(anchor_fp.at.y)
+
+            definition_id = f"REUSE_BLOCK__{group_name}"
+            component_id = f"REUSE_BLK@@__block__.{group_name}"
+
+            # Build synthetic pins from ALL pads (for collision geometry)
+            # but only add net references for external-net pads.
+            synthetic_pins: list[dict[str, Any]] = []
+            external_pin_map: dict[str, dict[str, Any]] = {}
+            pin_counter = 0
+
+            for fp in group_fps:
+                orig_component_id = cls._component_id(
+                    fp, provider_strict=provider_strict
+                )
+                for pad_index, pad in enumerate(fp.pads):
+                    pin_counter += 1
+                    pin_id = f"EP{pin_counter}"
+
+                    abs_x, abs_y = cls._pad_absolute_position(fp, pad)
+                    pin_x = cls._to_unit(abs_x - anchor_x)
+                    pin_y = cls._to_unit(abs_y - anchor_y)
+
+                    padstack_id, padstack_data = cls._padstack_from_pad(
+                        pad,
+                        copper_layer_index,
+                        provider_strict=provider_strict,
+                        strict_scope=definition_id if provider_strict else None,
+                    )
+                    synthetic_padstacks.setdefault(padstack_id, padstack_data)
+
+                    orig_pin_id = cls._pin_id(
+                        pad, pad_index, provider_strict=provider_strict
+                    )
+
+                    synthetic_pins.append(
+                        {
+                            "id": pin_id,
+                            "padstack": padstack_id,
+                            "position": [pin_x, pin_y],
+                            "rotation": cls._export_rotation(
+                                getattr(pad.at, "r", None),
+                                provider_strict=provider_strict,
+                            ),
+                        }
+                    )
+
+                    # Only add net references for pads with external nets.
+                    net_num = int(getattr(pad.net, "number", 0) or 0) if pad.net else 0
+                    is_external = net_num in group_external_nets and net_num != 0
+                    is_internal = net_num in group_internal_nets and net_num != 0
+                    if is_external or is_internal:
+                        net_id = net_id_by_number.get(net_num)
+                        if net_id:
+                            synthetic_pins_by_net.setdefault(net_id, []).append(
+                                f"{component_id}-{pin_id}"
+                            )
+
+                    external_pin_map[pin_id] = {
+                        "component_id": orig_component_id,
+                        "pin_id": orig_pin_id,
+                        "net_number": net_num if is_external else 0,
+                    }
+
+            # Bounding-box outline
+            all_x = [float(fp.at.x) for fp in group_fps]
+            all_y = [float(fp.at.y) for fp in group_fps]
+            margin = 2.0
+            outline = {
+                "type": "polyline",
+                "points": [
+                    [
+                        cls._to_unit(min(all_x) - anchor_x - margin),
+                        cls._to_unit(min(all_y) - anchor_y - margin),
+                    ],
+                    [
+                        cls._to_unit(max(all_x) - anchor_x + margin),
+                        cls._to_unit(min(all_y) - anchor_y - margin),
+                    ],
+                    [
+                        cls._to_unit(max(all_x) - anchor_x + margin),
+                        cls._to_unit(max(all_y) - anchor_y + margin),
+                    ],
+                    [
+                        cls._to_unit(min(all_x) - anchor_x - margin),
+                        cls._to_unit(max(all_y) - anchor_y + margin),
+                    ],
+                    [
+                        cls._to_unit(min(all_x) - anchor_x - margin),
+                        cls._to_unit(min(all_y) - anchor_y - margin),
+                    ],
+                ],
+            }
+
+            definitions[definition_id] = {
+                "id": definition_id,
+                "outline": outline,
+                "pins": synthetic_pins,
+                "keepouts": [],
+            }
+
+            synthetic_components.append(
+                {
+                    "id": component_id,
+                    "definition": definition_id,
+                    "position": [cls._to_unit(anchor_x), cls._to_unit(anchor_y)],
+                    "rotation": cls._export_rotation(
+                        getattr(anchor_fp.at, "r", None),
+                        provider_strict=provider_strict,
+                    ),
+                    "side": (
+                        "BACK"
+                        if str(anchor_fp.layer).startswith("B.")
+                        else "FRONT"
+                    ),
+                    "partNumber": f"REUSE_BLOCK:{group_name}",
+                    "protected": True,
+                }
+            )
+
+            # Address map: module_address → parent atopile_address
+            addr_map: dict[str, str] = {}
+            for fp in group_fps:
+                ato_addr = Property.try_get_property(
+                    fp.propertys, "atopile_address"
+                )
+                _, module_addr = fp_to_sub_addr[fp.uuid]
+                if ato_addr:
+                    addr_map[module_addr] = ato_addr
+
+            # Net map: sub-PCB net name → parent net name
+            sub_net_map = cls._build_sub_net_map(
+                sub_pcb, pcb, addr_map, group_external_nets
+            )
+
+            # Find the anchor's module address for sub-PCB position lookup.
+            anchor_ato_addr = Property.try_get_property(
+                anchor_fp.propertys, "atopile_address"
+            )
+            _, anchor_module_addr = fp_to_sub_addr.get(
+                anchor_fp.uuid, (None, None)
+            )
+            # Look up anchor position in the sub-PCB.
+            sub_anchor_x, sub_anchor_y = 0.0, 0.0
+            if anchor_module_addr:
+                for sfp in sub_pcb.footprints:
+                    saddr = Property.try_get_property(
+                        sfp.propertys, "atopile_address"
+                    )
+                    if saddr == anchor_module_addr:
+                        sub_anchor_x = float(sfp.at.x)
+                        sub_anchor_y = float(sfp.at.y)
+                        break
+
+            metadata[group_name] = {
+                "group_name": group_name,
+                "component_id": component_id,
+                "definition_id": definition_id,
+                "pcb_address": pcb_addr,
+                "anchor_position": [
+                    cls._to_unit(anchor_x),
+                    cls._to_unit(anchor_y),
+                ],
+                "sub_anchor_position": [
+                    cls._to_unit(sub_anchor_x),
+                    cls._to_unit(sub_anchor_y),
+                ],
+                "footprint_addr_map": addr_map,
+                "external_pin_map": external_pin_map,
+                "internal_net_ids": [
+                    net_id_by_number.get(n, str(n))
+                    for n in group_internal_nets
+                ],
+                "sub_net_map": sub_net_map,
+            }
+
+        # Step 4 – Preserve padstacks from ALL pads of collapsed footprints.
+        # The loop above only collects padstacks for external (exported) pins.
+        # Internal pads (e.g. USB connector through-hole pins that are only
+        # connected within the reuse block) also contribute padstack definitions
+        # that the DeepPCB API may reference internally (e.g. for via templates).
+        # Without these, the API silently rejects the board during ingestion.
+        for group_fps in groups.values():
+            for fp in group_fps:
+                scope = (
+                    cls._definition_id(fp, provider_strict=provider_strict)
+                    if provider_strict
+                    else None
+                )
+                for pad in fp.pads:
+                    padstack_id, padstack_data = cls._padstack_from_pad(
+                        pad,
+                        copper_layer_index,
+                        provider_strict=provider_strict,
+                        strict_scope=scope,
+                    )
+                    synthetic_padstacks.setdefault(padstack_id, padstack_data)
+
+        log.info(
+            "Collapsed %d reuse block(s): %s",
+            len(groups),
+            ", ".join(sorted(groups.keys())),
+        )
+
+        return {
+            "grouped_fp_uuids": grouped_fp_uuids,
+            "internal_net_numbers": all_internal_nets,
+            "definitions": definitions,
+            "components": synthetic_components,
+            "padstacks": synthetic_padstacks,
+            "pins_by_net": synthetic_pins_by_net,
+            "metadata": metadata,
+        }
+
+    @classmethod
+    def _build_sub_net_map(
+        cls,
+        sub_pcb: Any,
+        parent_pcb: Any,
+        addr_map: dict[str, str],
+        external_net_numbers: set[int],
+    ) -> dict[str, str]:
+        """Build mapping from sub-PCB net names → parent net names.
+
+        Matches footprints by address, then pads by name, to discover
+        which sub-PCB net corresponds to which parent net.
+        """
+        net_map: dict[str, str] = {}
+
+        sub_fps: dict[str, Any] = {}
+        for fp in sub_pcb.footprints:
+            addr = Property.try_get_property(fp.propertys, "atopile_address")
+            if addr:
+                sub_fps[addr] = fp
+
+        parent_fps: dict[str, Any] = {}
+        for fp in parent_pcb.footprints:
+            addr = Property.try_get_property(fp.propertys, "atopile_address")
+            if addr:
+                parent_fps[addr] = fp
+
+        for sub_addr, parent_addr in addr_map.items():
+            sub_fp = sub_fps.get(sub_addr)
+            parent_fp = parent_fps.get(parent_addr)
+            if not sub_fp or not parent_fp:
+                continue
+
+            for sub_pad in sub_fp.pads:
+                if not sub_pad.net or not sub_pad.net.name:
+                    continue
+                for p_pad in parent_fp.pads:
+                    if p_pad.name != sub_pad.name:
+                        continue
+                    if not p_pad.net or not p_pad.net.name:
+                        continue
+                    p_net_num = int(getattr(p_pad.net, "number", 0) or 0)
+                    if p_net_num in external_net_numbers:
+                        net_map[sub_pad.net.name] = p_pad.net.name
+                    break
+
+        return net_map
+
+    @classmethod
+    def expand_reuse_blocks(
+        cls,
+        pcb: Any,
+        metadata: dict[str, Any],
+        project_root: Path,
+    ) -> None:
+        """Expand synthetic reuse-block footprints back into real components.
+
+        After DeepPCB places the synthetic block at a new position, this
+        method loads the sub-PCB, applies the position offset, remaps nets,
+        and inserts the real footprints + routing into *pcb*.
+
+        Modifies *pcb* in-place.
+        """
+        if not metadata:
+            return
+
+        # Index metadata by partNumber → group_name
+        blocks_by_group: dict[str, dict[str, Any]] = {}
+        for group_name, block_info in metadata.items():
+            blocks_by_group[group_name] = block_info
+
+        # Find synthetic footprints
+        synthetic_fps: list[Any] = []
+        for fp in pcb.footprints:
+            if str(fp.name).startswith("REUSE_BLOCK:"):
+                synthetic_fps.append(fp)
+
+        if not synthetic_fps:
+            return
+
+        # Parent net name → number lookup
+        parent_net_numbers: dict[str, int] = {}
+        for net in pcb.nets:
+            if net.name:
+                parent_net_numbers[net.name] = net.number
+
+        # Track the highest net number for creating new internal nets
+        max_net_number = max(
+            (net.number for net in pcb.nets), default=0
+        )
+
+        for synth_fp in synthetic_fps:
+            group_name = str(synth_fp.name).removeprefix("REUSE_BLOCK:")
+            block_info = blocks_by_group.get(group_name)
+            if block_info is None:
+                log.warning(
+                    "No metadata for reuse block '%s', skipping expansion",
+                    group_name,
+                )
+                continue
+
+            # Compute offset: map sub-PCB coordinates to parent board.
+            # offset = new_parent_position - sub_pcb_anchor_position
+            new_x = float(synth_fp.at.x)
+            new_y = float(synth_fp.at.y)
+            resolution = cls.RESOLUTION_VALUE
+            sub_anchor = block_info.get("sub_anchor_position")
+            if sub_anchor:
+                sub_ax = float(sub_anchor[0]) / resolution
+                sub_ay = float(sub_anchor[1]) / resolution
+            else:
+                # Fallback: assume sub-PCB anchor is at parent position
+                orig_pos = block_info["anchor_position"]
+                sub_ax = float(orig_pos[0]) / resolution
+                sub_ay = float(orig_pos[1]) / resolution
+            offset = kicad.pcb.Xy(x=new_x - sub_ax, y=new_y - sub_ay)
+
+            # Load sub-PCB
+            sub_pcb_path = project_root / block_info["pcb_address"]
+            try:
+                sub_pcb = kicad.loads(
+                    kicad.pcb.PcbFile, sub_pcb_path
+                ).kicad_pcb
+            except Exception:
+                log.error("Failed to load sub-PCB %s", sub_pcb_path)
+                continue
+
+            sub_net_map: dict[str, str] = block_info.get("sub_net_map", {})
+            addr_map: dict[str, str] = block_info.get("footprint_addr_map", {})
+
+            # Build sub-PCB internal net map (name → number in sub-PCB)
+            sub_net_names: dict[int, str] = {}
+            for net in sub_pcb.nets:
+                if net.name:
+                    sub_net_names[net.number] = net.name
+
+            # Create parent nets for internal sub-PCB nets and build
+            # a full remapping: sub-PCB net name → parent net number
+            full_net_remap: dict[str, int] = {}
+            for sub_net_name, parent_net_name in sub_net_map.items():
+                full_net_remap[sub_net_name] = parent_net_numbers.get(
+                    parent_net_name, 0
+                )
+
+            # Internal nets: create new nets in parent PCB
+            for sub_net_num, sub_net_name in sub_net_names.items():
+                if sub_net_name in full_net_remap:
+                    continue
+                # This is an internal net — create it in the parent
+                max_net_number += 1
+                internal_name = f"__block_{group_name}__{sub_net_name}"
+                pcb.nets.append(
+                    kicad.pcb.Net(number=max_net_number, name=internal_name)
+                )
+                parent_net_numbers[internal_name] = max_net_number
+                full_net_remap[sub_net_name] = max_net_number
+
+            # Copy footprints from sub-PCB
+            for sub_fp in sub_pcb.footprints:
+                sub_addr = Property.try_get_property(
+                    sub_fp.propertys, "atopile_address"
+                )
+                if not sub_addr or sub_addr not in addr_map:
+                    continue
+
+                new_fp = kicad.copy(sub_fp)
+                new_fp.uuid = kicad.gen_uuid()
+
+                # Update atopile_address to parent address
+                parent_addr = addr_map[sub_addr]
+                for prop in new_fp.propertys:
+                    if str(getattr(prop, "name", "")) == "atopile_address":
+                        prop.value = parent_addr
+                        break
+
+                # Apply offset
+                new_fp.at = kicad.pcb.Xyr(
+                    x=float(sub_fp.at.x) + offset.x,
+                    y=float(sub_fp.at.y) + offset.y,
+                    r=getattr(sub_fp.at, "r", None),
+                )
+
+                # Remap nets on pads
+                for pad in new_fp.pads:
+                    pad.uuid = kicad.gen_uuid()
+                    if pad.net and pad.net.name:
+                        new_net_num = full_net_remap.get(pad.net.name)
+                        if new_net_num is not None:
+                            # Find the parent net name
+                            parent_name = sub_net_map.get(pad.net.name)
+                            if parent_name is None:
+                                parent_name = (
+                                    f"__block_{group_name}__{pad.net.name}"
+                                )
+                            pad.net = kicad.pcb.Net(
+                                number=new_net_num,
+                                name=parent_name,
+                            )
+                        else:
+                            pad.net = None
+
+                pcb.footprints.append(new_fp)
+
+            # Remove board-level internal routing before inserting sub-PCB
+            # copies.  During collapse we now preserve internal wires/vias/zones
+            # so DeepPCB can see existing copper.  Before expansion we must
+            # strip them to avoid duplicates with the sub-PCB routing.
+            current_net_by_name: dict[str, int] = {
+                net.name: net.number for net in pcb.nets if net.name
+            }
+            internal_net_ids = set(block_info.get("internal_net_ids", []))
+            internal_parent_nets: set[int] = set()
+            for net_id in internal_net_ids:
+                net_num = current_net_by_name.get(net_id, 0)
+                if net_num:
+                    internal_parent_nets.add(net_num)
+
+            if internal_parent_nets:
+                pcb.segments = [
+                    s for s in pcb.segments
+                    if s.net not in internal_parent_nets
+                ]
+                pcb.arcs = [
+                    a for a in pcb.arcs
+                    if a.net not in internal_parent_nets
+                ]
+                pcb.vias = [
+                    v for v in pcb.vias
+                    if v.net not in internal_parent_nets
+                ]
+                pcb.zones = [
+                    z for z in pcb.zones
+                    if int(getattr(z, "net", 0) or 0) not in internal_parent_nets
+                ]
+
+            # Copy all routing elements (segments, arcs, zones, vias)
+            PCB_Transformer, get_all_geos = _lazy_kicad_transformer()
+            for track in chain(
+                sub_pcb.segments, sub_pcb.arcs, sub_pcb.zones, sub_pcb.vias
+            ):
+                sub_net_name = sub_net_names.get(track.net, "")
+                new_net_num = full_net_remap.get(sub_net_name)
+                if new_net_num is None:
+                    continue
+                new_track = kicad.copy(track)
+                new_track.uuid = kicad.gen_uuid()
+                new_track.net = new_net_num
+                if isinstance(new_track, kicad.pcb.Zone):
+                    parent_name = sub_net_map.get(sub_net_name)
+                    if parent_name is None:
+                        parent_name = (
+                            f"__block_{group_name}__{sub_net_name}"
+                        )
+                    new_track.net_name = parent_name
+                PCB_Transformer.move_object(new_track, offset)
+
+                if isinstance(new_track, kicad.pcb.Segment):
+                    pcb.segments.append(new_track)
+                elif isinstance(new_track, kicad.pcb.ArcSegment):
+                    pcb.arcs.append(new_track)
+                elif isinstance(new_track, kicad.pcb.Zone):
+                    pcb.zones.append(new_track)
+                elif isinstance(new_track, kicad.pcb.Via):
+                    pcb.vias.append(new_track)
+
+            # Copy graphics (lines, arcs, polygons, text, images, etc.)
+            # get_all_geos already includes gr_lines/arcs/circles/rects/curves/polys.
+            # We additionally chain gr_text_boxes, gr_texts, and images.
+            _GR_DISPATCH = {
+                kicad.pcb.Line: "gr_lines",
+                kicad.pcb.Arc: "gr_arcs",
+                kicad.pcb.Polygon: "gr_polys",
+                kicad.pcb.Circle: "gr_circles",
+                kicad.pcb.Rect: "gr_rects",
+                kicad.pcb.Curve: "gr_curves",
+                kicad.pcb.TextBox: "gr_text_boxes",
+                kicad.pcb.Text: "gr_texts",
+                kicad.pcb.Image: "images",
+            }
+            for gr in chain(
+                get_all_geos(sub_pcb),
+                sub_pcb.gr_text_boxes,
+                sub_pcb.gr_texts,
+                sub_pcb.images,
+            ):
+                new_gr = kicad.copy(gr)
+                new_gr.uuid = kicad.gen_uuid()
+                PCB_Transformer.move_object(new_gr, offset)
+
+                target_attr = _GR_DISPATCH.get(type(new_gr))
+                if target_attr is not None:
+                    getattr(pcb, target_attr).append(new_gr)
+
+            # Remove synthetic footprint
+            pcb.footprints.remove(synth_fp)
+            log.info(
+                "Expanded reuse block '%s' at offset (%.2f, %.2f)",
+                group_name,
+                offset.x,
+                offset.y,
+            )

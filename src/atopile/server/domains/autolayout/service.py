@@ -192,6 +192,7 @@ class AutolayoutService:
             layout_path=target_files.layout_path,
             deeppcb_path=target_files.deeppcb_path,
             provider_name=provider.name,
+            project_root=target_files.project_root,
         )
 
         job = AutolayoutJob(
@@ -427,6 +428,44 @@ class AutolayoutService:
         )
         downloaded_layout = download_result.layout_path
         chosen_candidate = selected_candidate_id
+
+        # Convert DeepPCB JSON → KiCad if the download is a .deeppcb file
+        if downloaded_layout.suffix in {".deeppcb", ".json"}:
+            board = DeepPCB_Transformer.loads(downloaded_layout)
+            pcb_obj = DeepPCB_Transformer.to_internal_pcb(board)
+            converted_path = downloaded_layout.with_suffix(".kicad_pcb")
+            kicad.dumps(kicad.pcb.PcbFile(kicad_pcb=pcb_obj), converted_path)
+            log.info(
+                "Converted DeepPCB JSON to KiCad: %s → %s",
+                downloaded_layout,
+                converted_path,
+            )
+            downloaded_layout = converted_path
+
+        # Expand reuse blocks if metadata exists
+        metadata_path = Path(job.work_dir or ".") / "reuse_block_metadata.json"
+        if metadata_path.exists():
+            try:
+                reuse_metadata = json.loads(
+                    metadata_path.read_text(encoding="utf-8")
+                )
+                if reuse_metadata:
+                    parsed = kicad.loads(kicad.pcb.PcbFile, downloaded_layout)
+                    DeepPCB_Transformer.expand_reuse_blocks(
+                        parsed.kicad_pcb,
+                        reuse_metadata,
+                        Path(job.project_root),
+                    )
+                    kicad.dumps(
+                        kicad.pcb.PcbFile(kicad_pcb=parsed.kicad_pcb),
+                        downloaded_layout,
+                    )
+                    log.info(
+                        "Expanded %d reuse block(s) in downloaded layout",
+                        len(reuse_metadata),
+                    )
+            except Exception:
+                log.exception("Failed to expand reuse blocks")
 
         backup_path = self._apply_layout(layout_path, downloaded_layout, job_id)
 
@@ -686,6 +725,7 @@ class AutolayoutService:
         layout_path: Path,
         deeppcb_path: Path | None,
         provider_name: str,
+        project_root: Path | None = None,
     ) -> Path:
         if provider_name != "deeppcb":
             return layout_path
@@ -696,8 +736,28 @@ class AutolayoutService:
         generated_path = work_dir / "input" / f"{layout_path.stem}.deeppcb"
         generated_path.parent.mkdir(parents=True, exist_ok=True)
         parsed = kicad.loads(kicad.pcb.PcbFile, layout_path)
-        board = DeepPCB_Transformer.from_kicad_file(parsed, provider_strict=True)
+
+        reuse_metadata: dict[str, Any] = {}
+        board = DeepPCB_Transformer.from_kicad_file(
+            parsed,
+            provider_strict=True,
+            project_root=project_root,
+            reuse_block_metadata_out=reuse_metadata,
+        )
         DeepPCB_Transformer.dumps(board, generated_path)
+
+        if reuse_metadata:
+            metadata_path = work_dir / "reuse_block_metadata.json"
+            metadata_path.write_text(
+                json.dumps(reuse_metadata, indent=2),
+                encoding="utf-8",
+            )
+            log.info(
+                "Saved reuse block metadata for %d block(s) to %s",
+                len(reuse_metadata),
+                metadata_path,
+            )
+
         return generated_path
 
     def _prepare_input_package(

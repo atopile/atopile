@@ -43,12 +43,9 @@ def test_deeppcb_defaults_match_public_api_paths(monkeypatch):
     assert cfg.upload_path == "/api/v1/files/uploads/board-file"
     assert cfg.layout_path == "/api/v1/boards"
     assert cfg.confirm_path_template == "/api/v1/boards/{task_id}/confirm"
-    assert cfg.alt_confirm_path_template == "/api/v1/user/boards/{task_id}/confirm"
     assert cfg.resume_path_template == "/api/v1/boards/{task_id}/resume"
-    assert cfg.alt_resume_path_template == "/api/v1/user/boards/{task_id}/resume"
     assert cfg.request_lookup_path_template == "/api/v1/boards/requests/{request_id}"
     assert cfg.status_path_template == "/api/v1/boards/{task_id}"
-    assert cfg.alt_status_path_template == "/api/v1/user/boards/{task_id}"
     assert cfg.download_path_template == "/api/v1/boards/{task_id}/revision-artifact"
     assert (
         cfg.alt_download_path_template == "/api/v1/boards/{task_id}/download-artifact"
@@ -60,18 +57,8 @@ def test_deeppcb_defaults_match_public_api_paths(monkeypatch):
     assert cfg.board_ready_timeout_s == 90.0
     assert cfg.board_ready_poll_s == 2.0
     assert cfg.api_key == ""
-    assert cfg.bearer_token is None
     assert cfg.webhook_url is None
     assert cfg.webhook_token is None
-
-
-def test_deeppcb_optional_bearer_token(monkeypatch):
-    monkeypatch.setenv("ATO_DEEPPCB_BEARER_TOKEN", "bearer-token")
-
-    deeppcb_module = _reload_deeppcb_module()
-    cfg = deeppcb_module.DeepPCBConfig.from_env()
-
-    assert cfg.bearer_token == "bearer-token"
 
 
 def test_deeppcb_optional_webhook_overrides(monkeypatch):
@@ -105,9 +92,8 @@ def test_extract_board_candidates_falls_back_to_top_level_id():
     assert deeppcb_module._extract_board_candidates(payload)[0] == "generic-id"
 
 
-def test_auth_headers_do_not_use_api_key_as_bearer(monkeypatch):
+def test_auth_headers_use_api_key(monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
-    monkeypatch.delenv("ATO_DEEPPCB_BEARER_TOKEN", raising=False)
 
     deeppcb_module = _reload_deeppcb_module()
     provider = deeppcb_module.DeepPCBProvider()
@@ -115,18 +101,6 @@ def test_auth_headers_do_not_use_api_key_as_bearer(monkeypatch):
     headers = provider._auth_headers()
     assert headers["x-deeppcb-api-key"] == "api-key"
     assert "Authorization" not in headers
-
-
-def test_auth_headers_include_explicit_bearer(monkeypatch):
-    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
-    monkeypatch.setenv("ATO_DEEPPCB_BEARER_TOKEN", "bearer-token")
-
-    deeppcb_module = _reload_deeppcb_module()
-    provider = deeppcb_module.DeepPCBProvider()
-
-    headers = provider._auth_headers()
-    assert headers["x-deeppcb-api-key"] == "api-key"
-    assert headers["Authorization"] == "Bearer bearer-token"
 
 
 def test_redact_sensitive_values():

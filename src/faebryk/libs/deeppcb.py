@@ -54,14 +54,6 @@ class DeepPCBConfig(BaseSettings):
             "FBRK_DEEPPCB_STATUS_PATH_TEMPLATE",
         ),
     )
-    alt_status_path_template: str = Field(
-        default="/api/v1/user/boards/{task_id}",
-        validation_alias=AliasChoices(
-            "ATO_DEEPPCB_ALT_STATUS_PATH_TEMPLATE",
-            "DEEPPCB_ALT_STATUS_PATH_TEMPLATE",
-            "FBRK_DEEPPCB_ALT_STATUS_PATH_TEMPLATE",
-        ),
-    )
     candidates_path_template: str = Field(
         default="/api/v1/boards/{task_id}",
         validation_alias=AliasChoices(
@@ -94,28 +86,12 @@ class DeepPCBConfig(BaseSettings):
             "FBRK_DEEPPCB_CONFIRM_PATH_TEMPLATE",
         ),
     )
-    alt_confirm_path_template: str = Field(
-        default="/api/v1/user/boards/{task_id}/confirm",
-        validation_alias=AliasChoices(
-            "ATO_DEEPPCB_ALT_CONFIRM_PATH_TEMPLATE",
-            "DEEPPCB_ALT_CONFIRM_PATH_TEMPLATE",
-            "FBRK_DEEPPCB_ALT_CONFIRM_PATH_TEMPLATE",
-        ),
-    )
     resume_path_template: str = Field(
         default="/api/v1/boards/{task_id}/resume",
         validation_alias=AliasChoices(
             "ATO_DEEPPCB_RESUME_PATH_TEMPLATE",
             "DEEPPCB_RESUME_PATH_TEMPLATE",
             "FBRK_DEEPPCB_RESUME_PATH_TEMPLATE",
-        ),
-    )
-    alt_resume_path_template: str = Field(
-        default="/api/v1/user/boards/{task_id}/resume",
-        validation_alias=AliasChoices(
-            "ATO_DEEPPCB_ALT_RESUME_PATH_TEMPLATE",
-            "DEEPPCB_ALT_RESUME_PATH_TEMPLATE",
-            "FBRK_DEEPPCB_ALT_RESUME_PATH_TEMPLATE",
         ),
     )
     check_constraints_path: str = Field(
@@ -190,14 +166,6 @@ class DeepPCBConfig(BaseSettings):
             "FBRK_DEEPPCB_BOARD_READY_POLL_S",
         ),
     )
-    bearer_token: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "ATO_DEEPPCB_BEARER_TOKEN",
-            "DEEPPCB_BEARER_TOKEN",
-            "FBRK_DEEPPCB_BEARER_TOKEN",
-        ),
-    )
     webhook_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
@@ -215,7 +183,7 @@ class DeepPCBConfig(BaseSettings):
         ),
     )
 
-    @field_validator("bearer_token", "webhook_url", "webhook_token", mode="before")
+    @field_validator("webhook_url", "webhook_token", mode="before")
     @classmethod
     def _blank_to_none(cls, value: Any) -> Any:
         if isinstance(value, str) and not value.strip():
@@ -234,11 +202,7 @@ class DeepPCBApiClient:
         self.config = config or DeepPCBConfig.from_env()
 
     def auth_headers(self) -> dict[str, str]:
-        headers = {"x-deeppcb-api-key": self.config.api_key}
-        bearer_token = (self.config.bearer_token or "").strip()
-        if bearer_token:
-            headers["Authorization"] = f"Bearer {bearer_token}"
-        return headers
+        return {"x-deeppcb-api-key": self.config.api_key}
 
     def request_json(
         self,
@@ -319,7 +283,6 @@ class DeepPCBApiClient:
                     detail,
                     (
                         self.config.api_key,
-                        self.config.bearer_token,
                         self.config.webhook_token,
                     ),
                 )
