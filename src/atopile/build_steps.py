@@ -54,12 +54,16 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.power_tree.power_tree import export_power_tree
+from faebryk.exporters.harness.harness_data import extract_harness_data
+from faebryk.exporters.harness.wireviz_export import export_wireviz_yaml
+from faebryk.exporters.harness.system_diagram import export_system_diagram
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_kicad_pcb_designators,
 )
 from faebryk.libs.app.erc import needs_erc_check
+from atopile.cross_board_drc import needs_cross_board_drc
 from faebryk.libs.app.keep_picked_parts import load_part_info_from_pcb
 from faebryk.libs.app.pcb import (
     check_net_names,
@@ -556,6 +560,10 @@ def prepare_build(ctx: BuildStepContext) -> None:
 
     # TODO remove, once erc split up
     fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
+
+    # Attach cross-board DRC if this is a multi-board system
+    if app.has_trait(F.is_multiboard):
+        fabll.Traits.create_and_add_instance_to(app, needs_cross_board_drc)
 
 
 @muster.register(
@@ -1142,6 +1150,22 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
         solver,
         mermaid_path=output_dir / "power_tree.md",
     )
+
+
+@muster.register(
+    "harness-diagram",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_harness_diagram(ctx: BuildStepContext) -> None:
+    """Generate harness diagram (WireViz YAML + Mermaid system diagram)."""
+    app = ctx.require_app()
+    output_dir = config.build.paths.output_base.parent
+
+    harness_data = extract_harness_data(app)
+
+    export_wireviz_yaml(harness_data, output_dir / "harness.yml")
+    export_system_diagram(harness_data, output_dir / "system_diagram.md")
 
 
 @muster.register(

@@ -1,0 +1,24 @@
+#pragma experiment("TRAITS")
+
+import Resistor
+import ElectricPower
+import Connector4Pin
+import is_board
+import is_connector_plug
+
+module DriverBoard:
+    trait is_board
+
+    power = new ElectricPower
+    assert power.voltage within 5V +/- 10%
+
+    current_limit = new Resistor
+    current_limit.resistance = 100 ohm +/- 5%
+
+    harness_out = new Connector4Pin
+    trait harness_out is_connector_plug
+
+    # Wire power through the current limiter to the connector
+    power.hv ~ current_limit.unnamed[0]
+    current_limit.unnamed[1] ~ harness_out.board_side[0]
+    power.lv ~ harness_out.board_side[1]

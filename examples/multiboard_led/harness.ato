@@ -1,0 +1,29 @@
+#pragma experiment("TRAITS")
+
+import Cable4Wire
+import Connector4Pin
+import is_harness
+import is_connector_receptacle
+import is_connector_plug
+
+module LEDHarness:
+    trait is_harness
+
+    side_a = new Connector4Pin
+    trait side_a is_connector_receptacle
+
+    side_b = new Connector4Pin
+    trait side_b is_connector_plug
+
+    cable = new Cable4Wire
+
+    # Connect connectors to cable
+    side_a.wire_side[0] ~ cable.end_a[0]
+    side_a.wire_side[1] ~ cable.end_a[1]
+    side_a.wire_side[2] ~ cable.end_a[2]
+    side_a.wire_side[3] ~ cable.end_a[3]
+
+    cable.end_b[0] ~ side_b.wire_side[0]
+    cable.end_b[1] ~ side_b.wire_side[1]
+    cable.end_b[2] ~ side_b.wire_side[2]
+    cable.end_b[3] ~ side_b.wire_side[3]

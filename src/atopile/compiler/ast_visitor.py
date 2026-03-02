@@ -107,6 +107,8 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.TestPoint,
         F.MountingHole,
         F.NetTie,
+        F.Connector4Pin,
+        F.Cable4Wire,
     }
 ) | (
     # Traits
@@ -126,6 +128,11 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.is_auto_generated,
         F.Pickable.is_pickable,
         F.requires_external_usage,
+        F.is_board,
+        F.is_multiboard,
+        F.is_harness,
+        F.is_connector_plug,
+        F.is_connector_receptacle,
     }
 )
 

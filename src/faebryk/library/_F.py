@@ -25,6 +25,11 @@ from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
+from faebryk.library.is_board import is_board
+from faebryk.library.is_connector_plug import is_connector_plug
+from faebryk.library.is_connector_receptacle import is_connector_receptacle
+from faebryk.library.is_harness import is_harness
+from faebryk.library.is_multiboard import is_multiboard
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_source_chunk import has_source_chunk
@@ -54,6 +59,7 @@ from faebryk.library.PCB import PCB
 from faebryk.library.has_default_constraint import has_default_constraint
 from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
+from faebryk.library.Cable4Wire import Cable4Wire
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
 from faebryk.library.has_net_name_affix import has_net_name_affix
@@ -61,6 +67,7 @@ from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.BJT import BJT
+from faebryk.library.Connector4Pin import Connector4Pin
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Diode import Diode
 from faebryk.library.Fuse import Fuse
@@ -128,6 +135,11 @@ __all__ = [
     "Signal",
     "is_app_root",
     "bus_parameter_utils",
+    "is_board",
+    "is_connector_plug",
+    "is_connector_receptacle",
+    "is_harness",
+    "is_multiboard",
     "Literals",
     "can_bridge",
     "has_source_chunk",
@@ -157,6 +169,7 @@ __all__ = [
     "has_default_constraint",
     "is_alias_bus_parameter",
     "is_sum_bus_parameter",
+    "Cable4Wire",
     "Filter",
     "Lead",
     "has_net_name_affix",
@@ -164,6 +177,7 @@ __all__ = [
     "XtalIF",
     "ElectricPower",
     "BJT",
+    "Connector4Pin",
     "Crystal",
     "Diode",
     "Fuse",

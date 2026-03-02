@@ -1,0 +1,27 @@
+#pragma experiment("TRAITS")
+
+import Resistor
+import ElectricPower
+import Connector4Pin
+import is_board
+import is_connector_receptacle
+
+module LEDPanel:
+    trait is_board
+
+    power = new ElectricPower
+
+    harness_in = new Connector4Pin
+    trait harness_in is_connector_receptacle
+
+    # Load resistor
+    r_load = new Resistor
+    r_load.resistance = 330 ohm +/- 5%
+
+    # Connect harness to power
+    harness_in.board_side[0] ~ power.hv
+    harness_in.board_side[1] ~ power.lv
+
+    # Load circuit
+    power.hv ~ r_load.unnamed[0]
+    r_load.unnamed[1] ~ power.lv
