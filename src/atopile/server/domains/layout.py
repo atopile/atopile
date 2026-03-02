@@ -121,6 +121,12 @@ class LayoutService:
         except Exception:
             log.exception("Error reloading PCB after file change")
 
+    # --- Selection ---
+
+    async def set_selection(self, uuids: list[str]) -> None:
+        """Broadcast the current selection to all WebSocket clients."""
+        await self.broadcast(WsMessage(type="selection_changed", uuids=uuids))
+
     # --- Save and broadcast helper ---
 
     async def save_and_broadcast(self) -> RenderModel:
