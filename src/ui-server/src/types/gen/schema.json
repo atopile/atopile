@@ -2923,7 +2923,7 @@
         "type": "object"
       }
     },
-    "description": "Atopile configuration state.",
+    "description": "atopile configuration state.",
     "properties": {
       "currentVersion": {
         "default": "",

@@ -197,7 +197,6 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
         self._dependants: list["_ChildField[Any] | _EdgeField"] = []
         self._prepend_dependants: list["_ChildField[Any] | _EdgeField"] = []
         self.attributes = attributes
-        self._soft_create = False
         super().__init__(identifier=identifier)
 
     def bind_to_parent_type[N: NodeT](
@@ -283,13 +282,11 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         t: "TypeNodeBoundTG[N, Any]",
         attributes: "NodeAttributes | None" = None,
         identifier: str | None | PLACEHOLDER = None,
-        soft_create: bool = False,
     ) -> None:
         self.nodetype = nodetype
         self.t = t
         self.identifier = identifier
         self.attributes = attributes
-        self._soft_create = soft_create
 
         if isinstance(nodetype, str):
             # TODO: Add checking similar to below for prelinked childfields
@@ -315,7 +312,6 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 node_attributes=self.attributes.to_node_attributes()
                 if self.attributes is not None
                 else None,
-                soft_create=self._soft_create,
             )
         else:
             child_type_node = self.nodetype.bind_typegraph(
@@ -328,7 +324,6 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 node_attributes=self.attributes.to_node_attributes()
                 if self.attributes is not None
                 else None,
-                soft_create=self._soft_create,
             )
         return mc
 
@@ -1045,7 +1040,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     nodetype=field.nodetype,
                     identifier=identifier,
                     attributes=cast(NodeAttributes, field.attributes),
-                    soft_create=field._soft_create,
                 )
                 makechild = mc._add_to_typegraph()
                 if source_chunk_node is not None:
@@ -1919,6 +1913,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.t._type_cache[tg_hash] = typenode
         TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
         self.t._create_type(self)
+        tg.mark_constructable(type_node=typenode)
         return typenode
 
     def get_type_name(self) -> str:
@@ -2000,14 +1995,12 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         *,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
         attributes: NodeAttributes | None = None,
-        soft_create: bool = False,
     ) -> InstanceChildBoundType[C]:
         return InstanceChildBoundType(
             nodetype=nodetype,
             t=self,
             identifier=identifier,
             attributes=attributes,
-            soft_create=soft_create,
         )
 
     def MakeEdge(

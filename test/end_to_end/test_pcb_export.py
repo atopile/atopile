@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
 from faebryk.libs.kicad.fileformats import Property, kicad
 from test.end_to_end.conftest import dump_and_run
 
@@ -61,7 +59,6 @@ SIMPLE_APP_PCB_SUMMARY = PcbSummary(
 )
 
 
-@pytest.mark.not_in_ci  # requires kicad-cli
 def test_empty_design(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
@@ -82,7 +79,6 @@ def test_empty_design(tmpdir: Path):
     )
 
 
-@pytest.mark.not_in_ci  # requires kicad-cli
 def test_pcb_file_created(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
@@ -96,7 +92,6 @@ def test_pcb_file_created(tmpdir: Path):
     assert SIMPLE_APP_PCB_SUMMARY == summarize_pcb_file(pcb_file)
 
 
-@pytest.mark.not_in_ci  # requires kicad-cli
 def test_pcb_file_addition(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
@@ -131,7 +126,6 @@ def test_pcb_file_addition(tmpdir: Path):
     assert expected == summarize_pcb_file(pcb_file)
 
 
-@pytest.mark.not_in_ci  # requires kicad-cli
 def test_pcb_file_removal(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
