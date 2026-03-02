@@ -112,6 +112,21 @@ _BaseBaseUserException = UserException
 # =============================================================================
 
 
+def source_header(
+    file_path: Path | None, line: int | None = None, col: int | None = None
+) -> Text:
+    """Build a clickable Source: /abs/path:line:col header."""
+    if file_path is not None:
+        source_info = str(file_path.resolve())
+        if line:
+            source_info += f":{line}"
+        if col:
+            source_info += f":{col}"
+    else:
+        source_info = f"memory:{line}" if line else "memory"
+    return Text("Source: ", style="bold") + Text(source_info, style="magenta")
+
+
 def _render_tokens(
     token_stream: CommonTokenStream, start_token: Token, stop_token: Token
 ) -> list[ConsoleRenderable]:
@@ -125,18 +140,10 @@ def _render_tokens(
     )
     src_path, src_line, src_col = get_src_info_from_token(start_token)
 
-    # Use absolute path for clickability in terminals/IDEs
-    src_path = Path(src_path).resolve()
-    source_info = str(src_path)
-    if src_line := src_line:
-        source_info += f":{src_line}"
-    if src_col := src_col:
-        source_info += f":{src_col}"
-
     highlight_lines = set(range(start_token.line, stop_token.line + 1))
 
     return [
-        Text("Source: ", style="bold") + Text(source_info, style="magenta"),
+        source_header(Path(src_path), src_line, src_col),
         Syntax(
             lexer.get_code(),
             lexer,

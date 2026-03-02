@@ -10,6 +10,7 @@ from rich.text import Text
 import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+from atopile.errors import source_header
 from atopile.logging_utils import safe_markdown
 
 
@@ -147,15 +148,7 @@ class DslRichException(DslException):
         if file_path is None:
             file_path = ASTVisitor._extract_filepath_from_source_node(source_chunk)
 
-        # Build clickable source location header: Source: /abs/path:line:col
-        if file_path is not None:
-            source_info = str(file_path.resolve())
-            source_info += f":{start_line}"
-            if start_col:
-                source_info += f":{start_col}"
-        else:
-            source_info = f"memory:{start_line}"
-        header = Text("Source: ", style="bold") + Text(source_info, style="magenta")
+        header = source_header(file_path, start_line, start_col)
 
         code = None
         if file_path is not None:
