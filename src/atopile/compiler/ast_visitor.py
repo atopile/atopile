@@ -108,9 +108,9 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.MountingHole,
         F.NetTie,
         F.PCBManu.PCBLayer,
-        F.PCBManu.PCBoard,
-        F.PCBManu.PCBManufacturer,
-        F.PCBManu.Manufacturer,
+        F.PCBManu.PCBStackup,
+        F.PCBManu.is_pcb_manufacturer,
+        F.PCBManu.is_company,
     }
 ) | (
     # Traits
