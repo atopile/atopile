@@ -385,3 +385,23 @@ editor.init().then(() => {
 }).catch((err) => {
     console.error("Failed to initialize editor:", err);
 });
+
+// --- FPS counter in status bar ---
+{
+    const fpsEl = document.getElementById("status-fps");
+    if (fpsEl) {
+        let frames = 0;
+        let lastTime = performance.now();
+        const tick = () => {
+            frames++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fpsEl.textContent = `${frames} fps`;
+                frames = 0;
+                lastTime = now;
+            }
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+}
