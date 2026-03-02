@@ -1467,12 +1467,14 @@ def test_datasheet_read_uploads_pdf_and_returns_file_id(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
+    def fake_get_part_details(lcsc_id: str) -> dict | None:
         assert lcsc_id == "C521608"
-        assert project_root == str(tmp_path)
-        return str(
-            tmp_path / "build" / "cache" / "parts" / "datasheets" / "tps7a02.pdf"
-        )
+        return {
+            "datasheet_url": "https://example.com/tps7a02.pdf",
+            "manufacturer": "TI",
+            "part_number": "TPS7A02",
+            "description": "LDO",
+        }
 
     def fake_read_datasheet_file(
         project_root: Path,
@@ -1481,13 +1483,12 @@ def test_datasheet_read_uploads_pdf_and_returns_file_id(
         url: str | None = None,
     ) -> tuple[bytes, dict[str, object]]:
         assert project_root == tmp_path
-        assert path and path.endswith("tps7a02.pdf")
-        assert url is None
+        assert url == "https://example.com/tps7a02.pdf"
         return (
             b"%PDF-1.4\n",
             {
-                "source_kind": "path",
-                "source": "build/cache/parts/datasheets/tps7a02.pdf",
+                "source_kind": "url",
+                "source": "https://example.com/tps7a02.pdf",
                 "format": "pdf",
                 "content_type": "application/pdf",
                 "filename": "tps7a02.pdf",
@@ -1509,8 +1510,8 @@ def test_datasheet_read_uploads_pdf_and_returns_file_id(
 
     monkeypatch.setattr(
         tools.parts_domain,
-        "handle_get_cached_datasheet_path",
-        fake_get_cached_datasheet_path,
+        "handle_get_part_details",
+        fake_get_part_details,
     )
     monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
     monkeypatch.setattr(
@@ -1537,18 +1538,13 @@ def test_datasheet_read_uploads_pdf_and_returns_file_id(
     assert result["openai_file_cached"] is False
     assert result["filename"] == "tps7a02.pdf"
     assert result["lcsc_id"] == "C521608"
-    assert result["resolution"]["mode"] == "install_cache"
+    assert result["resolution"]["mode"] == "parts_api_fallback"
 
 
 def test_datasheet_read_falls_back_when_graph_resolution_fails(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
-        assert lcsc_id == "C521608"
-        assert project_root == str(tmp_path)
-        return None
-
     def fake_get_part_details(lcsc_id: str) -> dict | None:
         assert lcsc_id == "C521608"
         return {
@@ -1593,11 +1589,6 @@ def test_datasheet_read_falls_back_when_graph_resolution_fails(
 
     monkeypatch.setattr(
         tools.parts_domain,
-        "handle_get_cached_datasheet_path",
-        fake_get_cached_datasheet_path,
-    )
-    monkeypatch.setattr(
-        tools.parts_domain,
         "handle_get_part_details",
         fake_get_part_details,
     )
@@ -1627,15 +1618,17 @@ def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    counters = {"cache_lookup": 0, "read": 0, "upload": 0}
+    counters = {"details": 0, "read": 0, "upload": 0}
 
-    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
-        counters["cache_lookup"] += 1
+    def fake_get_part_details(lcsc_id: str) -> dict | None:
+        counters["details"] += 1
         assert lcsc_id == "C123456"
-        assert project_root == str(tmp_path)
-        return str(
-            tmp_path / "build" / "cache" / "parts" / "datasheets" / "component.pdf"
-        )
+        return {
+            "datasheet_url": "https://example.com/component.pdf",
+            "manufacturer": "Test",
+            "part_number": "COMP-1",
+            "description": "Test component",
+        }
 
     def fake_read_datasheet_file(
         project_root: Path,
@@ -1645,13 +1638,12 @@ def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     ) -> tuple[bytes, dict[str, object]]:
         counters["read"] += 1
         assert project_root == tmp_path
-        assert path and path.endswith("component.pdf")
-        assert url is None
+        assert url == "https://example.com/component.pdf"
         return (
             b"%PDF-1.7\ncached\n",
             {
-                "source_kind": "path",
-                "source": "build/cache/parts/datasheets/component.pdf",
+                "source_kind": "url",
+                "source": "https://example.com/component.pdf",
                 "format": "pdf",
                 "content_type": "application/pdf",
                 "filename": "component.pdf",
@@ -1674,8 +1666,8 @@ def test_datasheet_read_uses_cached_reference_for_repeat_calls(
 
     monkeypatch.setattr(
         tools.parts_domain,
-        "handle_get_cached_datasheet_path",
-        fake_get_cached_datasheet_path,
+        "handle_get_part_details",
+        fake_get_part_details,
     )
     monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
     monkeypatch.setattr(
@@ -1715,7 +1707,7 @@ def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     assert second["datasheet_cache_hit"] is True
     assert second["openai_file_cached"] is True
     assert second["query"] == "second query"
-    assert counters == {"cache_lookup": 1, "read": 1, "upload": 1}
+    assert counters == {"details": 1, "read": 1, "upload": 1}
 
 
 def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
@@ -1723,11 +1715,6 @@ def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
     tmp_path: Path,
 ) -> None:
     read_attempts: list[str] = []
-
-    def fake_get_cached_datasheet_path(lcsc_id: str, project_root: str) -> str | None:
-        assert lcsc_id == "C5360602"
-        assert project_root == str(tmp_path)
-        return None
 
     def fake_get_part_details(lcsc_id: str) -> dict | None:
         assert lcsc_id == "C5360602"
@@ -1793,11 +1780,6 @@ def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
         assert cache_key == "11223344"
         return ("file-sht4x", False)
 
-    monkeypatch.setattr(
-        tools.parts_domain,
-        "handle_get_cached_datasheet_path",
-        fake_get_cached_datasheet_path,
-    )
     monkeypatch.setattr(
         tools.parts_domain,
         "handle_get_part_details",

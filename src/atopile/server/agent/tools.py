@@ -1124,21 +1124,6 @@ async def _tool_datasheet_read(
     resolution: dict[str, Any] = {}
     fallback_sources: list[dict[str, Any]] = []
     if lcsc_id:
-        cached_path = await asyncio.to_thread(
-            parts_domain.handle_get_cached_datasheet_path,
-            lcsc_id,
-            str(project_root),
-        )
-        if cached_path:
-            source_path = cached_path
-            source_url = None
-            resolution = {
-                "mode": "install_cache",
-                "path": cached_path,
-            }
-            if target:
-                resolution["requested_target"] = target
-
         if not source_path:
             details = await asyncio.to_thread(
                 parts_domain.handle_get_part_details,

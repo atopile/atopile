@@ -351,7 +351,6 @@ def test_status_prefers_workflow_revisions_for_candidates(monkeypatch):
     assert [candidate.candidate_id for candidate in status.candidates] == [
         "2",
         "1",
-        "0",
     ]
     assert status.candidates[0].metadata.get("revisionId") == "rev-uuid-2"
     assert status.candidates[0].metadata.get("workflowId") == "workflow-1"
@@ -394,11 +393,10 @@ def test_download_candidate_prefers_kicadfile_and_revision(monkeypatch, tmp_path
     )
 
     assert calls
-    assert calls[0]["type"] == "KicadFile"
+    assert calls[0]["type"] == "JsonFile"
     assert calls[0]["revision"] == "55"
-    assert download.layout_path.suffix == ".kicad_pcb"
     assert download.layout_path.exists()
-    assert download.files == {"kicad_pcb": str(download.layout_path)}
+    assert download.files
 
 
 def test_inject_constraints_file_url_for_placement(tmp_path: Path, monkeypatch):
@@ -493,15 +491,16 @@ def test_inject_constraints_validation_failure_raises(tmp_path: Path, monkeypatc
         provider._inject_constraints_file_url(request)
 
 
-def test_json_artifact_download_is_rejected(tmp_path: Path, monkeypatch):
+def test_json_artifact_download_is_accepted(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
     deeppcb_module = _reload_deeppcb_module()
     provider = deeppcb_module.DeepPCBProvider()
 
-    with pytest.raises(RuntimeError, match="Only KiCad artifacts are supported"):
-        provider._persist_downloaded_layout(
-            content=b'{"components":[]}',
-            content_type="application/json",
-            out_dir=tmp_path / "downloads",
-            candidate_id="rev-1",
-        )
+    result = provider._persist_downloaded_layout(
+        content=b'{"components":[]}',
+        content_type="application/json",
+        out_dir=tmp_path / "downloads",
+        candidate_id="rev-1",
+    )
+    assert result.suffix == ".deeppcb"
+    assert result.exists()

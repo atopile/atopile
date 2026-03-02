@@ -855,7 +855,7 @@ def update_pcb(ctx: BuildStepContext) -> None:
 
             kicad.dumps(pcb_file, config.build.paths.layout)
 
-    original_pcb = kicad.loads(kicad.pcb.PcbFile, pcb.path)
+    original_pcb = kicad.copy(pcb.pcb_file)
 
     # Ensure proper board appearance (matte black soldermask, ENIG copper finish)
     # This will overwrite user settings in the KiCad PCB file!
