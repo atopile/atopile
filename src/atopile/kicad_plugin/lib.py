@@ -166,10 +166,7 @@ def install_kicad_legacy_plugin() -> None:
             logger.info("Writing plugin loader to %s", plugin_loader_path)
         plugin_loader_path.write_text(plugin_loader, encoding="utf-8")
 
-    try:
-        plugin_paths = get_plugin_paths(legacy=True)
-    except FileNotFoundError:
-        raise Exception("KiCAD config path not found. Couldn't install plugin!")
+    plugin_paths = get_plugin_paths(legacy=True)
 
     for plugin_dir in plugin_paths:
         _write_plugin(plugin_dir)
