@@ -888,11 +888,12 @@ export class Editor {
                 const idx = candidateIndices[i]!;
                 const bbox = footprintBBox(this.model.footprints[idx]!);
                 if (bbox.contains_point(worldPos)) {
+                    // Preserve the exact footprint under cursor, even if it belongs
+                    // to a group, so click/drag behavior stays precise for multi-select.
+                    nextHoverFp = idx;
                     const groupId = this.groupIdByFpIndex.get(idx) ?? null;
                     if (groupId) {
                         nextHoverId = groupId;
-                    } else {
-                        nextHoverFp = idx;
                     }
                     break;
                 }
@@ -955,13 +956,7 @@ export class Editor {
             this.pendingDrag = null;
 
             let hitIdx = -1;
-            if (this.hoveredGroupId) {
-                const hoveredGroup = this.groupsById.get(this.hoveredGroupId);
-                if (hoveredGroup && hoveredGroup.memberIndices.length > 0) {
-                    hitIdx = hoveredGroup.memberIndices[0]!;
-                }
-            }
-            if (hitIdx < 0 && this.hoveredFpIndex >= 0 && this.hoveredFpIndex < this.model.footprints.length) {
+            if (this.hoveredFpIndex >= 0 && this.hoveredFpIndex < this.model.footprints.length) {
                 const hoveredBBox = footprintBBox(this.model.footprints[this.hoveredFpIndex]!);
                 if (hoveredBBox.contains_point(worldPos)) {
                     hitIdx = this.hoveredFpIndex;
