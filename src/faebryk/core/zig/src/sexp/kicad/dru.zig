@@ -101,10 +101,10 @@ pub const ValueWithUnit = struct {
         const val_str = std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
         if (self.unit) |unit| {
             const combined = std.fmt.allocPrint(allocator, "{s}{s}", .{ val_str, unit }) catch return error.OutOfMemory;
-            return SExp{ .value = .{ .symbol = combined }, .location = null };
+            return SExp{ .value = .{ .symbol = combined } };
         } else {
             const duped = std.fmt.allocPrint(allocator, "{s}", .{val_str}) catch return error.OutOfMemory;
-            return SExp{ .value = .{ .number = duped }, .location = null };
+            return SExp{ .value = .{ .number = duped } };
         }
     }
 };
@@ -119,7 +119,7 @@ fn decodeValueWithUnit(allocator: std.mem.Allocator, items: []const SExp) struct
     // We need to wrap items back into a list for the struct decoder.
     const list_items = allocator.alloc(SExp, items.len) catch return error.OutOfMemory;
     @memcpy(list_items, items);
-    const wrapper = SExp{ .value = .{ .list = list_items }, .location = null };
+    const wrapper = SExp{ .value = .{ .list = list_items } };
     return try structure.decode(ValueWithUnit, allocator, wrapper);
 }
 
@@ -238,22 +238,22 @@ pub const Constraint = struct {
         var items = std.array_list.Managed(SExp).init(allocator);
 
         // First: constraint_type as symbol
-        items.append(SExp{ .value = .{ .symbol = @tagName(self.constraint_type) }, .location = null }) catch return error.OutOfMemory;
+        items.append(SExp{ .value = .{ .symbol = @tagName(self.constraint_type) } }) catch return error.OutOfMemory;
 
         switch (self.constraint_type) {
             .disallow => {
                 for (self.disallow_types) |dt| {
-                    items.append(SExp{ .value = .{ .symbol = @tagName(dt) }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .symbol = @tagName(dt) } }) catch return error.OutOfMemory;
                 }
             },
             .zone_connection => {
                 if (self.zone_connection_type) |zct| {
-                    items.append(SExp{ .value = .{ .symbol = @tagName(zct) }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .symbol = @tagName(zct) } }) catch return error.OutOfMemory;
                 }
             },
             .assertion => {
                 if (self.assertion_expr) |expr| {
-                    items.append(SExp{ .value = .{ .string = expr }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .string = expr } }) catch return error.OutOfMemory;
                 }
             },
             .min_resolved_spokes => {
@@ -262,7 +262,7 @@ pub const Constraint = struct {
                     const num_str = std.fmt.bufPrint(&buf, "{d}", .{count}) catch return error.OutOfMemory;
                     const duped = allocator.alloc(u8, num_str.len) catch return error.OutOfMemory;
                     @memcpy(duped, num_str);
-                    items.append(SExp{ .value = .{ .number = duped }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .number = duped } }) catch return error.OutOfMemory;
                 }
             },
             .via_dangling, .bridged_mask => {
@@ -273,34 +273,34 @@ pub const Constraint = struct {
                 if (self.min) |min_val| {
                     const encoded = try ValueWithUnit.encode(min_val, allocator);
                     var kv = allocator.alloc(SExp, 2) catch return error.OutOfMemory;
-                    kv[0] = SExp{ .value = .{ .symbol = "min" }, .location = null };
+                    kv[0] = SExp{ .value = .{ .symbol = "min" } };
                     kv[1] = encoded;
-                    items.append(SExp{ .value = .{ .list = kv }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .list = kv } }) catch return error.OutOfMemory;
                 }
                 if (self.opt) |opt_val| {
                     const encoded = try ValueWithUnit.encode(opt_val, allocator);
                     var kv = allocator.alloc(SExp, 2) catch return error.OutOfMemory;
-                    kv[0] = SExp{ .value = .{ .symbol = "opt" }, .location = null };
+                    kv[0] = SExp{ .value = .{ .symbol = "opt" } };
                     kv[1] = encoded;
-                    items.append(SExp{ .value = .{ .list = kv }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .list = kv } }) catch return error.OutOfMemory;
                 }
                 if (self.max) |max_val| {
                     const encoded = try ValueWithUnit.encode(max_val, allocator);
                     var kv = allocator.alloc(SExp, 2) catch return error.OutOfMemory;
-                    kv[0] = SExp{ .value = .{ .symbol = "max" }, .location = null };
+                    kv[0] = SExp{ .value = .{ .symbol = "max" } };
                     kv[1] = encoded;
-                    items.append(SExp{ .value = .{ .list = kv }, .location = null }) catch return error.OutOfMemory;
+                    items.append(SExp{ .value = .{ .list = kv } }) catch return error.OutOfMemory;
                 }
                 if (self.within_diff_pairs) {
                     var kv = allocator.alloc(SExp, 1) catch return error.OutOfMemory;
-                    kv[0] = SExp{ .value = .{ .symbol = "within_diff_pairs" }, .location = null };
-                    items.append(SExp{ .value = .{ .list = kv }, .location = null }) catch return error.OutOfMemory;
+                    kv[0] = SExp{ .value = .{ .symbol = "within_diff_pairs" } };
+                    items.append(SExp{ .value = .{ .list = kv } }) catch return error.OutOfMemory;
                 }
             },
         }
 
         const out = items.toOwnedSlice() catch return error.OutOfMemory;
-        return SExp{ .value = .{ .list = out }, .location = null };
+        return SExp{ .value = .{ .list = out } };
     }
 };
 

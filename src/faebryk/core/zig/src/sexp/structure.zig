@@ -1840,13 +1840,16 @@ fn parseAllExpressions(allocator: std.mem.Allocator, data: []const u8) !SExp {
     const tokens = try tokenizer.tokenize(allocator, data);
     defer allocator.free(tokens);
 
-    var parser = ast.Parser.init(allocator, tokens);
+    const child_counts = try ast.buildListChildCounts(allocator, tokens);
+    defer child_counts.deinit(allocator);
+
+    var parser = ast.Parser.init(allocator, data, tokens, child_counts);
     var items = std.array_list.Managed(SExp).init(allocator);
     defer items.deinit();
     while (try parser.parse()) |expr| {
         try items.append(expr);
     }
-    return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = null };
+    return SExp{ .value = .{ .list = try items.toOwnedSlice() } };
 }
 
 // Generic free function for structs decoded by this library

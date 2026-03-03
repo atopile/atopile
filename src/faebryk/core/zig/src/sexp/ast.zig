@@ -358,11 +358,11 @@ const OverflowEntry = struct {
     count: u32,
 };
 
-const ListChildCounts = struct {
+pub const ListChildCounts = struct {
     counts16: []u16,
     overflow_entries: []OverflowEntry,
 
-    fn deinit(self: ListChildCounts, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: ListChildCounts, allocator: std.mem.Allocator) void {
         allocator.free(self.counts16);
         allocator.free(self.overflow_entries);
     }
@@ -384,7 +384,7 @@ fn incrementTopChildCount(stack: *std.array_list.Managed(ListFrame)) void {
     }
 }
 
-fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) ParseError!ListChildCounts {
+pub fn buildListChildCounts(allocator: std.mem.Allocator, tokens: []const Token) ParseError!ListChildCounts {
     const list_count = countListNodes(tokens);
     var child_counts16 = try allocator.alloc(u16, list_count);
     errdefer allocator.free(child_counts16);
