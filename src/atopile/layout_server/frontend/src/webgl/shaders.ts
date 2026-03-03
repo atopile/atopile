@@ -84,5 +84,5 @@ void main() {
     vec2 coord = gl_PointCoord - vec2(0.5);
     if (dot(coord, coord) > 0.25) discard;
     o_color = u_color;
-    gl_FragDepth = 0.001;
+    gl_FragDepth = 0.00001;
 }`;

@@ -127,6 +127,8 @@ class PrimitiveSet {
 export class RenderLayer {
     geometry: PrimitiveSet;
     depth: number;
+    visible: boolean = true;
+    transform: Matrix3 | null = null;
 
     constructor(
         private gl: WebGL2RenderingContext,
@@ -142,7 +144,9 @@ export class RenderLayer {
     }
 
     render(polylineShader: ShaderProgram, polygonShader: ShaderProgram, matrix: Matrix3, alpha = 1) {
-        this.geometry.render(polylineShader, polygonShader, matrix, this.depth, alpha);
+        if (!this.visible) return;
+        const m = this.transform ? matrix.multiply(this.transform) : matrix;
+        this.geometry.render(polylineShader, polygonShader, m, this.depth, alpha);
     }
 
     dispose() {
@@ -154,15 +158,19 @@ export class RenderLayer {
 export class Renderer {
     gl: WebGL2RenderingContext;
     canvas: HTMLCanvasElement;
-    layers: RenderLayer[] = [];
+    layers: Map<string, RenderLayer> = new Map();
+    dynamicLayers: RenderLayer[] = [];
+    dynamicLayersMap: Map<string, RenderLayer> = new Map();
+    isDynamicContext: boolean = false;
     projection_matrix: Matrix3 = Matrix3.identity();
 
     private polylineShader!: ShaderProgram;
     private polygonShader!: ShaderProgram;
     private pointShader!: ShaderProgram;
-    private activeLayer: RenderLayer | null = null;
     private static readonly DEPTH_STEP = 0.0001;
+    private static readonly DYNAMIC_DEPTH_LIFT = 0.2;
     private nextDepth = Renderer.DEPTH_STEP;
+    private dynamicFallbackDepth = 0.8;
     private gridVao: VertexArray | null = null;
     private gridPosBuf: Buffer | null = null;
     private gridVertexCount = 0;
@@ -209,30 +217,92 @@ export class Renderer {
 
     /** Remove all layers and free GPU resources */
     dispose_layers() {
-        for (const layer of this.layers) layer.dispose();
-        this.layers = [];
+        for (const layer of this.layers.values()) layer.dispose();
+        this.layers.clear();
         this.nextDepth = Renderer.DEPTH_STEP;
+        this.dispose_dynamic_layers();
     }
 
-    start_layer(name: string): RenderLayer {
-        const layer = new RenderLayer(this.gl, name, this.nextDepth);
-        this.nextDepth = Math.min(0.9999, this.nextDepth + Renderer.DEPTH_STEP);
-        this.activeLayer = layer;
+    dispose_dynamic_layers() {
+        for (const layer of this.dynamicLayers) layer.dispose();
+        this.dynamicLayers = [];
+        this.dynamicLayersMap.clear();
+        this.dynamicFallbackDepth = 0.8;
+    }
+
+    dispose_dynamic_overlays() {
+        const contextLayers = new Set(this.dynamicLayersMap.values());
+        const remaining: RenderLayer[] = [];
+        for (const layer of this.dynamicLayers) {
+            if (contextLayers.has(layer)) {
+                remaining.push(layer);
+            } else {
+                layer.dispose();
+            }
+        }
+        this.dynamicLayers = remaining;
+    }
+
+    get_layer(name: string): RenderLayer {
+        if (this.isDynamicContext) {
+            let layer = this.dynamicLayersMap.get(name);
+            if (!layer) {
+                const staticDepth = this.layers.get(name)?.depth;
+                const liftedDepth = staticDepth !== undefined
+                    ? Math.min(0.9998, staticDepth + Renderer.DYNAMIC_DEPTH_LIFT)
+                    : this.dynamicFallbackDepth;
+                this.dynamicFallbackDepth = Math.min(0.9998, this.dynamicFallbackDepth + Renderer.DEPTH_STEP);
+                layer = new RenderLayer(this.gl, "dyn_" + name, liftedDepth);
+                this.dynamicLayersMap.set(name, layer);
+                this.dynamicLayers.push(layer);
+            }
+            return layer;
+        }
+        let layer = this.layers.get(name);
+        if (!layer) {
+            layer = new RenderLayer(this.gl, name, this.nextDepth);
+            this.nextDepth = Math.min(0.9999, this.nextDepth + Renderer.DEPTH_STEP);
+            this.layers.set(name, layer);
+        }
         return layer;
     }
 
-    end_layer(): RenderLayer {
-        if (!this.activeLayer) throw new Error("No active layer");
-        this.activeLayer.commit(this.polylineShader, this.polygonShader);
-        this.layers.push(this.activeLayer);
-        const l = this.activeLayer;
-        this.activeLayer = null;
-        return l;
+    set_layer_visible(name: string, visible: boolean) {
+        for (const [layerName, layer] of this.layers) {
+            if (
+                layerName === name
+                || layerName === `zone:${name}`
+            ) {
+                layer.visible = visible;
+            }
+        }
     }
 
-    /** Get current active layer's PrimitiveSet for drawing */
-    get active(): PrimitiveSet {
-        return this.activeLayer!.geometry;
+    set_layer_transform(name: string, transform: Matrix3 | null) {
+        const layer = this.layers.get(name);
+        if (layer) layer.transform = transform;
+    }
+
+    commit_all_layers() {
+        for (const layer of this.layers.values()) {
+            layer.commit(this.polylineShader, this.polygonShader);
+        }
+    }
+
+    start_dynamic_layer(name: string): RenderLayer {
+        const layer = new RenderLayer(this.gl, name, 1.0); // Draw on top
+        this.dynamicLayers.push(layer);
+        return layer;
+    }
+
+    commit_dynamic_layer(layer: RenderLayer) {
+        layer.commit(this.polylineShader, this.polygonShader);
+    }
+
+    commit_dynamic_context_layers() {
+        for (const layer of this.dynamicLayersMap.values()) {
+            layer.commit(this.polylineShader, this.polygonShader);
+        }
     }
 
     /** Build grid vertex data for the visible area */
@@ -280,8 +350,11 @@ export class Renderer {
             this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
         }
 
-        for (const layer of this.layers) {
-            layer.render(this.polylineShader, this.polygonShader, total);
+        for (const layer of this.layers.values()) {
+            layer.render(this.polylineShader, this.polygonShader, total, 1.0);
+        }
+        for (const layer of this.dynamicLayers) {
+            layer.render(this.polylineShader, this.polygonShader, total, 1.0);
         }
     }
 }
