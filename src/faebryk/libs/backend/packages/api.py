@@ -469,7 +469,7 @@ class PackagesAPIClient:
         except HTTPStatusError as e:
             try:
                 detail = response.json()["detail"]
-            except (JSONDecodeError, KeyError):
+            except JSONDecodeError, KeyError:
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
@@ -494,7 +494,7 @@ class PackagesAPIClient:
         except HTTPStatusError as e:
             try:
                 detail = response.json()["detail"]
-            except (JSONDecodeError, KeyError):
+            except JSONDecodeError, KeyError:
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
@@ -526,7 +526,7 @@ class PackagesAPIClient:
         except HTTPStatusError as e:
             try:
                 detail = response.json()["detail"]
-            except (JSONDecodeError, KeyError):
+            except JSONDecodeError, KeyError:
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response

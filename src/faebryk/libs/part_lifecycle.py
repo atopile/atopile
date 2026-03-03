@@ -448,7 +448,7 @@ class PartLifecycle:
             lib_id, _ = identifier.split(":")
             try:
                 lib = _find_footprint([fp_lib_path], lib_id)
-            except* (LibNotInTable, FileNotFoundError):
+            except* LibNotInTable, FileNotFoundError:
                 # For atomic parts, get the source directory from the trait
                 is_atomic_part_ = component.try_get_trait(F.is_atomic_part)
                 if is_atomic_part_ is not None:
@@ -456,7 +456,7 @@ class PartLifecycle:
                     try:
                         source_dir = is_atomic_part_.get_source_dir()
                         self._insert_fp_lib(lib_id, source_dir)
-                    except (FileNotFoundError, ValueError):
+                    except FileNotFoundError, ValueError:
                         raise
 
                     lib = _find_footprint([fp_lib_path], lib_id)

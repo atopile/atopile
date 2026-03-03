@@ -94,6 +94,22 @@ describe('API Client', () => {
     });
   });
 
+  describe('features API', () => {
+    it('gets backend feature capabilities', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify({ features: { chat: true } })),
+      });
+
+      const result = await api.features.get();
+      expect(result.features.chat).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/features'),
+        expect.any(Object)
+      );
+    });
+  });
+
   describe('builds API', () => {
     it('gets build history', async () => {
       mockFetch.mockResolvedValueOnce({
@@ -157,7 +173,7 @@ describe('API Client', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            projectRoot: '/project',
+            project_root: '/project',
             targets: ['default', 'debug'],
           }),
         })
@@ -178,7 +194,7 @@ describe('API Client', () => {
         expect.stringContaining('/api/build'),
         expect.objectContaining({
           body: JSON.stringify({
-            projectRoot: '/project',
+            project_root: '/project',
             targets: [],
             entry: 'main.ato:App',
             standalone: true,

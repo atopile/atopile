@@ -193,11 +193,13 @@ class LayoutSync:
                     # Match by size if multiple pads with same number
                     best_match = min(
                         tgt_pads,
-                        key=lambda p: abs(p.size.w - src_pad.size.w)
-                        + (
-                            abs(p.size.h - src_pad.size.h)
-                            if p.size.h and src_pad.size.h
-                            else 0
+                        key=lambda p: (
+                            abs(p.size.w - src_pad.size.w)
+                            + (
+                                abs(p.size.h - src_pad.size.h)
+                                if p.size.h and src_pad.size.h
+                                else 0
+                            )
                         ),
                     )
                     tgt_pad = best_match
@@ -419,8 +421,9 @@ class LayoutSync:
             pcb,
             "footprints",
             pcb.footprints,
-            lambda x: x.uuid not in to_delete
-            or (self._get_footprint_addr(x) is not None),
+            lambda x: (
+                x.uuid not in to_delete or (self._get_footprint_addr(x) is not None)
+            ),
         )
 
     def pull_group_layout(self, group_name: str):

@@ -121,12 +121,23 @@ interface DependenciesResponse {
   dependencies: ProjectDependency[];
 }
 
+interface FeaturesResponse {
+  features: {
+    chat: boolean;
+  };
+}
+
 /**
  * API client with typed methods for all backend endpoints.
  */
 export const api = {
   // Health check
   health: () => fetchJSON<{ status: string }>('/health'),
+
+  // Feature capabilities
+  features: {
+    get: () => fetchJSON<FeaturesResponse>('/api/features'),
+  },
 
   // Projects
   projects: {
@@ -188,6 +199,37 @@ export const api = {
     bom: (buildId: string) => fetchJSON<BOMData>(`/api/build/${buildId}/bom`),
 
     variables: (buildId: string) => fetchJSON<VariablesData>(`/api/build/${buildId}/variables`),
+  },
+
+  // Autolayout
+  autolayout: {
+    start: (projectRoot: string, buildTarget: string, constraints: Record<string, unknown> = {}, options: Record<string, unknown> = {}) =>
+      fetchJSON<{ job: Record<string, unknown> }>('/api/autolayout/jobs', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectRoot,
+          buildTarget,
+          constraints,
+          options,
+        }),
+      }),
+
+    listJobs: (projectRoot?: string) => {
+      const query = projectRoot
+        ? `?project_root=${encodeURIComponent(projectRoot)}`
+        : '';
+      return fetchJSON<{ jobs: Record<string, unknown>[] }>(`/api/autolayout/jobs${query}`);
+    },
+
+    getJob: (jobId: string, refresh: boolean = false) =>
+      fetchJSON<{ job: Record<string, unknown> }>(
+        `/api/autolayout/jobs/${encodeURIComponent(jobId)}?refresh=${refresh ? 'true' : 'false'}`
+      ),
+
+    listCandidates: (jobId: string, refresh: boolean = false) =>
+      fetchJSON<{ candidates: Record<string, unknown>[] }>(
+        `/api/autolayout/jobs/${encodeURIComponent(jobId)}/candidates?refresh=${refresh ? 'true' : 'false'}`
+      ),
   },
 
   // Logs

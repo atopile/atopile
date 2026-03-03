@@ -97,6 +97,12 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": false
+                },
+                "atopile.enableChat": {
+                    "description": "Enable the AI chat panel in the atopile sidebar",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         },

@@ -8,6 +8,8 @@ import faebryk.library._F as F
 
 
 class BJT(fabll.Node):
+    """Bipolar junction transistor module with emitter, base, and collector."""
+
     # ----------------------------------------
     #                 enums
     # ----------------------------------------

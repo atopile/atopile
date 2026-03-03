@@ -93,6 +93,32 @@ High-level steps:
 - Recommended editors: VS Code / Cursor
 - EDA: KiCad recommended for layout; not required to start
 
+## Agent and autolayout API keys
+
+If you use the server-side agent and DeepPCB autolayout flows, set these env vars:
+
+```sh
+# Agent model calls (required for /api/agent and agent tools)
+export OPENAI_API_KEY=...
+# or
+export ATOPILE_AGENT_OPENAI_API_KEY=...
+
+# DeepPCB autolayout (required for /api/autolayout and autolayout_* agent tools)
+export ATO_DEEPPCB_API_KEY=...
+
+# Optional: enable/disable autolayout feature gate (default: enabled)
+export ATO_ENABLE_AUTOLAYOUT=true
+
+# Optional: Exa-backed web search helper used by some agent flows
+export EXA_API_KEY=...
+# or
+export ATOPILE_AGENT_EXA_API_KEY=...
+```
+
+Notes:
+- Agent skills are loaded from the repository path `.claude/skills` (fixed runtime path).
+- Autolayout endpoints will fail fast when keys are missing or invalid.
+
 ## Contributing and development
 
 - Development setup: https://docs.atopile.io/atopile/guides/development

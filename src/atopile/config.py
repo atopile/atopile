@@ -556,6 +556,18 @@ class BuildTargetPaths(BaseConfigModel):
         return True
 
 
+class AutolayoutConfig(BaseConfigModel):
+    """
+    Optional per-build autolayout settings.
+    """
+
+    provider: str = Field(default="deeppcb")
+    objective: str = Field(default="balanced")
+    candidate_count: int = Field(default=3, ge=1, le=20)
+    auto_apply: bool = Field(default=False)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+
+
 class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     _project_paths: ProjectPaths
 
@@ -594,6 +606,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
     hide_designators: bool | None = Field(default=False)
+    autolayout: AutolayoutConfig | None = Field(default=None)
     paths: BuildTargetPaths
 
     def __init__(self, **data: Any):
@@ -1190,7 +1203,7 @@ class Config:
         # Check if we're in an interactive terminal session (cross-platform)
         try:
             self.interactive = sys.stdout.isatty() and sys.stdin.isatty()
-        except (AttributeError, ValueError):
+        except AttributeError, ValueError:
             # If we can't determine, default to True for better user experience
             self.interactive = True
 

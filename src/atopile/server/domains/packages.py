@@ -84,7 +84,7 @@ def version_is_newer(installed: str | None, latest: str | None) -> bool:
 
         return latest_padded > installed_padded
 
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         return False
 
 

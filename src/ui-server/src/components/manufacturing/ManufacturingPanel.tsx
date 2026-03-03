@@ -26,9 +26,16 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { sendAction, sendActionWithResponse } from '../../api/websocket';
+import { api } from '../../api/client';
 import { postMessage, onExtensionMessage, postToExtension, isVsCodeWebview } from '../../api/vscodeApi';
 import type { Project, BOMData, LcscPartData } from '../../types/build';
-import type { BuildOutputs, BoardSummary, DetailedCostEstimate } from './types';
+import type {
+  AutolayoutCandidate,
+  AutolayoutJob,
+  BuildOutputs,
+  BoardSummary,
+  DetailedCostEstimate,
+} from './types';
 import ModelViewer from '../ModelViewer';
 import GerberViewer from '../GerberViewer';
 import '../GerberViewer.css';
@@ -62,6 +69,63 @@ function formatStock(stock: number): string {
   if (stock >= 1_000_000) return `${(stock / 1_000_000).toFixed(1)}M`;
   if (stock >= 1_000) return `${(stock / 1_000).toFixed(0)}K`;
   return stock.toLocaleString();
+}
+
+function normalizeAutolayoutCandidate(raw: Record<string, unknown>): AutolayoutCandidate {
+  return {
+    candidate_id: String(raw.candidate_id ?? ''),
+    label: typeof raw.label === 'string' ? raw.label : null,
+    score: typeof raw.score === 'number' ? raw.score : null,
+    metadata:
+      typeof raw.metadata === 'object' && raw.metadata !== null
+        ? (raw.metadata as Record<string, unknown>)
+        : {},
+    files:
+      typeof raw.files === 'object' && raw.files !== null
+        ? (raw.files as Record<string, string>)
+        : {},
+  };
+}
+
+function normalizeAutolayoutJob(raw: Record<string, unknown>): AutolayoutJob {
+  const rawCandidates = Array.isArray(raw.candidates)
+    ? (raw.candidates as Record<string, unknown>[])
+    : [];
+  const candidates = rawCandidates
+    .map((candidate) => normalizeAutolayoutCandidate(candidate))
+    .filter((candidate) => candidate.candidate_id);
+
+  return {
+    job_id: String(raw.job_id ?? ''),
+    project_root: String(raw.project_root ?? ''),
+    build_target: String(raw.build_target ?? ''),
+    provider: String(raw.provider ?? ''),
+    state: String(raw.state ?? 'running') as AutolayoutJob['state'],
+    created_at: String(raw.created_at ?? ''),
+    updated_at: String(raw.updated_at ?? ''),
+    provider_job_ref:
+      typeof raw.provider_job_ref === 'string' ? raw.provider_job_ref : null,
+    progress: typeof raw.progress === 'number' ? raw.progress : null,
+    message: typeof raw.message === 'string' ? raw.message : null,
+    error: typeof raw.error === 'string' ? raw.error : null,
+    selected_candidate_id:
+      typeof raw.selected_candidate_id === 'string'
+        ? raw.selected_candidate_id
+        : null,
+    applied_candidate_id:
+      typeof raw.applied_candidate_id === 'string'
+        ? raw.applied_candidate_id
+        : null,
+    applied_layout_path:
+      typeof raw.applied_layout_path === 'string'
+        ? raw.applied_layout_path
+        : null,
+    backup_layout_path:
+      typeof raw.backup_layout_path === 'string'
+        ? raw.backup_layout_path
+        : null,
+    candidates,
+  };
 }
 
 export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps) {
@@ -100,6 +164,11 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
   const [boardSummary, setBoardSummary] = useState<BoardSummary | null>(null);
   const [detailedCostEstimate, setDetailedCostEstimate] = useState<DetailedCostEstimate | null>(null);
   const [isLoadingBoardSummary, setIsLoadingBoardSummary] = useState(false);
+  const [autolayoutJob, setAutolayoutJob] = useState<AutolayoutJob | null>(null);
+  const [, setAutolayoutCandidates] = useState<AutolayoutCandidate[]>([]);
+  const [, setSelectedAutolayoutCandidateId] = useState<string | null>(null);
+  const [, setAutolayoutLoading] = useState(false);
+  const [, setAutolayoutError] = useState<string | null>(null);
 
   const selectedBuilds = wizard?.selectedBuilds || [];
   const selectedBuild = selectedBuilds[0];
@@ -514,6 +583,185 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
       postToExtension({ type: 'showProblems' });
     }
   }, []);
+
+  const syncAutolayoutJob = useCallback((rawJob: Record<string, unknown>) => {
+    const normalizedJob = normalizeAutolayoutJob(rawJob);
+    setAutolayoutJob(normalizedJob);
+    setAutolayoutCandidates(normalizedJob.candidates);
+    setSelectedAutolayoutCandidateId((current) => {
+      const preferredId =
+        normalizedJob.selected_candidate_id ??
+        normalizedJob.applied_candidate_id ??
+        current;
+      if (
+        preferredId &&
+        normalizedJob.candidates.some((candidate) => candidate.candidate_id === preferredId)
+      ) {
+        return preferredId;
+      }
+      return normalizedJob.candidates[0]?.candidate_id ?? null;
+    });
+    setAutolayoutError(normalizedJob.error ?? null);
+  }, []);
+
+  const handleRefreshAutolayoutCandidates = useCallback(
+    async (jobId: string, refresh = true) => {
+      const response = await api.autolayout.listCandidates(jobId, refresh);
+      const rawCandidates = Array.isArray(response.candidates)
+        ? (response.candidates as Record<string, unknown>[])
+        : [];
+      const candidates = rawCandidates
+        .map((candidate) => normalizeAutolayoutCandidate(candidate))
+        .filter((candidate) => candidate.candidate_id);
+
+      setAutolayoutCandidates(candidates);
+      setSelectedAutolayoutCandidateId((current) => {
+        if (current && candidates.some((candidate) => candidate.candidate_id === current)) {
+          return current;
+        }
+        return candidates[0]?.candidate_id ?? null;
+      });
+
+      return candidates;
+    },
+    []
+  );
+
+  const handleRefreshAutolayoutStatus = useCallback(
+    async (refresh = true) => {
+      if (!autolayoutJob) return null;
+
+      const response = await api.autolayout.getJob(autolayoutJob.job_id, refresh);
+      const jobPayload = response.job;
+      if (!jobPayload) {
+        throw new Error('Autolayout response missing job payload');
+      }
+
+      syncAutolayoutJob(jobPayload);
+      const normalized = normalizeAutolayoutJob(jobPayload);
+      if (normalized.state === 'awaiting_selection' && normalized.candidates.length === 0) {
+        await handleRefreshAutolayoutCandidates(normalized.job_id, false);
+      }
+
+      return normalized;
+    },
+    [autolayoutJob, handleRefreshAutolayoutCandidates, syncAutolayoutJob]
+  );
+
+  useEffect(() => {
+    if (!selectedBuild) return;
+
+    let cancelled = false;
+    const loadLatestJob = async () => {
+      setAutolayoutLoading(true);
+      setAutolayoutError(null);
+
+      try {
+        const response = await api.autolayout.listJobs(selectedBuild.projectRoot);
+        const rawJobs = Array.isArray(response.jobs)
+          ? (response.jobs as Record<string, unknown>[])
+          : [];
+        const jobs = rawJobs
+          .map((job) => normalizeAutolayoutJob(job))
+          .filter((job) => job.build_target === selectedBuild.targetName);
+
+        if (cancelled) return;
+
+        const latest = jobs[0];
+        if (!latest) {
+          setAutolayoutJob(null);
+          setAutolayoutCandidates([]);
+          setSelectedAutolayoutCandidateId(null);
+          return;
+        }
+
+        syncAutolayoutJob(latest as unknown as Record<string, unknown>);
+      } catch (error) {
+        if (cancelled) return;
+        setAutolayoutError(error instanceof Error ? error.message : 'Failed to load autolayout jobs');
+      } finally {
+        if (!cancelled) {
+          setAutolayoutLoading(false);
+        }
+      }
+    };
+
+    void loadLatestJob();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBuild, syncAutolayoutJob]);
+
+  useEffect(() => {
+    const handleAutolayoutEvent = (rawEvent: Event) => {
+      if (!(rawEvent instanceof CustomEvent)) return;
+      const detail = rawEvent.detail as Record<string, unknown> | null;
+      if (!detail) return;
+
+      const eventProjectRoot =
+        (typeof detail.projectRoot === 'string' && detail.projectRoot) ||
+        (typeof detail.project_root === 'string' && detail.project_root) ||
+        null;
+      const eventBuildTarget =
+        (typeof detail.buildTarget === 'string' && detail.buildTarget) ||
+        (typeof detail.build_target === 'string' && detail.build_target) ||
+        null;
+      const eventJobId =
+        (typeof detail.jobId === 'string' && detail.jobId) ||
+        (typeof detail.job_id === 'string' && detail.job_id) ||
+        null;
+
+      if (
+        selectedBuild &&
+        eventProjectRoot &&
+        eventProjectRoot !== selectedBuild.projectRoot
+      ) {
+        return;
+      }
+      if (
+        selectedBuild &&
+        eventBuildTarget &&
+        eventBuildTarget !== selectedBuild.targetName
+      ) {
+        return;
+      }
+
+      if (autolayoutJob?.job_id && eventJobId && eventJobId === autolayoutJob.job_id) {
+        void handleRefreshAutolayoutStatus(false).catch((error) => {
+          setAutolayoutError(
+            error instanceof Error ? error.message : 'Failed to refresh autolayout status'
+          );
+        });
+        return;
+      }
+
+      if (!selectedBuild) return;
+
+      void api.autolayout
+        .listJobs(selectedBuild.projectRoot)
+        .then((response) => {
+          const rawJobs = Array.isArray(response.jobs)
+            ? (response.jobs as Record<string, unknown>[])
+            : [];
+          const jobs = rawJobs
+            .map((job) => normalizeAutolayoutJob(job))
+            .filter((job) => job.build_target === selectedBuild.targetName);
+          const latest = jobs[0];
+          if (!latest) return;
+          syncAutolayoutJob(latest as unknown as Record<string, unknown>);
+        })
+        .catch((error) => {
+          setAutolayoutError(
+            error instanceof Error ? error.message : 'Failed to refresh autolayout status'
+          );
+        });
+    };
+
+    window.addEventListener('atopile:autolayout_event', handleAutolayoutEvent);
+    return () => {
+      window.removeEventListener('atopile:autolayout_event', handleAutolayoutEvent);
+    };
+  }, [autolayoutJob, handleRefreshAutolayoutStatus, selectedBuild, syncAutolayoutJob]);
 
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {

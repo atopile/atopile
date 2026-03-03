@@ -71,6 +71,9 @@ const initialState: AppState = {
   // Connection
   isConnected: false,
   hasEverConnected: false,
+  features: {
+    chat: false,
+  },
 
   // Projects
   projects: [],
@@ -192,6 +195,7 @@ const initialState: AppState = {
 interface StoreActions {
   // Connection
   setConnected: (connected: boolean) => void;
+  setFeatures: (features: Partial<AppState['features']>) => void;
 
   // Full state replacement (from WebSocket)
   replaceState: (state: Partial<AppState>) => void;
@@ -317,6 +321,8 @@ export const useStore = create<Store>()(
         isConnected: connected,
         ...(connected && !state.hasEverConnected ? { hasEverConnected: true } : {}),
       })),
+      setFeatures: (features) =>
+        set((state) => ({ features: { ...state.features, ...features } })),
 
       // Full state replacement (from WebSocket broadcast)
       replaceState: (newState) => {

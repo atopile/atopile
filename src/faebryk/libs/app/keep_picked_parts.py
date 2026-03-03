@@ -211,7 +211,7 @@ def load_part_info_from_pcb(
 
             try:
                 param_value = json.loads(prop.value)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 logger.debug(f"Failed to parse PARAM_{param_name} value: {prop.value}")
                 continue
 

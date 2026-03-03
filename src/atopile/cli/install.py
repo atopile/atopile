@@ -224,9 +224,9 @@ def list_():
             md_list(
                 deps.dag.to_tree(extra_roots=deps.direct_deps),
                 recursive=True,
-                mapper=lambda x: x.spec.identifier
-                if isinstance(x, ProjectDependency)
-                else x,
+                mapper=lambda x: (
+                    x.spec.identifier if isinstance(x, ProjectDependency) else x
+                ),
             )
         )
     )

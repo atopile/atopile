@@ -648,7 +648,7 @@ def test_can_evaluate_literals_ci():
                 try:
                     result = evaluate_e_p_l(expr)
                     break
-                except (ValueError, NotImplementedError):
+                except ValueError, NotImplementedError:
                     # Skip expressions that can't be evaluated (e.g., negative base to
                     # fractional exponent which would produce complex results)
                     continue
@@ -741,7 +741,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     # Skip expressions that can't be evaluated (e.g., sqrt of negative)
     try:
         evaluated_expr = evaluate_e_p_l(test_expr)
-    except (ValueError, NotImplementedError, OverflowError):
+    except ValueError, NotImplementedError, OverflowError:
         assume(False)
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
@@ -1026,7 +1026,7 @@ def test_regression_literal_folding(
     print(f"evaluating {expr.pretty()}")
     try:
         evaluated_expr = evaluate_e_p_l(expr, g=g, tg=tg)
-    except (ValueError, NotImplementedError, OverflowError):
+    except ValueError, NotImplementedError, OverflowError:
         # bad example, skip
         return
     assert isinstance(evaluated_expr, F.Literals.Numbers)

@@ -212,7 +212,7 @@ def get_commit_info() -> CommitInfo:
         if result.returncode == 0:
             info.time = result.stdout.strip()
 
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except subprocess.TimeoutExpired, FileNotFoundError, OSError:
         # git not installed, timeout, or other OS error
         pass
     except Exception:

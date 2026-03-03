@@ -111,6 +111,41 @@ export interface DetailedCostEstimate {
   boardSummary: BoardSummary | null;
 }
 
+export type AutolayoutState =
+  | 'queued'
+  | 'running'
+  | 'awaiting_selection'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface AutolayoutCandidate {
+  candidate_id: string;
+  label: string | null;
+  score: number | null;
+  metadata: Record<string, unknown>;
+  files: Record<string, string>;
+}
+
+export interface AutolayoutJob {
+  job_id: string;
+  project_root: string;
+  build_target: string;
+  provider: string;
+  state: AutolayoutState;
+  created_at: string;
+  updated_at: string;
+  provider_job_ref: string | null;
+  progress: number | null;
+  message: string | null;
+  error: string | null;
+  selected_candidate_id: string | null;
+  applied_candidate_id: string | null;
+  applied_layout_path: string | null;
+  backup_layout_path: string | null;
+  candidates: AutolayoutCandidate[];
+}
+
 export type FileExportType =
   | 'gerbers'
   | 'bom_csv'

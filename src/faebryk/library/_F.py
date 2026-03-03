@@ -22,6 +22,7 @@ from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
+from faebryk.library.implements_board_shape import implements_board_shape
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.bus_parameter_utils as bus_parameter_utils
@@ -48,6 +49,7 @@ import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
+from faebryk.library.RectangularBoardShape import RectangularBoardShape
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
@@ -125,6 +127,7 @@ __all__ = [
     "is_source",
     "Logic",
     "Mechanical",
+    "implements_board_shape",
     "Signal",
     "is_app_root",
     "bus_parameter_utils",
@@ -151,6 +154,7 @@ __all__ = [
     "implements_design_check",
     "Electrical",
     "has_net_name_suggestion",
+    "RectangularBoardShape",
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",

@@ -36,6 +36,9 @@ from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
+from faebryk.exporters.pcb.deeppcb.artifacts import (
+    export_deeppcb,
+)
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
     export_3d_board_render,
@@ -361,8 +364,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -700,10 +707,45 @@ def post_solve_checks(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
-    "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
+    "apply-board-shape",
+    description="Applying board shape",
+    dependencies=[post_solve_checks],
+)
+def apply_board_shape(ctx: BuildStepContext) -> None:
+    app = ctx.require_app()
+    pcb = ctx.require_pcb()
+
+    # Attach subaddresses for lifecycle manager to use.
+    layout.attach_subaddresses_to_modules(app)
+
+    pcb.transformer.apply_design()
+    board_shapes = list(
+        fabll.Traits.get_implementors(
+            trait=F.implements_board_shape.bind_typegraph(app.tg)
+        )
+    )
+    if len(board_shapes) > 1:
+        board_shape_nodes = [
+            fabll.Traits(shape).get_obj_raw() for shape in board_shapes
+        ]
+        raise UserBadParameterError(
+            "Only one board shape is currently supported per design. Found: "
+            + ", ".join(
+                f"`{node.get_full_name(include_uuid=False)}`"
+                for node in board_shape_nodes
+            )
+        )
+
+    if board_shapes:
+        board_shapes[0].apply(pcb.transformer)
+
+    pcb.transformer.check_unattached_fps()
+
+
+@muster.register(
+    "update-pcb", description="Updating PCB", dependencies=[apply_board_shape]
 )
 def update_pcb(ctx: BuildStepContext) -> None:
-    app = ctx.require_app()
     pcb = ctx.require_pcb()
 
     def _update_layout(
@@ -813,12 +855,7 @@ def update_pcb(ctx: BuildStepContext) -> None:
 
             kicad.dumps(pcb_file, config.build.paths.layout)
 
-    # attach subaddresses for lifecycle manager to use
-    layout.attach_subaddresses_to_modules(app)
-
     original_pcb = kicad.copy(pcb.pcb_file)
-    pcb.transformer.apply_design()
-    pcb.transformer.check_unattached_fps()
 
     # Ensure proper board appearance (matte black soldermask, ENIG copper finish)
     # This will overwrite user settings in the KiCad PCB file!
@@ -1081,6 +1118,14 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
         except Exception as e:
             logger.warning(f"Failed to copy KiCad PCB: {e}")
 
+        # Export native DeepPCB JSON artifact for provider-native autolayout.
+        deeppcb_dest = config.build.paths.output_base.with_suffix(".deeppcb")
+        try:
+            export_deeppcb(tmp_layout, deeppcb_dest)
+            logger.info(f"Exported DeepPCB artifact to {deeppcb_dest}")
+        except Exception as e:
+            logger.warning(f"Failed to export DeepPCB artifact: {e}")
+
 
 @muster.register(
     "manifest",
@@ -1144,18 +1189,6 @@ def generate_power_tree(ctx: BuildStepContext) -> None:
     )
 
 
-@muster.register(
-    "datasheets",
-    dependencies=[build_design],
-    produces_artifact=True,
-)
-def generate_datasheets(ctx: BuildStepContext) -> None:
-    app = ctx.require_app()
-    export_datasheets(
-        app, config.build.paths.documentation / "datasheets", progress=None
-    )
-
-
 # @muster.register(
 #     "i2c-tree",
 #     dependencies=[build_design],
@@ -1168,6 +1201,18 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
 #     export_i2c_tree(
 #         app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
 #     )
+
+
+@muster.register(
+    "datasheets",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_datasheets(ctx: BuildStepContext) -> None:
+    app = ctx.require_app()
+    export_datasheets(
+        app, config.build.paths.documentation / "datasheets", progress=None
+    )
 
 
 @muster.register(

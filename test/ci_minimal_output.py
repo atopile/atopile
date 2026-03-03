@@ -60,7 +60,7 @@ class SocketClient:
         try:
             self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._sock.connect(self._socket_path)
-        except (OSError, ConnectionRefusedError):
+        except OSError, ConnectionRefusedError:
             self._sock = None
 
     def send(self, data: bytes):
@@ -68,13 +68,13 @@ class SocketClient:
             return
         try:
             self._sock.sendall(data)
-        except (BrokenPipeError, OSError):
+        except BrokenPipeError, OSError:
             # Connection lost, try to reconnect once
             self._connect()
             if self._sock:
                 try:
                     self._sock.sendall(data)
-                except (BrokenPipeError, OSError):
+                except BrokenPipeError, OSError:
                     pass
 
     def close(self):

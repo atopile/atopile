@@ -1330,6 +1330,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
+    const enableChat = vscode.workspace.getConfiguration('atopile').get<boolean>('enableChat', false);
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -1366,6 +1367,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
+    // Inject chat feature flag from VS Code setting
+    window.__ATOPILE_ENABLE_CHAT__ = ${enableChat ? 'true' : 'false'};
   </script>
 </head>
 <body>

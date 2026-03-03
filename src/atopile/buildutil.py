@@ -123,12 +123,15 @@ def run_build_targets(ctx: BuildStepContext) -> None:
     # Count targets from DAG without materializing the generator
     # (the generator yields based on succeeded status which we can't check upfront)
     subgraph = build_steps.muster.dependency_dag.get_subgraph(
-        selector_func=lambda name: name in targets
-        or any(
-            alias in targets
-            for alias in build_steps.muster.targets.get(
-                name, build_steps.MusterTarget(name="", aliases=[], func=lambda _: None)
-            ).aliases
+        selector_func=lambda name: (
+            name in targets
+            or any(
+                alias in targets
+                for alias in build_steps.muster.targets.get(
+                    name,
+                    build_steps.MusterTarget(name="", aliases=[], func=lambda _: None),
+                ).aliases
+            )
         )
     )
     all_target_names = set(subgraph.topologically_sorted())

@@ -7657,7 +7657,7 @@ class AbstractEnums(fabll.Node):
                 return v
             try:
                 return int(v)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return str(v)
 
         parsed_values = {k: _try_parse_int(v) for k, v in enum_values.items()}

@@ -612,7 +612,7 @@ def fetch_remote_commits(branch: str, limit: int = 20) -> list[dict[str, Any]]:
             capture_output=True,
             timeout=5,
         )
-    except (FileNotFoundError, Exception):
+    except FileNotFoundError, Exception:
         gh_available = False
 
     # Now fetch workflow runs and match them with git commits
@@ -686,7 +686,7 @@ def fetch_all_workflow_runs(limit: int = 200) -> dict[str, dict[str, Any]]:
             capture_output=True,
             timeout=5,
         )
-    except (FileNotFoundError, Exception):
+    except FileNotFoundError, Exception:
         return workflow_map
 
     try:
