@@ -234,13 +234,13 @@ function handleMessage(event: MessageEvent): void {
           const state = message.data as AppState;
 
           // Extract one-shot open signals before replacing state
-          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, ...stateWithoutSignals } = state;
+          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, openInteractiveBom, ...stateWithoutSignals } = state;
 
           // Update store with state (excluding one-shot signals)
           useStore.getState().replaceState(stateWithoutSignals);
 
           // Forward open signals to VS Code extension (one-shot actions)
-          if (openFile || openLayout || openKicad || open3D) {
+          if (openFile || openLayout || openKicad || open3D || openInteractiveBom) {
             postMessage({
               type: 'openSignals',
               openFile: openFile ?? null,
@@ -249,6 +249,7 @@ function handleMessage(event: MessageEvent): void {
               openLayout: openLayout ?? null,
               openKicad: openKicad ?? null,
               open3d: open3D ?? null,
+              openInteractiveBom: openInteractiveBom ?? null,
             });
           }
 
@@ -637,6 +638,7 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: path,
         openKicad: null,
         open3d: null,
+        openInteractiveBom: null,
       });
       break;
     }
@@ -647,6 +649,7 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: null,
         openKicad: path,
         open3d: null,
+        openInteractiveBom: null,
       });
       break;
     }
@@ -657,6 +660,18 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: null,
         openKicad: null,
         open3d: path,
+        openInteractiveBom: null,
+      });
+      break;
+    }
+    case EventType.OpenInteractiveBOM: {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: null,
+        openKicad: null,
+        open3d: null,
+        openInteractiveBom: path,
       });
       break;
     }

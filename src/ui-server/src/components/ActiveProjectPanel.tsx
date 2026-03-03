@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, List, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
 import { useStore } from '../store'
@@ -34,6 +34,7 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
+  onOpenInteractiveBom: (projectRoot: string, targetName: string) => void
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
@@ -849,6 +850,7 @@ export function ActiveProjectPanel({
   onOpenKiCad,
   onOpen3D,
   onOpenLayout,
+  onOpenInteractiveBom,
   onCreateProject,
   onCreateTarget,
   onGenerateManufacturingData,
@@ -1098,6 +1100,21 @@ export function ActiveProjectPanel({
           >
             <Layout size={12} />
             <span className="action-label">Layout</span>
+          </button>
+
+          <div className="action-divider" />
+
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (!activeProject || !activeTargetName) return
+              onOpenInteractiveBom(activeProject.root, activeTargetName)
+            }}
+            disabled={!activeProject || !activeTargetName}
+            title={getOutputTooltip('Interactive BOM')}
+          >
+            <List size={12} />
+            <span className="action-label">BOM</span>
           </button>
 
           <div className="action-divider" />

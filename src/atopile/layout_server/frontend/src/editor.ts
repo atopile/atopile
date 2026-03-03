@@ -74,16 +74,23 @@ function applyDeltaToZone(zone: ZoneModel, coords: { outline: number[]; fills: n
     }
 }
 
+export interface EditorOptions {
+    readOnly?: boolean;
+    container?: HTMLElement;
+}
+
 export class Editor {
     private canvas: HTMLCanvasElement;
     private textOverlay: HTMLCanvasElement;
     private textCtx: CanvasRenderingContext2D | null;
     private renderer: Renderer;
     private camera: Camera2;
-    private panAndZoom: PanAndZoom;
+    /* @internal */ panAndZoom: PanAndZoom;
     private client: LayoutClient;
     private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
+    private readonly readOnly: boolean;
+    private readonly container: HTMLElement | null;
 
     // Selection & interaction state
     private selectionMode: SelectionMode = "none";
@@ -131,8 +138,14 @@ export class Editor {
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
 
-    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
+    // External selection callbacks
+    onSelectionChange: ((selectedIndices: number[]) => void) | null = null;
+    onModelLoad: ((model: RenderModel) => void) | null = null;
+
+    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws", options?: EditorOptions) {
         this.canvas = canvas;
+        this.readOnly = options?.readOnly ?? false;
+        this.container = options?.container ?? null;
         this.textOverlay = this.createTextOverlay();
         this.textCtx = this.textOverlay.getContext("2d");
         this.renderer = new Renderer(canvas);
@@ -142,7 +155,9 @@ export class Editor {
         this.renderLoop = new RenderLoop(() => this.onRenderFrame());
 
         this.setupMouseHandlers();
-        this.setupKeyboardHandlers();
+        if (!this.readOnly) {
+            this.setupKeyboardHandlers();
+        }
         this.setupResizeHandler();
         window.addEventListener("beforeunload", () => {
             this.renderLoop.stop();
@@ -153,6 +168,19 @@ export class Editor {
     }
 
     private createTextOverlay(): HTMLCanvasElement {
+        if (this.container) {
+            const overlay = document.createElement("canvas");
+            overlay.style.position = "absolute";
+            overlay.style.top = "0";
+            overlay.style.left = "0";
+            overlay.style.width = "100%";
+            overlay.style.height = "100%";
+            overlay.style.pointerEvents = "none";
+            overlay.style.zIndex = "9";
+            this.container.appendChild(overlay);
+            return overlay;
+        }
+
         const existing = document.getElementById("editor-text-overlay");
         if (existing instanceof HTMLCanvasElement) {
             return existing;
@@ -199,6 +227,7 @@ export class Editor {
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
+        if (this.onModelLoad) this.onModelLoad(this.model);
     }
 
     private applyDefaultLayerVisibility() {
@@ -343,6 +372,20 @@ export class Editor {
 
     private notifySelectionChanged(): void {
         this.client.notifySelection(this.selectedUuids()).catch(() => {});
+        if (this.onSelectionChange) {
+            let indices: number[];
+            if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+                indices = [this.selectedFpIndex];
+            } else if (this.selectionMode === "multi") {
+                indices = [...this.selectedMultiIndices];
+            } else if (this.selectionMode === "group" && this.selectedGroupId) {
+                const group = this.groupsById.get(this.selectedGroupId);
+                indices = group ? [...group.memberIndices] : [];
+            } else {
+                indices = [];
+            }
+            this.onSelectionChange(indices);
+        }
     }
 
     private setSingleSelection(index: number, enterOverride: boolean) {
@@ -410,10 +453,6 @@ export class Editor {
         return group ? group.memberIndices : [];
     }
 
-    private selectedGroupMemberUuids(): string[] {
-        const group = this.selectedGroup();
-        return group ? group.memberUuids : [];
-    }
 
     private selectedUuids(): string[] {
         if (this.singleOverrideMode && this.selectedFpIndex >= 0) {
@@ -671,7 +710,7 @@ export class Editor {
 
             if (!this.model) return;
 
-            if (e.shiftKey) {
+            if (!this.readOnly && e.shiftKey) {
                 this.clearDragState();
                 this.isBoxSelecting = true;
                 this.boxSelectStartWorld = worldPos;
@@ -693,16 +732,18 @@ export class Editor {
                     }
                 }
 
-                const dragTargets = this.selectedIndicesForDrag(hitIdx);
-                const isGroupDrag = this.selectionMode === "group";
-                const dragTrackUuids = isGroupDrag ? (this.selectedGroup()?.trackMemberUuids ?? []) : [];
-                const dragViaUuids = isGroupDrag ? (this.selectedGroup()?.viaMemberUuids ?? []) : [];
-                const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
-                const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
-                const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
-                if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
-                    this.repaintWithSelection();
-                    return;
+                if (!this.readOnly) {
+                    const dragTargets = this.selectedIndicesForDrag(hitIdx);
+                    const isGroupDrag = this.selectionMode === "group";
+                    const dragTrackUuids = isGroupDrag ? (this.selectedGroup()?.trackMemberUuids ?? []) : [];
+                    const dragViaUuids = isGroupDrag ? (this.selectedGroup()?.viaMemberUuids ?? []) : [];
+                    const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
+                    const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
+                    const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
+                    if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
+                        this.repaintWithSelection();
+                        return;
+                    }
                 }
 
                 this.repaintWithSelection();
@@ -719,10 +760,12 @@ export class Editor {
                 }
                 if (hitGraphicGroupId) {
                     this.setGroupSelection(hitGraphicGroupId);
-                    const group = this.groupsById.get(hitGraphicGroupId)!;
-                    if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
-                        this.repaintWithSelection();
-                        return;
+                    if (!this.readOnly) {
+                        const group = this.groupsById.get(hitGraphicGroupId)!;
+                        if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
+                            this.repaintWithSelection();
+                            return;
+                        }
                     }
                     this.repaintWithSelection();
                 } else {
@@ -732,16 +775,18 @@ export class Editor {
             }
         });
 
-        this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
-            if (e.button !== 0 || !this.model) return;
-            const rect = this.canvas.getBoundingClientRect();
-            const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
-            const worldPos = this.camera.screen_to_world(screenPos);
-            const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
-            if (hitIdx < 0) return;
-            this.setSingleSelection(hitIdx, true);
-            this.repaintWithSelection();
-        });
+        if (!this.readOnly) {
+            this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
+                if (e.button !== 0 || !this.model) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+                const worldPos = this.camera.screen_to_world(screenPos);
+                const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
+                if (hitIdx < 0) return;
+                this.setSingleSelection(hitIdx, true);
+                this.repaintWithSelection();
+            });
+        }
 
         this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
             const rect = this.canvas.getBoundingClientRect();
@@ -1065,6 +1110,21 @@ export class Editor {
 
     setOnMouseMove(cb: (x: number, y: number) => void) {
         this.onMouseMoveCallback = cb;
+    }
+
+    getModel(): RenderModel | null {
+        return this.model;
+    }
+
+    selectFootprintsByIndices(indices: number[]): void {
+        if (indices.length === 0) {
+            this.clearSelection(true);
+        } else if (indices.length === 1) {
+            this.setSingleSelection(indices[0]!, false);
+        } else {
+            this.setMultiSelection(indices);
+        }
+        this.repaintWithSelection();
     }
 
     private repaintWithSelection() {

@@ -555,6 +555,7 @@ export interface AppState {
   openLayout?: string | null;
   openKicad?: string | null;
   open3D?: string | null;
+  openInteractiveBom?: string | null;
 
   // Test Explorer
   collectedTests: TestItem[];

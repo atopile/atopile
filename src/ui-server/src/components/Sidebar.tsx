@@ -260,7 +260,7 @@ export function Sidebar() {
   }, [openManufacturingWizard]);
 
   const handleOpenOutput = useCallback(async (
-    output: 'openKiCad' | 'open3D' | 'openLayout',
+    output: 'openKiCad' | 'open3D' | 'openLayout' | 'openInteractiveBom',
     projectRoot: string,
     targetName: string
   ) => {
@@ -268,6 +268,7 @@ export function Sidebar() {
       openKiCad: 'KiCad',
       open3D: '3D view',
       openLayout: 'Layout',
+      openInteractiveBom: 'Interactive BOM',
     };
     const outputName = outputNames[output] || output;
 
@@ -421,6 +422,7 @@ export function Sidebar() {
             onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
+            onOpenInteractiveBom={(projectRoot, targetName) => handleOpenOutput('openInteractiveBom', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
             onCreateTarget={async (projectRoot, data) => {
               const response = await sendActionWithResponse('addBuildTarget', {

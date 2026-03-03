@@ -14,7 +14,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@layout-viewer/*": ["../atopile/layout_server/frontend/src/*"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/__tests__"]

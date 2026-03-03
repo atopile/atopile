@@ -20,7 +20,6 @@ import type {
 import { footprintBBox } from "./hit-test";
 import { buildPadAnnotationGeometry } from "./pad_annotations";
 
-const DEG_TO_RAD = Math.PI / 180;
 const HOLE_SEGMENTS = 36;
 const SELECTION_STROKE_WIDTH = 0.12;
 const GROUP_SELECTION_STROKE_WIDTH = 0.1;

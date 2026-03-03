@@ -1557,6 +1557,38 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.emit_event("open_layout", {"path": str(target)})
             return {"success": True}
 
+        if action == "openInteractiveBom":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
+
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
+            if not target or not target.exists():
+                return {
+                    "success": False,
+                    "error": f"Layout not found for target: {target_name}",
+                }
+
+            from atopile.server.domains.layout import layout_service
+
+            await asyncio.to_thread(layout_service.load, target)
+            await layout_service.start_watcher()
+            model = await asyncio.to_thread(layout_service.manager.get_render_model)
+            await layout_service.broadcast(
+                WsMessage(type="layout_updated", model=model)
+            )
+            await server_state.emit_event("open_interactive_bom", {"path": str(target)})
+            return {"success": True}
+
         if action == "openKiCad":
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")

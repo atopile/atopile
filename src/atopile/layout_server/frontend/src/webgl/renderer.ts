@@ -129,7 +129,7 @@ export class RenderLayer {
     depth: number;
 
     constructor(
-        private gl: WebGL2RenderingContext,
+        gl: WebGL2RenderingContext,
         public name: string,
         depth: number,
     ) {

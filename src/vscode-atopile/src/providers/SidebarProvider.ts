@@ -21,6 +21,7 @@ import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { isLayoutEditorOpen, openLayoutEditor } from '../ui/layout-editor';
+import { openInteractiveBomPreview } from '../ui/interactive-bom';
 import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
@@ -33,6 +34,7 @@ interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openInteractiveBom?: string | null;
 }
 
 interface ConnectionStatusMessage {
@@ -781,6 +783,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     if (msg.open3d) {
       void this._open3dPreview(msg.open3d);
+    }
+    if (msg.openInteractiveBom) {
+      openInteractiveBomPreview(this._extensionUri);
     }
   }
 
