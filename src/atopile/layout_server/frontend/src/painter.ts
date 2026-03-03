@@ -147,6 +147,14 @@ function sortedLayerEntries<T>(
     });
 }
 
+function isTextHidden(hidden: Set<string>): boolean {
+    return hidden.has("__type:text") || hidden.has("__type:text_shapes") || hidden.has("__type:other");
+}
+
+function isShapesHidden(hidden: Set<string>): boolean {
+    return hidden.has("__type:shapes") || hidden.has("__type:text_shapes") || hidden.has("__type:other");
+}
+
 /** Internal helper to group and paint a set of objects */
 function paintObjects(
     renderer: Renderer,
@@ -159,7 +167,8 @@ function paintObjects(
     hidden: Set<string>,
     tint?: [number, number, number]
 ) {
-    const showOther = !hidden.has("__type:other");
+    const showText = !isTextHidden(hidden);
+    const showShapes = !isShapesHidden(hidden);
     const showTracks = !hidden.has("__type:tracks");
     const showPads = !hidden.has("__type:pads");
 
@@ -180,11 +189,13 @@ function paintObjects(
 
     // Drawings and texts
     const worldAt: Point3 = { x: 0, y: 0, r: 0 };
-    if (showOther) {
+    if (showShapes) {
         for (const d of modelDrawings) {
             if (!d.layer || hidden.has(d.layer)) continue;
             addDrawing(d.layer, worldAt, d);
         }
+    }
+    if (showText) {
         for (const t of modelTexts) {
             if (!t.layer || hidden.has(t.layer)) continue;
             let arr = textsByLayer.get(t.layer);
@@ -219,11 +230,13 @@ function paintObjects(
 
     // Footprints
     for (const fp of footprints) {
-        if (showOther) {
+        if (showShapes) {
             for (const d of fp.drawings) {
                 if (!d.layer || hidden.has(d.layer)) continue;
                 addDrawing(d.layer, fp.at, d);
             }
+        }
+        if (showText) {
             for (const t of fp.texts) {
                 if (!t.layer || hidden.has(t.layer)) continue;
                 let arr = textsByLayer.get(t.layer);
@@ -781,16 +794,20 @@ function paintGlobalDrawings(
     mode: GlobalDrawingPaintMode,
     layerById: Map<string, LayerModel>,
 ) {
-    if (hidden.has("__type:other")) return;
+    const showText = !isTextHidden(hidden);
+    const showShapes = !isShapesHidden(hidden);
+    if (!showShapes && !(mode === "non_copper" && showText)) return;
     const byLayer = new Map<string, DrawingModel[]>();
-    for (const drawing of model.drawings) {
-        const ln = drawing.layer;
-        if (!ln) continue;
-        if (!shouldPaintGlobalDrawing(ln, mode, layerById)) continue;
-        if (hidden.has(ln)) continue;
-        let arr = byLayer.get(ln);
-        if (!arr) { arr = []; byLayer.set(ln, arr); }
-        arr.push(drawing);
+    if (showShapes) {
+        for (const drawing of model.drawings) {
+            const ln = drawing.layer;
+            if (!ln) continue;
+            if (!shouldPaintGlobalDrawing(ln, mode, layerById)) continue;
+            if (hidden.has(ln)) continue;
+            let arr = byLayer.get(ln);
+            if (!arr) { arr = []; byLayer.set(ln, arr); }
+            arr.push(drawing);
+        }
     }
     const worldAt: Point3 = { x: 0, y: 0, r: 0 };
     for (const [layerName, drawings] of sortedLayerEntries(byLayer, layerById)) {
@@ -801,7 +818,7 @@ function paintGlobalDrawings(
         }
     }
 
-    if (mode === "non_copper") {
+    if (mode === "non_copper" && showText) {
         const textsByLayer = new Map<string, TextModel[]>();
         for (const text of model.texts) {
             const ln = text.layer;
@@ -854,7 +871,7 @@ export function paintFootprint(
             arr.push({ pad, hole });
         }
     }
-    if (!hidden.has("__type:other")) {
+    if (!isShapesHidden(hidden)) {
         for (const [layerName, drawings] of sortedLayerEntries(drawingsByLayer, layerById)) {
             const [r, g, b, a] = getLayerColor(layerName, layerById);
             const layer = renderer.get_layer(layerName);
@@ -862,7 +879,9 @@ export function paintFootprint(
                 paintDrawing(layer, fp.at, drawing, r, g, b, a);
             }
         }
+    }
 
+    if (!isTextHidden(hidden)) {
         const textsByLayer = new Map<string, TextModel[]>();
         for (const text of fp.texts) {
             const ln = text.layer;
@@ -911,7 +930,7 @@ export function paintFootprint(
             }
                     }
     }
-    if (!hidden.has("__type:other")) {
+    if (!isShapesHidden(hidden)) {
         for (const [layerName, drawings] of sortedLayerEntries(drillDrawingsByLayer, layerById)) {
             const [r, g, b, a] = getLayerColor(layerName, layerById);
             const layer = renderer.get_layer(layerName);

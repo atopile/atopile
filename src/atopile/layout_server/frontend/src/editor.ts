@@ -119,6 +119,7 @@ export class Editor {
     private dragTargetViaUuids: string[] = [];
     private dragStartViaPositions: Map<string, { x: number; y: number }> | null = null;
     private dragLayer: RenderLayer | null = null;
+    private dragUsesStaticLift = true;
     private isBoxSelecting = false;
     private boxSelectStartWorld: Vec2 | null = null;
     private boxSelectCurrentWorld: Vec2 | null = null;
@@ -624,12 +625,26 @@ export class Editor {
         this.dragStartTextPositions = null;
         this.dragTargetZoneUuids = [];
         this.dragStartZoneCoords = null;
+        this.dragUsesStaticLift = true;
     }
 
     private restorePostDragRendering() {
         if (!this.model) return;
+        this.renderer.end_fast_drag_cache();
         this.renderer.dispose_dynamic_layers();
         this.paintStatic();
+    }
+
+    private useFastDragNoLift(): boolean {
+        if (!this.model) return false;
+        const complexity =
+            this.model.footprints.length +
+            this.model.tracks.length +
+            this.model.vias.length +
+            this.model.drawings.length +
+            this.model.texts.length +
+            this.model.zones.length;
+        return complexity > 6000;
     }
 
     private isObjectTypeLayer(layer: string): boolean {
@@ -651,7 +666,9 @@ export class Editor {
         if (!this.model) return;
         if (this.isDragging) {
             const draggedSelection = this.currentDraggedSelection();
-            this.paintStatic(draggedSelection);
+            if (this.dragUsesStaticLift) {
+                this.paintStatic(draggedSelection);
+            }
             this.renderer.dispose_dynamic_layers();
             this.renderer.isDynamicContext = true;
             paintDraggedSelection(this.renderer, this.model, draggedSelection, this.getLayerMap(), this.hiddenLayers);
@@ -737,6 +754,10 @@ export class Editor {
         this.dragStartTextPositions = dragStartTextPositions;
         this.dragTargetZoneUuids = [...dragStartZoneCoords.keys()];
         this.dragStartZoneCoords = dragStartZoneCoords;
+        this.dragUsesStaticLift = !this.useFastDragNoLift();
+        if (!this.dragUsesStaticLift) {
+            this.renderer.begin_fast_drag_cache();
+        }
 
         // Lift dragged objects out of static geometry so only moving copies are shown.
         const draggedSelection: DragSelection = {
@@ -747,7 +768,9 @@ export class Editor {
             textUuids: new Set(this.dragTargetTextUuids),
             zoneUuids: new Set(this.dragTargetZoneUuids),
         };
-        this.paintStatic(draggedSelection);
+        if (this.dragUsesStaticLift) {
+            this.paintStatic(draggedSelection);
+        }
 
         this.renderer.dispose_dynamic_layers();
         this.renderer.isDynamicContext = true;
@@ -966,8 +989,6 @@ export class Editor {
             for (const layer of this.renderer.dynamicLayers) {
                 layer.transform = trans;
             }
-            
-            this.paintDynamic();
             this.requestRedraw();
         });
 
@@ -1188,6 +1209,18 @@ export class Editor {
 
     private drawTextOverlay() {
         if (!this.textCtx || !this.model) return;
+        if (this.isDragging && !this.dragUsesStaticLift) {
+            const dpr = Math.max(window.devicePixelRatio || 1, 1);
+            const width = this.canvas.clientWidth;
+            const height = this.canvas.clientHeight;
+            const pixelWidth = Math.floor(width * dpr);
+            const pixelHeight = Math.floor(height * dpr);
+            if (this.textCtx.canvas.width !== pixelWidth) this.textCtx.canvas.width = pixelWidth;
+            if (this.textCtx.canvas.height !== pixelHeight) this.textCtx.canvas.height = pixelHeight;
+            this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            this.textCtx.clearRect(0, 0, width, height);
+            return;
+        }
         const visibleFpIndices = this.footprintIndex.query(this.camera.bbox);
         const layerMap = this.getLayerMap();
 

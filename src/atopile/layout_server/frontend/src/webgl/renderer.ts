@@ -1,6 +1,6 @@
 import { Vec2, Matrix3, BBox } from "../math";
 import { ShaderProgram, VertexArray, Buffer } from "./helpers";
-import { polygon_vert, polygon_frag, polyline_vert, polyline_frag, point_vert, point_frag } from "./shaders";
+import { polygon_vert, polygon_frag, polyline_vert, polyline_frag, point_vert, point_frag, blit_vert, blit_frag } from "./shaders";
 import {
     tessellate_polyline, tessellate_circle, triangulate_polygon,
     type TessPolylineResult, type TessCircleResult, type TessPolygonResult,
@@ -167,6 +167,7 @@ export class Renderer {
     private polylineShader!: ShaderProgram;
     private polygonShader!: ShaderProgram;
     private pointShader!: ShaderProgram;
+    private blitShader!: ShaderProgram;
     private static readonly DEPTH_STEP = 0.0001;
     private static readonly DYNAMIC_DEPTH_LIFT = 0.2;
     private nextDepth = Renderer.DEPTH_STEP;
@@ -174,6 +175,11 @@ export class Renderer {
     private gridVao: VertexArray | null = null;
     private gridPosBuf: Buffer | null = null;
     private gridVertexCount = 0;
+    private blitVao: VertexArray | null = null;
+    private dragCacheTex: WebGLTexture | null = null;
+    private dragCacheWidth = 0;
+    private dragCacheHeight = 0;
+    private useDragCache = false;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -194,6 +200,7 @@ export class Renderer {
         this.polylineShader = new ShaderProgram(gl, polyline_vert, polyline_frag);
         this.polygonShader = new ShaderProgram(gl, polygon_vert, polygon_frag);
         this.pointShader = new ShaderProgram(gl, point_vert, point_frag);
+        this.blitShader = new ShaderProgram(gl, blit_vert, blit_frag);
 
         this.update_size();
     }
@@ -208,6 +215,9 @@ export class Renderer {
         this.canvas.height = ph;
         this.gl.viewport(0, 0, pw, ph);
         this.projection_matrix = Matrix3.orthographic(rect.width, rect.height);
+        this.useDragCache = false;
+        this.dragCacheWidth = 0;
+        this.dragCacheHeight = 0;
     }
 
     clear() {
@@ -305,6 +315,82 @@ export class Renderer {
         }
     }
 
+    begin_fast_drag_cache() {
+        this.update_size();
+        const gl = this.gl;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        if (w <= 0 || h <= 0) {
+            this.useDragCache = false;
+            return;
+        }
+        if (!this.dragCacheTex) {
+            this.dragCacheTex = gl.createTexture();
+            if (!this.dragCacheTex) {
+                this.useDragCache = false;
+                return;
+            }
+        }
+        gl.bindTexture(gl.TEXTURE_2D, this.dragCacheTex);
+        if (this.dragCacheWidth !== w || this.dragCacheHeight !== h) {
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            this.dragCacheWidth = w;
+            this.dragCacheHeight = h;
+        }
+        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        this.useDragCache = true;
+    }
+
+    end_fast_drag_cache() {
+        this.useDragCache = false;
+    }
+
+    private ensure_blit_vao() {
+        if (this.blitVao) return;
+        const vao = new VertexArray(this.gl);
+        const posBuf = vao.buffer(this.blitShader.attribs["a_position"]!, 2);
+        posBuf.set(new Float32Array([
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ]));
+        const uvBuf = vao.buffer(this.blitShader.attribs["a_uv"]!, 2);
+        uvBuf.set(new Float32Array([
+            0, 0,
+            1, 0,
+            0, 1,
+            0, 1,
+            1, 0,
+            1, 1,
+        ]));
+        this.blitVao = vao;
+    }
+
+    private draw_drag_cache() {
+        if (!this.useDragCache || !this.dragCacheTex) return false;
+        const gl = this.gl;
+        this.ensure_blit_vao();
+        gl.disable(gl.DEPTH_TEST);
+        this.blitShader.bind();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.dragCacheTex);
+        gl.uniform1i(gl.getUniformLocation(this.blitShader.program, "u_tex"), 0);
+        this.blitVao!.bind();
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.enable(gl.DEPTH_TEST);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+        return true;
+    }
+
     /** Build grid vertex data for the visible area */
     updateGrid(viewBBox: BBox, spacing: number) {
         const maxDots = 100000;
@@ -340,18 +426,21 @@ export class Renderer {
         this.clear();
         const total = this.projection_matrix.multiply(cameraMatrix);
 
-        // Draw grid dots behind everything
-        if (this.gridVertexCount > 0) {
-            this.pointShader.bind();
-            this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
-            this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
-            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
-            this.gridVao!.bind();
-            this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
-        }
+        const drewCache = this.draw_drag_cache();
+        if (!drewCache) {
+            // Draw grid dots behind everything
+            if (this.gridVertexCount > 0) {
+                this.pointShader.bind();
+                this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
+                this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
+                this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
+                this.gridVao!.bind();
+                this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
+            }
 
-        for (const layer of this.layers.values()) {
-            layer.render(this.polylineShader, this.polygonShader, total, 1.0);
+            for (const layer of this.layers.values()) {
+                layer.render(this.polylineShader, this.polygonShader, total, 1.0);
+            }
         }
         for (const layer of this.dynamicLayers) {
             layer.render(this.polylineShader, this.polygonShader, total, 1.0);
