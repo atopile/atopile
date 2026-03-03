@@ -16,8 +16,7 @@
 		"prefix": "component",
 		"body": [
 			"component ${1}:",
-			"\tfootprint = \"${2}\"",
-			"\tmpn = \"${3}\""
+			"\tpin ${2}"
 		]
 	},
 	"resistor": {
@@ -26,8 +25,8 @@
 		"prefix": "resistor",
 		"body": [
 			"${1} = new Resistor",
-			"${1}.value = ${2}${3|ohm,kohm,mohm,gohm|} +/- ${4|1,5,10|}%",
-			"${1}.footprint = ${5|\"R01005\",\"R0201\",\"R0402\",\"R0603\",\"R0805\"|}"
+			"${1}.resistance = ${2}${3|ohm,kohm|} +/- ${4|1,5,10|}%",
+			"${1}.package = \"${5|0402,0603,0805,1206|}\""
 		]
 	},
 	"capacitor": {
@@ -36,9 +35,9 @@
 		"prefix": "capacitor",
 		"body": [
 			"${1} = new Capacitor",
-			"${1}.value = ${2}${3|pF,nF,uF,F|} +/- ${4|10,20|}%",
-			"${1}.voltage = ${5|\"6V\",\"10V\",\"16V\",\"25V\",\"50V\",\"100V\"|}",
-			"${1}.footprint = ${6|\"C01005\",\"C0201\",\"C0402\",\"C0603\",\"C0805\",\"C1206\"|}"
+			"${1}.capacitance = ${2}${3|pF,nF,uF|} +/- ${4|10,20|}%",
+			"assert ${1}.max_voltage >= ${5|6.3,10,16,25,50,100,200|}V",
+			"${1}.package = \"${6|0402,0603,0805,1206|}\""
 		]
 	}
 }

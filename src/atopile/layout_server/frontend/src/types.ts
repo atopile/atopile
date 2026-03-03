@@ -16,12 +16,14 @@ export interface Size2 {
 
 export interface RenderModel {
     board: BoardModel;
+    layers: LayerModel[];
+    drawings: DrawingModel[];
+    texts: TextModel[];
     footprints: FootprintModel[];
+    footprint_groups: FootprintGroupModel[];
     tracks: TrackModel[];
-    arcs: ArcTrackModel[];
     vias: ViaModel[];
     zones: ZoneModel[];
-    nets: NetModel[];
 }
 
 export interface BoardModel {
@@ -39,15 +41,55 @@ export interface EdgeModel {
     center?: Point2;
 }
 
-export interface FootprintModel {
+export interface PcbObjectModel {
     uuid: string | null;
+    at: Point3;
+}
+
+export interface FootprintModel extends PcbObjectModel {
     name: string;
     reference: string | null;
     value: string | null;
-    at: Point3;
     layer: string;
     pads: PadModel[];
     drawings: DrawingModel[];
+    texts: TextModel[];
+    pad_names: PadNameAnnotationModel[];
+    pad_numbers: PadNumberAnnotationModel[];
+}
+
+export interface FootprintGroupModel extends PcbObjectModel {
+    name: string | null;
+    member_uuids: string[];
+    track_member_uuids: string[];
+    via_member_uuids: string[];
+    graphic_member_uuids: string[];
+    text_member_uuids: string[];
+    zone_member_uuids: string[];
+}
+
+export interface TextModel {
+    text: string;
+    at: Point3;
+    layer: string | null;
+    size: Size2 | null;
+    thickness: number | null;
+    justify: string[] | null;
+    uuid: string | null;
+}
+
+export interface PadNameAnnotationModel {
+    pad_index: number;
+    pad: string;
+    text: string;
+    layer_ids: string[];
+}
+
+export interface PadNumberAnnotationModel {
+    pad_index: number;
+    pad: string;
+    text: string;
+    layer_ids: string[];
 }
 
 export interface PadModel {
@@ -58,40 +100,72 @@ export interface PadModel {
     type: string;
     layers: string[];
     net: number;
+    hole: HoleModel | null;
     roundrect_rratio: number | null;
-    drill: DrillModel | null;
 }
 
-export interface DrillModel {
+export interface HoleModel {
     shape: string | null;
-    size_x: number | null;
-    size_y: number | null;
+    size_x: number;
+    size_y: number;
+    offset: Point2 | null;
+    plated: boolean | null;
 }
 
-export interface DrawingModel {
-    type: "line" | "arc" | "circle" | "rect" | "polygon";
-    start?: Point2;
-    end?: Point2;
-    mid?: Point2;
-    center?: Point2;
+interface DrawingBase {
     width: number;
     layer: string | null;
-    points?: Point2[];
+    filled: boolean;
+    uuid: string | null;
 }
+
+export interface LineDrawingModel extends DrawingBase {
+    type: "line";
+    start: Point2;
+    end: Point2;
+}
+
+export interface ArcDrawingModel extends DrawingBase {
+    type: "arc";
+    start: Point2;
+    mid: Point2;
+    end: Point2;
+}
+
+export interface CircleDrawingModel extends DrawingBase {
+    type: "circle";
+    center: Point2;
+    end: Point2;
+}
+
+export interface RectDrawingModel extends DrawingBase {
+    type: "rect";
+    start: Point2;
+    end: Point2;
+}
+
+export interface PolygonDrawingModel extends DrawingBase {
+    type: "polygon";
+    points: Point2[];
+}
+
+export interface CurveDrawingModel extends DrawingBase {
+    type: "curve";
+    points: Point2[];
+}
+
+export type DrawingModel =
+    | LineDrawingModel
+    | ArcDrawingModel
+    | CircleDrawingModel
+    | RectDrawingModel
+    | PolygonDrawingModel
+    | CurveDrawingModel;
 
 export interface TrackModel {
     start: Point2;
     end: Point2;
-    width: number;
-    layer: string | null;
-    net: number;
-    uuid: string | null;
-}
-
-export interface ArcTrackModel {
-    start: Point2;
-    mid: Point2;
-    end: Point2;
+    mid?: Point2;
     width: number;
     layer: string | null;
     net: number;
@@ -99,12 +173,12 @@ export interface ArcTrackModel {
 }
 
 export interface ViaModel {
+    uuid: string | null;
     at: Point2;
     size: number;
     drill: number;
-    layers: string[];
-    net: number;
-    uuid: string | null;
+    copper_layers: string[];
+    drill_layers: string[];
 }
 
 export interface ZoneModel {
@@ -113,6 +187,10 @@ export interface ZoneModel {
     layers: string[];
     name: string | null;
     uuid: string | null;
+    keepout: boolean;
+    hatch_mode: string | null;
+    hatch_pitch: number | null;
+    fill_enabled: boolean | null;
     outline: Point2[];
     filled_polygons: FilledPolygonModel[];
 }
@@ -122,7 +200,54 @@ export interface FilledPolygonModel {
     points: Point2[];
 }
 
-export interface NetModel {
-    number: number;
-    name: string | null;
+export interface LayerModel {
+    id: string;
+    root: string | null;
+    kind: string | null;
+    group: string | null;
+    label: string | null;
+    panel_order: number;
+    paint_order: number;
+    color: [number, number, number, number];
+    default_visible: boolean;
 }
+
+export interface StatusResponse {
+    status: "ok" | "error";
+    code: string;
+    message: string | null;
+    model: RenderModel | null;
+}
+
+export interface MoveCommand {
+    command: "move";
+    uuids: string[];
+    dx: number;
+    dy: number;
+}
+
+export interface RotateCommand {
+    command: "rotate";
+    uuids: string[];
+    delta_degrees: number;
+}
+
+export interface FlipCommand {
+    command: "flip";
+    uuids: string[];
+}
+
+export interface UndoCommand {
+    command: "undo";
+}
+
+export interface RedoCommand {
+    command: "redo";
+}
+
+export type ActionCommand =
+    | MoveCommand
+    | RotateCommand
+    | FlipCommand
+    | UndoCommand
+    | RedoCommand;

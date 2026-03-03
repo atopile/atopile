@@ -521,7 +521,6 @@ class ActionsFactory:
         param_child: fabll._ChildField | None,
         constraint_operand: fabll._ChildField | None,
         constraint_expr: type[fabll.Node] | None = None,
-        soft_create: bool = False,
         source_chunk_node: AST.SourceChunk | None = None,
     ) -> "list[AddMakeChildAction]":
         actions: list[AddMakeChildAction] = []
@@ -535,7 +534,6 @@ class ActionsFactory:
                 AddMakeChildAction(
                     target_path=target_path,
                     child_field=param_child,
-                    soft_create=soft_create,
                     source_chunk_node=source_chunk_node,
                 )
             )
@@ -561,7 +559,6 @@ class ActionsFactory:
                         )
                     ),
                     child_field=constraint_operand,
-                    soft_create=soft_create,
                     source_chunk_node=source_chunk_node,
                 ),
             )
@@ -579,7 +576,6 @@ class ActionsFactory:
                         [constraint_operand],
                         assert_=True,
                     ),
-                    soft_create=soft_create,
                     source_chunk_node=source_chunk_node,
                 )
             )
@@ -603,13 +599,11 @@ class AddMakeChildAction:
     """
     target_path: String path to target eg. resistor.resistance
     relative to parent reference node. eg. app
-    soft_create: If True, this MakeChild can be superseded by inheritance.
     """
 
     target_path: FieldPath | fabll.RefPath
     child_field: fabll._ChildField | None = None
     import_ref: ImportRef | None = None
-    soft_create: bool = False
     source_chunk_node: AST.SourceChunk | None = None
 
     def get_identifier(self) -> str:
@@ -649,9 +643,6 @@ class PendingInheritance:
     derived_name: str
     parent_ref: "ImportRef | str"  # ImportRef for external, str for local
     source_order: int
-    # Identifiers that existed before DSL statements (auto-generated traits).
-    # These are skipped during inheritance to avoid redefinition errors.
-    auto_generated_ids: frozenset[str]
     source_node: fabll.Node | None = None
 
 

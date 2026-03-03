@@ -15,7 +15,7 @@ export class PanAndZoom {
         public camera: Camera2,
         public callback: PanAndZoomCallback,
         public min_zoom = 0.1,
-        public max_zoom = 100,
+        public max_zoom = 400,
     ) {
         this.target.addEventListener("wheel", (e) => this.#on_wheel(e), { passive: false });
 
