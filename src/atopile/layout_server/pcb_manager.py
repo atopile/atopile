@@ -1139,9 +1139,13 @@ class PcbManager:
         if font_size is not None and font_size.h is not None:
             size = Size2(w=float(font_size.w), h=float(font_size.h))
 
+        # KiCad stores text rotation as absolute. Apply keep-upright:
+        # flip by 180° when the text would appear upside-down.
+        r = _keep_upright((at.r or 0.0))
+
         return TextModel(
             text=text,
-            at=PointXYR(x=at.x, y=at.y, r=(at.r or 0.0)),
+            at=PointXYR(x=at.x, y=at.y, r=r),
             layer=_text_layer_name(obj.layer),
             size=size,
             thickness=(
@@ -1591,6 +1595,15 @@ def _fit_pad_net_text(
         if fitted is not None:
             return (candidate, fitted)
     return None
+
+
+def _keep_upright(deg: float) -> float:
+    """Flip text by 180° when it would appear upside-down (matching KiCad).
+
+    Range (90°, 270°] ensures vertical text is always readable from the right.
+    """
+    n = deg % 360
+    return (n + 180) % 360 if 90 < n <= 270 else n
 
 
 def _pad_net_text_rotation(
