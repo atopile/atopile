@@ -279,6 +279,68 @@
             border-radius: 2px;
             flex-shrink: 0;
         }
+
+        #initial-loading {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(8, 12, 20, 0.88);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            z-index: 60;
+            opacity: 1;
+            pointer-events: auto;
+            transition: opacity 0.2s ease;
+        }
+
+        #initial-loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .initial-loading-content {
+            min-width: 220px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+            font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+
+        .initial-loading-spinner {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.18);
+            border-top-color: var(--accent);
+            animation: initial-loading-spin 0.8s linear infinite;
+        }
+
+        .initial-loading-message {
+            color: var(--text-primary);
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .initial-loading-subtext {
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+
+        #initial-loading.error .initial-loading-spinner {
+            display: none;
+        }
+
+        #initial-loading.error .initial-loading-message {
+            color: #ffad66;
+        }
+
+        @keyframes initial-loading-spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -288,6 +350,13 @@
         window.__LAYOUT_WS_PATH__ = '{{wsPath}}';
     </script>
     <canvas id="editor-canvas"></canvas>
+    <div id="initial-loading" role="status" aria-live="polite" aria-busy="true">
+        <div class="initial-loading-content">
+            <div class="initial-loading-spinner"></div>
+            <div class="initial-loading-message">Loading PCB</div>
+            <div class="initial-loading-subtext">Building scene geometry...</div>
+        </div>
+    </div>
     <div id="vignette"></div>
     <div id="layer-panel"></div>
     <div id="status">

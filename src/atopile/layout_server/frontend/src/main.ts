@@ -13,6 +13,32 @@ const apiPrefix: string = w.__LAYOUT_API_PREFIX__ || "/api";
 const wsPath: string = w.__LAYOUT_WS_PATH__ || "/ws";
 const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
 w.__layoutEditor = editor;
+const initialLoadingEl = document.getElementById("initial-loading");
+const initialLoadingMessageEl = initialLoadingEl?.querySelector(".initial-loading-message") as HTMLElement | null;
+const initialLoadingSubtextEl = initialLoadingEl?.querySelector(".initial-loading-subtext") as HTMLElement | null;
+
+function setInitialLoading(message: string, subtext: string) {
+    if (!initialLoadingEl) return;
+    initialLoadingEl.classList.remove("hidden", "error");
+    initialLoadingEl.setAttribute("aria-busy", "true");
+    if (initialLoadingMessageEl) initialLoadingMessageEl.textContent = message;
+    if (initialLoadingSubtextEl) initialLoadingSubtextEl.textContent = subtext;
+}
+
+function hideInitialLoading() {
+    if (!initialLoadingEl) return;
+    initialLoadingEl.classList.add("hidden");
+    initialLoadingEl.setAttribute("aria-busy", "false");
+}
+
+function showInitialLoadingError(message: string, subtext: string) {
+    if (!initialLoadingEl) return;
+    initialLoadingEl.classList.remove("hidden");
+    initialLoadingEl.classList.add("error");
+    initialLoadingEl.setAttribute("aria-busy", "false");
+    if (initialLoadingMessageEl) initialLoadingMessageEl.textContent = message;
+    if (initialLoadingSubtextEl) initialLoadingSubtextEl.textContent = subtext;
+}
 
 // Persistent UI state across rebuilds
 let panelCollapsed = false;
@@ -477,10 +503,13 @@ editor.setOnMouseMove((x, y) => {
     }
 });
 
+setInitialLoading("Loading PCB", "Building scene geometry...");
 editor.init().then(() => {
     buildLayerPanel();
     editor.setOnLayersChanged(buildLayerPanel);
+    hideInitialLoading();
 }).catch((err) => {
+    showInitialLoadingError("Load failed", "Could not initialize PCB viewer.");
     console.error("Failed to initialize editor:", err);
 });
 
