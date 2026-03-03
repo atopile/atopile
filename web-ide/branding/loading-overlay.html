@@ -13,11 +13,14 @@
 .ato-td-r{background:#ff5f57}.ato-td-y{background:#febc2e}.ato-td-g{background:#28c840}
 .ato-term-title{margin-left:auto;font-size:.65rem;color:#6b7a8d;letter-spacing:.05em;font-family:monospace}
 .ato-term-body{padding:.75rem 1rem;font-family:monospace;font-size:.75rem;line-height:1.9;min-height:4.5rem}
-.ato-term-line{display:flex;gap:.5rem;opacity:0;animation:ato-line-in .35s ease forwards}
+.ato-term-line{display:flex;align-items:center;gap:.55rem;opacity:0;animation:ato-line-in .35s ease forwards}
 @keyframes ato-line-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
-.ato-term-prompt{color:#f95015;user-select:none}
+.ato-term-status{width:.78rem;height:.78rem;flex:0 0 .78rem;display:inline-flex;align-items:center;justify-content:center}
+.ato-term-status.spinner{border:1.8px solid rgba(249,80,21,.3);border-top-color:#f95015;border-radius:50%;animation:ato-term-spin .8s linear infinite}
+.ato-term-status.done{color:#6b7a8d;font-size:.73rem;font-weight:700;line-height:1}
+@keyframes ato-term-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .ato-term-text{color:#dde6f0}
-.ato-term-text.dim{color:#6b7a8d}
+.ato-term-line.completed .ato-term-text{color:#6b7a8d}
 </style>
 <script>
 (function(){
@@ -47,21 +50,34 @@
     'Rendering board...'
   ];
   var msgIdx=0;
+  var activeLine=null;
+  function completeLine(line){
+    if(!line)return;
+    line.classList.remove('active');
+    line.classList.add('completed');
+    var status=line.querySelector('.ato-term-status');
+    if(status){
+      status.classList.remove('spinner');
+      status.classList.add('done');
+      status.textContent='✓';
+    }
+  }
   function addTermLine(){
     var body=document.getElementById('ato-term-body');
     if(!body||msgIdx>=MSGS.length)return;
+    completeLine(activeLine);
     var line=document.createElement('div');
-    line.className='ato-term-line';
-    var prompt=document.createElement('span');
-    prompt.className='ato-term-prompt';
-    prompt.textContent='$';
+    line.className='ato-term-line active';
+    var status=document.createElement('span');
+    status.className='ato-term-status spinner';
     var msg=document.createElement('span');
-    msg.className=msgIdx>0?'ato-term-text dim':'ato-term-text';
+    msg.className='ato-term-text';
     msg.textContent=' '+MSGS[msgIdx];
-    line.appendChild(prompt);
+    line.appendChild(status);
     line.appendChild(msg);
     body.appendChild(line);
     body.scrollTop=body.scrollHeight;
+    activeLine=line;
     msgIdx++;
     if(msgIdx<MSGS.length)setTimeout(addTermLine,900);
   }

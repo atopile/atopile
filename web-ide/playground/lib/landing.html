@@ -195,6 +195,7 @@
   }
   .btn-launch:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
   .btn-launch:disabled { background: #251812; color: #5a3a2a; cursor: wait; }
+  .btn-launch.hidden { display: none; }
 
   .btn-ghost {
     display: inline-flex;
@@ -241,7 +242,8 @@
   .term-body { padding: 0.75rem 1rem; font-size: 0.75rem; line-height: 1.9; min-height: 4.5rem; }
   .term-line {
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
+    gap: 0.55rem;
     opacity: 0;
     animation: line-in 0.35s ease forwards;
   }
@@ -249,9 +251,32 @@
     from { opacity: 0; transform: translateX(-4px); }
     to { opacity: 1; transform: none; }
   }
-  .term-prompt { color: var(--accent); user-select: none; }
+  .term-status {
+    width: 0.78rem;
+    height: 0.78rem;
+    flex: 0 0 0.78rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .term-status.spinner {
+    border: 1.8px solid rgba(249,80,21,0.3);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: term-spin 0.8s linear infinite;
+  }
+  .term-status.done {
+    color: var(--muted);
+    font-size: 0.73rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  @keyframes term-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
   .term-text { color: var(--text); }
-  .term-text.dim { color: var(--muted); }
+  .term-line.completed .term-text { color: var(--muted); }
 
   .error-msg {
     font-size: 0.78rem;
@@ -355,9 +380,9 @@
   </p>
 
   <div class="cta-row">
-    <button class="btn-launch" id="launch" onclick="spawn()">
+    <button class="btn-launch hidden" id="retry" onclick="spawn()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      Launch workspace
+      <span id="retry-label">Retry launch</span>
     </button>
     <a class="btn-ghost" href="https://atopile.io/docs">
       View docs
@@ -395,46 +420,72 @@ var MSGS = [
 ];
 var msgIdx = 0;
 var msgTimer;
+var spawning = false;
+var activeLine = null;
 
-function addLine(text, dim) {
+function completeLine(line) {
+  if (!line) return;
+  line.classList.remove('active');
+  line.classList.add('completed');
+  var status = line.querySelector('.term-status');
+  if (status) {
+    status.classList.remove('spinner');
+    status.classList.add('done');
+    status.textContent = '\u2713';
+  }
+}
+
+function addLine(text) {
   var body = document.getElementById('term-body');
+  completeLine(activeLine);
   var line = document.createElement('div');
-  line.className = 'term-line';
-  var prompt = document.createElement('span');
-  prompt.className = 'term-prompt';
-  prompt.textContent = '$';
+  line.className = 'term-line active';
+  var status = document.createElement('span');
+  status.className = 'term-status spinner';
   var msg = document.createElement('span');
-  msg.className = dim ? 'term-text dim' : 'term-text';
+  msg.className = 'term-text';
   msg.textContent = ' ' + text;
-  line.appendChild(prompt);
+  line.appendChild(status);
   line.appendChild(msg);
   body.appendChild(line);
   body.scrollTop = body.scrollHeight;
+  activeLine = line;
 }
 
 function tickMessages() {
   if (msgIdx < MSGS.length) {
-    addLine(MSGS[msgIdx], msgIdx > 0);
+    addLine(MSGS[msgIdx]);
     msgIdx++;
     msgTimer = setTimeout(tickMessages, 900);
   }
 }
 
 async function spawn() {
-  var btn = document.getElementById('launch');
+  if (spawning) return;
+  spawning = true;
+  msgIdx = 0;
+
+  var retry = document.getElementById('retry');
+  var retryLabel = document.getElementById('retry-label');
   var terminal = document.getElementById('terminal');
   var error = document.getElementById('error');
 
-  btn.disabled = true;
+  if (retry) {
+    retry.disabled = true;
+    retry.classList.add('hidden');
+  }
+  if (retryLabel) retryLabel.textContent = 'Retry launch';
   error.textContent = '';
   terminal.classList.add('visible');
+  document.getElementById('term-body').textContent = '';
+  activeLine = null;
   tickMessages();
 
   try {
     var res = await fetch('/api/spawn', { method: 'POST' });
     if (res.redirected) {
       clearTimeout(msgTimer);
-      addLine('Ready \u2014 redirecting...', false);
+      addLine('Ready \u2014 redirecting...');
       window.location.href = res.url;
       return;
     }
@@ -443,12 +494,33 @@ async function spawn() {
     window.location.reload();
   } catch (err) {
     clearTimeout(msgTimer);
-    terminal.classList.remove('visible');
     error.textContent = err.message;
-    btn.disabled = false;
+    if (retry) {
+      retry.disabled = false;
+      retry.classList.remove('hidden');
+    }
+    if (retryLabel) retryLabel.textContent = 'Retry launch';
+    terminal.classList.remove('visible');
     msgIdx = 0;
+    spawning = false;
   }
 }
+
+window.addEventListener('DOMContentLoaded', function() {
+  var params = new URLSearchParams(window.location.search);
+  var noLaunch = params.get('nolaunch') === '1';
+  if (noLaunch) {
+    var retry = document.getElementById('retry');
+    var retryLabel = document.getElementById('retry-label');
+    if (retry) {
+      retry.disabled = false;
+      retry.classList.remove('hidden');
+    }
+    if (retryLabel) retryLabel.textContent = 'Launch workspace';
+    return;
+  }
+  setTimeout(spawn, 50);
+});
 </script>
 <script>
 (function() {
