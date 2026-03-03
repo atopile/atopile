@@ -250,7 +250,7 @@ class DslRichException(DslException):
 
         from atopile.compiler.ast_visitor import ASTVisitor
 
-        if self.traceback:
+        if self.traceback and not self.source_node:
             yield Text("\nTraceback (most recent call last):", style="bold")
             for frame in self.traceback:
                 yield from self._render_traceback_frame(frame)
