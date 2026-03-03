@@ -15,33 +15,50 @@ pub const TokenType = enum {
     comment,
 };
 
+const LocationScalar = u32;
+
 pub const TokenLocation = struct {
-    start: LocationInfo,
-    end: LocationInfo,
+    start: LocationScalar,
+    end: LocationScalar,
+
+    pub const none = TokenLocation{
+        .start = std.math.maxInt(LocationScalar),
+        .end = std.math.maxInt(LocationScalar),
+    };
+
+    pub inline fn isSet(self: TokenLocation) bool {
+        return self.start != std.math.maxInt(LocationScalar) and self.end != std.math.maxInt(LocationScalar);
+    }
 };
 
 pub const LocationInfo = struct {
-    line: usize,
-    column: usize,
+    line: LocationScalar,
+    column: LocationScalar,
 };
 
 pub const Token = struct {
     type: TokenType,
-    value: []const u8,
-    location: TokenLocation,
+    start: LocationScalar,
+    end: LocationScalar,
+
+    pub inline fn slice(self: Token, input: []const u8) []const u8 {
+        return input[@as(usize, self.start)..@as(usize, self.end)];
+    }
 };
+
+inline fn narrowLocation(value: usize) LocationScalar {
+    return std.math.cast(LocationScalar, value) orelse std.math.maxInt(LocationScalar);
+}
 
 pub const Tokenizer = struct {
     input: []const u8,
     position: usize,
-    location: LocationInfo,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Tokenizer {
         return .{
             .input = input,
             .position = 0,
-            .location = .{ .line = 1, .column = 1 },
             .allocator = allocator,
         };
     }
@@ -134,37 +151,23 @@ pub const Tokenizer = struct {
         const input = self.input;
         const len = input.len;
         var pos = self.position;
-        var line = self.location.line;
-        var column = self.location.column;
 
         // Unroll common case of spaces/tabs
         while (pos < len) {
             const c = input[pos];
-            if (c == ' ' or c == '\t') {
+            if (isWhitespace(c)) {
                 pos += 1;
-                column += 1;
-            } else if (c == '\n') {
-                pos += 1;
-                line += 1;
-                column = 1;
-            } else if (c == '\r') {
-                pos += 1;
-                column += 1;
             } else {
                 break;
             }
         }
 
         self.position = pos;
-        self.location = .{ .line = line, .column = column };
     }
 
     fn readString(self: *Tokenizer) !Token {
-        const start_location = self.location;
         const start = self.position;
         var pos = self.position + 1; // skip opening quote
-        var column = self.location.column + 1;
-        var line = self.location.line;
         const input = self.input;
         const len = input.len;
 
@@ -172,27 +175,15 @@ pub const Tokenizer = struct {
             const c = input[pos];
             if (c == '"') {
                 self.position = pos + 1;
-                self.location.column = column + 1;
-                self.location.line = line;
                 return Token{
                     .type = .string,
-                    .value = input[start + 1 .. pos],
-                    .location = .{
-                        .start = start_location,
-                        .end = self.location,
-                    },
+                    .start = narrowLocation(start),
+                    .end = narrowLocation(pos + 1),
                 };
             }
             if (c == '\\' and pos + 1 < len) {
                 pos += 2; // skip escape sequence
-                column += 2;
             } else {
-                if (c == '\n') {
-                    line += 1;
-                    column = 1;
-                } else {
-                    column += 1;
-                }
                 pos += 1;
             }
         }
@@ -200,7 +191,6 @@ pub const Tokenizer = struct {
     }
 
     fn readNumber(self: *Tokenizer) Token {
-        const start_location = self.location;
         const start = self.position;
         var pos = self.position;
         const input = self.input;
@@ -216,21 +206,16 @@ pub const Tokenizer = struct {
             pos += 1;
         }
 
-        self.location.column += pos - self.position;
         self.position = pos;
 
         return Token{
             .type = .number,
-            .value = input[start..pos],
-            .location = .{
-                .start = start_location,
-                .end = self.location,
-            },
+            .start = narrowLocation(start),
+            .end = narrowLocation(pos),
         };
     }
 
     fn readSymbol(self: *Tokenizer) Token {
-        const start_location = self.location;
         const start = self.position;
         var pos = self.position;
         const input = self.input;
@@ -241,21 +226,16 @@ pub const Tokenizer = struct {
             pos += 1;
         }
 
-        self.location.column += pos - self.position;
         self.position = pos;
 
         return Token{
             .type = .symbol,
-            .value = input[start..pos],
-            .location = .{
-                .start = start_location,
-                .end = self.location,
-            },
+            .start = narrowLocation(start),
+            .end = narrowLocation(pos),
         };
     }
 
     fn readComment(self: *Tokenizer) Token {
-        const start_location = self.location;
         const start = self.position;
         var pos = self.position + 1; // skip semicolon
         const input = self.input;
@@ -267,15 +247,11 @@ pub const Tokenizer = struct {
         }
 
         self.position = pos;
-        self.location.column += pos - start;
 
         return Token{
             .type = .comment,
-            .value = input[start..pos],
-            .location = .{
-                .start = start_location,
-                .end = self.location,
-            },
+            .start = narrowLocation(start),
+            .end = narrowLocation(pos),
         };
     }
 
@@ -290,29 +266,21 @@ pub const Tokenizer = struct {
 
         switch (c) {
             '(' => {
-                const start_location = self.location;
+                const start = self.position;
                 self.position += 1;
-                self.location.column += 1;
                 return Token{
                     .type = .lparen,
-                    .value = self.input[self.position - 1 .. self.position],
-                    .location = .{
-                        .start = start_location,
-                        .end = self.location,
-                    },
+                    .start = narrowLocation(start),
+                    .end = narrowLocation(self.position),
                 };
             },
             ')' => {
-                const start_location = self.location;
+                const start = self.position;
                 self.position += 1;
-                self.location.column += 1;
                 return Token{
                     .type = .rparen,
-                    .value = self.input[self.position - 1 .. self.position],
-                    .location = .{
-                        .start = start_location,
-                        .end = self.location,
-                    },
+                    .start = narrowLocation(start),
+                    .end = narrowLocation(self.position),
                 };
             },
             '"' => {
@@ -345,15 +313,20 @@ pub const Tokenizer = struct {
     }
 
     pub fn tokenize(self: *Tokenizer) ![]Token {
-        // Pre-allocate with a reasonable initial capacity
-        var tokens = try std.array_list.Managed(Token).initCapacity(self.allocator, 1024);
-        defer tokens.deinit();
-
-        while (try self.nextToken()) |token| {
-            try tokens.append(token);
+        // First pass: count tokens exactly to avoid ArrayList growth overhead with arenas.
+        var counter = Tokenizer.init(self.allocator, self.input);
+        var token_count: usize = 0;
+        while (try counter.nextToken()) |_| {
+            token_count += 1;
         }
 
-        return tokens.toOwnedSlice();
+        var tokens = try self.allocator.alloc(Token, token_count);
+        var i: usize = 0;
+        while (try self.nextToken()) |token| {
+            tokens[i] = token;
+            i += 1;
+        }
+        return tokens;
     }
 };
 
@@ -364,6 +337,7 @@ pub fn _tokenize(allocator: std.mem.Allocator, input: []const u8) ![]Token {
 
 const WorkerContext = struct {
     data: []const u8,
+    base_offset: LocationScalar = 0,
     allocator: std.mem.Allocator,
     result: ?[]Token = null,
     err: ?anyerror = null,
@@ -375,9 +349,15 @@ fn tokenizeWorker(context: *WorkerContext) void {
         context.err = err;
         return;
     };
+
+    if (context.base_offset == 0) return;
+    for (context.result.?) |*token| {
+        token.start = std.math.add(LocationScalar, token.start, context.base_offset) catch std.math.maxInt(LocationScalar);
+        token.end = std.math.add(LocationScalar, token.end, context.base_offset) catch std.math.maxInt(LocationScalar);
+    }
 }
 
-// Simple parallel tokenizer for benchmarking
+// Simple parallel tokenizer path
 pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
     const cpu_count = try std.Thread.getCpuCount();
 
@@ -391,13 +371,17 @@ pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
     // Split data into chunks
     var chunks = try allocator.alloc([]const u8, thread_count);
     defer allocator.free(chunks);
+    var chunk_starts = try allocator.alloc(usize, thread_count);
+    defer allocator.free(chunk_starts);
     const chunk_size = data.len / thread_count;
+
     var start: usize = 0;
     for (0..thread_count) |i| {
+        chunk_starts[i] = start;
         const target_end = @min(start + chunk_size, data.len);
         var end = target_end;
 
-        // Find safe boundary (newline)
+        // Find split boundary at newline to reduce cross-chunk token breakage.
         while (end < data.len and data[end] != '\n') : (end += 1) {}
 
         chunks[i] = data[start..end];
@@ -414,6 +398,7 @@ pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
     for (0..thread_count) |i| {
         contexts[i] = .{
             .data = chunks[i],
+            .base_offset = narrowLocation(chunk_starts[i]),
             .allocator = allocator,
         };
         threads[i] = try std.Thread.spawn(.{}, tokenizeWorker, .{&contexts[i]});
@@ -426,9 +411,22 @@ pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
 
     // Check errors and count tokens
     var total_tokens: usize = 0;
+    var chunk_error: ?anyerror = null;
     for (contexts) |ctx| {
-        if (ctx.err) |err| return err;
+        if (ctx.err) |err| {
+            chunk_error = err;
+            continue;
+        }
         total_tokens += ctx.result.?.len;
+    }
+
+    if (chunk_error != null) {
+        // Recover by falling back to single-thread tokenization.
+        // This handles edge cases like chunk boundaries inside quoted strings.
+        for (contexts) |ctx| {
+            if (ctx.result) |tokens| allocator.free(tokens);
+        }
+        return _tokenize(allocator, data);
     }
 
     // Merge results

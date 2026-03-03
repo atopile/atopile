@@ -9,7 +9,7 @@ from tempfile import gettempdir
 
 import platformdirs
 
-from faebryk.libs.util import find, not_none, once, try_or
+from faebryk.libs.util import find, not_none, once
 
 # @kicad10
 KICAD_VERSION = "9.0"
@@ -68,24 +68,45 @@ def find_pcbnew() -> Path:
     raise FileNotFoundError("Could not find pcbnew executable")
 
 
+def _get_user_search_paths() -> list[Path]:
+    """Get user-configured extra KiCad search paths from config.yaml."""
+    try:
+        from atopile.config import config
+
+        return list(config.project.kicad.search_paths)
+    except Exception:
+        return []
+
+
+def _get_versioned_dirs(base_paths: list[str | Path]) -> list[Path]:
+    """Resolve base paths to versioned KiCad directories."""
+    extra = _get_user_search_paths()
+    all_paths: list[str | Path] = [*extra, *base_paths]
+    return [Path(p).expanduser().resolve() / KICAD_VERSION for p in all_paths]
+
+
+_CONFIG_BASE_PATHS: list[str | Path] = [
+    # linux
+    platformdirs.user_config_dir("kicad", roaming=True),
+    # windows
+    Path(platformdirs.user_config_dir("kicad", roaming=True)).parent,
+    # macos
+    "~/Library/Preferences/kicad/",
+]
+
+_DATA_BASE_PATHS: list[str | Path] = [
+    # windows / macos
+    Path(platformdirs.user_documents_dir()) / "KiCad",
+    "~/OneDrive/Documents/KiCad/",
+    # linux
+    platformdirs.user_data_dir("kicad"),
+]
+
+
 @once
 def get_config_path():
-    kicad_config_search_path = [
-        # linux
-        platformdirs.user_config_dir("kicad", roaming=True),
-        # windows
-        Path(platformdirs.user_config_dir("kicad", roaming=True)).parent,
-        # macos
-        "~/Library/Preferences/kicad/",
-    ]
-
-    mapped_paths = [
-        (Path(p).expanduser().resolve() / KICAD_VERSION)
-        for p in kicad_config_search_path
-    ]
-
     return find(
-        mapped_paths,
+        _get_versioned_dirs(_CONFIG_BASE_PATHS),
         lambda p: p.exists(),
     )
 
@@ -104,50 +125,23 @@ def get_config_common():
 
 
 def get_plugin_paths(legacy: bool = False):
-    kicad_config_search_path = [
-        # windows / macos
-        Path(platformdirs.user_documents_dir()) / "KiCad",
-        "~/OneDrive/Documents/KiCad/",
-        # linux
-        platformdirs.user_data_dir("kicad"),
-    ]
-
     plugin_suffix = "scripting/plugins" if legacy else "plugins"
 
-    plugin_paths_existing = [
-        rp
-        for p in kicad_config_search_path
-        if (
-            rp := Path(p).expanduser().resolve() / KICAD_VERSION / plugin_suffix
-        ).exists()
+    # Check if the versioned kicad dir exists (even if plugin subdir doesn't yet).
+    # The caller (install) creates the plugin subdir via mkdir -p, so we just need
+    # to find the right kicad data root.
+    plugin_paths = [
+        d / plugin_suffix for d in _get_versioned_dirs(_DATA_BASE_PATHS) if d.exists()
     ]
 
-    # if pcbnew installed, search deeper for plugin dir
-    if not plugin_paths_existing and try_or(
-        find_pcbnew, False, catch=FileNotFoundError
-    ):
-        # First try common subdirectories for better performance
-        home = Path("~").expanduser().resolve()
-        for subdir in [".local", ".config", "Documents", "Library", "AppData"]:
-            search_path = home / subdir
-            if search_path.exists():
-                matches = list(search_path.glob(f"**/kicad/*/{plugin_suffix}"))
-                if matches:
-                    plugin_paths_existing.extend(matches)
+    if not plugin_paths:
+        raise FileNotFoundError(
+            "Could not find KiCad plugin path. "
+            "If KiCad is installed at a custom location,"
+            " you may need to add the search path to your config.yaml file."
+        )
 
-        # If still not found, fall back to searching entire home directory
-        if not plugin_paths_existing:
-            plugin_paths_existing = list(
-                Path("~")
-                .expanduser()
-                .resolve()
-                .glob(f"**/kicad/*/{plugin_suffix}", case_sensitive=False)
-            )
-
-    if not plugin_paths_existing:
-        raise FileNotFoundError("Could not find plugin paths")
-
-    return plugin_paths_existing
+    return plugin_paths
 
 
 def get_ipc_socket_path():
