@@ -15,12 +15,20 @@ interface BOMComponentAPI {
 
 export function InteractiveBomApp() {
   const setBomEnrichment = useInteractiveBomStore((s) => s.setBomEnrichment);
+  const renderModel = useInteractiveBomStore((s) => s.renderModel);
 
-  // Attempt to fetch BOM enrichment data
+  // Fetch BOM enrichment from the layout-relative endpoint once a PCB is loaded.
+  // Re-fetches when the render model changes (e.g. layout switch).
   useEffect(() => {
+    if (!renderModel) return;
+
     async function fetchBom() {
       try {
-        const resp = await fetch('/api/bom');
+        const win = window as any;
+        const baseUrl: string = win.__LAYOUT_BASE_URL__ || window.location.origin;
+        const apiPrefix: string = win.__LAYOUT_API_PREFIX__ || '/api';
+
+        const resp = await fetch(`${baseUrl}${apiPrefix}/bom`);
         if (!resp.ok) return;
         const data = (await resp.json()) as { components?: BOMComponentAPI[] };
         if (!data.components) return;
@@ -47,7 +55,7 @@ export function InteractiveBomApp() {
       }
     }
     fetchBom();
-  }, [setBomEnrichment]);
+  }, [renderModel, setBomEnrichment]);
 
   return (
     <div className="ibom-app">

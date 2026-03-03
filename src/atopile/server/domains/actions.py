@@ -1586,7 +1586,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await layout_service.broadcast(
                 WsMessage(type="layout_updated", model=model)
             )
-            await server_state.emit_event("open_interactive_bom", {"path": str(target)})
+            await server_state.emit_event(
+                "open_interactive_bom",
+                {
+                    "path": str(target),
+                    "project_root": resolved_project_root,
+                    "target_name": target_name,
+                },
+            )
             return {"success": True}
 
         if action == "openKiCad":

@@ -12,7 +12,11 @@ const PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
 
 let panel: vscode.WebviewPanel | undefined;
 
-export function openInteractiveBomPreview(extensionUri: vscode.Uri): void {
+export function openInteractiveBomPreview(
+  extensionUri: vscode.Uri,
+  projectRoot?: string,
+  targetName?: string,
+): void {
   const extensionPath = extensionUri.fsPath;
 
   if (panel) {
@@ -33,7 +37,7 @@ export function openInteractiveBomPreview(extensionUri: vscode.Uri): void {
     webviewOptions,
   );
 
-  panel.webview.html = getProdHtml(panel.webview, extensionPath);
+  panel.webview.html = getProdHtml(panel.webview, extensionPath, projectRoot, targetName);
 
   panel.onDidDispose(() => {
     panel = undefined;
@@ -49,7 +53,12 @@ export function closeInteractiveBom(): void {
   panel = undefined;
 }
 
-function getProdHtml(webview: vscode.Webview, extensionPath: string): string {
+function getProdHtml(
+  webview: vscode.Webview,
+  extensionPath: string,
+  projectRoot?: string,
+  targetName?: string,
+): string {
   const nonce = getNonce();
 
   const webviewsDir = path.join(extensionPath, 'resources', 'webviews');
@@ -115,6 +124,8 @@ function getProdHtml(webview: vscode.Webview, extensionPath: string): string {
     window.__LAYOUT_WS_PATH__ = '/ws/layout';
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
+    window.__IBOM_PROJECT_ROOT__ = ${JSON.stringify(projectRoot ?? '')};
+    window.__IBOM_TARGET_NAME__ = ${JSON.stringify(targetName ?? '')};
   </script>
 </head>
 <body>

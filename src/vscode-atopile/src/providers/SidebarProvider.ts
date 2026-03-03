@@ -35,6 +35,8 @@ interface OpenSignalsMessage {
   openKicad?: string | null;
   open3d?: string | null;
   openInteractiveBom?: string | null;
+  ibomProjectRoot?: string | null;
+  ibomTargetName?: string | null;
 }
 
 interface ConnectionStatusMessage {
@@ -785,7 +787,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       void this._open3dPreview(msg.open3d);
     }
     if (msg.openInteractiveBom) {
-      openInteractiveBomPreview(this._extensionUri);
+      openInteractiveBomPreview(
+        this._extensionUri,
+        msg.ibomProjectRoot ?? undefined,
+        msg.ibomTargetName ?? undefined,
+      );
     }
   }
 

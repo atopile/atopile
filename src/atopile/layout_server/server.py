@@ -7,6 +7,7 @@ integration server (``atopile.server.routes.layout``).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -100,6 +101,47 @@ def create_layout_router(
     @router.post(f"{api_prefix}/notify-selection", status_code=204)
     async def notify_selection(event: SelectionEvent) -> None:
         await service.set_selection(event.uuids)
+
+    @router.get(f"{api_prefix}/bom")
+    async def get_layout_bom():
+        """Return BOM data derived from the currently loaded PCB path."""
+        _require_loaded()
+        pcb_path = service.current_path
+        if pcb_path is None:
+            raise HTTPException(status_code=404, detail="No PCB loaded")
+
+        # Derive target name from PCB filename (e.g. "default.kicad_pcb" → "default")
+        target_name = pcb_path.stem
+
+        # Walk up to find project root (directory containing ato.yaml)
+        from pathlib import Path
+
+        project_root: Path | None = None
+        candidate = pcb_path.parent
+        while candidate != candidate.parent:
+            if (candidate / "ato.yaml").exists():
+                project_root = candidate
+                break
+            candidate = candidate.parent
+
+        if project_root is None:
+            raise HTTPException(
+                status_code=404, detail="Could not find project root (ato.yaml)"
+            )
+
+        bom_path = (
+            project_root / "build" / "builds" / target_name / f"{target_name}.bom.json"
+        )
+        if not bom_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="BOM file not found. Run 'ato build' first.",
+            )
+        try:
+            data = await asyncio.to_thread(lambda: json.loads(bom_path.read_text()))
+            return data
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail=f"Invalid BOM JSON: {exc}")
 
     @router.websocket(ws_path)
     async def websocket_endpoint(websocket: WebSocket) -> None:

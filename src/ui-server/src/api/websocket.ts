@@ -666,12 +666,16 @@ function handleEventMessage(message: EventMessage): void {
     }
     case EventType.OpenInteractiveBOM: {
       const path = typeof data.path === 'string' ? data.path : null;
+      const ibomProjectRoot = typeof data.project_root === 'string' ? data.project_root : null;
+      const ibomTargetName = typeof data.target_name === 'string' ? data.target_name : null;
       postMessage({
         type: 'openSignals',
         openLayout: null,
         openKicad: null,
         open3d: null,
         openInteractiveBom: path,
+        ibomProjectRoot,
+        ibomTargetName,
       });
       break;
     }
