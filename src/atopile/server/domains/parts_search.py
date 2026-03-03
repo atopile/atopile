@@ -27,6 +27,61 @@ from faebryk.libs.picker.lcsc import download_easyeda_info
 from faebryk.libs.util import robustly_rm_dir
 
 _LCSC_RE = re.compile(r"^C?\d+$", re.IGNORECASE)
+_DEFAULT_PCB_LAYER_TABLE: tuple[tuple[int, str, str], ...] = (
+    (0, "F.Cu", "signal"),
+    (31, "B.Cu", "signal"),
+    (32, "B.Adhes", "user"),
+    (33, "F.Adhes", "user"),
+    (34, "B.Paste", "user"),
+    (35, "F.Paste", "user"),
+    (36, "B.SilkS", "user"),
+    (37, "F.SilkS", "user"),
+    (38, "B.Mask", "user"),
+    (39, "F.Mask", "user"),
+    (40, "Dwgs.User", "user"),
+    (41, "Cmts.User", "user"),
+    (42, "Eco1.User", "user"),
+    (43, "Eco2.User", "user"),
+    (44, "Edge.Cuts", "user"),
+    (45, "Margin", "user"),
+    (46, "B.CrtYd", "user"),
+    (47, "F.CrtYd", "user"),
+    (48, "B.Fab", "user"),
+    (49, "F.Fab", "user"),
+    (50, "User.1", "user"),
+    (51, "User.2", "user"),
+    (52, "User.3", "user"),
+    (53, "User.4", "user"),
+    (54, "User.5", "user"),
+    (55, "User.6", "user"),
+    (56, "User.7", "user"),
+    (57, "User.8", "user"),
+    (58, "User.9", "user"),
+)
+
+
+def _build_empty_pcb_template() -> str:
+    layer_rows = "\n".join(
+        f'    ({index} "{name}" {layer_type})'
+        for index, name, layer_type in _DEFAULT_PCB_LAYER_TABLE
+    )
+    return (
+        "(kicad_pcb\n"
+        "  (version 20221018)\n"
+        '  (generator "atopile-web-ide")\n'
+        '  (generator_version "0.0.0")\n'
+        "  (general)\n"
+        '  (paper "A4")\n'
+        "  (layers\n"
+        f"{layer_rows}\n"
+        "  )\n"
+        "  (setup)\n"
+        '  (net 0 "")\n'
+        ")\n"
+    )
+
+
+_EMPTY_PCB_TEMPLATE = _build_empty_pcb_template()
 
 
 def _normalize_lcsc_id(raw: str) -> int | None:
@@ -286,7 +341,6 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
     from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 
     from faebryk.libs.kicad.fileformats import kicad
-    from faebryk.libs.test.fileformats import PCBFILE
     from faebryk.libs.util import call_with_file_capture
 
     lcsc_numeric = _normalize_lcsc_id(lcsc_id)
@@ -317,8 +371,8 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
         fp_file = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
         fp_file = kicad.convert(fp_file)
 
-        # Load template PCB and wrap the footprint in it (kicanvas needs kicad_pcb)
-        template_pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
+        # Wrap the footprint in a runtime-safe template board for KiCanvas.
+        template_pcb = kicad.loads(kicad.pcb.PcbFile, _EMPTY_PCB_TEMPLATE)
         pcb = template_pcb.kicad_pcb
 
         # Convert library footprint to PCB footprint and replace template's footprints

@@ -28,11 +28,11 @@ import { API_URL } from './config';
 // Base URL - from centralized config
 const BASE_URL = API_URL;
 
-// In VS Code webviews, the extension injects __ATOPILE_PROXY_FETCH__ that routes
+// In some VS Code webviews, the extension injects __ATOPILE_PROXY_FETCH__ that routes
 // requests through the extension host (postMessage → Node.js fetch → backend).
-// This bypasses Mixed Content / cross-origin issues in webview iframes.
+// In others, window.fetch itself is overridden for backend URLs.
 // Resolved at call time (not module load) because the webview pre-page may
-// evaluate modules before the inline script that sets the global.
+// evaluate modules before the inline script sets globals.
 function getProxyFetch(): typeof fetch | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fn = typeof window !== 'undefined' && (window as any).__ATOPILE_PROXY_FETCH__;

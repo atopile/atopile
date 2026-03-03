@@ -13,8 +13,8 @@ export interface WebviewBridgeRuntimeOptions {
   diagnostics?: boolean;
   /**
    * How the fetch proxy is exposed:
-   *  - `'global'`   – sets `window.__ATOPILE_PROXY_FETCH__` (Sidebar, LogViewer)
-   *  - `'override'` – overrides `window.fetch` for backend URLs (LayoutEditor)
+   *  - `'global'`   – sets `window.__ATOPILE_PROXY_FETCH__` for explicit callers
+   *  - `'override'` – overrides `window.fetch` for backend URLs (Sidebar, LayoutEditor)
    */
   fetchMode?: 'global' | 'override';
 }

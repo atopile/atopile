@@ -439,7 +439,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
 
-    ${generateBridgeRuntime({ apiUrl, diagnostics: true, fetchMode: 'global' })}
+    ${generateBridgeRuntime({ apiUrl, diagnostics: true, fetchMode: 'override' })}
 
     document.addEventListener('DOMContentLoaded', function() {
       var loading = document.getElementById('atopile-loading');

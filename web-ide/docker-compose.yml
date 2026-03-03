@@ -44,4 +44,11 @@ services:
     environment:
       - OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
       - WEB_IDE_PUBLIC_HOST=${WEB_IDE_PUBLIC_HOST:-code-vm}
+    volumes:
+      # Persist Caddy PKI/ACME state so TLS identity stays stable across rebuilds.
+      # Caddy runs as openvscode-server and stores state in XDG paths under HOME.
+      - caddy_state:/home/openvscode-server/.local/share/caddy:U
     restart: unless-stopped
+
+volumes:
+  caddy_state:
