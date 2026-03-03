@@ -287,6 +287,12 @@ export interface AtopileSettingsResponseMessage {
   };
 }
 
+export interface SwitchLayoutMessage {
+  type: 'switchLayout';
+  projectRoot: string;
+  targetName: string;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -299,7 +305,8 @@ export type ExtensionToWebviewMessage =
   | ServerReadyMessage
   | FilesListedMessage
   | DirectoryLoadedMessage
-  | AtopileSettingsResponseMessage;
+  | AtopileSettingsResponseMessage
+  | SwitchLayoutMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -338,7 +345,8 @@ export function initExtensionMessageListener(): void {
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
       message.type === 'directoryLoaded' ||
-      message.type === 'atopileSettingsResponse'
+      message.type === 'atopileSettingsResponse' ||
+      message.type === 'switchLayout'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);

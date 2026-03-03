@@ -49,7 +49,6 @@ class TypeGraph:
         child_type: BoundNode,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
-        soft_create: bool = ...,
     ) -> BoundNode: ...
     def add_make_child_deferred(
         self,
@@ -58,7 +57,6 @@ class TypeGraph:
         child_type_identifier: str,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
-        soft_create: bool = ...,
     ) -> BoundNode: ...
     def add_type_reference(self, *, type_identifier: str) -> BoundNode:
         """Create a standalone TypeReference node to be linked later.
@@ -141,23 +139,27 @@ class TypeGraph:
         *,
         type_node: BoundNode,
     ) -> list[tuple[str | None, BoundNode]]: ...
-    def copy_type_structure(
+    def merge_types(
         self,
         *,
         target: BoundNode,
         source: BoundNode,
-        skip_identifiers: list[str] | None = None,
     ) -> None:
-        """Copy MakeChild/MakeLink nodes from source into target (for inheritance).
+        """Merge MakeChild/MakeLink nodes from source into target (for inheritance).
+
+        When a source child's identifier already exists on the target,
+        the target's child wins silently (source child is not copied).
 
         Args:
-            target: The derived type to copy into.
-            source: The parent type to copy from.
-            skip_identifiers: Identifiers to skip (e.g., auto-generated traits).
-
-        Raises:
-            ValueError: If a non-skipped child already exists on target.
+            target: The derived type to merge into.
+            source: The parent type to merge from.
         """
+        ...
+    def mark_constructable(self, *, type_node: BoundNode) -> None:
+        """Mark a type node as constructable (ready for instantiation)."""
+        ...
+    def is_constructable(self, *, type_node: BoundNode) -> bool:
+        """Check if a type node is constructable."""
         ...
     def collect_make_links(
         self,
