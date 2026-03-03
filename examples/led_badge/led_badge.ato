@@ -62,13 +62,12 @@ module LED_BADGE:
     charger.temp_sense.line ~> ts_mr_pull_down ~> charger.power_system.lv
 
     # Configure Power
-    usb_c.usb.usb_if.buspower.voltage = 5V +/- 5%
     charger.input_current_limit = 500mA
     buck_boost.v_out = 3.3V +/- 5%
     battery.model.capacity = 300mAh
-    assert battery.model.voltage is 3V to 4.2V
-    # assert charger.battery_voltage_limit_high is 4.2V
-    # assert charger.battery_voltage_limit_low is 3.0V
+    assert battery.model.voltage within 3V to 4.2V
+    # assert charger.battery_voltage_limit_high within 4.2V
+    # assert charger.battery_voltage_limit_low within 3.0V
     assert charger.power_battery.voltage within 3.0V to 4.2V
 
     # Connect 3.3 V rail to loads
@@ -128,7 +127,7 @@ module OPSCO_SK6805_EC20_strip10:
 
 module OPSCO_SK6805_EC20_grid10x10:
     """
-    10 × 10 LED matrix (100 LEDs) constructed from 10 rows of 10 LEDs.
+    10 x 10 LED matrix (100 LEDs) constructed from 10 rows of 10 LEDs.
     Presents itself as one bridgable LED for easy chaining.
     """
     rows = new OPSCO_SK6805_EC20_strip10[10]
