@@ -3318,7 +3318,6 @@ fn wrap_typegraph_add_make_child() type {
                 child_type: *graph.BoundNodeReference,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
-                soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -3352,17 +3351,12 @@ fn wrap_typegraph_add_make_child() type {
                 node_attributes = attrs_wrapper.data;
             }
 
-            // Parse soft_create flag (default to false)
-            const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
-            const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
-
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 kwarg_obj.child_type.*,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
-                soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
                 return null;
@@ -3383,7 +3377,6 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 child_type_identifier: *py.PyObject,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
-                soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -3421,17 +3414,12 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 node_attributes = attrs_wrapper.data;
             }
 
-            // Parse soft_create flag (default to false)
-            const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
-            const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
-
             const bnode = faebryk.typegraph.TypeGraph.add_make_child_deferred(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 child_type_identifier_copy,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
-                soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child_deferred failed");
                 return null;
@@ -4238,15 +4226,14 @@ fn wrap_typegraph_add_make_link() type {
     };
 }
 
-fn wrap_typegraph_copy_type_structure() type {
+fn wrap_typegraph_merge_types() type {
     return struct {
         pub const descr = method_descr{
-            .name = "copy_type_structure",
-            .doc = "Copy MakeChild/MakeLink nodes from source into target (for inheritance).",
+            .name = "merge_types",
+            .doc = "Merge MakeChild/MakeLink nodes from source into target (for inheritance). Target wins on identifier conflicts.",
             .args_def = struct {
                 target: *graph.BoundNodeReference,
                 source: *graph.BoundNodeReference,
-                skip_identifiers: *py.PyObject, // List of strings
 
                 pub const fields_meta = .{
                     .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -4260,48 +4247,79 @@ fn wrap_typegraph_copy_type_structure() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = std.heap.c_allocator;
-
-            // Parse skip_identifiers list
-            var skip_list = std.array_list.Managed([]const u8).init(allocator);
-            defer skip_list.deinit();
-
-            if (py.PyList_Check(kwarg_obj.skip_identifiers) == 0) {
-                py.PyErr_SetString(py.PyExc_TypeError, "skip_identifiers must be a list of strings");
-                return null;
-            }
-            const list_size = py.PyList_Size(kwarg_obj.skip_identifiers);
-            var i: isize = 0;
-            while (i < list_size) : (i += 1) {
-                const item = py.PyList_GetItem(kwarg_obj.skip_identifiers, i);
-                if (item == null) {
-                    py.PyErr_SetString(py.PyExc_ValueError, "Failed to get list item");
-                    return null;
-                }
-                const str_c = py.PyUnicode_AsUTF8(item) orelse {
-                    py.PyErr_SetString(py.PyExc_TypeError, "skip_identifiers items must be strings");
-                    return null;
-                };
-                skip_list.append(std.mem.span(str_c)) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "OOM");
-                    return null;
-                };
-            }
-
-            faebryk.typegraph.TypeGraph.copy_type_structure(
+            faebryk.typegraph.TypeGraph.merge_types(
                 wrapper.data,
                 kwarg_obj.target.*,
                 kwarg_obj.source.*,
-                skip_list.items,
-            ) catch |err| switch (err) {
-                error.ChildAlreadyExists => {
-                    py.PyErr_SetString(py.PyExc_ValueError, "Child already exists on target type");
-                    return null;
-                },
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "merge_types failed");
+                return null;
             };
 
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
+        }
+    };
+}
+
+fn wrap_typegraph_mark_constructable() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "mark_constructable",
+            .doc = "Mark a type node as constructable (ready for instantiation).",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            faebryk.typegraph.TypeGraph.mark_constructable(wrapper.data, kwarg_obj.type_node.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "mark_constructable failed");
+                return null;
+            };
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
+fn wrap_typegraph_is_constructable() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "is_constructable",
+            .doc = "Check if a type node is constructable.",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const result = faebryk.typegraph.TypeGraph.is_constructable(wrapper.data, kwarg_obj.type_node.*);
+
+            if (result) {
+                py.Py_INCREF(py.Py_True());
+                return py.Py_True();
+            } else {
+                py.Py_INCREF(py.Py_False());
+                return py.Py_False();
+            }
         }
     };
 }
@@ -4964,7 +4982,9 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_make_child_type_reference_by_identifier(),
         wrap_typegraph_resolve_child_path(),
         wrap_typegraph_add_make_link(),
-        wrap_typegraph_copy_type_structure(),
+        wrap_typegraph_merge_types(),
+        wrap_typegraph_mark_constructable(),
+        wrap_typegraph_is_constructable(),
         wrap_typegraph_collect_make_children(),
         wrap_typegraph_collect_make_links(),
         wrap_typegraph_get_reference_path(),
