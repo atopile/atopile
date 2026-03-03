@@ -109,8 +109,6 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.NetTie,
         F.PCBManu.PCBLayer,
         F.PCBManu.PCBStackup,
-        F.PCBManu.is_pcb_manufacturer,
-        F.PCBManu.is_company,
     }
 ) | (
     # Traits
@@ -130,6 +128,9 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.is_auto_generated,
         F.Pickable.is_pickable,
         F.requires_external_usage,
+        F.PCBManu.is_pcb_manufacturer,
+        F.PCBManu.is_company,
+        F.PCBManu.is_pcb,
     }
 )
 

@@ -96,70 +96,6 @@ class PCBLayer(fabll.Node):
     material = F.Parameters.EnumParameter.MakeChild(enum_t=Material)
 
 
-class is_material(fabll.Node):
-    """
-    Trait for marking a node as a PCB material.
-    """
-
-    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-
-
-class Copper(fabll.Node):
-    """
-    Copper material
-    """
-
-    is_material = fabll.Traits.MakeEdge(is_material.MakeChild())
-
-
-class FR4(fabll.Node):
-    """
-    FR4 material
-    """
-
-    is_material = fabll.Traits.MakeEdge(is_material.MakeChild())
-    resin_content = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Percent)
-
-
-class CopperLayer(fabll.Node):
-    """
-    Copper layer
-    """
-
-    is_layer = fabll.Traits.MakeEdge(is_pcb_layer.MakeChild())
-
-    # def get_copper_weight(self) -> float:
-    #     """
-    #     Copper weight in oz/sqft.
-    #     """
-    #     thickness_um = self.is_layer.get().get_thickness()
-    #     weight_oz_sqft = thickness_um * 1 * ft**2
-    #     return weight_oz_sqft
-
-
-class SolderMaskLayer(fabll.Node):
-    """
-    Solder mask layer
-    """
-
-    is_layer = fabll.Traits.MakeEdge(is_pcb_layer.MakeChild())
-
-    over_copper_thickness_mil = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Meter
-    )
-    between_traces_thickness_mil = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Meter
-    )
-
-
-class PrepregLayer(fabll.Node):
-    """
-    Prepreg layer
-    """
-
-    is_layer = fabll.Traits.MakeEdge(is_pcb_layer.MakeChild())
-
-
 class is_pcb_stackup(fabll.Node):
     """
     Trait for discovering PCB stackup instances (including .ato subtypes)
@@ -173,13 +109,36 @@ class PCBStackup(fabll.Node):
     Printed circuit board stackup
     """
 
-    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
 
     pcb_stackup = fabll.Traits.MakeEdge(is_pcb_stackup.MakeChild())
     is_default_stackup = F.Parameters.BooleanParameter.MakeChild()
+    # TODO: no support for pointer assignment in ato yet
     # manufacturer = F.Collections.Pointer.MakeChild()
-    size_horizontal = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
-    size_vertical = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
+    # layers = F.Collections.PointerSequence.MakeChild()
+
+    # def get_layers(self) -> list[PCBLayer]:
+    #     layers: list[PCBLayer] = []
+    #     for layer in [lyr.try_cast(PCBLayer) for lyr in self.layers.get().as_list()]:
+    #         if layer is not None:
+    #             layers.append(layer)
+    #     return layers
+
+
+class is_pcb(fabll.Node):
+    """
+    Trait for marking a node as a PCB.
+    """
+
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    stackup_ = F.Collections.Pointer.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, stackup: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.stackup_], stackup))
+        return out
 
 
 class is_company(fabll.Node):
@@ -195,8 +154,10 @@ class is_company(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, name: str, country: ISO3166_1_A3, website: str
+        cls, name: str, country: ISO3166_1_A3 | str, website: str
     ) -> fabll._ChildField[Self]:
+        if isinstance(country, str):
+            country = ISO3166_1_A3[country]
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_SetSuperset([out, cls.company_name], name)

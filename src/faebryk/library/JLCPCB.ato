@@ -4,83 +4,55 @@ import PCBStackup
 import PCBLayer
 import is_pcb_manufacturer
 import is_company
+import has_part_removed
 
 module JLCPCB:
     trait is_pcb_manufacturer
-    trait is_company<name="JLCPCB", country="CHN", website="https://www.jlcpcb.com">
+    trait is_company<name = "JLCPCB", country = "CHN", website = "https://www.jlcpcb.com">
+    trait has_part_removed
 
-module PCBStackupFR4Regular from PCBStackup:
-    """is_pcb_layer.thickness >= 0.8mm"""
-    size_horizontal <= 670mm
-    size_vertical <= 600mm
-
-module PCBStackupFR4Thin from PCBStackup:
-    """is_pcb_layer.thickness < 0.8mm"""
-    size_horizontal <= 500mm
-    size_vertical <= 600mm
-
-# module PCBStackupFR42Layer from PCBStackup:
-#     """2-layer PCB"""
-#     size_horizontal <= 1020mm
-#     size_vertical <= 600mm
-
-# module PCBStackupRogers from PCBStackup:
-#     """Rogers (PTFE) core PCB"""
-#     size_horizontal <= 590mm
-#     size_vertical <= 438mm
-
-# module PCBStackupAluminium from PCBStackup:
-#     """Aluminium core PCB"""
-#     size_horizontal <= 602mm
-#     size_vertical <= 506mm
-
-# module PCBStackupCopper from PCBStackup:
-#     """Copper core PCB"""
-#     size_horizontal <= 480mm
-#     size_vertical <= 286mm
-
-module JLC041612_3313 from PCBStackupFR4Regular:
+module JLC041612_3313 from PCBStackup:
     """JLCPCB 4-layer 1.6mm layer."""
     is_default_stackup = True
-    layer = new PCBLayer[9]
+    layers = new PCBLayer[9]
     manufacturer = new JLCPCB
 
     # layer_type (top to bottom)
-    layer[0].layer_type = "COPPER"
-    layer[1].layer_type = "SUBSTRATE"
-    layer[2].layer_type = "SUBSTRATE"
-    layer[3].layer_type = "COPPER"
-    layer[4].layer_type = "CORE"
-    layer[5].layer_type = "COPPER"
-    layer[6].layer_type = "SUBSTRATE"
-    layer[7].layer_type = "SUBSTRATE"
-    layer[8].layer_type = "COPPER"
+    layers[0].layer_type = "COPPER"
+    layers[1].layer_type = "SUBSTRATE"
+    layers[2].layer_type = "SUBSTRATE"
+    layers[3].layer_type = "COPPER"
+    layers[4].layer_type = "CORE"
+    layers[5].layer_type = "COPPER"
+    layers[6].layer_type = "SUBSTRATE"
+    layers[7].layer_type = "SUBSTRATE"
+    layers[8].layer_type = "COPPER"
 
-    # is_pcb_layer.thickness
-    layer[0].is_pcb_layer.thickness = 0.035mm
-    layer[1].is_pcb_layer.thickness = 0.107mm
-    layer[2].is_pcb_layer.thickness = 0.0935mm
-    layer[3].is_pcb_layer.thickness = 0.061mm
-    layer[4].is_pcb_layer.thickness = 0.96mm
-    layer[5].is_pcb_layer.thickness = 0.061mm
-    layer[6].is_pcb_layer.thickness = 0.0935mm
-    layer[7].is_pcb_layer.thickness = 0.107mm
-    layer[8].is_pcb_layer.thickness = 0.035mm
+    # is_layer.thickness
+    layers[0].is_layer.thickness = 0.035mm
+    layers[1].is_layer.thickness = 0.107mm
+    layers[2].is_layer.thickness = 0.0935mm
+    layers[3].is_layer.thickness = 0.061mm
+    layers[4].is_layer.thickness = 0.96mm
+    layers[5].is_layer.thickness = 0.061mm
+    layers[6].is_layer.thickness = 0.0935mm
+    layers[7].is_layer.thickness = 0.107mm
+    layers[8].is_layer.thickness = 0.035mm
 
     # material
-    layer[0].material = "COPPER"
-    layer[1].material = "FR4"
-    layer[2].material = "FR4"
-    layer[3].material = "COPPER"
-    layer[4].material = "FR4"
-    layer[5].material = "COPPER"
-    layer[6].material = "FR4"
-    layer[7].material = "FR4"
-    layer[8].material = "COPPER"
+    layers[0].material = "COPPER"
+    layers[1].material = "FR4"
+    layers[2].material = "FR4"
+    layers[3].material = "COPPER"
+    layers[4].material = "FR4"
+    layers[5].material = "COPPER"
+    layers[6].material = "FR4"
+    layers[7].material = "FR4"
+    layers[8].material = "COPPER"
 
-    # is_pcb_layer.relative_permittivity (dielectric layers)
-    layer[1].is_pcb_layer.relative_permittivity = 4.1
-    layer[2].is_pcb_layer.relative_permittivity = 4.16
-    layer[4].is_pcb_layer.relative_permittivity = 4.53
-    layer[6].is_pcb_layer.relative_permittivity = 4.16
-    layer[7].is_pcb_layer.relative_permittivity = 4.1
+    # is_layer.relative_permittivity (dielectric layers)
+    layers[1].is_layer.relative_permittivity = 4.1
+    layers[2].is_layer.relative_permittivity = 4.16
+    layers[4].is_layer.relative_permittivity = 4.53
+    layers[6].is_layer.relative_permittivity = 4.16
+    layers[7].is_layer.relative_permittivity = 4.1
