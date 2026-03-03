@@ -14,7 +14,10 @@ from typing import Any
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent import AgentOrchestrator, mediator
-from atopile.server.agent.orchestrator import TraceCallback
+from atopile.server.agent.config import AgentConfig
+from atopile.server.agent.provider import OpenAIProvider
+from atopile.server.agent.registry import ToolRegistry
+from atopile.server.agent.runner import TraceCallback
 from atopile.server.events import get_event_bus
 from faebryk.libs.paths import get_log_dir
 
@@ -62,7 +65,12 @@ runs_by_id: dict[str, AgentRun] = {}
 runs_lock = threading.Lock()
 _session_log_lock = threading.Lock()
 _trace_log_lock = threading.Lock()
-orchestrator = AgentOrchestrator()
+_config = AgentConfig.from_env()
+orchestrator = AgentOrchestrator(
+    config=_config,
+    provider=OpenAIProvider(config=_config),
+    registry=ToolRegistry(),
+)
 
 log = logging.getLogger(__name__)
 

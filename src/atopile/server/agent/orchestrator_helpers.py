@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from openai import APIStatusError
 
 if TYPE_CHECKING:
-    from atopile.server.agent.orchestrator import (
+    from atopile.server.agent.runner import (
         ProgressCallback,
         SteeringMessagesCallback,
         ToolTrace,
