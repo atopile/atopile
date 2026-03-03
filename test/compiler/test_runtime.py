@@ -3781,3 +3781,67 @@ module MainModule:
 
             assert extracted is not None
             assert str(extracted) == test_path
+
+
+def test_pointer_new_assignment_inside_module():
+    """Assigning `new Thingy` to a Pointer field inside a derived module."""
+
+    class ModuleA(fabll.Node):
+        pointer_thing = F.Collections.Pointer.MakeChild()
+        _override_type_identifier = "ModuleA"
+
+    class Thingy(fabll.Node):
+        signal_a = F.Electrical.MakeChild()
+        _override_type_identifier = "Thingy"
+
+    _, _, _, result, app_instance = build_instance(
+        """
+        import ModuleA
+        import Thingy
+
+        module ModA from ModuleA:
+            pointer_thing = new Thingy
+
+        module App:
+            mod_a = new ModA
+        """,
+        "App",
+        stdlib_extra=[ModuleA, Thingy],
+    )
+
+    mod_a = _get_child(app_instance, "mod_a")
+    mod_a_node = ModuleA.bind_instance(mod_a)
+    pointee = mod_a_node.pointer_thing.get().deref()
+    assert pointee is not None
+    assert pointee.try_cast(Thingy) is not None
+
+
+def test_pointer_new_assignment_from_outside():
+    """Assigning `new Thingy` to a Pointer field via nested path."""
+
+    class ModuleB(fabll.Node):
+        pointer_thing = F.Collections.Pointer.MakeChild()
+        _override_type_identifier = "ModuleB"
+
+    class Widget(fabll.Node):
+        signal_a = F.Electrical.MakeChild()
+        _override_type_identifier = "Widget"
+
+    _, _, _, result, app_instance = build_instance(
+        """
+        import ModuleB
+        import Widget
+
+        module App:
+            mod_a = new ModuleB
+            mod_a.pointer_thing = new Widget
+        """,
+        "App",
+        stdlib_extra=[ModuleB, Widget],
+    )
+
+    mod_a = _get_child(app_instance, "mod_a")
+    mod_a_node = ModuleB.bind_instance(mod_a)
+    pointee = mod_a_node.pointer_thing.get().deref()
+    assert pointee is not None
+    assert pointee.try_cast(Widget) is not None
