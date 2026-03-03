@@ -17,44 +17,24 @@ from dataclasses_json import (
 from dataclasses_json import (
     config as dataclasses_json_config,
 )
-from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
-from easyeda2kicad.easyeda.easyeda_importer import (
-    EasyedaFootprintImporter,
-    EasyedaSymbolImporter,
-)
-from easyeda2kicad.easyeda.parameters_easyeda import Ee3dModel, EeSymbol, ee_footprint
-from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
-from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 from more_itertools import first
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
+from faebryk.libs.easyeda import api as easyeda_api
+from faebryk.libs.easyeda.converter import build_footprint, build_symbol
+from faebryk.libs.easyeda.easyeda_types import Ee3dModelInfo, EeFootprint, EeSymbol
+from faebryk.libs.easyeda.parser import parse_footprint, parse_symbol
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.picker.picker import PickedPart, PickSupplier
-from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
+from faebryk.libs.util import ConfigFlag, not_none, once
 
 logger = logging.getLogger(__name__)
 
 CRAWL_DATASHEET = ConfigFlag(
     "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
-
-WORKAROUND_SMD_3D_MODEL_FIX = True
-"""
-easyeda2kicad has not figured out 100% yet how to do model translations.
-It's unfortunately also not really easy.
-A lot of SMD components (especially passives, ICs, etc) seem to be doing just fine with
-an x,y translation of 0. However that makes some other SMD components behave even worse.
-Since in a typical design most components are passives etc, this workaround can save
-a lot of time and manual work.
-"""
-
-WORKAROUND_THT_INCH_MM_SWAP_FIX = False
-"""
-Some THT models seem to be fixed when assuming their translation is mm instead of inch.
-Does not really make a lot of sense.
-"""
 
 
 def _decode_easyeda_date(date: str | int | float) -> datetime:
@@ -210,24 +190,9 @@ class EasyEDAFootprint:
         return out
 
     @classmethod
-    def from_api(cls, footprint: ee_footprint, model_path: str | None):
-        exporter = ExporterFootprintKicad(footprint)
-        _fix_3d_model_offsets(exporter)
-        if model_path is None:
-            # allows our ignored type annotation to work below
-            assert footprint.model_3d is None
-
-        fp_raw = call_with_file_capture(
-            lambda path: exporter.export(str(path), model_path)  # type: ignore
-        )[1]
-        fp = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
-        # workaround: remove wrl ending easyeda likes to add for no reason
-        if m := fp.footprint.model:
-            if Path(m.path).suffix == ".wrl":
-                m.path = Path(m.path).parent.as_posix()
-
-        new_fp = kicad.convert(fp)
-        return cls(new_fp)
+    def from_api(cls, ee_fp: "EeFootprint", model_path: str | None):
+        fp_file = build_footprint(ee_fp, model_path)
+        return cls(fp_file)
 
     def dump(self, path: Path):
         type(self).cache[path] = self
@@ -256,20 +221,10 @@ class EasyEDASymbol:
         self.symbol = symbol
 
     @classmethod
-    def from_api(cls, symbol: EeSymbol):
-        exporter = ExporterSymbolKicad(symbol, KicadVersion.v6)
-        # TODO this is weird
-        fp_lib_name = symbol.info.lcsc_id
-        raw = exporter.export(footprint_lib_name=fp_lib_name)
-        in_file = f"""(kicad_sym
-            (version 20211014)
-            (generator "test")
-            {raw}
-        )""".replace("hide", "")
-        sym = kicad.loads(kicad.symbol_v6.SymbolFile, in_file)
-        new_sym = kicad.convert(sym)
-
-        return cls(new_sym)
+    def from_api(cls, ee_sym: "EeSymbol"):
+        fp_lib_name = not_none(ee_sym.info.lcsc_id)
+        sym_file = build_symbol(ee_sym, fp_lib_name)
+        return cls(sym_file)
 
     def serialize(self) -> bytes:
         return kicad.dumps(self.symbol).encode("utf-8")
@@ -316,7 +271,7 @@ class EasyEDAPart:
         self.footprint = footprint
         self.symbol = symbol
         self.model = model
-        self._pre_model: Ee3dModel | None = None
+        self._pre_model: Ee3dModelInfo | None = None
         self.datasheet_url = datasheet_url
         self._pre_datasheet: str | None = None
 
@@ -339,7 +294,7 @@ class EasyEDAPart:
         assert self._pre_model is not None
         if lifecycle.easyeda2kicad.shall_refresh_model(self):
             logger.debug(f"Downloading model for {self.identifier}")
-            model = EasyedaApi().get_step_3d_model(uuid=self._pre_model.uuid)
+            model = easyeda_api.get_step_model(uuid=self._pre_model.uuid)
             # might happen sometimes, that even tho it's in the api, it's not available
             if model is None:
                 self.model = None
@@ -360,15 +315,11 @@ class EasyEDAPart:
 
         lifecycle = PartLifecycle.singleton()
 
-        easyeda_footprint = EasyedaFootprintImporter(
-            easyeda_cp_cad_data=data.raw()
-        ).get_footprint()
+        raw = data.raw()
+        ee_fp = parse_footprint(raw)
+        ee_sym = parse_symbol(raw)
 
-        easyeda_symbol = EasyedaSymbolImporter(
-            easyeda_cp_cad_data=data.raw()
-        ).get_symbol()
-
-        easyeda_model = easyeda_footprint.model_3d
+        easyeda_model = ee_fp.model_3d
 
         if easyeda_model is not None:
             model_name = easyeda_model.name
@@ -385,15 +336,15 @@ class EasyEDAPart:
             lcsc_id=data.lcsc.number,
             description=data.description,
             mfn_pn=data.mfn_pn,
-            footprint=EasyEDAFootprint.from_api(easyeda_footprint, kicad_model_path),
-            symbol=EasyEDASymbol.from_api(easyeda_symbol),
+            footprint=EasyEDAFootprint.from_api(ee_fp, kicad_model_path),
+            symbol=EasyEDASymbol.from_api(ee_sym),
             # Use direct datasheet URL from atopile API if available
             datasheet_url=data._atopile_datasheet_url,
         )
         part._pre_model = easyeda_model
         # Only set _pre_datasheet for crawling fallback if no direct URL available
         if not data._atopile_datasheet_url:
-            part._pre_datasheet = easyeda_symbol.info.datasheet
+            part._pre_datasheet = ee_sym.info.datasheet
 
         if download_model and part._pre_model is not None:
             part.load_model()
@@ -452,22 +403,6 @@ class EasyEDAPart:
         return None
 
 
-def _fix_3d_model_offsets(ki_footprint: ExporterFootprintKicad):
-    if ki_footprint.output.model_3d is None:
-        return
-
-    if WORKAROUND_SMD_3D_MODEL_FIX:
-        if ki_footprint.input.info.fp_type == "smd" or re.search(
-            r"[cCrR]0201", ki_footprint.input.info.name
-        ):
-            ki_footprint.output.model_3d.translation.x = 0
-            ki_footprint.output.model_3d.translation.y = 0
-    if WORKAROUND_THT_INCH_MM_SWAP_FIX:
-        if ki_footprint.input.info.fp_type != "smd":
-            ki_footprint.output.model_3d.translation.x *= 2.54
-            ki_footprint.output.model_3d.translation.y *= 2.54
-
-
 class LCSCException(Exception):
     def __init__(self, partno: str, *args: object) -> None:
         self.partno = partno
@@ -492,8 +427,7 @@ def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
         return lifecycle.easyeda_api.load(lcsc_id)
 
     logger.debug(f"Downloading API data {lcsc_id}")
-    api = EasyedaApi()
-    cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
+    cad_data = easyeda_api.get_cad_data(lcsc_id=lcsc_id)
     # API returned no data
     if not cad_data:
         raise LCSC_NoDataException(

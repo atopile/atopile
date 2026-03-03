@@ -71,7 +71,6 @@ name = "atopile"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
-    { name = "atopile-easyeda2kicad" },
     { name = "atopile-kicad-python" },
     { name = "black" },
     { name = "case-converter" },
@@ -142,7 +141,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
-    { name = "atopile-easyeda2kicad", specifier = ">=0.9.7" },
     { name = "atopile-kicad-python", specifier = ">=0.5.1" },
     { name = "black", specifier = ">=24.4.2" },
     { name = "case-converter", specifier = ">=1.2.0" },
@@ -208,20 +206,6 @@ dev = [
     { name = "pydantic-to-typescript", specifier = ">=2.0.0" },
     { name = "viztracer", specifier = ">=1.0.0,<2.0.0" },
     { name = "ziglang", specifier = "==0.15.1" },
-]
-
-[[package]]
-name = "atopile-easyeda2kicad"
-version = "0.9.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "truststore" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/4d/ba2c53b3cb3a7f83ed580e1c2df0159faa5cecc25155f6b04e18d68b7a55/atopile_easyeda2kicad-0.9.7.tar.gz", hash = "sha256:6345f59d050f7c6c8d64e32a7db3bed5600d824c810eda1db578b1a995168c7f", size = 1473455, upload-time = "2025-09-01T22:54:39.519Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/1a/9f6e2425008a895c4f8b398c6e8826b1bf66fe717ed6ab200ff7f12f4f26/atopile_easyeda2kicad-0.9.7-py3-none-any.whl", hash = "sha256:4ce8e720d499a788897b4082d08c3d527439509cb0768b89227377efa1c8aa4d", size = 54939, upload-time = "2025-09-01T22:54:37.876Z" },
 ]
 
 [[package]]
