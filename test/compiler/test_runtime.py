@@ -1615,6 +1615,8 @@ def test_nested_override_trait():
     """Test if we can use overrides nested"""
     _, _, _, result, app_instance = build_instance(
         """
+        import ElectricPower
+
         module App:
             power = new ElectricPower
             power.hv.required = True
@@ -1735,6 +1737,7 @@ def test_slice_non_list():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
+            import Resistor
 
             module App:
                 r_single = new Resistor
