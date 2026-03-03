@@ -48,6 +48,33 @@ done
 echo "=== atopile Playground Deployer ==="
 echo ""
 
+# Derive version metadata like publishing/local web-idectl unless explicitly provided.
+if [[ -z "${ATOPILE_VERSION:-}" || -z "${ATOPILE_SEMVER:-}" ]]; then
+  if command -v uv >/dev/null 2>&1; then
+    if [[ -z "${ATOPILE_VERSION:-}" ]]; then
+      if version="$(uv run ato --version 2>/dev/null)"; then
+        export ATOPILE_VERSION="${version}"
+      else
+        export ATOPILE_VERSION="0.0.0dev"
+      fi
+    fi
+    if [[ -z "${ATOPILE_SEMVER:-}" ]]; then
+      if semver="$(uv run ato --semver 2>/dev/null)"; then
+        export ATOPILE_SEMVER="${semver}"
+      else
+        export ATOPILE_SEMVER="0.0.0-dev0"
+      fi
+    fi
+  else
+    export ATOPILE_VERSION="${ATOPILE_VERSION:-0.0.0dev}"
+    export ATOPILE_SEMVER="${ATOPILE_SEMVER:-0.0.0-dev0}"
+  fi
+fi
+
+echo "Using atopile version: ${ATOPILE_VERSION}"
+echo "Using VSIX semver:     ${ATOPILE_SEMVER}"
+echo ""
+
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
@@ -124,6 +151,8 @@ if [ "$DEPLOY_WORKSPACE" = true ]; then
     --app "${WORKSPACE_APP}" \
     --dockerfile "${REPO_ROOT}/web-ide/Dockerfile" \
     --build-arg "SOURCE_HASH=${SOURCE_HASH}" \
+    --build-arg "ATOPILE_VERSION=${ATOPILE_VERSION}" \
+    --build-arg "ATOPILE_SEMVER=${ATOPILE_SEMVER}" \
     --image-label latest \
     --local-only \
     --strategy immediate \
