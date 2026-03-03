@@ -336,16 +336,33 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
 
         # Step 4: Check uncorrelation condition
-        # Find all unique parameters in the expression
-        params_in_expr = MutatorUtils.get_params_for_expr(expr_e)
-        if len(params_in_expr) > 1:
-            # Check if all parameter pairs are uncorrelated
-            all_uncorrelated = all(
+        # Condition 1: operand sub-trees must have DISJOINT parameter sets
+        # If a parameter appears in multiple operands, the operands are correlated
+        # and the Cartesian product factorisation that lower estimation relies on
+        # is invalid.
+        per_operand_params: list[OrderedSet[F.Parameters.is_parameter]] = []
+        for op in operands:
+            op_params: OrderedSet[F.Parameters.is_parameter] = OrderedSet()
+            if op_po := op.as_parameter_operatable.try_get():
+                if op_po.as_parameter.try_get():
+                    op_params.add(op_po.as_parameter.force_get())
+                elif op_expr := op_po.as_expression.try_get():
+                    op_params = MutatorUtils.get_params_for_expr(op_expr)
+            per_operand_params.append(op_params)
+
+        if any(
+            per_operand_params[i] & per_operand_params[j]
+            for i, j in combinations(range(len(per_operand_params)), 2)
+        ):
+            continue  # shared parameter -> operands correlated
+
+        # Condition 2: all distinct leaf params pairwise anticorrelated
+        all_params = OrderedSet(p for s in per_operand_params for p in s)
+        if len(all_params) > 1:
+            if not all(
                 frozenset([p1, p2]) in anticorrelated_pairs
-                for p1, p2 in combinations(params_in_expr, 2)
-            )
-            if not all_uncorrelated:
-                # Can't apply lower estimation - parameters may be correlated
+                for p1, p2 in combinations(all_params, 2)
+            ):
                 continue
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)

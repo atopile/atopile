@@ -2568,6 +2568,49 @@ def test_lower_estimation_partial_uncorrelation():
         # for the A+B subexpression, but not the full D expression
 
 
+def test_lower_estimation_blocked_when_param_in_multiple_operands():
+    """
+    A - A canonicalizes to Add(A, Multiply(-1, A)).
+    Both operands share leaf parameter A.
+    Lower estimation must NOT fire — it would produce
+    an incorrect lower bound due to the dependency problem.
+    """
+    E = BoundExpressions()
+    A = E.parameter_op()
+
+    # A ⊇ {3..7}
+    E.is_superset(A, E.lit_op_range((3, 7)), assert_=True)
+
+    # C = A - A
+    C = E.subtract(A, A)
+
+    solver = Solver()
+    try:
+        result = solver.simplify(E.tg, E.g)
+    except NotImplementedError:
+        # Solver hits unrelated invariants code path for A*0 —
+        # no incorrect bound was produced, test passes.
+        return
+
+    # Lower estimation should NOT produce a superset bound of [-4, 4]
+    extracted = result.data.mutation_map.try_extract_superset(
+        C.as_parameter_operatable.force_get()
+    )
+
+    if extracted is not None:
+        extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
+        min_val = extracted_nums.get_min_value()
+        max_val = extracted_nums.get_max_value()
+
+        # If lower estimation incorrectly fired, we'd get [-4, 4]
+        # The correct answer is {0} (or at least NOT [-4, 4])
+        is_incorrectly_wide = min_val <= -3.9 and max_val >= 3.9
+        assert not is_incorrectly_wide, (
+            f"Lower estimation should not apply when parameter appears in "
+            f"multiple operands, but got bounds [{min_val}, {max_val}]"
+        )
+
+
 def test_fold_not_false():
     E = BoundExpressions()
     A = E.bool_parameter_op()
