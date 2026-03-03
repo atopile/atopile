@@ -238,7 +238,7 @@ class FixedSkillDoc:
 class AgentOrchestrator:
     def __init__(self) -> None:
         self.base_url = os.getenv("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1")
-        self.model = os.getenv("ATOPILE_AGENT_MODEL", "gpt-5.1-codex-max")
+        self.model = os.getenv("ATOPILE_AGENT_MODEL", "codex-5.3")
         self.api_key = os.getenv("ATOPILE_AGENT_OPENAI_API_KEY") or os.getenv(
             "OPENAI_API_KEY"
         )
