@@ -1102,21 +1102,39 @@ export class Editor {
             const isNoop = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001;
             const uuids = this.selectedUuids();
 
-            this.isDragging = false;
-            if (!isNoop) {
-                this.applyDragDelta(dx, dy);
-                this.rebuildSpatialIndexes();
-            }
-            this.restorePostDragRendering();
-            this.clearDragState();
-            this.repaintWithSelection();
-
             if (isNoop) {
+                this.isDragging = false;
+                this.restorePostDragRendering();
+                this.clearDragState();
+                this.repaintWithSelection();
                 return;
             }
 
-            if (uuids.length > 0) {
-                await this.executeAction({ command: "move", uuids, dx, dy });
+            const movePromise = uuids.length > 0
+                ? this.executeAction({ command: "move", uuids, dx, dy })
+                : null;
+
+            // Preserve immediate drop position locally while server action is pending.
+            this.isDragging = false;
+            this.applyDragDelta(dx, dy);
+            this.rebuildSpatialIndexes();
+            const droppedTransform = Matrix3.translation(dx, dy);
+            for (const layer of this.renderer.dynamicLayers) {
+                layer.transform = droppedTransform;
+            }
+            this.clearDragState();
+            this.repaintWithSelection();
+
+            if (movePromise) {
+                void movePromise.then((appliedModel) => {
+                    if (!appliedModel) {
+                        this.restorePostDragRendering();
+                        this.repaintWithSelection();
+                    }
+                });
+            } else {
+                this.restorePostDragRendering();
+                this.repaintWithSelection();
             }
         });
     }
@@ -1187,17 +1205,21 @@ export class Editor {
         }
     }
 
-    private async executeAction(action: ActionCommand) {
+    private async executeAction(action: ActionCommand): Promise<boolean> {
         this.pendingActionRequests += 1;
         if (this.pendingActionRequests === 1 && this.onActionBusyChanged) {
             this.onActionBusyChanged(true);
         }
+        let appliedModel = false;
         try {
             const data = await this.client.executeAction(action);
             if (data.status === "error") {
                 console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
             }
-            if (data.model) this.applyModel(data.model);
+            if (data.model) {
+                this.applyModel(data.model);
+                appliedModel = true;
+            }
         } catch (err) {
             console.error("Failed to execute action:", err);
         } finally {
@@ -1210,6 +1232,7 @@ export class Editor {
                 this.onActionBusyChanged(false);
             }
         }
+        return appliedModel;
     }
 
     // --- Layer visibility ---
