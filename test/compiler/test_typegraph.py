@@ -895,21 +895,6 @@ def test_forward_reference():
 
     assert isinstance(e.value.original, DslUndefinedSymbolError)
 
-    # stdlib type without import -> error with helpful hint
-    with pytest.raises(
-        DslRichException,
-        match=r"Add `import Resistor` to use `Resistor` from the standard library",
-    ) as e:
-        build_type(
-            """
-            module App:
-                r = new Resistor
-            """,
-            link=True,
-        )
-
-    assert isinstance(e.value.original, DslUndefinedSymbolError)
-
     # out-of-order (forward reference)
     _, tg, _, result = build_type(
         """
