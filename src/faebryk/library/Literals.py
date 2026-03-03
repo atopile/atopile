@@ -3356,6 +3356,7 @@ class Numbers(fabll.Node):
         self,
         numeric_set: NumericSet,
         unit: "is_unit | None" = None,
+        set_display_unit: bool = True,
     ) -> "Numbers":
         """
         Set up a Numbers literal with a numeric set and optional unit.
@@ -3365,6 +3366,11 @@ class Numbers(fabll.Node):
 
         The has_display_unit trait stores the user's original unit for display.
         The has_unit trait stores the base unit (multiplier=1.0).
+
+        Args:
+            set_display_unit: If False, skip adding has_display_unit. Used by
+                deserialize() for API values so pretty_str() auto-scales with
+                SI prefixes instead of displaying in the base unit.
         """
         g = self.g
         tg = self.tg
@@ -3396,10 +3402,10 @@ class Numbers(fabll.Node):
 
             self.numeric_set_ptr.get().point(numeric_set)
 
-            # Always store display unit (user's original unit)
-            fabll.Traits.create_and_add_instance_to(self, has_display_unit).setup(
-                is_unit=unit
-            )
+            if set_display_unit:
+                fabll.Traits.create_and_add_instance_to(self, has_display_unit).setup(
+                    is_unit=unit
+                )
 
             if multiplier == 1.0 and offset == 0.0:
                 # Base unit - has_unit points to same unit as has_display_unit
@@ -4699,27 +4705,18 @@ class Numbers(fabll.Node):
         else:
             raise ValueError(f"Invalid unit data: {unit_data}")
 
-        # Create the Numbers instance
         # Values from the API are already in base SI units.
-        # We set has_unit (for dimensional correctness) but NOT has_display_unit,
-        # so that pretty_str() will auto-scale with SI prefixes (e.g. 220nF
-        # instead of 0F).
+        # Skip has_display_unit so pretty_str() auto-scales with SI prefixes
+        # (e.g. 220nF instead of 0F).
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
             values=parsed_intervals
         )
         result = cls.create_instance(g=g, tg=tg)
-        result.numeric_set_ptr.get().point(numeric_set)
-
-        base_unit = is_unit.to_base_units(unit, g=g, tg=tg)
-        if base_unit and not base_unit.is_dimensionless():
-            from faebryk.library.Units import has_unit as has_unit_trait
-
-            base_unit = base_unit.copy_into(g=g)
-            fabll.Traits.create_and_add_instance_to(result, has_unit_trait).setup(
-                is_unit=base_unit
-            )
-
-        return result
+        return result.setup(
+            numeric_set=numeric_set,
+            unit=is_unit.to_base_units(unit, g=g, tg=tg),
+            set_display_unit=False,
+        )
 
     def pretty_str(
         self, show_tolerance: bool = True, force_center: bool = False
@@ -4807,28 +4804,24 @@ class Numbers(fabll.Node):
                         return max_v
             return None
 
-        # Determine scale factor based on representative value
-        # When display unit is explicitly set, use it directly without SI prefix
-        # auto-scaling
+        # Determine scale and prefix for display
         scale = 1
         prefix = ""
-        need_si_autoscale = False
-        if has_explicit_display_unit:
-            # Display unit is explicitly set - use it directly
-            scale = 1.0 / display_unit_conversion
+        # Dimensionless / unitless literals never reach here with a
+        # base_unit_symbol — Numbers.setup() strips those units entirely,
+        # so base_unit_symbol is already "" for them.
+        use_si_autoscale = not has_explicit_display_unit and bool(base_unit_symbol)
 
-            # If the value would round to 0 at this scale, fall back to SI
-            # auto-scaling. e.g. 220nF stored as 2.2e-7F: round(2.2e-7, 3)=0
+        if has_explicit_display_unit:
+            scale = 1.0 / display_unit_conversion
+            # Fall back to SI auto-scaling if the display unit would round
+            # the value to 0. e.g. 220nF stored as 2.2e-7F with display
+            # unit F: round(2.2e-7, 3) == 0
             rep = find_rep_value()
             if rep is not None and rep != 0 and round(rep / scale, PRINT_DIGITS) == 0:
-                need_si_autoscale = True
+                use_si_autoscale = True
 
-        if need_si_autoscale or (
-            not has_explicit_display_unit
-            and base_unit_symbol
-            and base_unit_symbol not in ("", "dimensionless")
-        ):
-            # Use SI prefix auto-scaling
+        if use_si_autoscale:
             rep_value = find_rep_value()
             if rep_value is not None and rep_value != 0:
                 scale, prefix = get_scale_factor(rep_value)
@@ -6480,6 +6473,25 @@ class TestNumbers:
         assert "n" in result, f"Expected SI prefix 'n' in '{result}'"
         assert result.startswith("0") is False, f"Should not start with 0: '{result}'"
         assert "F" in result, f"Expected unit 'F' in '{result}'"
+
+    def test_pretty_str_display_unit(self):
+        """Test that a literal with has_display_unit=uF preserves the user's
+        chosen prefix (e.g. 0.47uF) instead of auto-scaling to 470nF."""
+        from faebryk.library.Units import Farad, decode_symbol_runtime
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Must bind Farad to typegraph before decode_symbol_runtime can resolve "uF"
+        Farad.bind_typegraph(tg=tg).create_instance(g=g)
+        ufarad_is_unit = not_none(decode_symbol_runtime(g=g, tg=tg, symbol="uF"))
+
+        # 470nF = 0.470uF with 20% tolerance
+        lit = Numbers.create_instance(g=g, tg=tg)
+        lit.setup_from_center_rel(0.470, 0.2, ufarad_is_unit)
+        result = lit.pretty_str()
+        assert "0.47" in result, f"Expected '0.47' in '{result}'"
+        assert "uF" in result, f"Expected 'uF' in '{result}'"
 
 
 @dataclass
