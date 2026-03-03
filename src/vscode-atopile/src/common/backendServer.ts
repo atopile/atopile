@@ -902,22 +902,57 @@ class BackendServerManager implements vscode.Disposable {
         };
     }
 
-    /**
-     * Ask the backend to load a PCB file into the layout editor.
-     * Uses the internal URL (extension host → backend directly, no Caddy).
-     */
-    async loadLayout(projectRoot: string, target: string = 'default'): Promise<boolean> {
+    private async _isLayoutModelReady(): Promise<boolean> {
         try {
-            const response = await axios.post(
-                `${this._internalApiUrl}/api/layout/load`,
-                { project_root: projectRoot, target },
-                { timeout: 5000 },
+            const response = await axios.get(
+                `${this._internalApiUrl}/api/layout/render-model`,
+                { timeout: 2000 },
             );
             return response.status === 200;
-        } catch (err) {
-            traceError(`BackendServer: Failed to load layout: ${err}`);
+        } catch {
             return false;
         }
+    }
+
+    /**
+     * Ask the backend to load a PCB into layout service, then wait until
+     * the layout render model is actually available.
+     *
+     * We trigger `openLayout` through the sidebar webview action path
+     * (`switchLayout` -> ui-server -> WS action), then gate on
+     * `/api/layout/render-model` readiness.
+     */
+    async loadLayout(projectRoot: string, target: string = 'default'): Promise<boolean> {
+        if (!projectRoot) {
+            return false;
+        }
+
+        const timeoutMs = 20000;
+        const pollMs = 250;
+        const retriggerMs = 1000;
+        const start = Date.now();
+        let nextTrigger = 0;
+
+        while (Date.now() - start < timeoutMs) {
+            const now = Date.now();
+            if (now >= nextTrigger) {
+                this.sendToWebview({
+                    type: 'switchLayout',
+                    projectRoot,
+                    targetName: target,
+                });
+                nextTrigger = now + retriggerMs;
+            }
+
+            if (await this._isLayoutModelReady()) {
+                return true;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, pollMs));
+        }
+
+        traceError(`BackendServer: Timed out waiting for layout model (project=${projectRoot}, target=${target})`);
+        return false;
     }
 
     /**

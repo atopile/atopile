@@ -234,17 +234,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
 
-        // Defer layout open until the backend WebSocket is connected.
-        // startBackend() only waits for the HTTP health check; the layout editor
-        // needs /ws/layout to be ready, which is guaranteed once the sidebar's
-        // /ws/state connection (onStatusChange) is established.
+        // Defer layout open until the sidebar WS is connected, then gate on
+        // layout model readiness so we don't open an empty layout panel.
         const openLayout = async () => {
-            // Pre-load the PCB into the backend before opening the layout editor.
-            // Without this the backend has no PCB loaded and the editor shows empty.
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (workspaceRoot) {
-                await backendServer.loadLayout(workspaceRoot);
+            if (!workspaceRoot) {
+                return;
             }
+
+            const ready = await backendServer.loadLayout(workspaceRoot);
+            if (!ready) {
+                traceInfo('Auto-open layout skipped: layout model not ready');
+                return;
+            }
+
             return vscode.commands.executeCommand('atopile.kicanvas_preview');
         };
         if (backendServer.isConnected) {
