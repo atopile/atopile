@@ -135,7 +135,11 @@ def get_plugin_paths(legacy: bool = False):
     ]
 
     if not plugin_paths:
-        raise FileNotFoundError("Could not find plugin paths")
+        raise FileNotFoundError(
+            "Could not find KiCad plugin path. "
+            "If KiCad is installed at a custom location,"
+            " you may need to add the search path to your config.yaml file."
+        )
 
     return plugin_paths
 
