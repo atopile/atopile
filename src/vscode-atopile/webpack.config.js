@@ -26,7 +26,7 @@ const extensionConfig = {
     },
     resolve: {
         // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
-        extensions: ['.ts', '.js'],
+        extensions: ['.ts', '.js', '.hbs'],
         fallback: {
             bufferutil: false,
             'utf-8-validate': false,
@@ -43,6 +43,10 @@ const extensionConfig = {
                         loader: 'ts-loader',
                     },
                 ],
+            },
+            {
+                test: /\.hbs$/,
+                type: 'asset/source',
             },
         ],
     },

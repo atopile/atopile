@@ -88,6 +88,11 @@ export interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+export interface ProjectCreatedMessage {
+  type: 'projectCreated';
+  projectRoot: string;
+}
+
 export interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
@@ -169,6 +174,7 @@ export type ExtensionMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | ProjectCreatedMessage
   | ReloadWindowMessage
   | ShowLogsMessage
   | ShowBuildLogsMessage
@@ -287,6 +293,12 @@ export interface BackendStatusMessage {
   isConnected: boolean;
 }
 
+export interface SwitchLayoutMessage {
+  type: 'switchLayout';
+  projectRoot: string;
+  targetName: string;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -300,7 +312,8 @@ export type ExtensionToWebviewMessage =
   | FilesListedMessage
   | DirectoryLoadedMessage
   | AtopileSettingsResponseMessage
-  | BackendStatusMessage;
+  | BackendStatusMessage
+  | SwitchLayoutMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -335,11 +348,14 @@ export function initExtensionMessageListener(): void {
       message.type === 'atopileInstallError' ||
       message.type === 'activeFile' ||
       message.type === 'browseAtopilePathResult' ||
+      message.type === 'browseProjectPathResult' ||
       message.type === 'browseExportDirectoryResult' ||
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
       message.type === 'directoryLoaded' ||
-      message.type === 'atopileSettingsResponse'
+      message.type === 'atopileSettingsResponse' ||
+      message.type === 'backendStatus' ||
+      message.type === 'switchLayout'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);

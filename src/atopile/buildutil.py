@@ -170,6 +170,12 @@ def run_build_targets(ctx: BuildStepContext) -> None:
                 build_steps.Tags.REQUIRES_KICAD in target.tags
                 and not _check_kicad_cli()
             ):
+                if target.implicit:
+                    logger.warning(
+                        f"Skipping target '{target.name}' because kicad-cli "
+                        "was not found"
+                    )
+                    continue
                 raise UserToolNotAvailableError("kicad-cli not found")
 
             with accumulator.collect():

@@ -9,7 +9,7 @@
  * - file-watcher.ts: File system watching
  * - file-operations.ts: File CRUD + listing
  * - action-handlers.ts: Open signals, KiCad, 3D, selection
- * - settings-handlers.ts: Atopile settings sync + browse dialogs
+ * - settings-handlers.ts: atopile settings sync + browse dialogs
  */
 
 import * as vscode from 'vscode';
@@ -101,7 +101,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
-          traceInfo('[SidebarProvider] Atopile settings changed, notifying webview');
+          traceInfo('[SidebarProvider] atopile settings changed, notifying webview');
           this._settings.sendAtopileSettings();
         }
       })

@@ -77,6 +77,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 # Source layer (only invalidates on source changes)
 COPY src/vscode-atopile /src/src/vscode-atopile
 COPY src/ui-server /src/src/ui-server
+COPY src/atopile/layout_server/frontend /src/src/atopile/layout_server/frontend
+COPY src/atopile/layout_server/static /src/src/atopile/layout_server/static
 RUN --mount=type=cache,target=/root/.npm \
     SEMVER="$(cat /tmp/atopile.semver)" && \
     npm version --no-git-tag-version "$SEMVER" && \

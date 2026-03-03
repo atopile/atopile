@@ -1,6 +1,6 @@
 /**
  * Log Viewer Styles
- * Uses Atopile Design System variables for consistency
+ * Uses atopile Design System variables for consistency
  */
 
 /* Column width constants */
@@ -1045,6 +1045,10 @@ body.lv-is-resizing {
 .lv-tracebacks-inline {
   margin-left: 2px;
   padding-left: var(--spacing-sm);
+}
+
+.lv-tracebacks-expanded {
+  flex-direction: column;
 }
 
 .lv-trace {

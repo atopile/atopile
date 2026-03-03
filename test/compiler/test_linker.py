@@ -47,6 +47,17 @@ def test_stdlib_import_resolved():
     assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
 
+def test_stdlib_type_without_import_raises():
+    with pytest.raises(DslRichException, match="is not defined in this scope"):
+        build_type(
+            """
+            module Root:
+                part = new Resistor
+            """,
+            link=True,
+        )
+
+
 def test_resolves_relative_ato_import(tmp_path: Path):
     module_dir = tmp_path / "pkg"
     module_dir.mkdir(parents=True)

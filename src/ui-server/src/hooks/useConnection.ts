@@ -168,6 +168,12 @@ export function useConnection() {
             message.isConnected === true
           );
           break;
+        case 'switchLayout':
+          sendAction('openLayout', {
+            projectId: message.projectRoot,
+            targetName: message.targetName,
+          });
+          break;
         case 'activeFile': {
           const filePath = message.filePath ?? null;
           const store = useStore.getState();

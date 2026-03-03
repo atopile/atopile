@@ -152,7 +152,6 @@ local_scheme = "node-and-timestamp"
 addopts = [
     "--import-mode=importlib",
     "--ignore=test/runtest.py",
-    "--ignore=test/conftest.py",
     # Ensure co-located tests in `src/` are imported by package name, not by path.
     "-p",
     "atopile.pytest_import_by_name",
@@ -190,7 +189,6 @@ markers = [
 
 [tool.ruff]
 line-length = 88         # Same as Black.
-target-version = "py313"
 
 exclude = [
     "src/atopile/compiler/parser/AtoLexer.py",
@@ -312,7 +310,6 @@ reportIncompatibleMethodOverride = false
 
 [tool.black]
 line-length = 88
-target-version = ['py313']
 extend-exclude = "atopile/parser/"
 
 [tool.uv.sources]

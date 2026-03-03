@@ -3,6 +3,7 @@
 Python rewrite of scripts/worktree_fast.sh.
 """
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -39,6 +40,20 @@ def _clone_dir(src: Path, dst: Path, *, force: bool = False) -> None:
 
     shutil.copytree(src, dst, symlinks=True)
     _log(f"cloned: {dst}")
+
+
+def _set_venv_prompt(venv: Path, prompt: str) -> None:
+    """Set the shell prompt name in pyvenv.cfg."""
+    pyvenv_cfg = venv / "pyvenv.cfg"
+    if not pyvenv_cfg.is_file():
+        return
+    text = pyvenv_cfg.read_text()
+    new_line = f"prompt = {prompt}"
+    text, n = re.subn(r"^prompt\s*=.*$", new_line, text, count=1, flags=re.MULTILINE)
+    if not n:
+        text = text.rstrip("\n") + "\n" + new_line + "\n"
+    pyvenv_cfg.write_text(text)
+    _log(f"set venv prompt to '{prompt}'")
 
 
 def _rewrite_venv_paths(source_root: Path, worktree_path: Path) -> None:
@@ -290,6 +305,8 @@ def create_worktree(
         _rewrite_venv_paths(source_root, worktree_path)
     else:
         _log("skipping venv path rewrite (--skip-editable-install)")
+
+    _set_venv_prompt(worktree_path / ".venv", name_suffix)
 
     print(f"""
 Done.

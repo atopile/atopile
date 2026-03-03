@@ -224,4 +224,11 @@
 		(options "")
 		(descr "atopile: part lib: TDK_InvenSense_ICS_43434")
 	)
+	(lib
+		(name "OPSCO_Optoelectronics_SK6805_EC20")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../.ato/modules/atopile/opsco-sk6805-ec20/parts/OPSCO_Optoelectronics_SK6805_EC20")
+		(options "")
+		(descr "atopile: part lib: OPSCO_Optoelectronics_SK6805_EC20")
+	)
 )
