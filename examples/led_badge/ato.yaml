@@ -27,9 +27,6 @@ dependencies:
   identifier: atopile/usb-connectors
   release: 0.4.1
 - type: registry
-  identifier: atopile/addressable-leds
-  release: 0.2.6
-- type: registry
   identifier: atopile/microphones
   release: 0.2.1
 - type: registry
@@ -53,3 +50,6 @@ dependencies:
 - type: registry
   identifier: atopile/logos
   release: 0.2.0
+- type: registry
+  identifier: atopile/opsco-sk6805-ec20
+  release: 0.4.0
