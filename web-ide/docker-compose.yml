@@ -14,7 +14,10 @@ services:
       args:
         OPENVSCODE_VERSION: "1.105.1"
         KICAD_VERSION: "9.0.7"
-        ATOPILE_VERSION: "0.0.0dev"
+        # When started via scripts/web-idectl.sh, these are auto-derived from
+        # local source (same strategy as VSIX publishing workflow).
+        ATOPILE_VERSION: "${ATOPILE_VERSION:-0.0.0dev}"
+        ATOPILE_SEMVER: "${ATOPILE_SEMVER:-}"
     image: atopile-web-ide:dev
     container_name: atopile-web-ide
     ports:

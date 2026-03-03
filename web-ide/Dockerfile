@@ -65,6 +65,8 @@ FROM node:20-slim AS vsix-builder
 WORKDIR /src
 
 COPY --from=wheel-builder /wheels/atopile.semver /tmp/atopile.semver
+ARG ATOPILE_SEMVER
+RUN if [ -n "${ATOPILE_SEMVER}" ]; then printf '%s\n' "${ATOPILE_SEMVER}" > /tmp/atopile.semver; fi
 
 # Dep layer (cached unless lock files change)
 COPY src/vscode-atopile/package.json src/vscode-atopile/package-lock.json \

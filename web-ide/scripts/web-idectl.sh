@@ -24,6 +24,33 @@ command_name="${1:-}"
 
 case "${command_name}" in
   start)
+    # Match VSIX publishing versioning:
+    #   Compute versions from local source via `ato --version` / `ato --semver`
+    #   and pass them as Docker build args.
+    if [[ -z "${ATOPILE_VERSION:-}" || -z "${ATOPILE_SEMVER:-}" ]]; then
+      if command -v uv >/dev/null 2>&1; then
+        if [[ -z "${ATOPILE_VERSION:-}" ]]; then
+          if version="$(uv run ato --version 2>/dev/null)"; then
+            export ATOPILE_VERSION="${version}"
+          else
+            export ATOPILE_VERSION="0.0.0dev"
+          fi
+        fi
+        if [[ -z "${ATOPILE_SEMVER:-}" ]]; then
+          if semver="$(uv run ato --semver 2>/dev/null)"; then
+            export ATOPILE_SEMVER="${semver}"
+          else
+            export ATOPILE_SEMVER="0.0.0-dev0"
+          fi
+        fi
+      else
+        export ATOPILE_VERSION="${ATOPILE_VERSION:-0.0.0dev}"
+        export ATOPILE_SEMVER="${ATOPILE_SEMVER:-0.0.0-dev0}"
+      fi
+    fi
+
+    echo "Using atopile version: ${ATOPILE_VERSION}"
+    echo "Using VSIX semver:     ${ATOPILE_SEMVER}"
     podman compose up -d --build --force-recreate
     ;;
   status)
