@@ -5,7 +5,7 @@ import logging
 import re
 from enum import Enum, StrEnum, auto
 from itertools import chain, pairwise
-from math import floor
+from math import cos, floor, radians, sin
 from typing import (
     Any,
     Callable,
@@ -1031,6 +1031,22 @@ class PCB_Transformer:
 
     # Positioning ----------------------------------------------------------------------
     @staticmethod
+    def rotate_fp(fp: KiCadPCBFootprint, angle: float):
+        angle %= 360
+        if not angle:
+            return
+        # Rotation vector in kicad footprint objs not relative to footprint rotation
+        #  or is it?
+        for obj in fp.pads:
+            obj.at.r = ((obj.at.r or 0) + angle) % 360
+        # For some reason text rotates in the opposite direction
+        #  or maybe not?
+        for obj in chain(fp.fp_texts, fp.propertys):
+            obj.at.r = ((obj.at.r or 0) + angle) % 360
+
+        fp.at.r = ((fp.at.r or 0) + angle) % 360
+
+    @staticmethod
     def move_fp(fp: KiCadPCBFootprint, coord: kicad.pcb.Xyr, layer: str):
         if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):
             logger.warning(f"Skipped no touch component: {fp.name}")
@@ -1043,22 +1059,21 @@ class PCB_Transformer:
 
         # Rotate
         rot_angle = ((coord.r or 0) - (fp.at.r or 0)) % 360
-
-        if rot_angle:
-            # Rotation vector in kicad footprint objs not relative to footprint rotation
-            #  or is it?
-            for obj in fp.pads:
-                obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
-            # For some reason text rotates in the opposite direction
-            #  or maybe not?
-            for obj in chain(fp.fp_texts, fp.propertys):
-                obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
+        PCB_Transformer.rotate_fp(fp, rot_angle)
 
         fp.at = coord
 
     @staticmethod
     def move_object(obj: Any, vector: kicad.pcb.Xy):
         match obj:
+            case kicad.pcb.Footprint():
+                PCB_Transformer.move_fp(
+                    obj,
+                    kicad.pcb.Xyr(
+                        x=obj.at.x + vector.x, y=obj.at.y + vector.y, r=obj.at.r
+                    ),
+                    obj.layer,
+                )
             case kicad.pcb.Segment():
                 obj.start = kicad.geo.add(obj.start, vector)
                 obj.end = kicad.geo.add(obj.end, vector)
@@ -1564,6 +1579,128 @@ class PCB_Transformer:
         assert False, "Broken justify: " + repr(effects.justify)
 
     @staticmethod
+    def flip_object(obj: Any, cx: float) -> None:
+        """Mirror a global (non-footprint) PCB object's X coordinates around cx.
+
+        Layer is swapped F.* ↔ B.*. Y coordinates are unchanged.
+        This is the correct spatial flip for group members in absolute PCB space.
+        """
+
+        def _fx(px: float) -> float:
+            return 2.0 * cx - px
+
+        match obj:
+            case kicad.pcb.Segment():
+                obj.start.x = _fx(obj.start.x)
+                obj.end.x = _fx(obj.end.x)
+            case kicad.pcb.ArcSegment():
+                obj.start.x = _fx(obj.start.x)
+                obj.mid.x = _fx(obj.mid.x)
+                obj.end.x = _fx(obj.end.x)
+            case kicad.pcb.Via():
+                obj.at.x = _fx(obj.at.x)
+            case kicad.pcb.Zone():
+                for pt in obj.polygon.pts.xys:
+                    pt.x = _fx(pt.x)
+                for filled in obj.filled_polygon:
+                    for pt in filled.pts.xys:
+                        pt.x = _fx(pt.x)
+            case kicad.pcb.Line():
+                obj.start.x = _fx(obj.start.x)
+                obj.end.x = _fx(obj.end.x)
+            case kicad.pcb.Arc():
+                obj.start.x = _fx(obj.start.x)
+                obj.mid.x = _fx(obj.mid.x)
+                obj.end.x = _fx(obj.end.x)
+            case kicad.pcb.Circle():
+                obj.center.x = _fx(obj.center.x)
+                obj.end.x = _fx(obj.end.x)
+            case kicad.pcb.Rect():
+                obj.start.x = _fx(obj.start.x)
+                obj.end.x = _fx(obj.end.x)
+            case kicad.pcb.Polygon() | kicad.pcb.Curve():
+                for pt in obj.pts.xys:
+                    pt.x = _fx(pt.x)
+            case kicad.pcb.Text():
+                obj.at.x = _fx(obj.at.x)
+                PCB_Transformer._mirror_justify(obj)  # type: ignore
+            case _:
+                raise ValueError(f"flip_object: unsupported type {type(obj)}")
+
+        def _flip_layer(layer: str) -> str:
+            if layer.startswith("F."):
+                return layer.replace("F.", "B.", 1)
+            elif layer.startswith("B."):
+                return layer.replace("B.", "F.", 1)
+            return layer
+
+        kicad.geo.apply_to_layers(obj, _flip_layer)
+
+    @staticmethod
+    def rotate_kicad_vector(
+        dx: float, dy: float, degrees: float
+    ) -> tuple[float, float]:
+        """Rotate displacement vector (dx, dy) by *degrees* in KiCad's convention.
+
+        KiCad uses Y-down screen coordinates; positive degrees = CCW in screen space,
+        which corresponds to the matrix [[cos, sin], [-sin, cos]].
+        """
+        rad = radians(degrees)
+        cos_a, sin_a = cos(rad), sin(rad)
+        return cos_a * dx + sin_a * dy, -sin_a * dx + cos_a * dy
+
+    @staticmethod
+    def rotate_object(obj: Any, cx: float, cy: float, delta_degrees: float) -> None:
+        """Rotate all geometric points of a global PCB object around (cx, cy).
+
+        Uses KiCad's coordinate convention (Y-down, positive angle = CCW in screen).
+        """
+
+        def _rot(px: float, py: float) -> tuple[float, float]:
+            ndx, ndy = PCB_Transformer.rotate_kicad_vector(
+                px - cx, py - cy, delta_degrees
+            )
+            return cx + ndx, cy + ndy
+
+        match obj:
+            case kicad.pcb.Segment():
+                obj.start.x, obj.start.y = _rot(obj.start.x, obj.start.y)
+                obj.end.x, obj.end.y = _rot(obj.end.x, obj.end.y)
+            case kicad.pcb.ArcSegment():
+                obj.start.x, obj.start.y = _rot(obj.start.x, obj.start.y)
+                obj.mid.x, obj.mid.y = _rot(obj.mid.x, obj.mid.y)
+                obj.end.x, obj.end.y = _rot(obj.end.x, obj.end.y)
+            case kicad.pcb.Via():
+                obj.at.x, obj.at.y = _rot(obj.at.x, obj.at.y)
+            case kicad.pcb.Zone():
+                for pt in obj.polygon.pts.xys:
+                    pt.x, pt.y = _rot(pt.x, pt.y)
+                for filled in obj.filled_polygon:
+                    for pt in filled.pts.xys:
+                        pt.x, pt.y = _rot(pt.x, pt.y)
+            case kicad.pcb.Line():
+                obj.start.x, obj.start.y = _rot(obj.start.x, obj.start.y)
+                obj.end.x, obj.end.y = _rot(obj.end.x, obj.end.y)
+            case kicad.pcb.Arc():
+                obj.start.x, obj.start.y = _rot(obj.start.x, obj.start.y)
+                obj.mid.x, obj.mid.y = _rot(obj.mid.x, obj.mid.y)
+                obj.end.x, obj.end.y = _rot(obj.end.x, obj.end.y)
+            case kicad.pcb.Circle():
+                obj.center.x, obj.center.y = _rot(obj.center.x, obj.center.y)
+                obj.end.x, obj.end.y = _rot(obj.end.x, obj.end.y)
+            case kicad.pcb.Rect():
+                obj.start.x, obj.start.y = _rot(obj.start.x, obj.start.y)
+                obj.end.x, obj.end.y = _rot(obj.end.x, obj.end.y)
+            case kicad.pcb.Polygon() | kicad.pcb.Curve():
+                for pt in obj.pts.xys:
+                    pt.x, pt.y = _rot(pt.x, pt.y)
+            case kicad.pcb.Text():
+                obj.at.x, obj.at.y = _rot(obj.at.x, obj.at.y)
+                obj.at.r = ((obj.at.r or 0) + delta_degrees) % 360
+            case _:
+                raise ValueError(f"rotate_object: unsupported type {type(obj)}")
+
+    @staticmethod
     def _flip_obj(obj: Any):
         # TODO: flippin in kicad is insanely fucked in the brain
         # this kinda does the job for some simple cases
@@ -1573,7 +1710,7 @@ class PCB_Transformer:
                 obj.at = kicad.pcb.Xyr(
                     x=obj.at.x,
                     y=obj.at.y,
-                    r=(((obj.at.r or 0) + 180) % 360) or None,
+                    r=((180 - (obj.at.r or 0)) % 360) or None,
                 )
                 for _obj in chain(
                     obj.pads, obj.propertys, obj.fp_texts, get_all_geos(obj)
@@ -1585,7 +1722,7 @@ class PCB_Transformer:
                 obj.at = kicad.pcb.Xyr(
                     x=obj.at.x,
                     y=-obj.at.y,
-                    r=(((obj.at.r or 0) + 180) % 360) or None,
+                    r=((180 - (obj.at.r or 0)) % 360) or None,
                 )
                 if obj.primitives is not None:
                     PCB_Transformer._flip_obj(obj.primitives)
