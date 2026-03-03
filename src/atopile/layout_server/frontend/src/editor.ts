@@ -2,8 +2,8 @@ import { Vec2, BBox, Matrix3 } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintStaticBoard, paintGroupBBox, paintGroupHalos, paintBBoxOutline, paintSelection, computeBBox, paintDraggedSelection, type DragSelection } from "./painter";
-import { footprintBBox, hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
+import { paintStaticBoard, paintGroupBBox, paintGroupHalos, paintBBoxOutline, paintSelection, computeBBox, paintDraggedSelection, buildDragOwnerIds, type DragSelection } from "./painter";
+import { footprintBBox, hitTestFootprintsInBox } from "./hit-test";
 import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
@@ -98,6 +98,7 @@ export class Editor {
     private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
     private footprintIndex: SpatialIndex = new SpatialIndex(5);
+    private footprintBBoxes: BBox[] = [];
     private textIndex: SpatialIndex = new SpatialIndex(10);
 
     // Selection & interaction state
@@ -130,8 +131,7 @@ export class Editor {
     private dragStartTrackPositions: Map<string, { sx: number; sy: number; ex: number; ey: number; mx?: number; my?: number }> | null = null;
     private dragTargetViaUuids: string[] = [];
     private dragStartViaPositions: Map<string, { x: number; y: number }> | null = null;
-    private dragLayer: RenderLayer | null = null;
-    private dragUsesStaticLift = true;
+    private dragCacheActive = false;
     private pendingDrag: PendingDrag | null = null;
     private isBoxSelecting = false;
     private boxSelectStartWorld: Vec2 | null = null;
@@ -328,9 +328,12 @@ export class Editor {
     private rebuildSpatialIndexes() {
         if (!this.model) return;
         this.footprintIndex.clear();
+        this.footprintBBoxes = new Array(this.model.footprints.length);
         for (let i = 0; i < this.model.footprints.length; i++) {
             const fp = this.model.footprints[i]!;
-            this.footprintIndex.insert({ bbox: footprintBBox(fp), index: i });
+            const bbox = footprintBBox(fp);
+            this.footprintBBoxes[i] = bbox;
+            this.footprintIndex.insert({ bbox, index: i });
         }
         this.textIndex.clear();
         for (let i = 0; i < this.model.texts.length; i++) {
@@ -645,27 +648,16 @@ export class Editor {
         this.dragStartTextPositions = null;
         this.dragTargetZoneUuids = [];
         this.dragStartZoneCoords = null;
-        this.dragUsesStaticLift = true;
+        this.dragCacheActive = false;
         this.pendingDrag = null;
     }
 
     private restorePostDragRendering() {
         if (!this.model) return;
         this.renderer.end_fast_drag_cache();
+        this.dragCacheActive = false;
         this.renderer.dispose_dynamic_layers();
         this.paintStatic();
-    }
-
-    private useFastDragNoLift(): boolean {
-        if (!this.model) return false;
-        const complexity =
-            this.model.footprints.length +
-            this.model.tracks.length +
-            this.model.vias.length +
-            this.model.drawings.length +
-            this.model.texts.length +
-            this.model.zones.length;
-        return complexity > 6000;
     }
 
     private isObjectTypeLayer(layer: string): boolean {
@@ -687,7 +679,9 @@ export class Editor {
         if (!this.model) return;
         if (this.isDragging) {
             const draggedSelection = this.currentDraggedSelection();
-            if (this.dragUsesStaticLift) {
+            const skipOwners = buildDragOwnerIds(this.model, draggedSelection);
+            this.dragCacheActive = this.renderer.begin_fast_drag_cache(this.camera.matrix, skipOwners);
+            if (!this.dragCacheActive) {
                 this.paintStatic(draggedSelection);
             }
             this.renderer.dispose_dynamic_layers();
@@ -775,10 +769,6 @@ export class Editor {
         this.dragStartTextPositions = dragStartTextPositions;
         this.dragTargetZoneUuids = [...dragStartZoneCoords.keys()];
         this.dragStartZoneCoords = dragStartZoneCoords;
-        this.dragUsesStaticLift = !this.useFastDragNoLift();
-        if (!this.dragUsesStaticLift) {
-            this.renderer.begin_fast_drag_cache(this.camera.matrix);
-        }
 
         // Lift dragged objects out of static geometry so only moving copies are shown.
         const draggedSelection: DragSelection = {
@@ -789,7 +779,9 @@ export class Editor {
             textUuids: new Set(this.dragTargetTextUuids),
             zoneUuids: new Set(this.dragTargetZoneUuids),
         };
-        if (this.dragUsesStaticLift) {
+        const skipOwners = buildDragOwnerIds(this.model!, draggedSelection);
+        this.dragCacheActive = this.renderer.begin_fast_drag_cache(this.camera.matrix, skipOwners);
+        if (!this.dragCacheActive) {
             this.paintStatic(draggedSelection);
         }
 
@@ -891,7 +883,7 @@ export class Editor {
             const candidateIndices = this.footprintIndex.queryPoint(worldPos);
             for (let i = candidateIndices.length - 1; i >= 0; i--) {
                 const idx = candidateIndices[i]!;
-                const bbox = footprintBBox(this.model.footprints[idx]!);
+                const bbox = this.footprintBBoxes[idx] ?? footprintBBox(this.model.footprints[idx]!);
                 if (bbox.contains_point(worldPos)) {
                     // Preserve the exact footprint under cursor, even if it belongs
                     // to a group, so click/drag behavior stays precise for multi-select.
@@ -932,7 +924,7 @@ export class Editor {
         const candidateIndices = this.footprintIndex.queryPoint(worldPos);
         for (let i = candidateIndices.length - 1; i >= 0; i--) {
             const idx = candidateIndices[i]!;
-            const bbox = footprintBBox(this.model.footprints[idx]!);
+            const bbox = this.footprintBBoxes[idx] ?? footprintBBox(this.model.footprints[idx]!);
             if (bbox.contains_point(worldPos)) {
                 return idx;
             }
@@ -962,7 +954,7 @@ export class Editor {
 
             let hitIdx = -1;
             if (this.hoveredFpIndex >= 0 && this.hoveredFpIndex < this.model.footprints.length) {
-                const hoveredBBox = footprintBBox(this.model.footprints[this.hoveredFpIndex]!);
+                const hoveredBBox = this.footprintBBoxes[this.hoveredFpIndex] ?? footprintBBox(this.model.footprints[this.hoveredFpIndex]!);
                 if (hoveredBBox.contains_point(worldPos)) {
                     hitIdx = this.hoveredFpIndex;
                 }
@@ -989,20 +981,8 @@ export class Editor {
                 const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
                 const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
                 const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
-                let queuedFastDrag = false;
-                if (this.useFastDragNoLift()) {
-                    this.setPendingDrag(worldPos, this.lastMouseScreen, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids);
-                    queuedFastDrag = true;
-                } else {
-                    if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
-                        this.repaintWithSelection();
-                        return;
-                    }
-                }
-
-                if (!queuedFastDrag) {
-                    this.repaintWithSelection();
-                }
+                this.setPendingDrag(worldPos, this.lastMouseScreen, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids);
+                this.repaintWithSelection();
             } else {
                 // Check if clicking inside a graphic-only group's bounding box.
                 let hitGraphicGroupId: string | null = null;
@@ -1023,19 +1003,8 @@ export class Editor {
                 if (hitGraphicGroupId) {
                     this.setGroupSelection(hitGraphicGroupId);
                     const group = this.groupsById.get(hitGraphicGroupId)!;
-                    let queuedFastDrag = false;
-                    if (this.useFastDragNoLift()) {
-                        this.setPendingDrag(worldPos, this.lastMouseScreen, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids);
-                        queuedFastDrag = true;
-                    } else {
-                        if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
-                            this.repaintWithSelection();
-                            return;
-                        }
-                    }
-                    if (!queuedFastDrag) {
-                        this.repaintWithSelection();
-                    }
+                    this.setPendingDrag(worldPos, this.lastMouseScreen, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids);
+                    this.repaintWithSelection();
                 } else {
                     this.pendingDrag = null;
                     this.clearSelection(true);
@@ -1319,18 +1288,6 @@ export class Editor {
 
     private drawTextOverlay() {
         if (!this.textCtx || !this.model) return;
-        if (this.isDragging && !this.dragUsesStaticLift) {
-            const dpr = Math.max(window.devicePixelRatio || 1, 1);
-            const width = this.canvas.clientWidth;
-            const height = this.canvas.clientHeight;
-            const pixelWidth = Math.floor(width * dpr);
-            const pixelHeight = Math.floor(height * dpr);
-            if (this.textCtx.canvas.width !== pixelWidth) this.textCtx.canvas.width = pixelWidth;
-            if (this.textCtx.canvas.height !== pixelHeight) this.textCtx.canvas.height = pixelHeight;
-            this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            this.textCtx.clearRect(0, 0, width, height);
-            return;
-        }
         const visibleFpIndices = this.footprintIndex.query(this.camera.bbox);
         const layerMap = this.getLayerMap();
 

@@ -8,9 +8,9 @@ import {
 
 /** A set of GPU-uploaded primitives for one render layer */
 class PrimitiveSet {
-    #polyline_data: TessPolylineResult[] = [];
-    #circle_data: TessCircleResult[] = [];
-    #polygon_data: TessPolygonResult[] = [];
+    #polyline_data: Array<{ data: TessPolylineResult; ownerId: string | null }> = [];
+    #circle_data: Array<{ data: TessCircleResult; ownerId: string | null }> = [];
+    #polygon_data: Array<{ data: TessPolygonResult; ownerId: string | null }> = [];
 
     // committed GPU state
     #poly_vao?: VertexArray;
@@ -23,40 +23,63 @@ class PrimitiveSet {
     #line_cap_buf?: Buffer;
     #line_color_buf?: Buffer;
     #line_vertex_count = 0;
+    #line_chunks: Array<{ offset: number; count: number; ownerId: string | null }> = [];
+    #poly_chunks: Array<{ offset: number; count: number; ownerId: string | null }> = [];
 
     constructor(private gl: WebGL2RenderingContext) {}
 
-    add_polyline(points: Vec2[], width: number, r: number, g: number, b: number, a: number) {
+    add_polyline(
+        points: Vec2[],
+        width: number,
+        r: number,
+        g: number,
+        b: number,
+        a: number,
+        ownerId: string | null = null,
+    ) {
         if (points.length < 2) return;
-        this.#polyline_data.push(tessellate_polyline(points, width, r, g, b, a));
+        this.#polyline_data.push({ data: tessellate_polyline(points, width, r, g, b, a), ownerId });
     }
 
-    add_circle(cx: number, cy: number, radius: number, r: number, g: number, b: number, a: number) {
-        this.#circle_data.push(tessellate_circle(cx, cy, radius, r, g, b, a));
+    add_circle(
+        cx: number,
+        cy: number,
+        radius: number,
+        r: number,
+        g: number,
+        b: number,
+        a: number,
+        ownerId: string | null = null,
+    ) {
+        this.#circle_data.push({ data: tessellate_circle(cx, cy, radius, r, g, b, a), ownerId });
     }
 
-    add_polygon(points: Vec2[], r: number, g: number, b: number, a: number) {
+    add_polygon(points: Vec2[], r: number, g: number, b: number, a: number, ownerId: string | null = null) {
         if (points.length < 3) return;
-        this.#polygon_data.push(triangulate_polygon(points, r, g, b, a));
+        this.#polygon_data.push({ data: triangulate_polygon(points, r, g, b, a), ownerId });
     }
 
     /** Upload all collected data to GPU */
     commit(polylineShader: ShaderProgram, polygonShader: ShaderProgram) {
         // Merge and upload polylines + circles (share the same shader)
         const lineItems = [...this.#polyline_data, ...this.#circle_data];
+        this.#line_chunks = [];
         if (lineItems.length > 0) {
             let totalVerts = 0;
-            for (const item of lineItems) totalVerts += item.vertexCount;
+            for (const item of lineItems) totalVerts += item.data.vertexCount;
 
             const pos = new Float32Array(totalVerts * 2);
             const cap = new Float32Array(totalVerts);
             const col = new Float32Array(totalVerts * 4);
-            let pi = 0, ci = 0, coli = 0;
+            let pi = 0, ci = 0, coli = 0, vi = 0;
 
             for (const item of lineItems) {
-                pos.set(item.positions, pi); pi += item.positions.length;
-                cap.set(item.caps, ci); ci += item.caps.length;
-                col.set(item.colors, coli); coli += item.colors.length;
+                const data = item.data;
+                pos.set(data.positions, pi); pi += data.positions.length;
+                cap.set(data.caps, ci); ci += data.caps.length;
+                col.set(data.colors, coli); coli += data.colors.length;
+                this.#line_chunks.push({ offset: vi, count: data.vertexCount, ownerId: item.ownerId });
+                vi += data.vertexCount;
             }
 
             this.#line_vao = new VertexArray(this.gl);
@@ -70,17 +93,21 @@ class PrimitiveSet {
         }
 
         // Merge and upload polygons
+        this.#poly_chunks = [];
         if (this.#polygon_data.length > 0) {
             let totalVerts = 0;
-            for (const item of this.#polygon_data) totalVerts += item.vertexCount;
+            for (const item of this.#polygon_data) totalVerts += item.data.vertexCount;
 
             const pos = new Float32Array(totalVerts * 2);
             const col = new Float32Array(totalVerts * 4);
-            let pi = 0, coli = 0;
+            let pi = 0, coli = 0, vi = 0;
 
             for (const item of this.#polygon_data) {
-                pos.set(item.positions, pi); pi += item.positions.length;
-                col.set(item.colors, coli); coli += item.colors.length;
+                const data = item.data;
+                pos.set(data.positions, pi); pi += data.positions.length;
+                col.set(data.colors, coli); coli += data.colors.length;
+                this.#poly_chunks.push({ offset: vi, count: data.vertexCount, ownerId: item.ownerId });
+                vi += data.vertexCount;
             }
 
             this.#poly_vao = new VertexArray(this.gl);
@@ -97,14 +124,60 @@ class PrimitiveSet {
         this.#polygon_data = [];
     }
 
-    render(polylineShader: ShaderProgram, polygonShader: ShaderProgram, matrix: Matrix3, depth: number, alpha: number) {
+    private draw_filtered_chunks(
+        chunks: Array<{ offset: number; count: number; ownerId: string | null }>,
+        skippedOwners: Set<string>,
+    ) {
+        let runStart = -1;
+        let runCount = 0;
+        const flush = () => {
+            if (runCount <= 0) return;
+            this.gl.drawArrays(this.gl.TRIANGLES, runStart, runCount);
+            runStart = -1;
+            runCount = 0;
+        };
+        for (const chunk of chunks) {
+            const shouldSkip = chunk.ownerId !== null && skippedOwners.has(chunk.ownerId);
+            if (shouldSkip) {
+                flush();
+                continue;
+            }
+            if (runCount === 0) {
+                runStart = chunk.offset;
+                runCount = chunk.count;
+                continue;
+            }
+            if ((runStart + runCount) === chunk.offset) {
+                runCount += chunk.count;
+                continue;
+            }
+            flush();
+            runStart = chunk.offset;
+            runCount = chunk.count;
+        }
+        flush();
+    }
+
+    render(
+        polylineShader: ShaderProgram,
+        polygonShader: ShaderProgram,
+        matrix: Matrix3,
+        depth: number,
+        alpha: number,
+        skippedOwners?: Set<string>,
+    ) {
+        const hasSkips = !!skippedOwners && skippedOwners.size > 0;
         if (this.#poly_vertex_count > 0) {
             polygonShader.bind();
             polygonShader.uniforms["u_matrix"]!.mat3f(false, matrix.elements);
             polygonShader.uniforms["u_depth"]!.f1(depth);
             polygonShader.uniforms["u_alpha"]!.f1(alpha);
             this.#poly_vao!.bind();
-            this.gl.drawArrays(this.gl.TRIANGLES, 0, this.#poly_vertex_count);
+            if (!hasSkips) {
+                this.gl.drawArrays(this.gl.TRIANGLES, 0, this.#poly_vertex_count);
+            } else {
+                this.draw_filtered_chunks(this.#poly_chunks, skippedOwners!);
+            }
         }
 
         if (this.#line_vertex_count > 0) {
@@ -113,13 +186,24 @@ class PrimitiveSet {
             polylineShader.uniforms["u_depth"]!.f1(depth);
             polylineShader.uniforms["u_alpha"]!.f1(alpha);
             this.#line_vao!.bind();
-            this.gl.drawArrays(this.gl.TRIANGLES, 0, this.#line_vertex_count);
+            if (!hasSkips) {
+                this.gl.drawArrays(this.gl.TRIANGLES, 0, this.#line_vertex_count);
+            } else {
+                this.draw_filtered_chunks(this.#line_chunks, skippedOwners!);
+            }
         }
     }
 
     dispose() {
         this.#poly_vao?.dispose();
         this.#line_vao?.dispose();
+    }
+
+    stats() {
+        return {
+            lineVertices: this.#line_vertex_count,
+            polyVertices: this.#poly_vertex_count,
+        };
     }
 }
 
@@ -143,14 +227,24 @@ export class RenderLayer {
         this.geometry.commit(polylineShader, polygonShader);
     }
 
-    render(polylineShader: ShaderProgram, polygonShader: ShaderProgram, matrix: Matrix3, alpha = 1) {
+    render(
+        polylineShader: ShaderProgram,
+        polygonShader: ShaderProgram,
+        matrix: Matrix3,
+        alpha = 1,
+        skippedOwners?: Set<string>,
+    ) {
         if (!this.visible) return;
         const m = this.transform ? matrix.multiply(this.transform) : matrix;
-        this.geometry.render(polylineShader, polygonShader, m, this.depth, alpha);
+        this.geometry.render(polylineShader, polygonShader, m, this.depth, alpha, skippedOwners);
     }
 
     dispose() {
         this.geometry.dispose();
+    }
+
+    stats() {
+        return this.geometry.stats();
     }
 }
 
@@ -318,6 +412,20 @@ export class Renderer {
         }
     }
 
+    get_layer_stats(): Record<string, { lineVertices: number; polyVertices: number; visible: boolean; depth: number }> {
+        const stats: Record<string, { lineVertices: number; polyVertices: number; visible: boolean; depth: number }> = {};
+        for (const [name, layer] of this.layers.entries()) {
+            const layerStats = layer.stats();
+            stats[name] = {
+                lineVertices: layerStats.lineVertices,
+                polyVertices: layerStats.polyVertices,
+                visible: layer.visible,
+                depth: layer.depth,
+            };
+        }
+        return stats;
+    }
+
     private ensure_drag_cache_target(w: number, h: number): boolean {
         const gl = this.gl;
         if (!this.dragCacheTex) {
@@ -362,27 +470,28 @@ export class Renderer {
         return true;
     }
 
-    begin_fast_drag_cache(cameraMatrix: Matrix3) {
+    begin_fast_drag_cache(cameraMatrix: Matrix3, skippedOwners?: Set<string>): boolean {
         this.update_size();
         const gl = this.gl;
         const w = this.canvas.width;
         const h = this.canvas.height;
         if (w <= 0 || h <= 0) {
             this.useDragCache = false;
-            return;
+            return false;
         }
         if (!this.ensure_drag_cache_target(w, h) || !this.dragCacheFbo) {
             this.useDragCache = false;
-            return;
+            return false;
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.dragCacheFbo);
         gl.viewport(0, 0, w, h);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         const total = this.projection_matrix.multiply(cameraMatrix);
-        this.render_static_scene(total);
+        this.render_static_scene(total, skippedOwners);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, w, h);
         this.useDragCache = true;
+        return true;
     }
 
     end_fast_drag_cache() {
@@ -432,7 +541,7 @@ export class Renderer {
         return true;
     }
 
-    private render_static_scene(total: Matrix3) {
+    private render_static_scene(total: Matrix3, skippedOwners?: Set<string>) {
         // Draw grid dots behind everything
         if (this.gridVertexCount > 0) {
             this.pointShader.bind();
@@ -443,7 +552,7 @@ export class Renderer {
             this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
         }
         for (const layer of this.layers.values()) {
-            layer.render(this.polylineShader, this.polygonShader, total, 1.0);
+            layer.render(this.polylineShader, this.polygonShader, total, 1.0, skippedOwners);
         }
     }
 

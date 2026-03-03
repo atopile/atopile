@@ -16,6 +16,8 @@ import type {
     Point2,
     Point3,
     LayerModel,
+    TextModel,
+    ZoneModel,
 } from "./types";
 import { footprintBBox } from "./hit-test";
 import { buildPadAnnotationGeometry } from "./pad_annotations";
@@ -37,6 +39,61 @@ export interface DragSelection {
     drawingUuids?: Set<string>;
     textUuids?: Set<string>;
     zoneUuids?: Set<string>;
+}
+
+function footprintOwnerId(footprint: FootprintModel, fallbackIndex: number): string {
+    return footprint.uuid ? `fp:${footprint.uuid}` : `fp_idx:${fallbackIndex}`;
+}
+
+function trackOwnerId(track: TrackModel): string | null {
+    return track.uuid ? `trk:${track.uuid}` : null;
+}
+
+function viaOwnerId(via: ViaModel): string | null {
+    return via.uuid ? `via:${via.uuid}` : null;
+}
+
+function drawingOwnerId(drawing: DrawingModel): string | null {
+    return drawing.uuid ? `drw:${drawing.uuid}` : null;
+}
+
+function textOwnerId(text: TextModel): string | null {
+    return text.uuid ? `txt:${text.uuid}` : null;
+}
+
+function zoneOwnerId(zone: ZoneModel): string | null {
+    return zone.uuid ? `zon:${zone.uuid}` : null;
+}
+
+export function buildDragOwnerIds(model: RenderModel, dragged: DragSelection): Set<string> {
+    const owners = new Set<string>();
+    const footprintIndices = dragged.footprintIndices ?? new Set<number>();
+    for (const index of footprintIndices) {
+        const footprint = model.footprints[index];
+        if (!footprint) continue;
+        owners.add(footprintOwnerId(footprint, index));
+    }
+    const trackUuids = dragged.trackUuids ?? new Set<string>();
+    for (const uuid of trackUuids) {
+        owners.add(`trk:${uuid}`);
+    }
+    const viaUuids = dragged.viaUuids ?? new Set<string>();
+    for (const uuid of viaUuids) {
+        owners.add(`via:${uuid}`);
+    }
+    const drawingUuids = dragged.drawingUuids ?? new Set<string>();
+    for (const uuid of drawingUuids) {
+        owners.add(`drw:${uuid}`);
+    }
+    const textUuids = dragged.textUuids ?? new Set<string>();
+    for (const uuid of textUuids) {
+        owners.add(`txt:${uuid}`);
+    }
+    const zoneUuids = dragged.zoneUuids ?? new Set<string>();
+    for (const uuid of zoneUuids) {
+        owners.add(`zon:${uuid}`);
+    }
+    return owners;
 }
 
 
@@ -165,6 +222,7 @@ function paintObjects(
     modelVias: ViaModel[],
     footprints: FootprintModel[],
     hidden: Set<string>,
+    footprintOwnerByRef: Map<FootprintModel, string>,
     tint?: [number, number, number]
 ) {
     const showText = !isTextHidden(hidden);
@@ -173,18 +231,18 @@ function paintObjects(
     const showPads = !hidden.has("__type:pads");
 
     // Bulk group all objects by layer
-    const drawingsByLayer = new Map<string, Array<{at: Point3, d: DrawingModel}>>();
-    const tracksByLayer = new Map<string, TrackModel[]>();
-    const viasByLayer = new Map<string, ViaModel[]>();
-    const drillViasByLayer = new Map<string, ViaModel[]>();
-    const padsByLayer = new Map<string, Array<{at: Point3, p: PadModel}>>();
-    const padHolesByLayer = new Map<string, Array<{at: Point3, p: PadModel, h: HoleModel}>>();
-    const textsByLayer = new Map<string, Array<{at: Point3, t: TextModel}>>();
+    const drawingsByLayer = new Map<string, Array<{ at: Point3; d: DrawingModel; ownerId: string | null }>>();
+    const tracksByLayer = new Map<string, Array<{ t: TrackModel; ownerId: string | null }>>();
+    const viasByLayer = new Map<string, Array<{ v: ViaModel; ownerId: string | null }>>();
+    const drillViasByLayer = new Map<string, Array<{ v: ViaModel; ownerId: string | null }>>();
+    const padsByLayer = new Map<string, Array<{ at: Point3; p: PadModel; ownerId: string | null }>>();
+    const padHolesByLayer = new Map<string, Array<{ at: Point3; p: PadModel; h: HoleModel; ownerId: string | null }>>();
+    const textsByLayer = new Map<string, Array<{ at: Point3; t: TextModel; ownerId: string | null }>>();
 
-    const addDrawing = (layer: string, at: Point3, d: DrawingModel) => {
+    const addDrawing = (layer: string, at: Point3, d: DrawingModel, ownerId: string | null) => {
         let arr = drawingsByLayer.get(layer);
         if (!arr) { arr = []; drawingsByLayer.set(layer, arr); }
-        arr.push({at, d});
+        arr.push({ at, d, ownerId });
     };
 
     // Drawings and texts
@@ -192,7 +250,7 @@ function paintObjects(
     if (showShapes) {
         for (const d of modelDrawings) {
             if (!d.layer || hidden.has(d.layer)) continue;
-            addDrawing(d.layer, worldAt, d);
+            addDrawing(d.layer, worldAt, d, drawingOwnerId(d));
         }
     }
     if (showText) {
@@ -200,7 +258,7 @@ function paintObjects(
             if (!t.layer || hidden.has(t.layer)) continue;
             let arr = textsByLayer.get(t.layer);
             if (!arr) { arr = []; textsByLayer.set(t.layer, arr); }
-            arr.push({at: worldAt, t});
+            arr.push({ at: worldAt, t, ownerId: textOwnerId(t) });
         }
     }
 
@@ -210,30 +268,32 @@ function paintObjects(
             if (!track.layer || hidden.has(track.layer)) continue;
             let arr = tracksByLayer.get(track.layer);
             if (!arr) { arr = []; tracksByLayer.set(track.layer, arr); }
-            arr.push(track);
+            arr.push({ t: track, ownerId: trackOwnerId(track) });
         }
         for (const via of modelVias) {
+            const ownerId = viaOwnerId(via);
             for (const l of via.copper_layers) {
                 if (hidden.has(l)) continue;
                 let arr = viasByLayer.get(l);
                 if (!arr) { arr = []; viasByLayer.set(l, arr); }
-                arr.push(via);
+                arr.push({ v: via, ownerId });
             }
             for (const l of via.drill_layers) {
                 if (hidden.has(l)) continue;
                 let arr = drillViasByLayer.get(l);
                 if (!arr) { arr = []; drillViasByLayer.set(l, arr); }
-                arr.push(via);
+                arr.push({ v: via, ownerId });
             }
         }
     }
 
     // Footprints
     for (const fp of footprints) {
+        const ownerId = footprintOwnerByRef.get(fp) ?? null;
         if (showShapes) {
             for (const d of fp.drawings) {
                 if (!d.layer || hidden.has(d.layer)) continue;
-                addDrawing(d.layer, fp.at, d);
+                addDrawing(d.layer, fp.at, d, ownerId);
             }
         }
         if (showText) {
@@ -241,7 +301,7 @@ function paintObjects(
                 if (!t.layer || hidden.has(t.layer)) continue;
                 let arr = textsByLayer.get(t.layer);
                 if (!arr) { arr = []; textsByLayer.set(t.layer, arr); }
-                arr.push({at: fp.at, t});
+                arr.push({ at: fp.at, t, ownerId });
             }
         }
         if (showPads) {
@@ -254,14 +314,14 @@ function paintObjects(
                     if (hasHole && !isCopperLayer(l, layerById)) continue;
                     let arr = padsByLayer.get(l);
                     if (!arr) { arr = []; padsByLayer.set(l, arr); }
-                    arr.push({at: fp.at, p});
+                    arr.push({ at: fp.at, p, ownerId });
                 }
                 if (p.hole) {
                     for (const dl of padDrillLayerIds(p, layerById)) {
                         if (hidden.has(dl)) continue;
                         let arr = padHolesByLayer.get(dl);
                         if (!arr) { arr = []; padHolesByLayer.set(dl, arr); }
-                        arr.push({at: fp.at, p, h: p.hole});
+                        arr.push({ at: fp.at, p, h: p.hole, ownerId });
                     }
                 }
             }
@@ -286,34 +346,36 @@ function paintObjects(
         const layer = renderer.get_layer(ln);
         
         const tracks = tracksByLayer.get(ln);
-        if (tracks) for (const t of tracks) {
+        if (tracks) for (const { t, ownerId } of tracks) {
             const pts = t.mid ? arcToPoints(t.start, t.mid, t.end) : [p2v(t.start), p2v(t.end)];
-            layer.geometry.add_polyline(pts, t.width, r, g, b, a);
+            layer.geometry.add_polyline(pts, t.width, r, g, b, a, ownerId);
         }
 
         const vias = viasByLayer.get(ln);
-        if (vias) for (const v of vias) {
+        if (vias) for (const { v, ownerId } of vias) {
             const outerD = v.size, drillD = v.drill;
             if (drillD > 0 && outerD > drillD) {
                 const ringPoints = circleToPoints(v.at.x, v.at.y, (outerD + drillD) / 4);
-                layer.geometry.add_polyline(ringPoints, (outerD - drillD) / 2, r, g, b, Math.max(a, 0.78));
-            } else if (outerD > 0) layer.geometry.add_circle(v.at.x, v.at.y, outerD / 2, r, g, b, Math.max(a, 0.78));
+                layer.geometry.add_polyline(ringPoints, (outerD - drillD) / 2, r, g, b, Math.max(a, 0.78), ownerId);
+            } else if (outerD > 0) {
+                layer.geometry.add_circle(v.at.x, v.at.y, outerD / 2, r, g, b, Math.max(a, 0.78), ownerId);
+            }
         }
 
         const pads = padsByLayer.get(ln);
-        if (pads) for (const {at, p} of pads) paintPad(layer, at, p, ln, layerById);
+        if (pads) for (const { at, p, ownerId } of pads) paintPad(layer, at, p, ln, layerById, ownerId);
 
         const drawings = drawingsByLayer.get(ln);
-        if (drawings) for (const {at, d} of drawings) paintDrawing(layer, at, d, r, g, b, a);
+        if (drawings) for (const { at, d, ownerId } of drawings) paintDrawing(layer, at, d, r, g, b, a, ownerId);
 
         const texts = textsByLayer.get(ln);
-        if (texts) for (const {at, t} of texts) paintText(layer, at, t, r, g, b, a);
+        if (texts) for (const { at, t, ownerId } of texts) paintText(layer, at, t, r, g, b, a, ownerId);
 
         const dvias = drillViasByLayer.get(ln);
-        if (dvias) for (const v of dvias) layer.geometry.add_circle(v.at.x, v.at.y, v.drill / 2, r, g, b, a);
+        if (dvias) for (const { v, ownerId } of dvias) layer.geometry.add_circle(v.at.x, v.at.y, v.drill / 2, r, g, b, a, ownerId);
 
         const pholes = padHolesByLayer.get(ln);
-        if (pholes) for (const {at, p, h} of pholes) paintPadHole(layer, at, p, h, r, g, b, a);
+        if (pholes) for (const { at, p, h, ownerId } of pholes) paintPadHole(layer, at, p, h, r, g, b, a, ownerId);
     }
 }
 
@@ -355,6 +417,12 @@ export function paintStaticBoard(
     const zones = skipZones
         ? model.zones.filter(zone => !zone.uuid || !skipZones.has(zone.uuid))
         : model.zones;
+    const footprintOwnerByRef = new Map<FootprintModel, string>();
+    for (let i = 0; i < model.footprints.length; i++) {
+        const footprint = model.footprints[i];
+        if (!footprint) continue;
+        footprintOwnerByRef.set(footprint, footprintOwnerId(footprint, i));
+    }
 
     // Zones should render below tracks/pads for every copper layer.
     paintZones(renderer, model, hidden, layerById, zones);
@@ -367,7 +435,8 @@ export function paintStaticBoard(
         tracks,
         vias,
         footprints,
-        hidden
+        hidden,
+        footprintOwnerByRef
     );
     renderer.commit_all_layers();
 }
@@ -401,6 +470,12 @@ export function paintDraggedSelection(
     const texts = textUuids.size > 0
         ? model.texts.filter(text => !!text.uuid && textUuids.has(text.uuid))
         : [];
+    const footprintOwnerByRef = new Map<FootprintModel, string>();
+    for (let i = 0; i < model.footprints.length; i++) {
+        const footprint = model.footprints[i];
+        if (!footprint) continue;
+        footprintOwnerByRef.set(footprint, footprintOwnerId(footprint, i));
+    }
 
     if (zoneUuids.size > 0) {
         const draggedZones = model.zones.filter(zone => !!zone.uuid && zoneUuids.has(zone.uuid));
@@ -417,7 +492,8 @@ export function paintDraggedSelection(
         tracks,
         vias,
         footprints,
-        hidden
+        hidden,
+        footprintOwnerByRef
     );
 }
 
@@ -461,6 +537,7 @@ function paintZones(
 ) {
     if (hidden.has("__type:zones")) return;
     for (const zone of zones) {
+        const ownerId = zoneOwnerId(zone);
         const sortedFilledPolygons = [...zone.filled_polygons].sort(
             (a, b) => layerPaintOrder(a.layer, layerById) - layerPaintOrder(b.layer, layerById),
         );
@@ -470,7 +547,7 @@ function paintZones(
             const layer = renderer.get_layer(zoneRenderLayerName(filled.layer));
             const pts = filled.points.map(p2v);
             if (pts.length >= 3) {
-                layer.geometry.add_polygon(pts, r, g, b, ZONE_COLOR_ALPHA);
+                layer.geometry.add_polygon(pts, r, g, b, ZONE_COLOR_ALPHA, ownerId);
             }
                     }
 
@@ -493,7 +570,7 @@ function paintZones(
                 if (!layerName || hidden.has(layerName)) continue;
                 const [r, g, b] = getLayerColor(layerName, layerById);
                 const layer = renderer.get_layer(zoneRenderLayerName(layerName));
-                layer.geometry.add_polygon(outlinePts, r, g, b, ZONE_COLOR_ALPHA);
+                layer.geometry.add_polygon(outlinePts, r, g, b, ZONE_COLOR_ALPHA, ownerId);
                             }
         }
 
@@ -508,9 +585,9 @@ function paintZones(
             if (!layerName || hidden.has(layerName)) continue;
             const [r, g, b, a] = getLayerColor(layerName, layerById);
             const layer = renderer.get_layer(zoneRenderLayerName(layerName));
-            layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8));
+            layer.geometry.add_polyline(closedOutline, 0.1, r, g, b, Math.max(a, 0.8), ownerId);
             for (const [start, end] of hatchSegments) {
-                layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45));
+                layer.geometry.add_polyline([start, end], 0.06, r, g, b, Math.max(a * 0.65, 0.45), ownerId);
             }
                     }
     }
@@ -748,6 +825,7 @@ function paintPadHole(
     g: number,
     b: number,
     a: number,
+    ownerId: string | null = null,
 ) {
     const sx = Math.max(0, hole.size_x || 0);
     const sy = Math.max(0, hole.size_y || 0);
@@ -757,7 +835,7 @@ function paintPadHole(
     const center = padTransform(fpAt, pad.at, offset.x, offset.y);
     const isOval = (hole.shape ?? "").toLowerCase() === "oval" || Math.abs(sx - sy) > 1e-6;
     if (!isOval) {
-        layer.geometry.add_circle(center.x, center.y, sx / 2, r, g, b, a);
+        layer.geometry.add_circle(center.x, center.y, sx / 2, r, g, b, a, ownerId);
         return;
     }
 
@@ -770,7 +848,7 @@ function paintPadHole(
     const p2 = sx >= sy
         ? padTransform(fpAt, pad.at, offset.x + focal, offset.y)
         : padTransform(fpAt, pad.at, offset.x, offset.y + focal);
-    layer.geometry.add_polyline([p1, p2], minor, r, g, b, a);
+    layer.geometry.add_polyline([p1, p2], minor, r, g, b, a, ownerId);
 }
 
 type GlobalDrawingPaintMode = "drill" | "copper" | "non_copper";
@@ -974,7 +1052,16 @@ function paintPadAnnotations(
             }
 }
 
-function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r: number, g: number, b: number, a: number) {
+function paintDrawing(
+    layer: RenderLayer,
+    fpAt: Point3,
+    drawing: DrawingModel,
+    r: number,
+    g: number,
+    b: number,
+    a: number,
+    ownerId: string | null = null,
+) {
     const rawWidth = Number.isFinite(drawing.width) ? drawing.width : 0;
     const strokeWidth = rawWidth > 0 ? rawWidth : (drawing.filled ? 0 : 0.12);
 
@@ -982,13 +1069,13 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
         case "line": {
             const p1 = fpTransform(fpAt, drawing.start.x, drawing.start.y);
             const p2 = fpTransform(fpAt, drawing.end.x, drawing.end.y);
-            layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a);
+            layer.geometry.add_polyline([p1, p2], strokeWidth, r, g, b, a, ownerId);
             break;
         }
         case "arc": {
             const localPts = arcToPoints(drawing.start, drawing.mid, drawing.end);
             const worldPts = localPts.map(p => fpTransform(fpAt, p.x, p.y));
-            layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+            layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a, ownerId);
             break;
         }
         case "circle": {
@@ -1002,10 +1089,10 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
             }
             const worldPts = pts.map(p => fpTransform(fpAt, p.x, p.y));
             if (drawing.filled && worldPts.length >= 3) {
-                layer.geometry.add_polygon(worldPts, r, g, b, a);
+                layer.geometry.add_polygon(worldPts, r, g, b, a, ownerId);
             }
             if (strokeWidth > 0) {
-                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a, ownerId);
             }
             break;
         }
@@ -1017,10 +1104,10 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
                 fpTransform(fpAt, e.x, e.y), fpTransform(fpAt, s.x, e.y),
             ];
             if (drawing.filled) {
-                layer.geometry.add_polygon(corners, r, g, b, a);
+                layer.geometry.add_polygon(corners, r, g, b, a, ownerId);
             }
             if (strokeWidth > 0) {
-                layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, r, g, b, a);
+                layer.geometry.add_polyline([...corners, corners[0]!.copy()], strokeWidth, r, g, b, a, ownerId);
             }
             break;
         }
@@ -1028,10 +1115,10 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
             const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
             if (worldPts.length >= 3) {
                 if (drawing.filled) {
-                    layer.geometry.add_polygon(worldPts, r, g, b, a);
+                    layer.geometry.add_polygon(worldPts, r, g, b, a, ownerId);
                 }
                 if (strokeWidth > 0) {
-                    layer.geometry.add_polyline([...worldPts, worldPts[0]!.copy()], strokeWidth, r, g, b, a);
+                    layer.geometry.add_polyline([...worldPts, worldPts[0]!.copy()], strokeWidth, r, g, b, a, ownerId);
                 }
             }
             break;
@@ -1039,14 +1126,23 @@ function paintDrawing(layer: RenderLayer, fpAt: Point3, drawing: DrawingModel, r
         case "curve": {
             const worldPts = drawing.points.map(p => fpTransform(fpAt, p.x, p.y));
             if (worldPts.length >= 2) {
-                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a);
+                layer.geometry.add_polyline(worldPts, strokeWidth, r, g, b, a, ownerId);
             }
             break;
         }
     }
 }
 
-function paintText(layer: RenderLayer, fpAt: Point3, text: TextModel, r: number, g: number, b: number, a: number) {
+function paintText(
+    layer: RenderLayer,
+    fpAt: Point3,
+    text: TextModel,
+    r: number,
+    g: number,
+    b: number,
+    a: number,
+    ownerId: string | null = null,
+) {
     if (!text.text.trim()) return;
     const lines = text.text.split("\n");
     const justifySet = new Set(text.justify ?? []);
@@ -1095,7 +1191,7 @@ function paintText(layer: RenderLayer, fpAt: Point3, text: TextModel, r: number,
                     worldPos.y + lx * sin + ly * cos
                 ));
             }
-            layer.geometry.add_polyline(worldPoints, thickness, r, g, b, a);
+            layer.geometry.add_polyline(worldPoints, thickness, r, g, b, a, ownerId);
         }
     }
 }
@@ -1106,6 +1202,7 @@ function paintPad(
     pad: PadModel,
     layerName: string,
     layerById: Map<string, LayerModel>,
+    ownerId: string | null = null,
 ) {
     if (pad.layers.length === 0) {
         return;
@@ -1145,7 +1242,7 @@ function paintPad(
             if (annulus > 0 && centerlineRadius > 0) {
                 const ringPoints = circleToPoints(center.x, center.y, centerlineRadius);
                 if (ringPoints.length > 1) {
-                    layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca);
+                    layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca, ownerId);
                     return;
                 }
             }
@@ -1199,7 +1296,7 @@ function paintPad(
                         // Closed centerline loop for oval annulus ring (prevents C/U-shaped artifacts).
                         localPoints.push(localPoints[0]!.copy());
                         const ringPoints = localPoints.map(p => padTransform(fpAt, pad.at, p.x, p.y));
-                        layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca);
+                        layer.geometry.add_polyline(ringPoints, annulus, cr, cg, cb, ca, ownerId);
                         return;
                     }
                 }
@@ -1209,7 +1306,7 @@ function paintPad(
 
     if (pad.shape === "circle") {
         const center = fpTransform(fpAt, pad.at.x, pad.at.y);
-        layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca);
+        layer.geometry.add_circle(center.x, center.y, hw, cr, cg, cb, ca, ownerId);
     } else if (pad.shape === "oval") {
         const longAxis = Math.max(hw, hh);
         const shortAxis = Math.min(hw, hh);
@@ -1222,13 +1319,13 @@ function paintPad(
             p1 = padTransform(fpAt, pad.at, 0, -focalDist);
             p2 = padTransform(fpAt, pad.at, 0, focalDist);
         }
-        layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca);
+        layer.geometry.add_polyline([p1, p2], shortAxis * 2, cr, cg, cb, ca, ownerId);
     } else {
         const corners = [
             padTransform(fpAt, pad.at, -hw, -hh), padTransform(fpAt, pad.at, hw, -hh),
             padTransform(fpAt, pad.at, hw, hh), padTransform(fpAt, pad.at, -hw, hh),
         ];
-        layer.geometry.add_polygon(corners, cr, cg, cb, ca);
+        layer.geometry.add_polygon(corners, cr, cg, cb, ca, ownerId);
     }
 
     // Pad holes are rendered in dedicated depth layers (see paintFootprint).

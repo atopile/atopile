@@ -12,6 +12,7 @@ const baseUrl: string = w.__LAYOUT_BASE_URL__ || window.location.origin;
 const apiPrefix: string = w.__LAYOUT_API_PREFIX__ || "/api";
 const wsPath: string = w.__LAYOUT_WS_PATH__ || "/ws";
 const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
+w.__layoutEditor = editor;
 
 // Persistent UI state across rebuilds
 let panelCollapsed = false;
