@@ -1,0 +1,24 @@
+"""
+This example demonstrates how to specify a specific PCB stackup from a specific
+manufacturer.
+"""
+#pragma experiment("TRAITS")
+#pragma experiment("MODULE_TEMPLATING")
+
+import Resistor
+import is_pcb
+
+from "JLCPCB.ato" import JLC041612_3313
+
+module App:
+    cool_pcb_a = new MyAmazingDesign
+    cool_pcb_b = new MyAmazingDesign
+
+module MyAmazingDesign:
+    # The stackup is manufacturer dependent.
+    # The manufacturer and its capabilities are defined in the stackup.
+    jlc_stackup = new JLC041612_3313
+    trait is_pcb<stackup = "jlc_stackup">
+
+    resistor = new Resistor
+    assert resistor.resistance within 10kohm +/- 1%
