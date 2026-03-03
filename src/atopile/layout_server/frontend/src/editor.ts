@@ -255,7 +255,12 @@ export class Editor {
         this.renderer.dispose_dynamic_overlays();
         if (!this.model) return;
 
-        if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
+        if (
+            !this.singleOverrideMode
+            && this.selectionMode !== "multi"
+            && this.hoveredGroupId
+            && this.hoveredGroupId !== this.selectedGroupId
+        ) {
             const hovered = this.groupsById.get(this.hoveredGroupId);
             if (hovered) {
                 if (hovered.memberIndices.length > 0) {
