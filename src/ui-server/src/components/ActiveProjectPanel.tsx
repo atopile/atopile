@@ -1114,7 +1114,7 @@ export function ActiveProjectPanel({
             title={getOutputTooltip('Interactive BOM')}
           >
             <List size={12} />
-            <span className="action-label">BOM</span>
+            <span className="action-label">iBOM</span>
           </button>
 
           <div className="action-divider" />
