@@ -85,15 +85,6 @@ def kill_process_on_port(port: int, host: str = "127.0.0.1") -> bool:
         return False
 
 
-def _check_path(connection, request):
-    """Reject connections not targeting /atopile-core."""
-    if request.path != "/atopile-core":
-        from websockets.datastructures import Headers
-        from websockets.http11 import Response
-
-        return Response(404, "Not Found", Headers())
-
-
 class CoreServer:
     """Manages the core server lifecycle."""
 
@@ -212,13 +203,12 @@ class CoreServer:
         BuildHistory.init_db()
         Logs.init_db()
 
-        core_socket = CoreSocket()
+        core = CoreSocket()
 
         async with websockets.serve(
-            core_socket.handle_client,
+            core.handle_client,
             "127.0.0.1",
             self.port,
-            process_request=_check_path,
         ):
             print("ATOPILE_SERVER_READY", flush=True)
             log.info("Core server ready")

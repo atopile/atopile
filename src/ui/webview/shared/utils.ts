@@ -1,4 +1,45 @@
-import type { Build, BuildStage } from "../../shared/types";
+import AnsiToHtml from 'ansi-to-html';
+import type { Build, BuildStage, TimeMode } from "../../shared/types";
+import { SOURCE_COLORS } from "../../shared/types";
+
+// ANSI to HTML converter
+export const ansiConverter = new AnsiToHtml({
+  fg: '#e5e5e5',
+  bg: 'transparent',
+  newline: true,
+  escapeXML: true,
+});
+
+/** Hash a string to a deterministic color from SOURCE_COLORS. */
+export function hashStringToColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return SOURCE_COLORS[Math.abs(hash) % SOURCE_COLORS.length];
+}
+
+/** Format an ISO timestamp as wall-clock time or delta from a reference. */
+export function formatTimestamp(ts: string, mode: TimeMode, firstTimestamp: number): string {
+  if (mode === 'wall') {
+    const timePart = ts.split('T')[1];
+    if (!timePart) return ts;
+    return timePart.split('.')[0];
+  }
+  const logTime = new Date(ts).getTime();
+  const delta = logTime - firstTimestamp;
+  if (delta < 1000) return `+${delta}ms`;
+  if (delta < 60000) return `+${(delta / 1000).toFixed(1)}s`;
+  return `+${(delta / 60000).toFixed(1)}m`;
+}
+
+/** Format a file path and optional line number as "filename:line". */
+export function formatSource(file: string | null | undefined, line: number | null | undefined): string | null {
+  if (!file) return null;
+  const filename = file.split('/').pop() || file;
+  return line ? `${filename}:${line}` : filename;
+}
 
 /** Format seconds into a compact human-readable duration. */
 export function formatDuration(seconds: number): string {

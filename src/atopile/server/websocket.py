@@ -22,8 +22,11 @@ from atopile.model.builds import (
 from atopile.model.files import FileWatcher
 from atopile.model.module_introspection import introspect_module_definition
 from atopile.model.projects import handle_get_modules, handle_get_projects
+from atopile.model.sqlite import Logs
 
 log = logging.getLogger(__name__)
+
+STREAM_POLL_INTERVAL = 0.25  # seconds
 
 
 class CoreSocket:
@@ -31,6 +34,7 @@ class CoreSocket:
 
     def __init__(self) -> None:
         self._clients: set[ServerConnection] = set()
+        self._log_tasks: dict[ServerConnection, asyncio.Task] = {}
         self.bind_build_queue(_build_queue)
 
     # -- Client lifecycle --------------------------------------------------
@@ -59,6 +63,9 @@ class CoreSocket:
             pass
         finally:
             self._clients.discard(ws)
+            task = self._log_tasks.pop(ws, None)
+            if task:
+                task.cancel()
             log.info("Core WS client disconnected (%d total)", len(self._clients))
 
     # -- Action dispatch ---------------------------------------------------
@@ -248,6 +255,35 @@ class CoreSocket:
                     },
                 )
 
+            case "subscribeLogs":
+                build_id = msg.get("build_id", "").strip()
+                if not build_id:
+                    await ws.send(
+                        json.dumps(
+                            {"type": "logs_error", "error": "build_id is required"}
+                        )
+                    )
+                    return
+                old_task = self._log_tasks.pop(ws, None)
+                if old_task:
+                    old_task.cancel()
+                query = {
+                    "build_id": build_id,
+                    "stage": msg.get("stage"),
+                    "log_levels": msg.get("log_levels"),
+                    "audience": msg.get("audience"),
+                    "count": msg.get("count", 1000),
+                }
+                task = asyncio.create_task(self._log_stream_loop(ws, query))
+                self._log_tasks[ws] = task
+                log.debug("Log client subscribed to build %s", build_id)
+
+            case "unsubscribeLogs":
+                old_task = self._log_tasks.pop(ws, None)
+                if old_task:
+                    old_task.cancel()
+                log.debug("Log client unsubscribed")
+
             case action:
                 await ws.send(
                     json.dumps(
@@ -261,6 +297,58 @@ class CoreSocket:
                         }
                     )
                 )
+
+    # -- Log streaming -----------------------------------------------------
+
+    async def _log_stream_loop(self, ws: ServerConnection, query: dict) -> None:
+        """Poll SQLite for new logs and push to the client until cancelled."""
+        last_id = 0
+        try:
+            # Send initial batch immediately
+            last_id = await self._push_log_stream(ws, query, last_id)
+            while True:
+                await asyncio.sleep(STREAM_POLL_INTERVAL)
+                last_id = await self._push_log_stream(ws, query, last_id)
+        except asyncio.CancelledError:
+            pass
+        except websockets.ConnectionClosed:
+            pass
+        except Exception:
+            log.exception("Log stream error")
+
+    async def _push_log_stream(
+        self, ws: ServerConnection, query: dict, after_id: int
+    ) -> int:
+        """Fetch new logs from SQLite and push to the client. Returns new cursor."""
+        build_id = query.get("build_id", "")
+        stage = query.get("stage") or None
+        log_levels = query.get("log_levels") or None
+        audience = query.get("audience") or None
+        count = query.get("count", 1000)
+
+        logs, new_last_id = await asyncio.to_thread(
+            Logs.fetch_chunk,
+            build_id,
+            stage=stage,
+            levels=log_levels,
+            audience=audience,
+            after_id=after_id,
+            count=count,
+        )
+
+        if logs:
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "logs_stream",
+                        "logs": logs,
+                        "last_id": new_last_id,
+                    }
+                )
+            )
+            return new_last_id
+
+        return after_id
 
     # -- Build queue integration -------------------------------------------
 

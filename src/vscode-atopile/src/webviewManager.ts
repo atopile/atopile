@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { hubWsUrl } from "./constants";
 
 /**
  * Manages all atopile webviews — both the sidebar panel and
@@ -7,33 +6,42 @@ import { hubWsUrl } from "./constants";
  */
 export class WebviewManager implements vscode.WebviewViewProvider {
   public static readonly sidebarViewId = "atopile.sidebarView";
+  public static readonly logsViewId = "atopile.logsView";
 
   private _sidebarView?: vscode.WebviewView;
+  private _logsView?: vscode.WebviewView;
   private _panels = new Map<string, vscode.WebviewPanel>();
   private readonly _extensionUri: vscode.Uri;
   private readonly _hubPort: number;
+  private readonly _coreServerPort: number;
   private readonly _output: vscode.OutputChannel;
 
-  constructor(extensionUri: vscode.Uri, hubPort: number, output: vscode.OutputChannel) {
+  constructor(extensionUri: vscode.Uri, hubPort: number, coreServerPort: number, output: vscode.OutputChannel) {
     this._extensionUri = extensionUri;
     this._hubPort = hubPort;
+    this._coreServerPort = coreServerPort;
     this._output = output;
   }
 
-  /** Called by VS Code when the sidebar view becomes visible. */
+  /** Called by VS Code when a registered webview view becomes visible. */
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
   ): void {
-    this._sidebarView = webviewView;
-
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this._extensionUri],
     };
 
-    webviewView.webview.html = this._getHtml(webviewView.webview, "sidebar");
+    if (webviewView.viewType === WebviewManager.logsViewId) {
+      this._logsView = webviewView;
+      webviewView.webview.html = this._getHtml(webviewView.webview, "panel-logs");
+    } else {
+      this._sidebarView = webviewView;
+      webviewView.webview.html = this._getHtml(webviewView.webview, "sidebar");
+    }
+
     this._registerMessageHandler(webviewView.webview);
   }
 
@@ -109,8 +117,13 @@ export class WebviewManager implements vscode.WebviewViewProvider {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, panelId, "index.js"));
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, panelId, "index.css"));
     const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, "logo.png"));
-    const hubUrl = hubWsUrl(this._hubPort);
+    const hubPort = this._hubPort;
+    const corePort = this._coreServerPort;
     const csp = webview.cspSource;
+
+    const extraGlobals = panelId === "panel-logs"
+      ? `\n    window.__ATOPILE_CORE_SERVER_PORT__ = ${corePort};`
+      : "";
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -130,9 +143,9 @@ export class WebviewManager implements vscode.WebviewViewProvider {
 <body>
   <div id="root"></div>
   <script>
-    window.__ATOPILE_HUB_URL__ = "${hubUrl}";
+    window.__ATOPILE_HUB_PORT__ = ${hubPort};
     window.__ATOPILE_PANEL_ID__ = "${panelId}";
-    window.__ATOPILE_LOGO_URL__ = "${logoUri}";
+    window.__ATOPILE_LOGO_URL__ = "${logoUri}";${extraGlobals}
   </script>
   <script type="module" src="${scriptUri}"></script>
 </body>

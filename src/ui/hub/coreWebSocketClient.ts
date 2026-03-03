@@ -25,12 +25,12 @@ export class CoreWebSocketClient {
 
     this._client.onConnected = () => {
       console.log("Connected to core server");
-      store.merge("coreStatus", { connected: true });
+      store.merge("coreStatus", { hubCoreConnected: true });
       onConnected?.();
     };
 
     this._client.onDisconnected = () => {
-      store.merge("coreStatus", { connected: false });
+      store.merge("coreStatus", { hubCoreConnected: false });
     };
 
     this._client.onState = (key, data) => {

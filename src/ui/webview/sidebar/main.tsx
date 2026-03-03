@@ -89,14 +89,14 @@ function DisconnectedOverlay({
 function App() {
   const projectState = WebviewWebSocketClient.useSubscribe("projectState");
   const projects = WebviewWebSocketClient.useSubscribe("projects");
-  const hubStatus = WebviewWebSocketClient.useSubscribe("hubStatus");
+  const hubConnected = WebviewWebSocketClient.useSubscribe("hubConnected");
   const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
   const currentBuilds = WebviewWebSocketClient.useSubscribe("currentBuilds");
   const previousBuilds = WebviewWebSocketClient.useSubscribe("previousBuilds");
 
   const [activeTab, setActiveTab] = useState<TabId>("files");
 
-  const isConnected = hubStatus.connected && coreStatus.connected;
+  const isConnected = hubConnected && coreStatus.hubCoreConnected;
   const startupError = coreStatus.error;
   const [hasEverConnected, setHasEverConnected] = useState(false);
 
@@ -225,7 +225,7 @@ function App() {
       <DisconnectedOverlay
         isConnected={isConnected}
         startupError={startupError}
-        hubConnected={hubStatus.connected}
+        hubConnected={hubConnected}
       />
     </div>
   );

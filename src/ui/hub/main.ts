@@ -6,7 +6,7 @@
 import { Store } from "./store";
 import { WebviewWebSocketServer } from "./webviewWebSocketServer";
 import { CoreWebSocketClient } from "./coreWebSocketClient";
-import { requirePort } from "./utils";
+import { requireEnv } from "./utils";
 
 const HUB_READY_MARKER = "ATOPILE_HUB_READY";
 
@@ -23,8 +23,8 @@ class Hub {
   private _workspaceFolders: string[];
 
   constructor() {
-    this._hubPort = requirePort("ATOPILE_HUB_PORT");
-    const coreServerPort = requirePort("ATOPILE_CORE_SERVER_PORT");
+    this._hubPort = parseInt(requireEnv("ATOPILE_HUB_PORT"), 10);
+    const coreServerPort = parseInt(requireEnv("ATOPILE_CORE_SERVER_PORT"), 10);
     this._workspaceFolders = (process.env.ATOPILE_WORKSPACE_FOLDERS ?? "")
       .split(":")
       .filter(Boolean);

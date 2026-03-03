@@ -34,6 +34,10 @@ export {
   SelectGroup,
   SelectLabel,
   SelectSeparator,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
 } from './Select'
 export { Separator } from './Separator'
 export { Skeleton } from './Skeleton'
@@ -51,6 +55,8 @@ export {
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './Tooltip'
 export { TreeRowHeader } from './TreeRowHeader'
 export type { TreeRowHeaderProps } from './TreeRowHeader'
+export { GraphVisualizer2D } from './GraphVisualizer2D'
+export type { GraphNode, GraphEdge } from './GraphVisualizer2D'
 export { typeIcon } from './TypeIcon'
 export { useResizeHandle } from './useResizeHandle'
 export { VersionSelector } from './VersionSelector'

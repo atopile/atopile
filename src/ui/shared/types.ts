@@ -5,7 +5,7 @@
  */
 
 export class StoreState {
-  hubStatus = new HubStatus();
+  hubConnected: boolean = false;
   coreStatus = new CoreStatus();
   extensionSettings = new ExtensionSettings();
   projectState = new ProjectState();
@@ -27,12 +27,9 @@ export class ExtensionSettings {
   autoInstall: boolean = true;
 }
 
-export class HubStatus {
-  connected: boolean = false;
-}
-
 export class CoreStatus {
-  connected: boolean = false;
+  hubCoreConnected: boolean = false;
+  logCoreConnected: boolean = false;
   error: string | null = null;
   uvPath: string = "";
   atoBinary: string = "";
@@ -250,6 +247,67 @@ export class BOMData {
   uniqueParts: number = 0;
   estimatedCost: number | null = null;
   outOfStock: number = 0;
+}
+
+// -- Log viewer types ------------------------------------------------------
+
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'ALERT';
+export type Audience = 'user' | 'developer' | 'agent';
+export type TimeMode = 'delta' | 'wall';
+export type SourceMode = 'source' | 'logger';
+export type LogConnectionState = 'disconnected' | 'connecting' | 'connected';
+
+export const LEVEL_SHORT: Record<LogLevel, string> = {
+  DEBUG: 'D',
+  INFO: 'I',
+  WARNING: 'W',
+  ERROR: 'E',
+  ALERT: 'A',
+};
+
+export const SOURCE_COLORS = [
+  '#cba6f7', '#f38ba8', '#fab387', '#f9e2af',
+  '#a6e3a1', '#94e2d5', '#89dceb', '#74c7ec',
+  '#89b4fa', '#b4befe', '#f5c2e7', '#eba0ac',
+];
+
+export class LogEntry {
+  id?: number;
+  timestamp: string = "";
+  level: LogLevel = "INFO";
+  audience: Audience = "user";
+  logger_name: string = "";
+  message: string = "";
+  stage?: string | null;
+  source_file?: string | null;
+  source_line?: number | null;
+  ato_traceback?: string | null;
+  python_traceback?: string | null;
+  objects?: unknown;
+}
+
+export type LogMessage =
+  | { type: 'logs_stream'; logs: LogEntry[]; last_id: number }
+  | { type: 'logs_error'; error: string };
+
+export class TreeNode {
+  entry: LogEntry = new LogEntry();
+  depth: number = 0;
+  content: string = "";
+  children: TreeNode[] = [];
+}
+
+export class LogTreeGroup {
+  type: 'standalone' | 'tree' = 'standalone';
+  root: TreeNode = new TreeNode();
+}
+
+export class BuildLogRequest {
+  build_id: string = "";
+  stage?: string | null;
+  log_levels?: LogLevel[] | null;
+  audience?: Audience | null;
+  count?: number;
 }
 
 // -- WebSocket protocol messages -------------------------------------------

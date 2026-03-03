@@ -1,20 +1,9 @@
-import { render } from "../shared/render";
+import { render, hubPort } from "../shared/render";
 import { WebviewWebSocketClient } from "../shared/webviewWebSocketClient";
 import { StoreState } from "../../shared/types";
-import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "../shared/components";
+import { Separator, JsonView, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, GraphVisualizer2D } from "../shared/components";
+import type { GraphNode, GraphEdge } from "../shared/components";
 import { ComponentShowcase } from "../shared/components/ComponentShowcase";
-
-function GraphEdge({ connected }: { connected: boolean }) {
-  return (
-    <div
-      className={`graph-edge ${connected ? "is-connected" : "is-disconnected"}`}
-      aria-label={connected ? "Connected link" : "Disconnected link"}
-    >
-      <span className="graph-edge-line" aria-hidden="true" />
-      <span className="graph-edge-label">{connected ? "Connected" : "Disconnected"}</span>
-    </div>
-  );
-}
 
 function StoreRow({ storeKey }: { storeKey: keyof StoreState }) {
   const value = WebviewWebSocketClient.useSubscribe(storeKey);
@@ -44,25 +33,32 @@ function StoreTable() {
   );
 }
 
-const hubPort = (() => {
-  try { return new URL(window.__ATOPILE_HUB_URL__).port; } catch { return ""; }
-})();
-
 function App() {
-  const hubStatus = WebviewWebSocketClient.useSubscribe("hubStatus");
+  const hubConnected = WebviewWebSocketClient.useSubscribe("hubConnected");
   const coreStatus = WebviewWebSocketClient.useSubscribe("coreStatus");
+
+  const nodes: GraphNode[] = [
+    { id: "panels", label: "Panels",       x: 0,   y: 0   },
+    { id: "hub",    label: "UI Hub",       subtitle: hubPort ? `Port ${hubPort}` : undefined,                          x: 200, y: 0   },
+    { id: "core",   label: "Core Server",  subtitle: coreStatus.coreServerPort ? `Port ${coreStatus.coreServerPort}` : undefined, x: 420, y: 0   },
+    { id: "logs",   label: "Log Viewer",   x: 200, y: 100 },
+  ];
+
+  const connColor = (ok: boolean) => ok ? 'var(--success)' : 'var(--error)'
+  const connLabel = (ok: boolean) => ok ? 'Connected' : 'Disconnected'
+
+  const edges: GraphEdge[] = [
+    { id: "e1", from: "panels", to: "hub",  label: connLabel(hubConnected), color: connColor(hubConnected) },
+    { id: "e2", from: "hub",    to: "core", label: connLabel(coreStatus.hubCoreConnected), color: connColor(coreStatus.hubCoreConnected) },
+    { id: "e3", from: "logs",   to: "hub",  label: connLabel(hubConnected), color: connColor(hubConnected) },
+    { id: "e4", from: "logs",   to: "core", label: connLabel(coreStatus.logCoreConnected), color: connColor(coreStatus.logCoreConnected) },
+  ];
 
   return (
     <div className="panel">
       <h2>Developer</h2>
-      <h3>Connections</h3>
-      <div className="graph">
-        <div className="graph-node">Webviews</div>
-        <GraphEdge connected={hubStatus.connected} />
-        <div className="graph-node">UI Hub{hubPort ? ` :${hubPort}` : ""}</div>
-        <GraphEdge connected={coreStatus.connected} />
-        <div className="graph-node">Core Server{coreStatus.coreServerPort ? ` :${coreStatus.coreServerPort}` : ""}</div>
-      </div>
+      <h3>WebSocket Connections</h3>
+      <GraphVisualizer2D nodes={nodes} edges={edges} height={200} />
 
       <Separator className="showcase-divider" />
 

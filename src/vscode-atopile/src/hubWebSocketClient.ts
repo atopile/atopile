@@ -9,14 +9,12 @@ import * as vscode from "vscode";
 import WebSocket from "ws";
 import { WebSocketClient, type SocketLike } from "../../ui/shared/webSocketClient";
 import type { ExtensionSettings } from "../../ui/shared/types";
-import { hubWsUrl } from "./constants";
-
 export class HubWebSocketClient implements vscode.Disposable {
   private _client: WebSocketClient;
 
   constructor(port: number) {
     this._client = new WebSocketClient(
-      () => new WebSocket(hubWsUrl(port)) as unknown as SocketLike,
+      () => new WebSocket(`ws://localhost:${port}/atopile-ui`) as unknown as SocketLike,
       { reconnect: false },
     );
 

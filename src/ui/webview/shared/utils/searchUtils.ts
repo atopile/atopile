@@ -83,11 +83,11 @@ export function highlightMatches(
 
     if (options.isRegex) {
       regex = new RegExp(trimmed, flags);
-      return text.replace(regex, (match) => `<mark class="lv-highlight">${match}</mark>`);
+      return text.replace(regex, (match) => `<mark class="search-highlight">${match}</mark>`);
     } else {
       const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       regex = new RegExp(escaped, flags);
-      return text.replace(regex, (match) => `<mark class="lv-highlight">${match}</mark>`);
+      return text.replace(regex, (match) => `<mark class="search-highlight">${match}</mark>`);
     }
   } catch {
     return text;

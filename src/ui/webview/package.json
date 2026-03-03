@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
+    "@xyflow/react": "^12.10.1",
+    "ansi-to-html": "^0.7.2",
     "lucide-react": "^0.575.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

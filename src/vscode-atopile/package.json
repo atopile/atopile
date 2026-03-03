@@ -20,6 +20,13 @@
                     "title": "atopile",
                     "icon": "resources/atopile-icon.svg"
                 }
+            ],
+            "panel": [
+                {
+                    "id": "atopile-logs",
+                    "title": "atopile Logs",
+                    "icon": "resources/atopile-icon.svg"
+                }
             ]
         },
         "views": {
@@ -28,6 +35,13 @@
                     "type": "webview",
                     "id": "atopile.sidebarView",
                     "name": "atopile"
+                }
+            ],
+            "atopile-logs": [
+                {
+                    "type": "webview",
+                    "id": "atopile.logsView",
+                    "name": "atopile Logs"
                 }
             ]
         },

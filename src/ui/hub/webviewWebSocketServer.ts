@@ -148,6 +148,12 @@ export class WebviewWebSocketServer {
         });
         return;
       }
+      case "updateLogCoreStatus": {
+        store.merge("coreStatus", {
+          logCoreConnected: msg.connected as boolean,
+        });
+        return;
+      }
       default: {
         coreSocket.sendAction(msg.action, msg as Record<string, unknown>);
       }

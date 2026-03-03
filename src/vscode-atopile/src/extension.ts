@@ -4,13 +4,10 @@ import { ProcessManager } from "./processManager";
 import { WebviewManager } from "./webviewManager";
 import { AtoResolver } from "./atoResolver";
 import { HubWebSocketClient } from "./hubWebSocketClient";
-import {
-  findFreePort,
-  HUB_READY_MARKER,
-  CORE_SERVER_READY_MARKER,
-  HUB_PORT_ENV,
-  CORE_SERVER_PORT_ENV,
-} from "./constants";
+import { findFreePort } from "../../ui/hub/utils";
+
+const HUB_READY_MARKER = "ATOPILE_HUB_READY";
+const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
 const panels = [
   { id: "panel-developer", label: "Developer" },
@@ -31,8 +28,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const coreServerPort = await findFreePort();
 
   const portEnv = {
-    [HUB_PORT_ENV]: String(hubPort),
-    [CORE_SERVER_PORT_ENV]: String(coreServerPort),
+    ATOPILE_HUB_PORT: String(hubPort),
+    ATOPILE_CORE_SERVER_PORT: String(coreServerPort),
   };
 
   hub = await startHub(context, output, hubPort, coreServerPort, portEnv);
@@ -43,7 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const resolved = await resolveAtoBinary(resolver, version, output);
   if (!resolved) return;
 
-  webviewManager = new WebviewManager(context.extensionUri, hubPort, output);
+  webviewManager = new WebviewManager(context.extensionUri, hubPort, coreServerPort, output);
   hubSocket.sendAction("resolverInfo", {
     uvPath: resolved.command,
     atoBinary: resolved.atoBinary ?? "",
@@ -132,6 +129,10 @@ function registerCommands(
 ): void {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(WebviewManager.sidebarViewId, wm, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+
+    vscode.window.registerWebviewViewProvider(WebviewManager.logsViewId, wm, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
 

@@ -122,12 +122,14 @@ export class WebSocketClient {
   private _reconnect: ReconnectScheduler | null;
   private _subscribedKeys = new Set<string>();
 
-  /** Called for each incoming state message. */
+  /** Called for each state update. */
   onState: ((key: string, data: unknown) => void) | null = null;
   /** Called when the socket connects (including reconnects). */
   onConnected: (() => void) | null = null;
   /** Called when the socket disconnects. */
   onDisconnected: (() => void) | null = null;
+  /** Called for every incoming message (before protocol routing). */
+  onRawMessage: ((data: unknown) => void) | null = null;
 
   constructor(create: () => SocketLike, opts?: WebSocketClientOptions) {
     this._create = create;
@@ -168,6 +170,7 @@ export class WebSocketClient {
         };
 
         socket.onmessage = (event) => {
+          this.onRawMessage?.(event.data);
           const msg = parseMessage(event.data);
           if (msg?.type === MSG_TYPE.STATE) {
             this.onState?.(msg.key, msg.data);

@@ -47,9 +47,15 @@
   outline-color: var(--error);
 }
 
-.select-trigger .select-chevron {
+.select-trigger .select-chevron,
+.select-chevron {
   color: var(--text-muted);
   flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.select-chevron-open {
+  transform: rotate(180deg);
 }
 
 /* ---- Value (placeholder styling) ---- */

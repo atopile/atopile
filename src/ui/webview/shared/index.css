@@ -285,93 +285,72 @@ body {
   gap: var(--spacing-sm);
 }
 
-.graph {
-  display: grid;
-  grid-template-columns: max-content 1fr max-content 1fr max-content;
-  align-items: center;
-  gap: var(--spacing-md);
-  width: 640px;
-  max-width: 100%;
+/* ============================================
+   Shared Utility Classes
+   ============================================ */
+
+/* Search highlight — used by searchUtils.ts */
+.search-highlight {
+  background: rgba(var(--ctp-yellow-rgb), 0.4);
+  color: var(--warning);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Empty state — centered muted message */
+.empty-state {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+}
+
+/* Inline error — compact error callout */
+.inline-error {
   margin-top: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-}
-
-.graph-node {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--border-subtle);
+  background: rgba(var(--ctp-red-rgb), 0.15);
   border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
-  white-space: nowrap;
-  text-align: center;
+  color: var(--ctp-red);
+  font-size: var(--font-size-sm);
 }
 
-.graph-edge {
-  position: relative;
+/* Separator lines — labeled dividers */
+.separator-line {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-width: 0;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) 0;
 }
 
-.graph-edge-line {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  top: 50%;
+.separator-line-bar {
+  flex: 1;
   height: 1px;
-  background: currentColor;
+  background: var(--border-subtle);
+  min-width: 20px;
 }
 
-.graph-edge-line::before,
-.graph-edge-line::after {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-52%);
+.separator-single .separator-line-bar { background: var(--text-muted); opacity: 0.4; }
+
+.separator-double .separator-line-bar {
+  height: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--text-muted) 0%, var(--text-muted) 40%,
+    transparent 40%, transparent 60%,
+    var(--text-muted) 60%, var(--text-muted) 100%
+  );
+  opacity: 0.5;
+}
+
+.separator-line-label {
+  flex-shrink: 0;
   font-size: var(--font-size-xs);
-  color: currentColor;
-}
-
-.graph-edge-line::before {
-  content: "◀";
-  left: -2px;
-}
-
-.graph-edge-line::after {
-  content: "▶";
-  right: -2px;
-}
-
-.graph-edge.is-connected {
-  color: var(--success);
-}
-
-.graph-edge.is-disconnected {
-  color: var(--error);
-}
-
-.graph-edge-label {
-  position: relative;
-  z-index: 1;
-  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
   padding: 0 var(--spacing-xs);
-  background: var(--bg-secondary);
-  white-space: nowrap;
 }
 
-@media (max-width: 900px) {
-  .graph {
-    grid-template-columns: auto;
-    justify-items: center;
-  }
-
-  .graph-edge {
-    width: 100%;
-    min-width: 0;
-    max-width: 260px;
-  }
-}
