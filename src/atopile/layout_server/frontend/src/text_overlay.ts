@@ -208,7 +208,7 @@ export function renderTextOverlay(
                 if (!layerName) continue;
                 if (hiddenLayers.has(layerName)) continue;
                 const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
-                const textRotation = (fp.at.r || 0) + (text.at.r || 0);
+                const textRotation = text.at.r || 0;
                 drawStrokeText(ctx, camera, layerById, width, height, {
                     text: text.text,
                     worldX: worldPos.x,
