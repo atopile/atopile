@@ -16,6 +16,7 @@ class ToolDirectoryItem:
     inputs: list[str]
     typical_output: str
     keywords: list[str]
+    tool_role: str = "discovery"  # "discovery", "execution", or "both"
 
 
 _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
@@ -207,6 +208,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["path", "edits"],
         typical_output="operations_applied, first_changed_line, bytes",
         keywords=["edit", "change", "modify", "fix code", "patch"],
+        tool_role="execution",
     ),
     "project_create_path": ToolDirectoryItem(
         name="project_create_path",
@@ -226,6 +228,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "scaffold",
             "bootstrap",
         ],
+        tool_role="execution",
     ),
     "project_create_file": ToolDirectoryItem(
         name="project_create_file",
@@ -243,6 +246,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "add file",
             "scaffold file",
         ],
+        tool_role="execution",
     ),
     "project_create_folder": ToolDirectoryItem(
         name="project_create_folder",
@@ -258,6 +262,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "new directory",
             "mkdir",
         ],
+        tool_role="execution",
     ),
     "project_move_path": ToolDirectoryItem(
         name="project_move_path",
@@ -267,6 +272,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["old_path", "new_path", "overwrite"],
         typical_output="old_path, new_path, kind, overwrote",
         keywords=["move file", "move folder", "rearrange", "rename path"],
+        tool_role="execution",
     ),
     "project_rename_path": ToolDirectoryItem(
         name="project_rename_path",
@@ -284,6 +290,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "rename module",
             "move path",
         ],
+        tool_role="execution",
     ),
     "project_delete_path": ToolDirectoryItem(
         name="project_delete_path",
@@ -293,6 +300,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["path", "recursive"],
         typical_output="path, kind, deleted",
         keywords=["delete file", "remove file", "delete folder", "remove path"],
+        tool_role="execution",
     ),
     "stdlib_list": ToolDirectoryItem(
         name="stdlib_list",
@@ -342,6 +350,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["lcsc_id"],
         typical_output="success, lcsc_id",
         keywords=["install part", "lcsc id", "add part"],
+        tool_role="execution",
     ),
     "datasheet_read": ToolDirectoryItem(
         name="datasheet_read",
@@ -383,6 +392,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["identifier", "version"],
         typical_output="success, identifier, version",
         keywords=["install package", "add dependency", "pin version"],
+        tool_role="execution",
     ),
     "build_run": ToolDirectoryItem(
         name="build_run",
@@ -399,6 +409,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         ],
         typical_output="success, build_targets, message",
         keywords=["build", "run build", "compile", "queue build"],
+        tool_role="execution",
     ),
     "build_create": ToolDirectoryItem(
         name="build_create",
@@ -408,6 +419,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["name", "entry"],
         typical_output="success, target",
         keywords=["create build", "new target", "add build target"],
+        tool_role="execution",
     ),
     "build_rename": ToolDirectoryItem(
         name="build_rename",
@@ -417,6 +429,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["old_name", "new_name", "new_entry"],
         typical_output="success, target",
         keywords=["rename build", "update target", "change build name"],
+        tool_role="execution",
     ),
     "build_logs_search": ToolDirectoryItem(
         name="build_logs_search",
@@ -463,6 +476,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "tunnel",
             "public webhook",
         ],
+        tool_role="both",
     ),
     "autolayout_run": ToolDirectoryItem(
         name="autolayout_run",
@@ -494,6 +508,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "route board",
             "place board",
         ],
+        tool_role="execution",
     ),
     "autolayout_status": ToolDirectoryItem(
         name="autolayout_status",
@@ -538,6 +553,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "archive iteration",
             "use routed board",
         ],
+        tool_role="execution",
     ),
     "autolayout_request_screenshot": ToolDirectoryItem(
         name="autolayout_request_screenshot",
@@ -567,6 +583,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "highlight component",
             "spotlight component",
         ],
+        tool_role="execution",
     ),
     "layout_get_component_position": ToolDirectoryItem(
         name="layout_get_component_position",
@@ -616,6 +633,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "placement edit",
             "layout transform",
         ],
+        tool_role="execution",
     ),
     "layout_run_drc": ToolDirectoryItem(
         name="layout_run_drc",
@@ -634,6 +652,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "rule violations",
             "board check",
         ],
+        tool_role="both",
     ),
     "autolayout_configure_board_intent": ToolDirectoryItem(
         name="autolayout_configure_board_intent",
@@ -668,6 +687,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "dielectric",
             "impedance assumptions",
         ],
+        tool_role="execution",
     ),
     "report_bom": ToolDirectoryItem(
         name="report_bom",
@@ -722,6 +742,7 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "production files",
             "mfg-data",
         ],
+        tool_role="execution",
     ),
     "manufacturing_summary": ToolDirectoryItem(
         name="manufacturing_summary",
@@ -738,6 +759,24 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
 def available_tool_names() -> list[str]:
     names = sorted(set(tools.get_tool_names()) & set(_TOOL_DIRECTORY.keys()))
     return names
+
+
+def discovery_tool_names() -> set[str]:
+    """Tool names classified as discovery (or both)."""
+    return {
+        name
+        for name, item in _TOOL_DIRECTORY.items()
+        if item.tool_role in ("discovery", "both")
+    }
+
+
+def execution_tool_names() -> set[str]:
+    """Tool names classified as execution (or both)."""
+    return {
+        name
+        for name, item in _TOOL_DIRECTORY.items()
+        if item.tool_role in ("execution", "both")
+    }
 
 
 def get_tool_directory_items() -> list[dict[str, object]]:

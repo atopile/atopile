@@ -9,6 +9,7 @@ from openai import APIStatusError
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent.orchestrator import (
+    AgentConfig,
     AgentOrchestrator,
     ToolTrace,
     _build_function_call_outputs_for_model,
@@ -320,10 +321,13 @@ def test_run_worker_turn_stops_repetitive_discovery_loop(
     (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
     (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
 
-    orchestrator = AgentOrchestrator()
-    orchestrator.worker_loop_guard_min_discovery = 4
-    orchestrator.worker_loop_guard_max_hits = 1
-    orchestrator.max_tool_loops = 30
+    orchestrator = AgentOrchestrator(
+        AgentConfig(
+            worker_loop_guard_min_discovery=4,
+            worker_loop_guard_max_hits=1,
+            max_tool_loops=30,
+        )
+    )
 
     async def fake_build_context(**_: object) -> str:
         return "Project summary: minimal test context"
@@ -383,9 +387,12 @@ def test_run_worker_turn_stops_on_repeated_tool_failures(
     (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
     (tmp_path / "main.ato").write_text("module App:\n    pass\n", encoding="utf-8")
 
-    orchestrator = AgentOrchestrator()
-    orchestrator.worker_failure_streak_limit = 2
-    orchestrator.max_tool_loops = 20
+    orchestrator = AgentOrchestrator(
+        AgentConfig(
+            worker_failure_streak_limit=2,
+            max_tool_loops=20,
+        )
+    )
 
     async def fake_build_context(**_: object) -> str:
         return "Project summary: minimal test context"
@@ -453,10 +460,13 @@ def test_run_worker_turn_stops_after_no_concrete_progress(
 ) -> None:
     (tmp_path / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
 
-    orchestrator = AgentOrchestrator()
-    orchestrator.worker_no_progress_loop_limit = 3
-    orchestrator.worker_loop_guard_min_discovery = 10
-    orchestrator.max_tool_loops = 30
+    orchestrator = AgentOrchestrator(
+        AgentConfig(
+            worker_no_progress_loop_limit=3,
+            worker_loop_guard_min_discovery=10,
+            max_tool_loops=30,
+        )
+    )
 
     async def fake_build_context(**_: object) -> str:
         return "Project summary: minimal test context"

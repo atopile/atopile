@@ -12,10 +12,7 @@ from atopile.server.agent.mediator_catalog import (
 )
 from atopile.server.agent.mediator_inference import (
     _extract_context_id,
-    _infer_prefilled_args,
     _maybe_explain_failure_suggestion,
-    _prefilled_prompt,
-    _reason_from_matches,
     _stale_after_seconds,
     _summarize_result,
 )
@@ -119,45 +116,10 @@ def get_tool_memory_view(
     return entries
 
 
-def suggest_tools(
-    *,
-    message: str,
-    history: list[dict[str, str]],
-    selected_targets: list[str],
-    tool_memory: dict[str, dict[str, Any]],
-    limit: int = 3,
-) -> list[dict[str, Any]]:
-    """Rank likely tools for a message and provide argument/prompt hints."""
-    text = message.strip().lower()
-    context_text = " ".join(
-        str(item.get("content", "")).lower() for item in history[-4:]
-    ).strip()
-    search_blob = text if text else context_text
-
-    suggestions: list[dict[str, Any]] = []
-    directory = get_tool_directory()
-    memory_view = {
-        str(item["tool_name"]): item for item in get_tool_memory_view(tool_memory)
-    }
-
-    for item in directory:
-        name = str(item["name"])
-        keywords = [str(keyword).lower() for keyword in item.get("keywords", [])]
-        score = 0.0
-        matched: list[str] = []
-
-        for keyword in keywords:
-            if keyword and keyword in search_blob:
-                score += 1.5
-                matched.append(keyword)
-
-        if text and name in text:
-            score += 2.0
-            matched.append(name)
-
-        if "build" in search_blob and str(item.get("category")) == "build":
-            score += 0.7
-        web_terms = (
+_TERM_BOOST_RULES: list[tuple[tuple[str, ...], dict[str, float]]] = [
+    # (search terms, {tool_name: bonus, ...})
+    (
+        (
             "web",
             "internet",
             "latest",
@@ -167,10 +129,11 @@ def suggest_tools(
             "recent",
             "what changed",
             "release notes",
-        )
-        if any(term in search_blob for term in web_terms) and name == "web_search":
-            score += 1.7
-        physical_part_terms = (
+        ),
+        {"web_search": 1.7},
+    ),
+    (
+        (
             "lcsc",
             "jlc",
             "footprint",
@@ -180,22 +143,21 @@ def suggest_tools(
             "capacitor",
             "connector",
             "part number",
-        )
-        if any(term in search_blob for term in physical_part_terms) and name in {
-            "parts_search",
-            "parts_install",
-        }:
-            score += 1.2
-        package_terms = ("package", "dependency", "registry", "import")
-        if any(term in search_blob for term in package_terms) and name in {
-            "packages_search",
-            "packages_install",
-            "package_ato_list",
-            "package_ato_search",
-            "package_ato_read",
-        }:
-            score += 1.0
-        structure_terms = (
+        ),
+        {"parts_search": 1.2, "parts_install": 1.2},
+    ),
+    (
+        ("package", "dependency", "registry", "import"),
+        {
+            "packages_search": 1.0,
+            "packages_install": 1.0,
+            "package_ato_list": 1.0,
+            "package_ato_search": 1.0,
+            "package_ato_read": 1.0,
+        },
+    ),
+    (
+        (
             "architecture",
             "structure",
             "hierarchy",
@@ -203,13 +165,11 @@ def suggest_tools(
             "block diagram",
             "topology",
             "design overview",
-        )
-        if any(term in search_blob for term in structure_terms) and name in {
-            "project_list_modules",
-            "project_module_children",
-        }:
-            score += 1.3
-        example_terms = (
+        ),
+        {"project_list_modules": 1.3, "project_module_children": 1.3},
+    ),
+    (
+        (
             "example",
             "examples",
             "reference",
@@ -218,17 +178,18 @@ def suggest_tools(
             "how to write ato",
             "ato snippet",
             "similar design",
-        )
-        if any(term in search_blob for term in example_terms) and name in {
-            "examples_list",
-            "examples_search",
-            "examples_read_ato",
-            "package_ato_list",
-            "package_ato_search",
-            "package_ato_read",
-        }:
-            score += 1.9
-        package_source_terms = (
+        ),
+        {
+            "examples_list": 1.9,
+            "examples_search": 1.9,
+            "examples_read_ato": 1.9,
+            "package_ato_list": 1.9,
+            "package_ato_search": 1.9,
+            "package_ato_read": 1.9,
+        },
+    ),
+    (
+        (
             ".ato/modules",
             "package source",
             "installed module code",
@@ -236,35 +197,19 @@ def suggest_tools(
             "package ato",
             "look through package",
             "scan package",
-        )
-        if any(term in search_blob for term in package_source_terms) and name in {
-            "package_ato_list",
-            "package_ato_search",
-            "package_ato_read",
-        }:
-            score += 2.2
-        bom_terms = (
-            "bom",
-            "bill of materials",
-            "parts list",
-            "line items",
-            "procurement",
-        )
-        if any(term in search_blob for term in bom_terms) and name == "report_bom":
-            score += 1.6
-        parameter_terms = (
-            "variables",
-            "parameters",
-            "params",
-            "constraints",
-            "computed values",
-        )
-        if (
-            any(term in search_blob for term in parameter_terms)
-            and name == "report_variables"
-        ):
-            score += 1.6
-        mfg_generate_terms = (
+        ),
+        {"package_ato_list": 2.2, "package_ato_search": 2.2, "package_ato_read": 2.2},
+    ),
+    (
+        ("bom", "bill of materials", "parts list", "line items", "procurement"),
+        {"report_bom": 1.6},
+    ),
+    (
+        ("variables", "parameters", "params", "constraints", "computed values"),
+        {"report_variables": 1.6},
+    ),
+    (
+        (
             "generate manufacturing",
             "create manufacturing",
             "manufacturing files",
@@ -273,19 +218,15 @@ def suggest_tools(
             "pnp",
             "fabrication package",
             "production files",
-        )
-        if (
-            any(term in search_blob for term in mfg_generate_terms)
-            and name == "manufacturing_generate"
-        ):
-            score += 1.9
-        mfg_summary_terms = ("manufacturing summary", "cost estimate", "mfg summary")
-        if (
-            any(term in search_blob for term in mfg_summary_terms)
-            and name == "manufacturing_summary"
-        ):
-            score += 1.4
-        autolayout_terms = (
+        ),
+        {"manufacturing_generate": 1.9},
+    ),
+    (
+        ("manufacturing summary", "cost estimate", "mfg summary"),
+        {"manufacturing_summary": 1.4},
+    ),
+    (
+        (
             "autolayout",
             "auto layout",
             "autoroute",
@@ -294,29 +235,32 @@ def suggest_tools(
             "placement",
             "deeppcb",
             "pcb layout",
-        )
-        if any(term in search_blob for term in autolayout_terms):
-            if name == "autolayout_run":
-                score += 1.9
-            elif name in {"autolayout_status", "autolayout_fetch_to_layout"}:
-                score += 1.3
-            elif name == "autolayout_configure_board_intent":
-                score += 1.1
-            elif name == "autolayout_webhook_gateway":
-                score += 1.0
-        webhook_terms = (
-            "webhook",
-            "cloudflared",
-            "tunnel",
-            "public callback",
-            "deeppcb callback",
-        )
-        if (
-            any(term in search_blob for term in webhook_terms)
-            and name == "autolayout_webhook_gateway"
-        ):
-            score += 2.2
-        stackup_terms = (
+        ),
+        {
+            "autolayout_run": 1.9,
+            "autolayout_status": 1.3,
+            "autolayout_fetch_to_layout": 1.3,
+            "autolayout_configure_board_intent": 1.1,
+            "autolayout_webhook_gateway": 1.0,
+        },
+    ),
+    (
+        (
+            "status",
+            "progress",
+            "check in",
+            "monitor",
+            "how is it going",
+            "poll",
+        ),
+        {"autolayout_status": 1.5},
+    ),
+    (
+        ("webhook", "cloudflared", "tunnel", "public callback", "deeppcb callback"),
+        {"autolayout_webhook_gateway": 2.2},
+    ),
+    (
+        (
             "ground pour",
             "ground plane",
             "power plane",
@@ -326,38 +270,32 @@ def suggest_tools(
             "dielectric",
             "impedance",
             "controlled impedance",
-        )
-        if (
-            any(term in search_blob for term in stackup_terms)
-            and name == "autolayout_configure_board_intent"
-        ):
-            score += 2.1
-        fetch_terms = (
+        ),
+        {"autolayout_configure_board_intent": 2.1},
+    ),
+    (
+        (
             "fetch routed",
             "fetch placement",
             "apply candidate",
             "pull layout",
             "archive iteration",
-        )
-        if (
-            any(term in search_blob for term in fetch_terms)
-            and name == "autolayout_fetch_to_layout"
-        ):
-            score += 1.8
-        screenshot_terms = (
+        ),
+        {"autolayout_fetch_to_layout": 1.8},
+    ),
+    (
+        (
             "screenshot",
             "render board",
             "board image",
             "2d image",
             "3d image",
             "board preview",
-        )
-        if (
-            any(term in search_blob for term in screenshot_terms)
-            and name == "autolayout_request_screenshot"
-        ):
-            score += 1.9
-        placement_query_terms = (
+        ),
+        {"autolayout_request_screenshot": 1.9},
+    ),
+    (
+        (
             "component position",
             "where is",
             "placement query",
@@ -365,13 +303,11 @@ def suggest_tools(
             "reference designator",
             "xy",
             "rotation",
-        )
-        if (
-            any(term in search_blob for term in placement_query_terms)
-            and name == "layout_get_component_position"
-        ):
-            score += 2.0
-        placement_edit_terms = (
+        ),
+        {"layout_get_component_position": 2.0},
+    ),
+    (
+        (
             "move component",
             "set component position",
             "nudge",
@@ -379,57 +315,90 @@ def suggest_tools(
             "placement edit",
             "set x",
             "set y",
-        )
-        if (
-            any(term in search_blob for term in placement_edit_terms)
-            and name == "layout_set_component_position"
-        ):
-            score += 2.0
-        if "failure" in search_blob and name in {
-            "build_logs_search",
-            "design_diagnostics",
-        }:
-            score += 1.1
-        if selected_targets and name in {
-            "build_run",
-            "report_bom",
-            "report_variables",
-            "manufacturing_generate",
-            "manufacturing_summary",
-            "autolayout_run",
-            "autolayout_request_screenshot",
-            "autolayout_configure_board_intent",
-        }:
-            score += 0.3
+        ),
+        {"layout_set_component_position": 2.0},
+    ),
+    (
+        ("failure",),
+        {"build_logs_search": 1.1, "design_diagnostics": 1.1},
+    ),
+]
 
-        prefilled_args = _infer_prefilled_args(
-            tool_name=name,
-            message=message,
-            selected_targets=selected_targets,
-            memory_view=memory_view,
-        )
-        if prefilled_args:
-            score += 0.8
+_TARGET_BONUS_TOOLS = {
+    "build_run",
+    "report_bom",
+    "report_variables",
+    "manufacturing_generate",
+    "manufacturing_summary",
+    "autolayout_run",
+    "autolayout_request_screenshot",
+    "autolayout_configure_board_intent",
+}
+
+_DEFAULT_SUGGESTIONS = ("project_read_file", "project_list_modules", "build_run")
+
+
+def _compute_term_boosts(search_blob: str) -> dict[str, float]:
+    """Pre-compute per-tool bonus scores from term-boost rules."""
+    boosts: dict[str, float] = {}
+    for terms, tool_scores in _TERM_BOOST_RULES:
+        if any(term in search_blob for term in terms):
+            for tool_name, bonus in tool_scores.items():
+                boosts[tool_name] = boosts.get(tool_name, 0.0) + bonus
+    return boosts
+
+
+def suggest_tools(
+    *,
+    message: str,
+    history: list[dict[str, str]],
+    selected_targets: list[str],
+    tool_memory: dict[str, dict[str, Any]],
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """Rank likely tools for a message."""
+    text = message.strip().lower()
+    context_text = " ".join(
+        str(item.get("content", "")).lower() for item in history[-4:]
+    ).strip()
+    search_blob = text or context_text
+
+    directory = get_tool_directory()
+    memory_view = {
+        str(item["tool_name"]): item for item in get_tool_memory_view(tool_memory)
+    }
+    term_boosts = _compute_term_boosts(search_blob)
+    has_targets = bool(selected_targets)
+
+    suggestions: list[dict[str, Any]] = []
+    for item in directory:
+        name = str(item["name"])
+        score = term_boosts.get(name, 0.0)
+
+        for keyword in item.get("keywords", []):
+            kw = str(keyword).lower()
+            if kw and kw in search_blob:
+                score += 1.5
+
+        if text and name in text:
+            score += 2.0
+        if "build" in search_blob and str(item.get("category")) == "build":
+            score += 0.7
+        if has_targets and name in _TARGET_BONUS_TOOLS:
+            score += 0.3
 
         if score <= 0.0:
             continue
-
-        reason = _reason_from_matches(
-            name=name,
-            matched_keywords=matched,
-            default_reason=str(item.get("purpose", "")),
-        )
-        prefilled_prompt = _prefilled_prompt(name, prefilled_args)
 
         suggestions.append(
             {
                 "name": name,
                 "category": item.get("category"),
                 "score": round(score, 2),
-                "reason": reason,
+                "reason": str(item.get("purpose", "")) or f"Likely useful: {name}.",
                 "tooltip": item.get("tooltip"),
-                "prefilled_args": prefilled_args,
-                "prefilled_prompt": prefilled_prompt,
+                "prefilled_args": {},
+                "prefilled_prompt": None,
                 "kind": "tool",
             }
         )
@@ -442,28 +411,23 @@ def suggest_tools(
         suggestions.append(composite)
 
     if not suggestions and text:
-        defaults = ["project_read_file", "project_list_modules", "build_run"]
-        for name in defaults:
-            item = next((entry for entry in directory if entry["name"] == name), None)
-            if item is None:
-                continue
-            suggestions.append(
-                {
-                    "name": name,
-                    "category": item.get("category"),
-                    "score": 0.5,
-                    "reason": str(item.get("purpose", "")),
-                    "tooltip": item.get("tooltip"),
-                    "prefilled_args": {},
-                    "prefilled_prompt": None,
-                    "kind": "tool",
-                }
-            )
+        for name in _DEFAULT_SUGGESTIONS:
+            item = next((e for e in directory if e["name"] == name), None)
+            if item is not None:
+                suggestions.append(
+                    {
+                        "name": name,
+                        "category": item.get("category"),
+                        "score": 0.5,
+                        "reason": str(item.get("purpose", "")),
+                        "tooltip": item.get("tooltip"),
+                        "prefilled_args": {},
+                        "prefilled_prompt": None,
+                        "kind": "tool",
+                    }
+                )
 
     suggestions.sort(
-        key=lambda suggestion: (
-            -float(suggestion.get("score", 0.0)),
-            str(suggestion.get("name", "")),
-        )
+        key=lambda s: (-float(s.get("score", 0.0)), str(s.get("name", "")))
     )
     return suggestions[: max(1, limit)]

@@ -444,57 +444,15 @@ def _tool_call_signature(*, tool_name: str, args: dict[str, Any]) -> str:
 
 
 def _worker_discovery_tool_names() -> set[str]:
-    return {
-        "project_read_file",
-        "project_list_files",
-        "project_search",
-        "project_list_modules",
-        "project_module_children",
-        "stdlib_list",
-        "stdlib_get_item",
-        "examples_list",
-        "examples_search",
-        "examples_read_ato",
-        "package_ato_list",
-        "package_ato_search",
-        "package_ato_read",
-        "web_search",
-        "parts_search",
-        "packages_search",
-        "build_logs_search",
-        "design_diagnostics",
-        "report_bom",
-        "report_variables",
-        "manufacturing_summary",
-        "autolayout_status",
-        "autolayout_webhook_gateway",
-        "datasheet_read",
-        "layout_get_component_position",
-        "layout_run_drc",
-    }
+    from atopile.server.agent.mediator_catalog import discovery_tool_names
+
+    return discovery_tool_names()
 
 
 def _worker_execution_tool_names() -> set[str]:
-    return {
-        "project_edit_file",
-        "project_create_path",
-        "project_create_file",
-        "project_create_folder",
-        "project_move_path",
-        "project_rename_path",
-        "project_delete_path",
-        "parts_install",
-        "packages_install",
-        "build_run",
-        "manufacturing_generate",
-        "autolayout_webhook_gateway",
-        "autolayout_run",
-        "autolayout_fetch_to_layout",
-        "autolayout_request_screenshot",
-        "autolayout_configure_board_intent",
-        "layout_set_component_position",
-        "layout_run_drc",
-    }
+    from atopile.server.agent.mediator_catalog import execution_tool_names
+
+    return execution_tool_names()
 
 
 def _build_worker_loop_guard_message(

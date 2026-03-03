@@ -1,9 +1,13 @@
-"""Agent module tests moved from colocated runtime modules."""
+"""Agent mediator tests: tool surfacing, memory, and catalog-derived sets."""
 
 import time
 from dataclasses import dataclass
 
 from atopile.server.agent import mediator
+from atopile.server.agent.mediator_catalog import (
+    discovery_tool_names,
+    execution_tool_names,
+)
 
 
 @dataclass
@@ -11,6 +15,9 @@ class FakeTrace:
     name: str
     ok: bool
     result: dict
+
+
+# --- tool directory ---
 
 
 def test_get_tool_directory_includes_core_tools() -> None:
@@ -39,24 +46,188 @@ def test_get_tool_directory_includes_core_tools() -> None:
     assert "package_ato_read" in names
 
 
-def test_suggest_tools_prefills_build_logs_from_message() -> None:
+# --- catalog-derived role sets ---
+
+
+def test_discovery_tool_names_includes_read_tools() -> None:
+    names = discovery_tool_names()
+    assert "project_read_file" in names
+    assert "project_list_files" in names
+    assert "project_search" in names
+    assert "stdlib_list" in names
+    assert "parts_search" in names
+    assert "autolayout_status" in names
+    assert "datasheet_read" in names
+
+
+def test_execution_tool_names_includes_edit_tools() -> None:
+    names = execution_tool_names()
+    assert "project_edit_file" in names
+    assert "project_create_file" in names
+    assert "build_run" in names
+    assert "autolayout_run" in names
+    assert "parts_install" in names
+    assert "manufacturing_generate" in names
+
+
+def test_both_role_tools_appear_in_both_sets() -> None:
+    disc = discovery_tool_names()
+    exec_ = execution_tool_names()
+    for tool in ("autolayout_webhook_gateway", "layout_run_drc"):
+        assert tool in disc, f"{tool} missing from discovery"
+        assert tool in exec_, f"{tool} missing from execution"
+
+
+def test_discovery_and_execution_cover_all_catalog_tools() -> None:
+    disc = discovery_tool_names()
+    exec_ = execution_tool_names()
+    all_names = disc | exec_
+    directory_names = {entry["name"] for entry in mediator.get_tool_directory()}
+    assert directory_names <= all_names
+
+
+# --- tool surfacing ---
+
+
+def _suggestion_names(suggestions: list[dict]) -> set[str]:
+    return {s["name"] for s in suggestions}
+
+
+def test_suggest_tools_surfaces_build_logs_for_failure_message() -> None:
     suggestions = mediator.suggest_tools(
         message="can you inspect build a13d257908e95383 failure logs?",
         history=[],
         selected_targets=[],
         tool_memory={},
     )
+    assert "build_logs_search" in _suggestion_names(suggestions)
 
-    build_logs = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "build_logs_search"
-        ),
-        None,
+
+def test_suggest_tools_surfaces_parts_for_physical_component_queries() -> None:
+    suggestions = mediator.suggest_tools(
+        message="search lcsc stm32f4 mcu part",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
     )
-    assert build_logs is not None
-    assert build_logs["prefilled_args"]["build_id"] == "a13d257908e95383"
+    names = _suggestion_names(suggestions)
+    assert "parts_search" in names
+
+
+def test_suggest_tools_surfaces_datasheet_for_lcsc_id() -> None:
+    suggestions = mediator.suggest_tools(
+        message="check datasheet for C521608 and review pin functions",
+        history=[],
+        selected_targets=["default"],
+        tool_memory={},
+    )
+    assert "datasheet_read" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_bom_tool_for_bom_requests() -> None:
+    suggestions = mediator.suggest_tools(
+        message="Can you review the BOM and parts list for this target?",
+        history=[],
+        selected_targets=["default"],
+        tool_memory={},
+    )
+    assert "report_bom" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_variables_tool_for_parameter_requests() -> None:
+    suggestions = mediator.suggest_tools(
+        message="Show me the computed parameters and constraints",
+        history=[],
+        selected_targets=["main"],
+        tool_memory={},
+    )
+    assert "report_variables" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_module_children_for_hierarchy_requests() -> None:
+    suggestions = mediator.suggest_tools(
+        message="inspect hierarchy for src/main.ato:App",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    names = _suggestion_names(suggestions)
+    assert "project_module_children" in names or "project_list_modules" in names
+
+
+def test_suggest_tools_surfaces_manufacturing_generate() -> None:
+    suggestions = mediator.suggest_tools(
+        message=(
+            "generate manufacturing files (gerber + pick and place) for target default"
+        ),
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    assert "manufacturing_generate" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_autolayout_for_routing_intent() -> None:
+    suggestions = mediator.suggest_tools(
+        message="run deeppcb autoroute for target default in background",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    assert "autolayout_run" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_autolayout_status_for_status_requests() -> None:
+    suggestions = mediator.suggest_tools(
+        message="check in periodically on autolayout progress",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    assert "autolayout_status" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_drc_for_drc_requests() -> None:
+    suggestions = mediator.suggest_tools(
+        message="run a quick drc check for target default",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    assert "layout_run_drc" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_stackup_config_tool() -> None:
+    suggestions = mediator.suggest_tools(
+        message="set 4-layer stackup and add a GND ground plane pour",
+        history=[],
+        selected_targets=["default"],
+        tool_memory={},
+    )
+    assert "autolayout_configure_board_intent" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_examples_search() -> None:
+    suggestions = mediator.suggest_tools(
+        message="show an example of i2c module templating in ato",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    assert "examples_search" in _suggestion_names(suggestions)
+
+
+def test_suggest_tools_surfaces_package_ato_search() -> None:
+    suggestions = mediator.suggest_tools(
+        message="search package ato source for regulator enable pattern",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+    assert "package_ato_search" in _suggestion_names(suggestions)
+
+
+# --- tool memory ---
 
 
 def test_tool_memory_view_marks_stale_entries() -> None:
@@ -93,236 +264,6 @@ def test_update_tool_memory_summarizes_results() -> None:
     assert "edits applied" in entry["summary"]
 
 
-def test_suggest_tools_prefers_parts_for_physical_component_queries() -> None:
-    suggestions = mediator.suggest_tools(
-        message="search lcsc stm32f4 mcu part",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    parts = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "parts_search"
-        ),
-        None,
-    )
-    packages = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "packages_search"
-        ),
-        None,
-    )
-
-    assert parts is not None
-    assert parts["prefilled_args"].get("query")
-    if packages is not None:
-        assert float(parts["score"]) >= float(packages["score"])
-
-
-def test_suggest_tools_prefills_debug_log_filters() -> None:
-    suggestions = mediator.suggest_tools(
-        message="show debug logs for build a13d257908e95383 stage compile",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    build_logs = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "build_logs_search"
-        ),
-        None,
-    )
-    assert build_logs is not None
-    assert build_logs["prefilled_args"]["build_id"] == "a13d257908e95383"
-    assert build_logs["prefilled_args"]["log_levels"] == ["DEBUG"]
-    assert build_logs["prefilled_args"]["stage"] == "compile"
-
-
-def test_suggest_tools_prefills_datasheet_read_from_lcsc_id() -> None:
-    suggestions = mediator.suggest_tools(
-        message="check datasheet for C521608 and review pin functions",
-        history=[],
-        selected_targets=["default"],
-        tool_memory={},
-    )
-
-    datasheet = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "datasheet_read"
-        ),
-        None,
-    )
-    assert datasheet is not None
-    assert datasheet["prefilled_args"]["lcsc_id"] == "C521608"
-    assert datasheet["prefilled_args"]["target"] == "default"
-
-
-def test_suggest_tools_surfaces_bom_tool_for_bom_requests() -> None:
-    suggestions = mediator.suggest_tools(
-        message="Can you review the BOM and parts list for this target?",
-        history=[],
-        selected_targets=["default"],
-        tool_memory={},
-    )
-
-    bom = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "report_bom"
-        ),
-        None,
-    )
-    assert bom is not None
-    assert bom["prefilled_args"]["target"] == "default"
-
-
-def test_suggest_tools_surfaces_variables_tool_for_parameter_requests() -> None:
-    suggestions = mediator.suggest_tools(
-        message="Show me the computed parameters and constraints",
-        history=[],
-        selected_targets=["main"],
-        tool_memory={},
-    )
-
-    variables = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "report_variables"
-        ),
-        None,
-    )
-    assert variables is not None
-    assert variables["prefilled_args"]["target"] == "main"
-
-
-def test_suggest_tools_prefills_module_children_from_entry_point() -> None:
-    suggestions = mediator.suggest_tools(
-        message="inspect hierarchy for src/main.ato:App",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    module_children = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "project_module_children"
-        ),
-        None,
-    )
-    assert module_children is not None
-    assert module_children["prefilled_args"]["entry_point"] == "src/main.ato:App"
-
-
-def test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent() -> None:
-    suggestions = mediator.suggest_tools(
-        message=(
-            "generate manufacturing files (gerber + pick and place) for target default"
-        ),
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    generate = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "manufacturing_generate"
-        ),
-        None,
-    )
-    assert generate is not None
-    assert generate["prefilled_args"]["target"] == "default"
-    assert generate["prefilled_args"]["include_targets"] == ["mfg-data"]
-
-
-def test_suggest_tools_surfaces_autolayout_for_routing_intent() -> None:
-    suggestions = mediator.suggest_tools(
-        message="run deeppcb autoroute for target default in background",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    autolayout_run = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "autolayout_run"
-        ),
-        None,
-    )
-    assert autolayout_run is not None
-    assert autolayout_run["prefilled_args"]["job_type"] == "Routing"
-    assert autolayout_run["prefilled_args"]["build_target"] == "default"
-
-
-def test_suggest_tools_prefills_autolayout_status_from_recent_memory() -> None:
-    memory = {
-        "autolayout_run": {
-            "tool_name": "autolayout_run",
-            "summary": "queued",
-            "ok": True,
-            "updated_at": time.time(),
-            "context_id": "al-123456789abc",
-        }
-    }
-
-    suggestions = mediator.suggest_tools(
-        message="check in periodically on autolayout progress",
-        history=[],
-        selected_targets=[],
-        tool_memory=memory,
-    )
-
-    status_tool = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "autolayout_status"
-        ),
-        None,
-    )
-    assert status_tool is not None
-    assert status_tool["prefilled_args"]["job_id"] == "al-123456789abc"
-    assert status_tool["prefilled_args"]["wait_seconds"] == 120
-
-
-def test_suggest_tools_prefills_layout_run_drc() -> None:
-    suggestions = mediator.suggest_tools(
-        message="run a quick drc check for target default",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    drc_tool = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "layout_run_drc"
-        ),
-        None,
-    )
-    assert drc_tool is not None
-    assert drc_tool["prefilled_args"]["target"] == "default"
-    assert drc_tool["prefilled_args"]["max_findings"] == 40
-
-
 def test_update_tool_memory_extracts_latest_autolayout_job_id() -> None:
     traces = [
         FakeTrace(
@@ -346,94 +287,16 @@ def test_update_tool_memory_extracts_latest_autolayout_job_id() -> None:
     assert "latest job" in entry["summary"]
 
 
-def test_suggest_tools_prefills_autolayout_status_from_status_memory() -> None:
-    memory = {
-        "autolayout_status": {
-            "tool_name": "autolayout_status",
-            "summary": "state=running; candidates=0",
-            "ok": True,
-            "updated_at": time.time(),
-            "context_id": "al-feedfacecafe",
-        }
-    }
+# --- prefilled_args are now empty (NLU removed) ---
 
+
+def test_suggest_tools_returns_empty_prefilled_args() -> None:
     suggestions = mediator.suggest_tools(
-        message="check autolayout status again",
-        history=[],
-        selected_targets=[],
-        tool_memory=memory,
-    )
-
-    status_tool = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "autolayout_status"
-        ),
-        None,
-    )
-    assert status_tool is not None
-    assert status_tool["prefilled_args"]["job_id"] == "al-feedfacecafe"
-
-
-def test_suggest_tools_surfaces_stackup_config_tool() -> None:
-    suggestions = mediator.suggest_tools(
-        message="set 4-layer stackup and add a GND ground plane pour",
-        history=[],
-        selected_targets=["default"],
-        tool_memory={},
-    )
-
-    config_tool = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "autolayout_configure_board_intent"
-        ),
-        None,
-    )
-    assert config_tool is not None
-    args = config_tool["prefilled_args"]
-    assert args["build_target"] == "default"
-    assert args["layer_count"] == 4
-    assert args["enable_ground_pours"] is True
-
-
-def test_suggest_tools_prefills_examples_search_for_reference_intent() -> None:
-    suggestions = mediator.suggest_tools(
-        message="show an example of i2c module templating in ato",
+        message="run a quick drc check for target default",
         history=[],
         selected_targets=[],
         tool_memory={},
     )
-
-    examples_search = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "examples_search"
-        ),
-        None,
-    )
-    assert examples_search is not None
-    assert "query" in examples_search["prefilled_args"]
-
-
-def test_suggest_tools_prefills_package_ato_search_for_package_source_intent() -> None:
-    suggestions = mediator.suggest_tools(
-        message="search package ato source for regulator enable pattern",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-
-    package_search = next(
-        (
-            suggestion
-            for suggestion in suggestions
-            if suggestion["name"] == "package_ato_search"
-        ),
-        None,
-    )
-    assert package_search is not None
-    assert "query" in package_search["prefilled_args"]
+    for suggestion in suggestions:
+        assert suggestion["prefilled_args"] == {}
+        assert suggestion["prefilled_prompt"] is None

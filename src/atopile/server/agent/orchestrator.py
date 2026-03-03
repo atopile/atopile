@@ -51,7 +51,6 @@ from atopile.server.agent.orchestrator_helpers import (
     _trim_user_message,
     _truncate_middle,
 )
-from atopile.server.agent.orchestrator_prompt import SYSTEM_PROMPT
 from atopile.server.domains import artifacts as artifacts_domain
 
 log = logging.getLogger(__name__)
@@ -154,59 +153,11 @@ def _build_session_primer(
     project_root: Path,
     selected_targets: list[str],
 ) -> str:
-    targets = selected_targets if selected_targets else ["<none>"]
-    targets_text = ", ".join(targets)
+    targets_text = ", ".join(selected_targets) if selected_targets else "<none>"
     return (
-        "Session primer (one-time orientation):\n"
+        "Session primer (dynamic context):\n"
         f"- project_root: {project_root}\n"
-        f"- selected_targets: {targets_text}\n"
-        "- workflow: inspect with project_list_modules/project_read_file, then edit\n"
-        "  with project_edit_file anchors (LINE:HASH), then verify with build tools.\n"
-        "- components: use parts_search/parts_install for physical parts and\n"
-        "  packages_search/packages_install for atopile package deps.\n"
-        "- diagnostics: on build failures, prefer build_logs_search (INFO first)\n"
-        "  and design_diagnostics before broad retries.\n"
-        "- stdlib: use stdlib_list and stdlib_get_item for module/interface lookup.\n"
-        "- examples: use examples_list/examples_search/examples_read_ato for\n"
-        "  curated reference `.ato` code patterns.\n"
-        "- package references: use package_ato_list/package_ato_search/\n"
-        "  package_ato_read to mine installed package `.ato` sources for\n"
-        "  reusable design patterns.\n"
-        "- web research: use web_search for external/current facts when the\n"
-        "  answer is not available in the project files.\n"
-        "- reports: for BOM/parts lists use report_bom; for computed parameters\n"
-        "  and constraints use report_variables.\n"
-        "- manufacturing: use manufacturing_generate to create artifacts, then\n"
-        "  build_logs_search to track, then manufacturing_summary to inspect.\n"
-        "- pcb layout flow: manually place critical connectors/components first,\n"
-        "  review with autolayout_request_screenshot until approved, then run\n"
-        "  autolayout_run for placement.\n"
-        "- placement/routing apply safety: monitor with autolayout_status and\n"
-        "  call autolayout_fetch_to_layout only when state is\n"
-        "  awaiting_selection/completed; if fetch says queued/running, wait the\n"
-        "  suggested seconds and check status again.\n"
-        "- after placement fetch: review with screenshots, then run\n"
-        "  autolayout_run for routing and repeat status->fetch->review.\n"
-        "- planes/stackup: use autolayout_configure_board_intent to encode\n"
-        "  ground pour and stackup assumptions in ato.yaml before routing.\n"
-        "- autolayout per-run cap: each placement/routing run is limited to\n"
-        "  2 minutes. Use short iterative cycles: run, review candidates/screens,\n"
-        "  then resume with resume_board_id when quality is insufficient.\n"
-        "- quality loop: check in periodically with autolayout_status\n"
-        "  (wait_seconds/poll_interval_seconds), and if quality is insufficient,\n"
-        "  call autolayout_run with resume_board_id for another <=2 minute pass.\n"
-        "- screenshots: use autolayout_request_screenshot (2d/3d), then\n"
-        "  build_logs_search to track completion and read output paths.\n"
-        "- crowded board review: use autolayout_request_screenshot with\n"
-        "  highlight_components to spotlight one part and dim others.\n"
-        "- manual moves: read placement_check from\n"
-        "  layout_set_component_position to verify on-board status and\n"
-        "  collisions immediately.\n"
-        "- drc: use layout_run_drc after key placement/routing edits to get\n"
-        "  KiCad rule errors/warnings before proceeding.\n"
-        "- datasheets: use datasheet_read to attach component PDFs for native\n"
-        "  model reading (instead of scraping text manually). Prefer lcsc_id\n"
-        "  for graph-first resolution."
+        f"- selected_targets: {targets_text}"
     )
 
 
@@ -235,104 +186,167 @@ class FixedSkillDoc:
     body: str
 
 
-class AgentOrchestrator:
-    def __init__(self) -> None:
-        self.base_url = os.getenv("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1")
-        self.model = os.getenv("ATOPILE_AGENT_MODEL", "codex-5.3")
-        self.api_key = os.getenv("ATOPILE_AGENT_OPENAI_API_KEY") or os.getenv(
-            "OPENAI_API_KEY"
+def _env(key: str, default: str) -> str:
+    return os.getenv(key, default)
+
+
+def _env_int(
+    key: str, default: str, *, lo: int | None = None, hi: int | None = None
+) -> int:
+    v = int(_env(key, default))
+    if lo is not None:
+        v = max(lo, v)
+    if hi is not None:
+        v = min(hi, v)
+    return v
+
+
+def _env_float(
+    key: str, default: str, *, lo: float | None = None, hi: float | None = None
+) -> float:
+    v = float(_env(key, default))
+    if lo is not None:
+        v = max(lo, v)
+    if hi is not None:
+        v = min(hi, v)
+    return v
+
+
+@dataclass
+class AgentConfig:
+    base_url: str = "https://api.openai.com/v1"
+    model: str = "codex-5.3"
+    api_key: str | None = None
+    timeout_s: float = 120.0
+    max_tool_loops: int = 240
+    max_turn_seconds: float = 480.0
+    api_retries: int = 4
+    api_retry_base_delay_s: float = 0.5
+    api_retry_max_delay_s: float = 8.0
+    skills_dir: Path = field(
+        default_factory=lambda: (
+            Path(__file__).resolve().parents[4] / ".claude" / "skills"
         )
-        self.timeout_s = float(os.getenv("ATOPILE_AGENT_TIMEOUT_S", "120"))
-        self.max_tool_loops = int(os.getenv("ATOPILE_AGENT_MAX_TOOL_LOOPS", "240"))
-        self.max_turn_seconds = float(
-            os.getenv("ATOPILE_AGENT_MAX_TURN_SECONDS", "480")
-        )
-        self.max_turn_seconds = max(30.0, min(self.max_turn_seconds, 3_600.0))
-        self.api_retries = int(os.getenv("ATOPILE_AGENT_API_RETRIES", "4"))
-        self.api_retry_base_delay_s = float(
-            os.getenv("ATOPILE_AGENT_API_RETRY_BASE_DELAY_S", "0.5")
-        )
-        self.api_retry_max_delay_s = float(
-            os.getenv("ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0")
-        )
-        default_skills_dir = Path(__file__).resolve().parents[4] / ".claude" / "skills"
-        self.skills_dir = default_skills_dir
-        self.fixed_skill_ids = ["agent", "ato"]
-        self.fixed_skill_token_budgets = _parse_fixed_skill_token_budgets(
-            os.getenv(
-                "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS",
-                "agent:10000,ato:40000",
+    )
+    fixed_skill_ids: list[str] = field(default_factory=lambda: ["agent", "ato"])
+    fixed_skill_token_budgets: dict[str, int] = field(default_factory=dict)
+    fixed_skill_chars_per_token: float = 4.0
+    fixed_skill_total_max_chars: int = 220_000
+    prefix_max_chars: int = 220_000
+    context_summary_max_chars: int = 8_000
+    user_message_max_chars: int = 12_000
+    tool_output_max_chars: int = 10_000
+    context_hard_max_tokens: int = 170_000
+    prompt_cache_retention: str = "24h"
+    trace_enabled: bool = True
+    trace_preview_max_chars: int = 4_000
+    worker_loop_guard_window: int = 8
+    worker_loop_guard_min_discovery: int = 6
+    worker_loop_guard_max_hits: int = 3
+    worker_failure_streak_limit: int = 6
+    worker_no_progress_loop_limit: int = 18
+
+    @classmethod
+    def from_env(cls) -> AgentConfig:
+        fixed_skill_ids = ["agent", "ato"]
+        return cls(
+            base_url=_env("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1"),
+            model=_env("ATOPILE_AGENT_MODEL", "codex-5.3"),
+            api_key=os.getenv("ATOPILE_AGENT_OPENAI_API_KEY")
+            or os.getenv("OPENAI_API_KEY"),
+            timeout_s=_env_float("ATOPILE_AGENT_TIMEOUT_S", "120"),
+            max_tool_loops=_env_int("ATOPILE_AGENT_MAX_TOOL_LOOPS", "240"),
+            max_turn_seconds=_env_float(
+                "ATOPILE_AGENT_MAX_TURN_SECONDS", "480", lo=30.0, hi=3_600.0
             ),
-            default_skill_ids=self.fixed_skill_ids,
+            api_retries=_env_int("ATOPILE_AGENT_API_RETRIES", "4"),
+            api_retry_base_delay_s=_env_float(
+                "ATOPILE_AGENT_API_RETRY_BASE_DELAY_S", "0.5"
+            ),
+            api_retry_max_delay_s=_env_float(
+                "ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0"
+            ),
+            fixed_skill_ids=fixed_skill_ids,
+            fixed_skill_token_budgets=_parse_fixed_skill_token_budgets(
+                _env(
+                    "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS", "agent:10000,ato:40000"
+                ),
+                default_skill_ids=fixed_skill_ids,
+            ),
+            fixed_skill_chars_per_token=_env_float(
+                "ATOPILE_AGENT_FIXED_SKILL_CHARS_PER_TOKEN", "4.0", lo=1.0, hi=8.0
+            ),
+            fixed_skill_total_max_chars=_env_int(
+                "ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "220000"
+            ),
+            prefix_max_chars=_env_int("ATOPILE_AGENT_PREFIX_MAX_CHARS", "220000"),
+            context_summary_max_chars=_env_int(
+                "ATOPILE_AGENT_CONTEXT_SUMMARY_MAX_CHARS", "8000"
+            ),
+            user_message_max_chars=_env_int(
+                "ATOPILE_AGENT_USER_MESSAGE_MAX_CHARS", "12000"
+            ),
+            tool_output_max_chars=_env_int(
+                "ATOPILE_AGENT_TOOL_OUTPUT_MAX_CHARS", "10000"
+            ),
+            context_hard_max_tokens=_env_int(
+                "ATOPILE_AGENT_CONTEXT_HARD_MAX_TOKENS", "170000"
+            ),
+            prompt_cache_retention=_env("ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"),
+            trace_enabled=_env("ATOPILE_AGENT_TRACE_ENABLED", "1").strip().lower()
+            not in _TRACE_DISABLE_VALUES,
+            trace_preview_max_chars=_env_int(
+                "ATOPILE_AGENT_TRACE_PREVIEW_MAX_CHARS", "4000", lo=300, hi=20000
+            ),
+            worker_loop_guard_window=_env_int(
+                "ATOPILE_AGENT_WORKER_LOOP_GUARD_WINDOW", "8", lo=4, hi=24
+            ),
+            worker_loop_guard_min_discovery=_env_int(
+                "ATOPILE_AGENT_WORKER_LOOP_GUARD_MIN_DISCOVERY", "6", lo=4, hi=20
+            ),
+            worker_loop_guard_max_hits=_env_int(
+                "ATOPILE_AGENT_WORKER_LOOP_GUARD_MAX_HITS", "3", lo=1, hi=8
+            ),
+            worker_failure_streak_limit=_env_int(
+                "ATOPILE_AGENT_WORKER_FAILURE_STREAK_LIMIT", "6", lo=2, hi=20
+            ),
+            worker_no_progress_loop_limit=_env_int(
+                "ATOPILE_AGENT_WORKER_NO_PROGRESS_LOOP_LIMIT", "18", lo=4, hi=60
+            ),
         )
-        self.fixed_skill_chars_per_token = float(
-            os.getenv("ATOPILE_AGENT_FIXED_SKILL_CHARS_PER_TOKEN", "4.0")
-        )
-        self.fixed_skill_chars_per_token = max(
-            1.0, min(self.fixed_skill_chars_per_token, 8.0)
-        )
-        self.fixed_skill_total_max_chars = int(
-            os.getenv("ATOPILE_AGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "220000")
-        )
-        self.prefix_max_chars = int(
-            os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", "220000")
-        )
-        self.context_summary_max_chars = int(
-            os.getenv("ATOPILE_AGENT_CONTEXT_SUMMARY_MAX_CHARS", "8000")
-        )
-        self.user_message_max_chars = int(
-            os.getenv("ATOPILE_AGENT_USER_MESSAGE_MAX_CHARS", "12000")
-        )
-        self.tool_output_max_chars = int(
-            os.getenv("ATOPILE_AGENT_TOOL_OUTPUT_MAX_CHARS", "10000")
-        )
-        self.context_compact_threshold = int(
-            os.getenv("ATOPILE_AGENT_CONTEXT_COMPACT_THRESHOLD", "120000")
-        )
-        self.context_hard_max_tokens = int(
-            os.getenv("ATOPILE_AGENT_CONTEXT_HARD_MAX_TOKENS", "170000")
-        )
-        self.prompt_cache_retention = os.getenv(
-            "ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"
-        )
-        raw_trace_enabled = os.getenv("ATOPILE_AGENT_TRACE_ENABLED", "1")
-        self.trace_enabled = (
-            str(raw_trace_enabled).strip().lower() not in _TRACE_DISABLE_VALUES
-        )
-        self.trace_preview_max_chars = int(
-            os.getenv("ATOPILE_AGENT_TRACE_PREVIEW_MAX_CHARS", "4000")
-        )
-        self.trace_preview_max_chars = max(
-            300, min(self.trace_preview_max_chars, 20000)
-        )
-        self.worker_loop_guard_window = int(
-            os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_WINDOW", "8")
-        )
-        self.worker_loop_guard_window = max(4, min(self.worker_loop_guard_window, 24))
-        self.worker_loop_guard_min_discovery = int(
-            os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_MIN_DISCOVERY", "6")
-        )
-        self.worker_loop_guard_min_discovery = max(
-            4, min(self.worker_loop_guard_min_discovery, 20)
-        )
-        self.worker_loop_guard_max_hits = int(
-            os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_MAX_HITS", "3")
-        )
-        self.worker_loop_guard_max_hits = max(
-            1, min(self.worker_loop_guard_max_hits, 8)
-        )
-        self.worker_failure_streak_limit = int(
-            os.getenv("ATOPILE_AGENT_WORKER_FAILURE_STREAK_LIMIT", "6")
-        )
-        self.worker_failure_streak_limit = max(
-            2, min(self.worker_failure_streak_limit, 20)
-        )
-        self.worker_no_progress_loop_limit = int(
-            os.getenv("ATOPILE_AGENT_WORKER_NO_PROGRESS_LOOP_LIMIT", "18")
-        )
-        self.worker_no_progress_loop_limit = max(
-            4, min(self.worker_no_progress_loop_limit, 60)
-        )
+
+
+class AgentOrchestrator:
+    def __init__(self, config: AgentConfig | None = None) -> None:
+        cfg = config or AgentConfig.from_env()
+        # Expose all config fields directly on self for backward compatibility.
+        self.base_url = cfg.base_url
+        self.model = cfg.model
+        self.api_key = cfg.api_key
+        self.timeout_s = cfg.timeout_s
+        self.max_tool_loops = cfg.max_tool_loops
+        self.max_turn_seconds = cfg.max_turn_seconds
+        self.api_retries = cfg.api_retries
+        self.api_retry_base_delay_s = cfg.api_retry_base_delay_s
+        self.api_retry_max_delay_s = cfg.api_retry_max_delay_s
+        self.skills_dir = cfg.skills_dir
+        self.fixed_skill_ids = cfg.fixed_skill_ids
+        self.fixed_skill_token_budgets = cfg.fixed_skill_token_budgets
+        self.fixed_skill_chars_per_token = cfg.fixed_skill_chars_per_token
+        self.fixed_skill_total_max_chars = cfg.fixed_skill_total_max_chars
+        self.prefix_max_chars = cfg.prefix_max_chars
+        self.context_summary_max_chars = cfg.context_summary_max_chars
+        self.user_message_max_chars = cfg.user_message_max_chars
+        self.tool_output_max_chars = cfg.tool_output_max_chars
+        self.context_hard_max_tokens = cfg.context_hard_max_tokens
+        self.prompt_cache_retention = cfg.prompt_cache_retention
+        self.trace_enabled = cfg.trace_enabled
+        self.trace_preview_max_chars = cfg.trace_preview_max_chars
+        self.worker_loop_guard_window = cfg.worker_loop_guard_window
+        self.worker_loop_guard_min_discovery = cfg.worker_loop_guard_min_discovery
+        self.worker_loop_guard_max_hits = cfg.worker_loop_guard_max_hits
+        self.worker_failure_streak_limit = cfg.worker_failure_streak_limit
+        self.worker_no_progress_loop_limit = cfg.worker_no_progress_loop_limit
         self._client: AsyncOpenAI | None = None
 
     def _load_required_skill_docs(self) -> list[FixedSkillDoc]:
@@ -1871,7 +1885,7 @@ def _build_turn_instructions(
     skill_block: str,
     max_chars: int,
 ) -> str:
-    chunks = [SYSTEM_PROMPT]
+    chunks: list[str] = []
     if include_session_primer:
         chunks.append(
             _build_session_primer(
