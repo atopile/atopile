@@ -209,6 +209,7 @@ def attach_subaddresses_to_modules(app: fabll.Node):
     )
     if not pcb_modules:
         return
+
     in_sub_pcb_bound = in_sub_pcb.bind_typegraph_from_instance(app.instance)
     g = app.instance.g()
     for module in pcb_modules:
@@ -218,8 +219,10 @@ def attach_subaddresses_to_modules(app: fabll.Node):
             required_trait=F.Footprints.has_associated_footprint,
         )
         for footprint_child in footprint_children:
-            trait_instance = in_sub_pcb_bound.create_instance(g=g).setup(
-                sub_root_module=module
-            )
-            # Use add_instance_to for trait instances, not add_to
-            fabll.Traits.add_instance_to(footprint_child, trait_instance)
+            if existing_trait := footprint_child.try_get_trait(in_sub_pcb):
+                existing_trait.setup(sub_root_module=module)
+            else:
+                trait_instance = in_sub_pcb_bound.create_instance(g=g).setup(
+                    sub_root_module=module
+                )
+                fabll.Traits.add_instance_to(footprint_child, trait_instance)
