@@ -483,6 +483,7 @@ function buildLayerPanel() {
 }
 
 const coordsEl = document.getElementById("status-coords");
+const busyEl = document.getElementById("status-busy");
 const helpEl = document.getElementById("status-help");
 const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click group/select \u00b7 Shift+drag box-select \u00b7 Double-click single \u00b7 Esc clear \u00b7 R rotate \u00b7 F flip \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
 if (helpEl) helpEl.textContent = helpText;
@@ -501,6 +502,11 @@ editor.setOnMouseMove((x, y) => {
     if (coordsEl && coordsEl.dataset.hover) {
         coordsEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
     }
+});
+editor.setOnActionBusyChanged((busy) => {
+    if (!busyEl) return;
+    busyEl.classList.toggle("visible", busy);
+    busyEl.setAttribute("aria-hidden", busy ? "false" : "true");
 });
 
 setInitialLoading("Loading PCB", "Building scene geometry...");

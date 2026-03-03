@@ -55,7 +55,7 @@
             height: 32px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 12px;
             padding: 0 12px;
             background: var(--surface);
             backdrop-filter: blur(12px);
@@ -84,6 +84,33 @@
             min-width: 180px;
         }
 
+        #status-busy {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            color: var(--text-secondary);
+            font-size: 10px;
+            letter-spacing: 0.02em;
+            pointer-events: none;
+            min-width: 74px;
+        }
+
+        #status-busy.visible {
+            opacity: 1;
+        }
+
+        .status-busy-spinner {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(255, 255, 255, 0.2);
+            border-top-color: var(--accent);
+            animation: status-busy-spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
         #status-fps {
             font-variant-numeric: tabular-nums;
             color: var(--text-secondary);
@@ -98,6 +125,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            margin-left: auto;
         }
 
         #layer-panel {
@@ -341,6 +369,10 @@
         @keyframes initial-loading-spin {
             to { transform: rotate(360deg); }
         }
+
+        @keyframes status-busy-spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -361,6 +393,10 @@
     <div id="layer-panel"></div>
     <div id="status">
         <span id="status-coords"></span>
+        <span id="status-busy" aria-hidden="true">
+            <span class="status-busy-spinner"></span>
+            Syncing...
+        </span>
         <span id="status-fps"></span>
         <span id="status-help">Scroll zoom · Middle-click pan · Click group/select · Shift-drag box-select · Double-click single · Esc clear · R rotate · F flip · Ctrl+Z undo · Ctrl+Shift+Z redo</span>
     </div>

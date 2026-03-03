@@ -149,6 +149,8 @@ export class Editor {
 
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
+    private onActionBusyChanged: ((busy: boolean) => void) | null = null;
+    private pendingActionRequests = 0;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -1194,6 +1196,10 @@ export class Editor {
     }
 
     private async executeAction(action: ActionCommand) {
+        this.pendingActionRequests += 1;
+        if (this.pendingActionRequests === 1 && this.onActionBusyChanged) {
+            this.onActionBusyChanged(true);
+        }
         try {
             const data = await this.client.executeAction(action);
             if (data.status === "error") {
@@ -1202,6 +1208,15 @@ export class Editor {
             if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
+        } finally {
+            if (this.pendingActionRequests > 0) {
+                this.pendingActionRequests -= 1;
+            } else {
+                this.pendingActionRequests = 0;
+            }
+            if (this.pendingActionRequests === 0 && this.onActionBusyChanged) {
+                this.onActionBusyChanged(false);
+            }
         }
     }
 
@@ -1275,6 +1290,11 @@ export class Editor {
 
     setOnMouseMove(cb: (x: number, y: number) => void) {
         this.onMouseMoveCallback = cb;
+    }
+
+    setOnActionBusyChanged(cb: (busy: boolean) => void) {
+        this.onActionBusyChanged = cb;
+        cb(this.pendingActionRequests > 0);
     }
 
     private repaintWithSelection() {
