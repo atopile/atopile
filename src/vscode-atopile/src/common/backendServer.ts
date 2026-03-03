@@ -532,6 +532,9 @@ class BackendServerManager implements vscode.Disposable {
             traceMilestone('backend spawning');
             this._log('info', `server: Starting: ${command} ${args.join(' ')}`);
 
+            // Read chat setting — only override env when explicitly enabled in VS Code
+            const enableChat = vscode.workspace.getConfiguration('atopile').get<boolean>('enableChat', false);
+
             // Spawn the server process with unbuffered Python output
             const child = cp.spawn(command, args, {
                 cwd: workspaceRoots.length > 0 ? workspaceRoots[0] : undefined,
@@ -539,6 +542,9 @@ class BackendServerManager implements vscode.Disposable {
                     ...process.env,
                     ATO_NON_INTERACTIVE: 'y',
                     PYTHONUNBUFFERED: '1',  // Disable Python output buffering
+                    // Only set UI_ENABLE_CHAT if the VS Code setting is on;
+                    // otherwise let any shell env var pass through from process.env
+                    ...(enableChat ? { UI_ENABLE_CHAT: '1' } : {}),
                     ...(explicitAtoBinary
                         ? {
                             ATO_BINARY: explicitAtoBinary,

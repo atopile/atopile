@@ -215,7 +215,7 @@ def _env_float(
 @dataclass
 class AgentConfig:
     base_url: str = "https://api.openai.com/v1"
-    model: str = "codex-5.3"
+    model: str = "gpt-5.3-codex"
     api_key: str | None = None
     timeout_s: float = 120.0
     max_tool_loops: int = 240
@@ -251,7 +251,7 @@ class AgentConfig:
         fixed_skill_ids = ["agent", "ato"]
         return cls(
             base_url=_env("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1"),
-            model=_env("ATOPILE_AGENT_MODEL", "codex-5.3"),
+            model=_env("ATOPILE_AGENT_MODEL", "gpt-5.3-codex"),
             api_key=os.getenv("ATOPILE_AGENT_OPENAI_API_KEY")
             or os.getenv("OPENAI_API_KEY"),
             timeout_s=_env_float("ATOPILE_AGENT_TIMEOUT_S", "120"),

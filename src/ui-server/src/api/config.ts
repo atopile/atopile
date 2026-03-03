@@ -7,6 +7,7 @@ interface AtopileWindow extends Window {
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
   __ATOPILE_WORKSPACE_FOLDERS__?: string[];
+  __ATOPILE_ENABLE_CHAT__?: boolean;
 }
 
 const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
@@ -66,12 +67,13 @@ export const WS_STATE_URL = `${WS_BASE_URL}/ws/state`;
 export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
 
 /**
- * Optional build-time override for chat feature visibility.
+ * Chat feature override from VS Code extension (window global) or build-time env.
  * `null` means no override; backend capabilities are used instead.
  */
-export const ENABLE_CHAT_OVERRIDE = parseOptionalBoolean(
-  import.meta.env.VITE_ENABLE_CHAT
-);
+export const ENABLE_CHAT_OVERRIDE: boolean | null =
+  win.__ATOPILE_ENABLE_CHAT__ !== undefined
+    ? Boolean(win.__ATOPILE_ENABLE_CHAT__)
+    : parseOptionalBoolean(import.meta.env.VITE_ENABLE_CHAT);
 
 /**
  * Get workspace folders from injected globals or URL query params.

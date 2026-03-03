@@ -18,6 +18,8 @@ export OPENAI_API_KEY="sk-..."
 export ATO_DEEPPCB_API_KEY="your-deeppcb-key"
 
 # Enable the chat panel in the UI sidebar (defaults to off)
+# Option A: VS Code setting (recommended) — set atopile.enableChat to true
+# Option B: Environment variable (for non-VS-Code or CI use)
 export UI_ENABLE_CHAT=1
 
 # --- Optional ---
@@ -49,7 +51,7 @@ tool-calling loop. It reads all config from environment variables at startup.
 | `OPENAI_API_KEY` | — | **Required.** LLM API key |
 | `ATOPILE_AGENT_OPENAI_API_KEY` | — | Takes priority over `OPENAI_API_KEY` |
 | `ATOPILE_AGENT_BASE_URL` | `https://api.openai.com/v1` | API base URL (for proxies or compatible providers) |
-| `ATOPILE_AGENT_MODEL` | `codex-5.3` | Model identifier |
+| `ATOPILE_AGENT_MODEL` | `gpt-5.3-codex` | Model identifier |
 | `ATOPILE_AGENT_TIMEOUT_S` | `120` | Per-request timeout (seconds) |
 | `ATOPILE_AGENT_MAX_TOOL_LOOPS` | `240` | Max tool invocations per turn |
 | `ATOPILE_AGENT_MAX_TURN_SECONDS` | `480` | Max wall-clock time per turn (clamped 30–3600) |
@@ -78,7 +80,7 @@ Alternate prefixes `DEEPPCB_` and `FBRK_DEEPPCB_` also work for all settings.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `UI_ENABLE_CHAT` | `false` | **Set to `1` to enable the chat panel** in the UI sidebar |
+| `UI_ENABLE_CHAT` | `false` | **Set to `1` to enable the chat panel** in the UI sidebar. In VS Code, prefer the `atopile.enableChat` setting instead. |
 | `ATO_ENABLE_AUTOLAYOUT` | `true` | Set to `false` to disable autolayout endpoints entirely |
 
 ## Per-project autolayout config (ato.yaml)
@@ -131,7 +133,7 @@ curl http://localhost:8367/api/agent/health
 - **"Autolayout is disabled via ATO_ENABLE_AUTOLAYOUT"** — set `ATO_ENABLE_AUTOLAYOUT=true`
   or unset it (defaults to enabled).
 - **Agent returns empty/error** — verify `OPENAI_API_KEY` is valid and has access to the
-  configured model (`ATOPILE_AGENT_MODEL`, default `codex-5.3`).
+  configured model (`ATOPILE_AGENT_MODEL`, default `gpt-5.3-codex`).
 - **DeepPCB 401/403** — your `ATO_DEEPPCB_API_KEY` is invalid or expired. Get a new one
   from the DeepPCB dashboard.
 - **Timeout on autolayout** — increase `ATO_DEEPPCB_TIMEOUT_S` and
