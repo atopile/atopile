@@ -58,7 +58,7 @@
     z-index: 10;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     padding: 1.1rem 2.5rem;
     border-bottom: 1px solid var(--border);
   }
@@ -68,18 +68,6 @@
     text-decoration: none;
   }
   .logo-wordmark { height: 26px; width: auto; display: block; }
-  .nav-links { display: flex; gap: 2rem; align-items: center; }
-  .nav-links a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.72rem;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    transition: color 0.18s;
-  }
-  .nav-links a:hover { color: var(--text); }
-
   main {
     position: relative;
     z-index: 1;
@@ -149,7 +137,7 @@
     font-size: 0.86rem;
     line-height: 1.85;
     color: var(--muted);
-    max-width: 400px;
+    max-width: 560px;
     margin-bottom: 2.75rem;
     animation: fadein 0.7s ease 0.4s both;
   }
@@ -196,23 +184,6 @@
   .btn-launch:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
   .btn-launch:disabled { background: #251812; color: #5a3a2a; cursor: wait; }
   .btn-launch.hidden { display: none; }
-
-  .btn-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.8rem 1.4rem;
-    background: transparent;
-    color: var(--muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    font-weight: 500;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    text-decoration: none;
-    transition: color 0.18s, border-color 0.18s;
-  }
-  .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
 
   .terminal {
     width: 100%;
@@ -349,11 +320,6 @@
       <path d="M9.91 19.87H15.11C16.49 19.87 17.61 18.75 17.61 17.37V12.17C17.61 10.79 16.49 9.67 15.11 9.67H9.91C8.53 9.67 7.41 10.79 7.41 12.17V17.37C7.41 18.75 8.53 19.87 9.91 19.87Z" fill="#F95015"/>
     </svg>
   </a>
-  <div class="nav-links">
-    <a href="https://atopile.io/docs">docs</a>
-    <a href="https://packages.atopile.io">packages</a>
-    <a href="https://github.com/atopile/atopile">github</a>
-  </div>
 </nav>
 
 <main>
@@ -384,10 +350,6 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       <span id="retry-label">Retry launch</span>
     </button>
-    <a class="btn-ghost" href="https://atopile.io/docs">
-      View docs
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-    </a>
   </div>
 
   <div class="terminal" id="terminal">
