@@ -177,6 +177,8 @@ export class Renderer {
     private gridVertexCount = 0;
     private blitVao: VertexArray | null = null;
     private dragCacheTex: WebGLTexture | null = null;
+    private dragCacheFbo: WebGLFramebuffer | null = null;
+    private dragCacheDepth: WebGLRenderbuffer | null = null;
     private dragCacheWidth = 0;
     private dragCacheHeight = 0;
     private useDragCache = false;
@@ -230,6 +232,7 @@ export class Renderer {
         for (const layer of this.layers.values()) layer.dispose();
         this.layers.clear();
         this.nextDepth = Renderer.DEPTH_STEP;
+        this.end_fast_drag_cache();
         this.dispose_dynamic_layers();
     }
 
@@ -315,7 +318,51 @@ export class Renderer {
         }
     }
 
-    begin_fast_drag_cache() {
+    private ensure_drag_cache_target(w: number, h: number): boolean {
+        const gl = this.gl;
+        if (!this.dragCacheTex) {
+            this.dragCacheTex = gl.createTexture();
+        }
+        if (!this.dragCacheFbo) {
+            this.dragCacheFbo = gl.createFramebuffer();
+        }
+        if (!this.dragCacheDepth) {
+            this.dragCacheDepth = gl.createRenderbuffer();
+        }
+        if (!this.dragCacheTex || !this.dragCacheFbo || !this.dragCacheDepth) {
+            return false;
+        }
+        if (this.dragCacheWidth === w && this.dragCacheHeight === h) {
+            return true;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, this.dragCacheTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+        gl.bindRenderbuffer(gl.RENDERBUFFER, this.dragCacheDepth);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.dragCacheFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.dragCacheTex, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.dragCacheDepth);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+        if (status !== gl.FRAMEBUFFER_COMPLETE) {
+            return false;
+        }
+        this.dragCacheWidth = w;
+        this.dragCacheHeight = h;
+        return true;
+    }
+
+    begin_fast_drag_cache(cameraMatrix: Matrix3) {
         this.update_size();
         const gl = this.gl;
         const w = this.canvas.width;
@@ -324,25 +371,17 @@ export class Renderer {
             this.useDragCache = false;
             return;
         }
-        if (!this.dragCacheTex) {
-            this.dragCacheTex = gl.createTexture();
-            if (!this.dragCacheTex) {
-                this.useDragCache = false;
-                return;
-            }
+        if (!this.ensure_drag_cache_target(w, h) || !this.dragCacheFbo) {
+            this.useDragCache = false;
+            return;
         }
-        gl.bindTexture(gl.TEXTURE_2D, this.dragCacheTex);
-        if (this.dragCacheWidth !== w || this.dragCacheHeight !== h) {
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-            this.dragCacheWidth = w;
-            this.dragCacheHeight = h;
-        }
-        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
-        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.dragCacheFbo);
+        gl.viewport(0, 0, w, h);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const total = this.projection_matrix.multiply(cameraMatrix);
+        this.render_static_scene(total);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, w, h);
         this.useDragCache = true;
     }
 
@@ -379,6 +418,7 @@ export class Renderer {
         const gl = this.gl;
         this.ensure_blit_vao();
         gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
         this.blitShader.bind();
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.dragCacheTex);
@@ -386,9 +426,25 @@ export class Renderer {
         this.blitVao!.bind();
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.enable(gl.BLEND);
         gl.enable(gl.DEPTH_TEST);
         gl.clear(gl.DEPTH_BUFFER_BIT);
         return true;
+    }
+
+    private render_static_scene(total: Matrix3) {
+        // Draw grid dots behind everything
+        if (this.gridVertexCount > 0) {
+            this.pointShader.bind();
+            this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
+            this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
+            this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
+            this.gridVao!.bind();
+            this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
+        }
+        for (const layer of this.layers.values()) {
+            layer.render(this.polylineShader, this.polygonShader, total, 1.0);
+        }
     }
 
     /** Build grid vertex data for the visible area */
@@ -428,19 +484,7 @@ export class Renderer {
 
         const drewCache = this.draw_drag_cache();
         if (!drewCache) {
-            // Draw grid dots behind everything
-            if (this.gridVertexCount > 0) {
-                this.pointShader.bind();
-                this.pointShader.uniforms["u_matrix"]!.mat3f(false, total.elements);
-                this.pointShader.uniforms["u_pointSize"]!.f1(2.0 * window.devicePixelRatio);
-                this.pointShader.uniforms["u_color"]!.f4(1.0, 1.0, 1.0, 0.15);
-                this.gridVao!.bind();
-                this.gl.drawArrays(this.gl.POINTS, 0, this.gridVertexCount);
-            }
-
-            for (const layer of this.layers.values()) {
-                layer.render(this.polylineShader, this.polygonShader, total, 1.0);
-            }
+            this.render_static_scene(total);
         }
         for (const layer of this.dynamicLayers) {
             layer.render(this.polylineShader, this.polygonShader, total, 1.0);

@@ -12,6 +12,18 @@ import { SpatialIndex } from "./spatial_index";
 import type { ActionCommand, DrawingModel, LayerModel, RenderModel, ZoneModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
+const DRAG_START_THRESHOLD_PX = 4;
+
+type PendingDrag = {
+    startWorld: Vec2;
+    startScreen: Vec2;
+    targetIndices: number[];
+    trackUuids: string[];
+    viaUuids: string[];
+    drawingUuids: string[];
+    textUuids: string[];
+    zoneUuids: string[];
+};
 
 function captureDrawingCoords(drawing: DrawingModel): number[] {
     switch (drawing.type) {
@@ -120,9 +132,11 @@ export class Editor {
     private dragStartViaPositions: Map<string, { x: number; y: number }> | null = null;
     private dragLayer: RenderLayer | null = null;
     private dragUsesStaticLift = true;
+    private pendingDrag: PendingDrag | null = null;
     private isBoxSelecting = false;
     private boxSelectStartWorld: Vec2 | null = null;
     private boxSelectCurrentWorld: Vec2 | null = null;
+    private dynamicDirty = false;
     private needsRedraw = true;
 
     // Layer visibility
@@ -237,6 +251,7 @@ export class Editor {
     }
 
     private paintDynamic() {
+        this.dynamicDirty = false;
         this.renderer.dispose_dynamic_overlays();
         if (!this.model) return;
 
@@ -626,6 +641,7 @@ export class Editor {
         this.dragTargetZoneUuids = [];
         this.dragStartZoneCoords = null;
         this.dragUsesStaticLift = true;
+        this.pendingDrag = null;
     }
 
     private restorePostDragRendering() {
@@ -756,7 +772,7 @@ export class Editor {
         this.dragStartZoneCoords = dragStartZoneCoords;
         this.dragUsesStaticLift = !this.useFastDragNoLift();
         if (!this.dragUsesStaticLift) {
-            this.renderer.begin_fast_drag_cache();
+            this.renderer.begin_fast_drag_cache(this.camera.matrix);
         }
 
         // Lift dragged objects out of static geometry so only moving copies are shown.
@@ -781,6 +797,48 @@ export class Editor {
         this.paintDynamic();
         this.requestRedraw();
         return true;
+    }
+
+    private setPendingDrag(
+        startWorld: Vec2,
+        startScreen: Vec2,
+        targetIndices: number[],
+        trackUuids: string[] = [],
+        viaUuids: string[] = [],
+        drawingUuids: string[] = [],
+        textUuids: string[] = [],
+        zoneUuids: string[] = [],
+    ) {
+        this.pendingDrag = {
+            startWorld,
+            startScreen,
+            targetIndices,
+            trackUuids,
+            viaUuids,
+            drawingUuids,
+            textUuids,
+            zoneUuids,
+        };
+    }
+
+    private maybeStartPendingDrag(currentWorld: Vec2, currentScreen: Vec2): boolean {
+        const pending = this.pendingDrag;
+        if (!pending) return false;
+        const dx = currentScreen.x - pending.startScreen.x;
+        const dy = currentScreen.y - pending.startScreen.y;
+        if ((dx * dx + dy * dy) < (DRAG_START_THRESHOLD_PX * DRAG_START_THRESHOLD_PX)) {
+            return false;
+        }
+        this.pendingDrag = null;
+        return this.beginDragSelection(
+            pending.startWorld,
+            pending.targetIndices,
+            pending.trackUuids,
+            pending.viaUuids,
+            pending.drawingUuids,
+            pending.textUuids,
+            pending.zoneUuids,
+        );
     }
 
     private currentBoxSelection(): BBox | null {
@@ -894,8 +952,24 @@ export class Editor {
                 this.repaintWithSelection();
                 return;
             }
+            this.pendingDrag = null;
 
-            const hitIdx = this.getIndexedHitIdx(worldPos);
+            let hitIdx = -1;
+            if (this.hoveredGroupId) {
+                const hoveredGroup = this.groupsById.get(this.hoveredGroupId);
+                if (hoveredGroup && hoveredGroup.memberIndices.length > 0) {
+                    hitIdx = hoveredGroup.memberIndices[0]!;
+                }
+            }
+            if (hitIdx < 0 && this.hoveredFpIndex >= 0 && this.hoveredFpIndex < this.model.footprints.length) {
+                const hoveredBBox = footprintBBox(this.model.footprints[this.hoveredFpIndex]!);
+                if (hoveredBBox.contains_point(worldPos)) {
+                    hitIdx = this.hoveredFpIndex;
+                }
+            }
+            if (hitIdx < 0) {
+                hitIdx = this.getIndexedHitIdx(worldPos);
+            }
 
             if (hitIdx >= 0) {
                 const keepMultiSelection = this.selectionMode === "multi" && this.selectedMultiIndices.includes(hitIdx);
@@ -915,16 +989,30 @@ export class Editor {
                 const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
                 const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
                 const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
-                if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
-                    this.repaintWithSelection();
-                    return;
+                let queuedFastDrag = false;
+                if (this.useFastDragNoLift()) {
+                    this.setPendingDrag(worldPos, this.lastMouseScreen, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids);
+                    queuedFastDrag = true;
+                } else {
+                    if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
+                        this.repaintWithSelection();
+                        return;
+                    }
                 }
 
-                this.repaintWithSelection();
+                if (!queuedFastDrag) {
+                    this.repaintWithSelection();
+                }
             } else {
                 // Check if clicking inside a graphic-only group's bounding box.
                 let hitGraphicGroupId: string | null = null;
-                if (!this.singleOverrideMode) {
+                if (!this.singleOverrideMode && this.hoveredGroupId) {
+                    const hoveredGroup = this.groupsById.get(this.hoveredGroupId);
+                    if (hoveredGroup && hoveredGroup.memberIndices.length === 0 && hoveredGroup.graphicBBox?.contains_point(worldPos)) {
+                        hitGraphicGroupId = this.hoveredGroupId;
+                    }
+                }
+                if (!this.singleOverrideMode && !hitGraphicGroupId) {
                     for (const [groupId, group] of this.groupsById) {
                         if (group.memberIndices.length === 0 && group.graphicBBox?.contains_point(worldPos)) {
                             hitGraphicGroupId = groupId;
@@ -935,12 +1023,21 @@ export class Editor {
                 if (hitGraphicGroupId) {
                     this.setGroupSelection(hitGraphicGroupId);
                     const group = this.groupsById.get(hitGraphicGroupId)!;
-                    if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
-                        this.repaintWithSelection();
-                        return;
+                    let queuedFastDrag = false;
+                    if (this.useFastDragNoLift()) {
+                        this.setPendingDrag(worldPos, this.lastMouseScreen, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids);
+                        queuedFastDrag = true;
+                    } else {
+                        if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
+                            this.repaintWithSelection();
+                            return;
+                        }
                     }
-                    this.repaintWithSelection();
+                    if (!queuedFastDrag) {
+                        this.repaintWithSelection();
+                    }
                 } else {
+                    this.pendingDrag = null;
                     this.clearSelection(true);
                     this.repaintWithSelection();
                 }
@@ -977,8 +1074,14 @@ export class Editor {
             }
 
             if (!this.isDragging) {
-                this.updateHoverGroup(worldPos);
-                return;
+                if (this.pendingDrag) {
+                    if (!this.maybeStartPendingDrag(worldPos, this.lastMouseScreen)) {
+                        return;
+                    }
+                } else {
+                    this.updateHoverGroup(worldPos);
+                    return;
+                }
             }
 
             if (!this.dragStartWorld) return;
@@ -1008,6 +1111,12 @@ export class Editor {
                 }
                 this.clearBoxSelectionState();
                 this.repaintWithSelection();
+                return;
+            }
+
+            if (this.pendingDrag) {
+                this.pendingDrag = null;
+                setTimeout(() => this.repaintWithSelection(), 0);
                 return;
             }
 
@@ -1056,6 +1165,7 @@ export class Editor {
                     this.revertDragPositions();
                     this.restorePostDragRendering();
                 }
+                this.pendingDrag = null;
                 this.clearSelection(true);
                 this.repaintWithSelection();
                 return;
@@ -1199,7 +1309,7 @@ export class Editor {
     }
 
     private repaintWithSelection() {
-        this.paintDynamic();
+        this.dynamicDirty = true;
         this.requestRedraw();
     }
 
@@ -1271,6 +1381,9 @@ export class Editor {
     private onRenderFrame() {
         if (!this.needsRedraw) return;
         this.needsRedraw = false;
+        if (this.dynamicDirty) {
+            this.paintDynamic();
+        }
         this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
         this.renderer.updateGrid(this.camera.bbox, 1.0);
         this.renderer.draw(this.camera.matrix);
