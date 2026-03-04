@@ -1,6 +1,12 @@
 uv.lock linguist-generated=true
 
 *.kicad_* linguist-generated=true
+*.kicad_pcb -diff
+*.kicad_sch -diff
+*.kicad_sym -diff
+*.kicad_mod -diff
+*.kicad_pro -diff
+*.kicad_dru -diff
 *.step linguist-generated=true
 *.wrl linguist-generated=true
 *.dxf linguist-generated=true
