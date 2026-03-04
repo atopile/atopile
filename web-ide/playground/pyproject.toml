@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atopile-playground"
+version = "0.1.0"
+description = "Production playground spawner service"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+  "fastapi>=0.110,<1",
+  "httpx>=0.27,<1",
+  "pydantic>=2.7,<3",
+  "rich>=13.7,<15",
+  "typer>=0.12,<1",
+  "uvicorn>=0.30,<1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0,<9",
+  "pytest-asyncio>=0.23,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["playground_app"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "main.py",
+  "playground_app",
+  "config.toml",
+  "web",
+  "Caddyfile",
+]

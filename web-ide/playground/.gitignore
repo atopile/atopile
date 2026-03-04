@@ -1,2 +1,5 @@
-# Copied from scripts/ at deploy time (see deploy.sh)
-Caddyfile
+# Bun dependencies
+web/node_modules/
+
+# Generated frontend bundle
+playground_app/static/landing.js
