@@ -937,16 +937,12 @@ def _get_nominal_value(param_node) -> float | None:
        to a finite [min, max] range (e.g. direct assignments like ``10uF +/- 20%``).
     2. ``has_part_picked.get_attribute()`` — uses the picked part's stored
        attribute value when the solver hasn't resolved constraints (e.g.
-       individually-picked components).
-
-    Note: MultiCapacitor children (for-loop-constrained) currently don't get
-    resolved by either path because the solver doesn't simplify for-loop
-    constraints and the individual children don't have their own
-    has_part_picked trait. These must be added via extra_spice for now.
+       for-loop-constrained parameters like MultiCapacitor children).
 
     Args:
         param_node: A NumericParameter node (e.g. resistor.capacitance.get()).
     """
+    import faebryk.core.node as fabll
     import faebryk.library._F as F
 
     # Path 1: direct superset extraction (works for most resolved parameters)
@@ -969,13 +965,14 @@ def _get_nominal_value(param_node) -> float | None:
             part_picked = parent_module.get_trait(F.Pickable.has_part_picked)
             attr_lit = part_picked.get_attribute(param_name)
             if attr_lit is not None:
-                lit_parent = attr_lit.get_parent()
-                if lit_parent:
-                    numbers_node = lit_parent[0]
-                    min_val = numbers_node.get_min_value()
-                    max_val = numbers_node.get_max_value()
-                    if not math.isinf(min_val) and not math.isinf(max_val):
-                        return (min_val + max_val) / 2.0
+                # attr_lit is an is_literal trait on a Numbers node;
+                # get the Numbers node it's attached to and cast properly
+                numbers_node = fabll.Traits(attr_lit).get_obj_raw()
+                numbers_typed = numbers_node.cast(F.Literals.Numbers)
+                min_val = numbers_typed.get_min_value()
+                max_val = numbers_typed.get_max_value()
+                if not math.isinf(min_val) and not math.isinf(max_val):
+                    return (min_val + max_val) / 2.0
     except Exception as e:
         logger.debug(f"_get_nominal_value path 2 (has_part_picked) failed: {e}")
 
@@ -1190,8 +1187,11 @@ def generate_spice_netlist(
     for capacitor in root.get_children(direct_only=False, types=F.Capacitor):
         capacitance = _get_nominal_value(capacitor.capacitance.get())
         if capacitance is None:
-            logger.warning(f"Skipping capacitor {capacitor.get_full_name(include_uuid=False)}: "
-                           "no capacitance value")
+            logger.warning(
+                f"Skipping capacitor"
+                f" {capacitor.get_full_name(include_uuid=False)}:"
+                f" no capacitance value"
+            )
             continue
 
         pins = capacitor.unnamed

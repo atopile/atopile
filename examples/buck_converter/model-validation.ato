@@ -145,7 +145,7 @@ module ModelValidation:
     sim_freq_sweep.remove_elements = "r_en,r_en_bot,r_load"
     sim_freq_sweep.extra_spice = "V_EN dut.enable.line 0 DC 12|Vsense dut.power_out.hv dut_isense DC 0|Iload dut_isense 0 DC 5|Cout1 dut.power_out.hv 0 47u|Cout2 dut.power_out.hv 0 47u|Cout3 dut.power_out.hv 0 47u|Cout4 dut.power_out.hv 0 47u"
     sim_freq_sweep.time_start = 10ms
-    sim_freq_sweep.time_stop = 10.05ms
+    sim_freq_sweep.time_stop = "10.01 ms"
     sim_freq_sweep.time_step = 10ns
 
     # =====================================================================

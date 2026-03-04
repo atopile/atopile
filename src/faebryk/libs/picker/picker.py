@@ -121,13 +121,13 @@ def get_pick_tree(
         if traits.get(F.Pickable.has_part_picked):
             return tree
 
-        # Handle has_part_removed: create a has_part_picked trait with the removed marker # noqa: E501
+        # Handle has_part_removed: mark as picked/removed but continue exploring
+        # children (e.g. MultiCapacitor's Capacitor children still need picking)
         if traits.get(F.has_part_removed):
             picked_trait = fabll.Traits.create_and_add_instance_to(
                 module_or_interface_obj, F.Pickable.has_part_picked
             )
             fabll.Traits.create_and_add_instance_to(picked_trait, F.has_part_removed)
-            return tree
 
         explore = True
         if pbt := traits.get(F.Pickable.is_pickable_by_type):
