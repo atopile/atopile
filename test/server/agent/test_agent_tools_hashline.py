@@ -12,11 +12,21 @@ from atopile.dataclasses import (
     BuildStatus,
 )
 from atopile.server.agent import policy, tool_layout, tools
-from atopile.server.domains.autolayout.models import (
-    AutolayoutCandidate,
-    AutolayoutJob,
-    AutolayoutState,
-    utc_now_iso,
+
+try:
+    from atopile.server.domains.autolayout.models import (
+        AutolayoutCandidate,
+        AutolayoutJob,
+        AutolayoutState,
+        utc_now_iso,
+    )
+
+    _HAS_AUTOLAYOUT = True
+except ModuleNotFoundError:
+    _HAS_AUTOLAYOUT = False
+
+_needs_autolayout = pytest.mark.skipif(
+    not _HAS_AUTOLAYOUT, reason="autolayout module not installed"
 )
 
 
@@ -48,14 +58,15 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_move_path" in names
     assert "project_delete_path" in names
     assert "manufacturing_generate" in names
-    assert "autolayout_run" in names
-    assert "autolayout_webhook_gateway" in names
-    assert "autolayout_status" in names
-    assert "autolayout_fetch_to_layout" in names
-    assert "autolayout_request_screenshot" in names
+    if _HAS_AUTOLAYOUT:
+        assert "autolayout_run" in names
+        assert "autolayout_webhook_gateway" in names
+        assert "autolayout_status" in names
+        assert "autolayout_fetch_to_layout" in names
+        assert "autolayout_request_screenshot" in names
+        assert "autolayout_configure_board_intent" in names
     assert "layout_get_component_position" in names
     assert "layout_set_component_position" in names
-    assert "autolayout_configure_board_intent" in names
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
 
@@ -632,6 +643,7 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     assert "datasheet_read" in result["implementation_hint"]
 
 
+@_needs_autolayout
 def test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
@@ -696,6 +708,7 @@ def test_autolayout_run_maps_common_options(monkeypatch, tmp_path: Path) -> None
     assert options["responseBoardFormat"] == 3
 
 
+@_needs_autolayout
 def test_autolayout_webhook_gateway_tool_start_status_stop(
     monkeypatch,
     tmp_path: Path,
@@ -791,6 +804,7 @@ def test_autolayout_webhook_gateway_tool_start_status_stop(
     assert calls["stop"]
 
 
+@_needs_autolayout
 def test_autolayout_run_auto_setup_webhook_uses_gateway(
     monkeypatch,
     tmp_path: Path,
@@ -873,6 +887,7 @@ def test_autolayout_run_auto_setup_webhook_uses_gateway(
     assert result["webhook_token_configured"] is True
 
 
+@_needs_autolayout
 def test_autolayout_fetch_to_layout_archives_iteration(
     monkeypatch,
     tmp_path: Path,
@@ -964,6 +979,7 @@ def test_autolayout_fetch_to_layout_archives_iteration(
     assert Path(archived).exists()
 
 
+@_needs_autolayout
 def test_autolayout_fetch_to_layout_waits_while_running(
     monkeypatch,
     tmp_path: Path,
@@ -1030,6 +1046,7 @@ def test_autolayout_fetch_to_layout_waits_while_running(
     assert select_called is False
 
 
+@_needs_autolayout
 def test_autolayout_status_without_job_id_returns_project_summary(
     monkeypatch,
     tmp_path: Path,
@@ -1087,6 +1104,7 @@ def test_autolayout_status_without_job_id_returns_project_summary(
     assert result["jobs"][0]["recommended_action"] == "fetch_candidate_to_layout"
 
 
+@_needs_autolayout
 def test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
     monkeypatch,
     tmp_path: Path,
@@ -1187,6 +1205,7 @@ def test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
     assert result["selected_candidate_id"] == "cand-1"
 
 
+@_needs_autolayout
 def test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
     monkeypatch,
     tmp_path: Path,
@@ -1244,6 +1263,7 @@ def test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
     assert result["jobs"][0]["job_id"] == "al-recent"
 
 
+@_needs_autolayout
 def test_autolayout_status_unknown_job_returns_recent_summary(
     monkeypatch,
     tmp_path: Path,
@@ -1294,6 +1314,7 @@ def test_autolayout_status_unknown_job_returns_recent_summary(
     assert result["jobs"][0]["job_id"] == "al-recent"
 
 
+@_needs_autolayout
 def test_autolayout_request_screenshot_renders_images(
     monkeypatch,
     tmp_path: Path,
@@ -1368,6 +1389,7 @@ def test_autolayout_request_screenshot_renders_images(
     assert Path(result["screenshot_paths"]["3d"]).exists()
 
 
+@_needs_autolayout
 def test_autolayout_request_screenshot_uses_default_bottom_layers(
     monkeypatch,
     tmp_path: Path,
@@ -1419,6 +1441,7 @@ def test_autolayout_request_screenshot_uses_default_bottom_layers(
     assert captured["layers"] == "B.Cu,B.Paste,B.Mask,Edge.Cuts"
 
 
+@_needs_autolayout
 def test_autolayout_configure_board_intent_updates_ato_yaml(
     tmp_path: Path,
 ) -> None:

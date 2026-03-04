@@ -8,7 +8,7 @@ import httpx
 from openai import APIStatusError
 
 from atopile.dataclasses import AppContext
-from atopile.server.agent.orchestrator import (
+from atopile.server.agent._orchestrator_old import (
     AgentConfig,
     AgentOrchestrator,
     ToolTrace,
@@ -136,7 +136,7 @@ def test_responses_create_retries_on_429(monkeypatch) -> None:
     async def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
 
-    monkeypatch.setattr("atopile.server.agent.orchestrator.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("atopile.server.agent._orchestrator_old.asyncio.sleep", fake_sleep)
 
     class StubResponses:
         def __init__(self) -> None:
@@ -361,7 +361,7 @@ def test_run_worker_turn_stops_repetitive_discovery_loop(
         fake_create_with_context_control,
     )
     monkeypatch.setattr(
-        "atopile.server.agent.orchestrator.tools.execute_tool",
+        "atopile.server.agent._orchestrator_old.tools.execute_tool",
         fake_execute_tool,
     )
 
@@ -436,7 +436,7 @@ def test_run_worker_turn_stops_on_repeated_tool_failures(
         fake_create_with_context_control,
     )
     monkeypatch.setattr(
-        "atopile.server.agent.orchestrator.tools.execute_tool",
+        "atopile.server.agent._orchestrator_old.tools.execute_tool",
         fake_execute_tool,
     )
 
@@ -502,7 +502,7 @@ def test_run_worker_turn_stops_after_no_concrete_progress(
         fake_create_with_context_control,
     )
     monkeypatch.setattr(
-        "atopile.server.agent.orchestrator.tools.execute_tool",
+        "atopile.server.agent._orchestrator_old.tools.execute_tool",
         fake_execute_tool,
     )
 
