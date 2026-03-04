@@ -793,6 +793,40 @@
         overflow-y: auto;
       }
 
+      .timeline-color-modes {
+        display: flex;
+        gap: 4px;
+        margin-left: 16px;
+        align-items: center;
+      }
+
+      .timeline-color-modes .mode-label {
+        font-size: 11px;
+        color: var(--ctp-subtext0);
+        margin-right: 4px;
+      }
+
+      .timeline-color-modes button {
+        padding: 3px 10px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-subtext1);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.15s;
+      }
+
+      .timeline-color-modes button:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .timeline-color-modes button.active {
+        background-color: var(--ctp-surface1);
+        color: var(--ctp-text);
+        border-color: var(--ctp-lavender);
+      }
+
       .timeline-tooltip {
         display: none;
         position: fixed;
@@ -1988,6 +2022,7 @@
       var timelineData = [[timeline_json]];
       var runStartEpoch = [[run_start_epoch]];
       var timelineRendered = false;
+      var timelineColorMode = "outcome";
 
       function toggleTimelineModal() {
         var modal = document.getElementById("timelineModal");
@@ -2038,18 +2073,6 @@
         var svgWidth = labelWidth + chartAreaWidth + 20;
         var svgHeight = headerHeight + workers.length * rowPitch + 10;
 
-        // Outcome -> color (use CSS var values directly for SVG)
-        var outcomeColors = {
-          passed: "var(--ctp-green)",
-          failed: "var(--ctp-red)",
-          error: "var(--ctp-maroon)",
-          crashed: "var(--ctp-mauve)",
-          timeout: "var(--ctp-peach)",
-          skipped: "var(--ctp-yellow)",
-          running: "var(--ctp-blue)",
-          queued: "var(--ctp-overlay1)",
-        };
-
         var svg = [];
         svg.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + svgWidth + '" height="' + svgHeight + '" style="font-family: sans-serif; font-size: 10px;">');
 
@@ -2082,12 +2105,19 @@
           var barHeight = rowHeight - 2;
           var x = labelWidth + ((t.s - minEpoch) / totalTime) * chartAreaWidth;
           var w = Math.max(minBarWidth, ((t.e - t.s) / totalTime) * chartAreaWidth);
-          var color = outcomeColors[t.o] || "var(--ctp-overlay0)";
-          svg.push('<rect class="timeline-bar" data-idx="' + idx + '" x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + barHeight + '" fill="' + color + '" rx="1" />');
+          svg.push('<rect class="timeline-bar" data-idx="' + idx + '" x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + barHeight + '" rx="1" />');
         });
 
         svg.push('</svg>');
         container.innerHTML = svg.join('\n');
+
+        // Precompute peak memory stats for color scaling
+        var memValues = timelineData.filter(function (t) { return t.mp > 0; }).map(function (t) { return t.mp; });
+        memValues.sort(function (a, b) { return a - b; });
+        timelineMemMax = memValues.length > 0 ? memValues[memValues.length - 1] : 1;
+        timelineMemP50 = memValues.length > 0 ? memValues[Math.floor(memValues.length * 0.5)] : 1;
+
+        applyTimelineColors();
 
         // Tooltip and click handlers
         var tooltip = document.getElementById("timelineTooltip");
@@ -2116,6 +2146,80 @@
             showTestDetail(t);
           });
         });
+      }
+
+      var timelineMemMax = 1;
+      var timelineMemP50 = 1;
+
+      var timelineOutcomeColors = {
+        passed: "var(--ctp-green)",
+        failed: "var(--ctp-red)",
+        error: "var(--ctp-maroon)",
+        crashed: "var(--ctp-mauve)",
+        timeout: "var(--ctp-peach)",
+        skipped: "var(--ctp-yellow)",
+        running: "var(--ctp-blue)",
+        queued: "var(--ctp-overlay1)",
+      };
+
+      function getBarColor(t, mode) {
+        if (mode === "outcome") {
+          return timelineOutcomeColors[t.o] || "var(--ctp-overlay0)";
+        }
+        if (mode === "speedup") {
+          if (t.sp == null) return "var(--ctp-overlay0)";
+          if (t.sp > 0) {
+            // Improvement: green, intensity by magnitude (cap at 100%)
+            var g = Math.min(t.sp / 100, 1);
+            return "rgba(166, 227, 161, " + (0.3 + 0.7 * g).toFixed(2) + ")";
+          }
+          if (t.sp < 0) {
+            // Regression: red, intensity by magnitude
+            var r = Math.min(Math.abs(t.sp) / 100, 1);
+            return "rgba(243, 139, 168, " + (0.3 + 0.7 * r).toFixed(2) + ")";
+          }
+          return "var(--ctp-overlay0)";
+        }
+        if (mode === "memory") {
+          if (t.mp <= 0) return "var(--ctp-overlay0)";
+          // Normalized 0..1 using log scale relative to max
+          var norm = Math.log1p(t.mp) / Math.log1p(timelineMemMax);
+          // Interpolate: low=teal, mid=yellow, high=red
+          if (norm < 0.5) {
+            var p = norm * 2;
+            return "rgb(" +
+              Math.round(148 + (249 - 148) * p) + "," +
+              Math.round(226 + (226 - 226) * p) + "," +
+              Math.round(213 + (175 - 213) * p) + ")";
+          } else {
+            var p = (norm - 0.5) * 2;
+            return "rgb(" +
+              Math.round(249 + (243 - 249) * p) + "," +
+              Math.round(226 + (139 - 226) * p) + "," +
+              Math.round(175 + (168 - 175) * p) + ")";
+          }
+        }
+        return "var(--ctp-overlay0)";
+      }
+
+      function applyTimelineColors() {
+        var container = document.getElementById("timelineContainer");
+        if (!container) return;
+        var bars = container.querySelectorAll(".timeline-bar");
+        bars.forEach(function (bar) {
+          var idx = parseInt(bar.getAttribute("data-idx"));
+          bar.setAttribute("fill", getBarColor(timelineData[idx], timelineColorMode));
+        });
+      }
+
+      function setTimelineColorMode(mode) {
+        timelineColorMode = mode;
+        // Update button states
+        var buttons = document.querySelectorAll("#timelineColorModes button[data-mode]");
+        buttons.forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-mode") === mode);
+        });
+        applyTimelineColors();
       }
 
       var outcomeColorMap = {
@@ -2290,6 +2394,12 @@
       <div class="modal-content">
         <div class="modal-header">
           <h2>Worker Timeline</h2>
+          <div class="timeline-color-modes" id="timelineColorModes">
+            <span class="mode-label">Color by:</span>
+            <button class="active" data-mode="outcome" onclick="setTimelineColorMode('outcome')">Outcome</button>
+            <button data-mode="speedup" onclick="setTimelineColorMode('speedup')">Speedup</button>
+            <button data-mode="memory" onclick="setTimelineColorMode('memory')">Peak Memory</button>
+          </div>
           <div class="modal-buttons">
             <button class="close-btn" onclick="closeModal('timelineModal')">&times;</button>
           </div>
