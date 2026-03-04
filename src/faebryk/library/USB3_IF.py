@@ -40,11 +40,17 @@ class USB3_IF(fabll.Node):
     _parameter_constraints = [
         # SuperSpeed RX differential impedance: 90 Ohm +/- 15% (USB 3.2 spec Table 6-12)
         F.Literals.Numbers.MakeChild_SetSuperset(
-            [rx, F.DifferentialPair.impedance], 76.5, 103.5, unit=F.Units.Ohm
+            [rx, F.DifferentialPair.differential_impedance],
+            76.5,
+            103.5,
+            unit=F.Units.Ohm,
         ),
         # SuperSpeed TX differential impedance: 90 Ohm +/- 15% (USB 3.2 spec Table 6-12)
         F.Literals.Numbers.MakeChild_SetSuperset(
-            [tx, F.DifferentialPair.impedance], 76.5, 103.5, unit=F.Units.Ohm
+            [tx, F.DifferentialPair.differential_impedance],
+            76.5,
+            103.5,
+            unit=F.Units.Ohm,
         ),
         # SuperSpeed RX reference voltage: 0.8V to 1.2V (USB 3.2 spec Table 6-12)
         F.Literals.Numbers.MakeChild_SetSuperset(

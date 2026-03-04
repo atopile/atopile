@@ -13,7 +13,7 @@ class DifferentialPair(fabll.Node):
     p = F.ElectricSignal.MakeChild()
     n = F.ElectricSignal.MakeChild()
 
-    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    differential_impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
 
     # ----------------------------------------
     #                 traits
@@ -21,6 +21,9 @@ class DifferentialPair(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
+    )
+    _bus_parameters = fabll.Traits.MakeEdge(
+        F.is_alias_bus_parameter.MakeChild(), owner=[differential_impedance]
     )
 
     net_name_suffixes = [
@@ -31,6 +34,17 @@ class DifferentialPair(fabll.Node):
         fabll.Traits.MakeEdge(
             F.has_net_name_affix.MakeChild(suffix="_N"),
             owner=[n, F.ElectricSignal.line],
+        ),
+    ]
+
+    transmission_lines = [
+        fabll.Traits.MakeEdge(
+            F.TransmissionLine.is_transmissionline.MakeChild(),
+            owner=[p],
+        ),
+        fabll.Traits.MakeEdge(
+            F.TransmissionLine.is_transmissionline.MakeChild(),
+            owner=[n],
         ),
     ]
 
@@ -46,7 +60,7 @@ class DifferentialPair(fabll.Node):
         for r in rs:
             F.Expressions.IsSubset.c(
                 subset=r.resistance.get().can_be_operand.get(),
-                superset=self.impedance.get().can_be_operand.get(),
+                superset=self.differential_impedance.get().can_be_operand.get(),
                 assert_=True,
             )
 

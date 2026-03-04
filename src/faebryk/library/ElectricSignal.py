@@ -17,6 +17,10 @@ class ElectricSignal(fabll.Node):
     # ----------------------------------------
     line = F.Electrical.MakeChild()
     reference = F.ElectricPower.MakeChild()
+    characteristic_impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    """
+    Z0 or surge impedance
+    """
 
     # ----------------------------------------
     #                 traits
@@ -25,6 +29,9 @@ class ElectricSignal(fabll.Node):
 
     _can_be_pulled = fabll.Traits.MakeEdge(
         can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    )
+    _bus_parameters = fabll.Traits.MakeEdge(
+        F.is_alias_bus_parameter.MakeChild(), owner=[characteristic_impedance]
     )
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
