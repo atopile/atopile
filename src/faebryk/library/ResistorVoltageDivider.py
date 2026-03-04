@@ -134,8 +134,34 @@ class ResistorVoltageDivider(fabll.Node):
             [ratio],
             [
                 _r_div := F.Expressions.Divide.MakeChild(
-                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
-                    [total_resistance],
+                    [
+                        _lit_one := F.Literals.Numbers.MakeChild_SingleValue(
+                            value=1.0, unit=F.Units.Dimensionless
+                        )
+                    ],
+                    [
+                        _denom := F.Expressions.Add.MakeChild(
+                            [
+                                _rtop_over_rbot := F.Expressions.Divide.MakeChild(
+                                    [
+                                        chain,
+                                        _ResistorChain.resistors[0],
+                                        F.Resistor.resistance,
+                                    ],
+                                    [
+                                        chain,
+                                        _ResistorChain.resistors[1],
+                                        F.Resistor.resistance,
+                                    ],
+                                )
+                            ],
+                            [
+                                _lit_one2 := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=1.0, unit=F.Units.Dimensionless
+                                )
+                            ],
+                        )
+                    ],
                 )
             ],
             [
@@ -208,6 +234,86 @@ class ResistorVoltageDivider(fabll.Node):
                 _r_bot_sub := F.Expressions.Subtract.MakeChild(
                     [total_resistance],
                     [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+                )
+            ],
+            assert_=True,
+        ),
+        # SOP forms bypassing total_R — each variable appears once
+        # r_top = r_bottom * (v_in/v_out - 1)
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+            [
+                _r_top_sop := F.Expressions.Multiply.MakeChild(
+                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+                    [
+                        _vin_vout_minus1 := F.Expressions.Subtract.MakeChild(
+                            [
+                                _vin_over_vout := F.Expressions.Divide.MakeChild(
+                                    [v_in],
+                                    [v_out],
+                                )
+                            ],
+                            [
+                                _sop_lit_one
+                                := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=1.0, unit=F.Units.Dimensionless
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            assert_=True,
+        ),
+        # r_bottom = r_top / (v_in/v_out - 1)
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+            [
+                _r_bot_sop := F.Expressions.Divide.MakeChild(
+                    [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+                    [
+                        _vin_vout_minus1_2 := F.Expressions.Subtract.MakeChild(
+                            [
+                                _vin_over_vout_2 := F.Expressions.Divide.MakeChild(
+                                    [v_in],
+                                    [v_out],
+                                )
+                            ],
+                            [
+                                _sop_lit_one2
+                                := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=1.0, unit=F.Units.Dimensionless
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            assert_=True,
+        ),
+        # Ohm's law SOP forms — r_top = (v_in - v_out) / current
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+            [
+                _r_top_ohm := F.Expressions.Divide.MakeChild(
+                    [
+                        _v_top := F.Expressions.Subtract.MakeChild(
+                            [v_in],
+                            [v_out],
+                        )
+                    ],
+                    [current],
+                )
+            ],
+            assert_=True,
+        ),
+        # r_bottom = v_out / current
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+            [
+                _r_bot_ohm := F.Expressions.Divide.MakeChild(
+                    [v_out],
+                    [current],
                 )
             ],
             assert_=True,
