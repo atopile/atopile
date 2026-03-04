@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(resolve(__dirname, '../../src/ui-server/') + '/');
+const require = createRequire(resolve(__dirname, '../../../src/ui-server/') + '/');
 const puppeteer = require('puppeteer');
 
 const DEFAULT_URL = 'https://127.0.0.1:3443/?folder=/home/openvscode-server/workspace';

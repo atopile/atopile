@@ -105,9 +105,9 @@ Fallback path for websocket (new behavior):
 - `docker-compose.yml`
 - `scripts/Caddyfile`
 - `scripts/entrypoint.sh`
-- `../src/vscode-atopile/src/common/backendServer.ts`
-- `../src/vscode-atopile/src/common/webview-bridge.ts`
-- `../src/vscode-atopile/src/common/webview-bridge-runtime.ts`
-- `../src/vscode-atopile/src/providers/SidebarProvider.ts`
-- `../src/vscode-atopile/src/providers/LogViewerProvider.ts`
-- `../src/vscode-atopile/src/ui/layout-editor.ts`
+- `../../src/vscode-atopile/src/common/backendServer.ts`
+- `../../src/vscode-atopile/src/common/webview-bridge.ts`
+- `../../src/vscode-atopile/src/common/webview-bridge-runtime.ts`
+- `../../src/vscode-atopile/src/providers/SidebarProvider.ts`
+- `../../src/vscode-atopile/src/providers/LogViewerProvider.ts`
+- `../../src/vscode-atopile/src/ui/layout-editor.ts`

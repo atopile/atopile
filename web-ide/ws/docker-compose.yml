@@ -1,7 +1,7 @@
 # Local development setup for atopile Web IDE
 #
 # Usage:
-#   cd web-ide
+#   cd web-ide/ws
 #   docker compose up --build
 #
 # Access at: https://localhost:3443
@@ -9,8 +9,8 @@
 services:
   atopile-web-ide:
     build:
-      context: ..
-      dockerfile: web-ide/Dockerfile
+      context: ../..
+      dockerfile: web-ide/ws/Dockerfile
       args:
         OPENVSCODE_VERSION: "1.105.1"
         KICAD_VERSION: "9.0.7"

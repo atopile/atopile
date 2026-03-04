@@ -29,7 +29,7 @@ WORKSPACE_INTERNAL_PORT = 3080
 def _load_caddyfile() -> str:
     caddy_path = Path(__file__).resolve().parents[2] / "Caddyfile"
     if not caddy_path.is_file():
-        raise RuntimeError("Caddyfile missing at playground/Caddyfile; required for workspace machine config")
+        raise RuntimeError("Caddyfile missing at spawner/Caddyfile; required for workspace machine config")
     return caddy_path.read_text(encoding="utf-8")
 
 

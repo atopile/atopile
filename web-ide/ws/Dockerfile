@@ -2,8 +2,8 @@
 # OpenVSCode Server with atopile pre-configured
 # Based on: https://github.com/gitpod-io/openvscode-server
 #
-# Build context must be the REPO ROOT (not web-ide/).
-# Example: docker build -f web-ide/Dockerfile .
+# Build context must be the REPO ROOT (not web-ide/ws/).
+# Example: docker build -f web-ide/ws/Dockerfile .
 
 ARG OPENVSCODE_VERSION=1.105.1
 ARG KICAD_VERSION=9.0.7
@@ -120,7 +120,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && npm install -g @gltf-transform/cli@4.1.0
 
 # Install restricted shell, create non-root user with restricted shell
-COPY web-ide/scripts/restricted-shell.sh /usr/local/bin/restricted-shell.sh
+COPY web-ide/ws/scripts/restricted-shell.sh /usr/local/bin/restricted-shell.sh
 RUN chmod +x /usr/local/bin/restricted-shell.sh && \
     useradd -m -s /usr/local/bin/restricted-shell.sh -d ${HOME} openvscode-server && \
     mkdir -p ${OPENVSCODE_SERVER_ROOT} && \
@@ -138,11 +138,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /usr/local/bin/uv
 
 # Copy scripts, branding, setup, and default workspace (stable — cached across source changes)
 COPY --chown=openvscode-server:openvscode-server \
-    web-ide/scripts/ /tmp/scripts/
+    web-ide/ws/scripts/ /tmp/scripts/
 COPY --chown=openvscode-server:openvscode-server \
-    web-ide/branding/ /tmp/branding/
+    web-ide/ws/branding/ /tmp/branding/
 COPY --chown=openvscode-server:openvscode-server \
-    web-ide/setup/ /tmp/setup/
+    web-ide/ws/setup/ /tmp/setup/
 COPY --chown=openvscode-server:openvscode-server \
     examples/quickstart/ /home/openvscode-server/workspace/
 

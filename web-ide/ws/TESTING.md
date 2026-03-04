@@ -24,7 +24,7 @@ Use layered checks in this order:
 ## 1) Bring Up Stack
 
 ```bash
-cd web-ide
+cd web-ide/ws
 ./scripts/web-idectl.sh start
 ./scripts/web-idectl.sh status
 ```
@@ -38,21 +38,21 @@ Expected:
 Run the general web-ide validator:
 
 ```bash
-cd web-ide
+cd web-ide/ws
 node scripts/validate.mjs 'https://127.0.0.1:3443/?folder=/home/openvscode-server/workspace' --timeout=90000
 ```
 
 Expected:
 - all checks pass
 - status reaches `ato: 8501`
-- artifacts are written to `web-ide/artifacts/`
+- artifacts are written to `web-ide/ws/artifacts/`
 
 ## 3) Layout E2E Test
 
 Run layout-specific validator:
 
 ```bash
-cd web-ide
+cd web-ide/ws
 node scripts/validate-layout.mjs 'https://127.0.0.1:3443/?folder=/home/openvscode-server/workspace'
 ```
 
@@ -60,7 +60,7 @@ Expected:
 - layout button opens the layout panel
 - `render-model` fetch works through the webview bridge
 - action endpoint works (`execute-action`)
-- report written to `web-ide/artifacts/layout-validation.json`
+- report written to `web-ide/ws/artifacts/layout-validation.json`
 
 ## 4) WS Recovery Drill (Must Pass)
 
@@ -109,4 +109,3 @@ Expected during restart:
 Do not declare a webview/network fix complete until it has passed both:
 - automated Puppeteer validation
 - forced backend restart recovery validation
-

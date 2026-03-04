@@ -7,7 +7,7 @@
  * runs a series of validation checks and produces a report.
  *
  * Usage:
- *   node web-ide/scripts/validate.mjs [url] [--timeout=60000] [--headed]
+ *   node web-ide/ws/scripts/validate.mjs [url] [--timeout=60000] [--headed]
  *
  * Default: https://127.0.0.1:3443, headless, 60s global timeout.
  *
@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 // Resolve puppeteer from ui-server's node_modules
 // ---------------------------------------------------------------------------
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(resolve(__dirname, '../../src/ui-server/') + '/');
+const require = createRequire(resolve(__dirname, '../../../src/ui-server/') + '/');
 const puppeteer = require('puppeteer');
 
 // ---------------------------------------------------------------------------

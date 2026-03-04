@@ -13,7 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_IDE_DIR="$(dirname "$SCRIPT_DIR")"
-REPO_ROOT="$(dirname "$WEB_IDE_DIR")"
+REPO_ROOT="$(dirname "$(dirname "$WEB_IDE_DIR")")"
 ARTIFACTS_DIR="${WEB_IDE_DIR}/artifacts"
 
 echo "=== Building atopile artifacts ==="

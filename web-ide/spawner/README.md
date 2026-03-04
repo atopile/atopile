@@ -9,7 +9,7 @@ Playground spawner for atopile web-IDE, implemented as a standalone Python app w
 
 ## Commands
 
-From `web-ide/playground`:
+From `web-ide/spawner`:
 
 ```bash
 uv run main.py server start
