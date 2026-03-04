@@ -76,6 +76,27 @@ def _apply_version(specd_version: str, config: "Config") -> None:
     config.project.package.version = str(version)
 
 
+_ANSI_RE = None
+
+
+def _format_source_location(entry: dict) -> str:
+    """Extract a compact source location from a log entry's ato_traceback."""
+    import re
+
+    global _ANSI_RE
+    if _ANSI_RE is None:
+        _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+    tb = entry.get("ato_traceback")
+    if not tb:
+        return ""
+    clean = _ANSI_RE.sub("", tb)
+    match = re.search(r'File "([^"]+)", line (\d+)', clean)
+    if match:
+        return f"\n       at {match.group(1)}:{match.group(2)}"
+    return ""
+
+
 class _PackageValidators:
     @staticmethod
     def verify_manifest(config: "Config"):
@@ -440,7 +461,10 @@ class _PackageValidators:
                 parts.append(f"{warning_count} warning(s)")
             summary = ", ".join(parts)
 
-            messages = [f"  - [{e['level']}] {e['message']}" for e in log_entries[:10]]
+            messages = [
+                f"  - [{e['level']}] {e['message']}{_format_source_location(e)}"
+                for e in log_entries[:10]
+            ]
             if len(log_entries) > 10:
                 messages.append(f"  ... and {len(log_entries) - 10} more")
             warning_details.append(f"{target} ({summary}):\n" + "\n".join(messages))

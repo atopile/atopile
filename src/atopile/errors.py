@@ -478,12 +478,36 @@ class UserExportError(SourceLocatedUserException):
 
 
 # =============================================================================
-# Non-Source-Located Exceptions (don't need token tracking)
+# Lightweight Source-Located Exceptions (file/line only, no token tracking)
 # =============================================================================
 
 
-class DeprecatedException(UserException):
+class DeprecatedException(SourceLocatedUserException):
     """This feature is deprecated and will be removed in a future version."""
+
+    def __init__(
+        self,
+        message: str = "",
+        *args,
+        source_path: str | None = None,
+        source_line: int | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(message, *args, **kwargs)
+        self.source_path = source_path
+        self.source_line = source_line
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[ConsoleRenderable]:
+        renderables = super().__rich_console__(console, options)
+        if self.source_path and self.source_line:
+            header = Text(
+                f'  File "{self.source_path}", line {self.source_line}',
+                style="dim",
+            )
+            renderables.append(header)
+        return renderables
 
 
 class UserResourceException(UserException):

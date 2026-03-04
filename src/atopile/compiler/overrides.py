@@ -34,10 +34,24 @@ from faebryk.libs.smd import SMDSize
 logger = get_logger(__name__)
 
 
-def _deprecated_warning(input: str, replacement: str) -> None:
+def _deprecated_warning(
+    input: str,
+    replacement: str,
+    source_node: "AST.SourceChunk | None" = None,
+) -> None:
+    source_path: str | None = None
+    source_line: int | None = None
+    if source_node is not None:
+        try:
+            source_path = source_node.get_path()
+            source_line = source_node.loc.get().get_start_line()
+        except Exception:
+            pass
     with downgrade(DeprecatedException):
         raise DeprecatedException(
-            f"'{input}' is deprecated. Use '{replacement}' instead."
+            f"'{input}' is deprecated. Use '{replacement}' instead.",
+            source_path=source_path,
+            source_line=source_line,
         )
 
 
@@ -230,10 +244,11 @@ class TraitOverrideRegistry:
         name: str,
         target_path: LinkPath | None,
         value: Any,
+        source_node: "AST.SourceChunk | None" = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Apply a spec to create trait actions."""
         if spec.deprecated_hint:
-            _deprecated_warning(name, spec.trait_class.__name__)
+            _deprecated_warning(name, spec.trait_class.__name__, source_node)
 
         if spec.expected_type and not isinstance(value, spec.expected_type):
             raise DslException(
@@ -259,7 +274,10 @@ class TraitOverrideRegistry:
 
     @classmethod
     def handle_assignment(
-        cls, target_path: FieldPath, assignable_node: AST.Assignable
+        cls,
+        target_path: FieldPath,
+        assignable_node: AST.Assignable,
+        source_node: "AST.SourceChunk | None" = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Handle assignment overrides like `node.package = "0402"`."""
         leaf_name = target_path.leaf.identifier
@@ -284,7 +302,7 @@ class TraitOverrideRegistry:
             else None
         )
 
-        return cls._apply_spec(spec, leaf_name, parent_path, value)
+        return cls._apply_spec(spec, leaf_name, parent_path, value, source_node)
 
     @classmethod
     def handle_trait(
@@ -292,6 +310,7 @@ class TraitOverrideRegistry:
         trait_type_name: str,
         target_path: LinkPath,
         template_args: dict[str, Any] | None,
+        source_node: "AST.SourceChunk | None" = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Handle trait overrides like `trait can_bridge_by_name<...>`."""
         return cls._apply_spec(
@@ -299,6 +318,7 @@ class TraitOverrideRegistry:
             trait_type_name,
             target_path,
             template_args or {},
+            source_node,
         )
 
     @classmethod

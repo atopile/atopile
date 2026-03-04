@@ -1143,7 +1143,9 @@ class ASTVisitor:
         if TraitOverrideRegistry.matches_assignment_override(
             target_path.leaf.identifier, assignable_node
         ):
-            return TraitOverrideRegistry.handle_assignment(target_path, assignable_node)
+            return TraitOverrideRegistry.handle_assignment(
+                target_path, assignable_node, source_node=node.source.get()
+            )
 
         if TraitOverrideRegistry.matches_enum_parameter_override(
             target_path.leaf.identifier, assignable_node
@@ -1338,10 +1340,20 @@ class ASTVisitor:
                 expr_type = F.Expressions.IsSubset
             case AST.ComparisonClause.ComparisonOperator.IS:
                 if rhs_is_literal:
+                    source_chunk = node.source.get()
+                    source_path: str | None = None
+                    source_line: int | None = None
+                    try:
+                        source_path = source_chunk.get_path()
+                        source_line = source_chunk.loc.get().get_start_line()
+                    except Exception:
+                        pass
                     with downgrade(DeprecatedException):
                         raise DeprecatedException(
                             "`assert x is <literal>` is deprecated. "
-                            "Use `assert x within <literal>` instead."
+                            "Use `assert x within <literal>` instead.",
+                            source_path=source_path,
+                            source_line=source_line,
                         )
                     expr_type = F.Expressions.IsSubset
                 else:
@@ -1907,7 +1919,10 @@ class ASTVisitor:
 
         if TraitOverrideRegistry.matches_trait_override(trait_type_name):
             return TraitOverrideRegistry.handle_trait(
-                trait_type_name, target_path_list, template_args
+                trait_type_name,
+                target_path_list,
+                template_args,
+                source_node=node.source.get(),
             )
         else:
             try:
