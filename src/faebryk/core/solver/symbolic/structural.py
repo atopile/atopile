@@ -404,6 +404,141 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
         )
 
 
+class _OperandMappingError(ValueError):
+    pass
+
+
+@algorithm("Mixed-Interval estimation", terminal=False)
+def mixed_estimation(mutator: Mutator):
+    """
+    When all operands of an expression have both upper and lower bounds (subset and
+    superset constraints), construct a combined interval for each operand, build a copy
+    of the expression using those intervals, and assert that the original expression is
+    a subset thereof.
+
+    ```
+    f(A{⊆|X}{⊇|Y}, B{⊆|Z}{⊇|W}, ...)
+    => f(...) ⊆! f([min(Y), max(X)], [min(W), max(Z)], ...)
+    ```
+
+    No anticorrelation check needed — Minkowski math is inclusion-monotonic.
+    """
+
+    # Step 1: Build superset map (upper bounds)
+    sps_ops = {
+        ss_po.as_operand.get(): lit_sps
+        for sps in mutator.get_typed_expressions(
+            F.Expressions.IsSubset,
+            required_traits=(F.Expressions.is_predicate,),
+            include_terminated=True,
+        )
+        if (lit_sps := sps.get_superset_operand().as_literal.try_get())
+        and (
+            ss_po := (
+                ss_op := sps.get_subset_operand()
+            ).as_parameter_operatable.try_get()
+        )
+        and not mutator.utils.is_correlatable_literal(lit_sps)
+        and not mutator.utils.is_literal_expression(ss_op)
+    }
+
+    # Step 2: Build subset map (lower bounds)
+    ss_ops = {
+        op_superset.as_operand.get(): lit_subset
+        for sps in mutator.get_typed_expressions(
+            F.Expressions.IsSubset,
+            required_traits=(F.Expressions.is_predicate,),
+            include_terminated=True,
+        )
+        if (lit_subset := sps.get_subset_operand().as_literal.try_get())
+        and (
+            op_superset := (
+                sps_op := sps.get_superset_operand()
+            ).as_parameter_operatable.try_get()
+        )
+        and not mutator.utils.is_correlatable_literal(lit_subset)
+        and not mutator.utils.is_literal_expression(sps_op)
+    }
+
+    # Step 3: Find expressions where all operands have both bounds or are literals
+    # An operand qualifies if it has both upper and lower bounds, or if it's a literal
+    def _op_has_both_bounds(op: F.Parameters.can_be_operand) -> bool:
+        return (op in sps_ops and op in ss_ops) or bool(op.as_literal.try_get())
+
+    def _map_operand(op: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
+        # Parameter operands: combined interval [min(ss), max(sps)]
+        # Literal operands: use the literal directly
+
+        if op.as_literal.try_get():
+            return op
+
+        sps_nums = sps_ops[op].switch_cast()
+        ss_nums = ss_ops[op].switch_cast()
+
+        if not sps_nums.isinstance(F.Literals.Numbers) or not ss_nums.isinstance(
+            F.Literals.Numbers
+        ):
+            raise _OperandMappingError(
+                f"Operand {op} not eligible for mixed estimation"
+            )
+
+        assert isinstance(sps_nums, F.Literals.Numbers) and isinstance(
+            ss_nums, F.Literals.Numbers
+        )
+
+        return (
+            (
+                F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
+                .create_instance(g=mutator.G_transient)
+                .setup_from_min_max(
+                    min=ss_nums.get_min_value(),
+                    max=sps_nums.get_max_value(),
+                    unit=sps_nums.get_is_unit(),
+                )
+            )
+            .is_literal.get()
+            .as_operand.get()
+        )
+
+    for expr in {
+        e
+        for op in set(sps_ops.keys()) | set(ss_ops.keys())
+        for e in mutator.get_operations(op.as_parameter_operatable.force_get())
+        if not e.has_trait(F.Expressions.is_setic)
+    }:
+        expr_e = expr.get_trait(F.Expressions.is_expression)
+        operands = expr_e.get_operands()
+
+        if not all(_op_has_both_bounds(op) for op in operands):
+            continue
+
+        expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+
+        # Step 4: Construct combined interval for each operand
+        try:
+            mapped_operands = [_map_operand(op) for op in operands]
+        except _OperandMappingError:
+            continue
+
+        new_expr = mutator.create_check_and_insert_expression(
+            mutator.utils.hack_get_expr_type(expr_e),
+            *mapped_operands,
+            from_ops=[expr_po],
+            allow_uncorrelated_congruence_match=True,
+        )
+
+        if new_expr.out is None:
+            continue
+
+        # Step 6: Assert original ⊆ computed result
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            expr_e.as_operand.get(),
+            new_expr.out.as_operand.get(),
+            assert_=True,
+        )
+
+
 @algorithm("Correlated contradiction", terminal=False)
 def correlated_contradiction(mutator: Mutator):
     """
