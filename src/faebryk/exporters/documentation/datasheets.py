@@ -3,6 +3,7 @@
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from httpx import HTTPStatusError, RequestError, TimeoutException
@@ -79,23 +80,34 @@ def export_datasheets(
             continue
         unique_urls.add(url)
 
-    # Download each unique URL, using a cleaned filename from the URL
-    if progress:
-        progress.set_total(len(unique_urls))
+    # Build download tasks, skipping files that already exist
+    tasks: list[tuple[str, Path]] = []
     for url in unique_urls:
         filename = _extract_filename_from_url(url)
         file_path = path / filename
-        if progress:
-            progress.advance()
         if file_path.exists() and not overwrite:
             logger.debug(f"Datasheet {filename} already exists, skipping download")
             continue
-        try:
-            _download_datasheet(url, file_path)
-        except DatasheetDownloadException as e:
-            logger.error(f"Failed to download datasheet {filename}: {e}")
-            continue
-        logger.debug(f"Downloaded datasheet {filename}")
+        tasks.append((url, file_path))
+
+    if progress:
+        progress.set_total(len(tasks))
+
+    # Download datasheets in parallel
+    MAX_WORKERS = 8
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(_download_datasheet, url, fp): (url, fp) for url, fp in tasks
+        }
+        for future in as_completed(futures):
+            url, fp = futures[future]
+            if progress:
+                progress.advance()
+            try:
+                future.result()
+                logger.debug(f"Downloaded datasheet {fp.name}")
+            except DatasheetDownloadException as e:
+                logger.error(f"Failed to download datasheet {fp.name}: {e}")
 
 
 def _download_datasheet(url: str, path: Path):
