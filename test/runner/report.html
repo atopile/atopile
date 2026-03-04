@@ -675,6 +675,139 @@
         font-size: 14px;
       }
 
+      /* Timeline button */
+      .timeline-btn {
+        margin-left: 8px;
+        padding: 4px 10px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: background-color 0.2s;
+      }
+
+      .timeline-btn:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .timeline-btn .icon {
+        font-size: 14px;
+      }
+
+      /* Timeline modal */
+      .timeline-modal .modal-content {
+        width: 98%;
+        max-width: none;
+        max-height: 96vh;
+        padding: 10px;
+      }
+
+      .timeline-body {
+        display: flex;
+        gap: 0;
+        max-height: calc(96vh - 80px);
+      }
+
+      .timeline-chart-area {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: auto;
+      }
+
+      .timeline-chart-area svg {
+        display: block;
+      }
+
+      .timeline-chart-area svg .timeline-bar {
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+
+      .timeline-chart-area svg .timeline-bar:hover {
+        opacity: 0.8;
+      }
+
+      .timeline-chart-area svg .timeline-bar-selected {
+        stroke: var(--ctp-lavender);
+        stroke-width: 2;
+      }
+
+      .timeline-detail {
+        width: 340px;
+        min-width: 340px;
+        border-left: 1px solid var(--ctp-surface1);
+        padding: 10px 12px;
+        overflow-y: auto;
+        background: var(--ctp-base);
+        font-size: 12px;
+      }
+
+      .timeline-detail-empty {
+        color: var(--ctp-overlay1);
+        padding-top: 20px;
+        text-align: center;
+        font-style: italic;
+      }
+
+      .timeline-detail h3 {
+        margin: 0 0 8px 0;
+        font-size: 13px;
+        color: var(--ctp-text);
+        word-break: break-all;
+      }
+
+      .timeline-detail-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 10px;
+        margin-bottom: 12px;
+      }
+
+      .timeline-detail-grid .label {
+        color: var(--ctp-subtext0);
+        white-space: nowrap;
+      }
+
+      .timeline-detail-grid .value {
+        color: var(--ctp-text);
+        word-break: break-all;
+      }
+
+      .timeline-detail .error-block {
+        margin-top: 8px;
+        padding: 6px 8px;
+        background: var(--ctp-surface0);
+        border-radius: 4px;
+        border-left: 3px solid var(--ctp-red);
+        font-size: 11px;
+        color: var(--ctp-red);
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .timeline-tooltip {
+        display: none;
+        position: fixed;
+        padding: 6px 10px;
+        background-color: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--ctp-text);
+        pointer-events: none;
+        z-index: 10;
+        max-width: 500px;
+        white-space: nowrap;
+      }
+
       /* Baseline selector dropdown */
       .baseline-selector {
         display: flex;
@@ -1379,6 +1512,7 @@
         if (key === "s") return toggleFilterByValue("skipped");
         if (key === "r") return toggleFilterByValue("running");
         if (key === "q") return toggleFilterByValue("queued");
+        if (key === "g") return toggleTimelineModal();
         if (key === "l") return toggleLogModal();
         if (key === "k") return cycleLogModal(1);
         if (key === "j") return cycleLogModal(-1);
@@ -1850,6 +1984,254 @@
           }
         });
       });
+      // Timeline
+      var timelineData = [[timeline_json]];
+      var runStartEpoch = [[run_start_epoch]];
+      var timelineRendered = false;
+
+      function toggleTimelineModal() {
+        var modal = document.getElementById("timelineModal");
+        if (modal.style.display === "block") {
+          closeModal("timelineModal");
+        } else {
+          if (!timelineRendered) {
+            renderTimeline();
+            timelineRendered = true;
+          }
+          openModal("timelineModal");
+        }
+      }
+
+      function renderTimeline() {
+        var container = document.getElementById("timelineContainer");
+        if (!timelineData || timelineData.length === 0) {
+          container.innerHTML = "<p>No timeline data available.</p>";
+          return;
+        }
+
+        // Gather unique worker IDs and sort
+        var workerSet = {};
+        timelineData.forEach(function (t) { workerSet[t.w] = true; });
+        var workers = Object.keys(workerSet).map(Number).sort(function (a, b) { return a - b; });
+        var workerIndex = {};
+        workers.forEach(function (w, i) { workerIndex[w] = i; });
+
+        // Compute time range
+        var minEpoch = Infinity, maxEpoch = -Infinity;
+        timelineData.forEach(function (t) {
+          if (t.s < minEpoch) minEpoch = t.s;
+          if (t.e > maxEpoch) maxEpoch = t.e;
+        });
+        var totalTime = maxEpoch - minEpoch;
+        if (totalTime <= 0) totalTime = 1;
+
+        // Layout constants
+        var labelWidth = 40;
+        var headerHeight = 25;
+        var rowHeight = 18;
+        var rowGap = 2;
+        var rowPitch = rowHeight + rowGap;
+        var minBarWidth = 1;
+
+        // Compute chart width: aim for ~4px per second, min 800
+        var chartAreaWidth = Math.max(800, Math.ceil(totalTime * 4));
+        var svgWidth = labelWidth + chartAreaWidth + 20;
+        var svgHeight = headerHeight + workers.length * rowPitch + 10;
+
+        // Outcome -> color (use CSS var values directly for SVG)
+        var outcomeColors = {
+          passed: "var(--ctp-green)",
+          failed: "var(--ctp-red)",
+          error: "var(--ctp-maroon)",
+          crashed: "var(--ctp-mauve)",
+          timeout: "var(--ctp-peach)",
+          skipped: "var(--ctp-yellow)",
+          running: "var(--ctp-blue)",
+          queued: "var(--ctp-overlay1)",
+        };
+
+        var svg = [];
+        svg.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + svgWidth + '" height="' + svgHeight + '" style="font-family: sans-serif; font-size: 10px;">');
+
+        // Background
+        svg.push('<rect width="' + svgWidth + '" height="' + svgHeight + '" fill="var(--ctp-base)" />');
+
+        // Time axis ticks
+        var tickInterval = niceTickInterval(totalTime);
+        for (var tick = 0; tick <= totalTime; tick += tickInterval) {
+          var tx = labelWidth + (tick / totalTime) * chartAreaWidth;
+          svg.push('<line x1="' + tx + '" y1="' + (headerHeight - 5) + '" x2="' + tx + '" y2="' + svgHeight + '" stroke="var(--ctp-surface1)" stroke-width="0.5" />');
+          svg.push('<text x="' + tx + '" y="' + (headerHeight - 8) + '" fill="var(--ctp-subtext0)" text-anchor="middle" font-size="9">' + formatTickLabel(tick) + '</text>');
+        }
+
+        // Worker rows
+        workers.forEach(function (w, i) {
+          var y = headerHeight + i * rowPitch;
+          // Alternating row background
+          if (i % 2 === 0) {
+            svg.push('<rect x="0" y="' + y + '" width="' + svgWidth + '" height="' + rowHeight + '" fill="var(--ctp-mantle)" />');
+          }
+          // Worker label
+          svg.push('<text x="' + (labelWidth - 4) + '" y="' + (y + rowHeight / 2 + 3) + '" fill="var(--ctp-subtext1)" text-anchor="end" font-size="10">W' + w + '</text>');
+        });
+
+        // Test bars
+        timelineData.forEach(function (t, idx) {
+          var wi = workerIndex[t.w];
+          var y = headerHeight + wi * rowPitch + 1;
+          var barHeight = rowHeight - 2;
+          var x = labelWidth + ((t.s - minEpoch) / totalTime) * chartAreaWidth;
+          var w = Math.max(minBarWidth, ((t.e - t.s) / totalTime) * chartAreaWidth);
+          var color = outcomeColors[t.o] || "var(--ctp-overlay0)";
+          svg.push('<rect class="timeline-bar" data-idx="' + idx + '" x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + barHeight + '" fill="' + color + '" rx="1" />');
+        });
+
+        svg.push('</svg>');
+        container.innerHTML = svg.join('\n');
+
+        // Tooltip and click handlers
+        var tooltip = document.getElementById("timelineTooltip");
+        var bars = container.querySelectorAll(".timeline-bar");
+        bars.forEach(function (bar) {
+          bar.addEventListener("mousemove", function (ev) {
+            var idx = parseInt(bar.getAttribute("data-idx"));
+            var t = timelineData[idx];
+            var dur = (t.e - t.s).toFixed(2);
+            tooltip.innerHTML = "<strong>" + escapeHtml(t.n) + "</strong><br>Worker " + t.w + " | " + dur + "s | " + t.o;
+            tooltip.style.display = "block";
+            tooltip.style.left = (ev.clientX + 12) + "px";
+            tooltip.style.top = (ev.clientY - 10) + "px";
+          });
+          bar.addEventListener("mouseleave", function () {
+            tooltip.style.display = "none";
+          });
+          bar.addEventListener("click", function () {
+            var idx = parseInt(bar.getAttribute("data-idx"));
+            var t = timelineData[idx];
+            tooltip.style.display = "none";
+            // Highlight selected bar
+            var prev = container.querySelector(".timeline-bar-selected");
+            if (prev) prev.classList.remove("timeline-bar-selected");
+            bar.classList.add("timeline-bar-selected");
+            showTestDetail(t);
+          });
+        });
+      }
+
+      var outcomeColorMap = {
+        passed: "var(--ctp-green)", failed: "var(--ctp-red)",
+        error: "var(--ctp-maroon)", crashed: "var(--ctp-mauve)",
+        timeout: "var(--ctp-peach)", skipped: "var(--ctp-yellow)",
+      };
+      var cmpColorMap = {
+        regression: "var(--ctp-red)", fixed: "var(--ctp-green)", "new": "var(--ctp-blue)",
+      };
+
+      function showTestDetail(t) {
+        var panel = document.getElementById("timelineDetail");
+        var tmpl = document.getElementById("timelineDetailTemplate");
+        var frag = tmpl.content.cloneNode(true);
+
+        function setField(name, text, style) {
+          var el = frag.querySelector('[data-field="' + name + '"]');
+          if (el) {
+            el.textContent = text;
+            if (style) el.setAttribute("style", style);
+          }
+        }
+        function removeField(name) {
+          var el = frag.querySelector('[data-field="' + name + '"]');
+          if (el) el.remove();
+        }
+
+        setField("function", t.f);
+        setField("nodeid", t.n);
+        setField("file", t.fi);
+        setField("class", t.cl || "-");
+        setField("params", t.p || "-");
+        setField("outcome", t.o.toUpperCase(),
+          "color:" + (outcomeColorMap[t.o] || "var(--ctp-text)") + ";font-weight:bold");
+
+        // Delta (baseline comparison)
+        if (t.cmp) {
+          setField("delta", t.cmp.toUpperCase(),
+            "color:" + (cmpColorMap[t.cmp] || "var(--ctp-text)"));
+        } else {
+          removeField("delta-label"); removeField("delta");
+        }
+
+        setField("duration", t.d.toFixed(3) + "s" + (t.bd != null ? " (baseline " + t.bd.toFixed(3) + "s)" : ""));
+
+        // Speedup
+        if (t.sp != null && t.sr != null) {
+          var spStyle = "";
+          var spText;
+          if (t.sp > 0) {
+            spStyle = "color:var(--ctp-green);font-weight:bold";
+            spText = t.sr.toFixed(1) + "x (" + t.sp.toFixed(1) + "%)";
+          } else if (t.sp < 0) {
+            spStyle = "color:var(--ctp-red);font-weight:bold";
+            var slowdown = t.sr > 0 ? (1 / t.sr) : 0;
+            spText = "-" + slowdown.toFixed(1) + "x (" + t.sp.toFixed(1) + "%)";
+          } else {
+            spText = "-";
+          }
+          setField("speedup", spText, spStyle);
+        } else {
+          removeField("speedup-label"); removeField("speedup");
+        }
+
+        setField("start-time", epochToTimeStr(t.s));
+        setField("end-time", epochToTimeStr(t.e));
+        setField("worker", "W" + t.w);
+
+        if (t.m > 0) {
+          setField("memory", t.m.toFixed(2) + " MB");
+        } else {
+          removeField("memory-label"); removeField("memory");
+        }
+        if (t.mp > 0) {
+          setField("peak", t.mp.toFixed(2) + " MB");
+        } else {
+          removeField("peak-label"); removeField("peak");
+        }
+
+        var errorBlock = frag.querySelector('[data-field="error"]');
+        if (t.err) {
+          errorBlock.textContent = t.err;
+          errorBlock.style.display = "";
+        } else {
+          errorBlock.remove();
+        }
+
+        panel.innerHTML = "";
+        panel.appendChild(frag);
+      }
+
+      function niceTickInterval(totalSeconds) {
+        var target = totalSeconds / 10;
+        var candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+        for (var i = 0; i < candidates.length; i++) {
+          if (candidates[i] >= target) return candidates[i];
+        }
+        return Math.ceil(target / 600) * 600;
+      }
+
+      function formatTickLabel(seconds) {
+        if (seconds < 60) return seconds + "s";
+        var m = Math.floor(seconds / 60);
+        var s = Math.round(seconds % 60);
+        return s > 0 ? m + "m" + s + "s" : m + "m";
+      }
+
+      function epochToTimeStr(epoch) {
+        var d = new Date(epoch * 1000);
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      }
+
+      function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
     </script>
   </head>
   <body>
@@ -1896,6 +2278,7 @@
           <div class="hotkey-section">
             <h3>Other</h3>
             <ul class="hotkey-list">
+              <li><span class="hotkey-key">g</span> Toggle timeline</li>
               <li><span class="hotkey-key">h</span> Show help</li>
               <li><span class="hotkey-key">esc</span> Close popups</li>
             </ul>
@@ -1903,6 +2286,44 @@
         </div>
       </div>
     </div>
+    <div id="timelineModal" class="modal modal-foreground timeline-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Worker Timeline</h2>
+          <div class="modal-buttons">
+            <button class="close-btn" onclick="closeModal('timelineModal')">&times;</button>
+          </div>
+        </div>
+        <div class="timeline-body">
+          <div class="timeline-chart-area" id="timelineContainer"></div>
+          <div class="timeline-detail" id="timelineDetail">
+            <div class="timeline-detail-empty">Click a test bar to see details</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="timeline-tooltip" id="timelineTooltip"></div>
+
+    <template id="timelineDetailTemplate">
+      <h3 data-field="function"></h3>
+      <div class="timeline-detail-grid">
+        <span class="label">Node ID</span><span class="value" data-field="nodeid"></span>
+        <span class="label">File</span><span class="value" data-field="file"></span>
+        <span class="label">Class</span><span class="value" data-field="class"></span>
+        <span class="label">Params</span><span class="value" data-field="params"></span>
+        <span class="label">Outcome</span><span class="value" data-field="outcome"></span>
+        <span class="label" data-field="delta-label">Delta</span><span class="value" data-field="delta"></span>
+        <span class="label">Duration</span><span class="value" data-field="duration"></span>
+        <span class="label" data-field="speedup-label">Speedup</span><span class="value" data-field="speedup"></span>
+        <span class="label">Start</span><span class="value" data-field="start-time"></span>
+        <span class="label">End</span><span class="value" data-field="end-time"></span>
+        <span class="label">Worker</span><span class="value" data-field="worker"></span>
+        <span class="label" data-field="memory-label">Memory</span><span class="value" data-field="memory"></span>
+        <span class="label" data-field="peak-label">Peak mem</span><span class="value" data-field="peak"></span>
+      </div>
+      <div class="error-block" data-field="error" style="display:none"></div>
+    </template>
+
     <h1>Test Execution Report</h1>
 
     <div class="summary">
@@ -2051,6 +2472,10 @@
         </div>
         <span id="baselineStatus" class="baseline-status"></span>
       </div>
+      <button class="timeline-btn" onclick="toggleTimelineModal()" title="Timeline view (g)">
+        <span class="icon">&#9776;</span>
+        <span class="text">Timeline</span>
+      </button>
       <a id="logsBtn" class="logs-btn" href="/logs?test_run_id=[[test_run_id]]" target="_blank" title="View test logs">
         <span class="icon">&#128203;</span>
         <span class="text">Logs</span>
