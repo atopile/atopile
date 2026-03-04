@@ -336,6 +336,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@layout-viewer': resolve(__dirname, '../atopile/layout_server/frontend/src'),
+        // Resolve earcut from ui-server's node_modules (not the layout frontend source dir)
+        'earcut': resolve(__dirname, 'node_modules/earcut'),
       },
     },
     // Dev server settings
