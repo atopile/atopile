@@ -532,7 +532,6 @@ class TestHasSimpleValueRepresentation:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        # --- API-style literal: no has_display_unit, should auto SI scale ---
         kohm_unit = self._make_kiloohm_unit(g=g, tg=tg)
         param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
         param.setup(is_unit=kohm_unit)
@@ -554,7 +553,6 @@ class TestHasSimpleValueRepresentation:
         formatted = param.format_literal_for_display(api_lit)
         assert formatted == "47kΩ", f"Expected '47kΩ', got '{formatted}'"
 
-        # --- User-style literal: has_display_unit=kΩ, should preserve it ---
         user_lit = (
             F.Literals.Numbers.bind_typegraph(tg)
             .create_instance(g=g)
@@ -602,7 +600,6 @@ class TestHasSimpleValueRepresentation:
 
         base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
 
-        # --- API literal: 0.5Ω in base units, no has_display_unit ---
         # Should auto SI scale → 500mΩ
         api_lit = F.Literals.Numbers.create_instance(g=g, tg=tg)
         numeric_set = F.Literals.NumericSet.create_instance(
@@ -617,7 +614,6 @@ class TestHasSimpleValueRepresentation:
         formatted = param.format_literal_for_display(api_lit)
         assert formatted == "500mΩ", f"Expected '500mΩ', got '{formatted}'"
 
-        # --- User literal: 0.500Ω with has_display_unit=Ω ---
         # Literal's Ω wins over parameter's mΩ → 0.5Ω
         user_lit = (
             F.Literals.Numbers.bind_typegraph(tg)
