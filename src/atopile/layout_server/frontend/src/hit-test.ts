@@ -2,8 +2,22 @@ import { Vec2, BBox } from "./math";
 import type { FootprintModel } from "./types";
 import { fpTransform, padTransform } from "./geometry";
 
+type FootprintBBoxCacheEntry = {
+    x: number;
+    y: number;
+    r: number;
+    bbox: BBox;
+};
+
+const bboxCache = new WeakMap<FootprintModel, FootprintBBoxCacheEntry>();
+
 /** Compute bounding box for a footprint in world coords */
 export function footprintBBox(fp: FootprintModel): BBox {
+    const cached = bboxCache.get(fp);
+    if (cached && cached.x === fp.at.x && cached.y === fp.at.y && cached.r === fp.at.r) {
+        return cached.bbox;
+    }
+
     const points: Vec2[] = [];
     for (const pad of fp.pads) {
         const hw = pad.size.w / 2;
@@ -41,10 +55,11 @@ export function footprintBBox(fp: FootprintModel): BBox {
                 break;
         }
     }
-    if (points.length === 0) {
-        return new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2);
-    }
-    return BBox.from_points(points).grow(0.2);
+    const bbox = points.length === 0
+        ? new BBox(fp.at.x - 1, fp.at.y - 1, 2, 2)
+        : BBox.from_points(points).grow(0.2);
+    bboxCache.set(fp, { x: fp.at.x, y: fp.at.y, r: fp.at.r, bbox });
+    return bbox;
 }
 
 function distanceSquared(a: Vec2, b: Vec2): number {

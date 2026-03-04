@@ -45,9 +45,11 @@ class LayoutEditorWebview extends BaseWebview {
         const wsOrigin = getWsOrigin(backendServer.wsUrl);
         const nonce = getNonce();
 
-        const editorUri = `${webview.asWebviewUri(
-            vscode.Uri.file(getAndCheckResource('layout-editor/editor.js'))
-        ).toString()}?v=${Date.now()}`;
+        const editorUri = this.getWebviewUri(
+            webview,
+            getAndCheckResource('layout-editor/editor.js'),
+            true,
+        ).toString();
 
         return /* html */ `
             <!DOCTYPE html>
