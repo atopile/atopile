@@ -13,7 +13,7 @@ auto_build_frontend = true
 [pool]
 strategy = "relative"
 target_n = 50
-max_machine_count = 5
+max_machine_count = 20
 
 [infra.spawner]
 app = "atopile-playground"
