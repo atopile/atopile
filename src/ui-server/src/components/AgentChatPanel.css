@@ -1126,9 +1126,9 @@
 
 .agent-chat-input {
   width: 100%;
-  resize: vertical;
-  min-height: 82px;
-  max-height: 220px;
+  resize: none;
+  min-height: 38px;
+  max-height: 50vh;
   padding: 8px 0;
   border: 0;
   border-radius: 0;
@@ -1137,6 +1137,8 @@
   font-size: 12px;
   font-family: var(--font-sans);
   line-height: 1.4;
+  overflow-y: auto;
+  field-sizing: content;
 }
 
 .agent-chat-input:focus-visible {

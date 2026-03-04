@@ -3243,6 +3243,10 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     setInput(nextValue);
+                    // Auto-grow textarea to fit content
+                    const el = event.target;
+                    el.style.height = 'auto';
+                    el.style.height = `${el.scrollHeight}px`;
                     refreshMentionFromInput(
                       nextValue,
                       event.target.selectionStart ?? nextValue.length,
@@ -3279,7 +3283,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                       : 'Select a project to chat with the agent...'
                   }
                   disabled={!isReady}
-                  rows={4}
+                  rows={2}
                   onKeyDown={(event) => {
                     if (mentionToken && mentionItems.length > 0) {
                       if (event.key === 'ArrowDown') {
