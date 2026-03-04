@@ -25,7 +25,7 @@ def test_duplicate_specified_net_names(
     )
 
     assert p.returncode != 0
-    assert "Net name collision" in stdout
+    assert "nets have the same required name" in stdout
 
 
 def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
@@ -43,7 +43,7 @@ def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None
     )
 
     assert p.returncode != 0
-    assert "Multiple conflicting required net names" in stdout
+    assert "Multiple required names found for net" in stdout
 
 
 @pytest.mark.not_in_ci  # requires kicad-cli

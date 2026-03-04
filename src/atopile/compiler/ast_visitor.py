@@ -126,6 +126,8 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.is_auto_generated,
         F.Pickable.is_pickable,
         F.requires_external_usage,
+        F.bus.has_bus_role,
+        F.bus.has_bus_spec,
     }
 )
 
@@ -194,6 +196,15 @@ class is_ato_interface(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     as_ato_block = fabll.Traits.ImpliedTrait(is_ato_block)
     as_interface = fabll.Traits.ImpliedTrait(fabll.is_interface)
+
+
+class is_ato_pin(fabll.Node):
+    """
+    Marks an electrical as an ato pin definition so it can be
+    excluded from net naming (for example).
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class _ScopeStack:

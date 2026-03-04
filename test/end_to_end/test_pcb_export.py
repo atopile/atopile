@@ -54,7 +54,7 @@ module App:
 
 SIMPLE_APP_PCB_SUMMARY = PcbSummary(
     num_layers=29,
-    nets=["unnamed[0]", "unnamed[1]"],
+    nets=["a.unnamed[0]", "a.unnamed[1]"],
     footprints=["R1"],
 )
 
@@ -115,10 +115,10 @@ def test_pcb_file_addition(tmpdir: Path):
         num_layers=SIMPLE_APP_PCB_SUMMARY.num_layers,
         nets=sorted(
             [
-                "unnamed[0]",
-                "unnamed[1]",
-                "b-unnamed[0]",
-                "b-unnamed[1]",
+                "a.unnamed[0]",
+                "a.unnamed[1]",
+                "b.unnamed[0]",
+                "b.unnamed[1]",
             ]
         ),
         footprints=["R1", "R2"],
@@ -142,10 +142,10 @@ def test_pcb_file_removal(tmpdir: Path):
         num_layers=SIMPLE_APP_PCB_SUMMARY.num_layers,
         nets=sorted(
             [
-                "unnamed[0]",
-                "unnamed[1]",
-                "b-unnamed[0]",
-                "b-unnamed[1]",
+                "a.unnamed[0]",
+                "a.unnamed[1]",
+                "b.unnamed[0]",
+                "b.unnamed[1]",
             ]
         ),
         footprints=["R1", "R2"],
