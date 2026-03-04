@@ -95,4 +95,4 @@ def export_i2c_tree(
     path.parent.mkdir(parents=True, exist_ok=True)
     markdown = "```mermaid\n" + out + "```"
     path.write_text(markdown, encoding="utf-8")
-    logger.info(f"Wrote I2C tree to {path}")
+    logger.debug(f"Wrote I2C tree to {path}")

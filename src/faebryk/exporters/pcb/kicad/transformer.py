@@ -2089,7 +2089,7 @@ class PCB_Transformer:
                 Property.try_get_property(pcb_fp.propertys, "Reference")
                 or "<no reference>"
             )
-            logger.info(
+            logger.debug(
                 f"Removing outdated component with Reference `{removed_fp_ref}`",
                 extra={"markdown": True},
             )
@@ -2114,7 +2114,7 @@ class PCB_Transformer:
             ):
                 pcb_net = linked_net_t.get_net()
                 if pcb_net.name != net_name:
-                    logger.info(
+                    logger.debug(
                         f"Renaming net `{pcb_net.name}`->`{net_name}`",
                         extra={"markdown": True},
                     )
@@ -2123,7 +2123,7 @@ class PCB_Transformer:
             ## Add missing nets
             else:
                 pcb_net = self.insert_net(net_name)
-                logger.info(f"Adding net `{pcb_net}`", extra={"markdown": True})
+                logger.debug(f"Adding net `{pcb_net}`", extra={"markdown": True})
                 self.bind_net(pcb_net, f_net)
 
             ## Connect pads to nets
@@ -2171,7 +2171,7 @@ class PCB_Transformer:
                     )
                 continue
 
-            logger.info(
+            logger.debug(
                 f"Removing net `{pcb_net.name}`",
                 extra={"markdown": True},
             )

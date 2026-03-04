@@ -296,7 +296,7 @@ def find_independent_groups(
             module_components.add_eq(*[n._is_pickable.get() for n in p_modules])
 
     out = module_components.get()
-    logger.info(
+    logger.debug(
         indented_container(
             [{m.get_pickable_node() for m in g} for g in out],
             recursive=True,
@@ -474,7 +474,7 @@ def _pick_tree(
             break
 
         depth = expanded[0].depth
-        logger.info(
+        logger.debug(
             f"[depth={depth}] Processing {len(expanded)} groups, "
             f"{sum(len(item.modules) for item in expanded)} total modules"
         )
@@ -494,7 +494,7 @@ def _pick_tree(
             part = next(iter(group_candidates[module]))
 
             module_name = module.get_pickable_node().get_full_name()
-            logger.info(f"  Picking {module_name}")
+            logger.debug(f"  Picking {module_name}")
             picker_lib.attach_single_no_check(module, part, item.solver)
 
             if progress:
@@ -546,7 +546,7 @@ def pick_topologically(
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
 
-    logger.info(f"Picking {_pick_count} modules")
+    logger.debug(f"Picking {_pick_count} modules")
 
     if explicit_modules := [
         m
@@ -566,27 +566,27 @@ def pick_topologically(
             pick_tree: Tree[PickNodeData] = _pick_tree(
                 all_modules, solver, picker_lib, progress
             )
-            logger.info(
+            logger.debug(
                 "Picking tree (d=depth, b=branching_factor):\n" + pick_tree.pretty()
             )
         else:
             pick_tree = Tree()
 
     if _pick_count:
-        logger.info(f"Picked parts in {timings.get_formatted('pick tree')}")
+        logger.debug(f"Picked parts in {timings.get_formatted('pick tree')}")
 
     if relevant := _collect_relevant_params(tree_backup):
         g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
 
         with timings.measure("verify design"):
-            logger.info("Verify design")
+            logger.debug("Verify design")
             try:
                 solver.simplify(g, tg, terminal=True, relevant=relevant)
             except Contradiction as e:
                 error_msg = _format_pcb_contradiction_error(e, tg)
                 raise PickVerificationError(error_msg, *tree_backup) from e
         solver.commit()
-        logger.info(f"Verified design in {timings.get_formatted('verify design')}")
+        logger.debug(f"Verified design in {timings.get_formatted('verify design')}")
 
 
 # TODO should be a Picker
