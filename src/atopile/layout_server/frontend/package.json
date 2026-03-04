@@ -7,10 +7,10 @@
   },
   "devDependencies": {
     "esbuild": "^0.20.0",
+    "puppeteer": "^24.37.5",
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "earcut": "^3.0.0",
-    "puppeteer": "^24.37.5"
+    "earcut": "^3.0.0"
   }
 }

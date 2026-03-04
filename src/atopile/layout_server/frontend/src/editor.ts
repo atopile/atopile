@@ -157,6 +157,7 @@ export class Editor {
         this.canvas = canvas;
         this.textOverlay = this.createTextOverlay();
         this.textCtx = this.textOverlay.getContext("2d");
+        this.syncTextOverlayViewport();
         this.renderer = new Renderer(canvas);
         this.camera = new Camera2();
         this.panAndZoom = new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
@@ -193,6 +194,31 @@ export class Editor {
         return overlay;
     }
 
+    private getCanvasViewportMetrics(): { left: number; top: number; width: number; height: number } {
+        const rect = this.canvas.getBoundingClientRect();
+        const width = rect.width > 0 ? rect.width : (this.canvas.clientWidth || window.innerWidth);
+        const height = rect.height > 0 ? rect.height : (this.canvas.clientHeight || window.innerHeight);
+        return {
+            left: Number.isFinite(rect.left) ? rect.left : 0,
+            top: Number.isFinite(rect.top) ? rect.top : 0,
+            width,
+            height,
+        };
+    }
+
+    private syncTextOverlayViewport(
+        viewport = this.getCanvasViewportMetrics(),
+    ): void {
+        const left = `${viewport.left}px`;
+        const top = `${viewport.top}px`;
+        const width = `${viewport.width}px`;
+        const height = `${viewport.height}px`;
+        if (this.textOverlay.style.left !== left) this.textOverlay.style.left = left;
+        if (this.textOverlay.style.top !== top) this.textOverlay.style.top = top;
+        if (this.textOverlay.style.width !== width) this.textOverlay.style.width = width;
+        if (this.textOverlay.style.height !== height) this.textOverlay.style.height = height;
+    }
+
     async init() {
         await this.fetchAndPaint();
         this.connectWebSocket();
@@ -220,7 +246,8 @@ export class Editor {
         this.paintStatic();
         this.paintDynamic();
 
-        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+        const viewport = this.getCanvasViewportMetrics();
+        this.camera.viewport_size = new Vec2(viewport.width, viewport.height);
         if (fitToView) {
             this.camera.bbox = computeBBox(this.model);
         }
@@ -971,8 +998,8 @@ export class Editor {
         this.canvas.addEventListener("mousedown", (e: MouseEvent) => {
             if (e.button !== 0) return;
 
-            const rect = this.canvas.getBoundingClientRect();
-            this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            const viewport = this.getCanvasViewportMetrics();
+            this.lastMouseScreen = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
             const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
 
             if (!this.model) return;
@@ -1050,8 +1077,8 @@ export class Editor {
 
         this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
             if (e.button !== 0 || !this.model) return;
-            const rect = this.canvas.getBoundingClientRect();
-            const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            const viewport = this.getCanvasViewportMetrics();
+            const screenPos = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
             const worldPos = this.camera.screen_to_world(screenPos);
             const hitIdx = this.getIndexedHitIdx(worldPos);
             if (hitIdx < 0) return;
@@ -1060,8 +1087,8 @@ export class Editor {
         });
 
         this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
-            const rect = this.canvas.getBoundingClientRect();
-            this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            const viewport = this.getCanvasViewportMetrics();
+            this.lastMouseScreen = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
 
             if (this.onMouseMoveCallback) {
                 const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
@@ -1126,13 +1153,22 @@ export class Editor {
 
             if (!this.isDragging) return;
             
-            const rect = this.canvas.getBoundingClientRect();
-            const worldPos = this.camera.screen_to_world(new Vec2(e.clientX - rect.left, e.clientY - rect.top));
+            const viewport = this.getCanvasViewportMetrics();
+            const worldPos = this.camera.screen_to_world(new Vec2(e.clientX - viewport.left, e.clientY - viewport.top));
             const delta = worldPos.sub(this.dragStartWorld!);
             const dx = delta.x;
             const dy = delta.y;
 
             if (!this.model || !this.dragStartWorld) {
+                this.isDragging = false;
+                this.restorePostDragRendering();
+                this.clearDragState();
+                this.repaintWithSelection();
+                return;
+            }
+
+            if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+                console.warn("Ignoring drag move with invalid delta", { dx, dy });
                 this.isDragging = false;
                 this.restorePostDragRendering();
                 this.clearDragState();
@@ -1366,6 +1402,8 @@ export class Editor {
 
     private drawTextOverlay() {
         if (!this.textCtx || !this.model) return;
+        const viewport = this.getCanvasViewportMetrics();
+        this.syncTextOverlayViewport(viewport);
         const visibleFpIndices = this.footprintIndex.query(this.camera.bbox);
         const layerMap = this.getLayerMap();
 
@@ -1376,8 +1414,8 @@ export class Editor {
                 this.camera,
                 this.hiddenLayers,
                 layerMap,
-                this.canvas.clientWidth,
-                this.canvas.clientHeight,
+                viewport.width,
+                viewport.height,
                 visibleFpIndices,
                 { clearCanvas: true },
             );
@@ -1392,8 +1430,8 @@ export class Editor {
             this.camera,
             this.hiddenLayers,
             layerMap,
-            this.canvas.clientWidth,
-            this.canvas.clientHeight,
+            viewport.width,
+            viewport.height,
             staticVisible,
             { clearCanvas: true },
         );
@@ -1406,8 +1444,8 @@ export class Editor {
             this.camera,
             this.hiddenLayers,
             layerMap,
-            this.canvas.clientWidth,
-            this.canvas.clientHeight,
+            viewport.width,
+            viewport.height,
             this.dragTargetIndices,
             { clearCanvas: false, worldOffset: delta },
         );
@@ -1419,7 +1457,8 @@ export class Editor {
         if (this.dynamicDirty) {
             this.paintDynamic();
         }
-        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+        const viewport = this.getCanvasViewportMetrics();
+        this.camera.viewport_size = new Vec2(viewport.width, viewport.height);
         this.renderer.updateGrid(this.camera.bbox, 1.0);
         this.renderer.draw(this.camera.matrix);
         this.drawTextOverlay();

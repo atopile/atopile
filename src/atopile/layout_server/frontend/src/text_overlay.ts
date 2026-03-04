@@ -30,6 +30,10 @@ type OverlayRenderOptions = {
     worldOffset?: Vec2;
 };
 
+function isTextHidden(hidden: Set<string>): boolean {
+    return hidden.has("__type:text") || hidden.has("__type:text_shapes") || hidden.has("__type:other");
+}
+
 function drawPadAnnotationText(
     ctx: CanvasRenderingContext2D,
     camera: Camera2,
@@ -180,8 +184,8 @@ export function renderTextOverlay(
     // window.innerWidth/Height can differ from the actual canvas dimensions.
     const width = vpWidth ?? window.innerWidth;
     const height = vpHeight ?? window.innerHeight;
-    const pixelWidth = Math.floor(width * dpr);
-    const pixelHeight = Math.floor(height * dpr);
+    const pixelWidth = Math.round(width * dpr);
+    const pixelHeight = Math.round(height * dpr);
     let resized = false;
     if (ctx.canvas.width !== pixelWidth) {
         ctx.canvas.width = pixelWidth;
@@ -213,7 +217,7 @@ export function renderTextOverlay(
         const fp = model.footprints[idx];
         if (!fp) continue;
 
-        if (!hiddenLayers.has("__type:other")) {
+        if (!isTextHidden(hiddenLayers)) {
             for (const text of fp.texts) {
                 if (!text.text.trim()) continue;
                 const layerName = text.layer;
