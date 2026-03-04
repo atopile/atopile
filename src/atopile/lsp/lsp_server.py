@@ -217,14 +217,15 @@ def exception_to_diagnostic(
     start_line, start_col = 0, 0
     stop_line, stop_col = 0, 0
 
-    if exc.origin_start is not None:
-        start_file_path, start_line, start_col = get_src_info_from_token(
-            exc.origin_start
-        )
-        if exc.origin_stop is not None:
+    origin_start = getattr(exc, "origin_start", None)
+    origin_stop = getattr(exc, "origin_stop", None)
+
+    if origin_start is not None:
+        start_file_path, start_line, start_col = get_src_info_from_token(origin_start)
+        if origin_stop is not None:
             stop_line, stop_col = (
-                exc.origin_stop.line,
-                exc.origin_stop.column + len(exc.origin_stop.text),
+                origin_stop.line,
+                origin_stop.column + len(origin_stop.text),
             )
         else:
             stop_line, stop_col = start_line + 1, 0
@@ -245,7 +246,7 @@ def exception_to_diagnostic(
         ),
         message=exc.message,
         severity=severity,
-        code=exc.code,
+        code=getattr(exc, "code", None),
         source=TOOL_DISPLAY,
     )
 
