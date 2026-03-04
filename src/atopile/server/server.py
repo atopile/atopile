@@ -601,14 +601,10 @@ def create_app(
         tests as tests_routes,
     )
     from atopile.server.routes import (
-        specs as specs_routes,
-    )
-    from atopile.server.routes import (
         websocket as ws_routes,
     )
 
     app.include_router(ws_routes.router)
-    app.include_router(specs_routes.router)
     app.include_router(logs_routes.router)
     app.include_router(agent_routes.router)
     app.include_router(projects_routes.router)

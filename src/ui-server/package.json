@@ -19,7 +19,6 @@
     "@tracespace/plotter": "^5.0.0-alpha.0",
     "@tracespace/renderer": "^5.0.0-alpha.0",
     "@types/three": "^0.182.0",
-    "@xyflow/react": "^12.10.1",
     "ansi-to-html": "^0.7.2",
     "hast-util-to-html": "^9.0.5",
     "jszip": "^3.10.1",
