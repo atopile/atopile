@@ -31,6 +31,7 @@
     "visible_items": [
       "vias",
       "footprint_anchors",
+      "ratsnest",
       "grid",
       "footprints_front",
       "footprints_back",

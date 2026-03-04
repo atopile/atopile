@@ -175,22 +175,11 @@ pub const TypeGraph = struct {
 
             pub const child_identifier = "child_identifier";
             pub const child_literal_value = "child_literal_value";
-            pub const soft_create_key = "soft_create";
 
-            pub fn init(self: @This(), identifier: ?str, soft: bool) void {
+            pub fn init(self: @This(), identifier: ?str) void {
                 if (identifier) |id| {
                     self.node.node.put(child_identifier, .{ .String = id });
                 }
-                if (soft) {
-                    self.node.node.put(soft_create_key, .{ .Bool = true });
-                }
-            }
-
-            pub fn soft_create(self: @This()) bool {
-                if (self.node.node.get(soft_create_key)) |value| {
-                    return value.Bool;
-                }
-                return false; // default to not soft-created
             }
 
             pub fn get_child_identifier(self: @This()) ?str {
@@ -240,7 +229,6 @@ pub const TypeGraph = struct {
                         if (!_dynamic) return;
                         // Skip internal MakeChild attributes
                         if (std.mem.eql(u8, key, "child_identifier")) return;
-                        if (std.mem.eql(u8, key, soft_create_key)) return;
                         s.dynamic.put(key, value);
                     }
                 };
@@ -663,6 +651,18 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "ImplementsTrait").?;
     }
 
+    pub fn get_is_constructable(self: *const @This()) BoundNodeReference {
+        return EdgeComposition.get_child_by_identifier(self.self_node, "is_constructable").?;
+    }
+
+    pub fn mark_constructable(self: *@This(), type_node: BoundNodeReference) !void {
+        _ = try Trait.add_trait_to(type_node, self.get_is_constructable());
+    }
+
+    pub fn is_constructable(self: *@This(), type_node: BoundNodeReference) bool {
+        return Trait.try_get_trait(type_node, self.get_is_constructable()) != null;
+    }
+
     pub fn get_g(self: *const @This()) *GraphView {
         return self.self_node.g;
     }
@@ -721,12 +721,25 @@ pub const TypeGraph = struct {
         _ = TraitNode.add_trait_as_child_to(implements_trait_type, implements_trait_type);
 
         const make_child_type = TypeNode.create_and_insert(&self, "MakeChild");
-
         _ = TraitNode.add_trait_as_child_to(make_child_type, implements_type_type);
 
-        _ = TypeNode.create_and_insert(&self, "MakeLink");
-        _ = TypeNode.create_and_insert(&self, "Reference");
-        _ = TypeNode.create_and_insert(&self, "TypeReference");
+        const make_link_type = TypeNode.create_and_insert(&self, "MakeLink");
+        const reference_type = TypeNode.create_and_insert(&self, "Reference");
+        const type_reference_type = TypeNode.create_and_insert(&self, "TypeReference");
+
+        // Create is_constructable trait type
+        const constructable_type = TypeNode.create_and_insert(&self, "is_constructable");
+        _ = TraitNode.add_trait_as_child_to(constructable_type, implements_type_type);
+        _ = TraitNode.add_trait_as_child_to(constructable_type, implements_trait_type);
+
+        // Mark all bootstrap types as constructable
+        _ = TraitNode.add_trait_as_child_to(implements_type_type, constructable_type);
+        _ = TraitNode.add_trait_as_child_to(implements_trait_type, constructable_type);
+        _ = TraitNode.add_trait_as_child_to(make_child_type, constructable_type);
+        _ = TraitNode.add_trait_as_child_to(make_link_type, constructable_type);
+        _ = TraitNode.add_trait_as_child_to(reference_type, constructable_type);
+        _ = TraitNode.add_trait_as_child_to(type_reference_type, constructable_type);
+        _ = TraitNode.add_trait_as_child_to(constructable_type, constructable_type);
 
         // Mark as fully initialized
         self.set_initialized(true);
@@ -763,14 +776,12 @@ pub const TypeGraph = struct {
     //}
 
     /// Create a MakeChild node with the child type linked immediately.
-    /// soft_create: if true, this MakeChild can be discarded if a non-soft-created one exists for the same identifier
     pub fn add_make_child(
         self: *@This(),
         target_type: BoundNodeReference,
         child_type: BoundNodeReference,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
-        soft_create: bool,
     ) !BoundNodeReference {
         const child_type_identifier = TypeNodeAttributes.of(child_type.node).get_type_name();
         const make_child = try self.add_make_child_deferred(
@@ -778,7 +789,6 @@ pub const TypeGraph = struct {
             child_type_identifier,
             identifier,
             node_attributes,
-            soft_create,
         );
         const type_reference = MakeChildNode.get_type_reference(make_child);
         try linker_mod.Linker.link_type_reference(self.self_node.g, type_reference, child_type);
@@ -788,20 +798,18 @@ pub const TypeGraph = struct {
     /// Create a MakeChild node without linking the type reference.
     /// Use this when the child type node is not yet available (e.g., external imports).
     /// Caller must call Linker.link_type_reference() later.
-    /// soft_create: if true, this MakeChild can be discarded if a non-soft-created one exists for the same identifier
     pub fn add_make_child_deferred(
         self: *@This(),
         target_type: BoundNodeReference,
         child_type_identifier: str,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
-        soft_create: bool,
     ) !BoundNodeReference {
         const make_child = switch (self.instantiate_node(self.get_MakeChild())) {
             .ok => |n| n,
             .err => return error.InstantiationFailed,
         };
-        MakeChildNode.Attributes.of(make_child).init(identifier, soft_create);
+        MakeChildNode.Attributes.of(make_child).init(identifier);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
         }
@@ -836,93 +844,99 @@ pub const TypeGraph = struct {
         return make_link;
     }
 
-    pub const CopyTypeError = error{ChildAlreadyExists};
+    fn pathsEqual(a: []const ChildReferenceNode.EdgeTraversal, b: []const ChildReferenceNode.EdgeTraversal) bool {
+        if (a.len != b.len) return false;
+        for (a, b) |sa, sb| {
+            if (sa.edge_type != sb.edge_type) return false;
+            if (!std.mem.eql(u8, sa.identifier, sb.identifier)) return false;
+        }
+        return true;
+    }
 
-    /// Copy MakeChild and MakeLink nodes from source_type into target_type.
-    /// Handles soft-created MakeChild semantics:
-    /// - If target has a soft-created MakeChild and source has the same identifier, source wins
-    /// - If target has a non-soft-created MakeChild and source has the same identifier, returns error
-    /// Used for inheritance: flattens parent structure into derived type.
-    pub fn copy_type_structure(
+    /// Flatten source_type's structure into target_type.
+    ///
+    ///  1. Copy MakeChild nodes. If a source child's identifier already exists
+    ///     on the target, the target's version wins (source child not copied).
+    ///  2. Copy MakeLink nodes. Target MakeLinks are collected *after* step 1,
+    ///     so the dedup check sees the full set including freshly copied children.
+    ///     Exact duplicates (same edge_type, lhs_path, rhs_path) are skipped.
+    pub fn merge_types(
         self: *@This(),
         target_type: BoundNodeReference,
         source_type: BoundNodeReference,
-        skip_identifiers: []const []const u8,
-    ) CopyTypeError!void {
+    ) !void {
         const allocator = self.self_node.g.allocator;
 
-        // Collect existing non-soft-created children on target (for conflict detection)
-        var non_soft_existing = std.StringHashMap(void).init(allocator);
-        defer non_soft_existing.deinit();
-
-        const target_children = self.collect_make_children(allocator, target_type);
-        defer allocator.free(target_children);
-        for (target_children) |info| {
-            if (info.identifier) |id| {
-                if (!MakeChildNode.Attributes.of(info.make_child).soft_create()) {
-                    non_soft_existing.put(id, {}) catch @panic("OOM");
-                }
-            }
-        }
-
-        // Copy MakeChild nodes from source
+        // Collect source structure
         const source_children = self.collect_make_children(allocator, source_type);
         defer allocator.free(source_children);
-
-        for (source_children) |info| {
-            if (info.identifier) |id| {
-                // Check if should skip (explicit skip list)
-                var should_skip = false;
-                for (skip_identifiers) |skip_id| {
-                    if (std.mem.eql(u8, id, skip_id)) {
-                        should_skip = true;
-                        break;
-                    }
-                }
-                if (should_skip) continue;
-
-                // Conflict: two non-soft-created declarations with same identifier
-                if (non_soft_existing.contains(id)) {
-                    return error.ChildAlreadyExists;
-                }
-
-                // Soft-created children with the same id will be filtered out by
-                // visit_make_children when the inherited non-soft-created child is added
-            }
-            const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
-            // Extract attributes from source MakeChild (e.g., literal values)
-            var attrs = MakeChildNode.Attributes.of(info.make_child).extract_node_attributes();
-            // Inherited children are not soft-created (they become authoritative)
-            const new_make_child = self.add_make_child(
-                target_type,
-                child_type,
-                info.identifier,
-                &attrs,
-                false,
-            ) catch continue;
-            if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
-                // Both nodes are in the same graph, cannot fail
-                _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null) catch unreachable;
-            }
-        }
-
-        // Copy MakeLink nodes from source
-        const source_links = self.collect_make_links(allocator, source_type) catch return;
+        const source_links = try self.collect_make_links(allocator, source_type);
         defer {
-            for (source_links) |link_info| {
-                allocator.free(link_info.lhs_path);
-                allocator.free(link_info.rhs_path);
+            for (source_links) |info| {
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
             }
             allocator.free(source_links);
         }
 
+        // Build set of target child identifiers for named MakeChild dedup
+        const target_children = self.collect_make_children(allocator, target_type);
+        defer allocator.free(target_children);
+        var target_existing = std.StringHashMap(void).init(allocator);
+        defer target_existing.deinit();
+        for (target_children) |info| {
+            if (info.identifier) |id| target_existing.put(id, {}) catch @panic("OOM");
+        }
+
+        // Copy MakeChild nodes from source, skipping named duplicates
+        for (source_children) |info| {
+            if (info.identifier) |id| {
+                if (target_existing.contains(id)) continue;
+            }
+            const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
+            var attrs = MakeChildNode.Attributes.of(info.make_child).extract_node_attributes();
+            const new_make_child = try self.add_make_child(
+                target_type,
+                child_type,
+                info.identifier,
+                &attrs,
+            );
+            if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
+                _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null) catch unreachable;
+            }
+        }
+
+        // Collect target's MakeLinks (after MakeChild copy so we see the full picture)
+        const target_links = try self.collect_make_links(allocator, target_type);
+        defer {
+            for (target_links) |info| {
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
+            }
+            allocator.free(target_links);
+        }
+
+        // Copy MakeLink nodes from source, skipping exact duplicates.
         for (source_links) |link_info| {
+            const src_et = MakeLinkNode.Attributes.of(link_info.make_link).get_edge_type();
+
+            var is_exact_dup = false;
+            for (target_links) |tgt_link| {
+                if (src_et != MakeLinkNode.Attributes.of(tgt_link.make_link).get_edge_type()) continue;
+                if (!pathsEqual(link_info.lhs_path, tgt_link.lhs_path)) continue;
+                if (pathsEqual(link_info.rhs_path, tgt_link.rhs_path)) {
+                    is_exact_dup = true;
+                    break;
+                }
+            }
+            if (is_exact_dup) continue;
+
             const self_ref_path = [_]ChildReferenceNode.EdgeTraversal{EdgeComposition.traverse("")};
             const lhs_path = if (link_info.lhs_path.len == 0) &self_ref_path else link_info.lhs_path;
             const rhs_path = if (link_info.rhs_path.len == 0) &self_ref_path else link_info.rhs_path;
 
-            const lhs_ref = ChildReferenceNode.create_and_insert(self, lhs_path) catch continue;
-            const rhs_ref = ChildReferenceNode.create_and_insert(self, rhs_path) catch continue;
+            const lhs_ref = try ChildReferenceNode.create_and_insert(self, lhs_path);
+            const rhs_ref = try ChildReferenceNode.create_and_insert(self, rhs_path);
 
             const attrs = MakeLinkNode.Attributes.of(link_info.make_link);
             const edge_attrs = EdgeCreationAttributes{
@@ -934,14 +948,13 @@ pub const TypeGraph = struct {
                 .dynamic = graph.DynamicAttributes.init_on_stack(),
             };
 
-            const new_make_link = self.add_make_link(
+            const new_make_link = try self.add_make_link(
                 target_type,
                 lhs_ref,
                 rhs_ref,
                 edge_attrs,
-            ) catch continue;
+            );
             if (EdgePointer.get_pointed_node_by_identifier(link_info.make_link, "source")) |source_chunk| {
-                // Both nodes are in the same graph, cannot fail
                 _ = EdgePointer.point_to(new_make_link, source_chunk.node, "source", null) catch unreachable;
             }
         }
@@ -997,7 +1010,7 @@ pub const TypeGraph = struct {
     /// Returns a list of validation errors (empty if valid).
     /// Validates:
     /// - MakeLink endpoints (lhs and rhs paths)
-    /// - Duplicate non-soft-created MakeChild declarations (same identifier)
+    /// - Duplicate MakeChild declarations (same identifier)
     pub fn validate_type(
         self: *@This(),
         allocator: std.mem.Allocator,
@@ -1005,28 +1018,20 @@ pub const TypeGraph = struct {
     ) []ValidationError {
         var errors = std.array_list.Managed(ValidationError).init(allocator);
 
-        // Soft-created resolution is handled dynamically by visit_make_children,
-        // so collect_make_children already returns only the "winning" nodes.
         const make_children = self.collect_make_children(allocator, type_node);
         defer allocator.free(make_children);
 
-        // Duplicate non-soft-created MakeChild detection
+        // Duplicate MakeChild detection
         var i: usize = 0;
         while (i < make_children.len) : (i += 1) {
             const child_info = make_children[i];
             const id = child_info.identifier orelse continue;
-
-            // Skip if this child is soft-created
-            if (MakeChildNode.Attributes.of(child_info.make_child).soft_create()) continue;
 
             // Look for duplicates in the rest of the list
             var j: usize = i + 1;
             while (j < make_children.len) : (j += 1) {
                 const other_info = make_children[j];
                 const other_id = other_info.identifier orelse continue;
-
-                // Skip if the other is soft
-                if (MakeChildNode.Attributes.of(other_info.make_child).soft_create()) continue;
 
                 // Check if identifiers match
                 if (std.mem.eql(u8, id, other_id)) {
@@ -1441,9 +1446,7 @@ pub const TypeGraph = struct {
         return ChildReferenceNode.create_and_insert(self, path);
     }
 
-    /// Visit MakeChild nodes with soft-created filtering.
-    /// Soft-created nodes are skipped if a non-soft-created node with the same identifier exists.
-    /// If multiple soft-created nodes exist for the same identifier, only the first is visited.
+    /// Visit all MakeChild nodes on a type unconditionally.
     pub fn visit_make_children(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -1451,76 +1454,28 @@ pub const TypeGraph = struct {
         ctx: *anyopaque,
         f: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
-        const allocator = self.self_node.g.allocator;
+        const Visit = struct {
+            ctx: *anyopaque,
+            cb: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
 
-        // First, collect all MakeChild nodes
-        var all_children = std.array_list.Managed(MakeChildInfo).init(allocator);
-        defer all_children.deinit();
-
-        const RawCollector = struct {
-            list_ptr: *std.array_list.Managed(MakeChildInfo),
-
-            pub fn collect(ctx_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                const collector: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const s: *@This() = @ptrCast(@alignCast(self_ptr));
                 const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
                 const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
-                collector.list_ptr.append(.{
+                return s.cb(s.ctx, MakeChildInfo{
                     .identifier = identifier,
                     .make_child = make_child,
-                }) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
-                return visitor.VisitResult(void){ .CONTINUE = {} };
+                });
             }
         };
-        var raw_collector = RawCollector{ .list_ptr = &all_children };
-        const collect_result = EdgeComposition.visit_children_of_type(
+        var visit_ctx = Visit{ .ctx = ctx, .cb = f };
+        return EdgeComposition.visit_children_of_type(
             type_node,
             self.get_MakeChild().node,
-            void,
-            &raw_collector,
-            RawCollector.collect,
+            T,
+            &visit_ctx,
+            Visit.visit,
         );
-        switch (collect_result) {
-            .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
-            else => {},
-        }
-
-        // Build set of non-soft-created identifiers
-        var non_soft_ids = std.StringHashMap(void).init(allocator);
-        defer non_soft_ids.deinit();
-        for (all_children.items) |info| {
-            if (info.identifier) |id| {
-                if (!MakeChildNode.Attributes.of(info.make_child).soft_create()) {
-                    non_soft_ids.put(id, {}) catch continue;
-                }
-            }
-        }
-
-        // Track first soft-created for each identifier (to skip duplicates)
-        var first_soft_ids = std.StringHashMap(void).init(allocator);
-        defer first_soft_ids.deinit();
-
-        // Iterate with filtering
-        for (all_children.items) |info| {
-            if (info.identifier) |id| {
-                if (MakeChildNode.Attributes.of(info.make_child).soft_create()) {
-                    // Skip if a non-soft-created exists for this identifier
-                    if (non_soft_ids.contains(id)) continue;
-                    // Skip if we've already seen a soft-created for this identifier
-                    if (first_soft_ids.contains(id)) continue;
-                    first_soft_ids.put(id, {}) catch continue;
-                }
-            }
-            // Visit this node
-            switch (f(ctx, info)) {
-                .CONTINUE => {},
-                .STOP => return visitor.VisitResult(T){ .STOP = {} },
-                .OK => |result| return visitor.VisitResult(T){ .OK = result },
-                .EXHAUSTED => return visitor.VisitResult(T){ .EXHAUSTED = {} },
-                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
-            }
-        }
-
-        return visitor.VisitResult(T){ .EXHAUSTED = {} };
     }
 
     /// Return every MakeChild belonging to `type_node` without filtering or
@@ -1863,6 +1818,17 @@ pub const TypeGraph = struct {
         // var type_owner_tg_val = TypeGraph.of_type(type_node) orelse tg.*;
         // const type_owner_tg: *TypeGraph = &type_owner_tg_val;
         // std.debug.print("NEW TG {any}\n", .{type_owner_tg_val.get_MakeChild().node});
+
+        // Check that the type is constructable
+        if (!tg.is_constructable(type_node)) {
+            const type_name = TypeNodeAttributes.of(type_node.node).get_type_name();
+            return InstantiateResult{ .err = InstantiationError{
+                .node = type_node,
+                .message = "Type is not constructable (not fully linked/merged)",
+                .kind = .other,
+                .identifier = type_name,
+            } };
+        }
 
         // 1) Create instance and connect it to its type
         const new_instance = type_node.g.create_and_insert_node();
@@ -2521,21 +2487,23 @@ test "basic instantiation" {
 
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
+    try tg.mark_constructable(Electrical);
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, false);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    var node_attrs = TypeGraph.MakeChildNode.build("test_string");
+    _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs);
+    try tg.mark_constructable(Capacitor);
     const Resistor = try tg.add_type("Resistor");
     // Test: add node attributes to p1 MakeChild
     var res_p1_attrs = TypeGraph.MakeChildNode.build(null);
     res_p1_attrs.dynamic.put("test_attr", .{ .String = "test_value" });
     res_p1_attrs.dynamic.put("pin_number", .{ .Int = 42 });
-    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs, false);
+    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, false);
-
-    var node_attrs = TypeGraph.MakeChildNode.build("test_string");
-    _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+    try tg.mark_constructable(Resistor);
 
     // Build instance graph
     const resistor = switch (tg.instantiate_node(Resistor)) {
@@ -2652,17 +2620,18 @@ test "typegraph iterators and mount chains" {
     defer g.deinit();
     var tg = TypeGraph.init(&g);
 
-    const top = try tg.add_type("Top");
     const Inner = try tg.add_type("Inner");
+    try tg.mark_constructable(Inner);
     const PointerSequence = try tg.add_type("PointerSequence");
-
-    const members = try tg.add_make_child(top, PointerSequence, "members", null, false);
-    _ = try tg.add_make_child(top, Inner, "base", null, false);
-    const extra = try tg.add_make_child(top, Inner, "extra", null, false);
+    try tg.mark_constructable(PointerSequence);
+    const top = try tg.add_type("Top");
+    const members = try tg.add_make_child(top, PointerSequence, "members", null);
+    _ = try tg.add_make_child(top, Inner, "base", null);
+    const extra = try tg.add_make_child(top, Inner, "extra", null);
     _ = members;
     _ = extra;
-    _ = try tg.add_make_child(top, Inner, "0", null, false);
-    _ = try tg.add_make_child(top, Inner, "1", null, false);
+    _ = try tg.add_make_child(top, Inner, "0", null);
+    _ = try tg.add_make_child(top, Inner, "1", null);
     const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("base")});
     const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("extra")});
     const link_attrs = EdgeCreationAttributes{
@@ -2680,6 +2649,7 @@ test "typegraph iterators and mount chains" {
     _ = try tg.add_make_link(top, container_reference, element0_reference, ptr_link_attrs_0);
     const ptr_link_attrs_1 = EdgePointer.build(null, 1);
     _ = try tg.add_make_link(top, container_reference, element1_reference, ptr_link_attrs_1);
+    try tg.mark_constructable(top);
 
     const children = tg.collect_make_children(a, top);
     defer a.free(children);
@@ -2755,12 +2725,15 @@ test "get_type_instance_overview" {
 
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
+    try tg.mark_constructable(Electrical);
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, false);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    try tg.mark_constructable(Capacitor);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, false);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    try tg.mark_constructable(Resistor);
 
     // Create some instances
     _ = switch (tg.instantiate_node(Capacitor)) {
@@ -2822,7 +2795,9 @@ test "resolve path through trait and pointer edges" {
 
     // 1. Build type graph: Electrical, CanBridge trait, Resistor
     const Electrical = try tg.add_type("Electrical");
+    try tg.mark_constructable(Electrical);
     const CanBridge = try tg.add_type("CanBridge");
+    try tg.mark_constructable(CanBridge);
 
     // Mark CanBridge as a trait type
     const implements_trait_instance = switch (tg.instantiate_node(tg.get_ImplementsTrait())) {
@@ -2832,8 +2807,9 @@ test "resolve path through trait and pointer edges" {
     _ = try EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
 
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, false);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    try tg.mark_constructable(Resistor);
 
     // 2. Create a Resistor instance with p1, p2 children
     const resistor_instance = switch (tg.instantiate_node(Resistor)) {
@@ -2861,7 +2837,11 @@ test "resolve path through trait and pointer edges" {
 
     // 4. Add Pointer nodes as composition children of can_bridge, then point them to p1/p2
     // Create Pointer type if not exists
-    const PointerType = tg.get_type_by_name("Pointer") orelse try tg.add_type("Pointer");
+    const PointerType = tg.get_type_by_name("Pointer") orelse blk: {
+        const pt = try tg.add_type("Pointer");
+        try tg.mark_constructable(pt);
+        break :blk pt;
+    };
     const in_ptr = switch (tg.instantiate_node(PointerType)) {
         .ok => |n| n,
         .err => return error.InstantiationFailed,
@@ -2926,7 +2906,8 @@ test "resolve path through trait and pointer edges" {
     // Create a TopModule that contains the resistor as a child
 
     const TopModule = try tg.add_type("TopModule");
-    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null, false);
+    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null);
+    try tg.mark_constructable(TopModule);
 
     // Create TopModule instance - this will auto-create resistor child
     const top_instance = switch (tg.instantiate_node(TopModule)) {
@@ -3002,4 +2983,126 @@ test "resolve path through trait and pointer edges" {
     std.debug.print("  - Trait->Composition->Pointer path works\n", .{});
     std.debug.print("  - Mixed Composition->Trait->Composition->Pointer path works\n", .{});
     std.debug.print("  - Composition-only path works\n", .{});
+}
+
+test "merge_types deduplicates MakeLink nodes" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+    var tg = TypeGraph.init(&g);
+
+    // Create child types
+    const Inner = try tg.add_type("Inner");
+    try tg.mark_constructable(Inner);
+
+    // Parent type with children "a" and "b", and a MakeLink a->b
+    const Parent = try tg.add_type("Parent");
+    _ = try tg.add_make_child(Parent, Inner, "a", null);
+    _ = try tg.add_make_child(Parent, Inner, "b", null);
+    const parent_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("a")});
+    const parent_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("b")});
+    const parent_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Parent, parent_lhs, parent_rhs, parent_link_attrs);
+
+    // Child type also has children "a" and "b", and its own MakeLink a->b (same edge_type, same lhs_path)
+    const Child = try tg.add_type("Child");
+    _ = try tg.add_make_child(Child, Inner, "a", null);
+    _ = try tg.add_make_child(Child, Inner, "b", null);
+    const child_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("a")});
+    const child_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("b")});
+    const child_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Child, child_lhs, child_rhs, child_link_attrs);
+
+    // Before merge: Child has 1 MakeLink
+    const before = tg.collect_make_links(a, Child) catch return error.CollectFailed;
+    defer {
+        for (before) |info| {
+            a.free(info.lhs_path);
+            a.free(info.rhs_path);
+        }
+        a.free(before);
+    }
+    try std.testing.expectEqual(@as(usize, 1), before.len);
+
+    // Merge Parent into Child (simulating inheritance)
+    try tg.merge_types(Child, Parent);
+
+    // After merge: Child should still have only 1 MakeLink (exact dup: same lhs+rhs, not copied)
+    const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;
+    defer {
+        for (after) |info| {
+            a.free(info.lhs_path);
+            a.free(info.rhs_path);
+        }
+        a.free(after);
+    }
+    try std.testing.expectEqual(@as(usize, 1), after.len);
+
+    // Verify the surviving link's lhs_path is "a"
+    try std.testing.expectEqual(@as(usize, 1), after[0].lhs_path.len);
+    try std.testing.expectEqualStrings("a", after[0].lhs_path[0].identifier);
+}
+
+test "merge_types copies non-duplicate MakeLink nodes" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+    var tg = TypeGraph.init(&g);
+
+    const Inner = try tg.add_type("Inner2");
+    try tg.mark_constructable(Inner);
+
+    // Parent type with children "x" and "y", and a MakeLink x->y
+    const Parent = try tg.add_type("Parent2");
+    _ = try tg.add_make_child(Parent, Inner, "x", null);
+    _ = try tg.add_make_child(Parent, Inner, "y", null);
+    const parent_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("x")});
+    const parent_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("y")});
+    const parent_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Parent, parent_lhs, parent_rhs, parent_link_attrs);
+
+    // Child type with children "a" and "b", and a MakeLink a->b (different lhs_path from parent)
+    const Child = try tg.add_type("Child2");
+    _ = try tg.add_make_child(Child, Inner, "a", null);
+    _ = try tg.add_make_child(Child, Inner, "b", null);
+    _ = try tg.add_make_child(Child, Inner, "x", null);
+    _ = try tg.add_make_child(Child, Inner, "y", null);
+    const child_lhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("a")});
+    const child_rhs = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("b")});
+    const child_link_attrs = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(Child, child_lhs, child_rhs, child_link_attrs);
+
+    // Merge Parent into Child
+    try tg.merge_types(Child, Parent);
+
+    // After merge: Child should have 2 MakeLinks (a->b from child + x->y from parent)
+    const after = tg.collect_make_links(a, Child) catch return error.CollectFailed;
+    defer {
+        for (after) |info| {
+            a.free(info.lhs_path);
+            a.free(info.rhs_path);
+        }
+        a.free(after);
+    }
+    try std.testing.expectEqual(@as(usize, 2), after.len);
 }

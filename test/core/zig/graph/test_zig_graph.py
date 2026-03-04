@@ -178,6 +178,7 @@ def test_typegraph_instantiate():
     type_graph = fbrk.TypeGraph.create(g=g)
 
     Electrical = type_graph.add_type(identifier="Electrical")
+    type_graph.mark_constructable(type_node=Electrical)
     Resistor = type_graph.add_type(identifier="Resistor")
     type_graph.add_make_child(
         type_node=Resistor,
@@ -193,6 +194,8 @@ def test_typegraph_instantiate():
         node_attributes=None,
         mount_reference=None,
     )
+
+    type_graph.mark_constructable(type_node=Resistor)
 
     rp1_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p1"])
     rp2_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p2"])

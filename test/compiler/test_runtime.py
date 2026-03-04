@@ -264,7 +264,9 @@ class TestForLoopsRuntime:
             )
 
     def test_for_loop_nested_error(self):
-        with pytest.raises(DslException, match="Invalid statement in for loop"):
+        with pytest.raises(
+            DslException, match="Invalid/Unsupported statement in for loop"
+        ):
             build_instance(
                 """
                 #pragma experiment("FOR_LOOP")
@@ -371,7 +373,7 @@ class TestForLoopsRuntime:
         )
 
         text = template.format(stmt=stmt)
-        with pytest.raises(DslException, match="Invalid statement"):
+        with pytest.raises(DslException, match="Invalid/Unsupported statement"):
             build_instance(text, "App")
 
     def test_for_loop_large(self):
@@ -1613,6 +1615,8 @@ def test_nested_override_trait():
     """Test if we can use overrides nested"""
     _, _, _, result, app_instance = build_instance(
         """
+        import ElectricPower
+
         module App:
             power = new ElectricPower
             power.hv.required = True
@@ -1733,6 +1737,7 @@ def test_slice_non_list():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
+            import Resistor
 
             module App:
                 r_single = new Resistor
@@ -3143,7 +3148,7 @@ class TestInheritanceWithTraits:
     """
     Tests for trait inheritance issues.
 
-    Key finding: When copy_type_structure copies MakeLinks during inheritance,
+    Key finding: When merge_types copies MakeLinks during inheritance,
     it only preserves string identifiers, losing edge type information
     (EdgeTrait, EdgePointer traversals become EdgeComposition).
     """
@@ -3156,7 +3161,7 @@ class TestInheritanceWithTraits:
         to verify the basic trait inheritance mechanism works.
 
         Issue: Traits defined on a parent module may not be visible on derived
-        module instances if copy_type_structure doesn't properly copy trait edges.
+        module instances if merge_types doesn't properly copy trait edges.
         """
         _, _, _, _, app_instance = build_instance(
             """
