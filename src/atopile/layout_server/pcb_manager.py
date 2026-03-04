@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import abc
 import math
-import time
 from pathlib import Path
 from typing import Any
 
@@ -86,14 +85,6 @@ def _build_uuid_index(pcb: kicad.pcb.KicadPcb) -> dict[str, Any]:
                 if token:
                     index[token] = obj
     return index
-
-
-def _find_object_by_uuid(pcb: kicad.pcb.KicadPcb, uuid: str) -> Any:
-    """Find any PCB object by UUID, searching all containers."""
-    obj = _build_uuid_index(pcb).get(uuid)
-    if obj is None:
-        raise ValueError(f"Object with uuid {uuid!r} not found")
-    return obj
 
 
 def _is_notouch(obj: Any) -> bool:
@@ -274,7 +265,6 @@ class PcbManager:
         self._pcb_file: kicad.pcb.PcbFile | None = None
         self._undo_stack: list[Action] = []
         self._redo_stack: list[Action] = []
-        self._last_save_time: float = 0
         self._render_model_cache: RenderModel | None = None
 
     @property
@@ -415,14 +405,9 @@ class PcbManager:
             raise ValueError(f"Footprint {uuid!r} not found")
         self.dispatch_action(FlipCommand(command="flip", uuids=[uuid]))
 
-    def was_recently_saved(self, threshold: float = 2.0) -> bool:
-        """Check if we saved within the last `threshold` seconds."""
-        return (time.monotonic() - self._last_save_time) < threshold
-
     def save(self) -> None:
         assert self._path is not None and self._pcb_file is not None
         kicad.dumps(self._pcb_file, self._path)
-        self._last_save_time = time.monotonic()
 
     # --- Extraction ---
 
@@ -1345,87 +1330,6 @@ class PcbManager:
             net=arc.net,
             uuid=arc.uuid,
         )
-
-    def _synthesize_via_drawings(
-        self, vias: list[kicad.pcb.Via], copper_layers: list[str]
-    ) -> list[DrawingModel]:
-        drawings: list[DrawingModel] = []
-        for via in vias:
-            cx = via.at.x
-            cy = via.at.y
-
-            drill = via.drill
-            hole: HoleModel | None = None
-            if drill > 0:
-                hole = HoleModel(
-                    shape=_normalize_hole_shape(
-                        getattr(via, "drillshape", None), drill, drill
-                    ),
-                    size_x=drill,
-                    size_y=drill,
-                    offset=None,
-                    plated=True,
-                )
-
-            outer_diameter = via.size
-            drill_diameter = 0.0
-            if hole is not None:
-                hx = _safe_float(hole.size_x) or 0.0
-                hy = _safe_float(hole.size_y) or hx
-                drill_diameter = max(hx, hy)
-            if drill_diameter <= 0:
-                drill_diameter = drill
-
-            via_layers = list(via.layers)
-            expanded_copper_layers = _expand_copper_layers(
-                via_layers,
-                all_copper_layers=copper_layers,
-                include_between=True,
-            )
-            for copper_layer in expanded_copper_layers:
-                if outer_diameter <= 0:
-                    continue
-                if drill_diameter > 0 and outer_diameter > drill_diameter:
-                    annulus_thickness = (outer_diameter - drill_diameter) / 2.0
-                    centerline_radius = (outer_diameter + drill_diameter) / 4.0
-                    if annulus_thickness > 0 and centerline_radius > 0:
-                        drawings.append(
-                            _circle_drawing(
-                                center=PointXY(x=cx, y=cy),
-                                end=PointXY(x=cx + centerline_radius, y=cy),
-                                width=annulus_thickness,
-                                layer=copper_layer,
-                                filled=False,
-                            )
-                        )
-                        continue
-                drawings.append(
-                    _circle_drawing(
-                        center=PointXY(x=cx, y=cy),
-                        end=PointXY(x=cx + outer_diameter / 2.0, y=cy),
-                        width=0.0,
-                        layer=copper_layer,
-                        filled=True,
-                    )
-                )
-
-            if hole is None:
-                continue
-            for drill_layer in _drill_layers_from_copper_layers(
-                expanded_copper_layers,
-                all_copper_layers=copper_layers,
-                include_between=False,
-            ):
-                drawings.extend(
-                    _drill_hole_drawings(
-                        cx=cx,
-                        cy=cy,
-                        rotation_deg=0.0,
-                        hole=hole,
-                        layer=drill_layer,
-                    )
-                )
-        return drawings
 
     def _extract_zones(
         self, pcb: kicad.pcb.KicadPcb, all_layers: list[str]

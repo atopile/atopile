@@ -8,7 +8,6 @@ export class LayoutClient {
     private readonly wsPath: string;
     private ws: WebSocket | null = null;
     private reconnectTimer: number | null = null;
-    private wsConnected = false;
 
     constructor(baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.baseUrl = baseUrl;
@@ -30,17 +29,10 @@ export class LayoutClient {
         return await resp.json() as StatusResponse;
     }
 
-    isConnected(): boolean {
-        return this.wsConnected;
-    }
-
     connect(onUpdate: UpdateHandler): void {
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);
-        this.ws.onopen = () => {
-            this.wsConnected = true;
-            console.log("WS connected");
-        };
+        this.ws.onopen = () => console.log("WS connected");
         this.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data) as LayoutWsMessage;
             if (
@@ -50,12 +42,8 @@ export class LayoutClient {
                 onUpdate(msg);
             }
         };
-        this.ws.onerror = (err) => {
-            this.wsConnected = false;
-            console.error("WS error:", err);
-        };
+        this.ws.onerror = (err) => console.error("WS error:", err);
         this.ws.onclose = () => {
-            this.wsConnected = false;
             if (this.reconnectTimer !== null) {
                 window.clearTimeout(this.reconnectTimer);
             }
@@ -72,7 +60,6 @@ export class LayoutClient {
             this.reconnectTimer = null;
         }
         if (this.ws) {
-            this.wsConnected = false;
             this.ws.onclose = null;
             this.ws.close();
             this.ws = null;

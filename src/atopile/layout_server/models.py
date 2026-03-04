@@ -310,7 +310,6 @@ class StatusResponse(BaseModel):
     status: Literal["ok", "error"]
     code: str
     message: str | None = None
-    model: RenderModel | None = None
     delta: RenderDelta | None = None
     action_id: str | None = None
 

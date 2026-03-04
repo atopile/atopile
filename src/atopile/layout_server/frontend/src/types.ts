@@ -225,7 +225,6 @@ export interface StatusResponse {
     status: "ok" | "error";
     code: string;
     message: string | null;
-    model?: RenderModel | null;
     delta?: RenderDelta | null;
     action_id?: string | null;
 }

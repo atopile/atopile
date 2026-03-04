@@ -152,7 +152,6 @@ export class Editor {
     private onActionBusyChanged: ((busy: boolean) => void) | null = null;
     private pendingActionRequests = 0;
     private actionNonce = 0;
-    private suppressWsActionIds = new Set<string>();
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -517,11 +516,6 @@ export class Editor {
     private selectedGroupMembers(): number[] {
         const group = this.selectedGroup();
         return group ? group.memberIndices : [];
-    }
-
-    private selectedGroupMemberUuids(): string[] {
-        const group = this.selectedGroup();
-        return group ? group.memberUuids : [];
     }
 
     private selectedUuids(): string[] {
@@ -950,10 +944,6 @@ export class Editor {
 
     private connectWebSocket() {
         this.client.connect((msg) => {
-            if (msg.action_id && this.suppressWsActionIds.has(msg.action_id)) {
-                this.suppressWsActionIds.delete(msg.action_id);
-                return;
-            }
             if (msg.type === "layout_updated" && msg.model) {
                 this.applyModel(msg.model);
                 return;
@@ -1177,8 +1167,8 @@ export class Editor {
             this.repaintWithSelection();
 
             if (movePromise) {
-                void movePromise.then((result) => {
-                    if (!result.ok) {
+                void movePromise.then((ok) => {
+                    if (!ok) {
                         this.restorePostDragRendering();
                         this.repaintWithSelection();
                     }
@@ -1258,15 +1248,13 @@ export class Editor {
 
     private async executeAction(
         action: ActionCommand,
-    ): Promise<{ ok: boolean; appliedFromResponse: boolean }> {
+    ): Promise<boolean> {
         const actionId = `a${Date.now()}_${++this.actionNonce}`;
         const taggedAction: ActionCommand = { ...action, client_action_id: actionId };
-        const wsConnected = this.client.isConnected();
         this.pendingActionRequests += 1;
         if (this.pendingActionRequests === 1 && this.onActionBusyChanged) {
             this.onActionBusyChanged(true);
         }
-        let appliedFromResponse = false;
         let ok = false;
         try {
             const data = await this.client.executeAction(taggedAction);
@@ -1274,25 +1262,6 @@ export class Editor {
                 console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
             } else {
                 ok = true;
-            }
-
-            // Prefer WS updates when connected to keep all clients consistent and
-            // avoid duplicate patch-application on the initiating client.
-            if (!wsConnected && data.model) {
-                this.applyModel(data.model);
-                appliedFromResponse = true;
-            } else if (!wsConnected && data.delta) {
-                this.applyDelta(data.delta);
-                appliedFromResponse = true;
-            } else if (!wsConnected && ok) {
-                // If WS is unavailable and response has no payload, recover via full fetch.
-                const model = await this.client.fetchRenderModel();
-                this.applyModel(model, false);
-                appliedFromResponse = true;
-            }
-
-            if (appliedFromResponse) {
-                this.suppressWsActionIds.add(actionId);
             }
         } catch (err) {
             console.error("Failed to execute action:", err);
@@ -1306,7 +1275,7 @@ export class Editor {
                 this.onActionBusyChanged(false);
             }
         }
-        return { ok, appliedFromResponse };
+        return ok;
     }
 
     // --- Layer visibility ---
