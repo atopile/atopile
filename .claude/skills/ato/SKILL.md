@@ -154,6 +154,67 @@ Search the atopile package registry before building from scratch.
 
 Gate: all major ICs/connectors have either a package dependency or a plan to write a custom driver.
 
+### Phase 3b: Create local package when none exists
+
+When `packages_search` returns no match for a needed IC, connector, or module, **create a local driver package** instead of giving up or asking the user to find one.
+
+**Step-by-step recipe:**
+
+1. **Find the part**: Use `parts_search` to find the LCSC component (e.g., `parts_search("LAN8742A")`).
+2. **Install the part**: Use `parts_install` with the LCSC ID to download symbol, footprint, and 3D model into `parts/`.
+3. **Read the datasheet**: Use `datasheet_read` with the LCSC ID to get pin functions, electrical specs, and typical application circuit.
+4. **Read the installed part .ato**: Check the auto-generated `.ato` file in `parts/<Manufacturer_MPN>/` to see the available pin names.
+5. **Create the driver module**: Write a `.ato` file (e.g., `lan8742a_driver.ato`) that:
+   - Imports the installed part and stdlib interfaces
+   - Creates a module with public interface fields (e.g., `power`, `rmii`, `mdio`)
+   - Instantiates the part internally (`ic = new <InstalledPartType>`)
+   - Maps IC pins to interface signals
+   - Adds decoupling capacitors and required passives
+   - Sets voltage/current constraints from the datasheet
+6. **Import and use** the driver in your top-level design.
+
+**Example: creating a local Ethernet PHY driver**
+
+```ato
+import ElectricPower
+import RMII from "rmii.ato"  # or define inline
+import Capacitor
+
+from "parts/TI_DP83848/TI_DP83848.ato" import TI_DP83848
+
+module EthernetPHY:
+    power = new ElectricPower
+    rmii = new RMII
+    mdio_mdc = new ElectricLogic
+    mdio_mdio = new ElectricLogic
+
+    ic = new TI_DP83848
+    ic.lcsc_id = "C12345"
+
+    # Power
+    power ~ ic.VDD
+    assert power.voltage within 3.0V to 3.6V
+
+    # Decoupling
+    decoup = new Capacitor
+    decoup.value = 100nF +/- 20%
+    decoup.package = "0402"
+    decoup.power ~ power
+
+    # Pin mapping
+    rmii.tx_en ~ ic.TX_EN
+    rmii.txd0 ~ ic.TXD_0
+    rmii.txd1 ~ ic.TXD_1
+    # ... etc
+```
+
+**Key rules:**
+- Always `parts_install` first — never reference a part that hasn't been installed.
+- Always read the datasheet to get correct pin mapping and constraints.
+- Keep IC-specific pin wiring inside the driver module; expose only abstract interfaces.
+- Add decoupling caps as the datasheet specifies.
+- Do NOT skip this step and tell the user to create the package themselves. This is core agent capability.
+
 ### Phase 4: Part selection
 
 Choose components using generics + constraints wherever possible.
