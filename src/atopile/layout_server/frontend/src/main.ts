@@ -12,19 +12,54 @@ const baseUrl: string = w.__LAYOUT_BASE_URL__ || window.location.origin;
 const apiPrefix: string = w.__LAYOUT_API_PREFIX__ || "/api";
 const wsPath: string = w.__LAYOUT_WS_PATH__ || "/ws";
 const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath);
+w.__layoutEditor = editor;
+const initialLoadingEl = document.getElementById("initial-loading");
+const initialLoadingMessageEl = initialLoadingEl?.querySelector(".initial-loading-message") as HTMLElement | null;
+const initialLoadingSubtextEl = initialLoadingEl?.querySelector(".initial-loading-subtext") as HTMLElement | null;
+
+function setInitialLoading(message: string, subtext: string) {
+    if (!initialLoadingEl) return;
+    initialLoadingEl.classList.remove("hidden", "error");
+    initialLoadingEl.setAttribute("aria-busy", "true");
+    if (initialLoadingMessageEl) initialLoadingMessageEl.textContent = message;
+    if (initialLoadingSubtextEl) initialLoadingSubtextEl.textContent = subtext;
+}
+
+function hideInitialLoading() {
+    if (!initialLoadingEl) return;
+    initialLoadingEl.classList.add("hidden");
+    initialLoadingEl.setAttribute("aria-busy", "false");
+}
+
+function showInitialLoadingError(message: string, subtext: string) {
+    if (!initialLoadingEl) return;
+    initialLoadingEl.classList.remove("hidden");
+    initialLoadingEl.classList.add("error");
+    initialLoadingEl.setAttribute("aria-busy", "false");
+    if (initialLoadingMessageEl) initialLoadingMessageEl.textContent = message;
+    if (initialLoadingSubtextEl) initialLoadingSubtextEl.textContent = subtext;
+}
 
 // Persistent UI state across rebuilds
 let panelCollapsed = false;
 const collapsedGroups = new Set<string>();
 let objectTypesExpanded = false;
+let textShapesExpanded = false;
 
-const OBJECT_TYPES = [
+const OBJECT_ROOT_FILTERS = [
     { id: "__type:zones",  label: "Zones",         color: "#5a8a3a" },
     { id: "__type:tracks", label: "Tracks & Vias", color: "#c05030" },
     { id: "__type:pads",   label: "Pads",          color: "#a07020" },
-    { id: "__type:other",  label: "Text & shapes", color: "#4080a0" },
 ] as const;
-const OBJECT_TYPE_IDS = OBJECT_TYPES.map(t => t.id);
+const TEXT_SHAPES_FILTERS = [
+    { id: "__type:text",   label: "Text",   color: "#4a8cad" },
+    { id: "__type:shapes", label: "Shapes", color: "#356982" },
+] as const;
+const TEXT_SHAPES_FILTER_IDS = TEXT_SHAPES_FILTERS.map(t => t.id);
+const OBJECT_TYPE_IDS = [
+    ...OBJECT_ROOT_FILTERS.map(t => t.id),
+    ...TEXT_SHAPES_FILTER_IDS,
+];
 
 interface LayerGroup {
     group: string;
@@ -129,7 +164,7 @@ function buildLayerPanel() {
     const content = document.createElement("div");
     content.className = "layer-panel-content";
 
-    // — Objects section (Zones / Tracks & Vias / Pads / Text & shapes) —
+    // — Objects section (Zones / Tracks & Vias / Pads / Text & Shapes -> Text, Shapes) —
     const objGroupRow = document.createElement("div");
     objGroupRow.className = "layer-group-header";
 
@@ -149,12 +184,13 @@ function buildLayerPanel() {
     objGroupRow.appendChild(objSwatch);
     objGroupRow.appendChild(objLabel);
 
+    const objectRows = new Map<string, HTMLElement>();
+
     function updateObjGroupVisual() {
         const allVis = OBJECT_TYPE_IDS.every(id => editor.isLayerVisible(id));
         const allHid = OBJECT_TYPE_IDS.every(id => !editor.isLayerVisible(id));
         objGroupRow.style.opacity = allVis ? "1" : allHid ? "0.3" : "0.6";
     }
-    updateObjGroupVisual();
 
     const objChildContainer = document.createElement("div");
     objChildContainer.className = "layer-group-children";
@@ -181,16 +217,27 @@ function buildLayerPanel() {
         }
     });
 
+    const updateTextShapesGroupVisual = (row: HTMLElement) => {
+        const allVis = TEXT_SHAPES_FILTER_IDS.every(id => editor.isLayerVisible(id));
+        const allHid = TEXT_SHAPES_FILTER_IDS.every(id => !editor.isLayerVisible(id));
+        row.style.opacity = allVis ? "1" : allHid ? "0.3" : "0.6";
+    };
+
+    const updateObjectRows = (textShapesGroupRow: HTMLElement) => {
+        for (const [id, row] of objectRows.entries()) {
+            updateRowVisual(row, editor.isLayerVisible(id));
+        }
+        updateTextShapesGroupVisual(textShapesGroupRow);
+        updateObjGroupVisual();
+    };
+
     objGroupRow.addEventListener("click", () => {
         const allVis = OBJECT_TYPE_IDS.every(id => editor.isLayerVisible(id));
         editor.setLayersVisible([...OBJECT_TYPE_IDS], !allVis);
-        updateObjGroupVisual();
-        objChildContainer.querySelectorAll<HTMLElement>(".layer-row").forEach((row, i) => {
-            updateRowVisual(row, editor.isLayerVisible(OBJECT_TYPE_IDS[i]!));
-        });
+        updateObjectRows(textShapesGroupRow);
     });
 
-    for (const objType of OBJECT_TYPES) {
+    for (const objType of OBJECT_ROOT_FILTERS) {
         const row = document.createElement("div");
         row.className = "layer-row";
 
@@ -209,12 +256,89 @@ function buildLayerPanel() {
         row.addEventListener("click", () => {
             const vis = !editor.isLayerVisible(objType.id);
             editor.setLayerVisible(objType.id, vis);
-            updateRowVisual(row, vis);
-            updateObjGroupVisual();
+            updateObjectRows(textShapesGroupRow);
         });
 
+        objectRows.set(objType.id, row);
         objChildContainer.appendChild(row);
     }
+
+    const textShapesGroupRow = document.createElement("div");
+    textShapesGroupRow.className = "layer-group-header";
+
+    const textShapesChevron = document.createElement("span");
+    textShapesChevron.className = "layer-chevron";
+    textShapesChevron.textContent = textShapesExpanded ? "\u25BE" : "\u25B8";
+
+    const textShapesSwatch = document.createElement("span");
+    textShapesSwatch.className = "layer-swatch";
+    textShapesSwatch.style.background = "linear-gradient(135deg, #4a8cad 50%, #356982 50%)";
+
+    const textShapesLabel = document.createElement("span");
+    textShapesLabel.className = "layer-group-name";
+    textShapesLabel.textContent = "Text & Shapes";
+
+    textShapesGroupRow.appendChild(textShapesChevron);
+    textShapesGroupRow.appendChild(textShapesSwatch);
+    textShapesGroupRow.appendChild(textShapesLabel);
+
+    const textShapesChildContainer = document.createElement("div");
+    textShapesChildContainer.className = "layer-group-children";
+    if (!textShapesExpanded) {
+        textShapesChildContainer.style.maxHeight = "0";
+    }
+
+    textShapesChevron.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (textShapesExpanded) {
+            textShapesExpanded = false;
+            textShapesChevron.textContent = "\u25B8";
+            textShapesChildContainer.style.maxHeight = textShapesChildContainer.scrollHeight + "px";
+            requestAnimationFrame(() => { textShapesChildContainer.style.maxHeight = "0"; });
+        } else {
+            textShapesExpanded = true;
+            textShapesChevron.textContent = "\u25BE";
+            textShapesChildContainer.style.maxHeight = textShapesChildContainer.scrollHeight + "px";
+            const onEnd = () => {
+                textShapesChildContainer.style.maxHeight = "";
+                textShapesChildContainer.removeEventListener("transitionend", onEnd);
+            };
+            textShapesChildContainer.addEventListener("transitionend", onEnd);
+        }
+    });
+
+    textShapesGroupRow.addEventListener("click", () => {
+        const allVis = TEXT_SHAPES_FILTER_IDS.every(id => editor.isLayerVisible(id));
+        editor.setLayersVisible([...TEXT_SHAPES_FILTER_IDS], !allVis);
+        updateObjectRows(textShapesGroupRow);
+    });
+
+    for (const objType of TEXT_SHAPES_FILTERS) {
+        const row = document.createElement("div");
+        row.className = "layer-row";
+
+        const swatch = document.createElement("span");
+        swatch.className = "layer-swatch";
+        swatch.style.background = objType.color;
+
+        const label = document.createElement("span");
+        label.textContent = objType.label;
+
+        row.appendChild(swatch);
+        row.appendChild(label);
+        row.addEventListener("click", () => {
+            const vis = !editor.isLayerVisible(objType.id);
+            editor.setLayerVisible(objType.id, vis);
+            updateObjectRows(textShapesGroupRow);
+        });
+
+        objectRows.set(objType.id, row);
+        textShapesChildContainer.appendChild(row);
+    }
+
+    objChildContainer.appendChild(textShapesGroupRow);
+    objChildContainer.appendChild(textShapesChildContainer);
+    updateObjectRows(textShapesGroupRow);
 
     content.appendChild(objGroupRow);
     content.appendChild(objChildContainer);
@@ -359,6 +483,7 @@ function buildLayerPanel() {
 }
 
 const coordsEl = document.getElementById("status-coords");
+const busyEl = document.getElementById("status-busy");
 const helpEl = document.getElementById("status-help");
 const helpText = "Scroll zoom \u00b7 Middle-click pan \u00b7 Click group/select \u00b7 Shift+drag box-select \u00b7 Double-click single \u00b7 Esc clear \u00b7 R rotate \u00b7 F flip \u00b7 Ctrl+Z undo \u00b7 Ctrl+Shift+Z redo";
 if (helpEl) helpEl.textContent = helpText;
@@ -378,11 +503,19 @@ editor.setOnMouseMove((x, y) => {
         coordsEl.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
     }
 });
+editor.setOnActionBusyChanged((busy) => {
+    if (!busyEl) return;
+    busyEl.classList.toggle("visible", busy);
+    busyEl.setAttribute("aria-hidden", busy ? "false" : "true");
+});
 
+setInitialLoading("Loading PCB", "Building scene geometry...");
 editor.init().then(() => {
     buildLayerPanel();
     editor.setOnLayersChanged(buildLayerPanel);
+    hideInitialLoading();
 }).catch((err) => {
+    showInitialLoadingError("Load failed", "Could not initialize PCB viewer.");
     console.error("Failed to initialize editor:", err);
 });
 

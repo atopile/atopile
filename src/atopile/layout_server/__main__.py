@@ -9,6 +9,7 @@ backend integration server.
 
 from __future__ import annotations
 
+import copy
 import logging
 import shutil
 import subprocess
@@ -157,8 +158,22 @@ def main(
         raise typer.Exit(code=1) from exc
 
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 
-    uvicorn.run(create_app(pcb_path), host=host, port=port)
+    log_config = copy.deepcopy(UVICORN_LOGGING_CONFIG)
+    default_formatter = log_config.get("formatters", {}).get("default")
+    if isinstance(default_formatter, dict):
+        default_formatter["fmt"] = "%(asctime)s %(levelprefix)s %(message)s"
+        default_formatter["datefmt"] = "%Y-%m-%d %H:%M:%S"
+    access_formatter = log_config.get("formatters", {}).get("access")
+    if isinstance(access_formatter, dict):
+        access_formatter["fmt"] = (
+            '%(asctime)s %(levelprefix)s %(client_addr)s - "%(request_line)s" '
+            "%(status_code)s"
+        )
+        access_formatter["datefmt"] = "%Y-%m-%d %H:%M:%S"
+
+    uvicorn.run(create_app(pcb_path), host=host, port=port, log_config=log_config)
 
 
 if __name__ == "__main__":

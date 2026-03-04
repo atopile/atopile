@@ -48,6 +48,21 @@ class has_net_name_affix(fabll.Node):
     def get_suffix(self) -> str | None:
         return self.required_suffix_.get().try_extract_singleton()
 
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""\
+        import has_net_name_affix, DifferentialPair
+
+        diff = new DifferentialPair
+
+        # Add suffixes to differential pair net names
+        trait diff.p.line has_net_name_affix<suffix="_P">
+        trait diff.n.line has_net_name_affix<suffix="_N">
+        """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )
+
     # TODO: Implement this
     # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
     #     # If re-added, keep the more specific (non-None) values; error on conflicts

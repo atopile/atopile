@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import WebSocket
 
-from atopile.layout_server.models import RenderModel, WsMessage
+from atopile.layout_server.models import RenderDelta, RenderModel, WsMessage
 from atopile.layout_server.pcb_manager import PcbManager
 from atopile.server.file_watcher import FileWatcher
 
@@ -108,21 +108,24 @@ class LayoutService:
         except Exception:
             log.exception("Error reloading PCB after file change")
 
-    # --- Selection ---
-
-    async def set_selection(self, uuids: list[str]) -> None:
-        """Broadcast the current selection to all WebSocket clients."""
-        await self.broadcast(WsMessage(type="selection_changed", uuids=uuids))
-
     # --- Save and broadcast helper ---
 
-    async def save_and_broadcast(self) -> RenderModel:
-        """Save the PCB to disk and broadcast the updated model to all WS clients."""
+    async def save_and_broadcast(
+        self, *, delta: RenderDelta | None = None, action_id: str | None = None
+    ) -> RenderModel | None:
+        """Save the PCB and broadcast either a delta or full model."""
         await asyncio.to_thread(self.manager.save)
         if self._watcher and self._current_path:
             self._watcher.notify_saved(self._current_path)
+        if delta is not None:
+            await self.broadcast(
+                WsMessage(type="layout_delta", delta=delta, action_id=action_id)
+            )
+            return None
         model = await asyncio.to_thread(self.manager.get_render_model)
-        await self.broadcast(WsMessage(type="layout_updated", model=model))
+        await self.broadcast(
+            WsMessage(type="layout_updated", model=model, action_id=action_id)
+        )
         return model
 
 

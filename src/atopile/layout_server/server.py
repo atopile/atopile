@@ -18,7 +18,6 @@ from atopile.layout_server.models import (
     FootprintSummary,
     RedoCommand,
     RenderModel,
-    SelectionEvent,
     StatusResponse,
     UndoCommand,
 )
@@ -65,27 +64,30 @@ def create_layout_router(
     @router.post(f"{api_prefix}/execute-action", response_model=StatusResponse)
     async def execute_action(req: ActionRequest) -> StatusResponse:
         _require_loaded()
+        action_id = req.client_action_id
 
         # undo and redo are not added to the history stack, so we handle them here
         if isinstance(req, UndoCommand):
             ok = await asyncio.to_thread(service.manager.undo)
             if ok:
-                model = await service.save_and_broadcast()
-                return StatusResponse(status="ok", code="ok", model=model)
+                await service.save_and_broadcast(action_id=action_id)
+                return StatusResponse(status="ok", code="ok", action_id=action_id)
             return StatusResponse(
                 status="error",
                 code="nothing_to_undo",
                 message="No action available to undo.",
+                action_id=action_id,
             )
         if isinstance(req, RedoCommand):
             ok = await asyncio.to_thread(service.manager.redo)
             if ok:
-                model = await service.save_and_broadcast()
-                return StatusResponse(status="ok", code="ok", model=model)
+                await service.save_and_broadcast(action_id=action_id)
+                return StatusResponse(status="ok", code="ok", action_id=action_id)
             return StatusResponse(
                 status="error",
                 code="nothing_to_redo",
                 message="No action available to redo.",
+                action_id=action_id,
             )
 
         try:
@@ -95,13 +97,23 @@ def create_layout_router(
                 status="error",
                 code="invalid_action_target",
                 message=str(e),
+                action_id=action_id,
             )
-        model = await service.save_and_broadcast()
-        return StatusResponse(status="ok", code="ok", model=model)
 
-    @router.post(f"{api_prefix}/notify-selection", status_code=204)
-    async def notify_selection(event: SelectionEvent) -> None:
-        await service.set_selection(event.uuids)
+        delta = await asyncio.to_thread(
+            service.manager.get_render_delta_for_uuids, req.uuids
+        )
+        if delta is None:
+            await service.save_and_broadcast(action_id=action_id)
+            return StatusResponse(status="ok", code="ok", action_id=action_id)
+
+        await service.save_and_broadcast(delta=delta, action_id=action_id)
+        return StatusResponse(
+            status="ok",
+            code="ok",
+            delta=delta,
+            action_id=action_id,
+        )
 
     @router.get(f"{api_prefix}/bom")
     async def get_layout_bom(

@@ -137,6 +137,7 @@ async def test_undo_empty(client: AsyncClient):
     data = resp.json()
     assert data["status"] == "error"
     assert data["code"] == "nothing_to_undo"
+    assert "model" not in data
 
 
 @pytest.mark.anyio
@@ -146,6 +147,7 @@ async def test_redo_empty(client: AsyncClient):
     data = resp.json()
     assert data["status"] == "error"
     assert data["code"] == "nothing_to_redo"
+    assert "model" not in data
 
 
 @pytest.mark.anyio
@@ -162,6 +164,9 @@ async def test_execute_action_rotate(client: AsyncClient):
     data = resp.json()
     assert data["status"] == "ok"
     assert data["code"] == "ok"
+    assert "model" not in data
+    assert data["delta"] is not None
+    assert any(fp["uuid"] == uuid for fp in data["delta"]["footprints"])
 
 
 @pytest.mark.anyio
@@ -178,6 +183,9 @@ async def test_execute_action_move(client: AsyncClient):
     data = resp.json()
     assert data["status"] == "ok"
     assert data["code"] == "ok"
+    assert "model" not in data
+    assert data["delta"] is not None
+    assert any(fp["uuid"] == uuid for fp in data["delta"]["footprints"])
 
 
 @pytest.mark.anyio
@@ -195,6 +203,9 @@ async def test_execute_action_flip(client: AsyncClient):
     data = resp.json()
     assert data["status"] == "ok"
     assert data["code"] == "ok"
+    assert "model" not in data
+    assert data["delta"] is not None
+    assert any(fp["uuid"] == uuid for fp in data["delta"]["footprints"])
 
     # Verify layer flipped
     fps_after = await client.get("/api/footprints")
@@ -210,3 +221,23 @@ async def test_execute_action_unknown(client: AsyncClient):
         json={"command": "nonexistent"},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_execute_action_undo_success_has_no_model(client: AsyncClient):
+    fps_resp = await client.get("/api/footprints")
+    fps = fps_resp.json()
+    uuid = fps[0]["uuid"]
+
+    move_resp = await client.post(
+        "/api/execute-action",
+        json={"command": "move", "uuids": [uuid], "dx": 1.0, "dy": 0.0},
+    )
+    assert move_resp.status_code == 200
+
+    undo_resp = await client.post("/api/execute-action", json={"command": "undo"})
+    assert undo_resp.status_code == 200
+    data = undo_resp.json()
+    assert data["status"] == "ok"
+    assert data["code"] == "ok"
+    assert "model" not in data
