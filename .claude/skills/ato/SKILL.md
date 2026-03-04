@@ -173,46 +173,73 @@ When `packages_search` returns no match for a needed IC, connector, or module, *
    - Sets voltage/current constraints from the datasheet
 6. **Import and use** the driver in your top-level design.
 
-**Example: creating a local Ethernet PHY driver**
+**Example: creating a local I2C mux driver** (modeled on `examples/i2c/`)
+
+The auto-generated part file (`parts/Manufacturer_MPN/Manufacturer_MPN.ato`) is a `component` with signal-to-pin mappings and traits — do NOT edit it. Write a separate driver module that wraps it.
 
 ```ato
+#pragma experiment("BRIDGE_CONNECT")
+
 import ElectricPower
-import RMII from "rmii.ato"  # or define inline
+import ElectricLogic
+import I2C
 import Capacitor
+import Resistor
 
-from "parts/TI_DP83848/TI_DP83848.ato" import TI_DP83848
+from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
 
-module EthernetPHY:
+module TI_TCA9548A:
+    # Public interfaces
     power = new ElectricPower
-    rmii = new RMII
-    mdio_mdc = new ElectricLogic
-    mdio_mdio = new ElectricLogic
+    assert power.voltage within 1.65V to 5.5V
 
-    ic = new TI_DP83848
-    ic.lcsc_id = "C12345"
+    i2c = new I2C
+    reset = new ElectricLogic
 
-    # Power
-    power ~ ic.VDD
-    assert power.voltage within 3.0V to 3.6V
+    # Instantiate the auto-generated package component
+    package = new Texas_Instruments_TCA9548APWR_package
 
-    # Decoupling
-    decoup = new Capacitor
-    decoup.value = 100nF +/- 20%
-    decoup.package = "0402"
-    decoup.power ~ power
+    # Power connections
+    power.hv ~ package.VCC
+    power.lv ~ package.GND
 
-    # Pin mapping
-    rmii.tx_en ~ ic.TX_EN
-    rmii.txd0 ~ ic.TXD_0
-    rmii.txd1 ~ ic.TXD_1
-    # ... etc
+    # I2C — connect via .line and .reference
+    i2c.sda.line ~ package.SDA
+    i2c.scl.line ~ package.SCL
+    i2c.sda.reference ~ power
+    i2c.scl.reference ~ power
+
+    # Decoupling — use bridge connect (~>) for series path
+    decoup_100n = new Capacitor
+    decoup_100n.capacitance = 100nF +/- 20%
+    decoup_100n.package = "0402"
+    power.hv ~> decoup_100n ~> power.lv
+
+    decoup_2u2 = new Capacitor
+    decoup_2u2.capacitance = 2.2uF +/- 20%
+    decoup_2u2.package = "0402"
+    power.hv ~> decoup_2u2 ~> power.lv
+
+    # Reset with pullup
+    reset.line ~ package.nRESET
+    reset.reference ~ power
+    reset_pullup = new Resistor
+    reset_pullup.resistance = 10kohm +/- 1%
+    reset_pullup.package = "0402"
+    reset.line ~> reset_pullup ~> reset.reference.hv
 ```
 
 **Key rules:**
 - Always `parts_install` first — never reference a part that hasn't been installed.
-- Always read the datasheet to get correct pin mapping and constraints.
+- Always **read the auto-generated `.ato` file** to see the exact signal names (e.g., `package.VCC`, `package.SDA`). Do NOT guess pin names.
+- Always read the datasheet to get correct pin mapping, constraints, and recommended decoupling.
+- The auto-generated file is a `component` — never edit it. Write a separate `module` that wraps it.
+- Instantiate the component as `package = new <ComponentName>`.
+- Connect interfaces via `.line` and `.reference` (e.g., `i2c.sda.line ~ package.SDA`; `i2c.sda.reference ~ power`).
+- Use bridge connect `~>` for decoupling caps in series (e.g., `power.hv ~> cap ~> power.lv`).
+- Use `.capacitance` for Capacitor values, `.resistance` for Resistor values (NOT `.value`).
+- Add `#pragma experiment("BRIDGE_CONNECT")` if using `~>`.
 - Keep IC-specific pin wiring inside the driver module; expose only abstract interfaces.
-- Add decoupling caps as the datasheet specifies.
 - Do NOT skip this step and tell the user to create the package themselves. This is core agent capability.
 
 ### Phase 4: Part selection
