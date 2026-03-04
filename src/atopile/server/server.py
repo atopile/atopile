@@ -427,15 +427,23 @@ class CrashOnErrorMiddleware(BaseHTTPMiddleware):
 
 def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
     """
-    Handle uncaught exceptions in asyncio tasks by crashing the server.
+    Handle uncaught exceptions in asyncio tasks.
 
-    This ensures background task failures are visible instead of being
-    silently logged and ignored.
+    WebSocket disconnects (ConnectionClosedError, CancelledError) are normal
+    and should not crash the server. Other exceptions are fatal.
     """
     exc = context.get("exception")
     msg = context.get("message", "Unknown asyncio error")
 
-    # Log the full context for debugging
+    # WebSocket disconnects are routine — log and move on
+    if exc is not None:
+        import websockets.exceptions  # noqa: E402
+
+        if isinstance(exc, (asyncio.CancelledError,
+                            websockets.exceptions.ConnectionClosed)):
+            log.info("WebSocket connection closed: %s", msg)
+            return
+
     log.critical("Uncaught exception in asyncio task: %s", msg)
     if exc:
         _fatal_error(f"Asyncio task crashed: {msg}", exc)
