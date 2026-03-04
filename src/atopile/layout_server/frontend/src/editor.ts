@@ -245,8 +245,11 @@ export class Editor {
     private syncTextOverlayViewport(
         viewport = this.getCanvasViewportMetrics(),
     ): void {
-        const left = `${viewport.left}px`;
-        const top = `${viewport.top}px`;
+        // When the overlay is absolutely positioned inside a container,
+        // its origin is the container's top-left, so use 0/0.
+        // When it's fixed-positioned on the body, use viewport coords.
+        const left = this.container ? "0px" : `${viewport.left}px`;
+        const top = this.container ? "0px" : `${viewport.top}px`;
         const width = `${viewport.width}px`;
         const height = `${viewport.height}px`;
         if (this.textOverlay.style.left !== left) this.textOverlay.style.left = left;
