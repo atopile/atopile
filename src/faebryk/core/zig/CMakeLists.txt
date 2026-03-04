@@ -77,14 +77,23 @@ if (APPLE)
   set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
 
-# Linux x86_64 cross-compilation safety ----------------------------------------
+# Linux cross-compilation safety ------------------------------------------------
 # When building wheels (e.g., via cibuildwheel) or Docker images, the host CPU
 # may have features (AVX-512, etc.) not present on all target machines. Explicitly
-# target baseline x86_64 to produce portable binaries.
-# Local dev builds can override with -DCMAKE_ZIG_TARGET=native if desired.
+# target baseline arch to produce portable binaries.
 if (UNIX AND NOT APPLE)
-    set(_TARGET_ARCH_FOR_STAMP "x86_64")
-    set(ZIG_TARGET_ARG "-Dtarget=x86_64-linux-gnu")
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -c "import platform; print(platform.machine())"
+      OUTPUT_VARIABLE _LINUX_ARCH
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # Detect musl vs glibc from the Python sysconfig
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -c "import sysconfig; print('musl' if 'musl' in (sysconfig.get_config_var('HOST_GNU_TYPE') or '') else 'gnu')"
+      OUTPUT_VARIABLE _LINUX_ABI
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(_TARGET_ARCH_FOR_STAMP "${_LINUX_ARCH}")
+    set(ZIG_TARGET_ARG "-Dtarget=${_LINUX_ARCH}-linux-${_LINUX_ABI}")
+    message(STATUS "Linux build: targeting ${_LINUX_ARCH}-linux-${_LINUX_ABI}")
 endif()
 
 # Stamp file includes target architecture to ensure different arch builds in the same
