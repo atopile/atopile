@@ -1158,7 +1158,7 @@ function paintText(
         baseOffsetY -= totalHeight;
     }
 
-    const textRotation = (fpAt.r || 0) + (text.at.r || 0);
+    const textRotation = text.at.r || 0;
     const worldPos = fpTransform(fpAt, text.at.x, text.at.y);
     const rad = -textRotation * DEG_TO_RAD;
     const cos = Math.cos(rad);
