@@ -23,6 +23,7 @@ import { footprintBBox } from "./hit-test";
 import { buildPadAnnotationGeometry } from "./pad_annotations";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 
+const DEG_TO_RAD = Math.PI / 180;
 const HOLE_SEGMENTS = 36;
 const SELECTION_STROKE_WIDTH = 0.12;
 const GROUP_SELECTION_STROKE_WIDTH = 0.1;
@@ -640,93 +641,6 @@ function hatchSegmentsForPolygon(points: Vec2[], pitch: number): Array<[Vec2, Ve
     return segments;
 }
 
-function paintTracks(
-    renderer: Renderer,
-    model: RenderModel,
-    hidden: Set<string>,
-    layerById: Map<string, LayerModel>,
-) {
-    if (hidden.has("__type:tracks")) return;
-    const byLayer = new Map<string, TrackModel[]>();
-    for (const track of model.tracks) {
-        const ln = track.layer;
-        if (!ln) continue;
-        if (hidden.has(ln)) continue;
-        let arr = byLayer.get(ln);
-        if (!arr) { arr = []; byLayer.set(ln, arr); }
-        arr.push(track);
-    }
-    for (const [layerName, tracks] of sortedLayerEntries(byLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.get_layer(layerName);
-        for (const track of tracks) {
-            const pts = track.mid
-                ? arcToPoints(track.start, track.mid, track.end)
-                : [p2v(track.start), p2v(track.end)];
-            layer.geometry.add_polyline(pts, track.width, r, g, b, a);
-        }
-            }
-}
-
-function paintVias(
-    renderer: Renderer,
-    vias: ViaModel[],
-    hidden: Set<string>,
-    layerById: Map<string, LayerModel>,
-) {
-    if (hidden.has("__type:tracks")) return;
-    // Copper layers: annular ring or filled circle
-    const byCopperLayer = new Map<string, ViaModel[]>();
-    for (const via of vias) {
-        for (const layerName of via.copper_layers) {
-            if (!layerName || hidden.has(layerName)) continue;
-            let arr = byCopperLayer.get(layerName);
-            if (!arr) { arr = []; byCopperLayer.set(layerName, arr); }
-            arr.push(via);
-        }
-    }
-    for (const [layerName, layerVias] of sortedLayerEntries(byCopperLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.get_layer(layerName);
-        for (const via of layerVias) {
-            const cx = via.at.x;
-            const cy = via.at.y;
-            const outerD = via.size;
-            const drillD = via.drill;
-            if (drillD > 0 && outerD > drillD) {
-                const annulus = (outerD - drillD) / 2;
-                const centerlineR = (outerD + drillD) / 4;
-                const pts = circleToPoints(cx, cy, centerlineR);
-                if (pts.length > 1) {
-                    layer.geometry.add_polyline(pts, annulus, r, g, b, Math.max(a, 0.78));
-                }
-            } else if (outerD > 0) {
-                layer.geometry.add_circle(cx, cy, outerD / 2, r, g, b, Math.max(a, 0.78));
-            }
-        }
-            }
-
-    // Drill holes
-    const byDrillLayer = new Map<string, ViaModel[]>();
-    for (const via of vias) {
-        if (via.drill <= 0) continue;
-        for (const layerName of via.drill_layers) {
-            if (!layerName || hidden.has(layerName)) continue;
-            let arr = byDrillLayer.get(layerName);
-            if (!arr) { arr = []; byDrillLayer.set(layerName, arr); }
-            arr.push(via);
-        }
-    }
-    for (const [layerName, layerVias] of sortedLayerEntries(byDrillLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.get_layer(layerName);
-        for (const via of layerVias) {
-            if (via.drill <= 0) continue;
-            layer.geometry.add_circle(via.at.x, via.at.y, via.drill / 2, r, g, b, a);
-        }
-            }
-}
-
 function isDrillLayer(layerName: string | null | undefined, layerById: Map<string, LayerModel>): boolean {
     return layerName !== null && layerName !== undefined && layerKind(layerName, layerById) === "drill";
 }
@@ -848,70 +762,6 @@ function paintPadHole(
         ? padTransform(fpAt, pad.at, offset.x + focal, offset.y)
         : padTransform(fpAt, pad.at, offset.x, offset.y + focal);
     layer.geometry.add_polyline([p1, p2], minor, r, g, b, a, ownerId);
-}
-
-type GlobalDrawingPaintMode = "drill" | "copper" | "non_copper";
-
-function shouldPaintGlobalDrawing(
-    layerName: string,
-    mode: GlobalDrawingPaintMode,
-    layerById: Map<string, LayerModel>,
-): boolean {
-    const drill = isDrillLayer(layerName, layerById);
-    const copper = isCopperLayer(layerName, layerById);
-    if (mode === "drill") return drill;
-    if (mode === "copper") return !drill && copper;
-    return !drill && !copper;
-}
-
-function paintGlobalDrawings(
-    renderer: Renderer,
-    model: RenderModel,
-    hidden: Set<string>,
-    mode: GlobalDrawingPaintMode,
-    layerById: Map<string, LayerModel>,
-) {
-    const showText = !isTextHidden(hidden);
-    const showShapes = !isShapesHidden(hidden);
-    if (!showShapes && !(mode === "non_copper" && showText)) return;
-    const byLayer = new Map<string, DrawingModel[]>();
-    if (showShapes) {
-        for (const drawing of model.drawings) {
-            const ln = drawing.layer;
-            if (!ln) continue;
-            if (!shouldPaintGlobalDrawing(ln, mode, layerById)) continue;
-            if (hidden.has(ln)) continue;
-            let arr = byLayer.get(ln);
-            if (!arr) { arr = []; byLayer.set(ln, arr); }
-            arr.push(drawing);
-        }
-    }
-    const worldAt: Point3 = { x: 0, y: 0, r: 0 };
-    for (const [layerName, drawings] of sortedLayerEntries(byLayer, layerById)) {
-        const [r, g, b, a] = getLayerColor(layerName, layerById);
-        const layer = renderer.get_layer(layerName);
-        for (const drawing of drawings) {
-            paintDrawing(layer, worldAt, drawing, r, g, b, a);
-        }
-    }
-
-    if (mode === "non_copper" && showText) {
-        const textsByLayer = new Map<string, TextModel[]>();
-        for (const text of model.texts) {
-            const ln = text.layer;
-            if (!ln || hidden.has(ln)) continue;
-            let arr = textsByLayer.get(ln);
-            if (!arr) { arr = []; textsByLayer.set(ln, arr); }
-            arr.push(text);
-        }
-        for (const [layerName, texts] of sortedLayerEntries(textsByLayer, layerById)) {
-            const [r, g, b, a] = getLayerColor(layerName, layerById);
-            const layer = renderer.get_layer(layerName);
-            for (const text of texts) {
-                paintText(layer, worldAt, text, r, g, b, a);
-            }
-        }
-    }
 }
 
 export function paintFootprint(

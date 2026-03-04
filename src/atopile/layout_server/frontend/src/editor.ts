@@ -533,7 +533,6 @@ export class Editor {
     }
 
     private notifySelectionChanged(): void {
-        this.client.notifySelection(this.selectedUuids()).catch(() => {});
         if (this.onSelectionChange) {
             let indices: number[];
             if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
@@ -560,6 +559,7 @@ export class Editor {
         } else if (!this.groupIdByFpIndex.has(index)) {
             this.singleOverrideMode = false;
         }
+        this.notifySelectionChanged();
     }
 
     private setMultiSelection(indices: number[]) {
@@ -577,6 +577,7 @@ export class Editor {
         this.selectedGroupId = null;
         this.selectedFpIndex = -1;
         this.singleOverrideMode = false;
+        this.notifySelectionChanged();
     }
 
     private setGroupSelection(groupId: string) {
@@ -585,6 +586,7 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedMultiIndices = [];
         this.singleOverrideMode = false;
+        this.notifySelectionChanged();
     }
 
     private clearSelection(exitSingleOverride = false) {
@@ -602,6 +604,7 @@ export class Editor {
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
+        this.notifySelectionChanged();
     }
 
     private selectedGroup(): UiFootprintGroup | null {
@@ -941,7 +944,7 @@ export class Editor {
         };
     }
 
-    private maybeStartPendingDrag(currentWorld: Vec2, currentScreen: Vec2): boolean {
+    private maybeStartPendingDrag(_currentWorld: Vec2, currentScreen: Vec2): boolean {
         const pending = this.pendingDrag;
         if (!pending) return false;
         const dx = currentScreen.x - pending.startScreen.x;
