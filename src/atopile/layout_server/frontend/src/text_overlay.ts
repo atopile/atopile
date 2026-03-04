@@ -3,6 +3,7 @@ import { fpTransform } from "./geometry";
 import { getLayerColor } from "./colors";
 import { layoutKicadStrokeLine } from "./kicad_stroke_font";
 import { buildPadAnnotationGeometry } from "./pad_annotations";
+import { footprintBBox } from "./hit-test";
 import type { Camera2 } from "./camera";
 import type { LayerModel, RenderModel } from "./types";
 
@@ -23,6 +24,15 @@ type OverlayText = {
     layerName: string;
     justify: string[] | null;
 };
+
+type OverlayRenderOptions = {
+    clearCanvas?: boolean;
+    worldOffset?: Vec2;
+};
+
+function isTextHidden(hidden: Set<string>): boolean {
+    return hidden.has("__type:text") || hidden.has("__type:text_shapes") || hidden.has("__type:other");
+}
 
 function drawPadAnnotationText(
     ctx: CanvasRenderingContext2D,
@@ -165,6 +175,8 @@ export function renderTextOverlay(
     layerById: Map<string, LayerModel>,
     vpWidth?: number,
     vpHeight?: number,
+    visibleFpIndices?: number[],
+    options?: OverlayRenderOptions,
 ) {
     const dpr = Math.max(window.devicePixelRatio || 1, 1);
     // Prefer caller-supplied dimensions (from the WebGL canvas) so text and
@@ -172,36 +184,40 @@ export function renderTextOverlay(
     // window.innerWidth/Height can differ from the actual canvas dimensions.
     const width = vpWidth ?? window.innerWidth;
     const height = vpHeight ?? window.innerHeight;
-    ctx.canvas.width = Math.floor(width * dpr);
-    ctx.canvas.height = Math.floor(height * dpr);
-    ctx.canvas.style.width = `${width}px`;
-    ctx.canvas.style.height = `${height}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    if (!model || camera.zoom < 0.2) return;
-
-    if (!hiddenLayers.has("__type:other")) {
-        for (const text of model.texts) {
-            if (!text.text.trim()) continue;
-            const layerName = text.layer;
-            if (!layerName) continue;
-            if (hiddenLayers.has(layerName)) continue;
-            drawStrokeText(ctx, camera, layerById, width, height, {
-                text: text.text,
-                worldX: text.at.x,
-                worldY: text.at.y,
-                rotationDeg: text.at.r || 0,
-                textWidth: text.size?.w ?? 1.0,
-                textHeight: text.size?.h ?? 1.0,
-                thickness: text.thickness ?? null,
-                layerName,
-                justify: text.justify,
-            });
-        }
+    const pixelWidth = Math.round(width * dpr);
+    const pixelHeight = Math.round(height * dpr);
+    let resized = false;
+    if (ctx.canvas.width !== pixelWidth) {
+        ctx.canvas.width = pixelWidth;
+        resized = true;
     }
+    if (ctx.canvas.height !== pixelHeight) {
+        ctx.canvas.height = pixelHeight;
+        resized = true;
+    }
+    const styleWidth = `${width}px`;
+    const styleHeight = `${height}px`;
+    if (ctx.canvas.style.width !== styleWidth) {
+        ctx.canvas.style.width = styleWidth;
+    }
+    if (ctx.canvas.style.height !== styleHeight) {
+        ctx.canvas.style.height = styleHeight;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (resized || options?.clearCanvas !== false) {
+        ctx.clearRect(0, 0, width, height);
+    }
+    if (!model || camera.zoom < 1.5) return;
+    const offset = options?.worldOffset ?? new Vec2(0, 0);
 
-    for (const fp of model.footprints) {
-        if (!hiddenLayers.has("__type:other")) {
+    const fpIndices = visibleFpIndices ?? [...Array(model.footprints.length).keys()];
+    const minScreenSize = 60; // Increased threshold for tiny footprints
+
+    for (const idx of fpIndices) {
+        const fp = model.footprints[idx];
+        if (!fp) continue;
+
+        if (!isTextHidden(hiddenLayers)) {
             for (const text of fp.texts) {
                 if (!text.text.trim()) continue;
                 const layerName = text.layer;
@@ -211,8 +227,8 @@ export function renderTextOverlay(
                 const textRotation = text.at.r || 0;
                 drawStrokeText(ctx, camera, layerById, width, height, {
                     text: text.text,
-                    worldX: worldPos.x,
-                    worldY: worldPos.y,
+                    worldX: worldPos.x + offset.x,
+                    worldY: worldPos.y + offset.y,
                     rotationDeg: textRotation,
                     textWidth: text.size?.w ?? 1.0,
                     textHeight: text.size?.h ?? 1.0,
@@ -224,14 +240,25 @@ export function renderTextOverlay(
         }
 
         if (hiddenLayers.has("__type:pads")) continue;
+
+        // Aggressive culling: if footprint is too small on screen, skip annotations
+        const bbox = footprintBBox(fp);
+        if (Math.max(bbox.w, bbox.h) * camera.zoom < minScreenSize) continue;
+
+        // Note: buildPadAnnotationGeometry is already cached via WeakMap internally
         const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers);
-        const orderedLayers = [...annotationsByLayer.keys()].sort((a, b) => {
-            const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;
-            const orderB = layerById.get(b)?.paint_order ?? Number.MAX_SAFE_INTEGER;
-            if (orderA !== orderB) return orderA - orderB;
-            return a.localeCompare(b);
-        });
-        for (const layerName of orderedLayers) {
+
+        // Sorting layers is still needed for correct overlap, but Map iteration is fast
+        const layerNames = Array.from(annotationsByLayer.keys());
+        if (layerNames.length > 1) {
+            layerNames.sort((a, b) => {
+                const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+                const orderB = layerById.get(b)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+                if (orderA !== orderB) return orderA - orderB;
+                return a.localeCompare(b);
+            });
+        }
+        for (const layerName of layerNames) {
             const geometry = annotationsByLayer.get(layerName);
             if (!geometry) continue;
             const [r, g, b, a] = getLayerColor(layerName, layerById);
@@ -244,8 +271,8 @@ export function renderTextOverlay(
                     width,
                     height,
                     name.text,
-                    name.x,
-                    name.y,
+                    name.x + offset.x,
+                    name.y + offset.y,
                     name.rotation,
                     name.charH,
                     color,
@@ -254,6 +281,22 @@ export function renderTextOverlay(
             }
 
             for (const number of geometry.numbers) {
+                const badgeX = number.badgeCenterX + offset.x;
+                const badgeY = number.badgeCenterY + offset.y;
+                const screenPos = camera.world_to_screen(new Vec2(badgeX, badgeY));
+                const screenRadius = Math.max(number.badgeRadius * camera.zoom, 2); // Minimum 2px radius
+                
+                // Draw badge circle
+                ctx.beginPath();
+                ctx.arc(screenPos.x, screenPos.y, screenRadius, 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.fill();
+                
+                // Draw badge outline
+                ctx.lineWidth = Math.max(screenRadius * 0.18, 0.8);
+                ctx.strokeStyle = "rgba(13, 20, 31, 0.85)";
+                ctx.stroke();
+
                 if (!number.labelFit) continue;
                 const [, charH] = number.labelFit;
                 drawPadAnnotationText(
@@ -262,8 +305,8 @@ export function renderTextOverlay(
                     width,
                     height,
                     number.text,
-                    number.badgeCenterX,
-                    number.badgeCenterY,
+                    badgeX,
+                    badgeY,
                     0,
                     charH,
                     PAD_ANNOTATION_NUMBER_COLOR,
