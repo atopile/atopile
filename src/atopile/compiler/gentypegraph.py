@@ -510,6 +510,50 @@ class ActionsFactory:
         return [pointer_action, *element_actions], link_actions, element_paths
 
     @staticmethod
+    def new_child_pointer_actions(
+        pointer_path: "FieldPath",
+        type_identifier: str,
+        module_type: type[fabll.Node] | None,
+        template_args: dict[str, str | bool | float] | None,
+        import_ref: "ImportRef | None",
+        source_chunk_node: AST.SourceChunk | None = None,
+    ) -> "tuple[AddMakeChildAction, AddMakeLinkAction]":
+        """
+        Create actions for assigning `new Type` to an existing Pointer field.
+
+        The Pointer MakeChild already exists (from Python), so we only create:
+        1. A sibling MakeChild for the pointee element
+        2. A MakeLink with EdgePointer from the Pointer to the element
+        """
+        # The element is a sibling of the pointer, placed at the root of the type
+        element_identifier = f"_ptr_{'_'.join(pointer_path.identifiers())}_target"
+        element_path = FieldPath(
+            segments=(FieldPath.Segment(identifier=element_identifier),)
+        )
+
+        element_action = AddMakeChildAction(
+            target_path=element_path,
+            child_field=ActionsFactory.child_field(
+                identifier=element_identifier,
+                type_identifier=type_identifier,
+                module_type=module_type,
+                template_args=template_args,
+                source_chunk_node=source_chunk_node,
+            ),
+            import_ref=import_ref,
+            source_chunk_node=source_chunk_node,
+        )
+
+        link_action = AddMakeLinkAction(
+            lhs_path=list(pointer_path.identifiers()),
+            rhs_path=list(element_path.identifiers()),
+            edge=EdgePointer.build(identifier=None, index=None),
+            source_chunk_node=source_chunk_node,
+        )
+
+        return element_action, link_action
+
+    @staticmethod
     def parameter_actions(
         target_path: "FieldPath",
         param_child: fabll._ChildField | None,

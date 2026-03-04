@@ -1026,6 +1026,95 @@ class ASTVisitor:
 
         return FieldPath(segments=tuple(segments))
 
+    def _is_pointer_field(self, target_path: FieldPath) -> bool:
+        """Check if the field at target_path is an existing Pointer type.
+
+        Handles two cases:
+        - Singleton paths: checks the current type first, then pending parent types
+          (for inherited Pointer fields not yet merged).
+        - Nested paths: walks the parent segments to find the owner type.
+        """
+        identifier = target_path.leaf.identifier
+
+        if target_path.is_singleton():
+            # Check current type first (field already present, e.g. from Python)
+            type_node, _, _ = self._type_stack.current()
+            type_ref = self._tg.get_make_child_type_reference_by_identifier(
+                type_node=type_node, identifier=identifier
+            )
+            if type_ref is not None:
+                type_ref_id = fbrk.TypeGraph.get_type_reference_identifier(
+                    type_reference=type_ref
+                )
+                return type_ref_id == "Pointer"
+
+            # Check pending parent types (inheritance not yet resolved)
+            current_node = type_node.node()
+            for pending in self._state.pending_inheritance:
+                if pending.derived_type.node().is_same(other=current_node):
+                    parent_type = self._resolve_pending_parent_type(pending)
+                    if parent_type is None:
+                        continue
+                    type_ref = self._tg.get_make_child_type_reference_by_identifier(
+                        type_node=parent_type, identifier=identifier
+                    )
+                    if type_ref is not None:
+                        type_ref_id = fbrk.TypeGraph.get_type_reference_identifier(
+                            type_reference=type_ref
+                        )
+                        return type_ref_id == "Pointer"
+        else:
+            # Nested path: walk parent segments to find owner type
+            type_node, _, _ = self._type_stack.current()
+            owner_type = type_node
+            for segment in target_path.parent_segments:
+                type_ref = self._tg.get_make_child_type_reference_by_identifier(
+                    type_node=owner_type, identifier=segment.identifier
+                )
+                if type_ref is None:
+                    return False
+                type_ref_id = fbrk.TypeGraph.get_type_reference_identifier(
+                    type_reference=type_ref
+                )
+                resolved = self._tg.get_type_by_name(type_identifier=type_ref_id)
+                if resolved is None:
+                    return False
+                owner_type = resolved
+            # Check the leaf field on the resolved owner type
+            type_ref = self._tg.get_make_child_type_reference_by_identifier(
+                type_node=owner_type, identifier=identifier
+            )
+            if type_ref is not None:
+                type_ref_id = fbrk.TypeGraph.get_type_reference_identifier(
+                    type_reference=type_ref
+                )
+                return type_ref_id == "Pointer"
+
+        return False
+
+    def _resolve_pending_parent_type(
+        self, pending: PendingInheritance
+    ) -> graph.BoundNode | None:
+        """Try to resolve the parent type from a PendingInheritance record."""
+        if isinstance(pending.parent_ref, ImportRef):
+            parent_name = pending.parent_ref.name
+        else:
+            parent_name = pending.parent_ref
+
+        # Check local type roots first
+        if parent_name in self._state.type_roots:
+            return self._state.type_roots[parent_name]
+
+        # Eagerly load from stdlib allowlist if available
+        parent_class = self._stdlib_allowlist.get(parent_name)
+        if parent_class is not None:
+            return fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
+                self._tg, parent_class
+            )
+
+        # Fallback: check TypeGraph (for types already loaded elsewhere)
+        return self._tg.get_type_by_name(type_identifier=parent_name)
+
     def _handle_new_child(
         self,
         target_path: FieldPath,
@@ -1103,6 +1192,20 @@ class ASTVisitor:
                     )
 
             assert new_spec.type_identifier is not None
+
+            # Check if the target field is an existing Pointer
+            if self._is_pointer_field(target_path):
+                element_action, link_action = ActionsFactory.new_child_pointer_actions(
+                    pointer_path=target_path,
+                    type_identifier=new_spec.type_identifier,
+                    module_type=module_fabll_type,
+                    template_args=new_spec.template_args,
+                    import_ref=(
+                        new_spec.symbol.import_ref if new_spec.symbol else None
+                    ),
+                    source_chunk_node=source_chunk_node,
+                )
+                return [element_action, link_action]
 
             return ActionsFactory.new_child_action(
                 target_path=target_path,
