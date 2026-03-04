@@ -31,6 +31,7 @@ from atopile.layout_server.models import (
     PointXYR,
     PolygonDrawingModel,
     RectDrawingModel,
+    RenderDelta,
     RenderModel,
     RotateCommand,
     Size2,
@@ -460,6 +461,147 @@ class PcbManager:
         self._render_model_cache = model
         return model
 
+    def get_render_delta_for_uuids(self, uuids: list[str]) -> RenderDelta | None:
+        """Build a minimal patch for moved/rotated/flipped UUID targets.
+
+        Returns ``None`` when any touched object cannot be patched safely
+        by UUID, signaling callers to fall back to a full model update.
+        """
+        objects = self._resolve_to_objects(uuids)
+        if not objects:
+            return RenderDelta()
+
+        pcb = self.pcb
+        all_layers = _board_all_layers(pcb)
+        copper_layers = _board_copper_layers(pcb)
+        net_names_by_number = {
+            net.number: not_none(net.name) for net in pcb.nets if net.name
+        }
+
+        footprints: list[FootprintModel] = []
+        tracks: list[TrackModel] = []
+        vias: list[ViaModel] = []
+        zones: list[ZoneModel] = []
+        texts: list[TextModel] = []
+
+        lines: list[kicad.pcb.Line] = []
+        arcs: list[kicad.pcb.Arc] = []
+        circles: list[kicad.pcb.Circle] = []
+        rects: list[kicad.pcb.Rect] = []
+        polys: list[kicad.pcb.Polygon] = []
+        curves: list[kicad.pcb.Curve] = []
+
+        seen_uuids: set[str] = set()
+
+        def _track_uuid(obj: Any) -> str | None:
+            token = str(getattr(obj, "uuid", None) or "").strip()
+            if not token:
+                return None
+            if token in seen_uuids:
+                return ""
+            seen_uuids.add(token)
+            return token
+
+        for obj in objects:
+            token = _track_uuid(obj)
+            if token is None:
+                return None
+            if token == "":
+                continue
+
+            if isinstance(obj, kicad.pcb.Footprint):
+                footprints.append(
+                    self._extract_footprint(
+                        obj,
+                        net_names_by_number,
+                        copper_layers,
+                        all_layers,
+                    )
+                )
+                continue
+
+            if isinstance(obj, kicad.pcb.Segment):
+                tracks.append(self._extract_segment(obj))
+                continue
+
+            if isinstance(obj, kicad.pcb.ArcSegment):
+                tracks.append(self._extract_arc_segment(obj))
+                continue
+
+            if isinstance(obj, kicad.pcb.Via):
+                vias.append(self._extract_via(obj, copper_layers))
+                continue
+
+            if isinstance(obj, kicad.pcb.Zone):
+                zones.append(self._extract_zone(obj, all_layers))
+                continue
+
+            if isinstance(obj, kicad.pcb.Text):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                if _is_hidden(obj) or not obj.text.strip():
+                    continue
+                texts.append(self._extract_text_entry(obj.text, obj, uuid=token))
+                continue
+
+            if isinstance(obj, kicad.pcb.Line):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                lines.append(obj)
+                continue
+
+            if isinstance(obj, kicad.pcb.Arc):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                arcs.append(obj)
+                continue
+
+            if isinstance(obj, kicad.pcb.Circle):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                circles.append(obj)
+                continue
+
+            if isinstance(obj, kicad.pcb.Rect):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                rects.append(obj)
+                continue
+
+            if isinstance(obj, kicad.pcb.Polygon):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                polys.append(obj)
+                continue
+
+            if isinstance(obj, kicad.pcb.Curve):
+                if _on_layer(obj, "Edge.Cuts"):
+                    return None
+                curves.append(obj)
+                continue
+
+            # Unsupported or ambiguous patch target type.
+            return None
+
+        drawings = self._extract_drawing_primitives(
+            lines=lines,
+            arcs=arcs,
+            circles=circles,
+            rects=rects,
+            polygons=polys,
+            curves=curves,
+            skip_edge_cuts=True,
+        )
+
+        return RenderDelta(
+            footprints=footprints,
+            tracks=tracks,
+            vias=vias,
+            drawings=drawings,
+            texts=texts,
+            zones=zones,
+        )
+
     def get_footprints(self) -> list[FootprintSummary]:
         result: list[FootprintSummary] = []
         for fp in self.pcb.footprints:
@@ -510,28 +652,29 @@ class PcbManager:
     ) -> list[ViaModel]:
         vias: list[ViaModel] = []
         for via in pcb.vias:
-            cx = via.at.x
-            cy = via.at.y
-            drill_d = float(via.drill) if via.drill else 0.0
-            outer_d = float(via.size) if via.size else 0.0
-            via_layers = list(via.layers)
-            expanded_copper = _expand_copper_layers(
-                via_layers, all_copper_layers=copper_layers, include_between=True
-            )
-            drill_lyrs = _drill_layers_from_copper_layers(
-                expanded_copper, all_copper_layers=copper_layers, include_between=False
-            )
-            vias.append(
-                ViaModel(
-                    uuid=(str(via.uuid).strip() if via.uuid else None),
-                    at=PointXY(x=cx, y=cy),
-                    size=outer_d,
-                    drill=drill_d,
-                    copper_layers=expanded_copper,
-                    drill_layers=drill_lyrs,
-                )
-            )
+            vias.append(self._extract_via(via, copper_layers))
         return vias
+
+    def _extract_via(self, via: kicad.pcb.Via, copper_layers: list[str]) -> ViaModel:
+        cx = via.at.x
+        cy = via.at.y
+        drill_d = float(via.drill) if via.drill else 0.0
+        outer_d = float(via.size) if via.size else 0.0
+        via_layers = list(via.layers)
+        expanded_copper = _expand_copper_layers(
+            via_layers, all_copper_layers=copper_layers, include_between=True
+        )
+        drill_lyrs = _drill_layers_from_copper_layers(
+            expanded_copper, all_copper_layers=copper_layers, include_between=False
+        )
+        return ViaModel(
+            uuid=(str(via.uuid).strip() if via.uuid else None),
+            at=PointXY(x=cx, y=cy),
+            size=outer_d,
+            drill=drill_d,
+            copper_layers=expanded_copper,
+            drill_layers=drill_lyrs,
+        )
 
     def _extract_footprint_groups(
         self, pcb: kicad.pcb.KicadPcb

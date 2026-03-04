@@ -9,7 +9,7 @@ import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
 import { buildGroupIndex, type UiFootprintGroup } from "./footprint_groups";
 import { SpatialIndex } from "./spatial_index";
-import type { ActionCommand, DrawingModel, LayerModel, RenderModel, ZoneModel } from "./types";
+import type { ActionCommand, DrawingModel, LayerModel, RenderDelta, RenderModel, ZoneModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
 const DRAG_START_THRESHOLD_PX = 4;
@@ -151,6 +151,8 @@ export class Editor {
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
     private onActionBusyChanged: ((busy: boolean) => void) | null = null;
     private pendingActionRequests = 0;
+    private actionNonce = 0;
+    private suppressWsActionIds = new Set<string>();
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
@@ -225,6 +227,43 @@ export class Editor {
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
+    }
+
+    private applyDelta(delta: RenderDelta) {
+        if (!this.model) return;
+        let changed = false;
+        changed = this.replaceByUuid(this.model.footprints, delta.footprints) || changed;
+        changed = this.replaceByUuid(this.model.tracks, delta.tracks) || changed;
+        changed = this.replaceByUuid(this.model.vias, delta.vias) || changed;
+        changed = this.replaceByUuid(this.model.drawings, delta.drawings) || changed;
+        changed = this.replaceByUuid(this.model.texts, delta.texts) || changed;
+        changed = this.replaceByUuid(this.model.zones, delta.zones) || changed;
+        if (!changed) return;
+
+        this.rebuildGroupIndex();
+        this.rebuildSpatialIndexes();
+        this.paintStatic();
+        this.paintDynamic();
+        this.requestRedraw();
+    }
+
+    private replaceByUuid<T extends { uuid: string | null }>(target: T[], updates: T[]): boolean {
+        if (updates.length === 0) return false;
+        const indexByUuid = new Map<string, number>();
+        for (let i = 0; i < target.length; i++) {
+            const uuid = target[i]?.uuid;
+            if (uuid) indexByUuid.set(uuid, i);
+        }
+        let changed = false;
+        for (const update of updates) {
+            const uuid = update.uuid;
+            if (!uuid) continue;
+            const idx = indexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            target[idx] = update;
+            changed = true;
+        }
+        return changed;
     }
 
     private applyDefaultLayerVisibility() {
@@ -910,7 +949,19 @@ export class Editor {
     }
 
     private connectWebSocket() {
-        this.client.connect((model) => this.applyModel(model));
+        this.client.connect((msg) => {
+            if (msg.action_id && this.suppressWsActionIds.has(msg.action_id)) {
+                this.suppressWsActionIds.delete(msg.action_id);
+                return;
+            }
+            if (msg.type === "layout_updated" && msg.model) {
+                this.applyModel(msg.model);
+                return;
+            }
+            if (msg.type === "layout_delta" && msg.delta) {
+                this.applyDelta(msg.delta);
+            }
+        });
     }
 
     private getIndexedHitIdx(worldPos: Vec2): number {
@@ -1126,8 +1177,8 @@ export class Editor {
             this.repaintWithSelection();
 
             if (movePromise) {
-                void movePromise.then((appliedModel) => {
-                    if (!appliedModel) {
+                void movePromise.then((result) => {
+                    if (!result.ok) {
                         this.restorePostDragRendering();
                         this.repaintWithSelection();
                     }
@@ -1205,20 +1256,43 @@ export class Editor {
         }
     }
 
-    private async executeAction(action: ActionCommand): Promise<boolean> {
+    private async executeAction(
+        action: ActionCommand,
+    ): Promise<{ ok: boolean; appliedFromResponse: boolean }> {
+        const actionId = `a${Date.now()}_${++this.actionNonce}`;
+        const taggedAction: ActionCommand = { ...action, client_action_id: actionId };
+        const wsConnected = this.client.isConnected();
         this.pendingActionRequests += 1;
         if (this.pendingActionRequests === 1 && this.onActionBusyChanged) {
             this.onActionBusyChanged(true);
         }
-        let appliedModel = false;
+        let appliedFromResponse = false;
+        let ok = false;
         try {
-            const data = await this.client.executeAction(action);
+            const data = await this.client.executeAction(taggedAction);
             if (data.status === "error") {
                 console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
+            } else {
+                ok = true;
             }
-            if (data.model) {
+
+            // Prefer WS updates when connected to keep all clients consistent and
+            // avoid duplicate patch-application on the initiating client.
+            if (!wsConnected && data.model) {
                 this.applyModel(data.model);
-                appliedModel = true;
+                appliedFromResponse = true;
+            } else if (!wsConnected && data.delta) {
+                this.applyDelta(data.delta);
+                appliedFromResponse = true;
+            } else if (!wsConnected && ok) {
+                // If WS is unavailable and response has no payload, recover via full fetch.
+                const model = await this.client.fetchRenderModel();
+                this.applyModel(model, false);
+                appliedFromResponse = true;
+            }
+
+            if (appliedFromResponse) {
+                this.suppressWsActionIds.add(actionId);
             }
         } catch (err) {
             console.error("Failed to execute action:", err);
@@ -1232,7 +1306,7 @@ export class Editor {
                 this.onActionBusyChanged(false);
             }
         }
-        return appliedModel;
+        return { ok, appliedFromResponse };
     }
 
     // --- Layer visibility ---

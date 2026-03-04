@@ -244,6 +244,15 @@ class RenderModel(BaseModel):
     zones: list[ZoneModel]
 
 
+class RenderDelta(BaseModel):
+    footprints: list[FootprintModel] = Field(default_factory=list)
+    tracks: list[TrackModel] = Field(default_factory=list)
+    vias: list[ViaModel] = Field(default_factory=list)
+    drawings: list[DrawingModel] = Field(default_factory=list)
+    texts: list[TextModel] = Field(default_factory=list)
+    zones: list[ZoneModel] = Field(default_factory=list)
+
+
 # --- Footprint summary (for /api/footprints) ---
 
 
@@ -262,6 +271,7 @@ class FootprintSummary(BaseModel):
 
 class _StrictCommandModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    client_action_id: str | None = None
 
 
 class MoveCommand(_StrictCommandModel):
@@ -301,8 +311,12 @@ class StatusResponse(BaseModel):
     code: str
     message: str | None = None
     model: RenderModel | None = None
+    delta: RenderDelta | None = None
+    action_id: str | None = None
 
 
 class WsMessage(BaseModel):
     type: str
     model: RenderModel | None = None
+    delta: RenderDelta | None = None
+    action_id: str | None = None

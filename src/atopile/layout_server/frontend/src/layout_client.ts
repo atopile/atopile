@@ -1,6 +1,6 @@
-import type { ActionCommand, RenderModel, StatusResponse } from "./types";
+import type { ActionCommand, LayoutWsMessage, RenderModel, StatusResponse } from "./types";
 
-type UpdateHandler = (model: RenderModel) => void;
+type UpdateHandler = (message: LayoutWsMessage) => void;
 
 export class LayoutClient {
     private readonly baseUrl: string;
@@ -8,6 +8,7 @@ export class LayoutClient {
     private readonly wsPath: string;
     private ws: WebSocket | null = null;
     private reconnectTimer: number | null = null;
+    private wsConnected = false;
 
     constructor(baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.baseUrl = baseUrl;
@@ -29,18 +30,32 @@ export class LayoutClient {
         return await resp.json() as StatusResponse;
     }
 
+    isConnected(): boolean {
+        return this.wsConnected;
+    }
+
     connect(onUpdate: UpdateHandler): void {
         const wsUrl = this.baseUrl.replace(/^http/, "ws") + this.wsPath;
         this.ws = new WebSocket(wsUrl);
-        this.ws.onopen = () => console.log("WS connected");
+        this.ws.onopen = () => {
+            this.wsConnected = true;
+            console.log("WS connected");
+        };
         this.ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data) as { type?: string; model?: RenderModel };
-            if (msg.type === "layout_updated" && msg.model) {
-                onUpdate(msg.model);
+            const msg = JSON.parse(event.data) as LayoutWsMessage;
+            if (
+                (msg.type === "layout_updated" && msg.model)
+                || (msg.type === "layout_delta" && msg.delta)
+            ) {
+                onUpdate(msg);
             }
         };
-        this.ws.onerror = (err) => console.error("WS error:", err);
+        this.ws.onerror = (err) => {
+            this.wsConnected = false;
+            console.error("WS error:", err);
+        };
         this.ws.onclose = () => {
+            this.wsConnected = false;
             if (this.reconnectTimer !== null) {
                 window.clearTimeout(this.reconnectTimer);
             }
@@ -57,6 +72,7 @@ export class LayoutClient {
             this.reconnectTimer = null;
         }
         if (this.ws) {
+            this.wsConnected = false;
             this.ws.onclose = null;
             this.ws.close();
             this.ws = null;
