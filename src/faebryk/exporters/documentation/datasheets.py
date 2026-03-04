@@ -80,15 +80,24 @@ def export_datasheets(
             continue
         unique_urls.add(url)
 
-    # Build download tasks, skipping files that already exist
-    tasks: list[tuple[str, Path]] = []
+    # Build download tasks, deduplicating by output file path to avoid
+    # concurrent writes when different URLs produce the same filename.
+    seen_paths: dict[Path, str] = {}
     for url in unique_urls:
         filename = _extract_filename_from_url(url)
         file_path = path / filename
         if file_path.exists() and not overwrite:
             logger.debug(f"Datasheet {filename} already exists, skipping download")
             continue
-        tasks.append((url, file_path))
+        if file_path in seen_paths:
+            logger.debug(
+                f"Filename collision: {url} and {seen_paths[file_path]} "
+                f"both map to {filename}, skipping duplicate"
+            )
+            continue
+        seen_paths[file_path] = url
+
+    tasks = list(seen_paths.items())  # [(file_path, url), ...]
 
     if progress:
         progress.set_total(len(tasks))
@@ -97,7 +106,7 @@ def export_datasheets(
     MAX_WORKERS = 8
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(_download_datasheet, url, fp): (url, fp) for url, fp in tasks
+            pool.submit(_download_datasheet, url, fp): (url, fp) for fp, url in tasks
         }
         for future in as_completed(futures):
             url, fp = futures[future]
