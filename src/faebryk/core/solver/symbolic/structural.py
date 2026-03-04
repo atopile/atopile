@@ -165,6 +165,24 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
 
 # Estimation algorithms ----------------------------------------------------------------
+
+
+def _fold_pure_literal_exprs(
+    mutator: Mutator,
+    expr_e: F.Expressions.is_expression,
+    mapped_operands: list[F.Parameters.can_be_operand],
+) -> F.Literals.is_literal | None:
+    # Theoretically this is a shortcut, since invariants should deal with this.
+    # But either that's generally not possible without the context or I'm too stupid
+    # to implement it. So we rely on this shortcut for now.
+    return exec_pure_literal_operands(
+        mutator.G_transient,
+        mutator.tg_in,
+        mutator.utils.hack_get_expr_type(expr_e),
+        mapped_operands,
+    )
+
+
 @algorithm("Upper estimation", terminal=False)
 def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
     """
@@ -222,17 +240,8 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # fold pure literal expressions
-        # Theoretically this is a shortcut, since invariants should deal with this.
-        # But either that's generally not possible without the context or I'm too stupid
-        # to implement it. So we rely on this shortcut for now.
         if all(mutator.utils.is_literal(op) for op in mapped_operands):
-            out = exec_pure_literal_operands(
-                mutator.G_transient,
-                mutator.tg_in,
-                mutator.utils.hack_get_expr_type(expr_e),
-                mapped_operands,
-            )
+            out = _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)
         else:
             # Make new expr with subset literals
             res = mutator.create_check_and_insert_expression(
@@ -368,17 +377,8 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # fold pure literal expressions
-        # Theoretically this is a shortcut, since invariants should deal with this.
-        # But either that's generally not possible without the context or I'm too stupid
-        # to implement it. So we rely on this shortcut for now.
         if all(mutator.utils.is_literal(op) for op in mapped_operands):
-            out = exec_pure_literal_operands(
-                mutator.G_transient,
-                mutator.tg_in,
-                mutator.utils.hack_get_expr_type(expr_e),
-                mapped_operands,
-            )
+            out = _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)
         else:
             # Step 5: Make new expr with subset literals
             res = mutator.create_check_and_insert_expression(
@@ -425,7 +425,7 @@ def mixed_estimation(mutator: Mutator):
     """
 
     # Step 1: Build superset map (upper bounds)
-    sps_ops = {
+    supersetted_ops = {
         ss_po.as_operand.get(): lit_sps
         for sps in mutator.get_typed_expressions(
             F.Expressions.IsSubset,
@@ -443,7 +443,7 @@ def mixed_estimation(mutator: Mutator):
     }
 
     # Step 2: Build subset map (lower bounds)
-    ss_ops = {
+    subsetted_ops = {
         op_superset.as_operand.get(): lit_subset
         for sps in mutator.get_typed_expressions(
             F.Expressions.IsSubset,
@@ -463,7 +463,9 @@ def mixed_estimation(mutator: Mutator):
     # Step 3: Find expressions where all operands have both bounds or are literals
     # An operand qualifies if it has both upper and lower bounds, or if it's a literal
     def _op_has_both_bounds(op: F.Parameters.can_be_operand) -> bool:
-        return (op in sps_ops and op in ss_ops) or bool(op.as_literal.try_get())
+        return (op in supersetted_ops and op in subsetted_ops) or bool(
+            op.as_literal.try_get()
+        )
 
     def _map_operand(op: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
         # Parameter operands: combined interval [min(ss), max(sps)]
@@ -472,18 +474,16 @@ def mixed_estimation(mutator: Mutator):
         if op.as_literal.try_get():
             return op
 
-        sps_nums = sps_ops[op].switch_cast()
-        ss_nums = ss_ops[op].switch_cast()
+        superset_lits = supersetted_ops[op].switch_cast()
+        subset_lits = subsetted_ops[op].switch_cast()
 
-        if not sps_nums.isinstance(F.Literals.Numbers) or not ss_nums.isinstance(
+        if not superset_lits.isinstance(
             F.Literals.Numbers
-        ):
-            raise _OperandMappingError(
-                f"Operand {op} not eligible for mixed estimation"
-            )
+        ) or not subset_lits.isinstance(F.Literals.Numbers):
+            raise _OperandMappingError()
 
-        assert isinstance(sps_nums, F.Literals.Numbers) and isinstance(
-            ss_nums, F.Literals.Numbers
+        assert isinstance(superset_lits, F.Literals.Numbers) and isinstance(
+            subset_lits, F.Literals.Numbers
         )
 
         return (
@@ -491,9 +491,9 @@ def mixed_estimation(mutator: Mutator):
                 F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
                 .create_instance(g=mutator.G_transient)
                 .setup_from_min_max(
-                    min=ss_nums.get_min_value(),
-                    max=sps_nums.get_max_value(),
-                    unit=sps_nums.get_is_unit(),
+                    min=subset_lits.get_min_value(),
+                    max=superset_lits.get_max_value(),
+                    unit=superset_lits.get_is_unit(),
                 )
             )
             .is_literal.get()
@@ -502,7 +502,7 @@ def mixed_estimation(mutator: Mutator):
 
     for expr in {
         e
-        for op in set(sps_ops.keys()) | set(ss_ops.keys())
+        for op in set(supersetted_ops.keys()) | set(subsetted_ops.keys())
         for e in mutator.get_operations(op.as_parameter_operatable.force_get())
         if not e.has_trait(F.Expressions.is_setic)
     }:
@@ -513,6 +513,7 @@ def mixed_estimation(mutator: Mutator):
             continue
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        from_ops = [expr_po]
 
         # Step 4: Construct combined interval for each operand
         try:
@@ -520,21 +521,15 @@ def mixed_estimation(mutator: Mutator):
         except _OperandMappingError:
             continue
 
-        new_expr = mutator.create_check_and_insert_expression(
-            mutator.utils.hack_get_expr_type(expr_e),
-            *mapped_operands,
-            from_ops=[expr_po],
-            allow_uncorrelated_congruence_match=True,
-        )
-
-        if new_expr.out is None:
+        if (out := _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)) is None:
             continue
 
-        # Step 6: Assert original ⊆ computed result
+        # Step 5: Assert original ⊆ computed result
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             expr_e.as_operand.get(),
-            new_expr.out.as_operand.get(),
+            out.as_operand.get(),
+            from_ops=from_ops,
             assert_=True,
         )
 

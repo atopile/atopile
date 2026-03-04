@@ -271,7 +271,8 @@ class Component:
                 # Get the parameter traits
                 param_operand = param.as_operand.get()
 
-                # Create Is expression to alias parameter to the literal value
+                # param ⊇ literal: the design must be valid if the parameter takes any
+                # value in the literal's range.
                 from faebryk.library.Expressions import IsSuperset
 
                 IsSuperset.bind_typegraph(tg=module.tg).create_instance(
