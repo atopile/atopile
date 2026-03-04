@@ -448,6 +448,14 @@ export const useStore = create<Store>()(
         if (!_readySignalled && projects.length > 0) {
           _readySignalled = true;
           postMessage({ type: 'webviewReady' });
+          // Always sync the current selection to the extension host on startup
+          // (the subscribe-based selectionChanged only fires on *changes*, so
+          // persisted-state restoration would otherwise be invisible).
+          postMessage({
+            type: 'selectionChanged',
+            projectRoot: selectedProjectRoot,
+            targetNames: selectedTargetNames,
+          });
         }
 
         return {

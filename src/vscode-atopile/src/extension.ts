@@ -19,6 +19,7 @@ import { backendServer } from './common/backendServer';
 import { initMenu } from './common/vscode-menu';
 import { SidebarProvider, LogViewerProvider } from './providers';
 import { ensureAtoBin } from './ui/setup';
+import * as demo from './demo';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -220,48 +221,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     traceMilestone('activated');
 
-    // Auto-focus the atopile sidebar (web-ide: immediate visual context)
-    vscode.commands.executeCommand('workbench.view.extension.atopile-explorer');
-
-    // web-ide: open main .ato file and layout on first start
-    if (process.env.ATOPILE_BACKEND_PORT && !context.globalState.get('webIde.initialOpened')) {
-        await context.globalState.update('webIde.initialOpened', true);
-
-        // Open .ato file and close chat sidebar immediately — no backend needed
-        const atoFiles = await vscode.workspace.findFiles('*.ato', undefined, 1);
-        if (atoFiles.length > 0) {
-            await vscode.window.showTextDocument(atoFiles[0], { preview: false });
-        }
-        await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
-
-        // Defer layout open until the sidebar WS is connected, then gate on
-        // layout model readiness so we don't open an empty layout panel.
-        const openLayout = async () => {
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!workspaceRoot) {
-                return;
-            }
-
-            const ready = await backendServer.loadLayout(workspaceRoot);
-            if (!ready) {
-                traceInfo('Auto-open layout skipped: layout model not ready');
-                return;
-            }
-
-            return vscode.commands.executeCommand('atopile.kicanvas_preview');
-        };
-        if (backendServer.isConnected) {
-            await openLayout();
-        } else {
-            const d = backendServer.onStatusChange(async (connected) => {
-                if (connected) {
-                    d.dispose();
-                    await openLayout();
-                }
-            });
-            context.subscriptions.push(d);
-        }
-    }
+    // Register demo-mode command and auto-trigger in web-ide environments
+    demo.activate(context);
 }
 
 export async function deactivate(): Promise<void> {
