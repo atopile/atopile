@@ -156,25 +156,6 @@
   color: var(--text-primary, #cdd6f4);
 }
 
-.ibom-detail-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted, #7f849c);
-  cursor: pointer;
-  border-radius: var(--radius-sm, 3px);
-  transition: background var(--transition-fast, 0.1s ease);
-}
-
-.ibom-detail-close:hover {
-  background: var(--bg-hover, #45475a);
-  color: var(--text-primary, #cdd6f4);
-}
-
 .ibom-detail-body {
   padding: var(--spacing-sm, 6px) var(--spacing-md, 10px);
   display: flex;

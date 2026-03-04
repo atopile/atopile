@@ -28,7 +28,13 @@ export function InteractiveBomApp() {
         const baseUrl: string = win.__LAYOUT_BASE_URL__ || window.location.origin;
         const apiPrefix: string = win.__LAYOUT_API_PREFIX__ || '/api';
 
-        const resp = await fetch(`${baseUrl}${apiPrefix}/bom`);
+        const projectRoot: string = win.__IBOM_PROJECT_ROOT__ || '';
+        const targetName: string = win.__IBOM_TARGET_NAME__ || '';
+        const params = new URLSearchParams();
+        if (projectRoot) params.set('project_root', projectRoot);
+        if (targetName) params.set('target_name', targetName);
+        const qs = params.toString();
+        const resp = await fetch(`${baseUrl}${apiPrefix}/bom${qs ? `?${qs}` : ''}`);
         if (!resp.ok) return;
         const data = (await resp.json()) as { components?: BOMComponentAPI[] };
         if (!data.components) return;

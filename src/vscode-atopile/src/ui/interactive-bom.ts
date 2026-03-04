@@ -5,103 +5,63 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { getResourcesPath } from '../common/resources';
 import { backendServer } from '../common/backendServer';
-import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
+import { getNonce, getWsOrigin } from '../common/webview';
+import { BaseWebview } from './webview-base';
 
-const PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
+class InteractiveBomWebview extends BaseWebview {
+  private projectRoot?: string;
+  private targetName?: string;
 
-let panel: vscode.WebviewPanel | undefined;
-
-export function openInteractiveBomPreview(
-  extensionUri: vscode.Uri,
-  projectRoot?: string,
-  targetName?: string,
-): void {
-  const extensionPath = extensionUri.fsPath;
-
-  if (panel) {
-    panel.reveal(vscode.ViewColumn.Beside);
-    return;
+  constructor() {
+    super({
+      id: 'atopile.interactiveBom',
+      title: 'Interactive BOM',
+    });
   }
 
-  const webviewOptions = createWebviewOptions({
-    extensionPath,
-    port: backendServer.port,
-    prodLocalResourceRoots: PROD_LOCAL_RESOURCE_ROOTS,
-  });
+  /** Set context before opening. */
+  public openWithContext(projectRoot?: string, targetName?: string): Promise<void> {
+    this.projectRoot = projectRoot;
+    this.targetName = targetName;
+    return this.open();
+  }
 
-  panel = vscode.window.createWebviewPanel(
-    'atopile.interactiveBom',
-    'Interactive BOM',
-    vscode.ViewColumn.Beside,
-    webviewOptions,
-  );
+  protected getLocalResourceRoots(): vscode.Uri[] {
+    const webviewsDir = path.join(getResourcesPath(), 'webviews');
+    return [
+      vscode.Uri.file(webviewsDir),
+      ...super.getLocalResourceRoots(),
+    ];
+  }
 
-  panel.webview.html = getProdHtml(panel.webview, extensionPath, projectRoot, targetName);
+  protected getHtmlContent(webview: vscode.Webview): string {
+    const resourcesPath = getResourcesPath();
+    const webviewsDir = path.join(resourcesPath, 'webviews');
+    const jsPath = path.join(webviewsDir, 'interactiveBom.js');
+    const cssPath = path.join(webviewsDir, 'interactiveBom.css');
+    const baseCssPath = path.join(webviewsDir, 'index.css');
 
-  panel.onDidDispose(() => {
-    panel = undefined;
-  });
-}
-
-export function isInteractiveBomOpen(): boolean {
-  return panel !== undefined;
-}
-
-export function closeInteractiveBom(): void {
-  panel?.dispose();
-  panel = undefined;
-}
-
-function getProdHtml(
-  webview: vscode.Webview,
-  extensionPath: string,
-  projectRoot?: string,
-  targetName?: string,
-): string {
-  const nonce = getNonce();
-
-  const webviewsDir = path.join(extensionPath, 'resources', 'webviews');
-  const jsPath = path.join(webviewsDir, 'interactiveBom.js');
-  const cssPath = path.join(webviewsDir, 'interactiveBom.css');
-  const baseCssPath = path.join(webviewsDir, 'index.css');
-
-  if (!fs.existsSync(jsPath)) {
-    return `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8">
-  <style>
-    body {
-      display: flex; align-items: center; justify-content: center;
-      height: 100vh; margin: 0;
-      background: var(--vscode-editor-background);
-      color: var(--vscode-foreground);
-      font-family: var(--vscode-font-family);
-      text-align: center; padding: 16px;
+    if (!fs.existsSync(jsPath)) {
+      return this.getMissingResourceHtml('Interactive BOM');
     }
-    code { background: var(--vscode-textCodeBlock-background); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <div><p>Webview not built.</p><p>Run <code>npm run build</code> in the webviews directory.</p></div>
-</body>
-</html>`;
-  }
 
-  const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
-  const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
-  const cssUri = fs.existsSync(cssPath)
-    ? webview.asWebviewUri(vscode.Uri.file(cssPath))
-    : null;
-  const baseCssUri = fs.existsSync(baseCssPath)
-    ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
-    : null;
+    const nonce = getNonce();
+    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
+    const cssUri = fs.existsSync(cssPath)
+      ? webview.asWebviewUri(vscode.Uri.file(cssPath))
+      : null;
+    const baseCssUri = fs.existsSync(baseCssPath)
+      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
+      : null;
 
-  const apiUrl = backendServer.apiUrl;
-  const wsUrl = backendServer.wsUrl;
-  const wsOrigin = getWsOrigin(wsUrl);
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
+    const wsOrigin = getWsOrigin(wsUrl);
 
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -124,8 +84,8 @@ function getProdHtml(
     window.__LAYOUT_WS_PATH__ = '/ws/layout';
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
-    window.__IBOM_PROJECT_ROOT__ = ${JSON.stringify(projectRoot ?? '')};
-    window.__IBOM_TARGET_NAME__ = ${JSON.stringify(targetName ?? '')};
+    window.__IBOM_PROJECT_ROOT__ = ${JSON.stringify(this.projectRoot ?? '')};
+    window.__IBOM_TARGET_NAME__ = ${JSON.stringify(this.targetName ?? '')};
   </script>
 </head>
 <body>
@@ -133,4 +93,31 @@ function getProdHtml(
   <script nonce="${nonce}" type="module" src="${jsUri}"></script>
 </body>
 </html>`;
+  }
+}
+
+let ibomWebview: InteractiveBomWebview | undefined;
+
+export function openInteractiveBomPreview(
+  _extensionUri: vscode.Uri,
+  projectRoot?: string,
+  targetName?: string,
+): void {
+  if (!ibomWebview) {
+    ibomWebview = new InteractiveBomWebview();
+  }
+  if (ibomWebview.isOpen()) {
+    ibomWebview.reveal();
+    return;
+  }
+  void ibomWebview.openWithContext(projectRoot, targetName);
+}
+
+export function isInteractiveBomOpen(): boolean {
+  return ibomWebview?.isOpen() ?? false;
+}
+
+export function closeInteractiveBom(): void {
+  ibomWebview?.dispose();
+  ibomWebview = undefined;
 }

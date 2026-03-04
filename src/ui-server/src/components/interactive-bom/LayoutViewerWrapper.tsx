@@ -43,6 +43,11 @@ export function LayoutViewerWrapper() {
 
     editor.init();
     editorRef.current = editor;
+
+    return () => {
+      editorRef.current?.dispose();
+      editorRef.current = null;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync BOM selection → viewer

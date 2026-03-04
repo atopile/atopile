@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from atopile.layout_server.models import (
     ActionRequest,
@@ -103,34 +104,48 @@ def create_layout_router(
         await service.set_selection(event.uuids)
 
     @router.get(f"{api_prefix}/bom")
-    async def get_layout_bom():
-        """Return BOM data derived from the currently loaded PCB path."""
-        _require_loaded()
-        pcb_path = service.current_path
-        if pcb_path is None:
-            raise HTTPException(status_code=404, detail="No PCB loaded")
+    async def get_layout_bom(
+        project_root: str | None = Query(None),
+        target_name: str | None = Query(None),
+    ):
+        """Return BOM data for a build target.
 
-        # Derive target name from PCB filename (e.g. "default.kicad_pcb" → "default")
-        target_name = pcb_path.stem
+        When *project_root* and *target_name* are supplied the BOM path
+        is constructed directly.  Otherwise the endpoint falls back to
+        deriving both values from the currently loaded PCB path.
+        """
+        resolved_root: Path | None = None
+        resolved_target: str | None = None
 
-        # Walk up to find project root (directory containing ato.yaml)
-        from pathlib import Path
+        if project_root and target_name:
+            resolved_root = Path(project_root)
+            resolved_target = target_name
+        else:
+            _require_loaded()
+            pcb_path = service.current_path
+            if pcb_path is None:
+                raise HTTPException(status_code=404, detail="No PCB loaded")
 
-        project_root: Path | None = None
-        candidate = pcb_path.parent
-        while candidate != candidate.parent:
-            if (candidate / "ato.yaml").exists():
-                project_root = candidate
-                break
-            candidate = candidate.parent
+            resolved_target = pcb_path.stem
 
-        if project_root is None:
+            candidate = pcb_path.parent
+            while candidate != candidate.parent:
+                if (candidate / "ato.yaml").exists():
+                    resolved_root = candidate
+                    break
+                candidate = candidate.parent
+
+        if resolved_root is None:
             raise HTTPException(
                 status_code=404, detail="Could not find project root (ato.yaml)"
             )
 
         bom_path = (
-            project_root / "build" / "builds" / target_name / f"{target_name}.bom.json"
+            resolved_root
+            / "build"
+            / "builds"
+            / resolved_target
+            / f"{resolved_target}.bom.json"
         )
         if not bom_path.exists():
             raise HTTPException(

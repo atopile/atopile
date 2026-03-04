@@ -85,7 +85,8 @@ export class Editor {
     private textCtx: CanvasRenderingContext2D | null;
     private renderer: Renderer;
     private camera: Camera2;
-    /* @internal */ panAndZoom: PanAndZoom;
+    // @ts-ignore TS6133 — retained to prevent garbage collection
+    private panAndZoom: PanAndZoom;
     private client: LayoutClient;
     private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
@@ -142,6 +143,12 @@ export class Editor {
     onSelectionChange: ((selectedIndices: number[]) => void) | null = null;
     onModelLoad: ((model: RenderModel) => void) | null = null;
 
+    // Stored handler references for cleanup
+    private _onMouseUp: ((e: MouseEvent) => void) | null = null;
+    private _onKeyDown: ((e: KeyboardEvent) => void) | null = null;
+    private _onResize: (() => void) | null = null;
+    private _onBeforeUnload: (() => void) | null = null;
+
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws", options?: EditorOptions) {
         this.canvas = canvas;
         this.readOnly = options?.readOnly ?? false;
@@ -159,10 +166,11 @@ export class Editor {
             this.setupKeyboardHandlers();
         }
         this.setupResizeHandler();
-        window.addEventListener("beforeunload", () => {
+        this._onBeforeUnload = () => {
             this.renderLoop.stop();
             this.client.disconnect();
-        });
+        };
+        window.addEventListener("beforeunload", this._onBeforeUnload);
         this.renderer.setup();
         this.renderLoop.start();
     }
@@ -202,6 +210,20 @@ export class Editor {
     async init() {
         await this.fetchAndPaint();
         this.connectWebSocket();
+    }
+
+    dispose() {
+        this.renderLoop.stop();
+        this.client.disconnect();
+
+        if (this._onMouseUp) window.removeEventListener("mouseup", this._onMouseUp);
+        if (this._onKeyDown) window.removeEventListener("keydown", this._onKeyDown);
+        if (this._onResize) window.removeEventListener("resize", this._onResize);
+        if (this._onBeforeUnload) window.removeEventListener("beforeunload", this._onBeforeUnload);
+
+        if (this.textOverlay.parentNode) {
+            this.textOverlay.parentNode.removeChild(this.textOverlay);
+        }
     }
 
     private async fetchAndPaint() {
@@ -893,7 +915,7 @@ export class Editor {
             this.requestRedraw();
         });
 
-        window.addEventListener("mouseup", async (e: MouseEvent) => {
+        this._onMouseUp = async (e: MouseEvent) => {
             if (e.button !== 0) return;
 
             if (this.isBoxSelecting) {
@@ -975,11 +997,12 @@ export class Editor {
             if (uuids.length > 0) {
                 await this.executeAction({ command: "move", uuids, dx, dy });
             }
-        });
+        };
+        window.addEventListener("mouseup", this._onMouseUp);
     }
 
     private setupKeyboardHandlers() {
-        window.addEventListener("keydown", async (e: KeyboardEvent) => {
+        this._onKeyDown = async (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 if (this.isDragging) {
                     this.revertDragPositions();
@@ -1017,13 +1040,15 @@ export class Editor {
                 await this.executeAction({ command: "redo" });
                 return;
             }
-        });
+        };
+        window.addEventListener("keydown", this._onKeyDown);
     }
 
     private setupResizeHandler() {
-        window.addEventListener("resize", () => {
+        this._onResize = () => {
             this.requestRedraw();
-        });
+        };
+        window.addEventListener("resize", this._onResize);
     }
 
     private async rotateSelection(deltaDegrees: number) {
