@@ -1,4 +1,5 @@
 import type { ErrorResponse } from "./generated/api-types";
+import { captureEvent, initAnalytics } from "./analytics";
 
 const errorEl = document.getElementById("error") as HTMLDivElement | null;
 const retryBtn = document.getElementById("retry") as HTMLButtonElement | null;
@@ -65,6 +66,9 @@ async function spawn(): Promise<void> {
   if (spawning) return;
   spawning = true;
   msgIdx = 0;
+  captureEvent("spawn_requested", {
+    nolaunch: new URLSearchParams(window.location.search).get("nolaunch") === "1",
+  });
 
   if (errorEl) errorEl.textContent = "";
   if (retryBtn) {
@@ -82,6 +86,7 @@ async function spawn(): Promise<void> {
     if (response.redirected) {
       if (msgTimer !== undefined) window.clearTimeout(msgTimer);
       addLine("Ready — redirecting...");
+      captureEvent("spawn_redirect", { status: response.status });
       window.location.href = response.url;
       return;
     }
@@ -94,9 +99,11 @@ async function spawn(): Promise<void> {
       } catch {
         // Keep default message when error body is not JSON.
       }
+      captureEvent("spawn_failed_response", { status: response.status, message });
       throw new Error(message);
     }
 
+    captureEvent("spawn_ok_no_redirect", { status: response.status });
     window.location.reload();
   } catch (error) {
     if (msgTimer !== undefined) window.clearTimeout(msgTimer);
@@ -110,6 +117,9 @@ async function spawn(): Promise<void> {
     if (retryLabelEl) retryLabelEl.textContent = "Retry launch";
     if (terminalEl) terminalEl.classList.remove("visible");
     msgIdx = 0;
+    captureEvent("spawn_failed_exception", {
+      message: error instanceof Error ? error.message : "Unexpected error",
+    });
   } finally {
     spawning = false;
   }
@@ -117,6 +127,9 @@ async function spawn(): Promise<void> {
 
 if (retryBtn) {
   retryBtn.addEventListener("click", () => {
+    captureEvent("launch_button_clicked", {
+      current_label: retryLabelEl?.textContent ?? "",
+    });
     void spawn();
   });
 }
@@ -310,6 +323,7 @@ function initBackgroundAnimation(): void {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  void initAnalytics("landing");
   if (footerYearEl) footerYearEl.textContent = String(new Date().getFullYear());
   initNavMenu();
   initBackgroundAnimation();
@@ -317,6 +331,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(window.location.search);
   const noLaunch = params.get("nolaunch") === "1";
   if (noLaunch) {
+    captureEvent("launcher_shown", { nolaunch: true });
     if (retryBtn) {
       retryBtn.disabled = false;
       retryBtn.classList.remove("hidden");
@@ -325,6 +340,7 @@ window.addEventListener("DOMContentLoaded", () => {
     return;
   }
   window.setTimeout(() => {
+    captureEvent("autolaunch_started");
     void spawn();
   }, 50);
 });

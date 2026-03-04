@@ -1,4 +1,5 @@
 import type { DashboardPoint, DashboardSeriesResponse } from "./generated/api-types";
+import { captureEvent, initAnalytics } from "./analytics";
 
 const canvasEl = document.getElementById("chart") as HTMLCanvasElement | null;
 const errorEl = document.getElementById("error") as HTMLDivElement | null;
@@ -128,6 +129,7 @@ async function refreshDashboard(): Promise<void> {
   try {
     const response = await fetch(`/api/dashboard/series?window_seconds=${selectedWindowSeconds}`);
     if (!response.ok) {
+      captureEvent("dashboard_series_failed", { status: response.status, window_seconds: selectedWindowSeconds });
       throw new Error("Failed to load machine history");
     }
     const data = (await response.json()) as DashboardSeriesResponse;
@@ -147,11 +149,16 @@ async function refreshDashboard(): Promise<void> {
   } catch (error) {
     drawChart([]);
     setError(error instanceof Error ? error.message : "Failed to refresh dashboard");
+    captureEvent("dashboard_series_exception", {
+      window_seconds: selectedWindowSeconds,
+      message: error instanceof Error ? error.message : "Failed to refresh dashboard",
+    });
   }
 }
 
 function selectWindow(seconds: number): void {
   selectedWindowSeconds = seconds;
+  captureEvent("dashboard_window_changed", { window_seconds: selectedWindowSeconds });
   for (const button of rangeButtons) {
     button.classList.toggle("active", Number(button.dataset.window) === selectedWindowSeconds);
   }
@@ -168,6 +175,7 @@ function startPolling(): void {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  void initAnalytics("dashboard");
   if (!canvasEl) return;
 
   for (const button of rangeButtons) {
