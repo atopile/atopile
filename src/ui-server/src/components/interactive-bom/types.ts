@@ -12,5 +12,8 @@ export interface BomEnrichment {
   mpn: string | null;
   manufacturer: string | null;
   lcsc: string | null;
-  description: string | null;
+  type: string | null;
+  picked: 'manual' | 'auto' | null;
+  unitCost: number | null;
+  stock: number | null;
 }

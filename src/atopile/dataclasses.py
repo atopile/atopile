@@ -88,7 +88,6 @@ class EventType(StrEnum):
     OPEN_LAYOUT = "open_layout"
     OPEN_KICAD = "open_kicad"
     OPEN_3D = "open_3d"
-    OPEN_INTERACTIVE_BOM = "open_interactive_bom"
 
 
 # =============================================================================

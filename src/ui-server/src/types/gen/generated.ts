@@ -709,7 +709,6 @@ export enum EventType {
     BuildsChanged = "builds_changed",
     LogViewCurrentIDChanged = "log_view_current_id_changed",
     Open3D = "open_3d",
-    OpenInteractiveBOM = "open_interactive_bom",
     OpenKicad = "open_kicad",
     OpenLayout = "open_layout",
     PackageModified = "package_modified",

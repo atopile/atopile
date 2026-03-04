@@ -4,6 +4,8 @@ import type { BomGroup, BomEnrichment } from './types';
 import { buildBomGroups } from './bomGrouping';
 
 interface InteractiveBomState {
+  projectRoot: string;
+  targetName: string;
   renderModel: RenderModel | null;
   bomGroups: BomGroup[];
   fpIndexToGroupId: Map<number, string>;
@@ -23,7 +25,15 @@ interface InteractiveBomState {
   setBomEnrichment: (enrichment: Map<string, BomEnrichment>) => void;
 }
 
+// Read initial context from window globals injected by the VS Code extension
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const win = window as any;
+const initialProjectRoot = typeof win.__IBOM_PROJECT_ROOT__ === 'string' ? win.__IBOM_PROJECT_ROOT__ : '';
+const initialTargetName = typeof win.__IBOM_TARGET_NAME__ === 'string' ? win.__IBOM_TARGET_NAME__ : '';
+
 export const useInteractiveBomStore = create<InteractiveBomState>((set) => ({
+  projectRoot: initialProjectRoot,
+  targetName: initialTargetName,
   renderModel: null,
   bomGroups: [],
   fpIndexToGroupId: new Map(),

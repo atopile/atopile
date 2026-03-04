@@ -28,7 +28,10 @@ export function ComponentDetailPanel({ group, enrichment }: ComponentDetailPanel
         <DetailField label="MPN" value={enrichment?.mpn ?? null} />
         <DetailField label="Manufacturer" value={enrichment?.manufacturer ?? null} />
         <DetailField label="LCSC" value={enrichment?.lcsc ?? null} />
-        <DetailField label="Description" value={enrichment?.description ?? null} />
+        <DetailField label="Type" value={enrichment?.type ?? null} />
+        <DetailField label="Picked" value={enrichment?.picked ?? null} />
+        <DetailField label="Unit Cost" value={enrichment?.unitCost != null ? `$${enrichment.unitCost.toFixed(4)}` : null} />
+        <DetailField label="Stock" value={enrichment?.stock != null ? enrichment.stock.toLocaleString() : null} />
       </div>
     </div>
   );

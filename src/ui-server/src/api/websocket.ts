@@ -234,13 +234,13 @@ function handleMessage(event: MessageEvent): void {
           const state = message.data as AppState;
 
           // Extract one-shot open signals before replacing state
-          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, openInteractiveBom, ...stateWithoutSignals } = state;
+          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, ...stateWithoutSignals } = state;
 
           // Update store with state (excluding one-shot signals)
           useStore.getState().replaceState(stateWithoutSignals);
 
           // Forward open signals to VS Code extension (one-shot actions)
-          if (openFile || openLayout || openKicad || open3D || openInteractiveBom) {
+          if (openFile || openLayout || openKicad || open3D) {
             postMessage({
               type: 'openSignals',
               openFile: openFile ?? null,
@@ -249,7 +249,7 @@ function handleMessage(event: MessageEvent): void {
               openLayout: openLayout ?? null,
               openKicad: openKicad ?? null,
               open3d: open3D ?? null,
-              openInteractiveBom: openInteractiveBom ?? null,
+              openInteractiveBom: null,
             });
           }
 
@@ -661,21 +661,6 @@ function handleEventMessage(message: EventMessage): void {
         openKicad: null,
         open3d: path,
         openInteractiveBom: null,
-      });
-      break;
-    }
-    case EventType.OpenInteractiveBOM: {
-      const path = typeof data.path === 'string' ? data.path : null;
-      const ibomProjectRoot = typeof data.project_root === 'string' ? data.project_root : null;
-      const ibomTargetName = typeof data.target_name === 'string' ? data.target_name : null;
-      postMessage({
-        type: 'openSignals',
-        openLayout: null,
-        openKicad: null,
-        open3d: null,
-        openInteractiveBom: path,
-        ibomProjectRoot,
-        ibomTargetName,
       });
       break;
     }

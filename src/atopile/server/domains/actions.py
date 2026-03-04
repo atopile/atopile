@@ -1579,15 +1579,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             result = await _load_and_broadcast_layout(payload)
             if not result["success"]:
                 return result
-            await server_state.emit_event(
-                "open_interactive_bom",
-                {
-                    "path": result["path"],
-                    "project_root": result["project_root"],
-                    "target_name": result["target_name"],
-                },
-            )
-            return {"success": True}
+            return {
+                "success": True,
+                "path": result["path"],
+                "project_root": result["project_root"],
+                "target_name": result["target_name"],
+            }
 
         if action == "openKiCad":
             project_root = payload.get("projectId", "")

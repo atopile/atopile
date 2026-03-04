@@ -288,6 +288,23 @@ export function Sidebar() {
         });
         return;
       }
+
+      // For iBOM, the action response carries the data directly — no WS event needed
+      if (output === 'openInteractiveBom' && response.result) {
+        const result = response.result as Record<string, unknown>;
+        const path = typeof result.path === 'string' ? result.path : null;
+        const ibomProjectRoot = typeof result.project_root === 'string' ? result.project_root : null;
+        const ibomTargetName = typeof result.target_name === 'string' ? result.target_name : null;
+        postMessage({
+          type: 'openSignals',
+          openLayout: null,
+          openKicad: null,
+          open3d: null,
+          openInteractiveBom: path,
+          ibomProjectRoot,
+          ibomTargetName,
+        });
+      }
     } catch (error) {
       console.warn('Failed to open output', error);
       action('uiLog', {

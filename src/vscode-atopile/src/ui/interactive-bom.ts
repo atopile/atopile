@@ -79,9 +79,6 @@ class InteractiveBomWebview extends BaseWebview {
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
-    window.__LAYOUT_BASE_URL__ = '${apiUrl}'.replace(/\\/api$/, '');
-    window.__LAYOUT_API_PREFIX__ = '/api/layout';
-    window.__LAYOUT_WS_PATH__ = '/ws/layout';
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
     window.__IBOM_PROJECT_ROOT__ = ${JSON.stringify(this.projectRoot ?? '')};
@@ -94,6 +91,7 @@ class InteractiveBomWebview extends BaseWebview {
 </body>
 </html>`;
   }
+
 }
 
 let ibomWebview: InteractiveBomWebview | undefined;
@@ -105,10 +103,6 @@ export function openInteractiveBomPreview(
 ): void {
   if (!ibomWebview) {
     ibomWebview = new InteractiveBomWebview();
-  }
-  if (ibomWebview.isOpen()) {
-    ibomWebview.reveal();
-    return;
   }
   void ibomWebview.openWithContext(projectRoot, targetName);
 }

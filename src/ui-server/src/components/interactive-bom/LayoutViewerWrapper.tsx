@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Editor } from '@layout-viewer/editor';
 import { useInteractiveBomStore } from './useInteractiveBomStore';
+import { API_URL } from '../../api/config';
+
+// Derive layout server base URL from the standard API URL
+// e.g. "http://127.0.0.1:12345/api" → "http://127.0.0.1:12345"
+const LAYOUT_BASE_URL = API_URL.replace(/\/api$/, '');
+const LAYOUT_API_PREFIX = '/api/layout';
+const LAYOUT_WS_PATH = '/ws/layout';
 
 export function LayoutViewerWrapper() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -19,10 +26,7 @@ export function LayoutViewerWrapper() {
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const baseUrl = (window as any).__LAYOUT_BASE_URL__ || window.location.origin;
-    const apiPrefix = (window as any).__LAYOUT_API_PREFIX__ || '/api';
-    const wsPath = (window as any).__LAYOUT_WS_PATH__ || '/ws';
-    const editor = new Editor(canvas, baseUrl, apiPrefix, wsPath, {
+    const editor = new Editor(canvas, LAYOUT_BASE_URL, LAYOUT_API_PREFIX, LAYOUT_WS_PATH, {
       readOnly: true,
       container,
     });

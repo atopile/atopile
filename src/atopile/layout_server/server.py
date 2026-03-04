@@ -7,11 +7,9 @@ integration server (``atopile.server.routes.layout``).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from atopile.layout_server.models import (
     ActionRequest,
@@ -114,61 +112,6 @@ def create_layout_router(
             delta=delta,
             action_id=action_id,
         )
-
-    @router.get(f"{api_prefix}/bom")
-    async def get_layout_bom(
-        project_root: str | None = Query(None),
-        target_name: str | None = Query(None),
-    ):
-        """Return BOM data for a build target.
-
-        When *project_root* and *target_name* are supplied the BOM path
-        is constructed directly.  Otherwise the endpoint falls back to
-        deriving both values from the currently loaded PCB path.
-        """
-        resolved_root: Path | None = None
-        resolved_target: str | None = None
-
-        if project_root and target_name:
-            resolved_root = Path(project_root)
-            resolved_target = target_name
-        else:
-            _require_loaded()
-            pcb_path = service.current_path
-            if pcb_path is None:
-                raise HTTPException(status_code=404, detail="No PCB loaded")
-
-            resolved_target = pcb_path.stem
-
-            candidate = pcb_path.parent
-            while candidate != candidate.parent:
-                if (candidate / "ato.yaml").exists():
-                    resolved_root = candidate
-                    break
-                candidate = candidate.parent
-
-        if resolved_root is None:
-            raise HTTPException(
-                status_code=404, detail="Could not find project root (ato.yaml)"
-            )
-
-        bom_path = (
-            resolved_root
-            / "build"
-            / "builds"
-            / resolved_target
-            / f"{resolved_target}.bom.json"
-        )
-        if not bom_path.exists():
-            raise HTTPException(
-                status_code=404,
-                detail="BOM file not found. Run 'ato build' first.",
-            )
-        try:
-            data = await asyncio.to_thread(lambda: json.loads(bom_path.read_text()))
-            return data
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=500, detail=f"Invalid BOM JSON: {exc}")
 
     @router.websocket(ws_path)
     async def websocket_endpoint(websocket: WebSocket) -> None:
