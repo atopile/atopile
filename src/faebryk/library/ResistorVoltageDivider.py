@@ -544,7 +544,7 @@ class TestVdivSolver:
         pick_solver = Solver()
         pick_parts_recursively(rdiv, pick_solver)
 
-        # Extract picked values from lower bound (IsSuperset from pick attach)
+        # Verify the picks are actually valid
         r0_po = (
             rdiv.chain.get()
             .resistors[0]
@@ -674,20 +674,10 @@ class TestVdivSolver:
             f" {expected_ratio.pretty_str()}"
         )
 
-        # Without backtracking, the first resistor pick may be incompatible
-        # with the ratio/voltage constraints. Either the solver detects this
-        # and raises a Contradiction, or the picks are valid.
-        from faebryk.core.solver.utils import Contradiction
-
         pick_solver = Solver()
-        try:
-            pick_parts_recursively(rdiv, pick_solver)
-        except Contradiction:
-            # Contradiction detected — the solver correctly identified
-            # that the picked values are incompatible with the constraints.
-            return
+        pick_parts_recursively(rdiv, pick_solver)
 
-        # If no contradiction, verify the picks are actually valid
+        # Verify the picks are actually valid
         r0_po = (
             rdiv.chain.get()
             .resistors[0]
@@ -791,30 +781,22 @@ class TestVdivSolver:
         #   r_bottom = total_R × ratio ≈ [1791Ω, 2.23MΩ]
         #   r_top = total_R − r_bottom ≈ [0Ω, 10.5MΩ] (uncorrelated)
         expected_r_top = not_none(
-            fabll.Traits(
-                E.lit_op_range(((0, E.U.Ohm), (10500000, E.U.Ohm)))
-            )
+            fabll.Traits(E.lit_op_range(((0, E.U.Ohm), (10500000, E.U.Ohm))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
         expected_r_bottom = not_none(
-            fabll.Traits(
-                E.lit_op_range(((1791, E.U.Ohm), (2233000, E.U.Ohm)))
-            )
+            fabll.Traits(E.lit_op_range(((1791, E.U.Ohm), (2233000, E.U.Ohm))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
         expected_ratio = not_none(
-            fabll.Traits(
-                E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl)))
-            )
+            fabll.Traits(E.lit_op_range(((0.188, E.U.dl), (0.213, E.U.dl))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
         expected_total_r = not_none(
-            fabll.Traits(
-                E.lit_op_range(((9500, E.U.Ohm), (10500000, E.U.Ohm)))
-            )
+            fabll.Traits(E.lit_op_range(((9500, E.U.Ohm), (10500000, E.U.Ohm))))
             .get_obj_raw()
             .try_cast(F.Literals.Numbers)
         )
@@ -1130,5 +1112,3 @@ class TestVdivSolver:
         r_bottom = vdiv.chain.get().resistors[1].get()
         assert r_top.has_trait(F.Pickable.has_part_picked)
         assert r_bottom.has_trait(F.Pickable.has_part_picked)
-
-
