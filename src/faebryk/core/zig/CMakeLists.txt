@@ -77,6 +77,16 @@ if (APPLE)
   set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
 
+# Linux x86_64 cross-compilation safety ----------------------------------------
+# When building wheels (e.g., via cibuildwheel) or Docker images, the host CPU
+# may have features (AVX-512, etc.) not present on all target machines. Explicitly
+# target baseline x86_64 to produce portable binaries.
+# Local dev builds can override with -DCMAKE_ZIG_TARGET=native if desired.
+if (UNIX AND NOT APPLE)
+    set(_TARGET_ARCH_FOR_STAMP "x86_64")
+    set(ZIG_TARGET_ARG "-Dtarget=x86_64-linux-gnu")
+endif()
+
 # Stamp file includes target architecture to ensure different arch builds in the same
 # source checkout (e.g., cibuildwheel building x86_64 and arm64) don't skip each other.
 set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
