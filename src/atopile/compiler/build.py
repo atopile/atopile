@@ -544,10 +544,14 @@ class Linker:
                 )
                 target = build_state.type_roots.get(type_id)
                 if target is None:
-                    from atopile.compiler import DslRichException
-
+                    msg = f"Symbol `{type_id}` is not defined in this scope"
+                    if type_id in self._stdlib or type_id in self._stdlib_ato_files:
+                        msg += (
+                            f". Add `import {type_id}` to use"
+                            f" `{type_id}` from the standard library"
+                        )
                     raise DslRichException(
-                        f"Symbol `{type_id}` is not defined in this scope",
+                        msg,
                         original=DslUndefinedSymbolError(),
                         source_node=source_node,
                         traceback=traceback_stack,

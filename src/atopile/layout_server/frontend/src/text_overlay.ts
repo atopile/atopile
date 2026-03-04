@@ -203,7 +203,7 @@ export function renderTextOverlay(
     if (resized || options?.clearCanvas !== false) {
         ctx.clearRect(0, 0, width, height);
     }
-    if (!model || camera.zoom < 1.5 || hiddenLayers.has("__type:pads")) return;
+    if (!model || camera.zoom < 1.5) return;
     const offset = options?.worldOffset ?? new Vec2(0, 0);
 
     const fpIndices = visibleFpIndices ?? [...Array(model.footprints.length).keys()];
@@ -213,25 +213,50 @@ export function renderTextOverlay(
         const fp = model.footprints[idx];
         if (!fp) continue;
 
+        if (!hiddenLayers.has("__type:other")) {
+            for (const text of fp.texts) {
+                if (!text.text.trim()) continue;
+                const layerName = text.layer;
+                if (!layerName) continue;
+                if (hiddenLayers.has(layerName)) continue;
+                const worldPos = fpTransform(fp.at, text.at.x, text.at.y);
+                const textRotation = text.at.r || 0;
+                drawStrokeText(ctx, camera, layerById, width, height, {
+                    text: text.text,
+                    worldX: worldPos.x + offset.x,
+                    worldY: worldPos.y + offset.y,
+                    rotationDeg: textRotation,
+                    textWidth: text.size?.w ?? 1.0,
+                    textHeight: text.size?.h ?? 1.0,
+                    thickness: text.thickness ?? null,
+                    layerName,
+                    justify: text.justify,
+                });
+            }
+        }
+
+        if (hiddenLayers.has("__type:pads")) continue;
+
         // Aggressive culling: if footprint is too small on screen, skip annotations
         const bbox = footprintBBox(fp);
         if (Math.max(bbox.w, bbox.h) * camera.zoom < minScreenSize) continue;
 
         // Note: buildPadAnnotationGeometry is already cached via WeakMap internally
         const annotationsByLayer = buildPadAnnotationGeometry(fp, hiddenLayers);
-        
+
         // Sorting layers is still needed for correct overlap, but Map iteration is fast
         const layerNames = Array.from(annotationsByLayer.keys());
         if (layerNames.length > 1) {
             layerNames.sort((a, b) => {
-                const orderA = layerById.get(a)?.paint_order ?? 999;
-                const orderB = layerById.get(b)?.paint_order ?? 999;
-                return orderA - orderB;
+                const orderA = layerById.get(a)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+                const orderB = layerById.get(b)?.paint_order ?? Number.MAX_SAFE_INTEGER;
+                if (orderA !== orderB) return orderA - orderB;
+                return a.localeCompare(b);
             });
         }
-
         for (const layerName of layerNames) {
-            const geometry = annotationsByLayer.get(layerName)!;
+            const geometry = annotationsByLayer.get(layerName);
+            if (!geometry) continue;
             const [r, g, b, a] = getLayerColor(layerName, layerById);
             const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.max(a, 0.7)})`;
 

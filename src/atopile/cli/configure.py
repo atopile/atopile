@@ -27,7 +27,7 @@ def setup() -> None:
     try:
         install_kicad_plugin()
     except Exception as e:
-        logger.warning(f"Couldn't install plugin: {e!r}")
+        logger.warning(f"Couldn't install plugin: {e.args[0]}")
 
     try:
         enable_plugin_api()

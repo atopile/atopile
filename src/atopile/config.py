@@ -794,6 +794,11 @@ _DependencySpec = Annotated[
 ]
 
 
+class KicadConfig(BaseConfigModel):
+    search_paths: list[Path] = Field(default_factory=list)
+    """Extra base paths to search for KiCad data (plugins, config, etc.)."""
+
+
 class ServicesConfig(BaseConfigModel):
     class Components(BaseConfigModel):
         url: str = Field(default="https://components.atopileapi.com")
@@ -926,6 +931,9 @@ class ProjectConfig(BaseConfigModel):
     entry: str | None = Field(default=None)
     builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
     """A map of all the build targets (/ "builds") in this project."""
+
+    kicad: KicadConfig = Field(default_factory=KicadConfig)
+    """KiCad-related configuration (e.g. custom search paths)."""
 
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     open_layout_on_build: bool = Field(default=False)
