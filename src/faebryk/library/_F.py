@@ -40,6 +40,7 @@ from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_doc_string import has_doc_string
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_package_requirements import has_package_requirements
+from faebryk.library.has_requirement import has_requirement
 from faebryk.library.has_solver import has_solver
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_auto_generated import is_auto_generated
@@ -143,6 +144,7 @@ __all__ = [
     "has_doc_string",
     "has_net_name",
     "has_package_requirements",
+    "has_requirement",
     "has_solver",
     "has_usage_example",
     "is_auto_generated",

@@ -7,6 +7,8 @@ import faebryk.library._F as F
 
 
 class Diode(fabll.Node):
+    """Two-terminal diode module with forward and reverse ratings."""
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

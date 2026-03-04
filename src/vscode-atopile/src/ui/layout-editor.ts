@@ -31,10 +31,8 @@ class LayoutEditorWebview extends BaseWebview {
             `connect-src ${apiUrl} ${wsOrigin}`,
         ].join('; ');
 
-        const editorUri = this.getWebviewUri(
-            webview,
-            getAndCheckResource('layout-editor/editor.js'),
-            true,
+        const editorUri = webview.asWebviewUri(
+            vscode.Uri.file(getAndCheckResource('layout-editor/editor.js'))
         ).toString();
 
         return renderTemplate(templateText, {

@@ -64,7 +64,7 @@ def _is_path_allowed(file_path: Path) -> bool:
     """
     try:
         resolved = file_path.resolve()
-    except (OSError, ValueError):
+    except OSError, ValueError:
         log.warning(f"[files] Path resolution failed for: {file_path}")
         return False
 
@@ -107,7 +107,7 @@ def _is_path_allowed(file_path: Path) -> bool:
                 if "build" in parts:
                     log.info(f"[files] Path allowed via workspace_path: {resolved}")
                     return True
-        except (OSError, ValueError):
+        except OSError, ValueError:
             pass
 
     log.warning(

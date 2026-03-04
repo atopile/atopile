@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2, ClipboardList } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
 import { useStore } from '../store'
@@ -37,6 +37,7 @@ interface ActiveProjectPanelProps {
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
+  onOpenSpec?: () => void
 }
 
 // Helper to format path for display - shows last 2 segments
@@ -852,6 +853,7 @@ export function ActiveProjectPanel({
   onCreateProject,
   onCreateTarget,
   onGenerateManufacturingData,
+  onOpenSpec,
 }: ActiveProjectPanelProps) {
   const [showNewProjectForm, setShowNewProjectForm] = useState(false)
   const [showNewTargetForm, setShowNewTargetForm] = useState(false)
@@ -1056,6 +1058,19 @@ export function ActiveProjectPanel({
           )}
 
           <div className="action-divider" />
+
+          {onOpenSpec && (
+            <button
+              className="action-btn"
+              onClick={onOpenSpec}
+              title="Open spec viewer"
+            >
+              <ClipboardList size={12} />
+              <span className="action-label">Spec</span>
+            </button>
+          )}
+
+          {onOpenSpec && <div className="action-divider" />}
 
           <button
             className="action-btn"

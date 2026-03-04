@@ -1,0 +1,149 @@
+(footprint "SXN_SMMS0630_220M:IND-SMD_L7.3-W6.6_MHCI06030"
+	(version 20241229)
+	(generator "faebryk_convert")
+	(generator_version "v5")
+	(layer "F.Cu")
+	(tedit "5DC5F6A4")
+	(uuid "a446854d-a8d7-4a50-8e59-658aa1b1fb60")
+	(property "Reference" "REF**"
+		(at 0 -4)
+		(layer "F.SilkS")
+		(uuid "56ccc7fe-8767-4c54-8a9e-eacf6f161bb3")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "IND-SMD_L7.3-W6.6_MHCI06030"
+		(at 0 4)
+		(layer "F.Fab")
+		(uuid "7c0c3e3c-753f-426d-999a-bfc21ce37725")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_circle
+		(center -3.55 3.31)
+		(end -3.52 3.31)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(locked no)
+		(uuid "dea46cb3-58ed-4ebe-9cc1-42010672851e")
+	)
+	(fp_line
+		(start -3.58 -1.71)
+		(end -3.58 -3.38)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "bb61afff-58fb-43b4-9c98-5049ece74476")
+	)
+	(fp_line
+		(start -3.58 -3.38)
+		(end 3.58 -3.38)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "472a7efa-ca8b-42d2-acaf-1b157c9bd203")
+	)
+	(fp_line
+		(start 3.58 -3.38)
+		(end 3.58 -1.71)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "e892c323-7db8-4b6b-8085-55562a137e01")
+	)
+	(fp_line
+		(start -3.58 1.71)
+		(end -3.58 3.38)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "db9ecf0d-41ad-4798-b087-ee479f2f1e1d")
+	)
+	(fp_line
+		(start -3.58 3.38)
+		(end 3.58 3.38)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "e545032c-9c37-4e57-a348-83924e99fa61")
+	)
+	(fp_line
+		(start 3.58 3.38)
+		(end 3.58 1.71)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "d98a2a0b-2a78-468c-a0c9-4949f14f3513")
+	)
+	(fp_text user "%R"
+		(at 0 0)
+		(layer "F.Fab")
+		(uuid "30952506-3c61-4205-8925-3d94ef49f249")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "2" smd rect
+		(at 3.08 0 0)
+		(size 2.52 3.12)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(uuid "525a2eae-e750-47ce-abf3-922ba68448c6")
+	)
+	(pad "1" smd rect
+		(at -3.08 0 0)
+		(size 2.52 3.12)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(uuid "45734bdc-9372-416d-abaf-163f35ff6ee3")
+	)
+	(model "${KIPRJMOD}/../../parts/SXN_SMMS0630_220M/IND-SMD_L7.1-W6.6-H2.8.step"
+		(offset
+			(xyz 0 0 -0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+	(embedded_fonts no)
+)

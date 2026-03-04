@@ -42,7 +42,7 @@ from starlette.responses import Response
 from atopile.dataclasses import AppContext, EventType
 from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
-from atopile.model.sqlite import BuildHistory
+from atopile.model.sqlite import AgentLogs, BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import projects as projects_domain
@@ -487,8 +487,9 @@ def create_app(
     )
     app.state.ctx = ctx
 
-    # Initialize build history database
+    # Initialize databases
     BuildHistory.init_db()
+    AgentLogs.init_db()
 
     @app.on_event("startup")
     async def on_startup():
@@ -552,6 +553,17 @@ def create_app(
         """Simple health check endpoint."""
         return {"status": "ok"}
 
+    @app.get("/api/features")
+    async def get_features():
+        """Return backend-controlled UI feature capabilities."""
+        raw = os.getenv("UI_ENABLE_CHAT") or os.getenv("FBRK_UI_ENABLE_CHAT") or ""
+        chat_enabled = raw.lower() in ("1", "true", "yes", "y")
+        log.info(f"GET /api/features: UI_ENABLE_CHAT={raw!r} → chat={chat_enabled}")
+        return {"features": {"chat": chat_enabled}}
+
+    from atopile.server.routes import (
+        agent as agent_routes,
+    )
     from atopile.server.routes import (
         artifacts as artifacts_routes,
     )
@@ -589,11 +601,16 @@ def create_app(
         tests as tests_routes,
     )
     from atopile.server.routes import (
+        specs as specs_routes,
+    )
+    from atopile.server.routes import (
         websocket as ws_routes,
     )
 
     app.include_router(ws_routes.router)
+    app.include_router(specs_routes.router)
     app.include_router(logs_routes.router)
+    app.include_router(agent_routes.router)
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)

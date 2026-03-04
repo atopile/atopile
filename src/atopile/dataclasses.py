@@ -186,6 +186,22 @@ class TestLogRow:
     objects: str | None = None
 
 
+@dataclass
+class AgentEventRow:
+    """Database model for agent event log entries."""
+
+    session_id: str = ""
+    run_id: str | None = None
+    timestamp: str = ""
+    event: str = ""
+    level: str = "INFO"
+    phase: str | None = None
+    tool_name: str | None = None
+    project_root: str | None = None
+    summary: str | None = None
+    payload: str | None = None  # JSON string
+
+
 # =============================================================================
 # Log-related Data Structures
 # =============================================================================

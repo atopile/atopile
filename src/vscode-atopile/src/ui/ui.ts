@@ -6,6 +6,7 @@ import * as kicanvas from './kicanvas';
 import * as layoutEditor from './layout-editor';
 import * as modelviewer from './modelviewer';
 import * as pcb from '../common/pcb';
+import * as specViewer from './spec-viewer';
 import * as threeDModel from '../common/3dmodel';
 import { traceInfo } from '../common/log/logging';
 
@@ -30,6 +31,7 @@ export async function activate(context: vscode.ExtensionContext) {
         layoutEditor.activate(context),
         modelviewer.activate(context),
         pcb.activate(context),
+        specViewer.activate(context),
         threeDModel.activate(context),
     ]);
 }
@@ -42,5 +44,6 @@ export function deactivate() {
     layoutEditor.deactivate();
     modelviewer.deactivate();
     pcb.deactivate();
+    specViewer.deactivate();
     threeDModel.deactivate();
 }

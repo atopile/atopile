@@ -22,6 +22,7 @@ import typer
 from atopile import version
 from atopile.cli import (
     build,
+    chat,
     configure,
     create,
     dev,
@@ -207,6 +208,7 @@ def cli(
 
 
 app.command()(build.build)
+app.command()(chat.chat)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
 app.command()(inspect_.inspect)

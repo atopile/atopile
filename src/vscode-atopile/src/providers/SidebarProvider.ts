@@ -179,6 +179,10 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
+interface OpenSpecViewerMessage {
+  type: 'openSpecViewer';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -209,7 +213,8 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage;
+  | OpenMigrateTabMessage
+  | OpenSpecViewerMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -706,6 +711,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openMigrateTab':
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
+        break;
+      case 'openSpecViewer':
+        traceInfo(`[SidebarProvider] Opening spec viewer`);
+        vscode.commands.executeCommand('atopile.openSpecViewer');
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
@@ -1330,6 +1339,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
+    const enableChat = vscode.workspace.getConfiguration('atopile').get<boolean>('enableChat', false);
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -1366,6 +1376,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
+    // Inject chat feature flag from VS Code setting
+    window.__ATOPILE_ENABLE_CHAT__ = ${enableChat ? 'true' : 'false'};
   </script>
 </head>
 <body>

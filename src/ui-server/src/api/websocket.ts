@@ -10,7 +10,7 @@ import type { AppState, Build, BuildStatus } from '../types/build';
 import type { EventMessage } from '../types/gen/generated';
 import { EventMessageType, EventType } from '../types/gen/generated';
 import { api } from './client';
-import { WS_STATE_URL, getWorkspaceFolders } from './config';
+import { ENABLE_CHAT_OVERRIDE, WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
 
 // Reconnection settings
@@ -217,6 +217,7 @@ function handleOpen(): void {
   // Get atopile config (including actual version) - this clears any "installing" state
   sendAction('getAtopileConfig');
 
+  void refreshFeatures();
   void refreshProjects();
   void refreshBuilds();
   void fetchLogViewCurrentId();
@@ -331,6 +332,22 @@ async function refreshProjects(): Promise<void> {
   }
 }
 
+async function refreshFeatures(): Promise<void> {
+  const state = useStore.getState();
+  if (ENABLE_CHAT_OVERRIDE !== null) {
+    state.setFeatures({ chat: ENABLE_CHAT_OVERRIDE });
+    return;
+  }
+
+  try {
+    const response = await api.features.get();
+    state.setFeatures({ chat: Boolean(response.features?.chat) });
+  } catch (error) {
+    console.warn('[WS] Failed to refresh features:', error);
+    state.setFeatures({ chat: false });
+  }
+}
+
 function getSelectedTargetName(): string | null {
   const state = useStore.getState();
   if (!state.selectedProjectRoot) return null;
@@ -432,85 +449,42 @@ function normalizeStage(stage: Record<string, unknown>): Record<string, unknown>
   };
 }
 
+/**
+ * Normalize a build payload from the backend (snake_case) to the frontend
+ * Build type (camelCase).  The backend sends snake_case; some older message
+ * paths may already be camelCase, so we accept both.
+ */
 function normalizeBuild(raw: Build | Record<string, unknown>): Build {
-  const rawData = raw as Record<string, unknown>;
-  const stages = Array.isArray(rawData.stages)
-    ? rawData.stages.map((stage) =>
-      normalizeStage(stage as Record<string, unknown>)
-    )
-    : rawData.stages;
+  const d = raw as Record<string, unknown>;
+  const stages = Array.isArray(d.stages)
+    ? d.stages.map((s) => normalizeStage(s as Record<string, unknown>))
+    : d.stages;
 
   const name =
-    (rawData.name as string | undefined) ??
-    (rawData.build_name as string | undefined) ??
-    (rawData.buildName as string | undefined) ??
-    (rawData.target as string | undefined) ??
+    (d.name as string | undefined) ??
+    (d.build_name as string | undefined) ??
+    (d.target as string | undefined) ??
     'unknown';
-  const displayName =
-    (rawData.displayName as string | undefined) ??
-    (rawData.display_name as string | undefined) ??
-    name;
-  const projectName =
-    (rawData.projectName as string | null | undefined) ??
-    (rawData.project_name as string | null | undefined) ??
-    null;
-  const status =
-    (rawData.status as BuildStatus | undefined) ??
-    'queued';
-  const elapsedSeconds =
-    (rawData.elapsedSeconds as number | undefined) ??
-    (rawData.elapsed_seconds as number | undefined) ??
-    0;
-  const warnings =
-    (rawData.warnings as number | undefined) ??
-    0;
-  const errors =
-    (rawData.errors as number | undefined) ??
-    0;
-  const returnCode =
-    (rawData.returnCode as number | null | undefined) ??
-    (rawData.return_code as number | null | undefined) ??
-    null;
-  const error =
-    (rawData.error as string | undefined) ??
-    (rawData.error_message as string | undefined) ??
-    (rawData.errorMessage as string | undefined);
 
   return {
     name,
-    displayName,
-    projectName,
-    status,
-    elapsedSeconds,
-    warnings,
-    errors,
-    returnCode,
-    error,
-    buildId:
-      (rawData.buildId as string | undefined) ??
-      (rawData.build_id as string | undefined),
-    projectRoot:
-      (rawData.projectRoot as string | undefined) ??
-      (rawData.project_root as string | undefined),
-    target:
-      (rawData.target as string | undefined),
-    entry:
-      (rawData.entry as string | undefined),
-    startedAt:
-      (rawData.startedAt as number | undefined) ??
-      (rawData.started_at as number | undefined),
-    totalStages:
-      (rawData.totalStages as number | undefined) ??
-      (rawData.total_stages as number | undefined),
-    logDir:
-      (rawData.logDir as string | undefined) ??
-      (rawData.log_dir as string | undefined),
-    logFile:
-      (rawData.logFile as string | undefined) ??
-      (rawData.log_file as string | undefined),
-    queuePosition:
-      (rawData.queuePosition as number | undefined) ??
-      (rawData.queue_position as number | undefined),
+    displayName: (d.displayName ?? d.display_name ?? name) as string,
+    projectName: (d.projectName ?? d.project_name ?? null) as string | null,
+    status: (d.status as BuildStatus | undefined) ?? 'queued',
+    elapsedSeconds: (d.elapsedSeconds ?? d.elapsed_seconds ?? 0) as number,
+    warnings: (d.warnings as number | undefined) ?? 0,
+    errors: (d.errors as number | undefined) ?? 0,
+    returnCode: (d.returnCode ?? d.return_code ?? null) as number | null,
+    error: (d.error ?? d.error_message) as string | undefined,
+    buildId: (d.buildId ?? d.build_id) as string | undefined,
+    projectRoot: (d.projectRoot ?? d.project_root) as string | undefined,
+    target: d.target as string | undefined,
+    entry: d.entry as string | undefined,
+    startedAt: (d.startedAt ?? d.started_at) as number | undefined,
+    totalStages: (d.totalStages ?? d.total_stages) as number | undefined,
+    logDir: (d.logDir ?? d.log_dir) as string | undefined,
+    logFile: (d.logFile ?? d.log_file) as string | undefined,
+    queuePosition: (d.queuePosition ?? d.queue_position) as number | undefined,
     stages: stages as Build['stages'],
   };
 }
@@ -603,19 +577,21 @@ async function fetchLogViewCurrentId(): Promise<void> {
 
 function handleEventMessage(message: EventMessage): void {
   const data = message.data ?? {};
+  // Backend can emit additional string events that lag behind generated EventType.
+  const event = message.event as string;
   const projectRoot =
     (typeof data.projectRoot === 'string' && data.projectRoot) ||
     (typeof data.project_root === 'string' && data.project_root) ||
     null;
 
   // Handle migration_step_result event (per-step progress for migrate dialog)
-  if ((message.event as string) === 'migration_step_result') {
+  if (event === 'migration_step_result') {
     window.dispatchEvent(new CustomEvent('migration-step-result', { detail: data }));
     return;
   }
 
   // Handle migration_result event (not in EventType enum)
-  if ((message.event as string) === 'migration_result') {
+  if (event === 'migration_result') {
     const success = data.success === true;
     const error = typeof data.error === 'string' ? data.error : null;
 
@@ -629,12 +605,56 @@ function handleEventMessage(message: EventMessage): void {
     return;
   }
 
-  switch (message.event) {
-    case EventType.OpenLayout: {
+  // Handle agent progress streaming event (not in EventType enum)
+  if (event === 'agent_progress') {
+    window.dispatchEvent(
+      new CustomEvent('atopile:agent_progress', {
+        detail: data,
+      })
+    );
+    return;
+  }
+
+  // Handle agent-to-agent message event (not in EventType enum)
+  if (event === 'agent_message') {
+    window.dispatchEvent(
+      new CustomEvent('atopile:agent_message', {
+        detail: data,
+      })
+    );
+    return;
+  }
+
+  switch (event) {
+    case 'open_file': {
       const path = typeof data.path === 'string' ? data.path : null;
+      const line = typeof data.line === 'number' ? data.line : null;
+      const column = typeof data.column === 'number' ? data.column : null;
       postMessage({
         type: 'openSignals',
+        openFile: path,
+        openFileLine: line,
+        openFileColumn: column,
+        openLayout: null,
+        openKicad: null,
+        open3d: null,
+      });
+      break;
+    }
+    case EventType.OpenLayout: {
+      const path = typeof data.path === 'string' ? data.path : null;
+      const openLayoutProjectRoot =
+        typeof data.project_root === 'string' ? data.project_root : null;
+      const openLayoutTargetName =
+        typeof data.target_name === 'string' ? data.target_name : null;
+      postMessage({
+        type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: path,
+        openLayoutProjectRoot,
+        openLayoutTargetName,
         openKicad: null,
         open3d: null,
       });
@@ -644,6 +664,9 @@ function handleEventMessage(message: EventMessage): void {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: null,
         openKicad: path,
         open3d: null,
@@ -654,6 +677,9 @@ function handleEventMessage(message: EventMessage): void {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
+        openFile: null,
+        openFileLine: null,
+        openFileColumn: null,
         openLayout: null,
         openKicad: null,
         open3d: path,
@@ -666,6 +692,18 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.BuildsChanged:
       void refreshBuilds();
       break;
+    case EventType.AutolayoutChanged:
+    case EventType.AutolayoutCandidateReady:
+    case EventType.AutolayoutFailed:
+      window.dispatchEvent(
+        new CustomEvent('atopile:autolayout_event', {
+          detail: {
+            event,
+            ...data,
+          },
+        })
+      );
+      break;
     case EventType.ProjectDependenciesChanged:
       // Clear all installing packages - a dependency change means install completed
       useStore.getState().clearInstallingPackages();
@@ -674,6 +712,12 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.BOMChanged:
       void refreshBom();
       break;
+    case EventType.ProjectFilesChanged: {
+      if (projectRoot) {
+        postMessage({ type: 'projectFilesChanged', projectRoot });
+      }
+      break;
+    }
     case EventType.VariablesChanged:
       void refreshVariables();
       break;

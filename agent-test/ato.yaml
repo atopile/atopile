@@ -1,0 +1,25 @@
+requires-atopile: ^0.14.1004
+
+paths:
+  src: ./
+  layout: ./layouts
+
+builds:
+  default:
+    entry: main.ato:BLDCMotorController
+dependencies:
+- type: registry
+  identifier: atopile/st-stm32h723
+  release: 0.1.2
+- type: registry
+  identifier: atopile/microchip-lan8742a
+  release: 0.3.0
+- type: registry
+  identifier: atopile/usb-connectors
+  release: 0.4.1
+- type: registry
+  identifier: atopile/xt-connectors
+  release: 0.2.1
+- type: registry
+  identifier: atopile/rj45-connectors
+  release: 0.2.0
