@@ -3,6 +3,8 @@ import { getAndCheckResource } from '../common/resources';
 import { backendServer } from '../common/backendServer';
 import { getWsOrigin, getNonce } from '../common/webview';
 import { BaseWebview } from './webview-base';
+import { WebviewProxyBridge } from '../common/webview-bridge';
+import { generateBridgeRuntime } from '../common/webview-bridge-runtime';
 // @ts-ignore
 import * as _templateText from '../../../atopile/layout_server/static/layout-editor.hbs';
 const templateText: string = (_templateText as any).default || _templateText;
@@ -12,12 +14,37 @@ function renderTemplate(template: string, values: Record<string, string>): strin
 }
 
 class LayoutEditorWebview extends BaseWebview {
+    private messageDisposable?: vscode.Disposable;
+    private _bridge!: WebviewProxyBridge;
+
     constructor() {
         super({
             id: 'layout_editor',
             title: 'Layout',
             iconName: 'pcb-icon-transparent.svg',
         });
+    }
+
+    protected setupPanel(): void {
+        if (!this.panel) {
+            return;
+        }
+        this._bridge = new WebviewProxyBridge({
+            postToWebview: (msg) => this.panel?.webview.postMessage(msg),
+            logTag: 'LayoutEditor',
+        });
+        this.messageDisposable = this.panel.webview.onDidReceiveMessage((message: unknown) => {
+            if (!message || typeof message !== 'object' || !('type' in message)) {
+                return;
+            }
+            this._bridge.handleMessage(message as { type?: string });
+        });
+    }
+
+    protected onDispose(): void {
+        this.messageDisposable?.dispose();
+        this.messageDisposable = undefined;
+        this._bridge?.dispose();
     }
 
     protected getHtmlContent(webview: vscode.Webview): string {
@@ -28,7 +55,7 @@ class LayoutEditorWebview extends BaseWebview {
             "default-src 'none'",
             "style-src 'unsafe-inline'",
             `script-src 'nonce-${nonce}' ${webview.cspSource}`,
-            `connect-src ${apiUrl} ${wsOrigin}`,
+            `connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ws: wss:`,
         ].join('; ');
 
         const editorUri = this.getWebviewUri(
@@ -45,6 +72,7 @@ class LayoutEditorWebview extends BaseWebview {
             wsOrigin,
             nonce,
             editorUri,
+            bridgeRuntime: generateBridgeRuntime({ apiUrl, fetchMode: 'override' }),
         });
     }
 }
