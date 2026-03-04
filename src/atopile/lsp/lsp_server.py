@@ -230,9 +230,16 @@ def exception_to_diagnostic(
         else:
             stop_line, stop_col = start_line + 1, 0
 
-    # Convert from 1-indexed (ANTLR) to 0-indexed (LSP)
-    start_line = max(start_line - 1, 0)
-    stop_line = max(stop_line - 1, 0)
+        # Convert from 1-indexed (ANTLR) to 0-indexed (LSP)
+        start_line = max(start_line - 1, 0)
+        stop_line = max(stop_line - 1, 0)
+    elif hasattr(exc, "src_filepath"):
+        # Fallback: direct file location (e.g. from AST nodes without ANTLR tokens)
+        start_file_path = exc.src_filepath
+        start_line = max(exc.src_start_line - 1, 0)
+        start_col = exc.src_start_col
+        stop_line = max(exc.src_end_line - 1, 0)
+        stop_col = exc.src_end_col
 
     # Handle case where file path is the string "None" (from parsing string sources)
     file_path = (
@@ -531,6 +538,7 @@ def build_document(uri: str, source: str) -> DocumentState:
                 tg=tg,
                 source=source,
                 import_path=str(document_path),
+                file_path=document_path,
             )
             logger.info(
                 f"build_source completed. type_roots: "

@@ -748,6 +748,7 @@ def build_source(
     tg: fbrk.TypeGraph,
     source: str,
     import_path: str | None = None,
+    file_path: Path | None = None,
     stdlib_allowlist: AllowListT | None = None,
 ) -> BuildFileResult:
     if import_path is None:
@@ -760,7 +761,7 @@ def build_source(
         tg=tg,
         import_path=import_path,
         root_ctx=parse_text_as_file(source),
-        file_path=None,
+        file_path=file_path,
         stdlib_allowlist=stdlib_allowlist,
     )
 

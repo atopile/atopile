@@ -11,6 +11,7 @@ This module provides:
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
@@ -47,6 +48,32 @@ if TYPE_CHECKING:
 # NOTE: Using standard logging here to avoid circular import.
 # atopile.logging imports modules that eventually import atopile.errors.
 logger = logging.getLogger(__name__)
+
+# Context variable for propagating source location to exceptions raised in
+# code that doesn't have direct access to parser contexts or AST nodes
+# (e.g. override helpers, library code).
+# Value: (filepath, start_line, start_col, (end_line, end_col)) or None
+_current_source_location: contextvars.ContextVar[
+    tuple[str, int, int, tuple[int, int]] | None
+] = contextvars.ContextVar("_current_source_location", default=None)
+
+
+@contextlib.contextmanager
+def source_location_context(
+    filepath: str,
+    start_line: int,
+    start_col: int,
+    end_line: int,
+    end_col: int,
+):
+    """Set the current source location for exceptions raised in this context."""
+    token = _current_source_location.set(
+        (filepath, start_line, start_col, (end_line, end_col))
+    )
+    try:
+        yield
+    finally:
+        _current_source_location.reset(token)
 
 
 # =============================================================================
@@ -477,13 +504,29 @@ class UserExportError(SourceLocatedUserException):
     """Raised when there's an error exporting a file via the KiCad CLI."""
 
 
+class DeprecatedException(SourceLocatedUserException):
+    """This feature is deprecated and will be removed in a future version."""
+
+    def __init__(self, msg: str, *args, **kwargs):
+        super().__init__(msg, *args, **kwargs)
+        # Auto-capture source location from context if no ANTLR token is set
+        if self.origin_start is None:
+            loc = _current_source_location.get(None)
+            if loc is not None:
+                (
+                    self.src_filepath,
+                    self.src_start_line,
+                    self.src_start_col,
+                    (
+                        self.src_end_line,
+                        self.src_end_col,
+                    ),
+                ) = loc
+
+
 # =============================================================================
 # Non-Source-Located Exceptions (don't need token tracking)
 # =============================================================================
-
-
-class DeprecatedException(UserException):
-    """This feature is deprecated and will be removed in a future version."""
 
 
 class UserResourceException(UserException):

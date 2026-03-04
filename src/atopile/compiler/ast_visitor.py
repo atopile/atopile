@@ -44,7 +44,7 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
-from atopile.errors import DeprecatedException, downgrade
+from atopile.errors import DeprecatedException, downgrade, source_location_context
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
@@ -53,6 +53,29 @@ from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 _Quantity = tuple[float, fabll._ChildField]
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def _source_location_from_node(node: fabll.Node):
+    """Set the source location context from an AST node (best-effort)."""
+    try:
+        source = node.source.get()
+        loc = source.loc.get()
+        filepath = source.get_path()
+    except Exception:
+        filepath = None
+
+    if filepath:
+        with source_location_context(
+            filepath=filepath,
+            start_line=loc.get_start_line(),
+            start_col=loc.get_start_col(),
+            end_line=loc.get_end_line(),
+            end_col=loc.get_end_col(),
+        ):
+            yield
+    else:
+        yield
 
 
 # FIXME: needs expanding
@@ -738,7 +761,8 @@ class ASTVisitor:
 
         # Automatically handle tracebacks for all visitor methods
         with self._traceback_stack.enter(bound_node):
-            return handler(bound_node)
+            with _source_location_from_node(bound_node):
+                return handler(bound_node)
 
     def visit_File(self, node: AST.File):
         self.visit(node.scope.get())
