@@ -712,10 +712,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
         break;
-      case 'openSpecViewer':
-        traceInfo(`[SidebarProvider] Opening spec viewer`);
-        vscode.commands.executeCommand('atopile.openSpecViewer');
-        break;
+      // spec viewer handled by feature/requirements branch
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }

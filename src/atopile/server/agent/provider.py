@@ -79,6 +79,12 @@ class OpenAIProvider:
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
+            if not self._config.api_key:
+                raise RuntimeError(
+                    "No API key configured. Set OPENAI_API_KEY or "
+                    "ATOPILE_AGENT_OPENAI_API_KEY in your environment "
+                    "or in a .env file in the project root."
+                )
             self._client = AsyncOpenAI(
                 api_key=self._config.api_key,
                 base_url=self._config.base_url,

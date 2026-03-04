@@ -410,7 +410,6 @@ export function Sidebar() {
               useStore.getState().setSelectedTargets([data.name]);
             }}
             onGenerateManufacturingData={handleGenerateManufacturingData}
-            onOpenSpec={() => postMessage({ type: 'openSpecViewer' })}
           />
         </div>
 
