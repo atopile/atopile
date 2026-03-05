@@ -1132,18 +1132,16 @@ export class Editor {
             }
         });
 
-        if (!this.readOnly) {
-            this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
-                if (e.button !== 0 || !this.model) return;
-                const viewport = this.getCanvasViewportMetrics();
-                const screenPos = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
-                const worldPos = this.camera.screen_to_world(screenPos);
-                const hitIdx = this.getIndexedHitIdx(worldPos);
-                if (hitIdx < 0) return;
-                this.setSingleSelection(hitIdx, true);
-                this.repaintWithSelection();
-            });
-        }
+        this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
+            if (e.button !== 0 || !this.model) return;
+            const viewport = this.getCanvasViewportMetrics();
+            const screenPos = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
+            const worldPos = this.camera.screen_to_world(screenPos);
+            const hitIdx = this.getIndexedHitIdx(worldPos);
+            if (hitIdx < 0) return;
+            this.setSingleSelection(hitIdx, true);
+            this.repaintWithSelection();
+        });
 
         this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
             const viewport = this.getCanvasViewportMetrics();

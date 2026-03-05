@@ -15,8 +15,8 @@ export function LayoutViewerWrapper() {
   const editorRef = useRef<Editor | null>(null);
 
   const setRenderModel = useInteractiveBomStore((s) => s.setRenderModel);
-  const setSelectedGroup = useInteractiveBomStore((s) => s.setSelectedGroup);
-  const selectedGroupId = useInteractiveBomStore((s) => s.selectedGroupId);
+  const setSelectedGroups = useInteractiveBomStore((s) => s.setSelectedGroups);
+  const selectedGroupIds = useInteractiveBomStore((s) => s.selectedGroupIds);
   const bomGroups = useInteractiveBomStore((s) => s.bomGroups);
   const fpIndexToGroupId = useInteractiveBomStore((s) => s.fpIndexToGroupId);
 
@@ -35,13 +35,21 @@ export function LayoutViewerWrapper() {
     });
 
     editor.setOnSelectionChange((indices) => {
+      const state = useInteractiveBomStore.getState();
       if (indices.length === 0) {
-        setSelectedGroup(null);
+        if (state.selectedGroupIds.size > 0) setSelectedGroups(new Set());
         return;
       }
-      // Find which BomGroup contains the first selected index
-      const groupId = useInteractiveBomStore.getState().fpIndexToGroupId.get(indices[0]!);
-      setSelectedGroup(groupId ?? null);
+      // Find all BomGroups that contain any of the selected indices
+      const groupIds = new Set<string>();
+      for (const idx of indices) {
+        const groupId = state.fpIndexToGroupId.get(idx);
+        if (groupId) groupIds.add(groupId);
+      }
+      // Skip update if the set of selected groups hasn't changed
+      const prev = state.selectedGroupIds;
+      if (groupIds.size === prev.size && [...groupIds].every((id) => prev.has(id))) return;
+      setSelectedGroups(groupIds);
     });
 
     editor.init();
@@ -58,16 +66,18 @@ export function LayoutViewerWrapper() {
     const editor = editorRef.current;
     if (!editor) return;
 
-    if (!selectedGroupId) {
+    if (selectedGroupIds.size === 0) {
       editor.selectFootprintsByIndices([]);
       return;
     }
 
-    const group = bomGroups.find((g) => g.id === selectedGroupId);
-    if (group) {
-      editor.selectFootprintsByIndices(group.footprintIndices);
+    const allIndices: number[] = [];
+    for (const groupId of selectedGroupIds) {
+      const group = bomGroups.find((g) => g.id === groupId);
+      if (group) allIndices.push(...group.footprintIndices);
     }
-  }, [selectedGroupId, bomGroups, fpIndexToGroupId]);
+    editor.selectFootprintsByIndices(allIndices);
+  }, [selectedGroupIds, bomGroups, fpIndexToGroupId]);
 
   return (
     <div className="ibom-viewer" ref={containerRef}>

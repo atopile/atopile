@@ -8,13 +8,13 @@ import type { BomGroup } from './types';
 
 export function BomSidebar() {
   const bomGroups = useInteractiveBomStore((s) => s.bomGroups);
-  const selectedGroupId = useInteractiveBomStore((s) => s.selectedGroupId);
+  const selectedGroupIds = useInteractiveBomStore((s) => s.selectedGroupIds);
   const hoveredGroupId = useInteractiveBomStore((s) => s.hoveredGroupId);
   const searchQuery = useInteractiveBomStore((s) => s.searchQuery);
   const isRegex = useInteractiveBomStore((s) => s.isRegex);
   const caseSensitive = useInteractiveBomStore((s) => s.caseSensitive);
   const bomEnrichment = useInteractiveBomStore((s) => s.bomEnrichment);
-  const setSelectedGroup = useInteractiveBomStore((s) => s.setSelectedGroup);
+  const setSelectedGroups = useInteractiveBomStore((s) => s.setSelectedGroups);
   const setHoveredGroup = useInteractiveBomStore((s) => s.setHoveredGroup);
   const setSearchQuery = useInteractiveBomStore((s) => s.setSearchQuery);
   const setIsRegex = useInteractiveBomStore((s) => s.setIsRegex);
@@ -44,30 +44,40 @@ export function BomSidebar() {
     [bomGroups]
   );
 
-  // Auto-scroll to selected row when selection changes from viewer
+  // Auto-scroll to first selected row when selection changes from viewer
   useEffect(() => {
-    if (!selectedGroupId) return;
-    const rowEl = rowRefs.current.get(selectedGroupId);
-    if (rowEl) {
-      rowEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (selectedGroupIds.size === 0) return;
+    // Scroll to the first selected group that has a visible row
+    for (const groupId of selectedGroupIds) {
+      const rowEl = rowRefs.current.get(groupId);
+      if (rowEl) {
+        rowEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        break;
+      }
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupIds]);
 
   // Update selectedIndexRef when selection changes
   useEffect(() => {
-    if (!selectedGroupId) {
+    if (selectedGroupIds.size === 0) {
       selectedIndexRef.current = -1;
       return;
     }
-    const idx = filteredGroups.findIndex((g) => g.id === selectedGroupId);
+    // Track the first selected group's index for keyboard navigation
+    const idx = filteredGroups.findIndex((g) => selectedGroupIds.has(g.id));
     selectedIndexRef.current = idx;
-  }, [selectedGroupId, filteredGroups]);
+  }, [selectedGroupIds, filteredGroups]);
 
   const handleSelect = useCallback(
     (groupId: string) => {
-      setSelectedGroup(groupId === selectedGroupId ? null : groupId);
+      // BOM row click: toggle single selection
+      if (selectedGroupIds.size === 1 && selectedGroupIds.has(groupId)) {
+        setSelectedGroups(new Set());
+      } else {
+        setSelectedGroups(new Set([groupId]));
+      }
     },
-    [setSelectedGroup, selectedGroupId]
+    [setSelectedGroups, selectedGroupIds]
   );
 
   // Keyboard navigation
@@ -104,22 +114,23 @@ export function BomSidebar() {
         }
         const group = filteredGroups[idx];
         if (group) {
-          setSelectedGroup(group.id);
+          setSelectedGroups(new Set([group.id]));
         }
         return;
       }
 
       if (e.key === 'Escape') {
-        setSelectedGroup(null);
+        setSelectedGroups(new Set());
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredGroups, setSelectedGroup]);
+  }, [filteredGroups, setSelectedGroups]);
 
-  const selectedGroup = selectedGroupId
-    ? bomGroups.find((g) => g.id === selectedGroupId) ?? null
+  // Show detail panel only when exactly one group is selected
+  const selectedGroup = selectedGroupIds.size === 1
+    ? bomGroups.find((g) => selectedGroupIds.has(g.id)) ?? null
     : null;
 
   const selectedEnrichment = selectedGroup
@@ -161,7 +172,7 @@ export function BomSidebar() {
             if (e.key === 'Enter') {
               e.preventDefault();
               if (filteredGroups.length > 0) {
-                setSelectedGroup(filteredGroups[0]!.id);
+                setSelectedGroups(new Set([filteredGroups[0]!.id]));
               }
               (e.target as HTMLInputElement).blur();
             }
@@ -189,7 +200,7 @@ export function BomSidebar() {
                 <BomRow
                   group={group}
                   enrichment={rowEnrichment}
-                  isSelected={selectedGroupId === group.id}
+                  isSelected={selectedGroupIds.has(group.id)}
                   isHovered={hoveredGroupId === group.id}
                   onSelect={handleSelect}
                   onHover={setHoveredGroup}

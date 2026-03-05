@@ -9,7 +9,7 @@ interface InteractiveBomState {
   renderModel: RenderModel | null;
   bomGroups: BomGroup[];
   fpIndexToGroupId: Map<number, string>;
-  selectedGroupId: string | null;
+  selectedGroupIds: Set<string>;
   hoveredGroupId: string | null;
   searchQuery: string;
   isRegex: boolean;
@@ -17,7 +17,7 @@ interface InteractiveBomState {
   bomEnrichment: Map<string, BomEnrichment>;
 
   setRenderModel: (model: RenderModel) => void;
-  setSelectedGroup: (groupId: string | null) => void;
+  setSelectedGroups: (groupIds: Set<string>) => void;
   setHoveredGroup: (groupId: string | null) => void;
   setSearchQuery: (query: string) => void;
   setIsRegex: (isRegex: boolean) => void;
@@ -37,7 +37,7 @@ export const useInteractiveBomStore = create<InteractiveBomState>((set) => ({
   renderModel: null,
   bomGroups: [],
   fpIndexToGroupId: new Map(),
-  selectedGroupId: null,
+  selectedGroupIds: new Set(),
   hoveredGroupId: null,
   searchQuery: '',
   isRegex: false,
@@ -49,7 +49,7 @@ export const useInteractiveBomStore = create<InteractiveBomState>((set) => ({
     set({ renderModel: model, bomGroups, fpIndexToGroupId });
   },
 
-  setSelectedGroup: (groupId) => set({ selectedGroupId: groupId }),
+  setSelectedGroups: (groupIds) => set({ selectedGroupIds: groupIds }),
   setHoveredGroup: (groupId) => set({ hoveredGroupId: groupId }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setIsRegex: (isRegex) => set({ isRegex }),
