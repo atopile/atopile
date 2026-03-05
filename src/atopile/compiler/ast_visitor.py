@@ -108,7 +108,6 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.MountingHole,
         F.NetTie,
         F.PCBManu.PCBLayer,
-        F.PCBManu.PCBStackup,
     }
 ) | (
     # Traits
@@ -130,6 +129,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.requires_external_usage,
         F.PCBManu.is_pcb_manufacturer,
         F.PCBManu.is_company,
+        F.PCBManu.is_pcb_stackup,
         F.PCBManu.is_pcb,
     }
 )

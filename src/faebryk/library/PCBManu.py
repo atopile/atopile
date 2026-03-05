@@ -19,20 +19,8 @@ class is_pcb_layer(fabll.Node):
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
-    thickness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
-    relative_permittivity = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless
-    )
-    """εr (epsilon-r). Also known as dissipation/dielectric constant."""
-    loss_tangent = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
-    """tan(δ) (tan delta). Also known as dissipation factor."""
-    # material = F.Collections.Pointer.MakeChild()
-
-    def get_thickness(self) -> float:
-        """
-        Thickness in meters.
-        """
-        return self.thickness.get().force_extract_superset().get_single()
+    def get_layer(self) -> PCBLayer:
+        return fabll.Traits(self).get_obj_raw().cast(PCBLayer)
 
 
 class PCBLayer(fabll.Node):
@@ -92,8 +80,22 @@ class PCBLayer(fabll.Node):
         Ceramic.
         """
 
+    thickness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
+    relative_permittivity = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless
+    )
+    """εr (epsilon-r). Also known as dissipation/dielectric constant."""
+    loss_tangent = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+    """tan(δ) (tan delta). Also known as dissipation factor."""
+    # material = F.Collections.Pointer.MakeChild()
     layer_type = F.Parameters.EnumParameter.MakeChild(enum_t=LayerType)
     material = F.Parameters.EnumParameter.MakeChild(enum_t=Material)
+
+    def get_thickness(self) -> float:
+        """
+        Thickness in meters.
+        """
+        return self.thickness.get().force_extract_superset().get_single()
 
 
 class is_pcb_stackup(fabll.Node):
@@ -103,42 +105,20 @@ class is_pcb_stackup(fabll.Node):
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
+    def get_stackup(self) -> fabll.Node:
+        return fabll.Traits(self).get_obj_raw()
 
-class PCBStackup(fabll.Node):
-    """
-    Printed circuit board stackup
-    """
-
-    has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
-
-    pcb_stackup = fabll.Traits.MakeEdge(is_pcb_stackup.MakeChild())
-    is_default_stackup = F.Parameters.BooleanParameter.MakeChild()
-    # TODO: no support for pointer assignment in ato yet
-    # manufacturer = F.Collections.Pointer.MakeChild()
-    # layers = F.Collections.PointerSequence.MakeChild()
-
-    # def get_layers(self) -> list[PCBLayer]:
-    #     layers: list[PCBLayer] = []
-    #     for layer in [lyr.try_cast(PCBLayer) for lyr in self.layers.get().as_list()]:
-    #         if layer is not None:
-    #             layers.append(layer)
-    #     return layers
+    def get_layers(self) -> list[PCBLayer]:
+        stackup = self.get_stackup()
+        return stackup.get_children(direct_only=True, types=PCBLayer)
 
 
 class is_pcb(fabll.Node):
     """
-    Trait for marking a node as a PCB.
+    Mark as PCB
     """
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-
-    stackup_ = F.Collections.Pointer.MakeChild()
-
-    @classmethod
-    def MakeChild(cls, stackup: fabll.RefPath) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.stackup_], stackup))
-        return out
 
 
 class is_company(fabll.Node):

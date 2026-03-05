@@ -183,12 +183,6 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
         trait_class=F.Pickable.has_part_picked,
         make_trait_field=lambda args: F.Pickable.has_part_picked.MakeChild(**args),
     ),
-    "is_pcb": TraitOverrideSpec(
-        trait_class=F.PCBManu.is_pcb,
-        make_trait_field=lambda args: F.PCBManu.is_pcb.MakeChild(
-            stackup=[args["stackup"]]
-        ),
-    ),
 }
 
 # Enum parameter overrides: handle string assignment to enum parameters

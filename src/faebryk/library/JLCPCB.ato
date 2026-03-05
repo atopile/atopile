@@ -1,6 +1,6 @@
 #pragma experiment("TRAITS")
 
-import PCBStackup
+import is_pcb_stackup
 import PCBLayer
 import is_pcb_manufacturer
 import is_company
@@ -11,11 +11,13 @@ module JLCPCB:
     trait is_company<name = "JLCPCB", country = "CHN", website = "https://www.jlcpcb.com">
     trait has_part_removed
 
-module JLC041612_3313 from PCBStackup:
+module JLC041612_3313:
     """JLCPCB 4-layer 1.6mm layer."""
+    trait is_pcb_stackup
+    trait has_part_removed  # this module is not a pickable component
     is_default_stackup = True
-    layers = new PCBLayer[9]
     manufacturer = new JLCPCB
+    layers = new PCBLayer[9]
 
     # layer_type (top to bottom)
     layers[0].layer_type = "COPPER"
@@ -29,15 +31,15 @@ module JLC041612_3313 from PCBStackup:
     layers[8].layer_type = "COPPER"
 
     # is_layer.thickness
-    layers[0].is_layer.thickness = 0.035mm
-    layers[1].is_layer.thickness = 0.107mm
-    layers[2].is_layer.thickness = 0.0935mm
-    layers[3].is_layer.thickness = 0.061mm
-    layers[4].is_layer.thickness = 0.96mm
-    layers[5].is_layer.thickness = 0.061mm
-    layers[6].is_layer.thickness = 0.0935mm
-    layers[7].is_layer.thickness = 0.107mm
-    layers[8].is_layer.thickness = 0.035mm
+    layers[0].thickness = 0.035mm
+    layers[1].thickness = 0.107mm
+    layers[2].thickness = 0.0935mm
+    layers[3].thickness = 0.061mm
+    layers[4].thickness = 0.96mm
+    layers[5].thickness = 0.061mm
+    layers[6].thickness = 0.0935mm
+    layers[7].thickness = 0.107mm
+    layers[8].thickness = 0.035mm
 
     # material
     layers[0].material = "COPPER"
@@ -51,8 +53,8 @@ module JLC041612_3313 from PCBStackup:
     layers[8].material = "COPPER"
 
     # is_layer.relative_permittivity (dielectric layers)
-    layers[1].is_layer.relative_permittivity = 4.1
-    layers[2].is_layer.relative_permittivity = 4.16
-    layers[4].is_layer.relative_permittivity = 4.53
-    layers[6].is_layer.relative_permittivity = 4.16
-    layers[7].is_layer.relative_permittivity = 4.1
+    layers[1].relative_permittivity = 4.1
+    layers[2].relative_permittivity = 4.16
+    layers[4].relative_permittivity = 4.53
+    layers[6].relative_permittivity = 4.16
+    layers[7].relative_permittivity = 4.1
