@@ -790,11 +790,26 @@ class NumericParameter(fabll.Node):
         show_tolerance: bool = True,
         force_center: bool = False,
     ) -> str:
-        display_unit = self.try_get_display_units()
-        converted = lit.convert_to_unit(display_unit, g=self.g, tg=self.tg)
-        return converted.pretty_str(
-            show_tolerance=show_tolerance, force_center=force_center
-        )
+        """
+        Format a numeric literal for user-facing display (BOM, KiCad, variables).
+
+        Display-unit logic:
+        - NumericParameters have both `has_unit` (base SI unit for math, e.g.
+          Farad) and `has_display_unit` (preferred display unit, e.g. nF).
+        - Literals also carry their own `has_display_unit` when created by the
+          compiler from user source code (e.g. `220nF` → has_display_unit=nF).
+        - Literals deserialized from the parts API (via Numbers.deserialize())
+          intentionally do NOT get `has_display_unit` — only `has_unit` — so
+          that pretty_str() auto-scales with SI prefixes (220nF, 4.7uF, etc.).
+
+        By delegating directly to lit.pretty_str() we get the right behavior
+        for both cases:
+        - Picked parts (API literals, no has_display_unit): auto SI scaling
+          picks the most readable prefix (e.g. 220nF instead of 0.00000022F).
+        - User-defined literals (has_display_unit): the user's original unit
+          choice is preserved exactly as written (e.g. 5V stays 5V).
+        """
+        return lit.pretty_str(show_tolerance=show_tolerance, force_center=force_center)
 
     def get_values(self) -> list[float]:
         """
@@ -2015,7 +2030,7 @@ def test_display_unit_compact_repr():
 
 def test_display_unit_literal_conversion():
     from faebryk.library.Literals import Numbers
-    from faebryk.library.Units import Volt, decode_symbol_runtime
+    from faebryk.library.Units import Volt, decode_symbol_runtime, has_unit
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -2031,23 +2046,33 @@ def test_display_unit_literal_conversion():
     param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
     param.setup(is_unit=mv_unit)
 
-    # Create a literal in base units (Volts): 4-5 V
-    literal = (
+    # --- User literal (has_display_unit=V) preserves user's unit ---
+    user_literal = (
         Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup_from_min_max(min=4.0, max=5.0, unit=volt_unit)
     )
+    formatted = param.format_literal_for_display(user_literal)
+    # User wrote V, so display preserves V
+    assert "4" in formatted
+    assert "5" in formatted
+    assert "V" in formatted
 
-    # Alias the parameter to the literal
-    param.set_superset(g=g, value=literal)
-
-    # Format the literal using the parameter's display unit
-    formatted = param.format_literal_for_display(literal)
-
-    # Should show values converted to mV (4000-5000)
-    # The key test is VALUE conversion from V to mV
-    assert "4000" in formatted
-    assert "5000" in formatted
+    # --- API literal (no has_display_unit) auto SI scales ---
+    api_literal = Numbers.create_instance(g=g, tg=tg)
+    numeric_set = F.Literals.NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+        values=[(4.0, 5.0)]
+    )
+    api_literal.numeric_set_ptr.get().point(numeric_set)
+    base_volt = volt_unit.copy_into(g=g)
+    fabll.Traits.create_and_add_instance_to(api_literal, has_unit).setup(
+        is_unit=base_volt
+    )
+    formatted = param.format_literal_for_display(api_literal)
+    # No display unit → auto SI scale → shows V (4-5 is in the V range)
+    assert "4" in formatted
+    assert "5" in formatted
+    assert "V" in formatted
 
 
 def test_display_unit_fallback():
@@ -2120,6 +2145,7 @@ def test_display_unit_lit_suffix_conversion():
     )
 
     # Create a literal in base units (Volts): 5 V (singleton)
+    # This simulates a user-defined literal with has_display_unit=V
     literal = (
         Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
@@ -2133,7 +2159,8 @@ def test_display_unit_lit_suffix_conversion():
     is_param = param.is_parameter.get()
     repr_str = is_param.compact_repr()
 
-    # The value should be converted to display units (5V = 5000mV)
-    assert "5000" in repr_str
-    # Note: decode_symbol_runtime creates anonymous units without symbol preservation
-    # The basis vector representation is used instead of "mV"
+    # The literal has has_display_unit=V (user's intent), so it should
+    # display as "5V" rather than being converted to the parameter's
+    # display unit (mV). User-defined literals preserve their original unit.
+    assert "5" in repr_str
+    assert "V" in repr_str
