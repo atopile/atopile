@@ -17,6 +17,7 @@ import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../../common
 import { type Build, loadBuilds, getBuilds } from '../../common/manifest';
 import { openLayoutEditor } from '../../ui/layout-editor';
 import type { OpenSignalsMessage, SelectionChangedMessage } from './types';
+import { isWebIdeUi } from '../../common/environment';
 
 export interface SidebarActionHandlersOptions {
   onProjectSelected?: (root: string | null) => void;
@@ -76,10 +77,7 @@ export class SidebarActionHandlers {
       return;
     }
 
-    const isWebIde =
-      vscode.env.uiKind === vscode.UIKind.Web ||
-      process.env.WEB_IDE_MODE === '1' ||
-      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+    const isWebIde = isWebIdeUi();
 
     if (isWebIde) {
       vscode.window.showInformationMessage('KiCad is unavailable in web-ide. Use the Layout action instead.');

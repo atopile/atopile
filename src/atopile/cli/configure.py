@@ -9,6 +9,7 @@ logger = get_logger(__name__)
 
 def setup() -> None:
     # Cleanup legacy config file
+    from faebryk.libs.kicad.ipc import enable_plugin_api
     from faebryk.libs.paths import get_config_dir
 
     try:
@@ -28,10 +29,10 @@ def setup() -> None:
     except Exception as e:
         logger.warning(f"Couldn't install plugin: {e.args[0]}")
 
-    # try:
-    #     enable_plugin_api()
-    # except Exception as e:
-    #     logger.warning(f"Couldn't enable plugin api: {e!r}")
+    try:
+        enable_plugin_api()
+    except Exception as e:
+        logger.warning(f"Couldn't enable plugin api: {e!r}")
 
 
 def install_kicad_plugin() -> None:

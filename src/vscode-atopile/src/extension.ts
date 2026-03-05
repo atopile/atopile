@@ -17,6 +17,7 @@ import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
 import { backendServer } from './common/backendServer';
 import { initMenu } from './common/vscode-menu';
+import { hasConfiguredBackendPort } from './common/environment';
 import { SidebarProvider, LogViewerProvider } from './providers';
 import { ensureAtoBin } from './ui/setup';
 import * as demo from './demo';
@@ -175,7 +176,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     initServer(context);
     // If backend port is pre-configured (web-ide mode), skip ensureAtoBin —
     // the pre-started backend proves the binary works.
-    if (!process.env.ATOPILE_BACKEND_PORT) {
+    if (!hasConfiguredBackendPort()) {
         await ensureAtoBin(context);
         traceMilestone('ensureAtoBin done');
     }

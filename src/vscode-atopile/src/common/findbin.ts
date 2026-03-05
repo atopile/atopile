@@ -11,6 +11,7 @@ import * as which from 'which';
 import { getProjectRoot } from './utilities';
 import { getAtopileWorkspaceFolders } from './vscodeapi';
 import * as vscode from 'vscode';
+import { isWebIdeHost } from './environment';
 
 export interface AtoBinInfo {
     init: boolean;
@@ -370,8 +371,7 @@ function isTerminalValid(terminal: vscode.Terminal | undefined): terminal is vsc
  */
 export function getTerminalShellPath(): string | undefined {
     const isWebIde =
-        process.env.WEB_IDE_MODE === '1' ||
-        Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+        isWebIdeHost();
     return isWebIde ? '/bin/bash' : undefined;
 }
 

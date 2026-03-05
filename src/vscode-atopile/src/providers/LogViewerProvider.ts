@@ -105,23 +105,12 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       return this._getNotBuiltHtml();
     }
 
-    const cacheVersion = (() => {
-      try {
-        return Math.floor(fs.statSync(jsPath).mtimeMs).toString();
-      } catch {
-        return Date.now().toString();
-      }
-    })();
-
-    const withCacheBust = (uri: vscode.Uri): string =>
-      `${uri.toString()}?v=${cacheVersion}`;
-
-    const jsUri = withCacheBust(webview.asWebviewUri(vscode.Uri.file(jsPath)));
+    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath)).toString();
     const cssUri = fs.existsSync(cssPath)
-      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(cssPath)))
+      ? webview.asWebviewUri(vscode.Uri.file(cssPath)).toString()
       : null;
     const baseCssUri = fs.existsSync(baseCssPath)
-      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(baseCssPath)))
+      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath)).toString()
       : null;
 
     // Get backend URLs from backendServer (uses discovered port or config)

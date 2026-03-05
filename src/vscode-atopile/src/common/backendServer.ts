@@ -15,6 +15,7 @@ import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
+import { getConfiguredBackendPort, hasConfiguredBackendPort } from './environment';
 
 const BACKEND_HOST = '127.0.0.1';
 
@@ -506,7 +507,7 @@ class BackendServerManager implements vscode.Disposable {
 
         try {
             // Get a port to use - prefer the provided port, env var, or get an available one
-            const envPort = process.env.ATOPILE_BACKEND_PORT ? parseInt(process.env.ATOPILE_BACKEND_PORT, 10) : undefined;
+            const envPort = getConfiguredBackendPort();
             const envHost = process.env.ATOPILE_BACKEND_HOST;
             traceInfo(`[BackendServer] Env vars: ATOPILE_BACKEND_PORT=${process.env.ATOPILE_BACKEND_PORT ?? '(not set)'}, ATOPILE_BACKEND_HOST=${envHost ?? '(not set)'}`);
             const port = preferredPort || envPort || await getAvailablePort();
@@ -518,7 +519,7 @@ class BackendServerManager implements vscode.Disposable {
             // a second `ato serve` process that exits immediately with "already running".
             // In web-ide mode (ATOPILE_BACKEND_PORT set), the entrypoint pre-starts the
             // backend, so poll for up to 15s to give it time to become ready.
-            const preStartWaitMs = process.env.ATOPILE_BACKEND_PORT ? 15_000 : 0;
+            const preStartWaitMs = hasConfiguredBackendPort() ? 15_000 : 0;
             const pollStart = Date.now();
             do {
                 if (await checkServerHealthHttp(this._internalApiUrl)) {
