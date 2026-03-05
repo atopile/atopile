@@ -301,14 +301,15 @@ export const api = {
       fetchJSON<InstalledPartsResponse>(
         `/api/parts/installed?project_root=${encodeURIComponent(projectRoot)}`
       ),
-    install: (lcscId: string, projectRoot: string) =>
-      fetchJSON<{ success: boolean; identifier?: string; path?: string; error?: string }>(
+    install: (lcscId: string, projectRoot: string, options?: { createPackage?: boolean }) =>
+      fetchJSON<{ success: boolean; identifier?: string; path?: string; created_package?: boolean; import_statement?: string; error?: string }>(
         '/api/parts/install',
         {
           method: 'POST',
           body: JSON.stringify({
             lcsc_id: lcscId,
             project_root: projectRoot,
+            create_package: options?.createPackage ?? false,
           }),
         }
       ),

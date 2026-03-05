@@ -16,6 +16,7 @@ interface PanelControls {
 
 interface UseSidebarEffectsProps {
   selectedProjectRoot: string | null;
+  selectedTargetRoot: string | null;
   selectedTargetName: string | null;
   panels: PanelControls;
   action: (name: string, data?: Record<string, unknown>) => void;
@@ -23,10 +24,13 @@ interface UseSidebarEffectsProps {
 
 export function useSidebarEffects({
   selectedProjectRoot,
+  selectedTargetRoot,
   selectedTargetName,
   panels,
   action,
 }: UseSidebarEffectsProps) {
+  const activeProjectRoot = selectedTargetRoot || selectedProjectRoot;
+
   const fetchPackages = async () => {
     const store = useStore.getState();
     store.setLoadingPackages(true);
@@ -130,12 +134,12 @@ export function useSidebarEffects({
       return;
     }
 
-    if (!selectedTargetName) {
+    if (!selectedTargetName || !activeProjectRoot) {
       return;
     }
 
-    void fetchBom(selectedProjectRoot, selectedTargetName);
-  }, [selectedProjectRoot, selectedTargetName]);
+    void fetchBom(activeProjectRoot, selectedTargetName);
+  }, [activeProjectRoot, selectedProjectRoot, selectedTargetName]);
 
   // Fetch dependencies for active project (packages panel)
   useEffect(() => {
@@ -153,12 +157,12 @@ export function useSidebarEffects({
       return;
     }
 
-    if (!selectedTargetName) {
+    if (!selectedTargetName || !activeProjectRoot) {
       return;
     }
 
-    void fetchVariables(selectedProjectRoot, selectedTargetName);
-  }, [selectedProjectRoot, selectedTargetName]);
+    void fetchVariables(activeProjectRoot, selectedTargetName);
+  }, [activeProjectRoot, selectedProjectRoot, selectedTargetName]);
 
   // Package install state is owned by backend; frontend is read-only.
   // Auto-expand/collapse is now handled by usePanelSizing hook based on store state.

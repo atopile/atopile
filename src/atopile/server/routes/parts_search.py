@@ -64,12 +64,18 @@ class InstalledPartsResponse(BaseModel):
 class InstallPartRequest(BaseModel):
     lcsc_id: str = Field(..., description="LCSC part number (e.g. C2040)")
     project_root: str = Field(..., description="Project root directory")
+    create_package: bool = Field(
+        default=False,
+        description="When true, install the part into a generated local package.",
+    )
 
 
 class InstallPartResponse(BaseModel):
     success: bool
     identifier: Optional[str] = None
     path: Optional[str] = None
+    created_package: Optional[bool] = None
+    import_statement: Optional[str] = None
     message: Optional[str] = None
     error: Optional[str] = None
 
@@ -164,11 +170,18 @@ async def get_installed_parts(
 @router.post("/api/parts/install", response_model=InstallPartResponse)
 async def install_part(payload: InstallPartRequest):
     try:
-        result = await asyncio.to_thread(
-            parts_domain.handle_install_part,
-            payload.lcsc_id,
-            payload.project_root,
-        )
+        if payload.create_package:
+            result = await asyncio.to_thread(
+                parts_domain.handle_install_part_as_package,
+                payload.lcsc_id,
+                payload.project_root,
+            )
+        else:
+            result = await asyncio.to_thread(
+                parts_domain.handle_install_part,
+                payload.lcsc_id,
+                payload.project_root,
+            )
         # Emit parts_changed event so UI refreshes
         server_state = get_server_state()
         await server_state.emit_event(
@@ -176,14 +189,27 @@ async def install_part(payload: InstallPartRequest):
             {
                 "project_root": payload.project_root,
                 "lcsc_id": payload.lcsc_id,
-                "installed": True,
+                "installed": not payload.create_package,
+                "created_package": payload.create_package,
             },
         )
         return InstallPartResponse(
             success=True,
             identifier=result.get("identifier"),
             path=result.get("path"),
-            message=f"Installed {payload.lcsc_id}",
+            created_package=(
+                bool(result.get("created_package")) if payload.create_package else None
+            ),
+            import_statement=(
+                str(result.get("import_statement"))
+                if payload.create_package and result.get("import_statement")
+                else None
+            ),
+            message=(
+                f"Installed {payload.lcsc_id} as package"
+                if payload.create_package
+                else f"Installed {payload.lcsc_id}"
+            ),
         )
     except Exception as exc:
         return InstallPartResponse(success=False, error=str(exc))
