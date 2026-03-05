@@ -27,10 +27,15 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
 
   const projectModules = useStore((state) => (projectRoot ? state.projectModules[projectRoot] ?? [] : []));
   const projectFileNodes = useStore((state) => (projectRoot ? state.projectFiles[projectRoot] ?? [] : []));
+  const isLoadingModules = useStore((state) => state.isLoadingModules);
+  const isLoadingFiles = useStore((state) => state.isLoadingFiles);
   const queuedBuilds = useStore((state) => state.queuedBuilds);
 
   const projectFiles = useMemo(() => flattenFileNodes(projectFileNodes), [projectFileNodes]);
-  const composerState = useAgentComposerState(projectModules, projectFiles);
+  const composerState = useAgentComposerState(projectModules, projectFiles, {
+    isLoadingModules,
+    isLoadingFiles,
+  });
   const panelState = useAgentPanelState(messages);
 
   const resetChatUiState = useCallback(() => {
@@ -163,6 +168,7 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
     compactionNotice,
     mentionToken: composerState.mentionToken,
     mentionItems: composerState.mentionItems,
+    isLoadingMentions: composerState.isLoadingMentions,
     mentionIndex: composerState.mentionIndex,
     messagesRef: panelState.messagesRef,
     composerInputRef: composerState.composerInputRef,

@@ -1071,6 +1071,12 @@
   border-bottom: 0;
 }
 
+.agent-mention-empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .agent-mention-item:hover,
 .agent-mention-item.active {
   background: color-mix(in srgb, var(--accent) 12%, transparent);

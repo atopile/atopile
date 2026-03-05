@@ -78,6 +78,8 @@ export function useAgentSessionState({
   const projectFileNodes = useStore((state) => (projectRoot ? state.projectFiles[projectRoot] ?? [] : []));
   const setProjectModules = useStore((state) => state.setProjectModules);
   const setProjectFiles = useStore((state) => state.setProjectFiles);
+  const setLoadingModules = useStore((state) => state.setLoadingModules);
+  const setLoadingFiles = useStore((state) => state.setLoadingFiles);
   const chatSnapshots = useStore((state) => state.agentState.snapshots);
   const activeChatByProject = useStore((state) => state.agentState.activeChatByProject);
   const isSnapshotsHydrated = useStore((state) => state.agentState.isHydrated);
@@ -313,16 +315,19 @@ export function useAgentSessionState({
     if (!projectRoot) return;
     if (projectModules.length > 0) return;
     let cancelled = false;
+    setLoadingModules(true);
     void api.modules.list(projectRoot)
       .then((result) => {
         if (cancelled) return;
         setProjectModules(projectRoot, result.modules || []);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setLoadingModules(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [projectModules.length, projectRoot, setProjectModules]);
+  }, [projectModules.length, projectRoot, setLoadingModules, setProjectModules]);
 
   useEffect(() => {
     if (!projectRoot) return;
@@ -339,8 +344,9 @@ export function useAgentSessionState({
   useEffect(() => {
     if (!projectRoot) return;
     if (projectFileNodes.length > 0) return;
+    setLoadingFiles(true);
     postMessage({ type: 'listFiles', projectRoot, includeAll: true });
-  }, [projectFileNodes.length, projectRoot]);
+  }, [projectFileNodes.length, projectRoot, setLoadingFiles]);
 
   useEffect(() => {
     if (isSessionLoading) {

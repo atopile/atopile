@@ -54,7 +54,7 @@ tool-calling loop. It reads all config from environment variables at startup.
 | `ATOPILE_AGENT_MODEL` | `gpt-5.3-codex` | Model identifier |
 | `ATOPILE_AGENT_TIMEOUT_S` | `120` | Per-request timeout (seconds) |
 | `ATOPILE_AGENT_MAX_TOOL_LOOPS` | `240` | Max tool invocations per turn |
-| `ATOPILE_AGENT_MAX_TURN_SECONDS` | `480` | Max wall-clock time per turn (clamped 30–3600) |
+| `ATOPILE_AGENT_MAX_TURN_SECONDS` | `7200` | Max wall-clock time per turn (clamped 30–7200) |
 
 Skills are loaded from `.claude/skills/` relative to the repo root.
 

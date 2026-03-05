@@ -43,7 +43,7 @@ class AgentConfig:
     api_key: str | None = None
     timeout_s: float = 120.0
     max_tool_loops: int = 240
-    max_turn_seconds: float = 480.0
+    max_turn_seconds: float = 7_200.0
     api_retries: int = 4
     api_retry_base_delay_s: float = 0.5
     api_retry_max_delay_s: float = 8.0
@@ -90,7 +90,7 @@ class AgentConfig:
             timeout_s=_env_float("ATOPILE_AGENT_TIMEOUT_S", "120"),
             max_tool_loops=_env_int("ATOPILE_AGENT_MAX_TOOL_LOOPS", "240"),
             max_turn_seconds=_env_float(
-                "ATOPILE_AGENT_MAX_TURN_SECONDS", "480", lo=30.0, hi=3_600.0
+                "ATOPILE_AGENT_MAX_TURN_SECONDS", "7200", lo=30.0, hi=7_200.0
             ),
             api_retries=_env_int("ATOPILE_AGENT_API_RETRIES", "4"),
             api_retry_base_delay_s=_env_float(

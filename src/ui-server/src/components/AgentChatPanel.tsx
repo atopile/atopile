@@ -108,7 +108,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
               onToggleTraceGroupExpanded={runtime.toggleTraceGroupExpanded}
               onToggleTraceExpanded={runtime.toggleTraceExpanded}
               onToggleChangesExpanded={() => runtime.setChangesExpanded((value) => !value)}
-              onSubmitDesignQuestions={(answers) => void runtime.sendMessage(answers)}
+              onSubmitDesignQuestions={(answers) => void runtime.sendMessage({ directMessage: answers, hideUserMessage: true })}
               onOpenFileDiff={runtime.openFileDiff}
             />
 
@@ -117,6 +117,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
               input={runtime.input}
               mentionToken={runtime.mentionToken}
               mentionItems={runtime.mentionItems}
+              isLoadingMentions={runtime.isLoadingMentions}
               mentionIndex={runtime.mentionIndex}
               projectRoot={projectRoot}
               isReady={runtime.isReady}

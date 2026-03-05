@@ -2,11 +2,20 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ModuleDefinition } from '../../../types/build';
 import { buildMentionItems, findMentionToken, type MentionItem, type MentionToken } from './shared';
 
-export function useAgentComposerState(projectModules: ModuleDefinition[], projectFiles: string[]) {
+export function useAgentComposerState(
+  projectModules: ModuleDefinition[],
+  projectFiles: string[],
+  options?: { isLoadingModules?: boolean; isLoadingFiles?: boolean },
+) {
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [input, setInput] = useState('');
   const [mentionToken, setMentionToken] = useState<MentionToken | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const isLoadingMentions = Boolean(
+    mentionToken
+      && ((options?.isLoadingModules && projectModules.length === 0)
+        || (options?.isLoadingFiles && projectFiles.length === 0)),
+  );
 
   const mentionItems = useMemo(
     () => buildMentionItems(mentionToken, projectModules, projectFiles),
@@ -45,6 +54,7 @@ export function useAgentComposerState(projectModules: ModuleDefinition[], projec
     mentionToken,
     setMentionToken,
     mentionItems,
+    isLoadingMentions,
     mentionIndex,
     setMentionIndex,
     refreshMentionFromInput,

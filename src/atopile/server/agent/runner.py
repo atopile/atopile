@@ -143,6 +143,24 @@ _STUCK_TOOL_PATTERNS = (
 )
 
 
+def _summarize_model_preamble(text: str, *, max_chars: int = 180) -> str | None:
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        return None
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return f"{cleaned[: max_chars - 1].rstrip()}…"
+
+
+def _build_turn_time_budget_stop_text(
+    elapsed: float, loops: int, traces: list[ToolTrace]
+) -> str:
+    return (
+        f"Stopped after exceeding the per-turn time budget "
+        f"({elapsed:.1f}s, {loops} loops, {len(traces)} tool calls)."
+    )
+
+
 def _build_kickstart_msg(checklist: Any) -> str:
     """Build a forceful kickstart prompt when the model produces empty responses.
 
@@ -432,6 +450,16 @@ class AgentRunner:
             previous_response_id=previous_response_id,
         )
         last_response_id = response.id or last_response_id
+        initial_preamble = _summarize_model_preamble(response.text)
+        if initial_preamble and response.tool_calls:
+            await self._emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Planning",
+                    "detail_text": initial_preamble,
+                },
+            )
         log.info(
             "Initial response: phase=%s, tool_calls=%d, text_len=%d",
             response.phase,
@@ -443,39 +471,39 @@ class AgentRunner:
         while loops < cfg.max_tool_loops:
             elapsed = time.monotonic() - started_at
 
-            # Time budget check
-            if elapsed >= cfg.max_turn_seconds:
-                return self._stop(
-                    reason="turn_time_budget_exceeded",
-                    text=(
-                        f"Stopped after exceeding the per-turn time budget "
-                        f"({elapsed:.1f}s, {loops} loops, {len(traces)} tool calls)."
-                    ),
-                    traces=traces,
-                    last_response_id=last_response_id,
-                    skill_state=skill_state,
-                    telemetry=telemetry,
-                )
-
             loops += 1
 
             # No tool calls → check phase/checklist/steering, then done
             if not response.tool_calls:
+                if elapsed >= cfg.max_turn_seconds:
+                    return self._stop(
+                        reason="turn_time_budget_exceeded",
+                        text=_build_turn_time_budget_stop_text(elapsed, loops, traces),
+                        traces=traces,
+                        last_response_id=last_response_id,
+                        skill_state=skill_state,
+                        telemetry=telemetry,
+                    )
                 # Commentary phase means the model is still working (preamble
                 # text before tool calls).  Re-prompt so it can continue.
                 if response.phase == "commentary":
+                    commentary_preamble = _summarize_model_preamble(response.text)
                     await self._emit_progress(
                         progress_callback,
                         {
                             "phase": "thinking",
                             "status_text": "Working",
-                            "detail_text": "Continuing after preamble",
+                            "detail_text": commentary_preamble or "Continuing after preamble",
                         },
                     )
                     await self._emit_trace(
                         active_trace,
                         "commentary_continuation",
-                        {"loop": loops, "text_len": len(response.text)},
+                        {
+                            "loop": loops,
+                            "text_len": len(response.text),
+                            "text_preview": commentary_preamble,
+                        },
                     )
                     response = await self._provider.complete(
                         messages=[],
@@ -486,6 +514,16 @@ class AgentRunner:
                         previous_response_id=last_response_id,
                     )
                     last_response_id = response.id or last_response_id
+                    continued_preamble = _summarize_model_preamble(response.text)
+                    if continued_preamble and response.tool_calls:
+                        await self._emit_progress(
+                            progress_callback,
+                            {
+                                "phase": "thinking",
+                                "status_text": "Working",
+                                "detail_text": continued_preamble,
+                            },
+                        )
                     continue
 
                 # Checklist continuation: if there's an active checklist
@@ -953,6 +991,16 @@ class AgentRunner:
             # Force turn end (e.g. after design_questions)
             if turn_state.force_turn_end:
                 log.info("Force turn end (loop=%d, traces=%d)", loops, len(traces))
+                last_response_id = await self._close_provider_tool_chain(
+                    outputs=outputs,
+                    instructions=instructions,
+                    skill_state=skill_state,
+                    project_path=project_path,
+                    previous_response_id=last_response_id,
+                    active_trace=active_trace,
+                    loops=loops,
+                    reason="force_turn_end",
+                )
                 if turn_state.checklist is not None:
                     turn_state.checklist.save_to_skill_state(skill_state)
                 await self._emit_trace(
@@ -974,7 +1022,7 @@ class AgentRunner:
                     done_payload["checklist"] = turn_state.checklist.to_dict()
                 await self._emit_progress(progress_callback, done_payload)
                 return AgentTurnResult(
-                    text=response.text or "Design questions sent to user.",
+                    text="",
                     tool_traces=traces,
                     model=cfg.model,
                     response_id=last_response_id,
@@ -986,6 +1034,29 @@ class AgentRunner:
             steering = self._collect_steering(consume_steering_messages, session_id=session_id, project_root=str(project_path))
             if steering:
                 outputs.extend(steering)
+
+            elapsed_after_tools = time.monotonic() - started_at
+            if elapsed_after_tools >= cfg.max_turn_seconds:
+                last_response_id = await self._close_provider_tool_chain(
+                    outputs=outputs,
+                    instructions=instructions,
+                    skill_state=skill_state,
+                    project_path=project_path,
+                    previous_response_id=last_response_id,
+                    active_trace=active_trace,
+                    loops=loops,
+                    reason="turn_time_budget_exceeded",
+                )
+                return self._stop(
+                    reason="turn_time_budget_exceeded",
+                    text=_build_turn_time_budget_stop_text(
+                        elapsed_after_tools, loops, traces
+                    ),
+                    traces=traces,
+                    last_response_id=last_response_id,
+                    skill_state=skill_state,
+                    telemetry=telemetry,
+                )
 
             # Thinking progress
             await self._emit_progress(
@@ -1105,6 +1176,43 @@ class AgentRunner:
             context_metrics=telemetry,
         )
 
+    async def _close_provider_tool_chain(
+        self,
+        *,
+        outputs: list[dict[str, Any]],
+        instructions: str,
+        skill_state: dict[str, Any],
+        project_path: Path,
+        previous_response_id: str | None,
+        active_trace: TraceCallback | None,
+        loops: int,
+        reason: str,
+    ) -> str | None:
+        if not outputs:
+            return previous_response_id
+
+        closing_response = await self._provider.complete(
+            messages=outputs,
+            instructions=instructions,
+            tools=[],
+            skill_state=skill_state,
+            project_path=project_path,
+            previous_response_id=previous_response_id,
+        )
+        next_response_id = closing_response.id or previous_response_id
+        if closing_response.tool_calls:
+            await self._emit_trace(
+                active_trace,
+                "provider_chain_closed_with_ignored_tool_calls",
+                {
+                    "loop": loops,
+                    "reason": reason,
+                    "tool_calls_total": len(closing_response.tool_calls),
+                    "tool_names": [call.name for call in closing_response.tool_calls],
+                },
+            )
+        return next_response_id
+
     @staticmethod
     def _handle_managed_tool(
         tool_name: str,
@@ -1123,6 +1231,12 @@ class AgentRunner:
                 questions = args.get("questions", [])
                 if not questions:
                     return {"error": "questions list is empty"}, False
+                if state.checklist is not None:
+                    for item in state.checklist.items:
+                        if item.id == "questions" and item.status in {"not_started", "doing"}:
+                            item.status = "done"
+                            break
+                    state.checklist.save_to_skill_state(skill_state)
                 # Signal the runner to end the turn after this tool call.
                 state.force_turn_end = True
                 return {

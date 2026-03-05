@@ -215,13 +215,15 @@ export function AgentMessagesView({
                 </div>
               )}
               {message.role === 'assistant' && toolTraceSection}
-              <div className="agent-message-bubble">
-                <div className="agent-message-content agent-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content}
-                  </ReactMarkdown>
+              {message.content.trim().length > 0 && (
+                <div className="agent-message-bubble">
+                  <div className="agent-message-content agent-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
                 </div>
-              </div>
+              )}
               {message.designQuestions && !message.pending && (
                 <DesignQuestionsCard
                   data={message.designQuestions}

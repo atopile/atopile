@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import { traceExpansionKey } from '../components/viewHelpers';
 import type { AgentMessage } from '../state/types';
 
 export function useAgentPanelState(messages: AgentMessage[]) {
@@ -27,44 +26,6 @@ export function useAgentPanelState(messages: AgentMessage[]) {
     const element = messagesRef.current;
     if (!element) return;
     element.scrollTop = element.scrollHeight;
-  }, [messages]);
-
-  useEffect(() => {
-    const activeTraceGroupKeys = new Set<string>();
-    const activeTraceKeys = new Set<string>();
-    for (const message of messages) {
-      if (!message.toolTraces || message.toolTraces.length === 0) continue;
-      activeTraceGroupKeys.add(message.id);
-      message.toolTraces.forEach((trace, index) => {
-        activeTraceKeys.add(traceExpansionKey(message.id, trace, index));
-      });
-    }
-
-    setExpandedTraceGroups((previous) => {
-      if (previous.size === 0) return previous;
-      const next = new Set<string>();
-      previous.forEach((groupKey) => {
-        if (activeTraceGroupKeys.has(groupKey)) next.add(groupKey);
-      });
-      if (next.size !== previous.size) return next;
-      for (const groupKey of previous) {
-        if (!next.has(groupKey)) return next;
-      }
-      return previous;
-    });
-
-    setExpandedTraceKeys((previous) => {
-      if (previous.size === 0) return previous;
-      const next = new Set<string>();
-      previous.forEach((traceKey) => {
-        if (activeTraceKeys.has(traceKey)) next.add(traceKey);
-      });
-      if (next.size !== previous.size) return next;
-      for (const traceKey of previous) {
-        if (!next.has(traceKey)) return next;
-      }
-      return previous;
-    });
   }, [messages]);
 
   useEffect(() => {

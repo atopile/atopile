@@ -25,6 +25,7 @@ export interface MentionItem {
   label: string;
   token: string;
   subtitle?: string;
+  keywords?: string[];
 }
 
 export function findMentionToken(input: string, caret: number): MentionToken | null {
@@ -126,8 +127,14 @@ export function buildMentionItems(
       label: moduleEntry.entry,
       token: moduleEntry.entry,
       subtitle: moduleEntry.type,
+      keywords: [moduleEntry.entry, moduleEntry.name].filter(Boolean),
     }))
-    .filter((item) => !query || item.label.toLowerCase().includes(query));
+    .filter((item) => {
+      if (!query) return true;
+      return (item.keywords ?? [item.label]).some((keyword) =>
+        keyword.toLowerCase().includes(query),
+      );
+    });
 
   const fileItems = projectFiles
     .map((path): MentionItem => ({

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DesignQuestionsData } from '../state/types';
 
 export function DesignQuestionsCard({
@@ -10,9 +10,16 @@ export function DesignQuestionsCard({
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const total = data.questions.length;
   const question = data.questions[currentIndex];
   if (!question) return null;
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setAnswers({});
+    setIsSubmitted(false);
+  }, [data]);
 
   const currentAnswer = answers[question.id] ?? '';
   const answeredCount = Object.values(answers).filter((value) => value.trim().length > 0).length;
@@ -34,6 +41,7 @@ export function DesignQuestionsCard({
       const answer = (answers[item.id] ?? '').trim() || item.default || 'No preference';
       lines.push(`${item.id}: ${answer}`);
     }
+    setIsSubmitted(true);
     onSubmit(lines.join('\n'));
   };
 
@@ -59,6 +67,7 @@ export function DesignQuestionsCard({
               type="button"
               className={`agent-dq-option ${currentAnswer === option ? 'selected' : ''}`}
               onClick={() => selectOption(option)}
+              disabled={isSubmitted}
             >
               {option}
               {question.default === option && <span className="agent-dq-default-badge">default</span>}
@@ -72,6 +81,7 @@ export function DesignQuestionsCard({
           className="agent-dq-text-input"
           placeholder={question.default ? `Default: ${question.default}` : 'Type your answer...'}
           value={currentAnswer}
+          disabled={isSubmitted}
           onChange={(event) => setAnswers((previous) => ({ ...previous, [question.id]: event.target.value }))}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -87,12 +97,14 @@ export function DesignQuestionsCard({
         <button
           type="button"
           className="agent-dq-prev"
-          disabled={currentIndex === 0}
+          disabled={isSubmitted || currentIndex === 0}
           onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
         >
           Previous
         </button>
-        {currentIndex < total - 1 ? (
+        {isSubmitted ? (
+          <span className="agent-dq-submit-status">Answers submitted</span>
+        ) : currentIndex < total - 1 ? (
           <button
             type="button"
             className="agent-dq-next"

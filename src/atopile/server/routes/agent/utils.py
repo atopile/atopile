@@ -75,6 +75,13 @@ _ERROR_EVENTS = {
     "run_failed",
 }
 
+_CHAIN_INTEGRITY_ERROR_SNIPPETS = (
+    "No tool output found for function call",
+    "previous_response_id",
+    "Could not find response",
+    "response not found",
+)
+
 
 def _ensure_agent_logs_db() -> None:
     """Lazily initialize the agent_logs DB (safe to call multiple times)."""
@@ -134,6 +141,70 @@ def log_agent_event(event: str, payload: dict[str, Any]) -> None:
         AgentLogs.append_chunk([entry])
     except Exception:
         log.exception("Failed to append agent event to SQLite")
+
+
+def is_chain_integrity_error(error: str) -> bool:
+    return any(snippet in error for snippet in _CHAIN_INTEGRITY_ERROR_SNIPPETS)
+
+
+def invalidate_session_response_chain(session: AgentSession) -> None:
+    session.last_response_id = None
+    session.conversation_id = None
+    session.updated_at = time.time()
+
+
+async def run_turn_with_chain_recovery(
+    *,
+    session: AgentSession,
+    ctx: AppContext,
+    project_root: str,
+    history: list[dict[str, str]],
+    user_message: str,
+    session_id: str,
+    selected_targets: list[str] | None,
+    tool_memory: dict[str, dict[str, Any]],
+    progress_callback: Any = None,
+    consume_steering_messages: Any = None,
+    trace_callback: TraceCallback | None = None,
+) -> Any:
+    """Retry once from local history when the provider response chain is stale."""
+    try:
+        return await orchestrator.run_turn(
+            ctx=ctx,
+            project_root=project_root,
+            history=history,
+            user_message=user_message,
+            session_id=session_id,
+            selected_targets=selected_targets,
+            previous_response_id=session.last_response_id,
+            tool_memory=tool_memory,
+            progress_callback=progress_callback,
+            consume_steering_messages=consume_steering_messages,
+            trace_callback=trace_callback,
+        )
+    except Exception as exc:
+        if not is_chain_integrity_error(str(exc)) or not session.last_response_id:
+            raise
+
+        log.warning(
+            "Invalidating stale response chain for session %s and retrying from local history",
+            session_id,
+        )
+        invalidate_session_response_chain(session)
+
+        return await orchestrator.run_turn(
+            ctx=ctx,
+            project_root=project_root,
+            history=history,
+            user_message=user_message,
+            session_id=session_id,
+            selected_targets=selected_targets,
+            previous_response_id=None,
+            tool_memory=tool_memory,
+            progress_callback=progress_callback,
+            consume_steering_messages=consume_steering_messages,
+            trace_callback=trace_callback,
+        )
 
 
 def _should_log_run_progress() -> bool:
@@ -429,14 +500,14 @@ async def run_turn_in_background(
     )
 
     try:
-        result = await orchestrator.run_turn(
+        result = await run_turn_with_chain_recovery(
+            session=session,
             ctx=ctx,
             project_root=run.project_root,
             history=list(session.history),
             user_message=run.message,
             session_id=session_id,
             selected_targets=run.selected_targets,
-            previous_response_id=session.last_response_id,
             tool_memory=session.tool_memory,
             progress_callback=_emit_progress,
             consume_steering_messages=_consume_steering_messages,
@@ -470,6 +541,8 @@ async def run_turn_in_background(
             if current:
                 if current.active_run_id == run_id:
                     current.active_run_id = None
+                if is_chain_integrity_error(str(exc)):
+                    invalidate_session_response_chain(current)
                 current.history.append({"role": USER_ROLE, "content": run.message})
                 current.history.append(
                     {

@@ -458,7 +458,6 @@ export function applyProgressToMessages(
     if (parsed.phase === 'thinking') {
       return {
         ...message,
-        content: nextActivity ? `${nextActivity}...` : message.content,
         activity: nextActivity ?? message.activity,
         checklist: latestChecklist,
       };

@@ -48,6 +48,11 @@ interface RunStateDeps {
   setMentionIndex: (value: number) => void;
 }
 
+interface SendMessageOptions {
+  directMessage?: string;
+  hideUserMessage?: boolean;
+}
+
 export function useAgentRunState({
   projectRoot,
   selectedTargets,
@@ -275,7 +280,11 @@ export function useAgentRunState({
     }
   }, [activeChatId, activeChatSnapshot, activeRunId, input, isSending, projectRoot, sessionId, setActivityLabel, setError, setInput, setMentionIndex, setMentionToken, setMessages, pendingSteeringByChatRef, activeChatIdRef, updateChatSnapshot]);
 
-  const sendMessage = useCallback(async (directMessage?: string) => {
+  const sendMessage = useCallback(async (options?: string | SendMessageOptions) => {
+    const directMessage = typeof options === 'string' ? options : options?.directMessage;
+    const hideUserMessage = typeof options === 'object' && options !== null
+      ? options.hideUserMessage === true
+      : false;
     const trimmed = (directMessage ?? input).trim();
     if (!trimmed || !projectRoot || !sessionId || !activeChatId || isSending) return;
     const chatId = activeChatId;
@@ -294,7 +303,7 @@ export function useAgentRunState({
 
     updateChatSnapshot(chatId, (chat) => ({
       ...chat,
-      messages: [...chat.messages, userMessage, pendingAssistantMessage],
+      messages: [...chat.messages, ...(hideUserMessage ? [] : [userMessage]), pendingAssistantMessage],
       input: '',
       error: null,
       activityLabel: 'Planning',
@@ -307,7 +316,7 @@ export function useAgentRunState({
       activityElapsedSeconds: 0,
     }));
 
-    setMessages((previous) => [...previous, userMessage, pendingAssistantMessage]);
+    setMessages((previous) => [...previous, ...(hideUserMessage ? [] : [userMessage]), pendingAssistantMessage]);
     setInput('');
     setMentionToken(null);
     setMentionIndex(0);
@@ -367,7 +376,9 @@ export function useAgentRunState({
       const buildFinalMessage = (pending: AgentMessage | undefined): AgentMessage => ({
         id: `${chatPrefix}-assistant-${Date.now()}`,
         role: 'assistant',
-        content: withCompletionNudge(normalizeAssistantText(response.assistantMessage), finalizedTraces),
+        content: pending?.designQuestions
+          ? normalizeAssistantText(response.assistantMessage)
+          : withCompletionNudge(normalizeAssistantText(response.assistantMessage), finalizedTraces),
         toolTraces: finalizedTraces,
         designQuestions: pending?.designQuestions ?? null,
         checklist: pending?.checklist ?? null,

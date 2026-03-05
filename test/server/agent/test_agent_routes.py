@@ -8,8 +8,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from atopile.dataclasses import AppContext
+import atopile.server.routes.agent.state as agent_state
 from atopile.server.routes.agent import main as agent_routes
 from atopile.server.routes.agent import utils as agent_utils
+from atopile.server.routes.agent.models import AgentRun
 
 
 @pytest.fixture(autouse=True)
@@ -21,8 +23,8 @@ def _clear_agent_route_state(monkeypatch: pytest.MonkeyPatch):
         agent_utils.sessions_by_id.clear()
     with agent_utils.runs_lock:
         agent_utils.runs_by_id.clear()
-    with agent_utils.sync_turns_lock:
-        agent_utils.sync_turns_by_session.clear()
+    with agent_state.sync_turns_lock:
+        agent_state.sync_turns_by_session.clear()
 
     yield
 
@@ -30,8 +32,8 @@ def _clear_agent_route_state(monkeypatch: pytest.MonkeyPatch):
         agent_utils.sessions_by_id.clear()
     with agent_utils.runs_lock:
         agent_utils.runs_by_id.clear()
-    with agent_utils.sync_turns_lock:
-        agent_utils.sync_turns_by_session.clear()
+    with agent_state.sync_turns_lock:
+        agent_state.sync_turns_by_session.clear()
 
 
 @pytest.fixture
@@ -187,3 +189,121 @@ async def test_second_sync_message_conflicts_while_first_is_running(
     release.set()
     first = await first_request
     assert first.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_sync_chain_integrity_error_retries_without_last_response_id(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    project_root: Path,
+) -> None:
+    create = await client.post(
+        "/api/agent/sessions",
+        json={"projectRoot": str(project_root)},
+    )
+    assert create.status_code == 200
+    session_id = create.json()["sessionId"]
+
+    with agent_utils.sessions_lock:
+        session = agent_utils.sessions_by_id[session_id]
+        session.last_response_id = "resp_bad"
+
+    calls: list[object] = []
+
+    async def fake_run_turn(**kwargs: object):
+        calls.append(kwargs.get("previous_response_id"))
+        if len(calls) == 1:
+            raise RuntimeError(
+                "Model API request failed (400): No tool output found for function call call_123."
+            )
+
+        class Result:
+            text = "recovered"
+            tool_traces = []
+            model = "test"
+            response_id = "resp_recovered"
+            skill_state = {}
+            context_metrics = {}
+
+        return Result()
+
+    monkeypatch.setattr(agent_routes.orchestrator, "run_turn", fake_run_turn)
+
+    response = await client.post(
+        f"/api/agent/sessions/{session_id}/messages",
+        json={
+            "message": "continue",
+            "projectRoot": str(project_root),
+            "selectedTargets": [],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["assistantMessage"] == "recovered"
+
+    with agent_utils.sessions_lock:
+        session = agent_utils.sessions_by_id[session_id]
+        assert session.last_response_id == "resp_recovered"
+
+    assert calls == ["resp_bad", None]
+
+
+@pytest.mark.anyio
+async def test_background_chain_integrity_error_retries_without_last_response_id(
+    monkeypatch: pytest.MonkeyPatch,
+    project_root: Path,
+) -> None:
+    session = agent_utils.AgentSession(
+        session_id="session_bg",
+        project_root=str(project_root),
+        last_response_id="resp_bad",
+    )
+    run = AgentRun(
+        run_id="run_bg",
+        session_id=session.session_id,
+        message="continue",
+        project_root=str(project_root),
+        selected_targets=[],
+    )
+
+    with agent_utils.sessions_lock:
+        agent_utils.sessions_by_id[session.session_id] = session
+    with agent_utils.runs_lock:
+        agent_utils.runs_by_id[run.run_id] = run
+
+    calls: list[object] = []
+
+    async def fake_run_turn(**kwargs: object):
+        calls.append(kwargs.get("previous_response_id"))
+        if len(calls) == 1:
+            raise RuntimeError(
+                "Model API request failed (400): No tool output found for function call call_123."
+            )
+
+        class Result:
+            text = "recovered"
+            tool_traces = []
+            model = "test"
+            response_id = "resp_bg_recovered"
+            skill_state = {}
+            context_metrics = {}
+
+        return Result()
+
+    monkeypatch.setattr(agent_utils.orchestrator, "run_turn", fake_run_turn)
+    monkeypatch.setattr(agent_utils, "persist_sessions_state", lambda: None)
+
+    await agent_utils.run_turn_in_background(
+        run_id=run.run_id,
+        session_id=session.session_id,
+        ctx=AppContext(workspace_paths=[project_root.parent]),
+    )
+
+    with agent_utils.sessions_lock:
+        current = agent_utils.sessions_by_id[session.session_id]
+        assert current.last_response_id == "resp_bg_recovered"
+
+    with agent_utils.runs_lock:
+        current_run = agent_utils.runs_by_id[run.run_id]
+        assert current_run.status == "completed"
+
+    assert calls == ["resp_bad", None]

@@ -57,6 +57,8 @@ from .utils import (
     cleanup_finished_runs,
     emit_agent_progress,
     ensure_session_idle,
+    invalidate_session_response_chain,
+    is_chain_integrity_error,
     log_agent_event,
     normalize_running_run_state,
     orchestrator,
@@ -65,6 +67,7 @@ from .utils import (
     reserve_background_run,
     reserve_sync_turn,
     reset_session_state,
+    run_turn_with_chain_recovery,
     run_turn_in_background,
     runs_by_id,
     runs_lock,
@@ -189,19 +192,22 @@ async def send_message(
 
     try:
         try:
-            result = await orchestrator.run_turn(
+            result = await run_turn_with_chain_recovery(
+                session=session,
                 ctx=ctx,
                 project_root=request.project_root,
                 history=list(session.history),
                 user_message=request.message,
                 session_id=session_id,
                 selected_targets=request.selected_targets,
-                previous_response_id=session.last_response_id,
                 tool_memory=session.tool_memory,
                 progress_callback=emit_progress,
                 trace_callback=trace_callback,
             )
         except Exception as exc:
+            if is_chain_integrity_error(str(exc)):
+                invalidate_session_response_chain(session)
+                persist_sessions_state()
             await emit_progress({"phase": PHASE_ERROR, "error": str(exc)})
             log_agent_event(
                 EVENT_TURN_FAILED,

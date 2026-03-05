@@ -19,6 +19,7 @@ interface AgentComposerProps {
   input: string;
   mentionToken: MentionToken | null;
   mentionItems: MentionItem[];
+  isLoadingMentions: boolean;
   mentionIndex: number;
   projectRoot: string | null;
   isReady: boolean;
@@ -45,6 +46,7 @@ export function AgentComposer({
   input,
   mentionToken,
   mentionItems,
+  isLoadingMentions,
   mentionIndex,
   projectRoot,
   isReady,
@@ -62,23 +64,29 @@ export function AgentComposer({
 }: AgentComposerProps) {
   return (
     <div className="agent-chat-composer-wrap">
-      {mentionToken && mentionItems.length > 0 && (
+      {mentionToken && (
         <div className="agent-mention-menu" role="listbox" aria-label="Mention suggestions">
-          {mentionItems.map((item, index) => (
-            <button
-              key={`${item.kind}:${item.token}`}
-              type="button"
-              className={`agent-mention-item ${index === mentionIndex ? 'active' : ''}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onInsertMention(item)}
-            >
-              <span className={`agent-mention-kind ${item.kind}`}>{item.kind}</span>
-              <span className="agent-mention-label">{item.label}</span>
-              {item.subtitle && (
-                <span className="agent-mention-subtitle">{item.subtitle}</span>
-              )}
-            </button>
-          ))}
+          {mentionItems.length > 0 ? (
+            mentionItems.map((item, index) => (
+              <button
+                key={`${item.kind}:${item.token}`}
+                type="button"
+                className={`agent-mention-item ${index === mentionIndex ? 'active' : ''}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onInsertMention(item)}
+              >
+                <span className={`agent-mention-kind ${item.kind}`}>{item.kind}</span>
+                <span className="agent-mention-label">{item.label}</span>
+                {item.subtitle && (
+                  <span className="agent-mention-subtitle">{item.subtitle}</span>
+                )}
+              </button>
+            ))
+          ) : (
+            <div className="agent-mention-empty" role="status">
+              {isLoadingMentions ? 'Loading mentions…' : 'No matches'}
+            </div>
+          )}
         </div>
       )}
 
