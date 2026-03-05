@@ -444,6 +444,7 @@ export interface AppState {
   isLoadingProjects: boolean;
   projectsError: string | null;
   selectedProjectRoot: string | null;
+  selectedTargetRoot: string | null;
   selectedTargetNames: string[];
   migratingProjectRoots: string[];  // Projects currently being migrated
   migrationErrors: Record<string, string>;  // Migration errors by project root

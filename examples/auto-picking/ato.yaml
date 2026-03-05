@@ -1,0 +1,11 @@
+requires-atopile: ^0.14.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  auto-pick:
+    entry: auto-picking.ato:AutoPick
+  manual-pick:
+    entry: auto-picking.ato:ManualPick

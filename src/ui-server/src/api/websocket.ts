@@ -356,6 +356,22 @@ function getSelectedTargetName(): string | null {
   return project?.targets?.[0]?.name ?? null;
 }
 
+function getSelectedTargetRoot(): string | null {
+  const state = useStore.getState();
+  if (state.selectedTargetRoot) return state.selectedTargetRoot;
+  if (!state.selectedProjectRoot) return null;
+
+  const project = state.projects.find((entry) => entry.root === state.selectedProjectRoot);
+  if (!project) return state.selectedProjectRoot;
+
+  const selectedTargetName = state.selectedTargetNames?.[0] ?? null;
+  const selectedTarget = selectedTargetName
+    ? project.targets.find((target) => target.name === selectedTargetName)
+    : project.targets[0];
+
+  return selectedTarget?.root ?? state.selectedProjectRoot;
+}
+
 async function refreshDependencies(projectRoot?: string | null): Promise<void> {
   const root = projectRoot || useStore.getState().selectedProjectRoot;
   if (!root) return;
@@ -369,12 +385,13 @@ async function refreshDependencies(projectRoot?: string | null): Promise<void> {
 
 async function refreshBom(): Promise<void> {
   const state = useStore.getState();
-  if (!state.selectedProjectRoot) return;
+  const targetRoot = getSelectedTargetRoot();
+  if (!targetRoot) return;
   const targetName = getSelectedTargetName();
   if (!targetName) return;
   try {
     state.setLoadingBom(true);
-    const response = await api.bom.get(state.selectedProjectRoot, targetName);
+    const response = await api.bom.get(targetRoot, targetName);
     state.setBomData(response || null);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch BOM';
@@ -384,12 +401,13 @@ async function refreshBom(): Promise<void> {
 
 async function refreshVariables(): Promise<void> {
   const state = useStore.getState();
-  if (!state.selectedProjectRoot) return;
+  const targetRoot = getSelectedTargetRoot();
+  if (!targetRoot) return;
   const targetName = getSelectedTargetName();
   if (!targetName) return;
   try {
     state.setLoadingVariables(true);
-    const response = await api.variables.get(state.selectedProjectRoot, targetName);
+    const response = await api.variables.get(targetRoot, targetName);
     state.setVariablesData(response || null);
   } catch (error) {
     const message =

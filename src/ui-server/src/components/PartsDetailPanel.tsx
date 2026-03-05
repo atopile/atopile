@@ -37,9 +37,10 @@ export function PartsDetailPanel({
   const [details, setDetails] = useState<PartSearchItem | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isInstalling, setIsInstalling] = useState(false)
+  const [installMode, setInstallMode] = useState<'plain' | 'package' | null>(null)
   const [isUninstalling, setIsUninstalling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
   // Track local override of installed state: null = use part.installed, true/false = override
   const [installedOverride, setInstalledOverride] = useState<boolean | null>(null)
   const [activeVisualTab, setActiveVisualTab] = useState<'image' | 'footprint' | '3d'>('image')
@@ -77,7 +78,9 @@ export function PartsDetailPanel({
   const cooldownUntil = useRef(0)
   const COOLDOWN_MS = 1000 // 1 second cooldown between operations
 
-  const handleInstall = async () => {
+  const isInstalling = installMode !== null
+
+  const handleInstall = async (createPackage = false) => {
     if (!projectRoot) {
       setActionError('Select a project to install parts.')
       return
@@ -85,20 +88,28 @@ export function PartsDetailPanel({
     if (Date.now() < cooldownUntil.current) return
     if (isInstalling || isUninstalling) return
 
-    setIsInstalling(true)
+    setInstallMode(createPackage ? 'package' : 'plain')
     setActionError(null)
+    setActionNotice(null)
     try {
-      const response = await api.parts.install(part.lcsc, projectRoot)
+      const response = await api.parts.install(part.lcsc, projectRoot, {
+        createPackage,
+      })
       if (!response.success) {
         setActionError(response.error || 'Install failed')
       } else {
-        setInstalledOverride(true)
+        if (createPackage) {
+          setInstalledOverride(null)
+          setActionNotice('Created a local package for this part.')
+        } else {
+          setInstalledOverride(true)
+        }
         cooldownUntil.current = Date.now() + COOLDOWN_MS
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Install failed')
     } finally {
-      setIsInstalling(false)
+      setInstallMode(null)
     }
   }
 
@@ -112,6 +123,7 @@ export function PartsDetailPanel({
 
     setIsUninstalling(true)
     setActionError(null)
+    setActionNotice(null)
     try {
       const response = await api.parts.uninstall(part.lcsc, projectRoot)
       if (!response.success) {
@@ -172,30 +184,73 @@ export function PartsDetailPanel({
           <div className="parts-detail-grid">
             <div className="parts-detail-section">
               <div className="detail-install-row">
-                <button
-                  className={`detail-install-btn ${
-                    isInstalled ? 'uninstall' : 'install'
-                  } ${(isInstalling || isUninstalling) ? 'installing' : ''}`}
-                  onClick={isInstalled ? handleUninstall : handleInstall}
-                  disabled={isInstalling || isUninstalling}
-                >
-                  {(isInstalling || isUninstalling) ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      {isInstalled ? 'Uninstalling...' : 'Installing...'}
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} />
-                      {isInstalled ? 'Uninstall' : 'Install'}
-                    </>
-                  )}
-                </button>
+                {isInstalled ? (
+                  <button
+                    className={`detail-install-btn uninstall ${isUninstalling ? 'installing' : ''}`}
+                    onClick={handleUninstall}
+                    disabled={isInstalling || isUninstalling}
+                  >
+                    {isUninstalling ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Uninstalling...
+                      </>
+                    ) : (
+                      <>
+                        <Download size={14} />
+                        Uninstall
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="detail-install-split">
+                    <button
+                      className={`detail-install-btn install ${installMode === 'plain' ? 'installing' : ''}`}
+                      onClick={() => void handleInstall(false)}
+                      disabled={isInstalling || isUninstalling}
+                    >
+                      {installMode === 'plain' ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Installing...
+                        </>
+                      ) : (
+                        <>
+                          <Download size={14} />
+                          Install
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className={`detail-install-btn install-package ${installMode === 'package' ? 'installing' : ''}`}
+                      onClick={() => void handleInstall(true)}
+                      disabled={isInstalling || isUninstalling}
+                    >
+                      {installMode === 'package' ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Creating package...
+                        </>
+                      ) : (
+                        <>
+                          <Download size={14} />
+                          Install as package
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
               {actionError && (
                 <div className="detail-install-error">
                   <AlertCircle size={12} />
                   <span>{actionError}</span>
+                </div>
+              )}
+              {actionNotice && (
+                <div className="parts-install-success">
+                  <CheckCircle size={12} />
+                  <span>{actionNotice}</span>
                 </div>
               )}
             </div>

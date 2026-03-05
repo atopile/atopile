@@ -52,4 +52,4 @@ dependencies:
   release: 0.2.0
 - type: registry
   identifier: atopile/opsco-sk6805-ec20
-  release: 0.4.0
+  release: 0.4.1

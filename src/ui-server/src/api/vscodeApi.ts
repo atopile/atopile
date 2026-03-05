@@ -79,6 +79,7 @@ export interface AtopileSettingsMessage {
 export interface SelectionChangedMessage {
   type: 'selectionChanged';
   projectRoot: string | null;
+  targetRoot?: string | null;
   targetNames: string[];
 }
 

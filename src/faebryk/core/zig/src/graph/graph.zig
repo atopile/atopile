@@ -7,10 +7,22 @@ const base_allocator = std.heap.page_allocator;
 var arena_allocator = std.heap.ArenaAllocator.init(base_allocator);
 var global_graph_allocator: std.mem.Allocator = arena_allocator.allocator();
 
-// Static storage for edges and attributes (temporary - will be replaced with proper allocator)
+// Static storage for nodes and edges (temporary - will be replaced with proper allocator)
 var Nodes: [8 * 1024 * 1024]Node = undefined;
 var Edges: [16 * 1024 * 1024]Edge = undefined;
-var Attrs: [4 * 1024 * 1024]DynamicAttributes = undefined;
+
+// Heap-allocated storage for dynamic attributes (large designs exhaust 4M static entries)
+const ATTRS_CAPACITY: usize = 16 * 1024 * 1024;
+var Attrs: []DynamicAttributes = &.{};
+var attrs_initialized: bool = false;
+
+fn ensureAttrsInitialized() void {
+    if (!attrs_initialized) {
+        const mem = base_allocator.alloc(DynamicAttributes, ATTRS_CAPACITY) catch @panic("Failed to allocate DynamicAttributes pool");
+        Attrs = mem;
+        attrs_initialized = true;
+    }
+}
 
 // =============================================================================
 // Data types
@@ -76,7 +88,7 @@ pub const DynamicAttributes = struct {
     in_use: u3 = 0,
     // try to keep this low enough to fit in a 256b cache line
     // currently attribute is 40b, so max 6
-    values: [6]Attribute = undefined,
+    values: [6]Attribute = [_]Attribute{.{ .identifier = &.{}, .value = .{ .Int = 0 } }} ** 6,
 
     /// Create a new empty DynamicAttributes on the stack (for building before copy)
     pub fn init_on_stack() DynamicAttributes {
@@ -374,7 +386,11 @@ pub const DynamicAttributesReference = struct {
 
     /// Create a new initialized DynamicAttributesReference
     pub fn init() DynamicAttributesReference {
+        ensureAttrsInitialized();
         DynamicAttributes.counter += 1;
+        if (DynamicAttributes.counter >= Attrs.len) {
+            @panic("DynamicAttributes counter overflow: too many attributes allocated");
+        }
         Attrs[DynamicAttributes.counter] = .{};
         return .{
             .uuid = DynamicAttributes.counter,

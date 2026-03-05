@@ -2,6 +2,14 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
 
+"""
+fabll is an intermediatry and internal python layer for
+faebryk (our core graph data-structure)
+
+It is not intended to be used directly, but can be useful for
+testing and debugging the internal workings of the tool.
+"""
+
 
 class App(fabll.Node):
     cap1 = F.Capacitor.MakeChild()
