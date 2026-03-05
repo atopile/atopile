@@ -1,5 +1,0 @@
-# Bun dependencies
-web/node_modules/
-
-# Generated frontend bundle
-playground_app/static/landing.js
