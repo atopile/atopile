@@ -39,7 +39,7 @@ _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
 @dataclass
 class AgentConfig:
     base_url: str = "https://api.openai.com/v1"
-    model: str = "gpt-5.3-codex"
+    model: str = "gpt-5.4"
     api_key: str | None = None
     timeout_s: float = 120.0
     max_tool_loops: int = 240
@@ -60,7 +60,7 @@ class AgentConfig:
     context_summary_max_chars: int = 8_000
     user_message_max_chars: int = 12_000
     tool_output_max_chars: int = 10_000
-    context_hard_max_tokens: int = 170_000
+    context_hard_max_tokens: int = 1_000_000
     prompt_cache_retention: str = "24h"
     max_checklist_continuations: int = 25
     silent_retry_max: int = 2
@@ -84,7 +84,7 @@ class AgentConfig:
         fixed_skill_ids = ["agent", "ato", "planning"]
         return cls(
             base_url=_env("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1"),
-            model=_env("ATOPILE_AGENT_MODEL", "gpt-5.3-codex"),
+            model=_env("ATOPILE_AGENT_MODEL", "gpt-5.4"),
             api_key=os.getenv("ATOPILE_AGENT_OPENAI_API_KEY")
             or os.getenv("OPENAI_API_KEY"),
             timeout_s=_env_float("ATOPILE_AGENT_TIMEOUT_S", "120"),
@@ -123,7 +123,7 @@ class AgentConfig:
                 "ATOPILE_AGENT_TOOL_OUTPUT_MAX_CHARS", "10000"
             ),
             context_hard_max_tokens=_env_int(
-                "ATOPILE_AGENT_CONTEXT_HARD_MAX_TOKENS", "170000"
+                "ATOPILE_AGENT_CONTEXT_HARD_MAX_TOKENS", "1000000"
             ),
             max_checklist_continuations=_env_int(
                 "ATOPILE_AGENT_MAX_CHECKLIST_CONTINUATIONS", "50", lo=0, hi=200
