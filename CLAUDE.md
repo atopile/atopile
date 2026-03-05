@@ -30,6 +30,10 @@ zig, graph, faebryk, fabll, domain-layer, build-server, frontend
 
 - testing is done via `ato dev test`
 
+# Pull Requests
+
+- follow the PR template at `.github/pull_request_template.md`
+
 # SKILLS
 
 For detailed explanations of submodules read the correspondig skill.
