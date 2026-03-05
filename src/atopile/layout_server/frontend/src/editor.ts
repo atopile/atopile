@@ -1,16 +1,29 @@
-import { Vec2, BBox } from "./math";
+import { Vec2, BBox, Matrix3 } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
-import { paintAll, paintGroupBBox, paintGroupHalos, paintBBoxOutline, paintSelection, computeBBox } from "./painter";
-import { hitTestFootprints, hitTestFootprintsInBox } from "./hit-test";
+import { paintStaticBoard, paintGroupBBox, paintGroupHalos, paintBBoxOutline, paintSelection, computeBBox, paintDraggedSelection, buildDragOwnerIds, type DragSelection } from "./painter";
+import { footprintBBox, hitTestFootprintsInBox } from "./hit-test";
 import { LayoutClient } from "./layout_client";
 import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
 import { buildGroupIndex, type UiFootprintGroup } from "./footprint_groups";
-import type { ActionCommand, DrawingModel, LayerModel, RenderModel, ZoneModel } from "./types";
+import { SpatialIndex } from "./spatial_index";
+import type { ActionCommand, DrawingModel, LayerModel, RenderDelta, RenderModel, ZoneModel } from "./types";
 
 type SelectionMode = "none" | "single" | "group" | "multi";
+const DRAG_START_THRESHOLD_PX = 4;
+
+type PendingDrag = {
+    startWorld: Vec2;
+    startScreen: Vec2;
+    targetIndices: number[];
+    trackUuids: string[];
+    viaUuids: string[];
+    drawingUuids: string[];
+    textUuids: string[];
+    zoneUuids: string[];
+};
 
 function captureDrawingCoords(drawing: DrawingModel): number[] {
     switch (drawing.type) {
@@ -84,6 +97,9 @@ export class Editor {
     private client: LayoutClient;
     private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
+    private footprintIndex: SpatialIndex = new SpatialIndex(5);
+    private footprintBBoxes: BBox[] = [];
+    private textIndex: SpatialIndex = new SpatialIndex(10);
 
     // Selection & interaction state
     private selectionMode: SelectionMode = "none";
@@ -115,9 +131,12 @@ export class Editor {
     private dragStartTrackPositions: Map<string, { sx: number; sy: number; ex: number; ey: number; mx?: number; my?: number }> | null = null;
     private dragTargetViaUuids: string[] = [];
     private dragStartViaPositions: Map<string, { x: number; y: number }> | null = null;
+    private dragCacheActive = false;
+    private pendingDrag: PendingDrag | null = null;
     private isBoxSelecting = false;
     private boxSelectStartWorld: Vec2 | null = null;
     private boxSelectCurrentWorld: Vec2 | null = null;
+    private dynamicDirty = false;
     private needsRedraw = true;
 
     // Layer visibility
@@ -130,11 +149,18 @@ export class Editor {
 
     // Mouse coordinate callback
     private onMouseMoveCallback: ((x: number, y: number) => void) | null = null;
+    private onActionBusyChanged: ((busy: boolean) => void) | null = null;
+    private pendingActionRequests = 0;
+    private actionNonce = 0;
+
+    // Snap-to-grid callback: transforms raw drag delta into snapped delta
+    private snapDelta: ((dx: number, dy: number) => { dx: number; dy: number }) | null = null;
 
     constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
         this.canvas = canvas;
         this.textOverlay = this.createTextOverlay();
         this.textCtx = this.textOverlay.getContext("2d");
+        this.syncTextOverlayViewport();
         this.renderer = new Renderer(canvas);
         this.camera = new Camera2();
         this.panAndZoom = new PanAndZoom(canvas, this.camera, () => this.requestRedraw());
@@ -171,6 +197,31 @@ export class Editor {
         return overlay;
     }
 
+    private getCanvasViewportMetrics(): { left: number; top: number; width: number; height: number } {
+        const rect = this.canvas.getBoundingClientRect();
+        const width = rect.width > 0 ? rect.width : (this.canvas.clientWidth || window.innerWidth);
+        const height = rect.height > 0 ? rect.height : (this.canvas.clientHeight || window.innerHeight);
+        return {
+            left: Number.isFinite(rect.left) ? rect.left : 0,
+            top: Number.isFinite(rect.top) ? rect.top : 0,
+            width,
+            height,
+        };
+    }
+
+    private syncTextOverlayViewport(
+        viewport = this.getCanvasViewportMetrics(),
+    ): void {
+        const left = `${viewport.left}px`;
+        const top = `${viewport.top}px`;
+        const width = `${viewport.width}px`;
+        const height = `${viewport.height}px`;
+        if (this.textOverlay.style.left !== left) this.textOverlay.style.left = left;
+        if (this.textOverlay.style.top !== top) this.textOverlay.style.top = top;
+        if (this.textOverlay.style.width !== width) this.textOverlay.style.width = width;
+        if (this.textOverlay.style.height !== height) this.textOverlay.style.height = height;
+    }
+
     async init() {
         await this.fetchAndPaint();
         this.connectWebSocket();
@@ -189,16 +240,59 @@ export class Editor {
 
         this.model = model;
         this.rebuildGroupIndex();
+        this.rebuildSpatialIndexes();
         this.restoreSelection(prevSelectedUuid, prevSelectedMultiUuids, prevSelectedGroupId, prevSingleOverride);
         this.applyDefaultLayerVisibility();
-        this.paint();
+        
+        // Pre-tessellate all physical layers (for instant visibility toggles),
+        // but still respect object-type filters.
+        this.paintStatic();
+        this.paintDynamic();
 
-        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+        const viewport = this.getCanvasViewportMetrics();
+        this.camera.viewport_size = new Vec2(viewport.width, viewport.height);
         if (fitToView) {
             this.camera.bbox = computeBBox(this.model);
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
+    }
+
+    private applyDelta(delta: RenderDelta) {
+        if (!this.model) return;
+        let changed = false;
+        changed = this.replaceByUuid(this.model.footprints, delta.footprints) || changed;
+        changed = this.replaceByUuid(this.model.tracks, delta.tracks) || changed;
+        changed = this.replaceByUuid(this.model.vias, delta.vias) || changed;
+        changed = this.replaceByUuid(this.model.drawings, delta.drawings) || changed;
+        changed = this.replaceByUuid(this.model.texts, delta.texts) || changed;
+        changed = this.replaceByUuid(this.model.zones, delta.zones) || changed;
+        if (!changed) return;
+
+        this.rebuildGroupIndex();
+        this.rebuildSpatialIndexes();
+        this.paintStatic();
+        this.paintDynamic();
+        this.requestRedraw();
+    }
+
+    private replaceByUuid<T extends { uuid: string | null }>(target: T[], updates: T[]): boolean {
+        if (updates.length === 0) return false;
+        const indexByUuid = new Map<string, number>();
+        for (let i = 0; i < target.length; i++) {
+            const uuid = target[i]?.uuid;
+            if (uuid) indexByUuid.set(uuid, i);
+        }
+        let changed = false;
+        for (const update of updates) {
+            const uuid = update.uuid;
+            if (!uuid) continue;
+            const idx = indexByUuid.get(uuid);
+            if (idx === undefined) continue;
+            target[idx] = update;
+            changed = true;
+        }
+        return changed;
     }
 
     private applyDefaultLayerVisibility() {
@@ -212,11 +306,31 @@ export class Editor {
         }
     }
 
-    private paint() {
+    private paintStatic(skipped?: DragSelection) {
         if (!this.model) return;
-        paintAll(this.renderer, this.model, this.hiddenLayers);
+        const geometryHidden = new Set(
+            [...this.hiddenLayers].filter(layer => layer.startsWith("__type:")),
+        );
+        paintStaticBoard(this.renderer, this.model, geometryHidden, skipped);
+        
+        // Ensure renderer internal visibility matches editor hiddenLayers
+        for (const layer of this.model.layers) {
+            this.renderer.set_layer_visible(layer.id, !this.hiddenLayers.has(layer.id));
+        }
+        this.renderer.set_layer_visible("Edge.Cuts", !this.hiddenLayers.has("Edge.Cuts"));
+    }
 
-        if (!this.singleOverrideMode && this.hoveredGroupId && this.hoveredGroupId !== this.selectedGroupId) {
+    private paintDynamic() {
+        this.dynamicDirty = false;
+        this.renderer.dispose_dynamic_overlays();
+        if (!this.model) return;
+
+        if (
+            !this.singleOverrideMode
+            && this.selectionMode !== "multi"
+            && this.hoveredGroupId
+            && this.hoveredGroupId !== this.selectedGroupId
+        ) {
             const hovered = this.groupsById.get(this.hoveredGroupId);
             if (hovered) {
                 if (hovered.memberIndices.length > 0) {
@@ -257,6 +371,16 @@ export class Editor {
         }
 
         this.paintBoxSelectionOverlay();
+
+        // If dragging, apply the current delta to all dynamic layers
+        if (this.isDragging && this.dragStartWorld) {
+            const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
+            const delta = this.applySnap(worldPos.sub(this.dragStartWorld));
+            const trans = Matrix3.translation(delta.x, delta.y);
+            for (const layer of this.renderer.dynamicLayers) {
+                layer.transform = trans;
+            }
+        }
     }
 
     private rebuildGroupIndex() {
@@ -269,6 +393,25 @@ export class Editor {
         this.drawingIndexByUuid = index.drawingIndexByUuid;
         this.textIndexByUuid = index.textIndexByUuid;
         this.zoneIndexByUuid = index.zoneIndexByUuid;
+    }
+
+    private rebuildSpatialIndexes() {
+        if (!this.model) return;
+        this.footprintIndex.clear();
+        this.footprintBBoxes = new Array(this.model.footprints.length);
+        for (let i = 0; i < this.model.footprints.length; i++) {
+            const fp = this.model.footprints[i]!;
+            const bbox = footprintBBox(fp);
+            this.footprintBBoxes[i] = bbox;
+            this.footprintIndex.insert({ bbox, index: i });
+        }
+        this.textIndex.clear();
+        for (let i = 0; i < this.model.texts.length; i++) {
+            const txt = this.model.texts[i]!;
+            // Simplified text bbox for indexing
+            const bbox = new BBox(txt.at.x - 1, txt.at.y - 1, 2, 2);
+            this.textIndex.insert({ bbox, index: i });
+        }
     }
 
     private getSelectedSingleUuid(): string | null {
@@ -341,10 +484,6 @@ export class Editor {
         this.singleOverrideMode = false;
     }
 
-    private notifySelectionChanged(): void {
-        this.client.notifySelection(this.selectedUuids()).catch(() => {});
-    }
-
     private setSingleSelection(index: number, enterOverride: boolean) {
         this.selectionMode = "single";
         this.selectedFpIndex = index;
@@ -355,7 +494,6 @@ export class Editor {
         } else if (!this.groupIdByFpIndex.has(index)) {
             this.singleOverrideMode = false;
         }
-        this.notifySelectionChanged();
     }
 
     private setMultiSelection(indices: number[]) {
@@ -373,7 +511,6 @@ export class Editor {
         this.selectedGroupId = null;
         this.selectedFpIndex = -1;
         this.singleOverrideMode = false;
-        this.notifySelectionChanged();
     }
 
     private setGroupSelection(groupId: string) {
@@ -382,10 +519,12 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedMultiIndices = [];
         this.singleOverrideMode = false;
-        this.notifySelectionChanged();
     }
 
     private clearSelection(exitSingleOverride = false) {
+        if (this.isDragging) {
+            this.restorePostDragRendering();
+        }
         this.selectionMode = "none";
         this.selectedFpIndex = -1;
         this.selectedGroupId = null;
@@ -397,7 +536,6 @@ export class Editor {
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
-        this.notifySelectionChanged();
     }
 
     private selectedGroup(): UiFootprintGroup | null {
@@ -408,11 +546,6 @@ export class Editor {
     private selectedGroupMembers(): number[] {
         const group = this.selectedGroup();
         return group ? group.memberIndices : [];
-    }
-
-    private selectedGroupMemberUuids(): string[] {
-        const group = this.selectedGroup();
-        return group ? group.memberUuids : [];
     }
 
     private selectedUuids(): string[] {
@@ -495,6 +628,68 @@ export class Editor {
         }
     }
 
+    /** Apply a drag delta to all currently tracked drag targets. */
+    private applyDragDelta(dx: number, dy: number) {
+        if (!this.model) return;
+        if (this.dragStartPositions) {
+            for (const index of this.dragTargetIndices) {
+                const fp = this.model.footprints[index];
+                const start = this.dragStartPositions.get(index);
+                if (fp && start) { fp.at.x = start.x + dx; fp.at.y = start.y + dy; }
+            }
+        }
+        if (this.dragStartTrackPositions) {
+            for (const uuid of this.dragTargetTrackUuids) {
+                const idx = this.trackIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const track = this.model.tracks[idx];
+                const start = this.dragStartTrackPositions.get(uuid);
+                if (!track || !start) continue;
+                track.start.x = start.sx + dx; track.start.y = start.sy + dy;
+                track.end.x = start.ex + dx; track.end.y = start.ey + dy;
+                if (track.mid && start.mx !== undefined && start.my !== undefined) {
+                    track.mid.x = start.mx + dx; track.mid.y = start.my + dy;
+                }
+            }
+        }
+        if (this.dragStartViaPositions) {
+            for (const uuid of this.dragTargetViaUuids) {
+                const idx = this.viaIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const via = this.model.vias[idx];
+                const start = this.dragStartViaPositions.get(uuid);
+                if (via && start) { via.at.x = start.x + dx; via.at.y = start.y + dy; }
+            }
+        }
+        if (this.dragStartDrawingCoords) {
+            for (const uuid of this.dragTargetDrawingUuids) {
+                const idx = this.drawingIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const drawing = this.model.drawings[idx];
+                const coords = this.dragStartDrawingCoords.get(uuid);
+                if (drawing && coords) applyDeltaToDrawing(drawing, coords, dx, dy);
+            }
+        }
+        if (this.dragStartTextPositions) {
+            for (const uuid of this.dragTargetTextUuids) {
+                const idx = this.textIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const text = this.model.texts[idx];
+                const start = this.dragStartTextPositions.get(uuid);
+                if (text && start) { text.at.x = start.x + dx; text.at.y = start.y + dy; }
+            }
+        }
+        if (this.dragStartZoneCoords) {
+            for (const uuid of this.dragTargetZoneUuids) {
+                const idx = this.zoneIndexByUuid.get(uuid);
+                if (idx === undefined) continue;
+                const zone = this.model.zones[idx];
+                const coords = this.dragStartZoneCoords.get(uuid);
+                if (zone && coords) applyDeltaToZone(zone, coords, dx, dy);
+            }
+        }
+    }
+
     private clearDragState() {
         this.isDragging = false;
         this.dragStartWorld = null;
@@ -510,6 +705,50 @@ export class Editor {
         this.dragStartTextPositions = null;
         this.dragTargetZoneUuids = [];
         this.dragStartZoneCoords = null;
+        this.dragCacheActive = false;
+        this.pendingDrag = null;
+    }
+
+    private restorePostDragRendering() {
+        if (!this.model) return;
+        this.renderer.end_fast_drag_cache();
+        this.dragCacheActive = false;
+        this.renderer.dispose_dynamic_layers();
+        this.paintStatic();
+    }
+
+    private isObjectTypeLayer(layer: string): boolean {
+        return layer.startsWith("__type:");
+    }
+
+    private currentDraggedSelection(): DragSelection {
+        return {
+            footprintIndices: new Set(this.dragTargetIndices),
+            trackUuids: new Set(this.dragTargetTrackUuids),
+            viaUuids: new Set(this.dragTargetViaUuids),
+            drawingUuids: new Set(this.dragTargetDrawingUuids),
+            textUuids: new Set(this.dragTargetTextUuids),
+            zoneUuids: new Set(this.dragTargetZoneUuids),
+        };
+    }
+
+    private rebuildAfterObjectTypeVisibilityChange() {
+        if (!this.model) return;
+        if (this.isDragging) {
+            const draggedSelection = this.currentDraggedSelection();
+            const skipOwners = buildDragOwnerIds(this.model, draggedSelection);
+            this.dragCacheActive = this.renderer.begin_fast_drag_cache(this.camera.matrix, skipOwners);
+            if (!this.dragCacheActive) {
+                this.paintStatic(draggedSelection);
+            }
+            this.renderer.dispose_dynamic_layers();
+            this.renderer.isDynamicContext = true;
+            paintDraggedSelection(this.renderer, this.model, draggedSelection, this.getLayerMap(), this.hiddenLayers);
+            this.renderer.commit_dynamic_context_layers();
+            this.renderer.isDynamicContext = false;
+        } else {
+            this.paintStatic();
+        }
     }
 
     private clearBoxSelectionState() {
@@ -587,7 +826,73 @@ export class Editor {
         this.dragStartTextPositions = dragStartTextPositions;
         this.dragTargetZoneUuids = [...dragStartZoneCoords.keys()];
         this.dragStartZoneCoords = dragStartZoneCoords;
+
+        // Lift dragged objects out of static geometry so only moving copies are shown.
+        const draggedSelection: DragSelection = {
+            footprintIndices: new Set(this.dragTargetIndices),
+            trackUuids: new Set(this.dragTargetTrackUuids),
+            viaUuids: new Set(this.dragTargetViaUuids),
+            drawingUuids: new Set(this.dragTargetDrawingUuids),
+            textUuids: new Set(this.dragTargetTextUuids),
+            zoneUuids: new Set(this.dragTargetZoneUuids),
+        };
+        const skipOwners = buildDragOwnerIds(this.model!, draggedSelection);
+        this.dragCacheActive = this.renderer.begin_fast_drag_cache(this.camera.matrix, skipOwners);
+        if (!this.dragCacheActive) {
+            this.paintStatic(draggedSelection);
+        }
+
+        this.renderer.dispose_dynamic_layers();
+        this.renderer.isDynamicContext = true;
+        paintDraggedSelection(this.renderer, this.model!, draggedSelection, this.getLayerMap(), this.hiddenLayers);
+        this.renderer.commit_dynamic_context_layers();
+        this.renderer.isDynamicContext = false;
+
+        this.paintDynamic();
+        this.requestRedraw();
         return true;
+    }
+
+    private setPendingDrag(
+        startWorld: Vec2,
+        startScreen: Vec2,
+        targetIndices: number[],
+        trackUuids: string[] = [],
+        viaUuids: string[] = [],
+        drawingUuids: string[] = [],
+        textUuids: string[] = [],
+        zoneUuids: string[] = [],
+    ) {
+        this.pendingDrag = {
+            startWorld,
+            startScreen,
+            targetIndices,
+            trackUuids,
+            viaUuids,
+            drawingUuids,
+            textUuids,
+            zoneUuids,
+        };
+    }
+
+    private maybeStartPendingDrag(currentWorld: Vec2, currentScreen: Vec2): boolean {
+        const pending = this.pendingDrag;
+        if (!pending) return false;
+        const dx = currentScreen.x - pending.startScreen.x;
+        const dy = currentScreen.y - pending.startScreen.y;
+        if ((dx * dx + dy * dy) < (DRAG_START_THRESHOLD_PX * DRAG_START_THRESHOLD_PX)) {
+            return false;
+        }
+        this.pendingDrag = null;
+        return this.beginDragSelection(
+            pending.startWorld,
+            pending.targetIndices,
+            pending.trackUuids,
+            pending.viaUuids,
+            pending.drawingUuids,
+            pending.textUuids,
+            pending.zoneUuids,
+        );
     }
 
     private currentBoxSelection(): BBox | null {
@@ -620,25 +925,35 @@ export class Editor {
             new Vec2(box.x2, box.y2),
             new Vec2(box.x, box.y2),
         ];
-        const layer = this.renderer.start_layer("selection-box");
-        layer.geometry.add_polygon(corners, 0.44, 0.62, 0.95, 0.12);
-        layer.geometry.add_polyline([...corners, corners[0]!.copy()], 0.1, 0.44, 0.62, 0.95, 0.55);
-        this.renderer.end_layer();
+        const layer = this.renderer.start_dynamic_layer("selection-box");
+        // Fill: Semi-transparent light blue
+        layer.geometry.add_polygon(corners, 0.44, 0.62, 0.95, 0.15);
+        // Outline: Solid light blue
+        layer.geometry.add_polyline([...corners, corners[0]!.copy()], 0.1, 0.44, 0.62, 0.95, 0.8);
+        this.renderer.commit_dynamic_layer(layer);
     }
 
     private updateHoverGroup(worldPos: Vec2) {
         let nextHoverId: string | null = null;
         let nextHoverFp = -1;
         if (this.model && !this.singleOverrideMode) {
-            const hitIndex = hitTestFootprints(worldPos, this.model.footprints);
-            if (hitIndex >= 0) {
-                const groupId = this.groupIdByFpIndex.get(hitIndex) ?? null;
-                if (groupId) {
-                    nextHoverId = groupId;
-                } else {
-                    nextHoverFp = hitIndex;
+            const candidateIndices = this.footprintIndex.queryPoint(worldPos);
+            for (let i = candidateIndices.length - 1; i >= 0; i--) {
+                const idx = candidateIndices[i]!;
+                const bbox = this.footprintBBoxes[idx] ?? footprintBBox(this.model.footprints[idx]!);
+                if (bbox.contains_point(worldPos)) {
+                    // Preserve the exact footprint under cursor, even if it belongs
+                    // to a group, so click/drag behavior stays precise for multi-select.
+                    nextHoverFp = idx;
+                    const groupId = this.groupIdByFpIndex.get(idx) ?? null;
+                    if (groupId) {
+                        nextHoverId = groupId;
+                    }
+                    break;
                 }
-            } else {
+            }
+
+            if (nextHoverId === null && nextHoverFp === -1) {
                 // Check graphic-only groups (no footprint members) by bounding box.
                 for (const [groupId, group] of this.groupsById) {
                     if (group.memberIndices.length === 0 && group.graphicBBox) {
@@ -658,16 +973,37 @@ export class Editor {
     }
 
     private connectWebSocket() {
-        this.client.connect((model) => this.applyModel(model));
+        this.client.connect((msg) => {
+            if (msg.type === "layout_updated" && msg.model) {
+                this.applyModel(msg.model);
+                return;
+            }
+            if (msg.type === "layout_delta" && msg.delta) {
+                this.applyDelta(msg.delta);
+            }
+        });
+    }
+
+    private getIndexedHitIdx(worldPos: Vec2): number {
+        if (!this.model) return -1;
+        const candidateIndices = this.footprintIndex.queryPoint(worldPos);
+        for (let i = candidateIndices.length - 1; i >= 0; i--) {
+            const idx = candidateIndices[i]!;
+            const bbox = this.footprintBBoxes[idx] ?? footprintBBox(this.model.footprints[idx]!);
+            if (bbox.contains_point(worldPos)) {
+                return idx;
+            }
+        }
+        return -1;
     }
 
     private setupMouseHandlers() {
         this.canvas.addEventListener("mousedown", (e: MouseEvent) => {
             if (e.button !== 0) return;
 
-            const rect = this.canvas.getBoundingClientRect();
-            const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
-            const worldPos = this.camera.screen_to_world(screenPos);
+            const viewport = this.getCanvasViewportMetrics();
+            this.lastMouseScreen = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
+            const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
 
             if (!this.model) return;
 
@@ -679,8 +1015,18 @@ export class Editor {
                 this.repaintWithSelection();
                 return;
             }
+            this.pendingDrag = null;
 
-            const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
+            let hitIdx = -1;
+            if (this.hoveredFpIndex >= 0 && this.hoveredFpIndex < this.model.footprints.length) {
+                const hoveredBBox = this.footprintBBoxes[this.hoveredFpIndex] ?? footprintBBox(this.model.footprints[this.hoveredFpIndex]!);
+                if (hoveredBBox.contains_point(worldPos)) {
+                    hitIdx = this.hoveredFpIndex;
+                }
+            }
+            if (hitIdx < 0) {
+                hitIdx = this.getIndexedHitIdx(worldPos);
+            }
 
             if (hitIdx >= 0) {
                 const keepMultiSelection = this.selectionMode === "multi" && this.selectedMultiIndices.includes(hitIdx);
@@ -700,16 +1046,18 @@ export class Editor {
                 const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
                 const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
                 const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
-                if (!this.beginDragSelection(worldPos, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids)) {
-                    this.repaintWithSelection();
-                    return;
-                }
-
+                this.setPendingDrag(worldPos, this.lastMouseScreen, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids);
                 this.repaintWithSelection();
             } else {
                 // Check if clicking inside a graphic-only group's bounding box.
                 let hitGraphicGroupId: string | null = null;
-                if (!this.singleOverrideMode) {
+                if (!this.singleOverrideMode && this.hoveredGroupId) {
+                    const hoveredGroup = this.groupsById.get(this.hoveredGroupId);
+                    if (hoveredGroup && hoveredGroup.memberIndices.length === 0 && hoveredGroup.graphicBBox?.contains_point(worldPos)) {
+                        hitGraphicGroupId = this.hoveredGroupId;
+                    }
+                }
+                if (!this.singleOverrideMode && !hitGraphicGroupId) {
                     for (const [groupId, group] of this.groupsById) {
                         if (group.memberIndices.length === 0 && group.graphicBBox?.contains_point(worldPos)) {
                             hitGraphicGroupId = groupId;
@@ -720,12 +1068,10 @@ export class Editor {
                 if (hitGraphicGroupId) {
                     this.setGroupSelection(hitGraphicGroupId);
                     const group = this.groupsById.get(hitGraphicGroupId)!;
-                    if (!this.beginDragSelection(worldPos, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids)) {
-                        this.repaintWithSelection();
-                        return;
-                    }
+                    this.setPendingDrag(worldPos, this.lastMouseScreen, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids);
                     this.repaintWithSelection();
                 } else {
+                    this.pendingDrag = null;
                     this.clearSelection(true);
                     this.repaintWithSelection();
                 }
@@ -734,18 +1080,18 @@ export class Editor {
 
         this.canvas.addEventListener("dblclick", (e: MouseEvent) => {
             if (e.button !== 0 || !this.model) return;
-            const rect = this.canvas.getBoundingClientRect();
-            const screenPos = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            const viewport = this.getCanvasViewportMetrics();
+            const screenPos = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
             const worldPos = this.camera.screen_to_world(screenPos);
-            const hitIdx = hitTestFootprints(worldPos, this.model.footprints);
+            const hitIdx = this.getIndexedHitIdx(worldPos);
             if (hitIdx < 0) return;
             this.setSingleSelection(hitIdx, true);
             this.repaintWithSelection();
         });
 
         this.canvas.addEventListener("mousemove", (e: MouseEvent) => {
-            const rect = this.canvas.getBoundingClientRect();
-            this.lastMouseScreen = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            const viewport = this.getCanvasViewportMetrics();
+            this.lastMouseScreen = new Vec2(e.clientX - viewport.left, e.clientY - viewport.top);
 
             if (this.onMouseMoveCallback) {
                 const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
@@ -762,89 +1108,24 @@ export class Editor {
             }
 
             if (!this.isDragging) {
-                this.updateHoverGroup(worldPos);
-                return;
+                if (this.pendingDrag) {
+                    if (!this.maybeStartPendingDrag(worldPos, this.lastMouseScreen)) {
+                        return;
+                    }
+                } else {
+                    this.updateHoverGroup(worldPos);
+                    return;
+                }
             }
 
             if (!this.dragStartWorld) return;
-            const hasAnyTargets =
-                this.dragTargetIndices.length > 0
-                || this.dragTargetTrackUuids.length > 0
-                || this.dragTargetViaUuids.length > 0
-                || this.dragTargetDrawingUuids.length > 0
-                || this.dragTargetTextUuids.length > 0
-                || this.dragTargetZoneUuids.length > 0;
-            if (!hasAnyTargets) return;
+            const delta = this.applySnap(worldPos.sub(this.dragStartWorld));
 
-            const delta = worldPos.sub(this.dragStartWorld);
-            for (const index of this.dragTargetIndices) {
-                const fp = this.model.footprints[index];
-                const start = this.dragStartPositions?.get(index);
-                if (!fp || !start) continue;
-                fp.at.x = start.x + delta.x;
-                fp.at.y = start.y + delta.y;
+            // GPU-accelerated drag: update layer transforms instead of re-tessellating
+            const trans = Matrix3.translation(delta.x, delta.y);
+            for (const layer of this.renderer.dynamicLayers) {
+                layer.transform = trans;
             }
-            if (this.dragStartTrackPositions) {
-                for (const uuid of this.dragTargetTrackUuids) {
-                    const idx = this.trackIndexByUuid.get(uuid);
-                    if (idx === undefined) continue;
-                    const track = this.model.tracks[idx];
-                    const start = this.dragStartTrackPositions.get(uuid);
-                    if (!track || !start) continue;
-                    track.start.x = start.sx + delta.x;
-                    track.start.y = start.sy + delta.y;
-                    track.end.x = start.ex + delta.x;
-                    track.end.y = start.ey + delta.y;
-                    if (track.mid && start.mx !== undefined && start.my !== undefined) {
-                        track.mid.x = start.mx + delta.x;
-                        track.mid.y = start.my + delta.y;
-                    }
-                }
-            }
-            if (this.dragStartViaPositions) {
-                for (const uuid of this.dragTargetViaUuids) {
-                    const idx = this.viaIndexByUuid.get(uuid);
-                    if (idx === undefined) continue;
-                    const via = this.model.vias[idx];
-                    const start = this.dragStartViaPositions.get(uuid);
-                    if (!via || !start) continue;
-                    via.at.x = start.x + delta.x;
-                    via.at.y = start.y + delta.y;
-                }
-            }
-            if (this.dragStartDrawingCoords) {
-                for (const uuid of this.dragTargetDrawingUuids) {
-                    const idx = this.drawingIndexByUuid.get(uuid);
-                    if (idx === undefined) continue;
-                    const drawing = this.model.drawings[idx];
-                    const coords = this.dragStartDrawingCoords.get(uuid);
-                    if (!drawing || !coords) continue;
-                    applyDeltaToDrawing(drawing, coords, delta.x, delta.y);
-                }
-            }
-            if (this.dragStartTextPositions) {
-                for (const uuid of this.dragTargetTextUuids) {
-                    const idx = this.textIndexByUuid.get(uuid);
-                    if (idx === undefined) continue;
-                    const text = this.model.texts[idx];
-                    const start = this.dragStartTextPositions.get(uuid);
-                    if (!text || !start) continue;
-                    text.at.x = start.x + delta.x;
-                    text.at.y = start.y + delta.y;
-                }
-            }
-            if (this.dragStartZoneCoords) {
-                for (const uuid of this.dragTargetZoneUuids) {
-                    const idx = this.zoneIndexByUuid.get(uuid);
-                    if (idx === undefined) continue;
-                    const zone = this.model.zones[idx];
-                    const coords = this.dragStartZoneCoords.get(uuid);
-                    if (!zone || !coords) continue;
-                    applyDeltaToZone(zone, coords, delta.x, delta.y);
-                }
-            }
-
-            this.paint();
             this.requestRedraw();
         });
 
@@ -852,8 +1133,6 @@ export class Editor {
             if (e.button !== 0) return;
 
             if (this.isBoxSelecting) {
-                // Box selection is a new selection gesture — always exit
-                // single-override mode so subsequent clicks respect groups.
                 this.singleOverrideMode = false;
                 const selectionBox = this.currentBoxSelection();
                 if (this.model && selectionBox) {
@@ -869,66 +1148,73 @@ export class Editor {
                 return;
             }
 
-            if (!this.isDragging) return;
-            this.isDragging = false;
-
-            if (!this.model || !this.dragStartWorld) {
-                this.clearDragState();
+            if (this.pendingDrag) {
+                this.pendingDrag = null;
+                setTimeout(() => this.repaintWithSelection(), 0);
                 return;
             }
 
-            let dx = 0, dy = 0;
+            if (!this.isDragging) return;
+            
+            const viewport = this.getCanvasViewportMetrics();
+            const worldPos = this.camera.screen_to_world(new Vec2(e.clientX - viewport.left, e.clientY - viewport.top));
+            const delta = this.applySnap(worldPos.sub(this.dragStartWorld!));
+            const dx = delta.x;
+            const dy = delta.y;
 
-            if (this.dragTargetIndices.length > 0 && this.dragStartPositions) {
-                // Compute delta from first footprint's movement.
-                const firstTarget = this.dragTargetIndices[0]!;
-                const firstStart = this.dragStartPositions.get(firstTarget);
-                const firstFp = this.model.footprints[firstTarget];
-                if (!firstStart || !firstFp) {
-                    this.clearDragState();
-                    return;
-                }
-                dx = firstFp.at.x - firstStart.x;
-                dy = firstFp.at.y - firstStart.y;
-            } else if (this.dragTargetDrawingUuids.length > 0 && this.dragStartDrawingCoords) {
-                // Graphic-only group: derive delta from the first drawing's displacement.
-                const firstUuid = this.dragTargetDrawingUuids[0]!;
-                const firstCoords = this.dragStartDrawingCoords.get(firstUuid);
-                const idx = this.drawingIndexByUuid.get(firstUuid);
-                const drawing = idx !== undefined ? this.model.drawings[idx] : undefined;
-                if (!firstCoords || !drawing) {
-                    this.clearDragState();
-                    return;
-                }
-                // Current x is coords[0] + applied_delta; original x is coords[0].
-                const currentX = drawing.type === "line" ? drawing.start.x
-                    : drawing.type === "arc" ? drawing.start.x
-                    : drawing.type === "circle" ? drawing.center.x
-                    : drawing.type === "rect" ? drawing.start.x
-                    : drawing.type === "polygon" || drawing.type === "curve" ? (drawing.points[0]?.x ?? 0)
-                    : 0;
-                const currentY = drawing.type === "line" ? drawing.start.y
-                    : drawing.type === "arc" ? drawing.start.y
-                    : drawing.type === "circle" ? drawing.center.y
-                    : drawing.type === "rect" ? drawing.start.y
-                    : drawing.type === "polygon" || drawing.type === "curve" ? (drawing.points[0]?.y ?? 0)
-                    : 0;
-                dx = currentX - (firstCoords[0] ?? 0);
-                dy = currentY - (firstCoords[1] ?? 0);
-            } else {
+            if (!this.model || !this.dragStartWorld) {
+                this.isDragging = false;
+                this.restorePostDragRendering();
                 this.clearDragState();
+                this.repaintWithSelection();
+                return;
+            }
+
+            if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+                console.warn("Ignoring drag move with invalid delta", { dx, dy });
+                this.isDragging = false;
+                this.restorePostDragRendering();
+                this.clearDragState();
+                this.repaintWithSelection();
                 return;
             }
 
             const isNoop = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001;
-
-            this.clearDragState();
-
-            if (isNoop) return;
-
             const uuids = this.selectedUuids();
-            if (uuids.length > 0) {
-                await this.executeAction({ command: "move", uuids, dx, dy });
+
+            if (isNoop) {
+                this.isDragging = false;
+                this.restorePostDragRendering();
+                this.clearDragState();
+                this.repaintWithSelection();
+                return;
+            }
+
+            const movePromise = uuids.length > 0
+                ? this.executeAction({ command: "move", uuids, dx, dy })
+                : null;
+
+            // Preserve immediate drop position locally while server action is pending.
+            this.isDragging = false;
+            this.applyDragDelta(dx, dy);
+            this.rebuildSpatialIndexes();
+            const droppedTransform = Matrix3.translation(dx, dy);
+            for (const layer of this.renderer.dynamicLayers) {
+                layer.transform = droppedTransform;
+            }
+            this.clearDragState();
+            this.repaintWithSelection();
+
+            if (movePromise) {
+                void movePromise.then((ok) => {
+                    if (!ok) {
+                        this.restorePostDragRendering();
+                        this.repaintWithSelection();
+                    }
+                });
+            } else {
+                this.restorePostDragRendering();
+                this.repaintWithSelection();
             }
         });
     }
@@ -938,7 +1224,9 @@ export class Editor {
             if (e.key === "Escape") {
                 if (this.isDragging) {
                     this.revertDragPositions();
+                    this.restorePostDragRendering();
                 }
+                this.pendingDrag = null;
                 this.clearSelection(true);
                 this.repaintWithSelection();
                 return;
@@ -997,16 +1285,36 @@ export class Editor {
         }
     }
 
-    private async executeAction(action: ActionCommand) {
+    private async executeAction(
+        action: ActionCommand,
+    ): Promise<boolean> {
+        const actionId = `a${Date.now()}_${++this.actionNonce}`;
+        const taggedAction: ActionCommand = { ...action, client_action_id: actionId };
+        this.pendingActionRequests += 1;
+        if (this.pendingActionRequests === 1 && this.onActionBusyChanged) {
+            this.onActionBusyChanged(true);
+        }
+        let ok = false;
         try {
-            const data = await this.client.executeAction(action);
+            const data = await this.client.executeAction(taggedAction);
             if (data.status === "error") {
                 console.warn(`Action ${action.command} failed (${data.code}): ${data.message ?? "unknown error"}`);
+            } else {
+                ok = true;
             }
-            if (data.model) this.applyModel(data.model);
         } catch (err) {
             console.error("Failed to execute action:", err);
+        } finally {
+            if (this.pendingActionRequests > 0) {
+                this.pendingActionRequests -= 1;
+            } else {
+                this.pendingActionRequests = 0;
+            }
+            if (this.pendingActionRequests === 0 && this.onActionBusyChanged) {
+                this.onActionBusyChanged(false);
+            }
         }
+        return ok;
     }
 
     // --- Layer visibility ---
@@ -1017,19 +1325,33 @@ export class Editor {
         } else {
             this.hiddenLayers.add(layer);
         }
-        this.paint();
+        if (this.isObjectTypeLayer(layer)) {
+            this.rebuildAfterObjectTypeVisibilityChange();
+        } else {
+            this.renderer.set_layer_visible(layer, visible);
+        }
+        this.paintDynamic();
         this.requestRedraw();
     }
 
     setLayersVisible(layers: string[], visible: boolean) {
+        let objectTypeChanged = false;
         for (const layer of layers) {
             if (visible) {
                 this.hiddenLayers.delete(layer);
             } else {
                 this.hiddenLayers.add(layer);
             }
+            if (this.isObjectTypeLayer(layer)) {
+                objectTypeChanged = true;
+            } else {
+                this.renderer.set_layer_visible(layer, visible);
+            }
         }
-        this.paint();
+        if (objectTypeChanged) {
+            this.rebuildAfterObjectTypeVisibilityChange();
+        }
+        this.paintDynamic();
         this.requestRedraw();
     }
 
@@ -1067,8 +1389,23 @@ export class Editor {
         this.onMouseMoveCallback = cb;
     }
 
+    setOnActionBusyChanged(cb: (busy: boolean) => void) {
+        this.onActionBusyChanged = cb;
+        cb(this.pendingActionRequests > 0);
+    }
+
+    setSnapDelta(cb: ((dx: number, dy: number) => { dx: number; dy: number }) | null) {
+        this.snapDelta = cb;
+    }
+
+    private applySnap(delta: Vec2): Vec2 {
+        if (!this.snapDelta) return delta;
+        const s = this.snapDelta(delta.x, delta.y);
+        return new Vec2(s.dx, s.dy);
+    }
+
     private repaintWithSelection() {
-        this.paint();
+        this.dynamicDirty = true;
         this.requestRedraw();
     }
 
@@ -1077,22 +1414,64 @@ export class Editor {
     }
 
     private drawTextOverlay() {
-        if (!this.textCtx) return;
+        if (!this.textCtx || !this.model) return;
+        const viewport = this.getCanvasViewportMetrics();
+        this.syncTextOverlayViewport(viewport);
+        const visibleFpIndices = this.footprintIndex.query(this.camera.bbox);
+        const layerMap = this.getLayerMap();
+
+        if (!this.isDragging || !this.dragStartWorld || this.dragTargetIndices.length === 0) {
+            renderTextOverlay(
+                this.textCtx,
+                this.model,
+                this.camera,
+                this.hiddenLayers,
+                layerMap,
+                viewport.width,
+                viewport.height,
+                visibleFpIndices,
+                { clearCanvas: true },
+            );
+            return;
+        }
+
+        const draggedSet = new Set(this.dragTargetIndices);
+        const staticVisible = visibleFpIndices.filter(index => !draggedSet.has(index));
         renderTextOverlay(
             this.textCtx,
             this.model,
             this.camera,
             this.hiddenLayers,
-            this.getLayerMap(),
-            this.canvas.clientWidth,
-            this.canvas.clientHeight,
+            layerMap,
+            viewport.width,
+            viewport.height,
+            staticVisible,
+            { clearCanvas: true },
+        );
+
+        const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
+        const delta = this.applySnap(worldPos.sub(this.dragStartWorld));
+        renderTextOverlay(
+            this.textCtx,
+            this.model,
+            this.camera,
+            this.hiddenLayers,
+            layerMap,
+            viewport.width,
+            viewport.height,
+            this.dragTargetIndices,
+            { clearCanvas: false, worldOffset: delta },
         );
     }
 
     private onRenderFrame() {
         if (!this.needsRedraw) return;
         this.needsRedraw = false;
-        this.camera.viewport_size = new Vec2(this.canvas.clientWidth, this.canvas.clientHeight);
+        if (this.dynamicDirty) {
+            this.paintDynamic();
+        }
+        const viewport = this.getCanvasViewportMetrics();
+        this.camera.viewport_size = new Vec2(viewport.width, viewport.height);
         this.renderer.updateGrid(this.camera.bbox, 1.0);
         this.renderer.draw(this.camera.matrix);
         this.drawTextOverlay();

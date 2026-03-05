@@ -1,155 +1,28 @@
-"""
-This example demonstrates how to use the Addressor component to automatically
-configure the address pins of an I2C client device based on a desired I2C address.
-"""
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("MODULE_TEMPLATING")
-
 import Addressor
 import I2C
 import ElectricPower
-import ElectricLogic
-import Capacitor
-import Resistor
 
-from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
-
-module TI_TCA9548A:
-    """
-    Texas Instruments TCA9548A I2C multiplexer/switch.
-
-    Features:
-    - 8-channel I2C multiplexer/switch
-    - Bidirectional translation (1.65V to 5.5V)
-    - Low ON resistance (5Ω typical)
-    - Active HIGH channel selection
-    - 3-bit address configuration (0x70 to 0x77)
-    - 400kHz I2C bus speed support
-    - Low power consumption (2.5μA standby)
-    - Hardware reset pin
-    - TSSOP-24 package
-    """
-
-    # External interfaces
-    power = new ElectricPower
-    """
-    Power supply (1.65V to 5.5V)
-    """
-    power.required = True
-    assert power.voltage within 1.65V to 5.5V
-
-    i2c = new I2C
-    """
-    Main I2C bus connection (upstream/master side)
-    """
-
-    reset = new ElectricLogic
-    """
-    Hardware reset pin (active low). Pull high for normal operation.
-    """
-
-    # I2C channels (8 channels)
-    i2cs = new I2C[8]
-    """
-    8 independent I2C channels (downstream/slave side).
-    Each channel is isolated and can be individually enabled via I2C commands.
-    """
-
-    # Package
-    package = new Texas_Instruments_TCA9548APWR_package
-
-    # Connect I2C
-    i2c.sda.line ~ package.SDA
-    i2c.scl.line ~ package.SCL
-    i2c.sda.reference ~ power
-    i2c.scl.reference ~ power
-
-    # Connect Power
-    power.hv ~ package.VCC
-    power.lv ~ package.GND
-
-    # Decoupling capacitors
-    decoupling_caps = new Capacitor[2]
-    decoupling_caps[0].capacitance = 100nF +/- 20%
-    decoupling_caps[0].package = "0402"
-    decoupling_caps[1].capacitance = 2.2uF +/- 20%
-    decoupling_caps[1].package = "0402"
-    for cap in decoupling_caps:
-        power.hv ~> cap ~> power.lv
-
-    # Reset (active low, with pullup)
-    reset.line ~ package.nRESET
-    reset.reference ~ power
-
-    # Reset pullup resistor
-    reset_pullup = new Resistor
-    reset_pullup.resistance = 10kohm +/- 1%
-    reset_pullup.package = "0402"
-    reset.line ~> reset_pullup ~> reset.reference.hv
-
-    # I2C Address Configuration (3 bits = 8 possible addresses)
-    addressor = new Addressor<address_bits = 3>
-    addressor.base = 0x70
-    addressor.address_lines[0].line ~ package.A0
-    addressor.address_lines[1].line ~ package.A1
-    addressor.address_lines[2].line ~ package.A2
-    for address_line in addressor.address_lines:
-        address_line.reference ~ power
-    assert addressor.address is i2c.address
-
-    # Connect I2C channels to package
-    i2cs[0].sda.line ~ package.SD0
-    i2cs[0].scl.line ~ package.SC0
-    i2cs[1].sda.line ~ package.SD1
-    i2cs[1].scl.line ~ package.SC1
-    i2cs[2].sda.line ~ package.SD2
-    i2cs[2].scl.line ~ package.SC2
-    i2cs[3].sda.line ~ package.SD3
-    i2cs[3].scl.line ~ package.SC3
-    i2cs[4].sda.line ~ package.SD4
-    i2cs[4].scl.line ~ package.SC4
-    i2cs[5].sda.line ~ package.SD5
-    i2cs[5].scl.line ~ package.SC5
-    i2cs[6].sda.line ~ package.SD6
-    i2cs[6].scl.line ~ package.SC6
-    i2cs[7].sda.line ~ package.SD7
-    i2cs[7].scl.line ~ package.SC7
-
-    # Connect I2C references to power
-    for i2c_ch in i2cs:
-        i2c_ch.sda.reference ~ power
-        i2c_ch.scl.reference ~ power
+from "atopile/microchip-mcp9808/microchip-mcp9808.ato" import Microchip_MCP9808
 
 module App:
     """
-    Application to test the I2C client/server example
-    """
-    power = new ElectricPower
-    i2c_mux = new TI_TCA9548A
-    power ~ i2c_mux.power
-    # i2c_bridge = new I2CExampleDriver
-    # i2c_bridge2 = new I2CExampleDriver
-    # i2c_client = new TI_TCA9548A
-    # i2c_client2 = new I2CExampleDriver
-    # i2c_client_pre = new I2CExampleDriver
+    Automatic I2C address configuration example.
 
-    # Set the desired I2C address for the client.
-    # The addressor will automatically determine the required logic levels
-    # for the address pins (ic.i2c_address_pin_*) based on this constraint
-    # and the base address (16). 18 = 16 (base) + 2 (offset).
-    # Offset 2 (binary 010) means:
-    # - address_lines[0] -> LOW
-    # - address_lines[1] -> HIGH
-    # - address_lines[2] -> LOW
-    assert i2c_mux.addressor.address is 0x71
-    # assert i2c_bridge.addressor.address is 19
-    # assert i2c_bridge2.addressor.address is 19
-    # assert i2c_client2.addressor.address is 20
-    # assert i2c_client_pre.addressor.address is 18
-    # Connect the client and server I2C buses together.
-    # i2c_server.i2c_out ~ i2c_bridge.i2c_in
-    # i2c_bridge.i2c_out ~ i2c_bridge2.i2c_in
-    # i2c_bridge2.i2c_out ~ i2c_client.i2c_in
-    # i2c_bridge2.i2c_out ~ i2c_client2.i2c_in
-    # i2c_server.i2c_out ~ i2c_client_pre.i2c_in
+    Package automatically configures I2C address pins for specified address.
+    """
+
+    # I2C package
+    temp_sensor = new Microchip_MCP9808 # base address 0x18 (A2=LOW, A1=LOW, A0=LOW)
+
+    # Reference interfaces
+    power = new ElectricPower
+    power ~ temp_sensor.power
+
+    i2c_bus = new I2C
+    i2c_bus ~ temp_sensor.i2c
+
+    # Option 1: set I2C address directly (within limits of device, 0x18 - 0x1F)
+    temp_sensor.i2c.address = 0x1A
+
+    # Option 2: set I2C address offset relative to base address (0x18)
+    temp_sensor.addressor.offset = 0x2 # (0x18 + 0x2) = 0x1A
