@@ -89,7 +89,7 @@ export class SidebarSettingsHandlers {
         traceInfo(`[SidebarSettings] Clearing atopile.ato (using default)`);
         await config.update('ato', undefined, target);
       }
-      traceInfo(`[SidebarSettings] Atopile settings saved. User must restart to apply.`);
+      traceInfo(`[SidebarSettings] atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarSettings] Failed to update atopile settings: ${error}`);
 
