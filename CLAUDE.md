@@ -33,6 +33,7 @@ zig, graph, faebryk, fabll, domain-layer, build-server, frontend
 # Pull Requests
 
 - follow the PR template at `.github/pull_request_template.md`
+- prefix branch names with `fix/` or `feature/`
 
 # SKILLS
 
