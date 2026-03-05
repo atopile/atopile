@@ -27,6 +27,7 @@ import { SidebarFileWatcher } from './sidebar/file-watcher';
 import { SidebarFileOperations } from './sidebar/file-operations';
 import { SidebarActionHandlers } from './sidebar/action-handlers';
 import { SidebarSettingsHandlers } from './sidebar/settings-handlers';
+import { isWebIdeUi } from '../common/environment';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -262,11 +263,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'webviewReady':
         traceMilestone('sidebar webview ready');
         break;
-      case 'webviewDiagnostic': {
-        const detail = message.detail ? `: ${message.detail}` : '';
-        traceInfo(`[SidebarProvider][webview] ${message.phase}${detail}`);
-        break;
-      }
       case 'showError':
         void vscode.window.showErrorMessage(message.message);
         break;
@@ -356,25 +352,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return this._getNotBuiltHtml();
     }
 
-    const cacheVersion = (() => {
-      try {
-        return Math.floor(fs.statSync(jsPath).mtimeMs).toString();
-      } catch {
-        return Date.now().toString();
-      }
-    })();
-
-    const withCacheBust = (uri: vscode.Uri): string =>
-      `${uri.toString()}?v=${cacheVersion}`;
-
-    const jsUri = withCacheBust(webview.asWebviewUri(vscode.Uri.file(jsPath)));
+    const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
     // Base URI for relative imports in bundled JS (e.g., ./index-xxx.js)
     const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
     const cssUri = fs.existsSync(cssPath)
-      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(cssPath)))
+      ? webview.asWebviewUri(vscode.Uri.file(cssPath))
       : null;
     const baseCssUri = fs.existsSync(baseCssPath)
-      ? withCacheBust(webview.asWebviewUri(vscode.Uri.file(baseCssPath)))
+      ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
       : null;
     const iconUri = fs.existsSync(iconPath)
       ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
@@ -397,12 +382,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
-    const isWebIde =
-      vscode.env.uiKind === vscode.UIKind.Web ||
-      process.env.WEB_IDE_MODE === '1' ||
-      Boolean(process.env.OPENVSCODE_SERVER_ROOT);
+    const isWebIde = isWebIdeUi();
 
-    // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
 
     return `<!DOCTYPE html>
@@ -423,11 +404,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
-    // Debug info
-    console.log('[atopile webview] Initializing...');
-    console.log('[atopile webview] API URL:', '${apiUrl}');
-    console.log('[atopile webview] WS URL:', '${wsUrl}');
-
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
@@ -439,7 +415,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
 
-    ${generateBridgeRuntime({ apiUrl, diagnostics: true, fetchMode: 'override' })}
+    ${generateBridgeRuntime({ apiUrl, fetchMode: 'override' })}
 
     document.addEventListener('DOMContentLoaded', function() {
       var loading = document.getElementById('atopile-loading');
@@ -447,9 +423,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       function showFailure(message) {
         if (!loading) return;
         loading.textContent = message;
-        if (window.__ATOPILE_POST_DIAG__) {
-          window.__ATOPILE_POST_DIAG__('loading-failure', message);
-        }
       }
       function maybeHideLoading() {
         if (!loading || !root) return;
@@ -481,24 +454,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <div id="root"></div>
   <script nonce="${nonce}">
     (function() {
-      var postDiag = window.__ATOPILE_POST_DIAG__;
-      if (typeof postDiag === 'function') postDiag('module-script-insert');
       var script = document.createElement('script');
       script.type = 'module';
       script.src = '${jsUri}';
-      script.onload = function() {
-        if (typeof postDiag === 'function') postDiag('module-script-loaded');
-      };
-      script.onerror = function() {
-        if (typeof postDiag === 'function') postDiag('module-script-error');
-      };
       document.body.appendChild(script);
-      setTimeout(function() {
-        var root = document.getElementById('root');
-        if (root && root.childNodes.length === 0 && typeof postDiag === 'function') {
-          postDiag('module-timeout-no-root-content');
-        }
-      }, 8000);
     })();
   </script>
 </body>

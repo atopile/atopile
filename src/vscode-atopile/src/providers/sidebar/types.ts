@@ -148,12 +148,6 @@ export interface WebviewReadyMessage {
   type: 'webviewReady';
 }
 
-export interface WebviewDiagnosticMessage {
-  type: 'webviewDiagnostic';
-  phase: string;
-  detail?: string;
-}
-
 export interface OpenMigrateTabMessage {
   type: 'openMigrateTab';
   projectRoot: string;
@@ -189,7 +183,6 @@ export type WebviewMessage =
   | FetchProxyRequest
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | WebviewDiagnosticMessage
   | OpenMigrateTabMessage
   | WsProxyConnect
   | WsProxySend

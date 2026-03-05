@@ -724,7 +724,6 @@ function handleEventMessage(message: EventMessage): void {
       }
       break;
     case 'atopile_config_changed':
-      console.log('[WS] Received atopile_config_changed raw data:', JSON.stringify(data, null, 2));
       updateAtopileConfig(data);
       break;
     case EventType.LogViewCurrentIDChanged:
@@ -828,16 +827,6 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
   if (fromSpec !== null) {
     update.fromSpec = fromSpec;
   }
-
-  console.log('[WS] updateAtopileConfig received:', {
-    actualVersion,
-    actualSource,
-    actualBinaryPath,
-    fromBranch,
-    fromSpec,
-    source: data.source,
-    localPath: data.local_path || data.localPath,
-  });
 
   // User's selection in the dropdown
   if (typeof data.source === 'string') {

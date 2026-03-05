@@ -731,20 +731,13 @@ export const useStore = create<Store>()(
 
       // atopile config
       setAtopileConfig: (update) => {
-        console.log('[Store] setAtopileConfig update:', update);
         set((state) => {
-          const newAtopile = {
-            ...state.atopile,
-            ...update,
+          return {
+            atopile: {
+              ...state.atopile,
+              ...update,
+            },
           };
-          console.log('[Store] setAtopileConfig new state:', {
-            actualBinaryPath: newAtopile.actualBinaryPath,
-            localPath: newAtopile.localPath,
-            source: newAtopile.source,
-            actualVersion: newAtopile.actualVersion,
-            fromBranch: newAtopile.fromBranch,
-          });
-          return { atopile: newAtopile };
         });
       },
 

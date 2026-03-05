@@ -9,8 +9,6 @@
 export interface WebviewBridgeRuntimeOptions {
   /** The browser-visible backend API URL (used by the 'override' fetch mode). */
   apiUrl: string;
-  /** Enable diagnostic telemetry (only used by SidebarProvider). Default false. */
-  diagnostics?: boolean;
   /**
    * How the fetch proxy is exposed:
    *  - `'global'`   – sets `window.__ATOPILE_PROXY_FETCH__` for explicit callers
@@ -23,7 +21,7 @@ export interface WebviewBridgeRuntimeOptions {
  * Return a self-contained IIFE string that can be embedded in a `<script>` tag.
  */
 export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): string {
-  const { apiUrl, diagnostics = false, fetchMode = 'global' } = options;
+  const { apiUrl, fetchMode = 'global' } = options;
 
   // ── acquireVsCodeApi cache + getVsCodeApi helper ─────────────────
   const acquireBlock = `
@@ -44,59 +42,6 @@ export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): str
           return null;
         }
       }`;
-
-  // ── Diagnostics (optional) ───────────────────────────────────────
-  const diagnosticsBlock = diagnostics
-    ? `
-      function postWebviewDiagnostic(phase, detail) {
-        var payload = {
-          type: 'webviewDiagnostic',
-          phase: String(phase || ''),
-          detail: detail == null ? undefined : String(detail),
-        };
-        if (!window.__ATOPILE_DIAG_QUEUE__) {
-          window.__ATOPILE_DIAG_QUEUE__ = [];
-        }
-        window.__ATOPILE_DIAG_QUEUE__.push(payload);
-        var attempts = 0;
-        var flush = function() {
-          var api = getVsCodeApi();
-          if (!api) {
-            attempts += 1;
-            if (attempts < 40) {
-              setTimeout(flush, 250);
-            }
-            return;
-          }
-          while (window.__ATOPILE_DIAG_QUEUE__.length > 0) {
-            var msg = window.__ATOPILE_DIAG_QUEUE__.shift();
-            try {
-              api.postMessage(msg);
-            } catch (err) {
-              console.error('[atopile webview] Failed to post diagnostic:', err);
-              break;
-            }
-          }
-        };
-        try {
-          flush();
-        } catch (err) {
-          console.error('[atopile webview] Diagnostic flush failed:', err);
-        }
-      }
-
-      window.__ATOPILE_POST_DIAG__ = postWebviewDiagnostic;
-      postWebviewDiagnostic('inline-bootstrap-start');
-      window.addEventListener('error', function(event) {
-        var msg = (event && event.message) ? event.message : 'unknown error';
-        postWebviewDiagnostic('window-error', msg);
-      });
-      window.addEventListener('unhandledrejection', function(event) {
-        var reason = event && event.reason;
-        var msg = reason && reason.message ? reason.message : String(reason);
-        postWebviewDiagnostic('unhandled-rejection', msg);
-      });`
-    : '';
 
   // ── Shared helpers ───────────────────────────────────────────────
   const helpersBlock = `
@@ -368,6 +313,6 @@ export function generateBridgeRuntime(options: WebviewBridgeRuntimeOptions): str
       window.WebSocket = ProxyWebSocket;`;
 
   // ── Assemble IIFE ────────────────────────────────────────────────
-  return `(function() {${acquireBlock}${diagnosticsBlock}${helpersBlock}${fetchBlock}${wsBlock}
+  return `(function() {${acquireBlock}${helpersBlock}${fetchBlock}${wsBlock}
     })();`;
 }
