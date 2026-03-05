@@ -217,21 +217,29 @@ def exception_to_diagnostic(
     start_line, start_col = 0, 0
     stop_line, stop_col = 0, 0
 
-    if exc.origin_start is not None:
-        start_file_path, start_line, start_col = get_src_info_from_token(
-            exc.origin_start
-        )
-        if exc.origin_stop is not None:
+    origin_start = getattr(exc, "origin_start", None)
+    origin_stop = getattr(exc, "origin_stop", None)
+
+    if origin_start is not None:
+        start_file_path, start_line, start_col = get_src_info_from_token(origin_start)
+        if origin_stop is not None:
             stop_line, stop_col = (
-                exc.origin_stop.line,
-                exc.origin_stop.column + len(exc.origin_stop.text),
+                origin_stop.line,
+                origin_stop.column + len(origin_stop.text),
             )
         else:
             stop_line, stop_col = start_line + 1, 0
 
-    # Convert from 1-indexed (ANTLR) to 0-indexed (LSP)
-    start_line = max(start_line - 1, 0)
-    stop_line = max(stop_line - 1, 0)
+        # Convert from 1-indexed (ANTLR) to 0-indexed (LSP)
+        start_line = max(start_line - 1, 0)
+        stop_line = max(stop_line - 1, 0)
+    elif hasattr(exc, "src_filepath"):
+        # Fallback: direct file location (e.g. from AST nodes without ANTLR tokens)
+        start_file_path = exc.src_filepath
+        start_line = max(exc.src_start_line - 1, 0)
+        start_col = exc.src_start_col
+        stop_line = max(exc.src_end_line - 1, 0)
+        stop_col = exc.src_end_col
 
     # Handle case where file path is the string "None" (from parsing string sources)
     file_path = (
@@ -245,7 +253,7 @@ def exception_to_diagnostic(
         ),
         message=exc.message,
         severity=severity,
-        code=exc.code,
+        code=getattr(exc, "code", None),
         source=TOOL_DISPLAY,
     )
 
@@ -530,6 +538,7 @@ def build_document(uri: str, source: str) -> DocumentState:
                 tg=tg,
                 source=source,
                 import_path=str(document_path),
+                file_path=document_path,
             )
             logger.info(
                 f"build_source completed. type_roots: "
