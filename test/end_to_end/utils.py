@@ -30,16 +30,6 @@ def load_pcb_file(pcb_file: Path) -> kicad.pcb.PcbFile:
     return kicad.loads(kicad.pcb.PcbFile, pcb_file.read_text(encoding="utf-8"))
 
 
-def get_footprint_value(pcb_file: Path, reference: str) -> str:
-    pcb = load_pcb_file(pcb_file)
-
-    for footprint in pcb.kicad_pcb.footprints:
-        if Property.get_property(footprint.propertys, "Reference") == reference:
-            return Property.get_property(footprint.propertys, "Value")
-
-    raise ValueError(f"Footprint {reference!r} not found in {pcb_file}")
-
-
 def summarize_pcb_file(pcb_file: Path) -> PcbSummary:
     pcb = load_pcb_file(pcb_file)
     return PcbSummary.from_pcb(pcb)
