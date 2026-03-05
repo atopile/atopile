@@ -10,6 +10,15 @@ export type PanAndZoomCallback = () => void;
 
 /** Interactive pan and zoom attached to an HTML element */
 export class PanAndZoom {
+    private readonly onWheel: (e: WheelEvent) => void;
+    private readonly onMouseDown: (e: MouseEvent) => void;
+    private readonly onMouseMove: (e: MouseEvent) => void;
+    private readonly onMouseUp: (e: MouseEvent) => void;
+    private readonly onContextMenu: (e: Event) => void;
+    private readonly onTouchStart: (e: TouchEvent) => void;
+    private readonly onTouchMove: (e: TouchEvent) => void;
+    private readonly onTouchEnd: () => void;
+
     constructor(
         public readonly target: HTMLElement,
         public camera: Camera2,
@@ -17,50 +26,42 @@ export class PanAndZoom {
         public min_zoom = 0.1,
         public max_zoom = 400,
     ) {
-        this.target.addEventListener("wheel", (e) => this.#on_wheel(e), { passive: false });
-
         let dragStart: Vec2 | null = null;
         let dragging = false;
+        let touchStart: TouchList | null = null;
+        let pinchDist: number | null = null;
 
-        this.target.addEventListener("mousedown", (e: MouseEvent) => {
+        this.onWheel = (e) => this.#on_wheel(e);
+        this.onMouseDown = (e: MouseEvent) => {
             if (e.button === 1 || e.button === 2) {
                 e.preventDefault();
                 dragging = true;
                 dragStart = new Vec2(e.clientX, e.clientY);
             }
-        });
-
-        this.target.addEventListener("mousemove", (e: MouseEvent) => {
+        };
+        this.onMouseMove = (e: MouseEvent) => {
             if (dragging && dragStart) {
                 const cur = new Vec2(e.clientX, e.clientY);
                 const delta = cur.sub(dragStart);
                 this.#handle_pan(-delta.x, -delta.y);
                 dragStart = cur;
             }
-        });
-
-        window.addEventListener("mouseup", (e: MouseEvent) => {
+        };
+        this.onMouseUp = (e: MouseEvent) => {
             if (e.button === 1 || e.button === 2) {
                 dragging = false;
                 dragStart = null;
             }
-        });
-
-        this.target.addEventListener("contextmenu", (e) => e.preventDefault());
-
-        // Touch support
-        let touchStart: TouchList | null = null;
-        let pinchDist: number | null = null;
-
-        this.target.addEventListener("touchstart", (e: TouchEvent) => {
+        };
+        this.onContextMenu = (e) => e.preventDefault();
+        this.onTouchStart = (e: TouchEvent) => {
             if (e.touches.length === 2) {
                 pinchDist = this.#touchDistance(e.touches);
             } else if (e.touches.length === 1) {
                 touchStart = e.touches;
             }
-        });
-
-        this.target.addEventListener("touchmove", (e: TouchEvent) => {
+        };
+        this.onTouchMove = (e: TouchEvent) => {
             if (e.touches.length === 2 && pinchDist !== null) {
                 const cur = this.#touchDistance(e.touches);
                 const scale = (cur / pinchDist) * 4;
@@ -72,12 +73,31 @@ export class PanAndZoom {
                 this.#handle_pan(sx - ex, sy - ey);
                 touchStart = e.touches;
             }
-        });
-
-        this.target.addEventListener("touchend", () => {
+        };
+        this.onTouchEnd = () => {
             pinchDist = null;
             touchStart = null;
-        });
+        };
+
+        this.target.addEventListener("wheel", this.onWheel, { passive: false });
+        this.target.addEventListener("mousedown", this.onMouseDown);
+        this.target.addEventListener("mousemove", this.onMouseMove);
+        window.addEventListener("mouseup", this.onMouseUp);
+        this.target.addEventListener("contextmenu", this.onContextMenu);
+        this.target.addEventListener("touchstart", this.onTouchStart);
+        this.target.addEventListener("touchmove", this.onTouchMove);
+        this.target.addEventListener("touchend", this.onTouchEnd);
+    }
+
+    dispose() {
+        this.target.removeEventListener("wheel", this.onWheel);
+        this.target.removeEventListener("mousedown", this.onMouseDown);
+        this.target.removeEventListener("mousemove", this.onMouseMove);
+        window.removeEventListener("mouseup", this.onMouseUp);
+        this.target.removeEventListener("contextmenu", this.onContextMenu);
+        this.target.removeEventListener("touchstart", this.onTouchStart);
+        this.target.removeEventListener("touchmove", this.onTouchMove);
+        this.target.removeEventListener("touchend", this.onTouchEnd);
     }
 
     #touchDistance(touches: TouchList): number {

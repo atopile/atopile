@@ -97,7 +97,6 @@ export class Editor {
     private textCtx: CanvasRenderingContext2D | null;
     private renderer: Renderer;
     private camera: Camera2;
-    // @ts-ignore TS6133 — retained to prevent garbage collection
     private panAndZoom: PanAndZoom;
     private client: LayoutClient;
     private renderLoop: RenderLoop;
@@ -241,6 +240,7 @@ export class Editor {
     dispose() {
         this.renderLoop.stop();
         this.client.disconnect();
+        this.panAndZoom.dispose();
 
         if (this._onMouseUp) window.removeEventListener("mouseup", this._onMouseUp);
         if (this._onKeyDown) window.removeEventListener("keydown", this._onKeyDown);
