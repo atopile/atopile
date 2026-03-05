@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from itertools import combinations
 
 import faebryk.core.node as fabll
@@ -411,14 +412,12 @@ class _OperandMappingError(ValueError):
 @algorithm("Mixed-Interval estimation", terminal=False)
 def mixed_estimation(mutator: Mutator):
     """
-    When all operands of an expression have both upper and lower bounds (subset and
-    superset constraints), construct a combined interval for each operand, build a copy
-    of the expression using those intervals, and assert that the original expression is
-    a subset thereof.
+    Construct combined intervals for each operand from both upper and lower bounds, when
+    available. Uses the parameter's domain in the absence of more-constraining bounds.
 
     ```
     f(A{⊆|X}{⊇|Y}, B{⊆|Z}{⊇|W}, ...)
-    => f(...) ⊆! f([min(Y), max(X)], [min(W), max(Z)], ...)
+    => f(...) ⊆! f([min(Y, -∞), max(X, +∞)], [min(W, -∞), max(Z, +∞)], ...)
     ```
 
     No anticorrelation check needed — Minkowski math is inclusion-monotonic.
@@ -460,41 +459,43 @@ def mixed_estimation(mutator: Mutator):
         and not mutator.utils.is_literal_expression(sps_op)
     }
 
-    # Step 3: Find expressions where all operands have both bounds or are literals
-    # An operand qualifies if it has both upper and lower bounds, or if it's a literal
-    def _op_has_both_bounds(op: F.Parameters.can_be_operand) -> bool:
-        return (op in supersetted_ops and op in subsetted_ops) or bool(
-            op.as_literal.try_get()
-        )
+    bounded_ops = set(supersetted_ops.keys()) | set(subsetted_ops.keys())
+
+    # An operand qualifies if it has at least one bound or is a literal
+    def _op_qualifies(op: F.Parameters.can_be_operand) -> bool:
+        return op in bounded_ops or bool(op.as_literal.try_get())
 
     def _map_operand(op: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        # Parameter operands: combined interval [min(ss), max(sps)]
-        # Literal operands: use the literal directly
-
         if op.as_literal.try_get():
             return op
 
-        superset_lits = supersetted_ops[op].switch_cast()
-        subset_lits = subsetted_ops[op].switch_cast()
+        upper = supersetted_ops.get(op)
+        lower = subsetted_ops.get(op)
 
-        if not superset_lits.isinstance(
-            F.Literals.Numbers
-        ) or not subset_lits.isinstance(F.Literals.Numbers):
+        min_val = -math.inf
+        max_val = math.inf
+        unit = None
+
+        if upper and (upper_nums := upper.switch_cast()).isinstance(F.Literals.Numbers):
+            assert isinstance(upper_nums, F.Literals.Numbers)
+            min_val = max(min_val, upper_nums.get_min_value())
+            max_val = min(max_val, upper_nums.get_max_value())
+            unit = upper_nums.get_is_unit()
+
+        if lower and (lower_nums := lower.switch_cast()).isinstance(F.Literals.Numbers):
+            assert isinstance(lower_nums, F.Literals.Numbers)
+            min_val = max(min_val, lower_nums.get_min_value())
+            max_val = min(max_val, lower_nums.get_max_value())
+            unit = unit or lower_nums.get_is_unit()
+
+        if min_val == -math.inf and max_val == math.inf:
             raise _OperandMappingError()
-
-        assert isinstance(superset_lits, F.Literals.Numbers) and isinstance(
-            subset_lits, F.Literals.Numbers
-        )
 
         return (
             (
                 F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
                 .create_instance(g=mutator.G_transient)
-                .setup_from_min_max(
-                    min=subset_lits.get_min_value(),
-                    max=superset_lits.get_max_value(),
-                    unit=superset_lits.get_is_unit(),
-                )
+                .setup_from_min_max(min=min_val, max=max_val, unit=unit)
             )
             .is_literal.get()
             .as_operand.get()
@@ -502,20 +503,23 @@ def mixed_estimation(mutator: Mutator):
 
     for expr in {
         e
-        for op in set(supersetted_ops.keys()) | set(subsetted_ops.keys())
+        for op in bounded_ops
         for e in mutator.get_operations(op.as_parameter_operatable.force_get())
         if not e.has_trait(F.Expressions.is_setic)
     }:
         expr_e = expr.get_trait(F.Expressions.is_expression)
         operands = expr_e.get_operands()
 
-        if not all(_op_has_both_bounds(op) for op in operands):
+        if not all(_op_qualifies(op) for op in operands):
+            continue
+
+        # At least one non-literal operand must have a bound
+        if not any(op in bounded_ops for op in operands):
             continue
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # Step 4: Construct combined interval for each operand
         try:
             mapped_operands = [_map_operand(op) for op in operands]
         except _OperandMappingError:
@@ -524,7 +528,7 @@ def mixed_estimation(mutator: Mutator):
         if (out := _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)) is None:
             continue
 
-        # Step 5: Assert original ⊆ computed result
+        # Assert original ⊆ computed result
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             expr_e.as_operand.get(),
