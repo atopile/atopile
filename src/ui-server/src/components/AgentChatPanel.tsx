@@ -2878,12 +2878,10 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       const response = await waitForRunCompletion(currentSessionId, run.runId);
       const finalizedTraces = response.toolTraces.map((trace) => ({ ...trace, running: false }));
 
-      // Preserve designQuestions from the pending message if they were set during progress
-      const pendingMsg = chatSnapshotsRef.current
-        .find((c) => c.id === chatId)
-        ?.messages.find((m) => m.id === pendingAssistantId);
-
-      const assistantMessage: AgentMessage = {
+      // Build the final assistant message inside state updater callbacks
+      // so we read designQuestions from the latest committed state, not
+      // from chatSnapshotsRef which may lag behind React commits.
+      const buildFinalMessage = (pending: AgentMessage | undefined): AgentMessage => ({
         id: `${chatPrefix}-assistant-${Date.now()}`,
         role: 'assistant',
         content: withCompletionNudge(
@@ -2891,29 +2889,36 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           finalizedTraces,
         ),
         toolTraces: finalizedTraces,
-        designQuestions: pendingMsg?.designQuestions ?? null,
-      };
+        designQuestions: pending?.designQuestions ?? null,
+        checklist: pending?.checklist ?? null,
+      });
 
-      updateChatSnapshot(chatId, (chat) => ({
-        ...chat,
-        messages: chat.messages.map((message) =>
-          message.id === pendingAssistantId ? assistantMessage : message
-        ),
-        isSending: false,
-        isStopping: false,
-        activeRunId: null,
-        pendingRunId: null,
-        pendingAssistantId: null,
-        cancelRequested: false,
-        activityLabel: 'Ready',
-        error: null,
-      }));
+      updateChatSnapshot(chatId, (chat) => {
+        const pending = chat.messages.find((m) => m.id === pendingAssistantId);
+        const finalMsg = buildFinalMessage(pending);
+        return {
+          ...chat,
+          messages: chat.messages.map((message) =>
+            message.id === pendingAssistantId ? finalMsg : message
+          ),
+          isSending: false,
+          isStopping: false,
+          activeRunId: null,
+          pendingRunId: null,
+          pendingAssistantId: null,
+          cancelRequested: false,
+          activityLabel: 'Ready',
+          error: null,
+        };
+      });
       if (activeChatIdRef.current === chatId) {
-        setMessages((previous) =>
-          previous.map((message) =>
-            message.id === pendingAssistantId ? assistantMessage : message
-          )
-        );
+        setMessages((previous) => {
+          const pending = previous.find((m) => m.id === pendingAssistantId);
+          const finalMsg = buildFinalMessage(pending);
+          return previous.map((message) =>
+            message.id === pendingAssistantId ? finalMsg : message
+          );
+        });
       }
     } catch (sendError: unknown) {
       const rawMessage = sendError instanceof Error ? sendError.message : 'Agent request failed.';

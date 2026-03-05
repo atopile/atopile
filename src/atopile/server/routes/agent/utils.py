@@ -683,6 +683,57 @@ def consume_run_steer_messages(run_id: str) -> list[str]:
     return queued
 
 
+def inject_build_completed_steering(
+    project_root: str,
+    build_id: str,
+    target: str,
+    status: str,
+    warnings: int,
+    errors: int,
+    error: str | None,
+    elapsed_seconds: float,
+) -> bool:
+    """Inject a build-completion steering message into any active agent run
+    for *project_root*.  Called from the build-queue completion callback
+    (background thread) — only touches thread-safe ``runs_lock``.
+
+    Returns True if a message was injected.
+    """
+    parts = [f"[build completed] target={target} status={status}"]
+    if elapsed_seconds:
+        parts.append(f"elapsed={elapsed_seconds:.1f}s")
+    if warnings:
+        parts.append(f"warnings={warnings}")
+    if errors:
+        parts.append(f"errors={errors}")
+    if error:
+        # Truncate long error messages
+        short_error = error if len(error) <= 300 else error[:300] + "..."
+        parts.append(f"error: {short_error}")
+    parts.append(f"build_id={build_id}")
+    if status.lower() in ("failed", "error"):
+        parts.append(
+            "Use build_logs_search with this build_id to see the full error."
+        )
+    message = " | ".join(parts)
+
+    with runs_lock:
+        for run in runs_by_id.values():
+            if (
+                run.status == RUN_STATUS_RUNNING
+                and run.project_root == project_root
+            ):
+                run.steer_messages.append(message)
+                run.updated_at = time.time()
+                log.info(
+                    "Injected build-completed steering for run=%s build=%s",
+                    run.run_id,
+                    build_id,
+                )
+                return True
+    return False
+
+
 def reset_session_state(session: AgentSession, *, project_root: str) -> None:
     """Clear per-project session state when switching scopes."""
     session.project_root = project_root
