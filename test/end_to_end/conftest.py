@@ -36,7 +36,7 @@ EXEC_T = Callable[[str, list[str]], tuple[str, str, subprocess.Popen]]
 def dump_and_run(src: str, args: list[str], working_dir: Path):
     if "-v" not in args:
         args.insert(0, "-vv")
-    # Copy the default_ato.yaml to the tmpdir
+    # Copy the default_ato.yaml to the test working directory
     shutil.copy2(DEFAULT_CONFIG, working_dir / "ato.yaml")
 
     with open(working_dir / "app.ato", "w", encoding="utf-8") as f:
@@ -46,5 +46,10 @@ def dump_and_run(src: str, args: list[str], working_dir: Path):
 
 
 @pytest.fixture
-def build_app(tmpdir: Path):
-    yield partial(dump_and_run, working_dir=tmpdir)
+def build_app(tmp_path: Path):
+    yield partial(dump_and_run, working_dir=tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def save_end_to_end_tmp_path_on_failure(save_tmp_path_on_failure: None):
+    yield

@@ -373,6 +373,80 @@
         @keyframes status-busy-spin {
             to { transform: rotate(360deg); }
         }
+
+        #settings-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.15s, color 0.15s;
+            flex-shrink: 0;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        #settings-btn:hover {
+            opacity: 1;
+            color: var(--accent);
+        }
+
+        .settings-popup {
+            position: fixed;
+            bottom: 36px;
+            left: 8px;
+            background: var(--surface-solid);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            z-index: 40;
+            padding: 10px 12px;
+            font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            color: var(--text-primary);
+        }
+
+        .settings-label-title {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .settings-source-buttons {
+            display: flex;
+            gap: 2px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 3px;
+            padding: 2px;
+        }
+
+        .source-btn {
+            padding: 3px 7px;
+            border: 1px solid transparent;
+            border-radius: 2px;
+            background: transparent;
+            color: var(--text-secondary);
+            font: inherit;
+            font-size: 10px;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+            white-space: nowrap;
+        }
+
+        .source-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.06);
+        }
+
+        .source-btn.active {
+            color: var(--accent);
+            border-color: rgba(224,160,56,0.3);
+            background: var(--accent-glow);
+        }
     </style>
 </head>
 <body>

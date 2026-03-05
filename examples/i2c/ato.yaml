@@ -7,3 +7,7 @@ paths:
 builds:
   default:
     entry: i2c.ato:App
+dependencies:
+- type: registry
+  identifier: atopile/microchip-mcp9808
+  release: 0.2.0
