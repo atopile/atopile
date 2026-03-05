@@ -17,6 +17,17 @@ class USB2_0_IF(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
+    bus_spec = fabll.Traits.MakeEdge(
+        F.DataBus.has_databus_specification.MakeChild(
+            topology=[
+                F.DataBus.has_databus_specification.Topology.STAR,
+                F.DataBus.has_databus_specification.Topology.TREE,
+            ],
+            data_flow=F.DataBus.has_databus_specification.DataFlow.HALF_DUPLEX,
+            multi_controller=False,
+        )
+    )
+
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
