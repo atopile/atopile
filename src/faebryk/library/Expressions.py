@@ -3177,21 +3177,27 @@ ExpressionNodes = (
 class Mapping:
     @staticmethod
     def MakeChild(
-        left: fabll.RefPath,
-        right: fabll.RefPath,
         mapping: Sequence[tuple[fabll._ChildField, fabll._ChildField]],
+        left: fabll.RefPath | None = None,
+        right: fabll.RefPath | None = None,
         assert_: bool = True,
     ) -> fabll._ChildField["And"]:
         implies_fields = []
 
-        for lit_key, lit_val in mapping:
-            # Condition: left is subset of lit_key
-            condition = IsSubset.MakeChild(left, [lit_key])
-            condition.add_dependant(lit_key, before=True)
+        for key_child, val_child in mapping:
+            # Build condition
+            if left is not None:
+                condition = IsSubset.MakeChild(left, [key_child])
+                condition.add_dependant(key_child, before=True)
+            else:
+                condition = key_child
 
-            # Consequence: right is subset of lit_val
-            consequence = IsSubset.MakeChild(right, [lit_val])
-            consequence.add_dependant(lit_val, before=True)
+            # Build consequence
+            if right is not None:
+                consequence = IsSubset.MakeChild(right, [val_child])
+                consequence.add_dependant(val_child, before=True)
+            else:
+                consequence = val_child
 
             # Implication: condition => consequence
             implies = Implies.MakeChild([condition], [consequence])
@@ -3480,6 +3486,57 @@ def test_mapping_makechild():
 
     # The And should be asserted (has is_predicate trait)
     assert and_node.has_trait(is_predicate)
+
+
+def test_mapping_makechild_expression_condition():
+    """Test Mapping.MakeChild with expression conditions (left=None)."""
+
+    from faebryk.library.Units import Meter, Volt
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _TestNode(fabll.Node):
+        voltage = F.Parameters.NumericParameter.MakeChild(unit=Volt)
+        threshold = F.Parameters.NumericParameter.MakeChild(unit=Volt)
+        max_width = F.Parameters.NumericParameter.MakeChild(unit=Meter)
+
+        _constraints = [
+            Mapping.MakeChild(
+                right=[max_width],
+                mapping=[
+                    (
+                        GreaterThan.MakeChild([voltage], [threshold]),
+                        F.Literals.Numbers.MakeChild(min=0, max=0.670, unit=Meter),
+                    ),
+                    (
+                        LessThan.MakeChild([voltage], [threshold]),
+                        F.Literals.Numbers.MakeChild(min=0, max=0.300, unit=Meter),
+                    ),
+                ],
+            ),
+        ]
+
+    inst = _TestNode.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Verify the And expression was created with the is_predicate trait (asserted)
+    and_nodes = inst.get_children(direct_only=True, types=And, tg=tg)
+    assert len(and_nodes) == 1, f"Expected 1 And node, got {len(and_nodes)}"
+
+    # The And should have 2 operands (one Implies per mapping entry)
+    and_node = and_nodes[0]
+    operands = and_node.operands.get().as_list()
+    assert len(operands) == 2, f"Expected 2 operands, got {len(operands)}"
+
+    # The And should be asserted (has is_predicate trait)
+    assert and_node.has_trait(is_predicate)
+
+    # Verify both expression conditions were created directly (not wrapped in IsSubset)
+    gt_nodes = inst.get_children(direct_only=True, types=GreaterThan, tg=tg)
+    assert len(gt_nodes) == 1, f"Expected 1 GreaterThan node, got {len(gt_nodes)}"
+
+    lt_nodes = inst.get_children(direct_only=True, types=LessThan, tg=tg)
+    assert len(lt_nodes) == 1, f"Expected 1 LessThan node, got {len(lt_nodes)}"
 
 
 if __name__ == "__main__":
