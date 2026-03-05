@@ -524,34 +524,104 @@ class TestHasSimpleValueRepresentation:
 
     def test_repr_display_unit_conversion(self):
         """
-        Test that values are converted to display unit (e.g., kΩ instead of Ω).
+        Test that API literals (no display unit) auto-scale with SI prefixes,
+        and user literals (with display unit) preserve the user's unit.
         """
         import faebryk.library._F as F
 
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        # Define Kiloohm unit with proper symbols
         kohm_unit = self._make_kiloohm_unit(g=g, tg=tg)
-
-        # Create parameter with kohm as display unit
         param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
         param.setup(is_unit=kohm_unit)
 
-        # Set value in base ohms (47000 ohm = 47 kohm)
+        # Simulate API deserialization: set has_unit but NOT has_display_unit
+        from faebryk.library.Units import has_unit
+
+        api_lit = F.Literals.Numbers.create_instance(g=g, tg=tg)
+        numeric_set = F.Literals.NumericSet.create_instance(
+            g=g, tg=tg
+        ).setup_from_values(values=[(47000.0, 47000.0)])
+        api_lit.numeric_set_ptr.get().point(numeric_set)
         base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
-        lit = (
+        base_ohm = base_ohm.copy_into(g=g)
+        fabll.Traits.create_and_add_instance_to(api_lit, has_unit).setup(
+            is_unit=base_ohm
+        )
+
+        formatted = param.format_literal_for_display(api_lit)
+        assert formatted == "47kΩ", f"Expected '47kΩ', got '{formatted}'"
+
+        user_lit = (
             F.Literals.Numbers.bind_typegraph(tg)
             .create_instance(g=g)
-            .setup_from_singleton(value=47000.0, unit=base_ohm)
+            .setup_from_singleton(value=47.0, unit=kohm_unit)
         )
-        param.set_superset(g=g, value=lit)
-
-        # format_literal_for_display should convert value and show correct unit
-        formatted = param.format_literal_for_display(lit)
-
-        # Should show 47kΩ (converted from 47000Ω)
+        formatted = param.format_literal_for_display(user_lit)
         assert formatted == "47kΩ", f"Expected '47kΩ', got '{formatted}'"
+
+    def _make_milliohm_unit(
+        self, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "F.Units.is_unit":
+        from faebryk.library.Units import BasisVector, is_unit, is_unit_type
+
+        class _Milliohm(fabll.Node):
+            unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
+            is_unit_type_trait = fabll.Traits.MakeEdge(
+                is_unit_type.MakeChild(("mΩ", "mohm"), unit_vector_arg)
+            ).put_on_type()
+            is_unit_trait = fabll.Traits.MakeEdge(
+                is_unit.MakeChild(("mΩ", "mohm"), unit_vector_arg, multiplier=0.001)
+            )
+            can_be_operand = fabll.Traits.MakeEdge(
+                F.Parameters.can_be_operand.MakeChild()
+            )
+
+        mohm_instance = _Milliohm.bind_typegraph(tg=tg).create_instance(g=g)
+        return mohm_instance.is_unit_trait.get()
+
+    def test_repr_display_unit_mismatch(self):
+        """
+        Test that when a parameter's display unit (mΩ) differs from the
+        literal's display unit (Ω), the literal's unit wins for display.
+        API literals with no display unit auto-scale with SI prefixes.
+        """
+        import faebryk.library._F as F
+        from faebryk.library.Units import has_unit
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Parameter with mΩ as display unit
+        mohm_unit = self._make_milliohm_unit(g=g, tg=tg)
+        param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
+        param.setup(is_unit=mohm_unit)
+
+        base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+
+        # Should auto SI scale → 500mΩ
+        api_lit = F.Literals.Numbers.create_instance(g=g, tg=tg)
+        numeric_set = F.Literals.NumericSet.create_instance(
+            g=g, tg=tg
+        ).setup_from_values(values=[(0.5, 0.5)])
+        api_lit.numeric_set_ptr.get().point(numeric_set)
+        base_ohm_copy = base_ohm.copy_into(g=g)
+        fabll.Traits.create_and_add_instance_to(api_lit, has_unit).setup(
+            is_unit=base_ohm_copy
+        )
+
+        formatted = param.format_literal_for_display(api_lit)
+        assert formatted == "500mΩ", f"Expected '500mΩ', got '{formatted}'"
+
+        # Literal's Ω wins over parameter's mΩ → 0.5Ω
+        user_lit = (
+            F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(value=0.5, unit=base_ohm)
+        )
+        formatted = param.format_literal_for_display(user_lit)
+        assert formatted == "0.5Ω", f"Expected '0.5Ω', got '{formatted}'"
 
     def test_resistor_value_representation(self):
         """Test that resistor value representation shows correctly formatted values.

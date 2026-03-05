@@ -86,6 +86,26 @@ if(DEFINED ENV{ATOPILE_ZIG_CPU})
   message(STATUS "Zig CPU target: $ENV{ATOPILE_ZIG_CPU}")
 endif()
 
+# Linux portable-binary mode ----------------------------------------------------
+# Inside cibuildwheel (CIBUILDWHEEL=1) the host CPU may have features (AVX-512,
+# etc.) absent on deployment targets. Target baseline arch so the resulting
+# wheels (and Docker images built from them) run on any x86_64/aarch64 machine.
+# Local dev builds keep the default (native) for maximum performance.
+if (UNIX AND NOT APPLE AND DEFINED ENV{CIBUILDWHEEL})
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -c "import platform; print(platform.machine())"
+    OUTPUT_VARIABLE _LINUX_ARCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  # Detect musl vs glibc from Python sysconfig
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -c "import sysconfig; print('musl' if 'musl' in (sysconfig.get_config_var('HOST_GNU_TYPE') or '') else 'gnu')"
+    OUTPUT_VARIABLE _LINUX_ABI
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(_TARGET_ARCH_FOR_STAMP "${_LINUX_ARCH}")
+  set(ZIG_TARGET_ARG "-Dtarget=${_LINUX_ARCH}-linux-${_LINUX_ABI}")
+  message(STATUS "cibuildwheel: targeting ${_LINUX_ARCH}-linux-${_LINUX_ABI} for portable binary")
+endif()
+
 # Stamp file includes target architecture to ensure different arch builds in the same
 # source checkout (e.g., cibuildwheel building x86_64 and arm64) don't skip each other.
 set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
