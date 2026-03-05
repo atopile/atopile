@@ -15,7 +15,7 @@ import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../../common/
 import { isModelViewerOpen, openModelViewerPreview } from '../../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../../common/target';
 import { type Build, loadBuilds, getBuilds } from '../../common/manifest';
-import { openLayoutEditor } from '../../ui/layout-editor';
+import { isLayoutEditorOpen, openLayoutEditor } from '../../ui/layout-editor';
 import type { OpenSignalsMessage, SelectionChangedMessage } from './types';
 import { isWebIdeUi } from '../../common/environment';
 
@@ -155,6 +155,18 @@ export class SidebarActionHandlers {
         });
 
         await openModelViewerPreview();
+      }
+    }
+
+    if (isLayoutEditorOpen() && selectedBuilds.length > 0) {
+      const build = selectedBuilds[0];
+      if (build?.root && build?.name) {
+        traceInfo(`[SidebarActions] Layout editor open, switching to: ${build.name}`);
+        backendServer.sendToWebview({
+          type: 'switchLayout',
+          projectRoot: build.root,
+          targetName: build.name,
+        });
       }
     }
   }

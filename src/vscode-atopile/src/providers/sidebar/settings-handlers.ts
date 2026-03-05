@@ -74,7 +74,6 @@ export class SidebarSettingsHandlers {
     }
 
     traceInfo(`[SidebarSettings] Processing new settings: ${settingsKey}`);
-    this._lastAtopileSettingsKey = settingsKey;
 
     const config = vscode.workspace.getConfiguration('atopile');
     const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
@@ -89,6 +88,7 @@ export class SidebarSettingsHandlers {
         traceInfo(`[SidebarSettings] Clearing atopile.ato (using default)`);
         await config.update('ato', undefined, target);
       }
+      this._lastAtopileSettingsKey = settingsKey;
       traceInfo(`[SidebarSettings] atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarSettings] Failed to update atopile settings: ${error}`);

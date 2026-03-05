@@ -258,6 +258,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           traceError(`[SidebarProvider] Error browsing project path: ${error}`);
         });
         break;
+      case 'projectCreated':
+        void this._handleProjectCreated(message.projectRoot);
+        break;
       case 'browseExportDirectory':
         this._settings.browseExportDirectory().catch((error) => {
           traceError(`[SidebarProvider] Error browsing export directory: ${error}`);
@@ -335,6 +338,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as { type?: string }).type}`);
+    }
+  }
+
+  private _isInCurrentWorkspace(folderPath: string): boolean {
+    const workspaces = vscode.workspace.workspaceFolders ?? [];
+    for (const workspaceFolder of workspaces) {
+      const relative = path.relative(workspaceFolder.uri.fsPath, folderPath);
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async _handleProjectCreated(projectRoot: string): Promise<void> {
+    if (!projectRoot) {
+      return;
+    }
+
+    const containingFolder = path.dirname(projectRoot);
+    if (this._isInCurrentWorkspace(containingFolder)) {
+      return;
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+      `Project created at ${projectRoot}. Open the containing folder?`,
+      { modal: true },
+      'Open Folder',
+    );
+
+    if (choice === 'Open Folder') {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(containingFolder), {
+        forceNewWindow: false,
+      });
     }
   }
 

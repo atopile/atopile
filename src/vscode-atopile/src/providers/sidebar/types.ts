@@ -41,6 +41,11 @@ export interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+export interface ProjectCreatedMessage {
+  type: 'projectCreated';
+  projectRoot: string;
+}
+
 export interface BrowseExportDirectoryMessage {
   type: 'browseExportDirectory';
 }
@@ -160,6 +165,7 @@ export type WebviewMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | ProjectCreatedMessage
   | BrowseExportDirectoryMessage
   | OpenSourceControlMessage
   | ShowProblemsMessage
