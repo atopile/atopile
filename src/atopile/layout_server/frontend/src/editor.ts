@@ -1494,7 +1494,7 @@ export class Editor {
     }
 
     private drawTextOverlay() {
-        if (!this.textCtx || !this.model) return;
+        if (!this.textCtx || !this.model || this.readOnly) return;
         const viewport = this.getCanvasViewportMetrics();
         this.syncTextOverlayViewport(viewport);
         const visibleFpIndices = this.footprintIndex.query(this.camera.bbox);
