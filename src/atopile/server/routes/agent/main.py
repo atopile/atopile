@@ -6,13 +6,13 @@ import asyncio
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
 from atopile.dataclasses import AppContext
+from atopile.server.agent.tools import validate_tool_scope
 from atopile.server.domains.deps import get_ctx
 
 from .models import (
-    DEFAULT_AGENT_ID,
     DETAIL_TEXT_APPLYING_GUIDANCE,
     ERROR_CANCELLED_BY_USER,
     ERROR_MESSAGE_EMPTY,
@@ -33,7 +33,6 @@ from .models import (
     STATUS_TEXT_STEERING,
     TURN_MODE_BACKGROUND,
     TURN_MODE_SYNC,
-    AgentPeerMessageResponse,
     AgentRun,
     AgentSession,
     CancelRunResponse,
@@ -41,7 +40,6 @@ from .models import (
     CreateRunResponse,
     CreateSessionRequest,
     CreateSessionResponse,
-    GetRunMessagesResponse,
     GetRunResponse,
     SendMessageRequest,
     SendMessageResponse,
@@ -57,14 +55,15 @@ from .utils import (
     build_run_trace_callback,
     build_send_message_response,
     cleanup_finished_runs,
-    emit_agent_message,
     emit_agent_progress,
     ensure_session_idle,
     log_agent_event,
     normalize_running_run_state,
     orchestrator,
     persist_sessions_state,
-    pull_agent_run_messages,
+    release_sync_turn,
+    reserve_background_run,
+    reserve_sync_turn,
     reset_session_state,
     run_turn_in_background,
     runs_by_id,
@@ -104,8 +103,6 @@ async def create_session(
     ctx: AppContext = Depends(get_ctx),
 ):
     try:
-        from atopile.server.agent.tools import validate_tool_scope
-
         validate_tool_scope(request.project_root, ctx)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -138,6 +135,10 @@ async def send_message(
         raise HTTPException(status_code=400, detail=ERROR_MESSAGE_EMPTY)
 
     cleanup_finished_runs()
+    try:
+        validate_tool_scope(request.project_root, ctx)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     with sessions_lock:
         session = sessions_by_id.get(session_id)
@@ -147,11 +148,13 @@ async def send_message(
             status_code=404, detail=session_not_found_detail(session_id)
         )
 
-    active_run = ensure_session_idle(session)
-    if active_run and active_run.status == RUN_STATUS_RUNNING:
+    reservation_token = reserve_sync_turn(session)
+    if reservation_token is None:
+        active_run = ensure_session_idle(session)
+        conflict_run_id = active_run.run_id if active_run else session.active_run_id or ""
         raise HTTPException(
             status_code=409,
-            detail=active_run_conflict_detail(active_run.run_id),
+            detail=active_run_conflict_detail(conflict_run_id or "sync"),
         )
 
     _ensure_project_scope(session_id, session, request.project_root)
@@ -178,14 +181,6 @@ async def send_message(
             payload=payload,
         )
 
-    async def emit_message(message: dict) -> None:
-        await emit_agent_message(
-            session_id=session_id,
-            project_root=request.project_root,
-            run_id=run_id,
-            message=message,
-        )
-
     trace_callback = build_run_trace_callback(
         session_id=session_id,
         run_id=run_id,
@@ -193,43 +188,45 @@ async def send_message(
     )
 
     try:
-        result = await orchestrator.run_turn(
-            ctx=ctx,
-            project_root=request.project_root,
-            history=list(session.history),
-            user_message=request.message,
-            session_id=session_id,
-            selected_targets=request.selected_targets,
-            previous_response_id=session.last_response_id,
-            tool_memory=session.tool_memory,
-            progress_callback=emit_progress,
-            message_callback=emit_message,
-            trace_callback=trace_callback,
-        )
-    except Exception as exc:
-        await emit_progress({"phase": PHASE_ERROR, "error": str(exc)})
-        log_agent_event(
-            EVENT_TURN_FAILED,
-            {
-                "session_id": session_id,
-                "run_id": run_id,
-                "mode": TURN_MODE_SYNC,
-                "project_root": request.project_root,
-                "error": str(exc),
-            },
-        )
-        raise HTTPException(status_code=500, detail=str(exc))
+        try:
+            result = await orchestrator.run_turn(
+                ctx=ctx,
+                project_root=request.project_root,
+                history=list(session.history),
+                user_message=request.message,
+                session_id=session_id,
+                selected_targets=request.selected_targets,
+                previous_response_id=session.last_response_id,
+                tool_memory=session.tool_memory,
+                progress_callback=emit_progress,
+                trace_callback=trace_callback,
+            )
+        except Exception as exc:
+            await emit_progress({"phase": PHASE_ERROR, "error": str(exc)})
+            log_agent_event(
+                EVENT_TURN_FAILED,
+                {
+                    "session_id": session_id,
+                    "run_id": run_id,
+                    "mode": TURN_MODE_SYNC,
+                    "project_root": request.project_root,
+                    "error": str(exc),
+                },
+            )
+            raise HTTPException(status_code=500, detail=str(exc))
 
-    response = build_send_message_response(
-        session=session,
-        user_message=request.message,
-        steering_messages=[],
-        result=result,
-        mode=TURN_MODE_SYNC,
-        run_id=run_id,
-    )
-    persist_sessions_state()
-    return response
+        response = build_send_message_response(
+            session=session,
+            user_message=request.message,
+            steering_messages=[],
+            result=result,
+            mode=TURN_MODE_SYNC,
+            run_id=run_id,
+        )
+        persist_sessions_state()
+        return response
+    finally:
+        release_sync_turn(session_id, reservation_token)
 
 
 @router.post("/sessions/{session_id}/runs", response_model=CreateRunResponse)
@@ -242,6 +239,10 @@ async def create_run(
         raise HTTPException(status_code=400, detail=ERROR_MESSAGE_EMPTY)
 
     cleanup_finished_runs()
+    try:
+        validate_tool_scope(request.project_root, ctx)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     with sessions_lock:
         session = sessions_by_id.get(session_id)
@@ -251,13 +252,6 @@ async def create_run(
         )
 
     _ensure_project_scope(session_id, session, request.project_root)
-
-    active_run = ensure_session_idle(session)
-    if active_run and active_run.status == RUN_STATUS_RUNNING:
-        raise HTTPException(
-            status_code=409,
-            detail=active_run_conflict_detail(active_run.run_id),
-        )
 
     run_id = uuid.uuid4().hex
     run = AgentRun(
@@ -269,13 +263,19 @@ async def create_run(
         status=RUN_STATUS_RUNNING,
     )
 
-    with runs_lock:
-        runs_by_id[run_id] = run
     with sessions_lock:
         current = sessions_by_id.get(session_id)
-        if current:
-            current.recent_selected_targets = list(request.selected_targets)
-            current.active_run_id = run_id
+    if current is None:
+        raise HTTPException(
+            status_code=404, detail=session_not_found_detail(session_id)
+        )
+    if not reserve_background_run(current, run):
+        active_run = ensure_session_idle(current)
+        conflict_run_id = active_run.run_id if active_run else current.active_run_id or "sync"
+        raise HTTPException(
+            status_code=409,
+            detail=active_run_conflict_detail(conflict_run_id),
+        )
 
     persist_sessions_state()
     log_agent_event(
@@ -318,45 +318,6 @@ async def get_run(
         status=run.status,
         response=response,
         error=run.error,
-    )
-
-
-@router.get(
-    "/sessions/{session_id}/runs/{run_id}/messages",
-    response_model=GetRunMessagesResponse,
-)
-async def get_run_messages(
-    session_id: str,
-    run_id: str,
-    agent: str = Query(default=DEFAULT_AGENT_ID),
-    limit: int = Query(default=200, ge=1, le=500),
-):
-    with runs_lock:
-        run = runs_by_id.get(run_id)
-        if run:
-            run = normalize_running_run_state(run)
-    if not run or run.session_id != session_id:
-        raise HTTPException(status_code=404, detail=run_not_found_detail(run_id))
-
-    messages = pull_agent_run_messages(
-        run_id,
-        agent_id=agent.strip().lower() or DEFAULT_AGENT_ID,
-        max_items=limit,
-    )
-    with runs_lock:
-        current = runs_by_id.get(run_id)
-        pending_acks = len(current.pending_acks) if current else 0
-
-    return GetRunMessagesResponse(
-        runId=run_id,
-        sessionId=session_id,
-        count=len(messages),
-        pendingAcks=pending_acks,
-        messages=[
-            AgentPeerMessageResponse.model_validate(message)
-            for message in messages
-            if isinstance(message, dict)
-        ],
     )
 
 

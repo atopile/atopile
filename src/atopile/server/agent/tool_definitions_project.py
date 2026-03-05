@@ -10,6 +10,37 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
     return [
         {
             "type": "function",
+            "name": "package_create_local",
+            "description": (
+                "Create a local sub-package under packages/ and add it as a file "
+                "dependency of the selected project."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "entry_module": {"type": "string"},
+                    "description": {"type": ["string", "null"]},
+                },
+                "required": ["name", "entry_module"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "workspace_list_targets",
+            "description": (
+                "List build targets from every nested ato.yaml under the selected "
+                "project, including local sub-packages."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
             "name": "project_list_files",
             "description": "List source/config files in the selected project.",
             "parameters": {

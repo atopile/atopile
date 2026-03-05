@@ -27,8 +27,6 @@ CancelRunResponse = _agent_api.CancelRunResponse
 SteerRunRequest = _agent_api.SteerRunRequest
 SteerRunResponse = _agent_api.SteerRunResponse
 
-DEFAULT_AGENT_ID = "manager"
-WORKER_AGENT_ID = "worker"
 OTHER_CATEGORY = "other"
 
 RUN_STATUS_RUNNING = "running"
@@ -56,7 +54,6 @@ ERROR_SESSION_EXPIRED = "Session expired before run completion"
 DETAIL_PROJECT_ROOT_MISMATCH = "projectRoot must match the active session project"
 
 EVENT_AGENT_PROGRESS = "agent_progress"
-EVENT_AGENT_MESSAGE = "agent_message"
 EVENT_SESSION_CREATED = "session_created"
 EVENT_SESSION_PROJECT_SWITCHED = "session_project_switched"
 EVENT_TURN_STARTED = "turn_started"
@@ -108,36 +105,6 @@ class AgentRun(BaseModel):
     task: asyncio.Task[Any] | None = Field(default=None, repr=False)
     steer_messages: list[str] = Field(default_factory=list)
     consumed_steer_messages: list[str] = Field(default_factory=list)
-    message_log: list[dict[str, Any]] = Field(default_factory=list)
-    inbox_cursor: dict[str, int] = Field(
-        default_factory=lambda: {DEFAULT_AGENT_ID: 0, WORKER_AGENT_ID: 0}
-    )
-    pending_acks: set[str] = Field(default_factory=set)
-    intent_snapshot: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentPeerMessageResponse(ApiModel):
-    message_id: str = Field(alias="messageId")
-    thread_id: str = Field(alias="threadId")
-    from_agent: str = Field(alias="fromAgent")
-    to_agent: str = Field(alias="toAgent")
-    kind: str
-    summary: str
-    payload: dict[str, Any] = Field(default_factory=dict)
-    visibility: str
-    priority: str
-    requires_ack: bool = Field(alias="requiresAck")
-    correlation_id: str | None = Field(default=None, alias="correlationId")
-    parent_id: str | None = Field(default=None, alias="parentId")
-    created_at: float = Field(alias="createdAt")
-
-
-class GetRunMessagesResponse(ApiModel):
-    run_id: str = Field(alias="runId")
-    session_id: str = Field(alias="sessionId")
-    count: int
-    pending_acks: int = Field(alias="pendingAcks")
-    messages: list[AgentPeerMessageResponse] = Field(default_factory=list)
 
 
 def session_not_found_detail(session_id: str) -> str:

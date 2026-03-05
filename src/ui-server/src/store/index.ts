@@ -8,8 +8,10 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { postMessage, getVsCodeApi } from '../api/vscodeApi';
+import { DEFAULT_AGENT_STATE } from '../features/agent/state/types';
 import type {
   AppState,
+  AgentChatSnapshot,
   Project,
   Build,
   BuildTarget,
@@ -189,6 +191,9 @@ const initialState: AppState = {
 
   // Manufacturing Wizard
   manufacturingWizard: null as ManufacturingWizardState | null,
+
+  // Agent UI
+  agentState: DEFAULT_AGENT_STATE,
 };
 
 // Store actions interface
@@ -302,6 +307,16 @@ interface StoreActions {
   setManufacturingQuantity: (quantity: number) => void;
   setManufacturingLoading: (key: 'gitStatus' | 'cost' | 'exporting', loading: boolean) => void;
   setManufacturingExportError: (error: string | null) => void;
+
+  // Agent UI
+  hydrateAgentState: (payload: Partial<AppState['agentState']>) => void;
+  setAgentSnapshots: (snapshots: AgentChatSnapshot[]) => void;
+  upsertAgentSnapshot: (snapshot: AgentChatSnapshot) => void;
+  updateAgentSnapshot: (
+    chatId: string,
+    updater: (chat: AgentChatSnapshot) => AgentChatSnapshot,
+  ) => void;
+  setAgentActiveChat: (projectRoot: string, chatId: string | null) => void;
 
   // Reset
   reset: () => void;
@@ -1008,6 +1023,85 @@ export const useStore = create<Store>()(
               ...state.manufacturingWizard,
               exportError: error,
               isExporting: false,
+            },
+          };
+        }),
+
+      hydrateAgentState: (payload) =>
+        set((state) => ({
+          agentState: {
+            ...state.agentState,
+            ...payload,
+          },
+        })),
+
+      setAgentSnapshots: (snapshots) =>
+        set((state) => ({
+          agentState: {
+            ...state.agentState,
+            snapshots,
+          },
+        })),
+
+      upsertAgentSnapshot: (snapshot) =>
+        set((state) => {
+          const previous = state.agentState.snapshots;
+          const index = previous.findIndex((chat) => chat.id === snapshot.id);
+          if (index < 0) {
+            return {
+              agentState: {
+                ...state.agentState,
+                snapshots: [snapshot, ...previous],
+              },
+            };
+          }
+          const next = [...previous];
+          next[index] = {
+            ...previous[index],
+            ...snapshot,
+            createdAt: previous[index].createdAt,
+          };
+          return {
+            agentState: {
+              ...state.agentState,
+              snapshots: next,
+            },
+          };
+        }),
+
+      updateAgentSnapshot: (chatId, updater) =>
+        set((state) => {
+          const previous = state.agentState.snapshots;
+          const index = previous.findIndex((chat) => chat.id === chatId);
+          if (index < 0) return {} as Partial<Store>;
+          const current = previous[index];
+          const updated = updater(current);
+          const next = [...previous];
+          next[index] = {
+            ...updated,
+            createdAt: current.createdAt,
+            updatedAt: Date.now(),
+          };
+          return {
+            agentState: {
+              ...state.agentState,
+              snapshots: next,
+            },
+          };
+        }),
+
+      setAgentActiveChat: (projectRoot, chatId) =>
+        set((state) => {
+          const next = { ...state.agentState.activeChatByProject };
+          if (chatId) {
+            next[projectRoot] = chatId;
+          } else {
+            delete next[projectRoot];
+          }
+          return {
+            agentState: {
+              ...state.agentState,
+              activeChatByProject: next,
             },
           };
         }),

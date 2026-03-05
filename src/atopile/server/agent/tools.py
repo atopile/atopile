@@ -625,6 +625,18 @@ def get_tool_names() -> list[str]:
     return sorted(_TOOL_HANDLERS.keys())
 
 
+def _resolve_nested_project_path(project_root: Path, raw_project_path: object) -> Path:
+    if not isinstance(raw_project_path, str) or not raw_project_path.strip():
+        return project_root
+
+    candidate = (project_root / raw_project_path.strip()).resolve()
+    try:
+        candidate.relative_to(project_root.resolve())
+    except ValueError as exc:
+        raise ValueError("project_path must stay within the selected project") from exc
+    return candidate
+
+
 @_register_tool("project_list_files")
 async def _tool_project_list_files(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
@@ -661,6 +673,32 @@ async def _tool_project_search(
         "matches": [asdict(match) for match in matches],
         "total": len(matches),
     }
+
+
+@_register_tool("package_create_local")
+async def _tool_package_create_local(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    result = await asyncio.to_thread(
+        projects_domain.create_local_package,
+        project_root,
+        str(arguments.get("name", "")),
+        str(arguments.get("entry_module", "")),
+        (
+            str(arguments.get("description"))
+            if isinstance(arguments.get("description"), str)
+            else None
+        ),
+    )
+    return {"success": True, **result}
+
+
+@_register_tool("workspace_list_targets")
+async def _tool_workspace_list_targets(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    _ = arguments, ctx
+    return await asyncio.to_thread(projects_domain.list_workspace_targets, project_root)
 
 
 @_register_tool("web_search")
@@ -1059,11 +1097,30 @@ async def _tool_parts_install(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
 ) -> dict[str, Any]:
     lcsc_id = str(arguments.get("lcsc_id", "")).strip().upper()
+    create_package = bool(arguments.get("create_package", False))
+
+    if not create_package:
+        result = await asyncio.to_thread(
+            parts_domain.handle_install_part,
+            lcsc_id,
+            str(project_root),
+        )
+        return {
+            "success": True,
+            "lcsc_id": lcsc_id,
+            "implementation_hint": (
+                "For complex parts (MCUs/sensors/PMICs/radios), call "
+                "datasheet_read next and verify required support circuitry."
+            ),
+            **result,
+        }
+
     result = await asyncio.to_thread(
-        parts_domain.handle_install_part,
+        parts_domain.handle_install_part_as_package,
         lcsc_id,
         str(project_root),
     )
+
     return {
         "success": True,
         "lcsc_id": lcsc_id,
@@ -1327,9 +1384,10 @@ async def _tool_build_run(
     exclude_targets = arguments.get("exclude_targets") or []
     if not isinstance(exclude_targets, list):
         raise ValueError("exclude_targets must be a list")
+    build_root = _resolve_nested_project_path(project_root, arguments.get("project_path"))
 
     request = BuildRequest(
-        project_root=str(project_root),
+        project_root=str(build_root),
         targets=[str(target) for target in targets],
         entry=(str(arguments["entry"]) if arguments.get("entry") else None),
         standalone=bool(arguments.get("standalone", False)),
@@ -1338,7 +1396,10 @@ async def _tool_build_run(
         exclude_targets=[str(target) for target in exclude_targets],
     )
     response = await asyncio.to_thread(builds_domain.handle_start_build, request)
-    return response.model_dump(by_alias=True)
+    payload = response.model_dump(by_alias=True)
+    if build_root != project_root:
+        payload["projectPath"] = str(build_root.relative_to(project_root))
+    return payload
 
 
 @_register_tool("build_create")

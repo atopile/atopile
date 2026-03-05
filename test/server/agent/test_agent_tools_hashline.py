@@ -43,6 +43,8 @@ def _clear_agent_tool_caches() -> None:
 def test_tool_definitions_advertise_hashline_editor() -> None:
     names = {tool_def["name"] for tool_def in tools.get_tool_definitions()}
 
+    assert "package_create_local" in names
+    assert "workspace_list_targets" in names
     assert "project_edit_file" in names
     assert "project_list_modules" in names
     assert "project_module_children" in names
@@ -641,6 +643,115 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
     assert result["success"] is True
     assert result["lcsc_id"] == "C521608"
     assert "datasheet_read" in result["implementation_hint"]
+
+
+def test_package_create_local_creates_dependency_and_stub(tmp_path: Path) -> None:
+    (tmp_path / "ato.yaml").write_text(
+        'requires-atopile: "^0.14.0"\npaths:\n  src: ./\nbuilds:\n  default:\n    entry: main.ato:App\n',
+        encoding="utf-8",
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="package_create_local",
+            arguments={
+                "name": "power-stage",
+                "entry_module": "PowerStage",
+                "description": "Power stage wrapper",
+            },
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["identifier"] == "local/power-stage"
+    assert 'from "local/power-stage/power_stage.ato" import PowerStage' == result["import_statement"]
+    assert (tmp_path / "packages" / "power-stage" / "power_stage.ato").exists()
+    assert (tmp_path / "packages" / "power-stage" / "ato.yaml").exists()
+    root_ato = (tmp_path / "ato.yaml").read_text(encoding="utf-8")
+    assert "type: file" in root_ato
+    assert "path: ./packages/power-stage" in root_ato
+
+
+def test_workspace_list_targets_includes_nested_packages(tmp_path: Path) -> None:
+    (tmp_path / "ato.yaml").write_text(
+        'requires-atopile: "^0.14.0"\nbuilds:\n  default:\n    entry: main.ato:App\n',
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "packages" / "sensor-front-end"
+    package_dir.mkdir(parents=True)
+    (package_dir / "ato.yaml").write_text(
+        'requires-atopile: "^0.14.0"\nbuilds:\n  usage:\n    entry: sensor_front_end.ato:SensorFrontEnd\npackage:\n  identifier: local/sensor-front-end\n  version: 0.0.1\n',
+        encoding="utf-8",
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="workspace_list_targets",
+            arguments={},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["total_targets"] == 2
+    assert result["projects"][0]["path"] == "."
+    assert result["projects"][1]["path"] == "packages/sensor-front-end"
+    assert result["projects"][1]["package_identifier"] == "local/sensor-front-end"
+
+
+def test_parts_install_create_package_wraps_part(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "ato.yaml").write_text(
+        'requires-atopile: "^0.14.0"\npaths:\n  src: ./\nbuilds:\n  default:\n    entry: main.ato:App\n',
+        encoding="utf-8",
+    )
+
+    def fake_get_install_identifier(
+        lcsc_id: str, project_root: str | None = None
+    ) -> dict[str, str]:
+        assert lcsc_id == "C12345"
+        assert project_root == str(tmp_path)
+        return {"identifier": "Infineon_BSC010N04LS", "entry_module": "Infineon_BSC010N04LS"}
+
+    def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
+        assert lcsc_id == "C12345"
+        part_root = Path(project_root) / "parts" / "Infineon_BSC010N04LS"
+        part_root.mkdir(parents=True, exist_ok=True)
+        (part_root / "Infineon_BSC010N04LS.ato").write_text(
+            "component Infineon_BSC010N04LS_package:\n    pass\n",
+            encoding="utf-8",
+        )
+        return {
+            "identifier": "Infineon_BSC010N04LS",
+            "path": str(part_root),
+        }
+
+    monkeypatch.setattr(
+        tools.parts_domain, "handle_get_install_identifier", fake_get_install_identifier
+    )
+    monkeypatch.setattr(tools.parts_domain, "handle_install_part", fake_install_part)
+
+    result = _run(
+        tools.execute_tool(
+            name="parts_install",
+            arguments={"lcsc_id": "c12345", "create_package": True},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    wrapper = (
+        tmp_path
+        / "packages"
+        / "Infineon_BSC010N04LS"
+        / "Infineon_BSC010N04LS.ato"
+    ).read_text(encoding="utf-8")
+    assert result["created_package"] is True
+    assert result["identifier"] == "local/infineon-bsc010n04ls"
+    assert 'from "parts/Infineon_BSC010N04LS/Infineon_BSC010N04LS.ato" import Infineon_BSC010N04LS_package' in wrapper
+    assert "module Infineon_BSC010N04LS:" in wrapper
+    assert "    package = new Infineon_BSC010N04LS_package" in wrapper
 
 
 @_needs_autolayout
@@ -1869,6 +1980,36 @@ def test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:
     assert result["success"] is True
     assert captured["include_targets"] == ["power-tree"]
     assert captured["exclude_targets"] == ["mfg-data"]
+
+
+def test_build_run_uses_nested_project_path(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+    nested = tmp_path / "packages" / "power-stage"
+    nested.mkdir(parents=True)
+
+    class FakeResponse:
+        def model_dump(self, by_alias: bool = False) -> dict:
+            _ = by_alias
+            return {"success": True, "message": "queued", "buildTargets": []}
+
+    def fake_start_build(request):
+        captured["project_root"] = request.project_root
+        return FakeResponse()
+
+    monkeypatch.setattr(tools.builds_domain, "handle_start_build", fake_start_build)
+
+    result = _run(
+        tools.execute_tool(
+            name="build_run",
+            arguments={"project_path": "packages/power-stage", "targets": ["default"]},
+            project_root=tmp_path,
+            ctx=AppContext(),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["projectPath"] == "packages/power-stage"
+    assert captured["project_root"] == str(nested)
 
 
 def test_report_bom_returns_summary_fields(monkeypatch) -> None:

@@ -759,6 +759,10 @@ def _build_function_call_outputs_for_model(
                         "The file is available via file_id for analysis."
                     ),
                 },
+                {
+                    "type": "input_file",
+                    "file_id": file_id,
+                },
             ],
         }
     )

@@ -42,6 +42,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "lcsc_id": {"type": "string"},
+                    "create_package": {"type": "boolean", "default": False},
                 },
                 "required": ["lcsc_id"],
                 "additionalProperties": False,
@@ -121,6 +122,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                         "items": {"type": "string"},
                         "default": [],
                     },
+                    "project_path": {"type": ["string", "null"]},
                 },
                 "additionalProperties": False,
             },
