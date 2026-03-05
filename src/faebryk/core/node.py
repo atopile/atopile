@@ -1667,6 +1667,25 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def has_trait(self, trait: type["NodeT"]) -> bool:
         return self.try_get_trait(trait) is not None
 
+    def get_all_traits_of_type[TR: NodeT](self, trait: type[TR]) -> list[TR]:
+        """Return all trait instances of the given type attached to this node."""
+        trait_type = TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait)
+        edges: list[graph.BoundEdge] = []
+
+        def collect(ctx: list, edge: graph.BoundEdge) -> None:
+            ctx.append(edge)
+
+        fbrk.EdgeTrait.visit_trait_instances_of_type(
+            owner=self.instance,
+            trait_type=trait_type,
+            ctx=edges,
+            f=collect,
+        )
+        return [
+            trait(edge.g().bind(node=fbrk.EdgeTrait.get_trait_instance_node(edge=edge.edge())))
+            for edge in edges
+        ]
+
     def try_get_traits(
         self, *traits: type["NodeT"]
     ) -> dict[type["NodeT"], "Node | None"]:
