@@ -463,12 +463,14 @@ class MutatorUtils:
         roots: OrderedSet[F.Expressions.is_predicate] = OrderedSet()
 
         while True:
-            new_roots = (
+            all_root_operands = F.Parameters.can_be_operand.get_root_operands(
+                *leaves, predicates_only=True
+            )
+            # Constraining predicates: follow their operands transitively
+            new_constraining_roots = (
                 OrderedSet(
                     e.get_sibling_trait(F.Expressions.is_predicate)
-                    for e in F.Parameters.can_be_operand.get_root_operands(
-                        *leaves, predicates_only=True
-                    )
+                    for e in all_root_operands
                     if not e.get_sibling_trait(
                         F.Expressions.is_expression
                     ).is_non_constraining()
@@ -477,30 +479,47 @@ class MutatorUtils:
                 - roots
             )
 
-            # get leaves for transitive predicates
-            # A >! B, B >! C => only A >! B is in roots
-            # Skip leaves that are anticorrelated with any original relevant param
+            # Follow constraining predicates transitively.
+            # Anticorrelated leaves are not followed transitively, but their
+            # literal-bound predicates are included (e.g. pick constraints).
             new_leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet()
-            for root in new_roots:
+            for root in new_constraining_roots:
                 for leaf_po in root.as_expression.get().get_operand_leaves_operatable():
                     if (
                         leaf_param := leaf_po.as_parameter.try_get()
                     ) is None or leaf_param in visited_params:
                         continue
 
-                    # Prevent Not(Correlated(A,B,C,...)) from creating a spurious
-                    # transitive closure
+                    visited_params.add(leaf_param)
+
                     if any(
                         frozenset({orig, leaf_param}) in anticorrelated_pairs
                         for orig in original_params
                     ):
+                        # Don't follow transitively, but include predicates that have a
+                        # literal operand (won't introduce unknowns)
+                        leaf_op = leaf_po.as_operand.get()
+                        roots.update(
+                            {
+                                e.get_sibling_trait(F.Expressions.is_predicate)
+                                for e in F.Parameters.can_be_operand.get_root_operands(
+                                    leaf_op, predicates_only=True
+                                )
+                                if not e.try_get_sibling_trait(is_irrelevant)
+                                and any(
+                                    o.as_literal.try_get()
+                                    for o in e.get_sibling_trait(
+                                        F.Expressions.is_expression
+                                    ).get_operands()
+                                )
+                            }
+                        )
                         continue
 
                     new_leaves.add(leaf_po.as_operand.get())
-                    visited_params.add(leaf_param)
 
             leaves = new_leaves
-            roots.update(new_roots)
+            roots.update(new_constraining_roots)
 
             if not leaves:
                 return roots

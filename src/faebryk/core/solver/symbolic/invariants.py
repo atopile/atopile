@@ -594,6 +594,90 @@ def _no_empty_superset(
         )
 
 
+def _no_inconsistent_bounds(
+    mutator: Mutator,
+    builder: ExpressionBuilder[Any],
+) -> None:
+    """
+    L ss! P ss! S, L ⊄ S => Contradiction.
+
+    When a parameter has both a lower bound (L ⊆ P) and an upper bound (P ⊆ S),
+    the lower bound must be contained in the upper bound.
+    """
+    if builder.factory is not IsSubset or not builder.assert_:
+        return
+
+    ops = builder.indexed_pos()
+    if len(ops) != 1:
+        return
+
+    if param_op := ops.get(0):
+        # Builder is IsSubset(param, S) — upper bound being inserted.
+        # Check for existing lower bound IsSubset(L, param).
+        superset_lit = builder.operands[1].try_get_sibling_trait(F.Literals.is_literal)
+        if superset_lit is None:
+            return
+
+        lower_bounds = [
+            lit
+            for ss in _Query._get_operations(
+                param_op, types=IsSubset, predicates_only=True
+            )
+            if (
+                lit := ss.get_subset_operand().try_get_sibling_trait(
+                    F.Literals.is_literal
+                )
+            )
+        ]
+        if not lower_bounds:
+            return
+        lower_lit = lower_bounds[0]
+
+        if not lower_lit.op_setic_is_subset_of(
+            superset_lit, g=mutator.G_transient, tg=mutator.tg_in
+        ):
+            raise ContradictionByLiteral(
+                "Lower bound not contained in upper bound",
+                involved=[param_op],
+                literals=[lower_lit, superset_lit],
+                mutator=mutator,
+                constraint_sources=[param_op],
+            )
+
+    elif param_op := ops.get(1):
+        # Builder is IsSubset(L, param) — lower bound being inserted.
+        # Check for existing upper bound IsSubset(param, S).
+        subset_lit = builder.operands[0].try_get_sibling_trait(F.Literals.is_literal)
+        if subset_lit is None:
+            return
+
+        upper_bounds = [
+            lit
+            for ss in _Query._get_operations(
+                param_op, types=IsSubset, predicates_only=True
+            )
+            if (
+                lit := ss.get_superset_operand().try_get_sibling_trait(
+                    F.Literals.is_literal
+                )
+            )
+        ]
+        if not upper_bounds:
+            return
+        upper_lit = upper_bounds[0]
+
+        if not subset_lit.op_setic_is_subset_of(
+            upper_lit, g=mutator.G_transient, tg=mutator.tg_in
+        ):
+            raise ContradictionByLiteral(
+                "Lower bound not contained in upper bound",
+                involved=[param_op],
+                literals=[subset_lit, upper_lit],
+                mutator=mutator,
+                constraint_sources=[param_op],
+            )
+
+
 def _no_predicate_literals(
     mutator: Mutator,
     builder: ExpressionBuilder[Any],
@@ -1386,6 +1470,9 @@ def insert_expression(
 
     # * no empty supersets
     _no_empty_superset(mutator, builder)
+
+    # * lower bound must be contained in upper bound
+    _no_inconsistent_bounds(mutator, builder)
 
     # * no A is! X
     builder = _no_literal_aliases(mutator, builder)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from itertools import combinations
 
 import faebryk.core.node as fabll
@@ -165,6 +166,24 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
 
 # Estimation algorithms ----------------------------------------------------------------
+
+
+def _fold_pure_literal_exprs(
+    mutator: Mutator,
+    expr_e: F.Expressions.is_expression,
+    mapped_operands: list[F.Parameters.can_be_operand],
+) -> F.Literals.is_literal | None:
+    # Theoretically this is a shortcut, since invariants should deal with this.
+    # But either that's generally not possible without the context or I'm too stupid
+    # to implement it. So we rely on this shortcut for now.
+    return exec_pure_literal_operands(
+        mutator.G_transient,
+        mutator.tg_in,
+        mutator.utils.hack_get_expr_type(expr_e),
+        mapped_operands,
+    )
+
+
 @algorithm("Upper estimation", terminal=False)
 def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
     """
@@ -222,17 +241,8 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # fold pure literal expressions
-        # Theoretically this is a shortcut, since invariants should deal with this.
-        # But either that's generally not possible without the context or I'm too stupid
-        # to implement it. So we rely on this shortcut for now.
         if all(mutator.utils.is_literal(op) for op in mapped_operands):
-            out = exec_pure_literal_operands(
-                mutator.G_transient,
-                mutator.tg_in,
-                mutator.utils.hack_get_expr_type(expr_e),
-                mapped_operands,
-            )
+            out = _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)
         else:
             # Make new expr with subset literals
             res = mutator.create_check_and_insert_expression(
@@ -336,32 +346,40 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
 
         # Step 4: Check uncorrelation condition
-        # Find all unique parameters in the expression
-        params_in_expr = MutatorUtils.get_params_for_expr(expr_e)
-        if len(params_in_expr) > 1:
-            # Check if all parameter pairs are uncorrelated
-            all_uncorrelated = all(
+        # Condition 1: operand sub-trees must have DISJOINT parameter sets
+        # If a parameter appears in multiple operands, the operands are correlated
+        # and the Cartesian product factorisation that lower estimation relies on
+        # is invalid.
+        per_operand_params: list[OrderedSet[F.Parameters.is_parameter]] = []
+        for op in operands:
+            op_params: OrderedSet[F.Parameters.is_parameter] = OrderedSet()
+            if op_po := op.as_parameter_operatable.try_get():
+                if op_po.as_parameter.try_get():
+                    op_params.add(op_po.as_parameter.force_get())
+                elif op_expr := op_po.as_expression.try_get():
+                    op_params = MutatorUtils.get_params_for_expr(op_expr)
+            per_operand_params.append(op_params)
+
+        if any(
+            per_operand_params[i] & per_operand_params[j]
+            for i, j in combinations(range(len(per_operand_params)), 2)
+        ):
+            continue  # shared parameter -> operands correlated
+
+        # Condition 2: all distinct leaf params pairwise anticorrelated
+        all_params = OrderedSet(p for s in per_operand_params for p in s)
+        if len(all_params) > 1:
+            if not all(
                 frozenset([p1, p2]) in anticorrelated_pairs
-                for p1, p2 in combinations(params_in_expr, 2)
-            )
-            if not all_uncorrelated:
-                # Can't apply lower estimation - parameters may be correlated
+                for p1, p2 in combinations(all_params, 2)
+            ):
                 continue
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # fold pure literal expressions
-        # Theoretically this is a shortcut, since invariants should deal with this.
-        # But either that's generally not possible without the context or I'm too stupid
-        # to implement it. So we rely on this shortcut for now.
         if all(mutator.utils.is_literal(op) for op in mapped_operands):
-            out = exec_pure_literal_operands(
-                mutator.G_transient,
-                mutator.tg_in,
-                mutator.utils.hack_get_expr_type(expr_e),
-                mapped_operands,
-            )
+            out = _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)
         else:
             # Step 5: Make new expr with subset literals
             res = mutator.create_check_and_insert_expression(
@@ -382,6 +400,139 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
             F.Expressions.IsSubset,
             expr_subset,
             expr_e.as_operand.get(),
+            from_ops=from_ops,
+            assert_=True,
+        )
+
+
+class _OperandMappingError(ValueError):
+    pass
+
+
+@algorithm("Mixed-Interval estimation", terminal=False)
+def mixed_estimation(mutator: Mutator):
+    """
+    Construct combined intervals for each operand from both upper and lower bounds, when
+    available. Uses the parameter's domain in the absence of more-constraining bounds.
+
+    ```
+    f(A{⊆|X}{⊇|Y}, B{⊆|Z}{⊇|W}, ...)
+    => f(...) ⊆! f([min(Y, -∞), max(X, +∞)], [min(W, -∞), max(Z, +∞)], ...)
+    ```
+
+    No anticorrelation check needed — Minkowski math is inclusion-monotonic.
+    """
+
+    # Step 1: Build superset map (upper bounds)
+    supersetted_ops = {
+        ss_po.as_operand.get(): lit_sps
+        for sps in mutator.get_typed_expressions(
+            F.Expressions.IsSubset,
+            required_traits=(F.Expressions.is_predicate,),
+            include_terminated=True,
+        )
+        if (lit_sps := sps.get_superset_operand().as_literal.try_get())
+        and (
+            ss_po := (
+                ss_op := sps.get_subset_operand()
+            ).as_parameter_operatable.try_get()
+        )
+        and not mutator.utils.is_correlatable_literal(lit_sps)
+        and not mutator.utils.is_literal_expression(ss_op)
+    }
+
+    # Step 2: Build subset map (lower bounds)
+    subsetted_ops = {
+        op_superset.as_operand.get(): lit_subset
+        for sps in mutator.get_typed_expressions(
+            F.Expressions.IsSubset,
+            required_traits=(F.Expressions.is_predicate,),
+            include_terminated=True,
+        )
+        if (lit_subset := sps.get_subset_operand().as_literal.try_get())
+        and (
+            op_superset := (
+                sps_op := sps.get_superset_operand()
+            ).as_parameter_operatable.try_get()
+        )
+        and not mutator.utils.is_correlatable_literal(lit_subset)
+        and not mutator.utils.is_literal_expression(sps_op)
+    }
+
+    bounded_ops = set(supersetted_ops.keys()) | set(subsetted_ops.keys())
+
+    # An operand qualifies if it has at least one bound or is a literal
+    def _op_qualifies(op: F.Parameters.can_be_operand) -> bool:
+        return op in bounded_ops or bool(op.as_literal.try_get())
+
+    def _map_operand(op: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
+        if op.as_literal.try_get():
+            return op
+
+        upper = supersetted_ops.get(op)
+        lower = subsetted_ops.get(op)
+
+        min_val = -math.inf
+        max_val = math.inf
+        unit = None
+
+        if upper and (upper_nums := upper.switch_cast()).isinstance(F.Literals.Numbers):
+            assert isinstance(upper_nums, F.Literals.Numbers)
+            min_val = max(min_val, upper_nums.get_min_value())
+            max_val = min(max_val, upper_nums.get_max_value())
+            unit = upper_nums.get_is_unit()
+
+        if lower and (lower_nums := lower.switch_cast()).isinstance(F.Literals.Numbers):
+            assert isinstance(lower_nums, F.Literals.Numbers)
+            min_val = max(min_val, lower_nums.get_min_value())
+            max_val = min(max_val, lower_nums.get_max_value())
+            unit = unit or lower_nums.get_is_unit()
+
+        if min_val == -math.inf and max_val == math.inf:
+            raise _OperandMappingError()
+
+        return (
+            (
+                F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
+                .create_instance(g=mutator.G_transient)
+                .setup_from_min_max(min=min_val, max=max_val, unit=unit)
+            )
+            .is_literal.get()
+            .as_operand.get()
+        )
+
+    for expr in {
+        e
+        for op in bounded_ops
+        for e in mutator.get_operations(op.as_parameter_operatable.force_get())
+        if not e.has_trait(F.Expressions.is_setic)
+    }:
+        expr_e = expr.get_trait(F.Expressions.is_expression)
+        operands = expr_e.get_operands()
+
+        if not all(_op_qualifies(op) for op in operands):
+            continue
+
+        # At least one non-literal operand must have a bound
+        if not any(op in bounded_ops for op in operands):
+            continue
+
+        expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        from_ops = [expr_po]
+
+        try:
+            mapped_operands = [_map_operand(op) for op in operands]
+        except _OperandMappingError:
+            continue
+
+        if (out := _fold_pure_literal_exprs(mutator, expr_e, mapped_operands)) is None:
+            continue
+
+        # Assert original ⊆ computed result
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            expr_e.as_operand.get(),
+            out.as_operand.get(),
             from_ops=from_ops,
             assert_=True,
         )
