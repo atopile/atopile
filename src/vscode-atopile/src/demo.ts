@@ -5,7 +5,7 @@ import { backendServer } from './common/backendServer';
 import { getResourcesPath, loadResource } from './common/resources';
 import { getBuildTarget, getProjectRoot, onProjectRootChanged, onBuildTargetChanged } from './common/target';
 import { Build, getBuilds } from './common/manifest';
-import { hasConfiguredBackendPort } from './common/environment';
+import { isWebIdeUi } from './common/environment';
 
 const QUICKSTART_URL = 'https://docs.atopile.io/atopile-0.14.x/quickstart/1-installation';
 
@@ -224,9 +224,8 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('atopile.demo-mode', () => runDemoMode()),
     );
 
-    // Auto-trigger demo mode in web-ide environments on first start
-    if (hasConfiguredBackendPort() && !context.globalState.get('webIde.initialOpened')) {
-        context.globalState.update('webIde.initialOpened', true);
+    // Web-ide sessions should always open in demo mode on activation.
+    if (isWebIdeUi()) {
         vscode.commands.executeCommand('atopile.demo-mode');
     }
 }
