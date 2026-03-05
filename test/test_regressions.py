@@ -33,6 +33,10 @@ SKIP_PACKAGE_DIRS = {"archive", "logos", ".git", "__pycache__"}
 
 def clone_repo(repo_uri: str, path: Path):
     """Clone a repository without depending on the GitHub CLI."""
+    if not Path(repo_uri).exists() and not repo_uri.startswith(
+        ("https://", "ssh://", "git@")
+    ):
+        repo_uri = f"https://github.com/{repo_uri}"
     run_live(
         ["git", "clone", "--depth", "1", repo_uri, str(path)],
         cwd=path.parent,
@@ -71,8 +75,8 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
                 *profile,
                 "-m",
                 "atopile",
-                "-v",
                 "build",
+                "-v",
                 *ato_build_args,
             ],
             env={**os.environ, **ato_build_env},
@@ -125,9 +129,23 @@ class _TestRepo:
         return self
 
 
-# Single-project repos (not multipackage)
-SINGLE_REPOS = [
-    _TestRepo("atopile/spin-servo-drive").skip("Needs upgrading"),
+@dataclass(frozen=True)
+class _ProjectTest:
+    repo_uri: str
+    project_path: str = "."
+    skip_reason: str | None = None
+
+
+SINGLE_PROJECTS: list[_ProjectTest] = [
+    _ProjectTest("atopile/spin-servo-drive", skip_reason="Needs upgrading"),
+    _ProjectTest("atopile/atopile", "examples/auto-picking"),
+    _ProjectTest("atopile/atopile", "examples/equations"),
+    _ProjectTest("atopile/atopile", "examples/esp32_minimal"),
+    _ProjectTest("atopile/atopile", "examples/fabll_minimal"),
+    _ProjectTest("atopile/atopile", "examples/i2c"),
+    _ProjectTest("atopile/atopile", "examples/layout_reuse"),
+    _ProjectTest("atopile/atopile", "examples/led_badge"),
+    _ProjectTest("atopile/atopile", "examples/quickstart"),
 ]
 
 # Multipackage repo configuration
@@ -182,6 +200,21 @@ def packages_repo_path() -> Path:
     return repo_path
 
 
+@pytest.fixture(scope="session")
+def project_repo_paths(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
+    """Clone each external project repo once per test session."""
+    cache_dir = tmp_path_factory.mktemp("project-repos")
+    repo_paths: dict[str, Path] = {}
+    for repo_uri in sorted({test.repo_uri for test in SINGLE_PROJECTS}):
+        repo_path = cache_dir / repo_uri.replace("/", "__")
+        try:
+            clone_repo(repo_uri, repo_path)
+        except CalledProcessError as ex:
+            raise CloneError(f"Failed to clone {repo_uri}") from ex
+        repo_paths[repo_uri] = repo_path
+    return repo_paths
+
+
 # ============================================================================
 # Single-project regression tests
 # ============================================================================
@@ -189,38 +222,30 @@ def packages_repo_path() -> Path:
 
 @pytest.mark.slow
 @pytest.mark.regression
-@pytest.mark.parametrize(
-    "test_cfg",
-    SINGLE_REPOS,
-    ids=lambda x: x.repo_uri,
-)
+@pytest.mark.parametrize("test_cfg", SINGLE_PROJECTS)
 def test_single_projects(
-    test_cfg: _TestRepo,
+    test_cfg: _ProjectTest,
+    project_repo_paths: dict[str, Path],
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):
     """Test single-project repositories (not multipackage)."""
-    repo_uri = test_cfg.repo_uri
-    skip_reason = test_cfg.skip_reason
+    repo_path = project_repo_paths[test_cfg.repo_uri]
+    test_repo_path = tmp_path / "project"
+    shutil.copytree(repo_path, test_repo_path)
 
-    # Clone the repository
-    try:
-        clone_repo(repo_uri, tmp_path / "project")
-    except CalledProcessError as ex:
-        raise CloneError from ex
-
-    prj_path = tmp_path / "project"
+    prj_path = test_repo_path / test_cfg.project_path
 
     try:
         sync_project(prj_path)
         build_project(prj_path, request=request)
     except (InstallError, BuildError):
-        if skip_reason:
-            pytest.skip(f"xfail: {skip_reason}")
+        if test_cfg.skip_reason:
+            pytest.skip(f"xfail: {test_cfg.skip_reason}")
         else:
             raise
 
-    repo = git.Repo(prj_path)
+    repo = git.Repo(test_repo_path)
     diff = repo.index.diff(None)
     if diff and any(
         item.a_path is not None and item.a_path.endswith(".kicad_pcb") for item in diff
