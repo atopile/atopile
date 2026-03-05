@@ -193,10 +193,12 @@ export function Sidebar() {
 
   // Filter builds by selected project
   const filteredBuilds = useMemo(() => {
-    const activeBuildRoot = selectedTargetRoot || selectedProjectRoot;
-    if (!activeBuildRoot) return queuedBuilds;
-    return queuedBuilds.filter((build) => build.projectRoot === activeBuildRoot);
-  }, [queuedBuilds, selectedProjectRoot, selectedTargetRoot]);
+    if (!selectedProjectRoot) return queuedBuilds;
+    return queuedBuilds.filter((build) => {
+      const buildRoot = build.projectRoot;
+      return buildRoot === selectedProjectRoot || buildRoot?.startsWith(`${selectedProjectRoot}/`);
+    });
+  }, [queuedBuilds, selectedProjectRoot]);
 
   // Build queue resize handlers
   const handleBuildQueueResizeStart = useCallback((e: React.MouseEvent) => {

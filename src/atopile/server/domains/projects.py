@@ -397,6 +397,7 @@ def create_local_package(
         raise ValueError(f"Package already exists: {package_dir}")
 
     package_dir.mkdir(parents=True, exist_ok=False)
+    (package_dir / "layouts").mkdir()
 
     package_identifier = f"local/{_normalize_local_package_slug(package_name)}"
     file_stem = _normalize_package_file_stem(package_name)
@@ -406,7 +407,7 @@ def create_local_package(
 
     ato_yaml_data = {
         "requires-atopile": requires_atopile,
-        "paths": {"src": "./"},
+        "paths": {"src": "./", "layout": "./layouts"},
         "builds": {"default": {"entry": f"{ato_path.name}:{entry_module.strip()}"}},
         "package": {"identifier": package_identifier, "version": "0.0.1"},
     }
