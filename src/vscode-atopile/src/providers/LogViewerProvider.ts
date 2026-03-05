@@ -11,11 +11,23 @@ import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { WebviewProxyBridge } from '../common/webview-bridge';
-import { generateBridgeRuntime } from '../common/webview-bridge-runtime';
+import {
+  getWebviewBridgeRuntimePath,
+  serializeWebviewBridgeConfig,
+  WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+} from '../common/webview-bridge-runtime';
+import { renderTemplate, serializeJsonForHtml } from '../common/template';
+// @ts-ignore
+import * as _logViewerTemplateText from './log-viewer.hbs';
+// @ts-ignore
+import * as _notBuiltTemplateText from './webview-not-built.hbs';
+
+const logViewerTemplateText: string = (_logViewerTemplateText as any).default || _logViewerTemplateText;
+const notBuiltTemplateText: string = (_notBuiltTemplateText as any).default || _notBuiltTemplateText;
 
 export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
-  private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources', 'resources/webviews', 'webviews/dist'];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
@@ -106,6 +118,9 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     }
 
     const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath)).toString();
+    const bridgeRuntimeUri = webview.asWebviewUri(
+      vscode.Uri.file(getWebviewBridgeRuntimePath(extensionPath))
+    ).toString();
     const cssUri = fs.existsSync(cssPath)
       ? webview.asWebviewUri(vscode.Uri.file(cssPath)).toString()
       : null;
@@ -117,102 +132,37 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}';
-    font-src ${webview.cspSource};
-    img-src ${webview.cspSource} data: https: http:;
-    connect-src ${apiUrl} ${wsOrigin} ws: wss:;
-  ">
-  <title>atopile Logs</title>
-  ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
-  ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
-  <script nonce="${nonce}">
-    window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
-  </script>
-  <script nonce="${nonce}">
-    ${generateBridgeRuntime({ apiUrl, fetchMode: 'global' })}
-
-    document.addEventListener('DOMContentLoaded', function() {
-      var loading = document.getElementById('atopile-log-loading');
-      var root = document.getElementById('root');
-      function showFailure(message) {
-        if (!loading) return;
-        loading.textContent = message;
-      }
-      function maybeHideLoading() {
-        if (!loading || !root) return;
-        if (root.childNodes.length > 0) {
-          loading.style.display = 'none';
-        }
-      }
-      window.addEventListener('error', function(event) {
-        if (event && event.message) {
-          showFailure('Log viewer failed to load: ' + event.message);
-        } else {
-          showFailure('Log viewer failed to load.');
-        }
-      });
-      if (root && typeof MutationObserver !== 'undefined') {
-        var observer = new MutationObserver(maybeHideLoading);
-        observer.observe(root, { childList: true, subtree: true });
-      }
-      setTimeout(function() {
-        if (root && root.childNodes.length === 0) {
-          showFailure('Log viewer failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
-        }
-      }, 7000);
+    const bridgeConfigJson = serializeWebviewBridgeConfig({
+      apiUrl,
+      fetchMode: 'global',
     });
-  </script>
-</head>
-<body>
-  <div id="atopile-log-loading" style="padding: 8px; font-size: 12px; opacity: 0.8;">Loading log viewer...</div>
-  <div id="root"></div>
-  <script nonce="${nonce}" type="module" src="${jsUri}"></script>
-</body>
-</html>`;
+
+    const csp = [
+      "default-src 'none'",
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `script-src ${webview.cspSource} 'nonce-${nonce}'`,
+      `font-src ${webview.cspSource}`,
+      `img-src ${webview.cspSource} data: https: http:`,
+      `connect-src ${apiUrl} ${wsOrigin} ws: wss:`,
+    ].join('; ');
+
+    return renderTemplate(logViewerTemplateText, {
+      csp,
+      nonce,
+      baseCssLink: baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : '',
+      cssLink: cssUri ? `<link rel="stylesheet" href="${cssUri}">` : '',
+      apiUrlJson: serializeJsonForHtml(apiUrl),
+      wsOriginJson: serializeJsonForHtml(wsOrigin),
+      bridgeConfigElementId: WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+      bridgeConfigJson,
+      bridgeRuntimeUri,
+      jsUri,
+    });
   }
 
   private _getNotBuiltHtml(): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      background: var(--vscode-sideBar-background);
-      color: var(--vscode-foreground);
-      font-family: var(--vscode-font-family);
-      text-align: center;
-      padding: 16px;
-    }
-    code {
-      background: var(--vscode-textCodeBlock-background);
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div>
-    <p>Webview not built.</p>
-    <p>Run <code>npm run build</code> in the webviews directory.</p>
-  </div>
-</body>
-</html>`;
+    return renderTemplate(notBuiltTemplateText, {
+      buildCommand: 'npm run build',
+    });
   }
 }

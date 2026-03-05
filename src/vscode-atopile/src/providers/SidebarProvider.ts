@@ -19,7 +19,12 @@ import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { WebviewProxyBridge } from '../common/webview-bridge';
-import { generateBridgeRuntime } from '../common/webview-bridge-runtime';
+import {
+  getWebviewBridgeRuntimePath,
+  serializeWebviewBridgeConfig,
+  WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+} from '../common/webview-bridge-runtime';
+import { renderTemplate, serializeJsonForHtml } from '../common/template';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 import { openMigratePreview } from '../ui/migrate';
 import type { WebviewMessage } from './sidebar/types';
@@ -28,6 +33,13 @@ import { SidebarFileOperations } from './sidebar/file-operations';
 import { SidebarActionHandlers } from './sidebar/action-handlers';
 import { SidebarSettingsHandlers } from './sidebar/settings-handlers';
 import { isWebIdeUi } from '../common/environment';
+// @ts-ignore
+import * as _sidebarTemplateText from './sidebar.hbs';
+// @ts-ignore
+import * as _notBuiltTemplateText from './webview-not-built.hbs';
+
+const sidebarTemplateText: string = (_sidebarTemplateText as any).default || _sidebarTemplateText;
+const notBuiltTemplateText: string = (_notBuiltTemplateText as any).default || _notBuiltTemplateText;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -353,6 +365,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    const bridgeRuntimeUri = webview.asWebviewUri(
+      vscode.Uri.file(getWebviewBridgeRuntimePath(extensionPath))
+    );
     // Base URI for relative imports in bundled JS (e.g., ./index-xxx.js)
     const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
     const cssUri = fs.existsSync(cssPath)
@@ -383,119 +398,46 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceRoot = this._getWorkspaceRootSync();
     const isWebIde = isWebIdeUi();
+    const bridgeConfigJson = serializeWebviewBridgeConfig({
+      apiUrl,
+      fetchMode: 'override',
+    });
 
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <base href="${baseUri}">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval';
-    font-src ${webview.cspSource};
-    img-src ${webview.cspSource} data: https: http:;
-    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ws: wss: blob:;
-  ">
-  <title>atopile</title>
-  ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
-  ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
-  <script nonce="${nonce}">
-    // Inject backend URLs for the React app
-    window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
-    window.__ATOPILE_ICON_URL__ = '${iconUri}';
-    window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
-    window.__ATOPILE_WASM_URL__ = '${wasmUri}';
-    window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
-    window.__ATOPILE_IS_WEB_IDE__ = ${isWebIde ? 'true' : 'false'};
-    // Inject workspace root for the React app
-    window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
+    const csp = [
+      "default-src 'none'",
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval'`,
+      `font-src ${webview.cspSource}`,
+      `img-src ${webview.cspSource} data: https: http:`,
+      `connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ws: wss: blob:`,
+    ].join('; ');
 
-    ${generateBridgeRuntime({ apiUrl, fetchMode: 'override' })}
-
-    document.addEventListener('DOMContentLoaded', function() {
-      var loading = document.getElementById('atopile-loading');
-      var root = document.getElementById('root');
-      function showFailure(message) {
-        if (!loading) return;
-        loading.textContent = message;
-      }
-      function maybeHideLoading() {
-        if (!loading || !root) return;
-        if (root.childNodes.length > 0) {
-          loading.style.display = 'none';
-        }
-      }
-      window.addEventListener('error', function(event) {
-        if (event && event.message) {
-          showFailure('atopile UI failed to load: ' + event.message);
-        } else {
-          showFailure('atopile UI failed to load.');
-        }
-      });
-      if (root && typeof MutationObserver !== 'undefined') {
-        var observer = new MutationObserver(maybeHideLoading);
-        observer.observe(root, { childList: true, subtree: true });
-      }
-      setTimeout(function() {
-        if (root && root.childNodes.length === 0) {
-          showFailure('atopile UI failed to initialize. If you are on Firefox, disable strict tracking protection for this site or try Chromium.');
-        }
-      }, 7000);
+    return renderTemplate(sidebarTemplateText, {
+      baseUri: baseUri.toString(),
+      csp,
+      nonce,
+      baseCssLink: baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : '',
+      cssLink: cssUri ? `<link rel="stylesheet" href="${cssUri}">` : '',
+      apiUrlJson: serializeJsonForHtml(apiUrl),
+      wsOriginJson: serializeJsonForHtml(wsOrigin),
+      iconUriJson: serializeJsonForHtml(iconUri),
+      extensionVersionJson: serializeJsonForHtml(this._extensionVersion),
+      wasmUriJson: serializeJsonForHtml(wasmUri),
+      modelViewerUriJson: serializeJsonForHtml(modelViewerUri),
+      isWebIdeLiteral: isWebIde ? 'true' : 'false',
+      workspaceRootJson: serializeJsonForHtml(workspaceRoot || ''),
+      bridgeConfigElementId: WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+      bridgeConfigJson,
+      bridgeRuntimeUri: bridgeRuntimeUri.toString(),
+      jsUri: jsUri.toString(),
     });
-  </script>
-</head>
-<body>
-  <div id="atopile-loading" style="padding: 8px; font-size: 12px; opacity: 0.8;">Loading atopile...</div>
-  <div id="root"></div>
-  <script nonce="${nonce}">
-    (function() {
-      var script = document.createElement('script');
-      script.type = 'module';
-      script.src = '${jsUri}';
-      document.body.appendChild(script);
-    })();
-  </script>
-</body>
-</html>`;
   }
 
   private _getNotBuiltHtml(): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      background: var(--vscode-sideBar-background);
-      color: var(--vscode-foreground);
-      font-family: var(--vscode-font-family);
-      text-align: center;
-      padding: 16px;
-    }
-    code {
-      background: var(--vscode-textCodeBlock-background);
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div>
-    <p>Webview not built.</p>
-    <p>Run <code>npm run build</code> in the webviews directory.</p>
-  </div>
-</body>
-</html>`;
+    return renderTemplate(notBuiltTemplateText, {
+      buildCommand: 'npm run build',
+    });
   }
 }

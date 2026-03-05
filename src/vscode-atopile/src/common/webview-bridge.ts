@@ -21,6 +21,16 @@ export interface FetchProxyRequest {
   body: string | null;
 }
 
+interface FetchProxyResultMessage extends Record<string, unknown> {
+  type: 'fetchProxyResult';
+  id: number;
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  bodyBase64?: string;
+  error?: string;
+}
+
 export interface WsProxyConnect {
   type: 'wsProxyConnect';
   id: number;
@@ -139,27 +149,34 @@ export class WebviewProxyBridge {
     // Use Node.js native fetch (available since Node 18)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).fetch(url, init)
-      .then(async (response: { text: () => Promise<string>; status: number; statusText: string; headers: { forEach: (cb: (v: string, k: string) => void) => void } }) => {
-        const body = await response.text();
+      .then(async (response: {
+        arrayBuffer: () => Promise<ArrayBuffer>;
+        status: number;
+        statusText: string;
+        headers: { forEach: (cb: (v: string, k: string) => void) => void };
+      }) => {
+        const body = Buffer.from(await response.arrayBuffer()).toString('base64');
         const headers: Record<string, string> = {};
         response.headers.forEach((value: string, key: string) => {
           headers[key] = value;
         });
-        this._post({
+        const result: FetchProxyResultMessage = {
           type: 'fetchProxyResult',
           id: req.id,
           status: response.status,
           statusText: response.statusText,
           headers,
-          body,
-        });
+          bodyBase64: body,
+        };
+        this._post(result);
       })
       .catch((err: Error) => {
-        this._post({
+        const result: FetchProxyResultMessage = {
           type: 'fetchProxyResult',
           id: req.id,
           error: String(err),
-        });
+        };
+        this._post(result);
       });
   }
 

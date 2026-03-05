@@ -4,7 +4,10 @@ import { backendServer } from '../common/backendServer';
 import { getWsOrigin, getNonce } from '../common/webview';
 import { BaseWebview } from './webview-base';
 import { WebviewProxyBridge } from '../common/webview-bridge';
-import { generateBridgeRuntime } from '../common/webview-bridge-runtime';
+import {
+    serializeWebviewBridgeConfig,
+    WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+} from '../common/webview-bridge-runtime';
 // @ts-ignore
 import * as _templateText from '../../../atopile/layout_server/static/layout-editor.hbs';
 const templateText: string = (_templateText as any).default || _templateText;
@@ -63,6 +66,11 @@ class LayoutEditorWebview extends BaseWebview {
             getAndCheckResource('layout-editor/editor.js'),
             true,
         ).toString();
+        const bridgeRuntimeUri = this.getWebviewUri(
+            webview,
+            getAndCheckResource('webview-bridge-runtime.js'),
+            false,
+        ).toString();
 
         return renderTemplate(templateText, {
             csp,
@@ -72,7 +80,9 @@ class LayoutEditorWebview extends BaseWebview {
             wsOrigin,
             nonce,
             editorUri,
-            bridgeRuntime: generateBridgeRuntime({ apiUrl, fetchMode: 'override' }),
+            bridgeRuntimeUri,
+            bridgeConfigElementId: WEBVIEW_BRIDGE_CONFIG_ELEMENT_ID,
+            bridgeConfigJson: serializeWebviewBridgeConfig({ apiUrl, fetchMode: 'override' }),
         });
     }
 }
