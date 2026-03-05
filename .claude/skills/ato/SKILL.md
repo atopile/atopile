@@ -1,173 +1,49 @@
 ---
-name: ato-language-v1
-description: "Authoritative ato authoring and review skill focused on language semantics, constraints, interfaces, and solver-aware design patterns for .ato code."
+name: ato
+description: "Authoritative ato authoring and review skill: language reference, stdlib, design patterns, and end-to-end board design workflow."
 ---
 
-# 1. Role + Operating Contract
+# 1. End-to-End Design Process
 
-## 1.1 Mission
+This is the canonical sequence for designing a board in atopile. Follow these steps in order. Each step has a gate condition — do not advance until the gate is met.
 
-You are an ato language specialist for atopile.
+## Step 1: Understand User Intent
 
-Your job is to help users author, refactor, debug, and review `.ato` designs with a strict bias toward:
+Ask probing questions to make sure you understand what the user is trying to build. You can ask questions in several rounds if needed. Focus on:
 
-- semantic correctness,
-- package compatibility,
-- reproducible design intent.
+- What is the system supposed to do?
+- What are the key functional blocks?
+- Are there specific parts, interfaces, or form factor requirements?
+- What are the power requirements and voltage domains?
+- Are there constraints on size, cost, or manufacturing?
 
-Primary thesis to preserve:
+> **Tools:** Use `design_questions` to batch multiple questions with suggested options. Use `web_search` if you need to research unfamiliar domains or components.
 
-**atopile is a language to describe electronics through modular abstraction.**
+Gate: you have a clear understanding of the user's goals, constraints, and priorities. All open questions are answered.
 
-That means ato code should describe structure, constraints, and connectivity of electronic systems, not procedural runtime behavior.
+## Step 2: Write Spec
 
-## 1.2 Non-negotiable behavior
+Capture user intent as ato code. Focus on **high-level architecture** — think of this step as drawing the block diagram. The spec IS the design file at a high level of abstraction. As you implement, you fill in real components and wiring. The file grows; the structure stays.
 
-When producing or reviewing ato:
-
-- Prefer correctness over creativity.
-- Prefer explicit constraints over implicit assumptions.
-- Prefer interface-level composition over pin-level ad-hoc wiring, unless pin-level wiring is required by the package model.
-- Prefer real, imported library or package types over invented APIs.
-- Prefer rules and semantics that are explicitly stated in this document.
-- Prefer examples grounded in real `.ato` package and application patterns.
-
-## 1.3 What this skill must never do
-
-Never:
-
-- invent unsupported grammar (`if`, `while`, function defs, lambda, dict literals, list-of-values literals beyond list of field refs in `for`, etc.);
-- claim bridge syntax works without `#pragma experiment("BRIDGE_CONNECT")`;
-- claim `for` works without `#pragma experiment("FOR_LOOP")`;
-- claim `trait ...` works without `#pragma experiment("TRAITS")`;
-- claim `new Type<...>` templating works without `#pragma experiment("MODULE_TEMPLATING")`;
-- write chain comparisons in `assert` as if they are fully implemented semantically;
-- claim `|` or `&` arithmetic operators are usable as numeric expression operators in constraints;
-- mix directed connect directions in one chain (`a ~> b <~ c` is invalid);
-- treat assignment of a type reference as valid instantiation (`r = Resistor` must be `r = new Resistor`);
-- claim all imported names are valid stdlib imports without path; stdlib import is allowlisted.
-
-## 1.4 Scope of authority
-
-This skill covers:
-
-- ato syntax and parser-level forms,
-- AST visitor semantics and experiment gates,
-- connection semantics (`~`, `~>`, `<~`),
-- constraints/equations and parameter modeling,
-- units/tolerances and commensurability,
-- package and part-picking authoring patterns,
-- interface-first architecture patterns,
-- diagnostics and repair playbooks.
-
-This skill does not replace:
-
-- backend picker internals,
-- PCB layout quality review,
-- manufacturing DFM verification,
-- firmware/runtime behavior.
-
-## 1.5 Operating loop for authoring tasks
-
-For any non-trivial request:
-
-1. Parse intent into architecture + interfaces + constraints.
-2. Pick module boundaries first.
-3. Declare instances and interfaces.
-4. Wire with `~` or `~>` based on physical topology.
-5. Add constraints (voltage/current/address/bus settings).
-6. Add package/part constraints (`package`, `lcsc_id`, `manufacturer`, `mpn`) only where needed.
-7. Validate against known invariants and failure classes.
-8. Review for unsupported constructs and pragma gates.
-
-## 1.6 Operating loop for review tasks
-
-When reviewing `.ato` code, prioritize findings in this order:
-
-1. Parser/semantic invalid constructs.
-2. Connectivity/reference mistakes.
-3. Constraint contradictions, underconstraint, overconstraint.
-4. Experiment pragma mismatches.
-5. Bad module boundaries (leaky abstraction).
-6. Picking/package brittleness.
-7. Style and readability.
-
-## 1.7 Evidence-first rule
-
-If a claim is about language behavior, tie it to at least one of:
-
-- parser rule,
-- AST visitor logic,
-- stdlib implementation,
-- existing package/example usage.
-
-Use this phrasing pattern:
-
-- "Parser allows X"
-- "AST visitor enforces Y"
-- "Pragma gate required for Z"
-
-## 1.8 Stable vs experimental declaration discipline
-
-Always classify behavior as one of:
-
-- Stable language surface.
-- Experimental (pragma gated).
-- Accepted by parser but rejected later semantically.
-- Deprecated compatibility sugar.
-
-This avoids false confidence and prevents hallucinated ato features.
-
-## 1.9 Module Naming
-
-Name modules the way you'd label blocks on a system block diagram — by their **role in the system**, not their implementation topology. Avoid generic suffixes like `Subsystem`, `Unit`, `Block`, or `Section`.
-
-**Good names:**
-
-- `PowerSupply` — input protection, regulation, and distribution
-- `PowerInput` — connector, reverse polarity protection, and bulk decoupling
-- `BatteryCharger` — charge IC, sense resistors, and status output
-- `BMS` — cell balancing, protection, and fuel gauge
-- `GateDriver` — bootstrap, dead-time, and level shifting for a FET bridge
-- `MotorDrive` — integrated driver with current limit and fault output
-- `CurrentSense` — shunt and sense amplifier
-- `CANTransceiver` — transceiver, termination, and ESD (don't use `CAN` — it shadows the stdlib interface)
-- `USBPort` — connector, ESD, and pull-ups (don't use `USB` — too generic, may shadow stdlib types)
-- `EthernetPHY` — PHY, magnetics, and RJ45
-- `Radio` — RF front end, antenna match, and balun
-- `IMU` — accelerometer/gyro with decoupling
-- `ADCInput` — anti-alias filter, reference, and input scaling
-- `LevelShift` — voltage translation between power domains
-- `InputFilter` — common-mode choke and filter caps
-- `Clock` — crystal or oscillator with load caps
-- `Debug` — SWD/JTAG connector and pull-ups
-- `Indicators` — status LEDs with current-limiting resistors
-- `Protection` — ESD, TVS, or overvoltage clamping on an interface
-
-IC wrapper packages use the **part name** directly: `STM32G474`, `DRV8317`, `TCAN3414`.
-
-Inside a module, names get more specific — a `PowerSupply` module might contain a `BuckConverter` and an `LDO`. The name should match the level of abstraction: system-level blocks use system-level names.
-
-When in doubt, ask: *"what would this block be labelled on a system block diagram?"*
-
-# 1.10 End-to-End Board Design Workflow
-
-This is the canonical sequence for designing a board in atopile. Follow these phases in order. Each phase has a gate condition — do not advance until the gate is met.
-
-### Phase 1: Planning — capture requirements as code
-
-Translate the user's request into a **spec `.ato` file** that IS the design. The spec is not a separate document — it is the main `.ato` file at a high level of abstraction. As you implement, you fill in real components and wiring. The file grows; the structure stays.
+**Key principles:**
+- **Good naming** — name modules by their role in the system, not implementation topology (see Section 1.1).
+- **Module boundaries** should encapsulate common functionality to avoid duplication at the top level.
+- **Use high-level interfaces** (`ElectricPower`, `I2C`, `SPI`, `UART`, `ElectricLogic`) instead of low-level electrical connections where possible.
+- **Custom interfaces** — you can create project-specific interfaces if needed, but check the stdlib first (see Section 3).
+- **Capture requirements** as `has_requirement` traits on the module that owns them.
+- **Add formal constraints** with `assert` for voltage, current, frequency bounds.
+- **Wire modules together** at the interface level (`~`). Do NOT wire pins yet.
 
 **Step-by-step:**
 
 1. **Break the request into subsystems.** Each functional block becomes a `module` — power, MCU, sensors, comms, IO, etc.
-2. **Define interfaces at module boundaries.** Use stdlib interfaces (`ElectricPower`, `I2C`, `SPI`, `UART`, `ElectricLogic`, etc.) to declare how modules connect. Do NOT wire pins yet.
-3. **Capture requirements as `has_requirement` traits.** Place each requirement on the module that owns it. Requirements document design intent that `assert` constraints alone can't express.
+2. **Define interfaces at module boundaries.** Use stdlib interfaces to declare how modules connect.
+3. **Capture requirements as `has_requirement` traits.** Place each requirement on the module that owns it.
 4. **Add formal constraints** with `assert` for voltage, current, frequency bounds.
 5. **Wire modules together** at the interface level (`~`).
 6. **Create a checklist** linking items to requirement IDs for tracking.
 
-**Example spec — the design file starts like this:**
+**Example spec:**
 
 ```ato
 #pragma experiment("TRAITS")
@@ -239,29 +115,47 @@ module Radio:
     spi = new SPI
 ```
 
-**Key rules for this phase:**
+**Key rules for this step:**
 - Module names are final — `PowerSupply` stays `PowerSupply` through implementation. Do NOT suffix with "Spec".
 - Place `has_requirement` on the module that owns it, not all on the top-level.
 - Use docstrings for overview, key decisions, and open questions.
 - Present open questions to the user and wait for answers before implementing.
 - Requires `#pragma experiment("TRAITS")` and `import has_requirement`.
 
-Gate: spec `.ato` file exists with module hierarchy, interfaces, requirement traits, and constraints. User has approved the architecture.
+> **Tools:** Use `stdlib_list` / `stdlib_get_item` to check available interfaces and components before defining custom ones. Use `examples_search` / `examples_read_ato` to find reference designs for similar systems.
 
-### Phase 3: Find existing packages
+Gate: spec `.ato` file exists with module hierarchy, interfaces, requirement traits, and constraints.
+
+## Step 3: Get Signoff
+
+Present the user with a high-level summary of the architecture:
+
+- List the modules and their responsibilities.
+- Show the interface connections between modules.
+- Highlight any key decisions or trade-offs made.
+- Call out any assumptions or areas where alternatives exist.
+
+Give the user an opportunity to provide feedback or suggestions. Incorporate any feedback and iterate on the spec if necessary. Only proceed once the user approves the architecture.
+
+Gate: user has approved the architecture.
+
+## Step 4: Implement Detailed Design
+
+Now fill in the spec with real components, wiring, and constraints. This step covers package search, part selection, and detailed wiring.
+
+### 4a: Find existing packages
 
 Search the atopile package registry before building from scratch.
 
-- Use `packages_search` to find existing drivers for ICs, connectors, and modules.
-- Use `packages_install` to add dependencies.
-- Use `package_ato_read` to inspect package source and understand its public interface.
+> **Tools:** `packages_search` → `packages_install` → `package_ato_read` to inspect public interface. Also check `stdlib_list` for built-in modules.
+
 - Prefer reusing a well-tested package over writing a new driver module.
 
-Gate: all major ICs/connectors have either a package dependency or a plan to write a custom driver.
-
-### Phase 3b: Create local package when none exists
+### 4b: Create local packages when none exist
 
 When `packages_search` returns no match for a needed IC, connector, or module, **create a local driver package** instead of giving up or asking the user to find one.
+
+> **Tools:** `parts_search` → `parts_install` → `datasheet_read` → `project_read_file` (to inspect auto-generated .ato) → `project_create_file` (to write the driver module).
 
 **Step-by-step recipe:**
 
@@ -278,7 +172,7 @@ When `packages_search` returns no match for a needed IC, connector, or module, *
    - Sets voltage/current constraints from the datasheet
 6. **Import and use** the driver in your top-level design.
 
-**Example: creating a local I2C mux driver** (modeled on `examples/i2c/`)
+**Example: creating a local I2C mux driver**
 
 The auto-generated part file (`parts/Manufacturer_MPN/Manufacturer_MPN.ato`) is a `component` with signal-to-pin mappings and traits — do NOT edit it. Write a separate driver module that wraps it.
 
@@ -347,42 +241,42 @@ module TI_TCA9548A:
 - Keep IC-specific pin wiring inside the driver module; expose only abstract interfaces.
 - Do NOT skip this step and tell the user to create the package themselves. This is core agent capability.
 
-### Phase 4: Part selection
+### 4c: Part selection
 
 Choose components using generics + constraints wherever possible.
+
+> **Tools:** `parts_search` / `parts_install` for specific ICs/connectors. `datasheet_read` for electrical specs. `web_search` for application notes or alternative parts.
 
 - Use stdlib generics (`Resistor`, `Capacitor`, `Inductor`, `Diode`, `LED`, `Fuse`) with value + package constraints for auto-picking. Prefer generics over locked parts.
 - Use `parts_search` only when a specific part is needed (IC, connector, specialized component).
 - Use `parts_install` for parts that need explicit LCSC IDs.
 - Lock only high-risk parts (MCU, PMIC, RF, connectors). Leave commodity passives auto-picked.
-- Follow Section 5.6–5.7 picking strategy.
 
-Gate: every component is either a constrained generic or an explicitly selected part.
-
-### Phase 5: Detailed design
+### 4d: Detailed wiring and constraints
 
 Wire connectivity, add constraints and equations, complete the design.
 
 - Wire modules through interfaces using `~` (or `~>` for bridge/series paths).
 - Add parameter constraints (`assert ... within ...`) for all key electrical properties.
-- Add decoupling, pullups, and protection per Section 7 patterns.
-- Follow Section 4 invariants throughout.
+- Add decoupling, pullups, and protection per Section 4 patterns.
 
-Gate: design is complete — all modules wired, all constraints declared, all interfaces connected.
+Gate: design is complete — all modules wired, all constraints declared, all interfaces connected. Every component is either a constrained generic or an explicitly selected part.
 
-### Phase 6: Build + fix loop
+## Step 5: Build
 
-Run the build and fix issues iteratively until it passes.
+Run builds and fix issues iteratively until everything passes. **Build submodules first** (if applicable) — it is much easier to get small chunks working before running the full build.
+
+### 5a: Build + fix loop
+
+> **Tools:** `build_run` → `build_logs_search` (filter by `log_levels`/`stage`) → `design_diagnostics` for silent failures. Use `report_variables` to inspect constraint state and `report_bom` to verify part selection.
 
 - Run `build_run` and inspect results.
 - Check `build_logs_search` for errors/warnings.
 - Use `design_diagnostics` for silent failures.
-- Fix issues using Section 9 failure repair playbooks.
+- Fix issues using Section 5 troubleshooting.
 - Repeat until build passes cleanly.
 
-Gate: build completes without errors.
-
-### Phase 7: Board shape
+### 5b: Board shape
 
 Add a `RectangularBoardShape` to define the physical PCB outline.
 
@@ -402,1006 +296,298 @@ board.mounting_hole_diameter = 3.2mm
 - Only one board shape per design is allowed.
 - `RectangularBoardShape` is stdlib-allowlisted — use bare `import`, no path needed.
 
-Gate: build passes with board outline visible in PCB.
+Gate: build completes without errors.
 
-### Phase 8: Manual placement
+## Step 6: Summary
 
-Place critical components that have fixed mechanical positions.
+> **Tools:** Use `report_bom` for parts list and `report_variables` for constraint summary when preparing the summary.
 
-- Use `layout_set_component_position` for connectors, mounting holes, and edge-constrained parts.
-- Place USB connectors, power jacks, debug headers, and any mechanically constrained component.
-- Check `placement_check` in each result to confirm `on_board` status and `collision_count`.
+When the build finishes, give the user a summary:
 
-Gate: all mechanically constrained components are placed and on-board.
+- **What was built** — list the modules, key components, and interfaces.
+- **Blockers or issues** — note any problems encountered and how they were resolved (or if they remain).
+- **Suggestions for next steps** — what the user might want to do next (e.g., review placement, order boards, add features, run DRC).
 
-### Phase 9: Review placement
+Gate: user has received a clear summary and knows the state of the design.
 
-Verify manual placement before auto-placement.
+---
 
-- Use `autolayout_request_screenshot` to generate board preview images.
-- Check that connectors are at board edges with correct orientation.
-- Check that mounting holes align with enclosure/mechanical requirements.
-- Iterate placement with `layout_set_component_position` until satisfied.
+## 1.1 Module Naming
 
-Gate: manual placement looks correct in screenshot review.
+Name modules the way you'd label blocks on a system block diagram — by their **role in the system**, not their implementation topology. Avoid generic suffixes like `Subsystem`, `Unit`, `Block`, or `Section`.
 
-### Phase 10: Auto-placement
+**Good names:**
 
-Send remaining components for automatic placement.
+- `PowerSupply` — input protection, regulation, and distribution
+- `PowerInput` — connector, reverse polarity protection, and bulk decoupling
+- `BatteryCharger` — charge IC, sense resistors, and status output
+- `BMS` — cell balancing, protection, and fuel gauge
+- `GateDriver` — bootstrap, dead-time, and level shifting for a FET bridge
+- `MotorDrive` — integrated driver with current limit and fault output
+- `CurrentSense` — shunt and sense amplifier
+- `CANTransceiver` — transceiver, termination, and ESD (don't use `CAN` — it shadows the stdlib interface)
+- `USBPort` — connector, ESD, and pull-ups (don't use `USB` — too generic, may shadow stdlib types)
+- `EthernetPHY` — PHY, magnetics, and RJ45
+- `Radio` — RF front end, antenna match, and balun
+- `IMU` — accelerometer/gyro with decoupling
+- `ADCInput` — anti-alias filter, reference, and input scaling
+- `LevelShift` — voltage translation between power domains
+- `InputFilter` — common-mode choke and filter caps
+- `Clock` — crystal or oscillator with load caps
+- `Debug` — SWD/JTAG connector and pull-ups
+- `Indicators` — status LEDs with current-limiting resistors
+- `Protection` — ESD, TVS, or overvoltage clamping on an interface
 
-- Run `autolayout_run` for placement.
-- Monitor with `autolayout_status` (use `wait_seconds`/`poll_interval_seconds`).
-- Call `autolayout_fetch_to_layout` only when state is `awaiting_selection` or `completed`.
-- Each run is capped at 2 minutes. Use iterative cycles: run, review, resume with `resume_board_id`.
+IC wrapper packages use the **part name** directly: `STM32G474`, `DRV8317`, `TCAN3414`.
 
-Gate: auto-placement result fetched and applied.
+Inside a module, names get more specific — a `PowerSupply` module might contain a `BuckConverter` and an `LDO`. The name should match the level of abstraction: system-level blocks use system-level names.
 
-### Phase 11: Review auto-placement
+When in doubt, ask: *"what would this block be labelled on a system block diagram?"*
 
-Verify component placement quality before routing.
+## 1.2 Architecture Decomposition
 
-- Use `autolayout_request_screenshot` (2D and/or 3D).
-- Use `highlight_components` to spotlight specific areas on crowded boards.
-- Check for: components outside board outline, excessive crowding, poor grouping of related components.
-- If unsatisfied, adjust with `layout_set_component_position` and/or resume auto-placement.
+For non-trivial designs, split early and keep one primary module per file.
 
-Gate: placement is acceptable — components grouped logically, within board outline, no collisions.
+**Complexity triggers that force splitting:**
+- More than 40 connect statements in one module
+- More than 12 direct package-pin connections in one module
+- More than 10 child instances in one module
+- Mixed concerns (power conversion + MCU + comms + connectors in one module)
+- Duplicated wiring clusters that could be a reusable child module
 
-### Phase 12: Auto-routing
+**Example file layout:**
 
-Send for automatic trace routing.
+```text
+design/
+  main.ato                  # integration module only
+  power/
+    buck_5v.ato             # 30V -> 5V stage
+    buck_3v3.ato            # 5V -> 3V3 stage
+  control/
+    mcu.ato                 # MCU + local support passives
+  comms/
+    can_phy.ato             # CAN transceiver stage
+  io/
+    connectors.ato          # connector adapters
+```
 
-- Use `autolayout_configure_board_intent` first to set ground pours, layer count, and stackup.
-- Run `autolayout_run` for routing.
-- Monitor and fetch as in Phase 10.
-- Resume with `resume_board_id` for iterative improvement passes.
+Create folders/files for planned modules before writing detailed internals. Keep the integration file focused on composition and cross-module constraints.
 
-Gate: routing result fetched and applied.
+## 1.3 Design for Test
 
-### Phase 13: Review auto-routing
+Imagine the board comes back from the factory, gets plugged in, and it's your job to bring it up — automatically, at scale. Design with that scenario in mind from the start.
 
-Verify routing quality.
+### Think about the bringup flow
 
-- Use `autolayout_request_screenshot` for visual review.
-- Run `layout_run_drc` to check design rule violations.
-- Review DRC errors (critical) and warnings (may be acceptable).
-- If quality is insufficient, resume routing with `resume_board_id` for another pass.
+Before wiring, walk through the commissioning sequence in your head:
 
-Gate: DRC passes (or remaining violations are accepted) and routing looks clean.
+1. **Power on** — how does it get power? USB? Bench supply? Battery? What's the first thing that should happen?
+2. **Programming** — how does firmware get loaded? SWD/JTAG header? USB bootloader? Is the debug connector accessible?
+3. **Configuration** — does the device need provisioning (keys, calibration, IDs)? What interface is used?
+4. **Verification** — how do you confirm each subsystem works? What can you measure?
+5. **Final state** — what does "pass" look like? An LED? A USB enumeration? A message on a bus?
 
-### Phase 14: Generate manufacturing outputs
+Include the connectors, headers, and test points needed for this flow in your design. A debug header that gets cut to save $0.10 will cost hours during bringup.
 
-Produce files for fabrication and assembly.
+### Self-measurement of critical rails
 
-- Call `manufacturing_generate` to create Gerbers, drill files, BOM, and pick-and-place data.
-- Track with `build_logs_search`.
-- Inspect with `manufacturing_summary` to verify all outputs are present.
+Every power rail that matters should be observable — ideally by the MCU itself, not just a multimeter:
 
-Gate: manufacturing artifacts generated and verified.
-
-# 2. ato Mental Model + Semantics
-
-## 2.1 Declarative graph model
-
-ato is declarative.
-
-Interpret each statement as graph construction and constraint declaration, not runtime instruction execution.
-
-Practical implications:
-
-- `a ~ b` means interfaces are connected into one electrical/logical relation.
-- `assert ...` declares constraints over parameter domains.
-- `x = new T` creates typed child nodes and references.
-- `trait ...` attaches trait nodes/edges (when enabled).
-
-Order can matter for readability and dependency introduction, but not as an imperative execution timeline.
-
-## 2.2 Core entities
-
-Three block kinds exist in grammar:
-
-- `module`
-- `component`
-- `interface`
-
-All are block definitions with optional inheritance:
-
-- `module Child from Parent:`
-
-Semantically in visitor:
-
-- `module` and `interface` use subset-style constraining semantics by default,
-- `component` uses superset-style default behavior.
-
-Do not assume these are interchangeable. Prefer `module` for reusable hardware building blocks and `interface` for bus/signal/power shape types.
-
-## 2.3 Instances and fields
-
-Instances are created with `new`.
-
-Valid forms:
-
-- single instance: `x = new Type`
-- array-like sequence: `arr = new Type[4]`
-- templated construction: `x = new Type<k=v>` (experiment gated)
-
-Assignment to bare type reference is invalid.
-
-Invalid:
+- **ADC sense dividers** on critical voltage rails (battery, main supply, regulated outputs) so firmware can read and report rail health.
+- **Current sense** on high-power paths (motor drives, charging) for monitoring and fault detection.
+- **Test points** on rails that can't be ADC-measured, so they're accessible with a probe during bringup.
 
 ```ato
+# Example: ADC-measurable voltage rail
+adc_sense = new ResistorVoltageDivider
+power_12v.hv ~> adc_sense ~> power_12v.lv
+adc_sense.output ~ mcu.adc[0]
+assert adc_sense.ratio within 0.2 to 0.3   # scale 12V into MCU ADC range
+```
+
+### Practical checklist
+
+When designing, ask yourself:
+
+- **Programming**: Is there a debug header (SWD/JTAG) or USB bootloader path? Is it accessible after assembly?
+- **Power rails**: Can the MCU read the key voltage rails via ADC? Are there test points on rails it can't read?
+- **Communication buses**: Is there a way to verify each bus is alive? (e.g., I2C scan, SPI loopback, UART console)
+- **Indicators**: Are there status LEDs that show power-good, heartbeat, or error states?
+- **Isolation**: Can subsystems be tested independently? (e.g., can you power the MCU without the motor driver?)
+- **Test points**: Are critical signals (clocks, resets, key nets) accessible for probing?
+- **Connectors**: Are debug/programming connectors placed where they won't be blocked by enclosures or other boards?
+
+---
+
+# 2. Language Reference
+
+ato is a **declarative** language for defining electronics. Every statement constructs graph nodes and edges or declares constraints — there is no runtime execution order. This section covers the language by concept with practical examples.
+
+## 2.1 Blocks
+
+Three block kinds exist: `module`, `component`, and `interface`.
+
+```ato
+module PowerSupply:
+    """Regulate 5V input down to 3.3V."""
+    pass
+
+component MyChip:
+    pin VCC
+    pin GND
+
+interface MyBus:
+    signal data
+    signal clock
+```
+
+- Use `module` for reusable hardware building blocks with components and equations.
+- Use `interface` for reusable connectable bus/signal/power abstractions.
+- Use `component` for physical parts with pin mappings (usually auto-generated — you rarely write these by hand).
+
+**Inheritance** specializes a block:
+
+```ato
+module USB2_0TypeCVerticalConnector from USBTypeCConnector_driver:
+    connector -> VerticalUSBTypeCConnector_model
+```
+
+**Rules:**
+- Nested block definitions are NOT allowed — all blocks must be at file top-level.
+- Duplicate symbol names in the same scope are errors.
+- Use docstrings (triple-quoted strings) as the first statement for module documentation.
+
+## 2.2 Instances
+
+Create instances with `new`. Bare type assignment is invalid.
+
+```ato
+# Good
+r = new Resistor
+caps = new Capacitor[4]
+
+# Bad — will error
 r = Resistor
 ```
 
-Valid:
+**Arrays** create indexed sequences:
 
 ```ato
-r = new Resistor
+leds = new LED[8]
+leds[0].lcsc_id = "C2286"
+leds[3].lcsc_id = "C2297"
 ```
 
-## 2.4 Connectivity model
-
-### Direct connect: `~`
-
-Use for net-level or interface-level equivalence connection.
-
-Examples:
-
-```ato
-power_3v3 ~ sensor.power
-i2c_bus ~ sensor.i2c
-gpio[0] ~ led_control.line
-```
-
-### Directed/bridge connect: `~>` and `<~`
-
-Use for intentional inline topology through bridgable elements.
-
-Examples:
-
-```ato
-power_in ~> fuse ~> regulator ~> power_out
-data_in ~> led_strip ~> data_out
-```
-
-Semantics depend on `can_bridge` trait pathing and are enabled only with:
-
-```ato
-#pragma experiment("BRIDGE_CONNECT")
-```
-
-Parser accepts both directions; AST visitor rejects mixed direction in a single chain.
-
-Invalid:
-
-```ato
-a ~> b <~ c
-```
-
-## 2.5 Constraint model
-
-`assert` introduces expression constraints.
-
-Supported comparison operators:
-
-- `>`
-- `>=`
-- `<`
-- `<=`
-- `within`
-- `is`
-
-Important semantic behavior:
-
-- Currently, visitor expects exactly one comparison clause in an assert expression.
-- Chain comparisons that parse may still fail semantically.
-- `assert x is <literal>` is deprecated; use `within` for literal-set/domain constraints.
-
-Good:
-
-```ato
-assert power.voltage within 3.3V +/- 5%
-assert i2c.address is addressor.address
-assert resistor.resistance <= 10kohm
-```
-
-## 2.6 Quantities and tolerances
-
-ato physical literals support:
-
-- singleton quantity: `10kohm`
-- bounded quantity: `1.8V to 5.5V`
-- bilateral quantity:
-  - absolute: `10kohm +/- 1kohm`
-  - relative: `10kohm +/- 10%`
-
-Visitor enforces unit commensurability for bounded and bilateral forms when both ends specify units.
-
-If units are not commensurable, type error is raised.
-
-## 2.7 Scope and symbol model
-
-Symbol categories:
-
-- imported type names,
-- block type names,
-- local fields,
-- loop aliases.
-
-Rules:
-
-- duplicate symbol in same scope is error,
-- nested block definitions are not allowed,
-- loop alias may not shadow existing symbol or field,
-- unresolved field references fail.
-
-## 2.8 Import model
-
-Import grammar allows:
-
-- `import Type`
-- `from "path.ato" import Type`
-
-But semantic validation in visitor imposes:
-
-- path-less import must resolve to stdlib allowlist or trait override alias,
-- otherwise `DslImportError`.
-
-Interpretation:
-
-- use path imports for package local files or external package modules,
-- use direct `import X` only for allowed stdlib entities.
-
-## 2.9 Trait model
-
-Trait statements are experimental (`TRAITS`) and can target the current block or a specific field.
-
-Example:
-
-```ato
-#pragma experiment("TRAITS")
-import can_bridge_by_name
-
-module Chain:
-    in_ = new ElectricLogic
-    out_ = new ElectricLogic
-    trait can_bridge_by_name<input_name="in_", output_name="out_">
-```
-
-Trait overrides translate legacy names to canonical traits (for compatibility), such as:
-
-- `can_bridge_by_name` mapped to `can_bridge` behavior,
-- `has_single_electric_reference_shared` mapped to `has_single_electric_reference`.
-
-## 2.10 Retype model (`->`)
-
-`field -> Type` performs deferred retype of an existing field.
-
-Used for specialization after structural declaration.
-
-Keep this pattern narrow and explicit; uncontrolled retyping can obscure design intent.
-
-## 2.11 For-loop model
-
-`for` is syntactic expansion over:
-
-- list literal of field references (`for x in [a, b, c]:`), or
-- sequence field refs with optional slice (`for x in arr[1:]:`).
-
-Constraints:
-
-- Requires `FOR_LOOP` experiment.
-- Loop body forbids imports, pin/signal declarations, trait statements, nested for, and `new` assignments.
-
-Intent:
-
-Use loops for repetitive constraint/wiring patterns, not logic branching.
-
-## 2.12 Abstraction thesis in practice
-
-atopile's thesis is modular abstraction for electronics.
-
-In ato, this means:
-
-- define reusable modules around interfaces,
-- constrain behavior through equations and parameter domains,
-- keep package/part concerns local and composable,
-- let solver and picker satisfy requirements,
-- avoid flattening everything to pins unless package mapping requires it.
-
-# 3. Syntax Reference (Complete)
-
-This section is authoritative for language forms accepted by parser and relevant semantic caveats from visitor behavior.
-
-## 3.1 Lexical and token essentials
-
-### 3.1.1 Relevant operators and delimiters
-
-- Connection: `~`, `~>`, `<~`
-- Retype: `->`
-- Assignment: `=`
-- Arithmetic: `+`, `-`, `*`, `/`, `**`
-- Comparison: `<`, `>`, `<=`, `>=`, `within`, `is`
-- Structural: `:`, `;`, `.`, `,`, `[ ]`, `< >`
-
-### 3.1.2 Numbers and strings
-
-`NUMBER` token supports integer/float forms (including hex/octal/binary integer syntax in lexer).
-
-Strings support quoted and triple-quoted literals.
-
-### 3.1.3 Pragma token
-
-Pragmas are line tokens:
-
-```ato
-#pragma experiment("FOR_LOOP")
-```
-
-## 3.2 File-level form
-
-Parser root:
-
-- file is a sequence of statements and newlines.
-
-Valid top-level statements include:
-
-- simple statements,
-- compound statements (block defs, for loops),
-- pragma statements.
-
-## 3.3 Statements
-
-### 3.3.1 Simple statements
-
-Simple statement set:
-
-- import
-- assignment
-- connect
-- directed connect
-- retype
-- pin declaration
-- signal declaration
-- assert
-- declaration (`field: unit`)
-- string statement
-- pass
-- trait statement
-
-Semicolon-separated multi-simple statements on one line are allowed by grammar.
-
-### 3.3.2 Compound statements
-
-Compound statement set:
-
-- block definitions
-- for loop
-
-## 3.4 Block definitions
-
-### 3.4.1 Grammar forms
-
-```ato
-module Name:
-    pass
-
-component Name:
-    pass
-
-interface Name:
-    pass
-
-module Child from Parent:
-    pass
-```
-
-### 3.4.2 Semantic notes
-
-- Nested block definitions are not permitted.
-- Duplicate symbol names at scope level are errors.
-
-## 3.5 Import forms
-
-### 3.5.1 Stable parser forms
-
-```ato
-import ElectricPower
-from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
-```
-
-### 3.5.2 Deprecated parser-accepted form
-
-Multiple imports on one line parse, but visitor marks it deprecated.
-
-```ato
-import A, B
-```
-
-Use one import per statement instead.
-
-### 3.5.3 Semantic allowlist caveat
-
-`import X` without path must be stdlib-allowlisted or recognized trait override alias.
-
-## 3.6 Assignments
-
-### 3.6.1 General form
-
-```ato
-field = assignable
-```
-
-Assignable parser options:
-
-- string
-- new expression
-- physical literal
-- arithmetic expression
-- boolean
-
-### 3.6.2 Supported practical assignment patterns
-
-#### Instantiate
-
-```ato
-r = new Resistor
-arr = new Capacitor[4]
-```
-
-#### Set parameter with literal
-
-```ato
-r.resistance = 10kohm +/- 5%
-power.voltage = 3.3V +/- 5%
-```
-
-#### Set parameter from expression
-
-```ato
-assert v_out is v_in * ratio
-r_top.resistance = (v_in / i_max) - r_bottom.resistance
-```
-
-#### Set booleans/strings for trait overrides
-
-```ato
-i2c.required = True
-sensor.package = "0402"
-```
-
-### 3.6.3 Assignment overrides (compatibility sugar)
-
-These field-name assignments map to trait behavior:
-
-- `required`
-- `package`
-- `lcsc_id`
-- `mpn`
-- `manufacturer`
-- `datasheet_url`
-- `designator_prefix`
-- `override_net_name`
-- `suggest_net_name`
-- `.default` on parameters
-
-Example:
-
-```ato
-res.package = "0402"
-led.lcsc_id = "C2286"
-my_param.default = 1A
-```
-
-### 3.6.4 Explicit invalid assignment pattern
-
-Invalid (semantic error):
-
-```ato
-res = Resistor
-```
-
-Must be:
-
-```ato
-res = new Resistor
-```
-
-## 3.7 New expressions
-
-### 3.7.1 Stable forms
-
-```ato
-x = new Type
-xs = new Type[8]
-```
-
-### 3.7.2 Experimental templating form
+**Templated construction** (requires `MODULE_TEMPLATING` pragma):
 
 ```ato
 #pragma experiment("MODULE_TEMPLATING")
+
 addressor = new Addressor<address_bits=3>
 ```
 
-Template arg values are literal (string/number/boolean) forms.
+## 2.3 Fields and Access
 
-## 3.8 Connections
-
-## 3.8.1 Direct connection (`~`)
-
-General form:
+Access fields with dotted paths and array indexing:
 
 ```ato
-lhs ~ rhs
+power                          # local field
+power.hv                       # sub-field
+i2c.sda.line                   # nested access
+gpio[0].line                   # indexed access
+microcontroller.uart[0].tx     # deep path
 ```
 
-Where connectables are field refs or inline pin/signal declarations.
-
-Examples:
+**Declare typed parameters** with unit annotation:
 
 ```ato
-power_3v3 ~ sensor.power
-i2c_bus ~ sensor.i2c
-pin 1 ~ connector.1
-signal net_a ~ r1.unnamed[0]
-```
-
-## 3.8.2 Directed connection (`~>`, `<~`) [Experimental]
-
-Requires:
-
-```ato
-#pragma experiment("BRIDGE_CONNECT")
-```
-
-Examples:
-
-```ato
-power_in ~> fuse ~> ldo ~> power_out
-data_in ~> chain ~> data_out
-```
-
-Parser allows recursive chain form; visitor rejects mixed direction chains.
-
-## 3.8.3 Direction semantics
-
-- `a ~> b` means left-to-right bridge traversal.
-- `a <~ b` means right-to-left bridge traversal.
-
-Interpret these as bridge path selection over `can_bridge` trait in/out pointers.
-
-## 3.9 Retype statements
-
-Form:
-
-```ato
-field_ref -> TypeRef
-```
-
-Example:
-
-```ato
-connector -> VerticalUSBTypeCConnector_model
-```
-
-Retype is deferred and should be used deliberately for specialization.
-
-## 3.10 Pin and signal declarations
-
-### 3.10.1 Pin declaration
-
-Accepted labels: name, natural number, or string.
-
-```ato
-pin led_pin
-pin 1
-pin "A0"
-```
-
-### 3.10.2 Signal declaration
-
-```ato
-signal net_name
-```
-
-Used as connectable declaration nodes.
-
-## 3.11 Declaration statements
-
-Form:
-
-```ato
-field_ref: unit
-```
-
-Example:
-
-```ato
+v_in: V
+v_out: V
 max_current: A
 ratio: dimensionless
 ```
 
-Creates numeric parameter field with specified unit.
+Declared parameters can then be used in equations and constraints.
 
-## 3.12 Assert statements
+## 2.4 Connections
 
-Form:
+### Direct connect: `~`
 
-```ato
-assert comparison
-```
-
-Comparison base grammar supports multiple compare pairs, but semantic implementation currently supports one operator clause per assert.
-
-Preferred robust form:
+Use for net-level or interface-level equivalence. This is the primary connection operator.
 
 ```ato
-assert x within 1V to 5V
-assert x <= y
-assert x is y
+power_3v3 ~ sensor.power       # interface-level
+i2c_bus ~ sensor.i2c            # bus-level
+gpio.line ~ package.PA0         # signal-level
 ```
 
-Avoid chain comparison in production authoring.
+When you connect interfaces, all matching sub-fields connect recursively.
 
-## 3.13 Arithmetic expressions
+### Bridge connect: `~>` (requires `BRIDGE_CONNECT` pragma)
 
-### 3.13.1 Supported semantically
-
-- `+`
-- `-`
-- `*`
-- `/`
-- `**`
-- grouping `(...)`
-
-### 3.13.2 Parser-accepted but semantically rejected
-
-- `|`
-- `&`
-
-These parse as binary expressions in grammar but visitor raises unsupported operator syntax error.
-
-## 3.14 Quantities and physical literals
-
-### 3.14.1 Singleton quantity
-
-```ato
-10kohm
-3.3V
-100nF
-```
-
-### 3.14.2 Bounded quantity
-
-```ato
-1.8V to 5.5V
-10uA to 100uA
-```
-
-### 3.14.3 Bilateral quantity
-
-Absolute:
-
-```ato
-10kohm +/- 1kohm
-```
-
-Relative:
-
-```ato
-3.3V +/- 5%
-```
-
-Notes:
-
-- `%` tolerance uses relative interval expansion.
-- unit mismatch in bounded/bilateral values must be commensurable.
-
-## 3.15 Field references
-
-General dotted path with optional array indexes:
-
-```ato
-a
-module.subfield
-arr[0]
-bus.data[3].line
-```
-
-Legacy pin-tail support exists in parser (`.number` at end), but use explicit fields when possible.
-
-## 3.16 For loops [Experimental]
-
-Requires:
-
-```ato
-#pragma experiment("FOR_LOOP")
-```
-
-Forms:
-
-- iterate sequence field ref, optional slice:
-
-```ato
-for r in resistors:
-    r.package = "0402"
-
-for row in rows[1:]:
-    row.power ~ rail
-```
-
-- iterate list literal of field references:
-
-```ato
-for p in [a, b, c]:
-    p ~ common
-```
-
-Loop body restrictions enforced semantically:
-
-- no imports,
-- no pin declaration,
-- no signal declaration,
-- no trait statement,
-- no nested for,
-- no `new` assignment.
-
-## 3.17 Trait statements [Experimental]
-
-Requires:
-
-```ato
-#pragma experiment("TRAITS")
-```
-
-Forms:
-
-```ato
-trait TraitType
-trait target.path TraitType
-trait TraitType<k=v>
-trait target.path TraitType<k=v>
-```
-
-Constructor syntax with `::` exists in grammar but is advanced/rare; prefer standard trait forms used in repository patterns.
-
-Trait type must be imported and supported.
-
-## 3.18 String and pass statements
-
-Standalone string statement (docstring-style metadata):
-
-```ato
-"""
-Module documentation
-"""
-```
-
-Pass statement:
-
-```ato
-pass
-```
-
-## 3.19 Pragma syntax
-
-Supported pragma function in visitor:
-
-- `experiment("NAME")`
-
-Examples:
+Use for series/inline topology through bridgeable elements:
 
 ```ato
 #pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-#pragma experiment("TRAITS")
-#pragma experiment("MODULE_TEMPLATING")
+
+power_in ~> fuse ~> ldo ~> power_out      # power path
+power.hv ~> cap ~> power.lv               # decoupling
+data_in ~> led_strip ~> data_out           # daisy chain
 ```
 
-Unknown experiment names are semantic errors.
+Bridge connect traverses `can_bridge` trait paths (in/out). Only use when the module is physically in series.
 
-## 3.20 Complete stable/experimental matrix
+**Rules:**
+- Do NOT mix directions in one statement: `a ~> b <~ c` is invalid.
+- Both `~>` and `<~` exist but keep chains in one direction.
 
-### 3.20.1 Stable (no pragma required)
+## 2.5 Constraints
 
-- block defs (`module`, `component`, `interface`)
-- imports
-- assignment
-- direct connect `~`
-- retype `->`
-- pin/signal declarations
-- assert with one comparison clause
-- declaration `field: unit`
-- string/pass statements
-- quantities and arithmetic (`+ - * / **`)
+Use `assert` to declare constraints over parameter domains.
 
-### 3.20.2 Experimental (pragma required)
-
-- directed connect `~>`, `<~` (`BRIDGE_CONNECT`)
-- `for` loops (`FOR_LOOP`)
-- `trait` statements (`TRAITS`)
-- `new Type<...>` templating (`MODULE_TEMPLATING`)
-
-### 3.20.3 Parser-accepted but semantically constrained/rejected
-
-- chain assert comparisons (`a < b < c`) parse but are currently rejected
-- arithmetic `|`/`&` parse but are rejected in visitor
-- multi-import in one statement parses but is deprecated
-
-## 3.21 Explicit "not supported" list (authoring guardrails)
-
-Do not generate or suggest as valid ato syntax:
-
-- `if` / `elif` / `else`
-- `while`
-- `match`
-- function definitions
-- lambda expressions
-- class definitions
-- decorators
-- try/except/finally
-- list comprehensions
-- dict literals for general data modeling
-- arbitrary user-defined runtime calls as language-level features
-
-If a user asks for conditional behavior, express it as constraints and module alternatives, not imperative control flow.
-
-## 3.22 Full parser-shape summary (illustrative grammar view)
-
-The following is an illustrative grammar summary aligned to the current language grammar.
-It is not copy-pasted generated grammar; it is an authoring-oriented map.
-
-```text
-file_input := (NEWLINE | stmt)* EOF
-
-stmt := simple_stmts | compound_stmt | pragma_stmt
-
-simple_stmts := simple_stmt (';' simple_stmt)* ';'? NEWLINE
-
-simple_stmt :=
-  import_stmt
-  | assign_stmt
-  | connect_stmt
-  | directed_connect_stmt
-  | retype_stmt
-  | pin_declaration
-  | signaldef_stmt
-  | assert_stmt
-  | declaration_stmt
-  | string_stmt
-  | pass_stmt
-  | trait_stmt
-
-compound_stmt := blockdef | for_stmt
-
-blockdef := blocktype type_reference blockdef_super? ':' block
-blocktype := 'component' | 'module' | 'interface'
-blockdef_super := 'from' type_reference
-
-import_stmt := ('from' string)? 'import' type_reference (',' type_reference)*
-
-assign_stmt := field_reference_or_declaration '=' assignable
-field_reference_or_declaration := field_reference | declaration_stmt
-declaration_stmt := field_reference ':' unit
-
-assignable :=
-  string | new_stmt | literal_physical | arithmetic_expression | boolean
-
-new_stmt := 'new' type_reference ('[' new_count ']')? template?
-template := '<' (template_arg (',' template_arg)* ','?)? '>'
-template_arg := name '=' literal
-
-connect_stmt := mif '~' mif
-directed_connect_stmt := bridgeable ('~>' | '<~') (bridgeable | directed_connect_stmt)
-retype_stmt := field_reference '->' type_reference
-
-signaldef_stmt := 'signal' name
-pin_stmt := 'pin' (name | number_hint_natural | string)
-pin_declaration := pin_stmt
-
-assert_stmt := 'assert' comparison
-comparison := arithmetic_expression compare_op_pair+
-compare_op_pair := '<' arith | '>' arith | '<=' arith | '>=' arith | 'within' arith | 'is' arith
-
-for_stmt := 'for' name 'in' iterable_references ':' block
-iterable_references := field_reference slice? | list_literal_of_field_references
-list_literal_of_field_references := '[' (field_reference (',' field_reference)* ','?)? ']'
-
-literal_physical := bound_quantity | bilateral_quantity | quantity
-bound_quantity := quantity 'to' quantity
-bilateral_quantity := quantity '+/-' bilateral_tolerance
-bilateral_tolerance := number_signless ('%' | unit)?
-quantity := number unit?
-```
-
-Authoring implication:
-
-- Treat parser acceptance as only the first gate.
-- Visitor semantics still decide practical validity.
-
-## 3.23 Compare operator forms and preferred usage
-
-### 3.23.1 `within` for domains (preferred)
+### `within` — for bounds and ranges (preferred for values)
 
 ```ato
 assert power.voltage within 3.3V +/- 5%
 assert power.voltage within 1.8V to 5.5V
-assert i2c.address within 0x20 to 0x27
+assert i2c.frequency within 100kHz to 400kHz
 ```
 
-Use `within` when you mean subset/domain bounds.
-
-### 3.23.2 `is` for expression identity
+### `is` — for expression identity between parameters
 
 ```ato
 assert addressor.address is i2c.address
-assert v_out is v_in * ratio
-```
-
-Use `is` when relating expression nodes/parameters.
-
-### 3.23.3 `is` with literal (discouraged/deprecated behavior)
-
-Parser accepts:
-
-```ato
-assert v is 3.3V
-```
-
-Visitor warns/deprecates this literal style and internally treats it like subset behavior.
-Prefer:
-
-```ato
-assert v within 3.3V +/- 0%
-```
-
-## 3.24 Arithmetic form catalog
-
-### 3.24.1 Valid and recommended expression shapes
-
-```ato
-assert r_total is r_top.resistance + r_bottom.resistance
 assert v_out is v_in * r_bottom.resistance / r_total
-assert right_half_plane_zero_frequency >= 400kHz
+assert r_total is r_top.resistance + r_bottom.resistance
+```
+
+### Comparison operators
+
+```ato
+assert power.voltage >= 3.0V
+assert max_current <= 500mA
 assert inductor.max_current >= peak_current
-assert resistor.resistance is (power.voltage - led.forward_voltage) / current
 ```
 
-### 3.24.2 Parenthesization guidance
+**Rules:**
+- Use `within` for literal/range bounds. Use `is` for relating expressions/parameters.
+- Avoid `assert x is 3.3V` (deprecated) — use `assert x within 3.3V +/- 0%` instead.
+- Only one comparison per assert — `assert 1V < x < 5V` is NOT supported. Split into two asserts.
+- Supported operators: `>`, `>=`, `<`, `<=`, `within`, `is`.
 
-Use parentheses to avoid ambiguity and improve reviewability.
+## 2.6 Quantities and Units
 
-Good:
-
-```ato
-assert peak_current is (i_out / (efficiency * (1 - duty))) + ((v_in * duty) / (2 * f_sw * l))
-```
-
-### 3.24.3 Unsupported arithmetic operators in visitor
-
-Avoid:
-
-```ato
-# illustrative invalid in semantic phase
-assert x is a | b
-assert y is c & d
-```
-
-These operators are parsed but rejected semantically.
-
-## 3.25 Quantity form catalog
-
-### 3.25.1 Singleton quantities
+### Singleton
 
 ```ato
 3.3V
-1A
 10kohm
 100nF
 2.4MHz
+1A
 ```
 
-### 3.25.2 Bounded quantities
+### Bounded range
 
 ```ato
 1.8V to 5.5V
@@ -1409,21 +595,21 @@ These operators are parsed but rejected semantically.
 0.5mA to 3mA
 ```
 
-### 3.25.3 Bilateral quantities with absolute tolerance
+### Bilateral tolerance (absolute)
 
 ```ato
 10kohm +/- 1kohm
 3.3V +/- 0.2V
 ```
 
-### 3.25.4 Bilateral quantities with relative tolerance
+### Bilateral tolerance (relative)
 
 ```ato
 10kohm +/- 5%
-5V +/- 10%
+3.3V +/- 5%
 ```
 
-### 3.25.5 Unitless values
+### Unitless values
 
 ```ato
 ratio: dimensionless
@@ -1431,1508 +617,464 @@ ratio = 0.5
 assert ratio within 0.1 to 0.9
 ```
 
-Use `dimensionless` declaration when representing non-physical scalar ratios.
+### Arithmetic
 
-## 3.26 Field reference and indexing catalog
-
-Examples:
+Supported operators: `+`, `-`, `*`, `/`, `**`, parentheses `()`.
 
 ```ato
-power
-power.hv
-i2c.sda.line
-gpio[0].line
-rows[9].data_out.line
-microcontroller.uart[0].base_uart.tx
+assert resistor.resistance is (power.voltage - led.forward_voltage) / current
+assert peak_current is (i_out / (efficiency * (1 - duty))) + ((v_in * duty) / (2 * f_sw * l))
 ```
 
-Guidelines:
+**Rules:**
+- Both sides of a range/tolerance must have commensurable units (`3.3V to 5A` is invalid).
+- `|` and `&` operators parse but are rejected semantically — never use them.
+- Common unit symbols: `V`, `A`, `ohm`/`kohm`/`Mohm`, `F`/`uF`/`nF`/`pF`, `Hz`/`kHz`/`MHz`, `W`, `H`/`uH`, `mm`. SI prefixes (`m`, `u`, `n`, `k`, `M`) are supported.
 
-- Keep field paths readable by introducing local aliases/modules when paths get too deep.
-- Avoid unnecessary nested field path access from parent modules if child module can expose cleaner interface.
+## 2.7 Imports
 
-## 3.27 Retype use catalog
+### Bare import — stdlib only
 
-Retype pattern from package code:
+```ato
+import ElectricPower
+import I2C
+import Resistor
+import Capacitor
+```
+
+Bare `import X` must resolve to a stdlib-allowlisted type or trait. If not allowlisted, you get a `DslImportError`.
+
+### Path import — packages and local files
+
+```ato
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
+from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
+from "./power/buck_5v.ato" import Buck5V
+```
+
+**Rules:**
+- One import per line (multi-import `import A, B` is deprecated).
+- Use path imports for anything not in the stdlib allowlist.
+
+## 2.8 Traits
+
+Traits attach metadata and behavior to blocks. Requires the `TRAITS` pragma.
+
+```ato
+#pragma experiment("TRAITS")
+import has_requirement
+import can_bridge_by_name
+
+module MyModule:
+    # Trait on current module
+    trait has_requirement<id="R1", text="Supply voltage", criteria="3.3V regulated">
+
+    # Bridge trait for series-path modules
+    trait can_bridge_by_name<input_name="power_in", output_name="power_out">
+
+    # Targeted trait on a specific field
+    trait some_field has_part_removed
+```
+
+Common traits:
+
+| Trait | Purpose |
+|-------|---------|
+| `has_requirement` | Document design requirements with ID, text, and criteria |
+| `can_bridge_by_name` | Enable `~>` bridge connect through a module's named in/out fields |
+| `has_part_removed` | Suppress part picking for non-BOM placeholders |
+| `has_single_electric_reference` | Declare shared reference rail for an interface |
+
+## 2.9 Assignments and Overrides
+
+### Parameter assignment
+
+```ato
+r.resistance = 10kohm +/- 5%
+cap.capacitance = 100nF +/- 20%
+ldo.v_out = 3.3V +/- 3%
+```
+
+### Special override fields
+
+These field names map to trait behavior:
+
+```ato
+r.package = "0402"              # footprint/package constraint
+led.lcsc_id = "C2286"           # lock to specific LCSC part
+ic.manufacturer = "Texas Instruments"
+ic.mpn = "TLV75901PDDR"
+i2c.required = True             # mark interface as required
+net.override_net_name = "VCC"   # force net name
+net.suggest_net_name = "SDA"    # suggest net name
+param.default = 0x20            # default value (overridable)
+```
+
+### Defaults
+
+Package/module authors set defaults; integrators override with explicit constraints:
+
+```ato
+# In the package module:
+i2c.address.default = 0x20
+
+# In the integration module:
+assert sensor.i2c.address within 0x21 to 0x21
+```
+
+## 2.10 For Loops
+
+Requires `FOR_LOOP` pragma. Used for repetitive constraint/wiring patterns, not logic branching.
+
+```ato
+#pragma experiment("FOR_LOOP")
+
+# Iterate over a sequence
+for cap in decoupling_caps:
+    cap.capacitance = 100nF +/- 20%
+    cap.package = "0402"
+
+# Iterate with slice
+for cap in decoupling_caps[1:]:
+    cap.package = "0603"
+
+# Iterate over explicit list of references
+for rail in [power_core, power_io, power_analog]:
+    assert rail.voltage within 3.3V +/- 10%
+```
+
+**Restricted — NOT allowed in loop body:**
+- `import` statements
+- `new` assignments (create arrays outside the loop, constrain inside)
+- `pin` / `signal` declarations
+- `trait` statements
+- Nested `for` loops
+
+```ato
+# Good: create array outside, constrain inside
+resistors = new Resistor[8]
+for r in resistors:
+    r.resistance = 1kohm +/- 20%
+    r.package = "0402"
+
+# Bad: creating instances inside loop
+for r in resistors:
+    x = new Resistor    # NOT ALLOWED
+```
+
+## 2.11 Pragmas
+
+Feature gates for experimental constructs. Place at top of file, only include what you use.
+
+```ato
+#pragma experiment("BRIDGE_CONNECT")       # enables ~> and <~
+#pragma experiment("FOR_LOOP")             # enables for loops
+#pragma experiment("TRAITS")               # enables trait statements
+#pragma experiment("MODULE_TEMPLATING")    # enables new Type<k=v>
+```
+
+Unknown experiment names are errors.
+
+## 2.12 Retype
+
+`->` performs deferred specialization of an existing field to a more specific type:
 
 ```ato
 module USB2_0TypeCVerticalConnector from USBTypeCConnector_driver:
     connector -> VerticalUSBTypeCConnector_model
 ```
 
-This is a clean specialization pattern for package variants.
+Use sparingly — only for clear specialization points like swapping a connector variant. Do not use as a general-purpose assignment.
 
-Prefer this over duplicating full module body for minor package swaps.
+## 2.13 Pin and Signal Declarations
 
-## 3.28 Trait statement form catalog
-
-### 3.28.1 Targetless trait on current object
+Used inside `component` and `interface` blocks:
 
 ```ato
-trait can_bridge_by_name<input_name="input", output_name="output">
+component MyChip:
+    pin VCC
+    pin GND
+    pin 1
+    pin "A0"
+
+interface MyBus:
+    signal data
+    signal clock
 ```
 
-### 3.28.2 Targeted trait
+In practice, you rarely write pin declarations by hand — they come from auto-generated part files.
+
+## 2.14 Not Supported
+
+ato is declarative. Do NOT generate or suggest:
+
+- `if` / `elif` / `else` / `while` / `match`
+- Function definitions, lambdas, classes
+- `try` / `except` / `finally`
+- List comprehensions, dict literals
+- Decorators
+
+If a user asks for conditional behavior, express it as constraints and module alternatives.
+
+---
+
+# 3. Stdlib Reference
+
+## 3.1 Interfaces
+
+### `Electrical`
+
+Untyped electrical connection point. Use when you only need net continuity with no reference semantics.
+
+### `ElectricPower`
+
+Two-rail power interface.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hv` | `Electrical` | High-side rail |
+| `lv` | `Electrical` | Low-side rail |
+| `voltage` | parameter | Rail voltage |
+| `max_current` | parameter | Current capacity |
+| `max_power` | parameter | Power budget |
+
+Legacy aliases `vcc` and `gnd` exist — prefer `hv`/`lv`.
 
 ```ato
-trait some_field has_part_removed
+power = new ElectricPower
+assert power.voltage within 3.3V +/- 5%
 ```
 
-Use targeted trait forms only when trait semantics clearly belong to nested element.
+### `ElectricSignal`
 
-### 3.28.3 Constructor token note
+Single signal line with explicit reference power rail. Use for analog or general signals.
 
-Grammar allows `trait Type::constructor<...>`.
-Use only when codebase conventions require it; canonical usage in repository mostly relies on standard `trait Type<...>`.
+| Field | Type | Description |
+|-------|------|-------------|
+| `line` | `Electrical` | Signal line |
+| `reference` | `ElectricPower` | Reference rail |
 
-## 3.29 For-loop shape catalog
+### `ElectricLogic`
 
-### 3.29.1 Iterate sequence
+Logic signal (line + reference). Use for GPIOs, digital control, interrupts, reset, enable.
 
-```ato
-for cap in decoupling_caps:
-    cap.capacitance = 100nF +/- 20%
-    cap.package = "0402"
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `line` | `Electrical` | Signal line |
+| `reference` | `ElectricPower` | Reference rail |
 
-### 3.29.2 Iterate slice
+**`ElectricLogic` vs `ElectricSignal`**: Use `ElectricLogic` for digital. Use `ElectricSignal` for analog/general.
 
-```ato
-for cap in decoupling_caps[1:]:
-    cap.package = "0402"
-```
-
-### 3.29.3 Iterate explicit reference list
+**Important:** Always connect the `.reference` when crossing module boundaries:
 
 ```ato
-for rail in [power_core, power_io, power_analog]:
-    assert rail.voltage within 3.3V +/- 10%
-```
-
-### 3.29.4 Invalid body form examples (illustrative invalid)
-
-```ato
-# invalid in for body
-for x in xs:
-    import Resistor
-
-# invalid in for body
-for x in xs:
-    y = new Resistor
-```
-
-## 3.30 Inline declaration-in-connect forms
-
-Grammar permits connectables that are signal/pin declarations.
-
-Valid style (rare, but possible):
-
-```ato
-signal mid ~> resistor ~> load.line
-pin 1 ~ connector.1
-```
-
-Best practice:
-
-- Declare named signal explicitly first in larger modules for readability.
-
-## 3.31 Multi-statement line forms
-
-Grammar permits `;` separated simple statements.
-
-Example:
-
-```ato
-r = new Resistor; r.resistance = 10kohm +/- 5%
-```
-
-Best practice:
-
-- Avoid this in production modules except very small snippets; one statement per line improves diff readability and review quality.
-
-## 3.32 String statement/docstring behavior
-
-Standalone string as first block statement can be attached as docstring trait behavior.
-
-Pattern:
-
-```ato
-module MyModule:
-    """
-    Human-readable module description.
-    """
-    pass
-```
-
-Prefer first-string docstring for module summary and constraints summary.
-
-## 3.33 Boolean literal and assignment forms
-
-Valid boolean literals:
-
-```ato
-True
-False
-```
-
-Common uses:
-
-```ato
-i2c.required = True
-chip_select.required = False
-```
-
-## 3.34 Declaration statement design patterns
-
-### 3.34.1 Explicit variable declarations for equation-heavy modules
-
-```ato
-v_in: V
-v_out: V
-ratio: dimensionless
-```
-
-### 3.34.2 Declare before assert usage
-
-Prefer declaration near top of module before equations for readability.
-
-## 3.35 Practical syntax lint rules
-
-Treat these as \"style-level syntax constraints\" for maintainability:
-
-- one import per line,
-- one assert per line,
-- avoid chain compare syntax,
-- avoid semicolon-packed lines,
-- keep bridge chains readable (split if too long),
-- group pragma statements at top.
-
-## 3.36 Canonical file preamble templates
-
-### 3.36.1 Minimal stable preamble
-
-```ato
-import ElectricPower
-import I2C
-import Resistor
-```
-
-### 3.36.2 Experimental preamble
-
-```ato
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-#pragma experiment("TRAITS")
-#pragma experiment("MODULE_TEMPLATING")
-
-import ElectricPower
-import I2C
-import Resistor
-```
-
-Only include pragmas actually used in that file.
-
-# 4. Semantic Invariants
-
-This section is the "do not violate" model. Treat it as executable review criteria.
-
-## 4.1 Invariant classes
-
-Use these invariant classes during review:
-
-- Parsing invariants: what parser accepts.
-- Visitor invariants: what semantic translation allows.
-- Type/connectivity invariants: what graph-level structure requires.
-- Constraint invariants: what solver-compatible expressions require.
-- Scope/import invariants: what symbol resolution allows.
-- Compatibility invariants: what legacy sugar maps to and what is deprecated.
-
-## 4.2 Import invariants
-
-### 4.2.1 Stdlib import allowlist invariant
-
-For path-less import (`import X`):
-
-- `X` must be in visitor stdlib allowlist, or
-- `X` must be recognized trait override alias.
-
-Otherwise import fails semantically.
-
-Review rule:
-
-- If `import Foo` is not a known stdlib type/trait, require `from "..." import Foo`.
-
-### 4.2.2 Path import invariant
-
-`from "path" import Type` is used for package and local module imports.
-
-Review rule:
-
-- keep explicit package paths for external package models;
-- avoid converting valid path import into bare import unless verified allowlisted.
-
-## 4.3 Scope invariants
-
-### 4.3.1 No nested block-def invariant
-
-Block definitions must be top-level scope in file structure.
-
-Invalid:
-
-```ato
-module Outer:
-    module Inner:
-        pass
-```
-
-### 4.3.2 Unique symbol invariant
-
-Within scope, symbols are unique.
-
-Collision classes:
-
-- block names,
-- imports,
-- loop aliases.
-
-### 4.3.3 Loop alias collision invariant
-
-For-loop variable cannot collide with existing symbol or field in scope.
-
-Review rule:
-
-- keep loop aliases short but unique (`r`, `cap`, `row`, etc.).
-
-## 4.4 Field/path invariants
-
-### 4.4.1 Field must resolve invariant
-
-Any field reference in assignment/connection must resolve to valid path in current type context after alias translation and overrides.
-
-### 4.4.2 Indexed assignment resolution invariant
-
-For indexed references (`arr[3]`), parent sequence and index member must exist in type graph context.
-
-### 4.4.3 Reference override invariant
-
-Reference override system can transform specific path segments:
-
-- deprecated `reference_shim` maps through `has_single_electric_reference.reference`.
-- trait pointer style `has_single_electric_reference.reference` is supported path traversal.
-
-Review rule:
-
-- prefer explicit trait pointer style;
-- avoid introducing new `reference_shim` usage.
-
-## 4.5 Instantiation invariants
-
-### 4.5.1 `new` requirement invariant
-
-Type references are not values for assignment; instantiation must use `new`.
-
-### 4.5.2 Array count invariant
-
-`new Type[n]` expects natural-number count.
-
-### 4.5.3 Template pragma invariant
-
-Template args in `new Type<...>` require `MODULE_TEMPLATING` pragma.
-
-### 4.5.4 Index-target with `new` invariant
-
-Assigning `new` to indexed target is invalid by visitor.
-
-Invalid:
-
-```ato
-arr[0] = new Resistor
-```
-
-Prefer:
-
-```ato
-arr = new Resistor[4]
-```
-
-## 4.6 Retype invariants
-
-### 4.6.1 Retype is deferred invariant
-
-`target -> Type` records pending retype for later resolution.
-
-Review implications:
-
-- retype can be valid syntactically but fail during later resolution;
-- retype should be reserved for clear specialization points, not routine assignment semantics.
-
-### 4.6.2 Retype target existence invariant
-
-Target field path must exist by the time retype is resolved.
-
-## 4.7 Connection invariants
-
-## 4.7.1 `~` direct connect invariant
-
-`~` connects connectables (field refs or inline declarations).
-
-Review rule:
-
-- use `~` for equivalence net joining.
-
-## 4.7.2 Bridge connect gating invariant
-
-`~>` and `<~` require `BRIDGE_CONNECT` experiment.
-
-## 4.7.3 Single direction chain invariant
-
-One directed connect statement may not mix directions.
-
-Invalid:
-
-```ato
-a ~> b <~ c
-```
-
-## 4.7.4 Bridge path invariant
-
-Directed connect translates through `can_bridge` paths (in/out), not generic net equivalence.
-
-Review rule:
-
-- use bridge connect only when module/interface is intentionally bridgable.
-
-## 4.7.5 Inline declaration in connect invariant
-
-Signal/pin declarations can appear in connectable context and may create paths.
-
-Review rule:
-
-- use this sparingly; prefer explicit prior declaration in readable designs.
-
-## 4.8 Trait invariants
-
-### 4.8.1 Trait pragma invariant
-
-Trait statements require `TRAITS` experiment.
-
-### 4.8.2 Imported trait invariant
-
-Trait type must be imported and resolvable.
-
-### 4.8.3 Trait type validity invariant
-
-Resolved trait type must satisfy trait-type check (`is_trait_type`).
-
-### 4.8.4 Override trait mapping invariant
-
-Some trait names are compatibility aliases and map to canonical traits.
-
-Review rule:
-
-- preserve compatibility where needed in package code;
-- prefer canonical trait naming in new design code.
-
-## 4.9 For-loop invariants
-
-### 4.9.1 For-loop pragma invariant
-
-`for` requires `FOR_LOOP` experiment.
-
-### 4.9.2 Iterable shape invariant
-
-Loop iterable must be either:
-
-- list of field refs,
-- field-ref sequence with optional slice.
-
-### 4.9.3 Restricted body invariant
-
-Forbidden in loop body:
-
-- import statement,
-- pin declaration,
-- signal declaration,
-- trait statement,
-- nested for,
-- assignment where RHS is `new`.
-
-### 4.9.4 Deferred sequence execution invariant
-
-Sequence-based loops may defer execution until type graph info is available; list literal loops can execute immediately.
-
-Review rule:
-
-- avoid mixing complex deferred dependencies inside loops unless necessary.
-
-## 4.10 Assertion invariants
-
-### 4.10.1 One-comparison semantic invariant
-
-Parser can parse chained comparison; visitor currently requires exactly one comparison clause.
-
-Bad (fragile):
-
-```ato
-assert 1V < x < 5V
-```
-
-Good:
-
-```ato
-assert x > 1V
-assert x < 5V
-```
-
-### 4.10.2 Operator mapping invariant
-
-Visitor-supported assert operator mapping:
-
-- `>` -> `GreaterThan`
-- `>=` -> `GreaterOrEqual`
-- `<` -> `LessThan`
-- `<=` -> `LessOrEqual`
-- `within` -> `IsSubset`
-- `is` -> `Is` (or deprecated literal subset path)
-
-### 4.10.3 `is` literal deprecation invariant
-
-`assert x is <literal>` is deprecated; use `within` for literal domain.
-
-## 4.11 Arithmetic invariants
-
-### 4.11.1 Expression operator invariant
-
-Semantically supported arithmetic binary operators:
-
-- add, subtract, multiply, divide, power.
-
-### 4.11.2 Unsupported parse-but-reject invariant
-
-`|` and `&` may parse but are rejected semantically in visitor.
-
-Review rule:
-
-- never use bitwise-style operators in equations.
-
-## 4.12 Quantity/unit invariants
-
-### 4.12.1 Unit decode invariant
-
-Unit symbols decode through `Units.decode_symbol`; unknown symbols fail with `UnitNotFoundError`.
-
-### 4.12.2 Commensurability invariant
-
-Bounded and bilateral quantity endpoints must be commensurable if both specify units.
-
-### 4.12.3 Bilateral tolerance interpretation invariant
-
-- `%` tolerance is relative.
-- unit tolerance is absolute (converted if commensurable).
-
-### 4.12.4 Dimensionless fallback invariant
-
-If no unit symbol appears, quantity is treated as dimensionless.
-
-## 4.13 Assignment-override invariants
-
-Assignment override behavior is field-name based, not arbitrary trait inference.
-
-### 4.13.1 Package override invariant
-
-`field.package = "0402"` maps to `has_package_requirements` with package parsing rules.
-
-### 4.13.2 Picking override invariants
-
-- `lcsc_id` maps supplier-id pick trait.
-- `manufacturer` and `mpn` map to assigned manufacturer/part number traits.
-
-### 4.13.3 Required override invariant
-
-`field.required = True` maps to `requires_external_usage` trait.
-
-`False` is typically skip/no-op for this override.
-
-### 4.13.4 Net naming override invariants
-
-- `override_net_name`
-- `suggest_net_name`
-
-map to net name suggestion traits with different strictness levels.
-
-### 4.13.5 Default override invariant
-
-`.default` assignment creates `has_default_constraint` trait; default applies only if no explicit bounded value constraint is present.
-
-## 4.14 Name/address behavior invariants
-
-## 4.14.1 Addressor template invariant
-
-Addressor usage often requires templating:
-
-```ato
-#pragma experiment("MODULE_TEMPLATING")
-addressor = new Addressor<address_bits=3>
-```
-
-### 4.14.2 Address relation invariant
-
-Common pattern invariant:
-
-```ato
-assert addressor.address is i2c.address
-```
-
-### 4.14.3 Default address invariant
-
-Many package modules set default address using `.default`.
-
-Review rule:
-
-- allow downstream override by explicit assignment/assert when integrating multiple devices.
-
-## 4.15 Interface reference invariants
-
-Many logic/signal buses rely on reference rails (`ElectricPower`) for valid voltage semantics.
-
-Common invariant pattern:
-
-```ato
-i2c.scl.reference ~ power
+gpio.reference ~ power
 i2c.sda.reference ~ power
 ```
 
-Review rule:
+Missing reference wiring is a common source of bugs.
 
-- treat missing reference wiring as likely semantic bug in interface composition.
+### `I2C`
 
-## 4.16 Power-path invariants
+Two-wire bus with address and frequency.
 
-For bridged power modules (`LDO`, `fuse`, `monitor`, etc.):
-
-- input/output rails should be explicit interfaces,
-- bridge trait path should be clear,
-- ground/low-side consistency should be explicit.
-
-## 4.17 Compatibility/deprecation invariants
-
-Known compatibility areas:
-
-- `reference_shim` is deprecated compatibility path.
-- some trait aliases are compatibility wrappers.
-- multi-import one-liner is deprecated.
-
-Review rule:
-
-- do not churn legacy forms unless requested,
-- prefer canonical forms in new code.
-
-## 4.18 Review-time semantic checklist (strict)
-
-For each changed `.ato` file:
-
-- check required pragma gates for used features,
-- check all imports resolve under allowlist/path rules,
-- check every `new` form validity,
-- check all `assert` operators and clause count semantics,
-- check for unsupported arithmetic operators,
-- check commensurable units for bounded/bilateral quantities,
-- check for reference wiring on logic/signal buses,
-- check bridge chain direction consistency,
-- check overrides map to supported fields only,
-- check loop body restrictions.
-
-## 4.19 Connectivity invariants by interface family
-
-This subsection translates abstract invariants into concrete interface-family checks.
-
-### 4.19.1 Power rail family (`ElectricPower`)
-
-Invariant expectations:
-
-- rails expose both high and low potentials (`hv`, `lv`),
-- downstream consumers attach to same rail pair unless intentional domain split exists,
-- inline components in rail paths use bridge semantics only if physically series.
-
-Reviewer checks:
-
-- no accidental short between unrelated rails,
-- no missing low-side continuity across modules,
-- voltage constraints exist on externally provided rails.
-
-### 4.19.2 Logic/signal family (`ElectricLogic`, `ElectricSignal`)
-
-Invariant expectations:
-
-- line has a coherent reference rail,
-- shared buses agree on reference domain,
-- pullups/pulldowns connect to correct rail side.
-
-Reviewer checks:
-
-- each logic/signal line that crosses module boundaries has an explicit reference relation,
-- no pullup accidentally connected to `lv` when intent is `hv` (or vice versa),
-- open-drain/open-source outputs include required biasing where module behavior assumes it.
-
-### 4.19.3 Differential family (`DifferentialPair`, `USB data`, Ethernet pairs)
-
-Invariant expectations:
-
-- positive and negative lines are consistently mapped,
-- impedance constraints are present where signal integrity matters,
-- pair references are consistent.
-
-Reviewer checks:
-
-- avoid swapping `p`/`n` unless intentional and documented,
-- keep both sides of pair referenced to appropriate domain,
-- avoid splitting pair routing intent across unrelated modules.
-
-### 4.19.4 Bus family (`I2C`, `SPI`, `UART`, `I2S`)
-
-Invariant expectations:
-
-- bus endpoint interfaces are connected as interface-level links (`bus ~ bus`),
-- bus-specific constraints are present (`address`, `frequency`, etc.) where needed,
-- helper passives (pullups, decouplers) are attached to correct rails.
-
-Reviewer checks:
-
-- I2C address collisions mitigated by address constraints/defaults,
-- SPI has explicit chip-select strategy,
-- UART reference domains aligned across participants,
-- I2S role mapping (`sd`, `ws`, `sck`) consistent with target parts.
-
-## 4.20 Constraint graph invariants
-
-Constraint graph quality is as important as syntax validity.
-
-### 4.20.1 Reachability invariant
-
-Every declared variable and key component parameter should be reachable through constraints to a module input, output, or externally constrained value.
-
-Symptoms of violation:
-
-- variable declared but only appears once,
-- equations exist but cannot influence pickable component parameters,
-- output interface behavior unconstrained.
-
-### 4.20.2 Non-circular triviality invariant
-
-Avoid useless self-referential or tautological constraints.
-
-Bad:
+| Field | Type | Description |
+|-------|------|-------------|
+| `scl` | `ElectricLogic` | Clock |
+| `sda` | `ElectricLogic` | Data |
+| `address` | parameter | Device address |
+| `frequency` | parameter | Bus frequency |
 
 ```ato
-assert v_out is v_out
-```
-
-Also avoid equation sets that are algebraically circular without anchor constraints.
-
-### 4.20.3 Contradiction-avoidance invariant
-
-Do not combine mutually incompatible hard constraints on the same parameter.
-
-Bad pattern:
-
-```ato
-assert power.voltage within 3.3V +/- 1%
-assert power.voltage within 5V +/- 1%
-```
-
-unless this is intentionally impossible for validation tests.
-
-### 4.20.4 Bounded literal preference invariant
-
-For component picking, bounded/toleranced literals are often better than exact singletons unless exact value is required.
-
-Reason:
-
-- exact singleton can overconstrain available stock/package combinations.
-
-## 4.21 Picking invariants
-
-### 4.21.1 Pickability signal invariant
-
-Setting fields like `lcsc_id`, `manufacturer`, `mpn`, and `package` has semantic meaning via trait overrides.
-
-Review rule:
-
-- if a code path relies on lock-in behavior, verify the corresponding override field is used exactly and correctly.
-
-### 4.21.2 Package-format invariant
-
-Package strings must be parseable by package override logic and SMD size enum interpretation.
-
-Practical rule:
-
-- use known footprint strings (`0402`, `0603`, `R0402`, `C0402`) consistent with repository patterns.
-
-### 4.21.3 Hybrid picking invariant
-
-Hybrid strategy should be deliberate:
-
-- manual locks where necessary,
-- constraints for all other pickable components.
-
-### 4.21.4 Removed-part invariant
-
-`has_part_removed` behavior can intentionally suppress picking expectations in some patterns. Do not remove this trait casually from modules that intentionally represent non-BOM placeholders or integration stubs.
-
-## 4.22 Address and identity invariants
-
-### 4.22.1 Address identity invariant
-
-When using Addressor patterns, `assert addressor.address is i2c.address` should hold unless module intentionally separates logical and hardware address behavior.
-
-### 4.22.2 Default identity invariant
-
-If module sets `i2c.address.default`, integration-level explicit address constraints should override without contradiction.
-
-### 4.22.3 Bus identity invariant
-
-When multiple devices share one bus instance, they should share bus reference domains and frequency constraints unless intentional bus segmentation exists.
-
-## 4.23 Bridge-connect invariants in depth
-
-### 4.23.1 Structural bridge invariant
-
-A bridge chain should represent a physically serial path or protocol chain.
-
-Examples:
-
-- power path through fuse/regulator/sensor shunt,
-- serial data daisy chain through LED strips.
-
-Do not use bridge chain for arbitrary relationship expression that is not serial.
-
-### 4.23.2 Trait path invariant
-
-Bridge semantics rely on `can_bridge` in/out traversal.
-If a module is used in bridge chain, ensure it either:
-
-- natively exposes relevant `can_bridge` trait semantics,
-- or defines compatibility trait mapping (`can_bridge_by_name`).
-
-### 4.23.3 Ground continuity invariant in power bridge modules
-
-For power bridge modules with separate in/out rails:
-
-- ensure low-side relation (`lv`) continuity is explicit where expected,
-- avoid accidental floating low-side by omission.
-
-## 4.24 For-loop invariants in depth
-
-### 4.24.1 Expansion determinism invariant
-
-Loops should expand deterministically over intended sequences.
-
-Reviewer checks:
-
-- sequence indexing is stable,
-- slice boundaries are intentional,
-- no hidden dependence on unspecified ordering.
-
-### 4.24.2 New-child creation separation invariant
-
-Create arrays outside loops, then constrain/connect within loop.
-
-Bad:
-
-```ato
-# invalid
-for i in xs:
-    xs2[i] = new Resistor
-```
-
-Good:
-
-```ato
-xs2 = new Resistor[8]
-for r in xs2:
-    r.package = "0402"
-```
-
-## 4.25 Module API invariants
-
-### 4.25.1 Required-interface invariant
-
-Interfaces marked `required = True` (override trait behavior) should generally be connected by parent modules; review usage examples for compliance.
-
-### 4.25.2 Minimal API invariant
-
-Public API should expose stable interfaces and key knobs, not incidental internals.
-
-### 4.25.3 API consistency invariant across variants
-
-For family modules (`Base`, variant subclasses), keep public interface names stable across variants to preserve integrator portability.
-
-## 4.26 Compatibility invariants for legacy sugar
-
-Compatibility sugar is useful but should be handled intentionally.
-
-### 4.26.1 `reference_shim` compatibility invariant
-
-If present in legacy code, behavior is transformed; new code should prefer explicit trait-pointer path.
-
-### 4.26.2 Trait alias compatibility invariant
-
-Aliases like `has_single_electric_reference_shared` may map to canonical traits. Avoid broad rename churn unless migration is explicit project goal.
-
-### 4.26.3 Deprecation warning tolerance invariant
-
-Warnings in compatibility paths should not be silently ignored in new modules; treat as migration prompts.
-
-## 4.27 Unit and dimension invariants in depth
-
-### 4.27.1 Dimension preservation invariant
-
-Equations should preserve dimensional consistency.
-
-Examples:
-
-- resistance = voltage / current is dimensionally valid,
-- resistance = voltage + current is invalid by dimension.
-
-### 4.27.2 Frequency and time inverse invariant
-
-If relating period and frequency:
-
-```ato
-assert period is 1 / frequency
-```
-
-ensure units align (`s` and `Hz`).
-
-### 4.27.3 Percent semantics invariant
-
-Percent applies as relative factor, not absolute offset unless converted intentionally.
-
-## 4.28 Reliability invariants for package modules
-
-Use this when reviewing package driver `.ato` files:
-
-- decoupling exists for each major power domain,
-- pullups for open-drain pins are present where required,
-- fixed address or strap behavior documented and constrained,
-- reset/enable defaults are explicit and safe,
-- package exposed pads/grounds connected as datasheet requires,
-- usage file demonstrates minimal valid integration.
-
-## 4.29 Invariant severity mapping for reviews
-
-Use this severity model:
-
-- Critical:
-  - syntax invalidity,
-  - missing required pragma,
-  - contradictory hard constraints,
-  - invalid bridge direction mixing.
-- High:
-  - incorrect reference domain wiring,
-  - unresolved field paths,
-  - wrong import model.
-- Medium:
-  - underconstrained picks,
-  - unstable defaults,
-  - noisy API leakage.
-- Low:
-  - readability/style concerns.
-
-## 4.30 Invariant-driven rewrite heuristics
-
-If a module fails multiple invariants, rewrite in this order:
-
-1. restore parser/visitor validity,
-2. restore interface/reference correctness,
-3. restore constraint coherence,
-4. restore picking strategy clarity,
-5. improve readability.
-
-## 4.31 Automated review prompts (for LLM use)
-
-When using this skill to review code, ask:
-
-- Which pragma-gated constructs are present, and are gates enabled?
-- Which asserts are chain-style and should be split?
-- Which quantities may be non-commensurable?
-- Which fields rely on compatibility sugar that should be modernized?
-- Which interfaces lack explicit reference connections?
-- Which modules are overexposed at API boundary?
-
-## 4.32 Invariant checklist for merge readiness
-
-A module is merge-ready when:
-
-- all critical and high invariant violations are resolved,
-- medium issues are either resolved or explicitly accepted,
-- usage example remains valid and representative,
-- no unsupported constructs remain.
-
-# 5. Parameters, Units, Constraints, Solver-Aware Authoring
-
-## 5.1 Parameter modeling principles
-
-Treat every useful electrical property as a parameter domain, not a hard singleton, unless singleton is required.
-
-Good default hierarchy:
-
-1. broad physically valid bounds,
-2. narrower system requirement bounds,
-3. optional exact values where required by architecture.
-
-## 5.2 Domain sizing strategy
-
-### 5.2.1 Too narrow risks contradiction
-
-Overly tight constraints can make solver/picker infeasible.
-
-Example risk:
-
-```ato
-assert regulator.power_out.voltage within 3.300V +/- 0.01%
-```
-
-Use realistic tolerance unless exactness is mandatory.
-
-### 5.2.2 Too broad risks underconstrained picks
-
-Overly wide constraints produce unstable or low-quality picks.
-
-Example risk:
-
-```ato
-assert resistor.resistance within 1ohm to 10Mohm
-```
-
-Narrow with intended function.
-
-## 5.3 Equation authoring patterns
-
-### 5.3.1 Use redundant but consistent equations for solvability
-
-Pattern from `examples/equations/equations.ato`:
-
-- include multiple algebraically equivalent expressions that expose relation from different directions.
-
-Reason:
-
-- improves solver propagation depending on which variables are constrained upstream.
-
-### 5.3.2 Keep equation graph connected
-
-If a declared variable is never tied to observable interfaces or component parameters, it is dead semantic weight.
-
-Review rule:
-
-- each variable should participate in at least one meaningful assert relation connected to design outputs/inputs.
-
-## 5.4 Units and tolerance authoring
-
-### 5.4.1 Prefer explicit units everywhere
-
-Use units for all electrical quantities:
-
-- voltage: `V`
-- current: `A`
-- resistance: `ohm`/`kohm`
-- capacitance: `F`/`uF`/`nF`
-- frequency: `Hz`
-
-### 5.4.2 Prefer bilateral tolerances for real components
-
-Example:
-
-```ato
-res.resistance = 10kohm +/- 1%
-cap.capacitance = 100nF +/- 20%
-```
-
-### 5.4.3 Use bounded ranges for interface envelopes
-
-Example:
-
-```ato
-assert power.voltage within 2.7V to 5.5V
+i2c = new I2C
+i2c.scl.reference ~ power
+i2c.sda.reference ~ power
 assert i2c.frequency within 100kHz to 400kHz
 ```
 
-### 5.4.4 Commensurability-safe forms
+### `SPI`
 
-Valid (commensurable):
+3-wire data+clock bus (CS managed separately).
 
-```ato
-assert power.voltage within 3300mV to 3.6V
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `sclk` | `ElectricLogic` | Clock |
+| `miso` | `ElectricLogic` | Master In Slave Out |
+| `mosi` | `ElectricLogic` | Master Out Slave In |
+| `frequency` | parameter | Bus frequency |
 
-Invalid (non-commensurable):
+### `MultiSPI`
 
-```ato
-# illustrative invalid
-assert power.voltage within 3.3V to 5A
-```
+Multi-lane SPI/QSPI style interface.
 
-## 5.5 `within` vs `is`
+| Field | Type | Description |
+|-------|------|-------------|
+| `clock` | `ElectricLogic` | Clock |
+| `chip_select` | `ElectricLogic` | Chip select |
+| `data[n]` | `ElectricLogic` | Data lanes |
 
-Choose operators intentionally:
+### `UART_Base` and `UART`
 
-- `within`: subset/bounds relation (recommended for literal/range constraints)
-- `is`: equivalence relation between expressions/parameters
+`UART_Base` — minimal TX/RX. `UART` — full with flow control (RTS/CTS). `UART` includes `base_uart` sub-field.
 
-Good:
+### `I2S`
 
-```ato
-assert power.voltage within 3.3V +/- 5%
-assert addressor.address is i2c.address
-```
+Audio serial bus.
 
-Avoid `is` with literal unless compatibility pressure forces it.
+| Field | Type | Description |
+|-------|------|-------------|
+| `sd` | `ElectricLogic` | Serial data |
+| `ws` | `ElectricLogic` | Word select |
+| `sck` | `ElectricLogic` | Serial clock |
+| `sample_rate` | parameter | Sample rate |
+| `bit_depth` | parameter | Bit depth |
 
-## 5.6 Auto-picked component workflow
+### `DifferentialPair`
 
-Auto-pick is driven by trait and parameter constraints.
+Paired differential signals with impedance parameter.
 
-Use this layering:
+| Field | Type | Description |
+|-------|------|-------------|
+| `p` | `ElectricLogic` | Positive |
+| `n` | `ElectricLogic` | Negative |
+| `impedance` | parameter | Target impedance |
 
-1. Electrical constraints (value/rating/range).
-2. Package constraints (`package = "0402"`) where layout/BOM policy requires.
-3. Optional explicit part constraints for deterministic BOM:
-   - `lcsc_id`
-   - `manufacturer`
-   - `mpn`
+### `USB2_0_IF` and `USB2_0`
 
-Examples:
+`USB2_0_IF` contains differential data pair (`d`) and bus power (`buspower`). `USB2_0` wraps `usb_if` and is easier for top-level module interfaces.
+
+### Other interfaces
+
+`SWD`, `JTAG`, `Ethernet`, `XtalIF` — available for import, commonly used in package modules.
+
+## 3.2 Components
+
+### `Resistor`
+
+Auto-pickable passive. Key fields:
 
 ```ato
 r = new Resistor
 r.resistance = 10kohm +/- 5%
 r.package = "0402"
+```
 
+Two unnamed pins accessed via bridge connect or `r.unnamed[0]` / `r.unnamed[1]`.
+
+### `Capacitor`
+
+```ato
+cap = new Capacitor
+cap.capacitance = 100nF +/- 20%
+cap.package = "0402"
+```
+
+### `Inductor`
+
+```ato
+ind = new Inductor
+ind.inductance = 10uH +/- 20%
+ind.max_current = 1A
+```
+
+### `Diode`
+
+Key fields: `anode`, `cathode`, `forward_voltage`, `max_current`.
+
+### `LED`
+
+Extends Diode behavior. Key fields: `diode.forward_voltage`, `diode.max_current`.
+
+```ato
 led = new LED
-led.lcsc_id = "C2286"
+led.lcsc_id = "C2286"        # lock to specific LED
 ```
 
-## 5.7 Manual pick vs auto pick
+### `Fuse`
 
-When to choose auto pick:
+Series protection element with bridge capability.
 
-- early architecture,
-- value-driven passives,
-- supply flexibility desired.
+### `ResistorVoltageDivider`
 
-When to choose manual pick:
+Pre-built voltage divider module with `r_top`, `r_bottom`, and ratio equations.
 
-- known validated BOM part,
-- lifecycle or sourcing constraints,
-- compliance/certified part requirements.
+### `RectangularBoardShape`
 
-Hybrid pattern:
+PCB outline definition (see Step 5b).
 
-- constrain electrically and package-wise,
-- lock only high-risk parts (MCU, RF, power converters),
-- leave low-risk passives auto-picked.
+| Field | Type | Description |
+|-------|------|-------------|
+| `width` | length (mm) | Board width (required) |
+| `height` | length (mm) | Board height (required) |
+| `corner_radius` | length (mm) | Corner rounding (required, use `0mm` for sharp) |
+| `mounting_hole_diameter` | length (mm) | Optional — creates 4 corner holes when set |
 
-## 5.8 `.default` parameter behavior
+### `MountingHole`
 
-`param.default = ...` is for package/module defaults that users may override.
+Standalone mounting hole for mechanical attachment.
 
-Recommended usage:
+### `TestPoint`
 
-- package/module author sets defaults,
-- integrator can override with explicit `assert`/assignment.
+Test point for debugging and measurement.
 
-Example:
+### `NetTie`
+
+Net tie for connecting separate nets on the PCB.
+
+## 3.3 Traits
+
+Traits require `#pragma experiment("TRAITS")` and must be imported.
+
+### `has_requirement`
+
+Document design requirements. Place on the module that owns the requirement.
 
 ```ato
-i2c.address.default = 0x20
+import has_requirement
+trait has_requirement<id="R1", text="Supply voltage", criteria="3.3V regulated from USB">
 ```
 
-## 5.9 Interface parameter practices
+### `can_bridge_by_name`
 
-### 5.9.1 Power interfaces
-
-Constrain:
-
-- `voltage`
-- optional `max_current`
-- optional `max_power`
-
-### 5.9.2 Bus interfaces
-
-Constrain:
-
-- address, frequency, bus-level references where relevant.
-
-### 5.9.3 Logic/signal references
-
-Always tie reference rails unless intentionally abstract.
-
-## 5.10 Solver-aware equation patterns
-
-### 5.10.1 Voltage divider pattern
-
-Useful relation set:
+Enable bridge connect (`~>`) through a module by naming its input and output fields.
 
 ```ato
-assert r_total is r_top.resistance + r_bottom.resistance
-assert v_out is v_in * r_bottom.resistance / r_total
-assert max_current is v_in / r_total
+import can_bridge_by_name
+trait can_bridge_by_name<input_name="power_in", output_name="power_out">
 ```
 
-### 5.10.2 Regulator feedback divider pattern
+### `has_part_removed`
 
-Constrain total resistance and ratio windows, not only exact target voltage, to keep pick search practical.
-
-### 5.10.3 Current-sense shunt pattern
-
-Constrain shunt by allowed drop and target current range:
+Suppress part picking. Used for non-BOM placeholders or integration stubs.
 
 ```ato
-assert shunt.resistance <= shunt_drop / max_current * 1.1
-assert shunt.resistance >= shunt_drop / max_current * 0.9
+trait some_field has_part_removed
 ```
 
-## 5.11 High-probability failure modes and mitigations
+### `has_single_electric_reference`
 
-### 5.11.1 Contradiction by literal
+Declare that an interface shares a single reference rail. Used internally by stdlib interfaces.
 
-Cause:
+### Assignment-based trait shortcuts
 
-- multiple exact incompatible assignments.
+These field assignments map to traits without needing explicit trait syntax:
 
-Mitigation:
+- `x.package = "0402"` — package/footprint requirement
+- `x.lcsc_id = "C12345"` — lock to LCSC part
+- `x.manufacturer = "TI"` — manufacturer constraint
+- `x.mpn = "TLV75901PDDR"` — manufacturer part number
+- `x.required = True` — mark as externally required
+- `x.override_net_name = "VCC"` — force net name
+- `x.suggest_net_name = "SDA"` — suggest net name
+- `x.default = 0x20` — set default (overridable by downstream constraints)
 
-- switch one or more to bounded/toleranced `within` intervals.
+---
 
-### 5.11.2 Underconstrained pick
+# 4. Patterns and Examples
 
-Cause:
+## 4.1 Interface-first module boundaries
 
-- broad/no constraints for pickable component.
-
-Mitigation:
-
-- add core electrical bounds + package constraint.
-
-### 5.11.3 Invalid unit symbol
-
-Cause:
-
-- misspelled or unsupported symbol.
-
-Mitigation:
-
-- use known symbols (`V`, `A`, `ohm`, `F`, `Hz`, `rpm`, etc.) and SI prefixes.
-
-### 5.11.4 Non-commensurable arithmetic
-
-Cause:
-
-- operations mixing incompatible dimensions.
-
-Mitigation:
-
-- inspect each operand unit and convert to commensurable dimensions.
-
-## 5.12 Unit symbol quick map (selected)
-
-Common symbols from units registry:
-
-- voltage: `V`
-- current: `A`
-- resistance: `ohm` (also `Omega` symbol alias exists)
-- capacitance: `F`
-- power: `W`
-- frequency: `Hz`
-- percent: `%`
-- dimensionless: `dimensionless`
-
-SI prefixes are supported (`m`, `u`/`micro`, `n`, `k`, `M`, etc.) through unit decoder.
-
-## 5.13 Authoring templates for constraint-heavy modules
-
-Template pattern:
-
-```ato
-module Template:
-    in_power = new ElectricPower
-    out_power = new ElectricPower
-
-    # Declared parameters
-    target_voltage: V
-    max_current: A
-
-    # Core architecture constraints
-    assert out_power.voltage within target_voltage +/- 3%
-    assert out_power.max_current <= max_current
-
-    # Interface connectivity constraints
-    assert in_power.voltage >= out_power.voltage
-```
-
-Then add component-level equations and package constraints incrementally.
-
-# 6. Stdlib / Interface Map
-
-This section maps common stdlib interfaces/modules to authoring intent and "choose X vs Y" guidance.
-
-## 6.1 Core electrical primitives
-
-## 6.1.1 `Electrical`
-
-Use when you need an untyped electrical connection point.
-
-Choose `Electrical` when:
-
-- you only need net continuity,
-- no explicit reference rail semantics are required.
-
-Choose `ElectricSignal`/`ElectricLogic` instead when voltage-reference semantics matter.
-
-## 6.1.2 `ElectricPower`
-
-Represents two-rail power (`hv`, `lv`) with voltage/current/power params.
-
-Choose for:
-
-- supply rails,
-- battery/system power paths,
-- bus references.
-
-Key fields:
-
-- `hv`, `lv`
-- `voltage`
-- `max_current`
-- `max_power`
-
-Legacy aliases `vcc` and `gnd` exist for compatibility; prefer `hv`/`lv`.
-
-## 6.1.3 `ElectricSignal`
-
-Single signal line plus explicit `reference` power interface.
-
-Choose for:
-
-- analog or general signal with amplitude relative to reference.
-
-Key fields:
-
-- `line`
-- `reference`
-
-## 6.1.4 `ElectricLogic`
-
-Logic signal (line + reference), logic-oriented semantics.
-
-Choose for:
-
-- GPIOs,
-- digital control lines,
-- interrupts, reset, enable pins.
-
-Key fields:
-
-- `line`
-- `reference`
-
-## 6.2 Bus interfaces
-
-## 6.2.1 `I2C`
-
-Use for two-wire bus with address and frequency constraints.
-
-Key fields/params:
-
-- `scl`, `sda`
-- `address`
-- `frequency`
-
-Typical integration pattern:
-
-```ato
-i2c.scl.reference ~ power
-i2c.sda.reference ~ power
-assert i2c.address within 0x20 to 0x27
-```
-
-## 6.2.2 `SPI`
-
-Use for 3-wire data+clock bus (plus external CS lines as needed).
-
-Key fields:
-
-- `sclk`, `miso`, `mosi`
-- `frequency`
-
-Choose `MultiSPI` if multiple data lanes are needed.
-
-## 6.2.3 `MultiSPI`
-
-Use for multi-lane SPI/QSPI style interfaces.
-
-Key fields:
-
-- `clock`
-- `chip_select`
-- `data[n]`
-
-Usually instantiated with module templating/factory-backed type in package code.
-
-## 6.2.4 `UART_Base` and `UART`
-
-Use `UART_Base` for minimal TX/RX.
-
-Use `UART` for full control-line capable interface.
-
-`UART` includes `base_uart` plus RTS/CTS/etc.
-
-## 6.2.5 `I2S`
-
-Audio serial bus.
-
-Key fields:
-
-- `sd`, `ws`, `sck`
-- `sample_rate`, `bit_depth`
-
-## 6.3 USB and differential interfaces
-
-## 6.3.1 `DifferentialPair`
-
-Use for paired differential signals (`p`, `n`) with impedance param.
-
-## 6.3.2 `USB2_0_IF` and `USB2_0`
-
-`USB2_0_IF` contains:
-
-- differential data pair (`d`)
-- bus power (`buspower`)
-
-`USB2_0` wraps `usb_if` and is often easier as top-level module interface.
-
-Choose `USB2_0` for module interfaces, `USB2_0_IF` when you need direct field-level composition.
-
-## 6.4 Misc interfaces commonly used in packages
-
-Commonly imported in package corpus:
-
-- `SWD`
-- `JTAG`
-- `Ethernet`
-- `XtalIF`
-- `I2C`, `SPI`, `I2S`, `UART`
-
-Use package implementations as pattern references for pin mapping and decoupling scaffolds.
-
-## 6.5 Core passive/active modules
-
-Frequent stdlib modules:
-
-- `Resistor`
-- `Capacitor`
-- `Inductor`
-- `Diode`
-- `LED`
-- `Fuse`
-- `ResistorVoltageDivider`
-
-These are typically auto-pick enabled and respond well to value + package constraints.
-
-## 6.5.1 Board and mechanical modules
-
-- `RectangularBoardShape` — parameterized rectangular PCB outline with optional rounded corners and corner mounting holes. See Phase 7 in Section 1.9.
-- `MountingHole` — standalone mounting hole for mechanical attachment.
-- `TestPoint` — test point for debugging and measurement.
-- `NetTie` — net tie for connecting separate nets on the PCB.
-
-## 6.6 Trait utilities relevant to ato authoring
-
-Common traits encountered in `.ato`:
-
-- `can_bridge_by_name` (compatibility alias behavior)
-- `has_single_electric_reference`
-- `has_part_removed`
-- `has_package_requirements`
-- `requires_external_usage` (via `.required = True` override)
-
-## 6.7 Choose X vs Y quick guidance
-
-### 6.7.1 `ElectricLogic` vs `ElectricSignal`
-
-Choose `ElectricLogic` for digital semantics and GPIO-like lines.
-
-Choose `ElectricSignal` for analog/general signal rails.
-
-### 6.7.2 `~` vs `~>`
-
-Choose `~` for simple net/interface equivalence.
-
-Choose `~>` for explicit inline bridging through bridgable elements.
-
-### 6.7.3 `within` vs `is`
-
-Choose `within` for domain/range/literal constraints.
-
-Choose `is` for equation identity between parameters/expressions.
-
-Tangible examples:
-
-```ato
-module RuleExamples:
-    power = new ElectricPower
-    i2c = new I2C
-    addressor = new Addressor<address_bits=3>
-    target_v: V
-
-    # `within`: constrain a value to an allowed domain/range
-    assert power.voltage within 3.3V +/- 5%
-    assert i2c.frequency within 100kHz to 400kHz
-
-    # `is`: declare identity/equality between two expressions/parameters
-    assert addressor.address is i2c.address
-    assert target_v is power.voltage
-```
-
-### 6.7.4 Auto pick vs explicit part lock
-
-Auto pick for passives and flexible BOM stages.
-
-Explicit lock for lifecycle-critical or already-qualified parts.
-
-### 6.7.5 `module` vs `interface`
-
-Choose `interface` for reusable connectable bus/signal abstraction.
-
-Choose `module` for concrete reusable hardware blocks with components and equations.
-
-## 6.8 Package ecosystem building blocks
-
-In package repositories, common structure is:
-
-- top-level driver module (`vendor-part.ato`),
-- `usage.ato` demonstrating integration,
-- `parts/` folder with package-specific mapped parts,
-- occasional `family/model` files.
-
-Design guidance:
-
-- keep public driver interface stable,
-- isolate package pin mapping internally,
-- expose clean interfaces (`power`, `i2c`, `spi`, `gpio`, etc.),
-- apply sane defaults with override points.
-
-# 7. Architecture Patterns
-
-This section is prescriptive: use these patterns to keep ato designs modular, solver-friendly, and package-reusable.
-
-## 7.1 Pattern: Interface-first module boundaries
-
-### Intent
-
-Expose external behavior as interfaces first; keep internals private.
-
-### Template
+Expose external behavior as interfaces; keep internals private.
 
 ```ato
 module SensorBoard:
@@ -2947,22 +1089,11 @@ module SensorBoard:
     i2c ~ sensor.i2c
 ```
 
-### Why this is correct
+Avoid exposing internal package pins as public API.
 
-- integration points are explicit and stable,
-- internals can be refactored without breaking parent modules.
-
-### Anti-pattern
-
-Exposing internal package pins directly as public API.
-
-## 7.2 Pattern: Rail-centric power architecture
-
-### Intent
+## 4.2 Rail-centric power architecture
 
 Model power as named `ElectricPower` rails and bridge modules between them.
-
-### Template
 
 ```ato
 #pragma experiment("BRIDGE_CONNECT")
@@ -2976,19 +1107,9 @@ module PowerTree:
     vin ~> fuse ~> ldo ~> vout
 ```
 
-### Why this is correct
+## 4.3 Bus spine with localized adapters
 
-- topology is readable,
-- bridge semantics mirror physical inline flow,
-- easy insertion/removal of protection and measurement blocks.
-
-## 7.3 Pattern: Bus spine with localized adapters
-
-### Intent
-
-Create one bus spine and branch through dedicated adapter modules.
-
-### Template
+Create one bus spine and branch to devices:
 
 ```ato
 module App:
@@ -3002,306 +1123,54 @@ module App:
     i2c_bus ~ sensor.i2c
 ```
 
-### Why this is correct
+Centralized bus constraints, easy multi-device address management.
 
-- centralized bus constraints (frequency/reference),
-- easy multi-device address management,
-- fewer duplicated pullup patterns.
+## 4.4 Decoupling as local invariant
 
-## 7.4 Pattern: Addressor-driven address configuration
-
-### Intent
-
-Use Addressor to encode address pin logic from desired address constraints.
-
-### Template
+Each powered IC/module should own its decoupling:
 
 ```ato
-#pragma experiment("MODULE_TEMPLATING")
-
-addressor = new Addressor<address_bits=3>
-addressor.base = 0x20
-assert addressor.address is i2c.address
-```
-
-### Why this is correct
-
-- constraints drive hardware pin states,
-- avoids ad-hoc hand-set address pin wiring logic.
-
-## 7.5 Pattern: Defaults with override points
-
-### Intent
-
-Set package defaults via `.default` while permitting integrator overrides.
-
-### Template
-
-```ato
-i2c.address.default = 0x20
-```
-
-### Why this is correct
-
-- reusable module gets sensible baseline,
-- parent design can still resolve address conflicts.
-
-## 7.6 Pattern: Constraint layering
-
-### Intent
-
-Add constraints from generic to specific in layers:
-
-1. datasheet-safe envelope,
-2. system target,
-3. manufacturing/package constraints.
-
-### Example
-
-```ato
-assert power.voltage within 2.7V to 5.5V
-assert power.voltage within 3.3V +/- 5%
-res.package = "0402"
-```
-
-### Why this is correct
-
-- solver gets physically valid space and intent target,
-- picker gets practical package guidance.
-
-## 7.7 Pattern: Functional equation modules
-
-### Intent
-
-Encapsulate equations in reusable module (divider, sensor scaling, shunt monitor).
-
-### Template
-
-```ato
-module Divider:
-    in_power = new ElectricPower
-    out_sig = new ElectricSignal
-    r_top = new Resistor
-    r_bottom = new Resistor
-
-    in_power.hv ~> r_top ~> out_sig.line ~> r_bottom ~> in_power.lv
-
-    v_in: V
-    v_out: V
-    i_div: A
-    assert v_in is in_power.voltage
-    assert v_out is out_sig.reference.voltage
-    assert r_bottom.resistance is v_out / i_div
-```
-
-### Why this is correct
-
-- equations are reusable and testable,
-- interface abstraction stays clean.
-
-## 7.8 Pattern: Adapter modules for package pin mapping
-
-### Intent
-
-Keep package-specific pin mapping in dedicated module and expose abstract interface.
-
-### Why this matters
-
-- retarget package/variant without changing parent architecture,
-- isolates long pin maps to one file.
-
-## 7.9 Pattern: Bridgeable data chains
-
-### Intent
-
-For daisy-chain protocols (addressable LEDs, pass-through interfaces), define explicit input/output and trait bridge mapping.
-
-### Template
-
-```ato
-#pragma experiment("TRAITS")
 #pragma experiment("BRIDGE_CONNECT")
 
-module DataChain:
-    data_in = new ElectricLogic
-    data_out = new ElectricLogic
-    trait can_bridge_by_name<input_name="data_in", output_name="data_out">
-```
-
-### Why this is correct
-
-- enables clean `a ~> chain ~> b` syntax,
-- documents path intent explicitly.
-
-## 7.10 Pattern: Decoupling as local invariant
-
-### Intent
-
-Each powered IC/module should own its decoupling constraints and connectivity.
-
-### Template
-
-```ato
 decoup = new Capacitor
 decoup.capacitance = 100nF +/- 20%
 decoup.package = "0402"
 power.hv ~> decoup ~> power.lv
 ```
 
-### Why this is correct
-
-- avoids relying on external caller to remember mandatory decoupling,
-- keeps module electrically self-consistent.
-
-## 7.11 Pattern: Separate usage examples from drivers
-
-### Intent
-
-Keep `usage.ato` concise and integration-focused; keep full constraints in driver module.
-
-### Why this is correct
-
-- easier onboarding,
-- prevents duplicate or divergent constraint logic.
-
-## 7.12 Pattern: Controlled explicit part locking
-
-### Intent
-
-Lock only critical parts, leave commoditized parts auto-picked.
-
-### Example
-
-- lock MCU, PMIC, RF front-end;
-- auto-pick resistors/caps by value and package.
-
-### Why this is correct
-
-- balances deterministic BOM and sourcing flexibility.
-
-## 7.13 Pattern: Public API minimalism
-
-### Intent
-
-Expose only interfaces and high-level params likely needed by parent design.
-
-Avoid exposing internals like helper pullups or intermediate nets unless required.
-
-### Why this is correct
-
-- preserves module evolution freedom,
-- reduces accidental coupling.
-
-## 7.14 Pattern: Explicit net naming only where valuable
-
-Use `override_net_name` for nets that must stay stable (test points, external connectors, protocol rails).
-
-Avoid overusing net name overrides for every internal net, can lead to net name collisions.
-
-## 7.15 Pattern: Composition over inheritance
-
-Use `from Parent` inheritance for clear family variants.
-
-Prefer explicit composition for subsystem assembly.
-
-### Why
-
-- inheritance is useful for variant specialization,
-- composition is better for system architecture readability.
-
-## 7.16 Pattern: Family/model split in packages
-
-Common package structure:
-
-- base model with shared behavior,
-- family/variant modules inheriting base,
-- package drivers selecting concrete package and constraints.
-
-This appears in ESP32 package examples and reduces duplication.
-
-## 7.17 Pattern: Reviewer architecture rubric
-
-For any new module, check:
-
-- Are public interfaces clear and minimal?
-- Are rails and references explicit?
-- Is bridge syntax used only where physically meaningful?
-- Are defaults overridable?
-- Is package pin mapping isolated?
-- Are equations both meaningful and solvable?
-
-# 8. Annotated Example Corpus
-
-All examples below are based on real repository files or package modules. Code blocks are valid ato unless explicitly marked otherwise.
-
-## 8.1 `quickstart` (from `examples/quickstart/quickstart.ato`)
-
-### Source-derived snippet
+## 4.5 LED with current-limiting resistor
 
 ```ato
-import Resistor
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("TRAITS")
 
-module App:
-    r1 = new Resistor
-    r1.resistance = 50kohm +/- 10%
+import LED
+import Resistor
+import ElectricPower
+import can_bridge_by_name
+
+module LEDIndicator:
+    power = new ElectricPower
+    resistor = new Resistor
+    led = new LED
+
+    current = 0.5mA to 3mA
+
+    assert (power.voltage - led.diode.forward_voltage) / current is resistor.resistance
+    assert current <= led.diode.max_current
+
+    power.hv ~> led ~> resistor ~> power.lv
+
+    signal low ~ power.lv
+    signal high ~ power.hv
+    trait can_bridge_by_name<input_name="high", output_name="low">
 ```
 
-### Why this is correct
-
-- Minimal valid instantiation + parameter assignment.
-- Uses `new` correctly.
-- Uses bilateral percentage tolerance, which solver/picker can consume.
-
-### Review notes
-
-- This pattern is baseline for passive instantiation.
-- If layout policy exists, add `r1.package = "0402"`.
-
-## 8.2 `passives` (from `examples/passives/passives.ato`)
-
-### Source-derived snippet
+## 4.6 Voltage divider with equations
 
 ```ato
 #pragma experiment("BRIDGE_CONNECT")
 
-import Resistor
-import Capacitor
-import Diode
-
-module App:
-    resistor = new Resistor
-    capacitor = new Capacitor
-    diode = new Diode
-
-    assert resistor.resistance within 10kohm +/- 10%
-    assert capacitor.capacitance within 100nF +/- 10%
-    assert diode.forward_voltage within 0.5V to 0.8V
-
-    resistor.unnamed[0] ~ diode.anode
-    resistor.unnamed[1] ~ capacitor.unnamed[0]
-    diode.cathode ~ capacitor.unnamed[1]
-```
-
-### Why this is correct
-
-- Uses realistic bounded/toleranced domains.
-- Demonstrates direct connectivity graph for three passive/semiconductor primitives.
-- Avoids unsupported enum-string override for capacitor temp coefficient in this example.
-
-### Common extension
-
-Add package constraints:
-
-```ato
-resistor.package = "0402"
-capacitor.package = "0402"
-```
-
-## 8.3 `equations` (from `examples/equations/equations.ato`)
-
-### Source-derived snippet
-
-```ato
 import Resistor
 import ElectricPower
 import ElectricSignal
@@ -3323,85 +1192,30 @@ module VoltageDivider:
 
     assert v_out is output.reference.voltage
     assert v_in is power.voltage
-
     assert r_total is r_top.resistance + r_bottom.resistance
     assert v_out is v_in * r_bottom.resistance / r_total
     assert max_current is v_in / r_total
     assert ratio is r_bottom.resistance / r_total
 ```
 
-### Why this is correct
+Multiple algebraically equivalent expressions improve solver propagation.
 
-- Declares physically meaningful variables with units.
-- Uses equations to couple interface behavior and component values.
-- Provides multiple relation pathways for solver propagation.
-
-### Solver-aware notes
-
-- Keep equations algebraically consistent; contradictions here are hard failures.
-- If underconstrained, constrain one of `max_current`, `ratio`, or `v_out` target window.
-
-## 8.4 `pick_parts` (from `examples/pick_parts/pick_parts.ato`)
-
-### Source-derived snippet
+## 4.7 Addressor-driven I2C address configuration
 
 ```ato
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-
-import ElectricPower
-import LED
-import Resistor
-
-module App:
-    power = new ElectricPower
-
-    current_limiting_resistors = new Resistor[2]
-    for resistor in current_limiting_resistors:
-        resistor.resistance = 10kohm +/- 20%
-        resistor.package = "R0402"
-
-    leds = new LED[2]
-    leds[0].lcsc_id = "C2286"
-    leds[1].manufacturer = "Hubei KENTO Elec"
-    leds[1].mpn = "KT-0603R"
-
-    power.hv ~> current_limiting_resistors[0] ~> leds[0] ~> power.lv
-    power.hv ~> current_limiting_resistors[1] ~> leds[1] ~> power.lv
-```
-
-### Why this is correct
-
-- Demonstrates hybrid picking strategy:
-  - auto-pick constrained passives,
-  - explicit locked LED selections.
-- Uses bridge topology to model series current path.
-
-### Review focus points
-
-- `FOR_LOOP` and `BRIDGE_CONNECT` pragmas are required.
-- Package string format is parsed by override (`R0402` accepted).
-
-## 8.5 `i2c` (from `examples/i2c/i2c.ato`)
-
-### Source-derived snippet
-
-```ato
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
 #pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
 
 import Addressor
 import I2C
 import ElectricPower
-import ElectricLogic
 import Capacitor
 import Resistor
 
 module TI_TCA9548A:
     power = new ElectricPower
     i2c = new I2C
-    reset = new ElectricLogic
     i2cs = new I2C[8]
 
     assert power.voltage within 1.65V to 5.5V
@@ -3410,10 +1224,6 @@ module TI_TCA9548A:
     addressor.base = 0x70
     assert addressor.address is i2c.address
 
-    reset_pullup = new Resistor
-    reset_pullup.resistance = 10kohm +/- 1%
-    reset.line ~> reset_pullup ~> reset.reference.hv
-
     decoupling_caps = new Capacitor[2]
     decoupling_caps[0].capacitance = 100nF +/- 20%
     decoupling_caps[1].capacitance = 2.2uF +/- 20%
@@ -3421,203 +1231,7 @@ module TI_TCA9548A:
         power.hv ~> cap ~> power.lv
 ```
 
-### Why this is correct
-
-- Uses Addressor to relate configurable hardware address pins and bus address parameter.
-- Applies bus reference and decoupling patterns.
-- Exposes upstream/downstream I2C interfaces clearly.
-
-### Integration guidance
-
-In parent module:
-
-```ato
-assert mux.addressor.address is 0x71
-```
-
-This constrains line levels indirectly through Addressor behavior.
-
-## 8.6 `esp32_minimal` (from `examples/esp32_minimal/esp32_minimal.ato`)
-
-### Source-derived snippet
-
-```ato
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
-
-import ElectricPower
-import RectangularBoardShape
-
-from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
-from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
-from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
-
-module ESP32_MINIMAL:
-    # Board outline
-    board = new RectangularBoardShape
-    board.width = 30mm
-    board.height = 25mm
-    board.corner_radius = 2mm
-
-    micro = new ESP32_C3_MINI_1
-    usb_c = new USB2_0TypeCHorizontalConnector
-    ldo_3V3 = new TI_TLV75901
-
-    power_3v3 = new ElectricPower
-
-    usb_c.usb.usb_if.buspower ~> ldo_3V3 ~> power_3v3
-    power_3v3 ~ micro.power
-
-    ldo_3V3.v_in = 5V +/- 5%
-    ldo_3V3.v_out = 3.3V +/- 3%
-
-    usb_c.usb.usb_if ~ micro.usb_if
-```
-
-### Why this is correct
-
-- Captures realistic minimal embedded topology:
-  - USB bus power -> regulator -> MCU rail.
-- Uses bridge connect for power path composition.
-- Keeps external interfaces at module boundaries.
-- Includes board shape — every manufacturable design needs a physical outline.
-
-### Reviewer cautions
-
-- Verify exact field names (`v_in`/`v_out` vs `power_in`/`power_out`) against concrete regulator module version.
-- Maintain pragma for bridge connect.
-
-## 8.7 `layout_reuse` (from `examples/layout_reuse/layout_reuse.ato`)
-
-### Source-derived snippet
-
-```ato
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
-
-import Resistor
-
-module Sub:
-    r_chain = new Resistor[3]
-    for r in r_chain:
-        r.resistance = 1kohm +/- 20%
-        r.package = "R0402"
-
-    r_chain[0] ~> r_chain[1] ~> r_chain[2]
-
-module Top:
-    sub_chains = new Sub[3]
-
-    sub_chains[0].r_chain[2] ~> sub_chains[1].r_chain[0]
-    sub_chains[1].r_chain[2] ~> sub_chains[2].r_chain[0]
-    sub_chains[2].r_chain[2] ~> sub_chains[0].r_chain[0]
-```
-
-### Why this is correct
-
-- Shows hierarchical reuse of sub-layout-ready modules.
-- Demonstrates bridge chaining across module boundaries.
-- Uses loop for repetitive constraints.
-
-### Design intent note
-
-This pattern is valuable when module-level layout reuse (group routing/placement) is part of workflow.
-
-## 8.8 `led_badge` (from `examples/led_badge/led_badge.ato`)
-
-### Source-derived snippet
-
-```ato
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("TRAITS")
-
-import ElectricPower
-import Resistor
-import ElectricLogic
-import I2S
-import can_bridge_by_name
-
-from "atopile/usb-connectors/usb-connectors.ato" import USBTypeCConnector_driver
-from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
-from "atopile/ti-bq25185/ti-bq25185.ato" import TI_BQ25185
-from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
-
-module LED_BADGE:
-    microcontroller = new ESP32_C3_MINI_1
-    usb_c = new USBTypeCConnector_driver
-    buck_boost = new TPS63020_driver
-    charger = new TI_BQ25185
-
-    power_3v3 = new ElectricPower
-
-    usb_c.usb.usb_if.buspower ~ charger.power_input
-    charger.power_system ~> buck_boost ~> power_3v3
-
-    power_3v3 ~ microcontroller.power
-```
-
-### Why this is correct
-
-- Composes full portable system power path with charging and regulation.
-- Uses module interfaces and bridge semantics to preserve architecture clarity.
-- Demonstrates realistic multi-subsystem composition.
-
-### Advanced pattern in same example
-
-LED strip/grid modules define bridgeable data flow via trait:
-
-```ato
-trait can_bridge_by_name<input_name="data_in", output_name="data_out">
-```
-
-This enables ergonomic chained composition for large LED arrays.
-
-## 8.9 Package-derived example: I2C GPIO expander (`microchip-mcp23017`)
-
-### Source-derived snippet
-
-```ato
-#pragma experiment("MODULE_TEMPLATING")
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-
-import ElectricPower
-import I2C
-import ElectricLogic
-import Resistor
-import Addressor
-
-module Microchip_MCP23017:
-    power = new ElectricPower
-    i2c = new I2C
-    gpio_a = new ElectricLogic[8]
-    gpio_b = new ElectricLogic[8]
-
-    assert power.voltage within 1.8V to 5.5V
-
-    addressor = new Addressor<address_bits=3>
-    addressor.base = 0x20
-    assert addressor.address is i2c.address
-    i2c.address.default = 0x20
-
-    for gpio in gpio_a:
-        gpio.reference ~ power
-```
-
-### Why this is correct
-
-- Strong public interface contract.
-- Address defaults + override path for bus coexistence.
-- Explicit reference handling for GPIO ports.
-
-### Integration note
-
-In usage, set shared bus refs and optionally override address per instance.
-
-## 8.10 Package-derived example: Power monitor bridge (`ti-ina228`)
-
-### Source-derived snippet
+## 4.8 Inline power monitor bridge
 
 ```ato
 #pragma experiment("TRAITS")
@@ -3646,753 +1260,248 @@ module TI_INA228:
     trait can_bridge_by_name<input_name="power_in", output_name="power_out">
 ```
 
-### Why this is correct
-
-- Models inline current-sense insertion physically and semantically.
-- Exposes clean bridgeable interface for parent power topology.
-- Separates monitor supply rail from sensed high-side path.
-
-## 8.11 Package-derived example: USB connector chain (`usb-connectors`)
-
-### Source-derived snippet
+## 4.9 Minimal ESP32 board
 
 ```ato
+#pragma experiment("FOR_LOOP")
 #pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("TRAITS")
 
-import USB2_0
-import Resistor
-import can_bridge_by_name
+import ElectricPower
+import RectangularBoardShape
 
-module FusedUSB2_0:
-    usb_in = new USB2_0
-    usb_out = new USB2_0
-    fuse = new BHFUSE_BSMD0805_050_15V_model
+from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
+from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
 
-    usb_in.usb_if.buspower.hv ~> fuse ~> usb_out.usb_if.buspower.hv
-    usb_in.usb_if.buspower.lv ~ usb_out.usb_if.buspower.lv
-    usb_in.usb_if.d ~ usb_out.usb_if.d
+module ESP32_MINIMAL:
+    board = new RectangularBoardShape
+    board.width = 30mm
+    board.height = 25mm
+    board.corner_radius = 2mm
 
-    trait can_bridge_by_name<input_name="usb_in", output_name="usb_out">
+    micro = new ESP32_C3_MINI_1
+    usb_c = new USB2_0TypeCHorizontalConnector
+    ldo_3V3 = new TI_TLV75901
+
+    power_3v3 = new ElectricPower
+
+    usb_c.usb.usb_if.buspower ~> ldo_3V3 ~> power_3v3
+    power_3v3 ~ micro.power
+
+    ldo_3V3.v_in = 5V +/- 5%
+    ldo_3V3.v_out = 3.3V +/- 3%
+
+    usb_c.usb.usb_if ~ micro.usb_if
 ```
 
-### Why this is correct
+## 4.10 Layout reuse with arrays
 
-- Enforces inline protection in VBUS path only.
-- Preserves differential data continuity.
-- Encapsulates reusable fuse bridge module.
+```ato
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
 
-## 8.12 Package-derived example: LED indicator bridge (`indicator-leds`)
+import Resistor
 
-### Source-derived snippet
+module Sub:
+    r_chain = new Resistor[3]
+    for r in r_chain:
+        r.resistance = 1kohm +/- 20%
+        r.package = "R0402"
+
+    r_chain[0] ~> r_chain[1] ~> r_chain[2]
+
+module Top:
+    sub_chains = new Sub[3]
+
+    sub_chains[0].r_chain[2] ~> sub_chains[1].r_chain[0]
+    sub_chains[1].r_chain[2] ~> sub_chains[2].r_chain[0]
+    sub_chains[2].r_chain[2] ~> sub_chains[0].r_chain[0]
+```
+
+## 4.11 Bridgeable data chain
+
+For daisy-chain protocols (addressable LEDs, pass-through interfaces):
+
+```ato
+#pragma experiment("TRAITS")
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricLogic
+import can_bridge_by_name
+
+module DataChain:
+    data_in = new ElectricLogic
+    data_out = new ElectricLogic
+    trait can_bridge_by_name<input_name="data_in", output_name="data_out">
+```
+
+Enables clean `a ~> chain ~> b` syntax.
+
+## 4.12 Constraint layering
+
+Add constraints from generic to specific:
+
+```ato
+# Layer 1: datasheet-safe envelope
+assert power.voltage within 2.7V to 5.5V
+
+# Layer 2: system target
+assert power.voltage within 3.3V +/- 5%
+
+# Layer 3: manufacturing/package
+res.package = "0402"
+```
+
+## 4.13 Hybrid auto-pick + locked parts
 
 ```ato
 #pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("TRAITS")
+#pragma experiment("FOR_LOOP")
 
+import ElectricPower
 import LED
 import Resistor
-import ElectricPower
-import can_bridge_by_name
 
-module LEDIndicator:
+module App:
     power = new ElectricPower
-    resistor = new Resistor
-    led = new LED
 
-    current = 0.5mA to 3mA
+    # Auto-picked by constraints
+    current_limiting_resistors = new Resistor[2]
+    for resistor in current_limiting_resistors:
+        resistor.resistance = 10kohm +/- 20%
+        resistor.package = "R0402"
 
-    assert (power.voltage - led.diode.forward_voltage) / current is resistor.resistance
-    assert current <= led.diode.max_current
+    # Locked to specific parts
+    leds = new LED[2]
+    leds[0].lcsc_id = "C2286"
+    leds[1].manufacturer = "Hubei KENTO Elec"
+    leds[1].mpn = "KT-0603R"
 
-    power.hv ~> led ~> resistor ~> power.lv
-
-    signal low ~ power.lv
-    signal high ~ power.hv
-    trait can_bridge_by_name<input_name="high", output_name="low">
+    power.hv ~> current_limiting_resistors[0] ~> leds[0] ~> power.lv
+    power.hv ~> current_limiting_resistors[1] ~> leds[1] ~> power.lv
 ```
 
-### Why this is correct
+---
 
-- Captures current-limiting relation explicitly.
-- Exposes simple bridgeable drop-in indicator semantics.
+# 5. Troubleshooting
 
-## 8.13 Package-derived example: STM32H723 interface-rich module
+## Feature not enabled (pragma gate)
 
-### Source-derived snippet
+**Symptom:** Error about experiment not enabled.
 
-```ato
-#pragma experiment("MODULE_TEMPLATING")
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-#pragma experiment("TRAITS")
+**Fix:** Add the required pragma at top of file.
 
-import ElectricPower
-import I2C
-import SPI
-import UART
-import USB2_0
+| Construct | Required Pragma |
+|-----------|----------------|
+| `~>` / `<~` | `BRIDGE_CONNECT` |
+| `for` loop | `FOR_LOOP` |
+| `trait` statement | `TRAITS` |
+| `new Type<k=v>` | `MODULE_TEMPLATING` |
 
-module ST_STM32H723:
-    power_3v3 = new ElectricPower
-    i2c = new I2C[2]
-    spi = new SPI[2]
-    uart = new UART
-    usb = new USB2_0
+## Invalid import
 
-    assert power_3v3.voltage within 1.62V to 3.6V
-```
+**Symptom:** `DslImportError` for `import Foo`.
 
-### Why this is correct
-
-- Presents scalable interface map for complex MCU.
-- Keeps decoupling, crystal, and package pin map internals encapsulated.
-
-## 8.14 Package-derived example: LAN8742A PHY (RMII+MDIO)
-
-### Source-derived snippet
-
-```ato
-#pragma experiment("FOR_LOOP")
-#pragma experiment("BRIDGE_CONNECT")
-
-import ElectricPower
-import Ethernet
-
-module Microchip_LAN8742A:
-    power_3v3 = new ElectricPower
-    rmii = new RMII
-    mdio = new MDIO
-    ethernet = new Ethernet
-
-    assert power_3v3.voltage within 3.0V to 3.6V
-```
-
-### Why this is correct
-
-- Uses dedicated interfaces for MAC and MDI domains.
-- Keeps PHY-specific straps/decoupling local to module.
-
-## 8.15 Example quality rubric
-
-Every example in this section should satisfy:
-
-- valid parser syntax,
-- correct pragmas for used experimental features,
-- explicit interfaces and references,
-- meaningful constraints,
-- no unsupported constructs,
-- no hidden imperative assumptions.
-
-If adapting these examples, preserve those properties first; optimize style second.
-
-# 9. Diagnostics + Fix Playbooks
-
-This section maps common failure classes to deterministic repair sequences.
-
-## 9.1 Failure class: Feature not enabled (pragma gate)
-
-### Symptom
-
-Error indicates experiment not enabled for:
-
-- bridge connect,
-- for loop,
-- trait statement,
-- module templating.
-
-### Fix playbook
-
-1. Identify construct used (`~>`, `for`, `trait`, `new T<...>`).
-2. Add corresponding pragma at top of file.
-3. Keep pragma set minimal but complete.
-
-### Example fix
-
-```ato
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-```
-
-## 9.2 Failure class: Invalid import (stdlib allowlist)
-
-### Symptom
-
-`DslImportError` for bare `import Foo`.
-
-### Fix playbook
-
-1. Check if `Foo` is known stdlib allowlist entity.
-2. If not, convert to path import:
+**Fix:** If `Foo` is not stdlib-allowlisted, use a path import:
 
 ```ato
 from "path/to/foo.ato" import Foo
 ```
 
-3. If trait alias expected, ensure correct trait name/import.
+## Missing `new`
 
-## 9.3 Failure class: Type reference assigned without `new`
+**Symptom:** Assignment error.
 
-### Symptom
+**Fix:** `r = Resistor` → `r = new Resistor`
 
-User syntax error around assignment to type reference.
+## Chained assert
 
-### Fix playbook
+**Symptom:** Semantic error on assert with multiple comparisons.
 
-1. Replace `x = Type` with `x = new Type`.
-2. If array intended, use `x = new Type[n]`.
-
-## 9.4 Failure class: Unsupported arithmetic operator
-
-### Symptom
-
-Operator error for `|` or `&` in equations.
-
-### Fix playbook
-
-1. Replace with supported arithmetic constructs.
-2. If logical intent, convert to explicit constraints or module selection pattern.
-
-## 9.5 Failure class: Assert with multiple comparisons
-
-### Symptom
-
-Semantic not-implemented error for assert chain.
-
-### Fix playbook
-
-Split chained assert into separate asserts.
-
-Before:
+**Fix:** Split into separate asserts:
 
 ```ato
-# parser accepts; semantic layer may reject
+# Bad
 assert 1V < x < 5V
-```
 
-After:
-
-```ato
+# Good
 assert x > 1V
 assert x < 5V
 ```
 
-## 9.6 Failure class: Unit not found
+## Unit not found
 
-### Symptom
+**Symptom:** `UnitNotFoundError`.
 
-Unit decode error with suggestions.
+**Fix:** Use known symbols: `V`, `A`, `ohm`, `F`, `Hz`, `W`, `H`, `mm`. Check SI prefix spelling.
 
-### Fix playbook
+## Units not commensurable
 
-1. Correct spelling/case using known symbol.
-2. Prefer canonical symbols from units registry (`V`, `A`, `ohm`, `F`, `Hz`).
-3. Re-check SI prefix syntax.
+**Symptom:** Unit mismatch error in range/tolerance.
 
-## 9.7 Failure class: Units not commensurable
-
-### Symptom
-
-Bounded/bilateral quantity unit mismatch error.
-
-### Fix playbook
-
-1. Verify both terms are same dimension.
-2. Convert one side to commensurable unit.
-3. Re-run with explicit units.
-
-Example:
+**Fix:** Ensure both sides have compatible dimensions:
 
 ```ato
-# bad
+# Bad
 assert x within 3.3V to 5A
 
-# good
+# Good
 assert x within 3.3V to 5V
 ```
 
-## 9.8 Failure class: Mixed directed connect directions
+## Mixed bridge directions
 
-### Symptom
+**Symptom:** Direction error in connect statement.
 
-Error: one connection direction per statement.
+**Fix:** Use one direction per chain. `a ~> b <~ c` is invalid — rewrite as separate statements.
 
-### Fix playbook
+## Loop body contains forbidden statement
 
-1. Rewrite into one direction per chain.
-2. If needed, split into multiple statements with clear intermediate node.
+**Symptom:** Invalid statement in for-loop body.
 
-## 9.9 Failure class: Loop body contains forbidden statement
+**Fix:** Move `import`, `new`, `pin`, `signal`, `trait`, or nested `for` outside the loop. Create arrays before the loop, constrain inside.
 
-### Symptom
+## Overconstrained design (solver contradiction)
 
-Invalid statement in for loop.
+**Symptom:** Solver reports contradictory constraints.
 
-### Fix playbook
-
-1. Move forbidden statement outside loop.
-2. Keep loop body to assignments/asserts/connects allowed by current rules.
-3. For new child creation, pre-create sequence before loop.
-
-## 9.10 Failure class: Undefined field/index
-
-### Symptom
-
-Undefined symbol or field path resolution error.
-
-### Fix playbook
-
-1. Verify field is declared/created before reference.
-2. For indexed references, verify sequence length and index.
-3. For alias-dependent paths, verify scope and loop alias names.
-
-## 9.11 Failure class: Trait not imported / unsupported external trait
-
-### Symptom
-
-Trait import/type errors.
-
-### Fix playbook
-
-1. Import trait explicitly.
-2. Verify trait is supported by allowlist or override registry.
-3. If external custom trait needed, confirm pipeline support before use.
-
-## 9.12 Failure class: Overconstrained design (contradiction)
-
-### Symptom
-
-Solver contradiction on parameter domains.
-
-### Fix playbook
-
-1. Identify all constraints on failing parameter.
-2. Convert exact assignments to toleranced/bounded where acceptable.
+**Fix:**
+1. Find all constraints on the failing parameter.
+2. Convert exact assignments to toleranced/bounded values.
 3. Remove redundant contradictory assertions.
-4. Check implicit defaults (`.default`) vs explicit assignment interactions.
+4. Check `.default` vs explicit assignment interactions.
 
-## 9.13 Failure class: Underconstrained design (weak picks)
+## Underconstrained design (weak picks)
 
-### Symptom
+**Symptom:** Unstable or poor part selection.
 
-Unstable or poor part selection.
+**Fix:**
+1. Add core electrical bounds (value + rating).
+2. Add package constraints (`package = "0402"`).
+3. Lock high-risk parts with `lcsc_id` or `mpn`.
 
-### Fix playbook
+## Missing references on logic/signal buses
 
-1. Add key electrical bounds.
-2. Add package constraints for footprint policy.
-3. Add manual locks for high-risk parts only.
+**Symptom:** Unexpected interface behavior or unresolved voltage domains.
 
-## 9.14 Failure class: Missing references on logic/signal buses
-
-### Symptom
-
-Unexpected interface behavior or unresolved assumptions around line voltage domains.
-
-### Fix playbook
-
-1. Ensure line references point to correct rail.
-2. For shared buses, align references consistently across participants.
-
-## 9.15 Failure class: Legacy compatibility behavior confusion
-
-### Symptom
-
-Unexpected behavior around `reference_shim`, deprecated alias warnings, or trait alias behavior.
-
-### Fix playbook
-
-1. Prefer canonical explicit forms.
-2. Preserve compatibility forms only when updating legacy modules without large refactors.
-
-## 9.16 Repair sequence template
-
-Use this sequence for most failing modules:
-
-1. Validate pragma gates.
-2. Validate imports.
-3. Validate instance creation (`new`).
-4. Validate connect graph (`~` vs `~>`).
-5. Validate references for logic/signal buses.
-6. Validate assert operator and structure.
-7. Validate units and commensurability.
-8. Validate picking/package overrides.
-9. Re-check for under/overconstraint.
-
-# 10. Anti-Patterns + Rewrite Recipes
-
-## 10.1 Anti-pattern: Procedural mental model
-
-Bad:
+**Fix:** Wire `.reference` to the correct power rail:
 
 ```ato
-# implied procedural intent, not declarative constraints
-# "first set x then compute y"
-```
-
-Rewrite:
-
-- express all dependencies as equations/assertions;
-- avoid order-dependent assumptions.
-
-## 10.2 Anti-pattern: Missing pragma for experimental syntax
-
-Bad:
-
-```ato
-a ~> b ~> c
-for x in xs:
-    x.package = "0402"
-```
-
-Rewrite:
-
-```ato
-#pragma experiment("BRIDGE_CONNECT")
-#pragma experiment("FOR_LOOP")
-```
-
-## 10.3 Anti-pattern: Type assignment without `new`
-
-Bad:
-
-```ato
-r = Resistor
-```
-
-Rewrite:
-
-```ato
-r = new Resistor
-```
-
-## 10.4 Anti-pattern: Chain assert comparison
-
-Bad:
-
-```ato
-assert 1V < x < 5V
-```
-
-Rewrite:
-
-```ato
-assert x > 1V
-assert x < 5V
-```
-
-## 10.5 Anti-pattern: Using `is` for literal bounds
-
-Bad:
-
-```ato
-assert v is 3.3V +/- 5%
-```
-
-Rewrite:
-
-```ato
-assert v within 3.3V +/- 5%
-```
-
-## 10.6 Anti-pattern: Bridge syntax for non-bridgable topology
-
-Bad:
-
-```ato
-bus ~> random_module ~> sink
-```
-
-Rewrite:
-
-- use `~` where no explicit inline bridge path is intended,
-- or define appropriate bridge trait path in module.
-
-## 10.7 Anti-pattern: Over-locking all parts early
-
-Bad:
-
-- hardcoding `lcsc_id` for every passive in early architecture.
-
-Rewrite:
-
-- constrain values/packages for passives,
-- lock only critical parts initially.
-
-## 10.8 Anti-pattern: Leaky module public API
-
-Bad:
-
-- exporting package-pin-level internals as parent integration contract.
-
-Rewrite:
-
-- expose clean interfaces (`power`, `i2c`, `spi`, `gpio`),
-- keep package pin map internal.
-
-## 10.9 Anti-pattern: Missing reference rail on logic signals
-
-Bad:
-
-```ato
-gpio.line ~ some_line
-# no reference relation
-```
-
-Rewrite:
-
-```ato
+i2c.scl.reference ~ power
+i2c.sda.reference ~ power
 gpio.reference ~ power
 ```
 
-## 10.10 Anti-pattern: One giant monolithic module
+## General repair sequence
 
-Bad:
+When a module has multiple errors, fix in this order:
 
-- power, buses, sensor math, connector mapping all in one module.
-
-Rewrite:
-
-- split into submodules:
-  - power tree,
-  - controller,
-  - peripheral blocks,
-  - connector adapter.
-
-# 11. Checklists + Output Templates
-
-## 11.1 Fast authoring checklist
-
-- [ ] Correct block type (`module`/`interface`/`component`).
-- [ ] Required pragmas declared.
-- [ ] Imports valid (allowlist vs path import).
-- [ ] All instances created with `new`.
-- [ ] Connectivity uses `~`/`~>` appropriately.
-- [ ] Logic/signal references wired.
-- [ ] Constraints use `within`/`is` intentionally.
-- [ ] Units/tolerances are commensurable and realistic.
-- [ ] Picking/package strategy is explicit.
-- [ ] No unsupported constructs used.
-
-## 11.2 Fast review checklist
-
-- [ ] Parser-valid syntax only.
-- [ ] No semantic gate violations.
-- [ ] No chain assert comparison reliance.
-- [ ] No unsupported arithmetic operators.
-- [ ] No unresolved field/index paths.
-- [ ] No mixed bridge direction chains.
-- [ ] No hidden reference-domain mistakes.
-- [ ] No accidental overconstraint/underconstraint.
-
-## 11.3 Output template: New module draft
-
-```text
-Goal:
-Public interfaces:
-Internal components:
-Connectivity plan:
-Constraint plan:
-Picking/package plan:
-Pragmas required:
-Open risks:
-```
-
-## 11.4 Output template: Review findings
-
-```text
-Severity-ordered findings:
-1) [High] ...
-2) [Medium] ...
-3) [Low] ...
-
-Unsupported/experimental feature checks:
-- ...
-
-Constraint health summary:
-- overconstraint risks: ...
-- underconstraint risks: ...
-
-Suggested rewrites:
-- before: ...
-- after: ...
-```
-
-## 11.5 Output template: Debug triage
-
-```text
-Observed error:
-Likely invariant violated:
-Minimal reproducer location:
-Fix steps:
-Validation steps:
-```
-
-## 11.6 Architecture planning template (required for non-trivial designs)
-
-```text
-Design intent:
-Top-level modules (main elements):
-  - module_name: responsibility, public interfaces, owning file
-Integration module:
-  - name, owning file, imported children
-Power domains:
-  - each rail owner, producers, consumers, startup/enable source
-Constraint ownership:
-  - where voltage/current/bus constraints are declared
-Complexity estimate:
-  - expected instances, connects, direct package-pin connects per module
-Split plan:
-  - which modules are separate files/folders before detailed wiring
-```
-
-# 12. Architecture Planning + Decomposition Rules
-
-## 12.1 Architecture-first rule
-
-Before detailed pin-level wiring, produce an architecture plan with:
-
-- named top-level modules for each major system element,
-- one integration module that composes them,
-- explicit interface contracts between modules,
-- clear file ownership for each top-level module.
-
-Do not start with a single giant integration body and split later.
-
-## 12.2 Complexity triggers that force splitting
-
-If any trigger is hit, split module immediately:
-
-- more than 40 connect statements in one module,
-- more than 12 direct package-pin connections in one module,
-- more than 10 child instances in one module,
-- mixed concerns in one module (power conversion + control MCU + comms + connectors),
-- duplicated wiring clusters that can be a reusable child module.
-
-Review rule:
-
-- treat trigger hits as medium-severity architecture violations even when syntax is valid.
-
-## 12.3 File and folder decomposition workflow
-
-For multi-block designs, create folders/files early and keep one primary module per file.
-
-Example pattern:
-
-```text
-design/
-  main.ato                  # integration module only
-  power/
-    buck_5v.ato             # 30V -> 5V stage module
-    buck_3v3.ato            # 30V/5V -> 3V3 stage module
-  control/
-    mcu_control.ato         # MCU + local support passives
-  motor/
-    gate_driver_stage.ato   # driver + FET stage + bootstrap network
-  comms/
-    can_phy.ato             # CAN transceiver stage
-  io/
-    connectors.ato          # external connector-facing adapter module
-```
-
-Authoring rule:
-
-- create folders/files for planned modules before writing detailed internals,
-- keep integration file focused on composition and cross-module constraints,
-- keep package-pin wiring inside owning module files.
-
-## 12.4 Module boundary rules
-
-Each top-level module should expose a minimal interface contract:
-
-- power interfaces (`ElectricPower`) for each consumed/provided rail,
-- bus/signal interfaces (`I2C`, `SPI`, `UART`, `ElectricLogic`, `ElectricSignal`) as needed,
-- named control/status lines only when interface abstraction is unavailable.
-
-Avoid exposing incidental package pins at integration boundary unless required.
-
-## 12.5 Design checklist (architecture + implementation)
-
-Use this checklist for non-trivial designs before final output:
-
-- [ ] Architecture plan exists before detailed wiring.
-- [ ] Each major element has its own module (and usually its own file).
-- [ ] Integration module is composition-focused, not pin-map-heavy.
-- [ ] No module crosses complexity triggers from 12.2.
-- [ ] Rail ownership/startup enable source is explicit and reviewable.
-- [ ] High-risk domains include constraints (`assert ... within ...`) not just connectivity.
-- [ ] No duplicate connect statements for same net pair unless intentional and documented.
-- [ ] Experimental pragmas are only present when corresponding constructs are used.
-- [ ] Unused imports are removed.
-- [ ] Board shape is defined (`RectangularBoardShape` with width/height/corner_radius) per Phase 7 in Section 1.9.
-
-## 12.6 Hierarchy examples
-
-### 12.6.1 LED badge-style hierarchy (conceptual)
-
-```text
-LED_BADGE (integration)
-  PowerPath
-    USBCConnector
-    Charger
-    BuckBoost3V3
-    Battery
-  Processor
-    ESP32C3Module
-  Audio
-    I2SMicrophone
-  Display
-    LEDGrid10x10
-      LEDRow
-        LEDDevice
-```
-
-### 12.6.2 BLDC controller target hierarchy (for this design style)
-
-```text
-BLDC_Controller (integration)
-  Power.ato
-    Buck5V: Module
-    Buck3V3: Module
-  PowerStage.ato
-    GateDriver: Module
-    MOSFETBridge: Module
-    BootstrapAndPump
-  Processor.ato
-    Micro: Module
-    StatusLED: Module
-  Comms.ato
-    CAN_PHY: Module
-  IO.ato
-    MotorPhaseConnector: Module
-    SupplyConnector: Module
-    CANConnector: Module
-```
-
-## 12.7 Operational workflow: create files/folders before deep wiring
-
-When architecture planning identifies top-level modules, execute decomposition immediately.
-
-Recommended workflow:
-
-1. Create folder structure for module ownership.
-2. Create one `.ato` file per planned top-level module.
-3. Add minimal module skeletons (docstring + public interfaces).
-4. Create integration module that imports and composes children.
-5. Only then add detailed package-pin internals inside owning module files.
-
-Illustrative shell scaffold:
-
-main.ato
-power/buck_5v.ato design/power/buck_3v3.ato
-modules/mcu_control.ato
-modules/gate_driver_stage.ato
-modules/comms/can_phy.ato
-modules/connectors.ato
-
-```
-
-Review rule:
-
-- if a response proposes module split but still outputs one monolithic file, treat as incomplete execution.
-```
+1. Pragma gates
+2. Imports
+3. Instance creation (`new`)
+4. Connection graph (`~` vs `~>`)
+5. References for logic/signal buses
+6. Assert operators and structure
+7. Units and commensurability
+8. Picking/package overrides
+9. Over/underconstrained parameters
