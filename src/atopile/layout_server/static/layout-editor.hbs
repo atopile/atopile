@@ -32,10 +32,16 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         }
 
-        canvas {
-            display: block;
+        #editor-container {
+            position: relative;
             width: 100vw;
             height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
             cursor: crosshair;
         }
 
@@ -381,7 +387,9 @@
         window.__LAYOUT_API_PREFIX__ = '{{apiPrefix}}';
         window.__LAYOUT_WS_PATH__ = '{{wsPath}}';
     </script>
-    <canvas id="editor-canvas"></canvas>
+    <div id="editor-container">
+        <canvas id="editor-canvas"></canvas>
+    </div>
     <div id="initial-loading" role="status" aria-live="polite" aria-busy="true">
         <div class="initial-loading-content">
             <div class="initial-loading-spinner"></div>

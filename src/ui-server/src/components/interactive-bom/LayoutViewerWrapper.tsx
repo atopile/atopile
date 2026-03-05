@@ -26,9 +26,8 @@ export function LayoutViewerWrapper() {
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const editor = new Editor(canvas, LAYOUT_BASE_URL, LAYOUT_API_PREFIX, LAYOUT_WS_PATH, {
+    const editor = new Editor(canvas, LAYOUT_BASE_URL, LAYOUT_API_PREFIX, LAYOUT_WS_PATH, container, {
       readOnly: true,
-      container,
     });
 
     editor.onModelLoad = (model) => {

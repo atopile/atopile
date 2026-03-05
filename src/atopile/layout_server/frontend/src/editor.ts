@@ -89,7 +89,6 @@ function applyDeltaToZone(zone: ZoneModel, coords: { outline: number[]; fills: n
 
 export interface EditorOptions {
     readOnly?: boolean;
-    container?: HTMLElement;
 }
 
 export class Editor {
@@ -104,7 +103,7 @@ export class Editor {
     private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
     private readonly readOnly: boolean;
-    private readonly container: HTMLElement | null;
+    private readonly container: HTMLElement;
     private footprintIndex: SpatialIndex = new SpatialIndex(5);
     private footprintBBoxes: BBox[] = [];
     private textIndex: SpatialIndex = new SpatialIndex(10);
@@ -171,10 +170,10 @@ export class Editor {
     private _onResize: (() => void) | null = null;
     private _onBeforeUnload: (() => void) | null = null;
 
-    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws", options?: EditorOptions) {
+    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws", container?: HTMLElement, options?: EditorOptions) {
         this.canvas = canvas;
         this.readOnly = options?.readOnly ?? false;
-        this.container = options?.container ?? null;
+        this.container = container ?? canvas.parentElement!;
         this.textOverlay = this.createTextOverlay();
         this.textCtx = this.textOverlay.getContext("2d");
         this.syncTextOverlayViewport();
@@ -199,34 +198,15 @@ export class Editor {
     }
 
     private createTextOverlay(): HTMLCanvasElement {
-        if (this.container) {
-            const overlay = document.createElement("canvas");
-            overlay.style.position = "absolute";
-            overlay.style.top = "0";
-            overlay.style.left = "0";
-            overlay.style.width = "100%";
-            overlay.style.height = "100%";
-            overlay.style.pointerEvents = "none";
-            overlay.style.zIndex = "9";
-            this.container.appendChild(overlay);
-            return overlay;
-        }
-
-        const existing = document.getElementById("editor-text-overlay");
-        if (existing instanceof HTMLCanvasElement) {
-            return existing;
-        }
-
         const overlay = document.createElement("canvas");
-        overlay.id = "editor-text-overlay";
-        overlay.style.position = "fixed";
+        overlay.style.position = "absolute";
         overlay.style.top = "0";
         overlay.style.left = "0";
-        overlay.style.width = "100vw";
-        overlay.style.height = "100vh";
+        overlay.style.width = "100%";
+        overlay.style.height = "100%";
         overlay.style.pointerEvents = "none";
         overlay.style.zIndex = "9";
-        document.body.appendChild(overlay);
+        this.container.appendChild(overlay);
         return overlay;
     }
 
@@ -245,15 +225,10 @@ export class Editor {
     private syncTextOverlayViewport(
         viewport = this.getCanvasViewportMetrics(),
     ): void {
-        // When the overlay is absolutely positioned inside a container,
-        // its origin is the container's top-left, so use 0/0.
-        // When it's fixed-positioned on the body, use viewport coords.
-        const left = this.container ? "0px" : `${viewport.left}px`;
-        const top = this.container ? "0px" : `${viewport.top}px`;
         const width = `${viewport.width}px`;
         const height = `${viewport.height}px`;
-        if (this.textOverlay.style.left !== left) this.textOverlay.style.left = left;
-        if (this.textOverlay.style.top !== top) this.textOverlay.style.top = top;
+        if (this.textOverlay.style.left !== "0px") this.textOverlay.style.left = "0px";
+        if (this.textOverlay.style.top !== "0px") this.textOverlay.style.top = "0px";
         if (this.textOverlay.style.width !== width) this.textOverlay.style.width = width;
         if (this.textOverlay.style.height !== height) this.textOverlay.style.height = height;
     }
