@@ -52,6 +52,8 @@ Skills are located in `.claude/skills/`.
 │ └── SKILL.md
 ├── faebryk
 │ └── SKILL.md
+├── frontend
+│ └── SKILL.md
 ├── graph
 │ └── SKILL.md
 ├── library
@@ -65,5 +67,5 @@ Skills are located in `.claude/skills/`.
 ├── atopile-skills
 │ └── SKILL.md
 └── solver
-└── SKILL.md
+  └── SKILL.md
 ```
