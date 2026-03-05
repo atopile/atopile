@@ -100,8 +100,8 @@ The solver cannot “edit” an expression in-place. Instead it:
 
 Run a tight loop while iterating:
 
-- `ato dev test --llm test/core/solver -k invariant -q`
-- `ato dev test --llm test/core/solver/test_solver.py::test_simplify -q`
+- `ato dev test --direct test/core/solver -k invariant -q`
+- `ato dev test --direct test/core/solver/test_solver.py::test_simplify -q`
 
 ## Best Practices
 
@@ -165,11 +165,11 @@ and let `insert_expression` do the hard work.
 ### Debugging & Logging
 Useful config flags (see `src/faebryk/core/solver/utils.py`):
 
-- `SLOG=1`: debug logging for solver/mutator
-- `SPRINT_START=1`: log start of each phase
-- `SVERBOSE_TABLE=1`: verbose mutation tables
-- `SSHOW_SS_IS=1`: include subset/is predicates in graph printouts
-- `SMAX_ITERATIONS=N`: raise early if stuck looping (helps catch bad rewrites)
+- `FBRK_SLOG=1`: debug logging for solver/mutator
+- `FBRK_SPRINT_START=1`: log start of each phase
+- `FBRK_SVERBOSE_TABLE=1`: verbose mutation tables
+- `FBRK_SSHOW_SS_IS=1`: include subset/is predicates in graph printouts
+- `FBRK_SMAX_ITERATIONS=N`: raise early if stuck looping (helps catch bad rewrites)
 
 In failures, look for `Contradiction` / `ContradictionByLiteral` output: it prints mutation tracebacks back to
 origin expressions/parameters, which is usually the shortest path to the actual bug.
