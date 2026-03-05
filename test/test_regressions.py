@@ -31,6 +31,16 @@ ENABLE_PROFILING = False
 SKIP_PACKAGE_DIRS = {"archive", "logos", ".git", "__pycache__"}
 
 
+def clone_repo(repo_uri: str, path: Path):
+    """Clone a repository without depending on the GitHub CLI."""
+    run_live(
+        ["git", "clone", "--depth", "1", repo_uri, str(path)],
+        cwd=path.parent,
+        stdout=print,
+        stderr=print,
+    )
+
+
 def build_project(prj_path: Path, request: pytest.FixtureRequest):
     """Generically "build" the project."""
     friendly_node_name = pathvalidate.sanitize_filename(str(request.node.name))
@@ -166,21 +176,7 @@ def packages_repo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     repo_path = tmp_dir / "packages"
 
     try:
-        run_live(
-            [
-                "gh",
-                "repo",
-                "clone",
-                PACKAGES_REPO.repo_uri,
-                str(repo_path),
-                "--",
-                "--depth",
-                "1",
-            ],
-            cwd=tmp_dir,
-            stdout=print,
-            stderr=print,
-        )
+        clone_repo(PACKAGES_REPO.repo_uri, repo_path)
     except CalledProcessError as ex:
         raise CloneError(f"Failed to clone {PACKAGES_REPO.repo_uri}") from ex
 
@@ -210,12 +206,7 @@ def test_single_projects(
 
     # Clone the repository
     try:
-        run_live(
-            ["gh", "repo", "clone", repo_uri, "project", "--", "--depth", "1"],
-            cwd=tmp_path,
-            stdout=print,
-            stderr=print,
-        )
+        clone_repo(repo_uri, tmp_path / "project")
     except CalledProcessError as ex:
         raise CloneError from ex
 
