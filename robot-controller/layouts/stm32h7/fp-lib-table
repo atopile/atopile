@@ -1,0 +1,17 @@
+(fp_lib_table
+	(version 7)
+	(lib
+		(name "UNI_ROYAL_0402WGF330JTCE")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF330JTCE")
+		(options "")
+		(descr "atopile: part lib: UNI_ROYAL_0402WGF330JTCE")
+	)
+	(lib
+		(name "Samsung_Electro_Mechanics_CL05B104KO5NNNC")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05B104KO5NNNC")
+		(options "")
+		(descr "atopile: part lib: Samsung_Electro_Mechanics_CL05B104KO5NNNC")
+	)
+)

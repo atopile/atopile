@@ -178,10 +178,6 @@ export interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
-export interface OpenSpecViewerMessage {
-  type: 'openSpecViewer';
-}
-
 export interface ProjectFilesChangedMessage {
   type: 'projectFilesChanged';
   projectRoot: string;
@@ -212,7 +208,6 @@ export type ExtensionMessage =
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
   | OpenMigrateTabMessage
-  | OpenSpecViewerMessage
   | ProjectFilesChangedMessage;
 
 /**

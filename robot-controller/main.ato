@@ -1,0 +1,124 @@
+#pragma experiment("TRAITS")
+
+import ElectricPower
+import ElectricLogic
+import UART
+import DifferentialPair
+import has_requirement
+
+module FeatherweightRobotController:
+    """
+    # Featherweight Combat Robot Controller
+
+    Central controller for a featherweight combat robot with three BLDC motor channels:
+    two drive motors and one spinner weapon motor. The controller accepts radio-control
+    input, manages power distribution from a battery pack, and routes motor power and
+    commutation signals to three BLDC stages.
+
+    ## Key Decisions
+    - STM32H7 family MCU for high compute headroom and advanced timers
+    - Three identical BLDC controller channels: left drive, right drive, and weapon
+    - XT30 battery input for main power
+    - Screw terminal motor outputs for each 3-phase motor
+
+    ## Requirements
+    - R1: RC input — Supports at least one radio-control receiver input, PPM or SBUS
+    - R2: Three BLDC outputs — Provides 3 independent BLDC motor controller channels
+    - R3: Motor supply range — Operates from 8V to 20V motor supply input
+    - R4: Drive current — Each motor channel supports 10A continuous current
+    - R5: Burst current — Each motor channel supports 20A burst current
+    - R6: MCU platform — Uses an STM32H7 processor
+    - R7: Power connector — Uses an XT30 connector for battery input
+    - R8: Motor connectors — Uses screw terminals for motor phase outputs
+
+    ## Open Questions
+    - Exact STM32H7 device/package not yet locked
+    - BLDC power stage integration level not yet locked
+    - RC input default protocol to prioritize is still open
+    """
+
+    trait has_requirement<id="R1", text="RC input", criteria="Supports at least one receiver input: PPM or SBUS">
+    trait has_requirement<id="R2", text="Three BLDC outputs", criteria="Three independent motor controller channels for left, right, and weapon">
+    trait has_requirement<id="R3", text="Motor supply range", criteria="Main motor supply operates from 8V to 20V input">
+    trait has_requirement<id="R4", text="Drive current", criteria="Each motor channel supports 10A continuous current">
+    trait has_requirement<id="R5", text="Burst current", criteria="Each motor channel supports 20A burst current">
+    trait has_requirement<id="R6", text="MCU platform", criteria="Uses an STM32H7-family microcontroller">
+    trait has_requirement<id="R7", text="Power connector", criteria="Battery input uses XT30 connector">
+    trait has_requirement<id="R8", text="Motor connectors", criteria="Each motor output uses screw terminals for 3 phases">
+
+    # Board outline can be added once this environment exposes a board-shape stdlib module.
+
+    power = new PowerInput
+    control = new MCU
+    receiver = new RadioControlInput
+    drive_left = new MotorDrive
+    drive_right = new MotorDrive
+    weapon = new MotorDrive
+
+    power.logic_3v3 ~ control.power
+    power.logic_3v3 ~ receiver.power
+
+    receiver.ppm ~ control.ppm
+    receiver.sbus ~ control.sbus
+
+    power.motor_bus ~ drive_left.supply
+    power.motor_bus ~ drive_right.supply
+    power.motor_bus ~ weapon.supply
+
+    control.drive_left_pwm ~ drive_left.control
+    control.drive_right_pwm ~ drive_right.control
+    control.weapon_pwm ~ weapon.control
+
+    assert power.battery_input.voltage within 8V to 20V
+    assert power.motor_bus.voltage within 8V to 20V
+    assert power.logic_3v3.voltage within 3.3V +/- 5%
+
+module PowerInput:
+    """XT30 battery input, protection, and logic rail generation.
+
+    Requirements:
+    - R3: 8-20V input range — Accepts the robot battery pack voltage range
+    - R7: XT30 connector — Main power entry uses XT30
+    """
+    battery_input = new ElectricPower
+    motor_bus = new ElectricPower
+    logic_3v3 = new ElectricPower
+
+module MCU:
+    """STM32H7 controller with motor-control PWM outputs and radio-control decode interfaces.
+
+    Requirements:
+    - R6: STM32H7 processor — Main control MCU is from STM32H7 family
+    """
+    power = new ElectricPower
+    ppm = new ElectricLogic
+    sbus = new UART
+    drive_left_pwm = new ElectricLogic[6]
+    drive_right_pwm = new ElectricLogic[6]
+    weapon_pwm = new ElectricLogic[6]
+
+module RadioControlInput:
+    """Receiver input conditioning for PPM and/or SBUS radio-control protocols.
+
+    Requirements:
+    - R1: RC input — Supports PPM or SBUS receiver input
+    """
+    power = new ElectricPower
+    ppm = new ElectricLogic
+    sbus = new UART
+
+module MotorDrive:
+    """One BLDC motor controller channel including gate drive, current handling, and motor connector.
+
+    Requirements:
+    - R2: Three BLDC outputs — Reused for left drive, right drive, and weapon channels
+    - R4: 10A continuous — Power stage sized for 10A continuous per channel
+    - R5: 20A burst — Power stage sized for 20A burst per channel
+    - R8: Screw terminal motor output — Uses screw terminal phase connections
+    """
+    supply = new ElectricPower
+    control = new ElectricLogic[6]
+    phases = new DifferentialPair[3]
+
+    assert supply.voltage within 8V to 20V
+    assert supply.max_current >= 20A

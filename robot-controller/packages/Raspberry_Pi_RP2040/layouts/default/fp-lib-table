@@ -1,0 +1,10 @@
+(fp_lib_table
+	(version 7)
+	(lib
+		(name "Raspberry_Pi_RP2040")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/Raspberry_Pi_RP2040")
+		(options "")
+		(descr "atopile: part lib: Raspberry_Pi_RP2040")
+	)
+)

@@ -179,10 +179,6 @@ interface OpenMigrateTabMessage {
   projectRoot: string;
 }
 
-interface OpenSpecViewerMessage {
-  type: 'openSpecViewer';
-}
-
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -213,8 +209,7 @@ type WebviewMessage =
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
   | WebviewReadyMessage
-  | OpenMigrateTabMessage
-  | OpenSpecViewerMessage;
+  | OpenMigrateTabMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -712,7 +707,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
         openMigratePreview(this._extensionUri, message.projectRoot);
         break;
-      // spec viewer handled by feature/requirements branch
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }

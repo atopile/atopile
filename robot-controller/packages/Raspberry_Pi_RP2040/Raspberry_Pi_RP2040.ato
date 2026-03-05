@@ -1,0 +1,4 @@
+from "parts/Raspberry_Pi_RP2040/Raspberry_Pi_RP2040.ato" import Raspberry_Pi_RP2040_package
+
+module Raspberry_Pi_RP2040:
+    package = new Raspberry_Pi_RP2040_package

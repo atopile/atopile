@@ -265,18 +265,6 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
     projects: list[Project] = []
     seen_roots: set[str] = set()
 
-    # Directories that never contain projects — skip to avoid
-    # walking potentially huge trees (e.g. .ato/modules dependencies).
-    _SKIP_DIRS = {
-        ".ato",
-        ".git",
-        "build",
-        "node_modules",
-        "__pycache__",
-        ".venv",
-        "venv",
-    }
-
     for root_path in paths:
         if not root_path.exists():
             log.warning(f"Path does not exist: {root_path}")
@@ -291,7 +279,7 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 dirnames[:] = [
                     d
                     for d in dirnames
-                    if d not in _SKIP_DIRS and not d.startswith("{{")
+                    if d not in _SKIP_PROJECT_DIRS and not d.startswith("{{")
                 ]
                 if "ato.yaml" in filenames:
                     ato_files.append(Path(dirpath) / "ato.yaml")
@@ -436,6 +424,59 @@ def create_local_package(
     }
 
 
+def list_workspace_targets(project_root: Path) -> dict[str, object]:
+    if not project_root.exists():
+        raise ValueError(f"Project path does not exist: {project_root}")
+
+    projects: list[dict[str, object]] = []
+
+    for dirpath, dirnames, filenames in os.walk(project_root):
+        dirnames[:] = [
+            d for d in dirnames if d not in _SKIP_PROJECT_DIRS and not d.startswith("{{")
+        ]
+        if "ato.yaml" not in filenames:
+            continue
+
+        ato_file = Path(dirpath) / "ato.yaml"
+        try:
+            data = yaml.safe_load(ato_file.read_text(encoding="utf-8")) or {}
+        except Exception as exc:
+            log.warning(f"Failed to parse {ato_file}: {exc}")
+            continue
+
+        builds = data.get("builds")
+        if not isinstance(builds, dict):
+            continue
+
+        rel_path = Path(dirpath).relative_to(project_root)
+        targets: list[dict[str, str]] = []
+        for target_name, target_cfg in builds.items():
+            if isinstance(target_cfg, dict):
+                targets.append(
+                    {"name": str(target_name), "entry": str(target_cfg.get("entry", ""))}
+                )
+
+        if not targets:
+            continue
+
+        projects.append(
+            {
+                "path": "." if rel_path == Path(".") else rel_path.as_posix(),
+                "name": Path(dirpath).name,
+                "package_identifier": (
+                    data.get("package", {}).get("identifier")
+                    if isinstance(data.get("package"), dict)
+                    else None
+                ),
+                "targets": targets,
+            }
+        )
+
+    projects.sort(key=lambda item: str(item["path"]).lower())
+    return {
+        "projects": projects,
+        "total_targets": sum(len(project["targets"]) for project in projects),
+    }
 def create_project(
     parent_directory: Path, name: Optional[str] = None
 ) -> tuple[Path, str]:
@@ -1109,4 +1150,5 @@ __all__ = [
     "handle_delete_build_target",
     "handle_update_dependency_version",
     "create_local_package",
+    "list_workspace_targets",
 ]
