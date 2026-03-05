@@ -163,6 +163,9 @@ export class Editor {
     private onSelectionChangeCallback: ((selectedIndices: number[]) => void) | null = null;
     private onModelLoadCallback: ((model: RenderModel) => void) | null = null;
 
+    // Snap-to-grid callback: transforms raw drag delta into snapped delta
+    private snapDelta: ((dx: number, dy: number) => { dx: number; dy: number }) | null = null;
+
     // Stored handler references for cleanup
     private _onMouseUp: ((e: MouseEvent) => void) | null = null;
     private _onKeyDown: ((e: KeyboardEvent) => void) | null = null;
@@ -401,7 +404,7 @@ export class Editor {
         // If dragging, apply the current delta to all dynamic layers
         if (this.isDragging && this.dragStartWorld) {
             const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
-            const delta = worldPos.sub(this.dragStartWorld);
+            const delta = this.applySnap(worldPos.sub(this.dragStartWorld));
             const trans = Matrix3.translation(delta.x, delta.y);
             for (const layer of this.renderer.dynamicLayers) {
                 layer.transform = trans;
@@ -1172,8 +1175,8 @@ export class Editor {
             }
 
             if (!this.dragStartWorld) return;
-            const delta = worldPos.sub(this.dragStartWorld);
-            
+            const delta = this.applySnap(worldPos.sub(this.dragStartWorld));
+
             // GPU-accelerated drag: update layer transforms instead of re-tessellating
             const trans = Matrix3.translation(delta.x, delta.y);
             for (const layer of this.renderer.dynamicLayers) {
@@ -1211,7 +1214,7 @@ export class Editor {
             
             const viewport = this.getCanvasViewportMetrics();
             const worldPos = this.camera.screen_to_world(new Vec2(e.clientX - viewport.left, e.clientY - viewport.top));
-            const delta = worldPos.sub(this.dragStartWorld!);
+            const delta = this.applySnap(worldPos.sub(this.dragStartWorld!));
             const dx = delta.x;
             const dy = delta.y;
 
@@ -1473,6 +1476,16 @@ export class Editor {
         cb(this.pendingActionRequests > 0);
     }
 
+    setSnapDelta(cb: ((dx: number, dy: number) => { dx: number; dy: number }) | null) {
+        this.snapDelta = cb;
+    }
+
+    private applySnap(delta: Vec2): Vec2 {
+        if (!this.snapDelta) return delta;
+        const s = this.snapDelta(delta.x, delta.y);
+        return new Vec2(s.dx, s.dy);
+    }
+
     private repaintWithSelection() {
         this.dynamicDirty = true;
         this.requestRedraw();
@@ -1519,7 +1532,7 @@ export class Editor {
         );
 
         const worldPos = this.camera.screen_to_world(this.lastMouseScreen);
-        const delta = worldPos.sub(this.dragStartWorld);
+        const delta = this.applySnap(worldPos.sub(this.dragStartWorld));
         renderTextOverlay(
             this.textCtx,
             this.model,

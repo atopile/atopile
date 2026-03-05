@@ -483,6 +483,92 @@ function buildLayerPanel() {
     }
 }
 
+// --- Grid snap settings ---
+{
+    const GRID_SIZES = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 1.27, 2.54];
+    let gridSize: number | null = 0.25;
+    let settingsPopup: HTMLElement | null = null;
+
+    const statusBar = document.getElementById("status");
+    const settingsBtn = document.createElement("span");
+    settingsBtn.id = "settings-btn";
+    settingsBtn.title = "Grid settings";
+    settingsBtn.textContent = "\u2699";
+    editor.setSnapDelta((dx, dy) => {
+        if (gridSize === null) return { dx, dy };
+        return {
+            dx: Math.round(dx / gridSize) * gridSize,
+            dy: Math.round(dy / gridSize) * gridSize,
+        };
+    });
+    if (statusBar) {
+        statusBar.insertBefore(settingsBtn, statusBar.firstChild);
+
+        settingsBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (settingsPopup) {
+                settingsPopup.remove();
+                settingsPopup = null;
+                return;
+            }
+            settingsPopup = document.createElement("div");
+            settingsPopup.className = "settings-popup";
+
+            const label = document.createElement("div");
+            label.className = "settings-label-title";
+            label.textContent = "Grid snap";
+            settingsPopup.appendChild(label);
+
+            const btnRow = document.createElement("div");
+            btnRow.className = "settings-source-buttons";
+
+            const allOptions: { label: string; value: number | null }[] = [
+                { label: "OFF", value: null },
+                ...GRID_SIZES.map(s => ({ label: String(s), value: s })),
+            ];
+
+            const buttons: HTMLButtonElement[] = [];
+            for (const opt of allOptions) {
+                const btn = document.createElement("button");
+                btn.className = "source-btn";
+                if (gridSize === opt.value) btn.classList.add("active");
+                btn.textContent = opt.label;
+                btn.addEventListener("click", () => {
+                    gridSize = opt.value;
+                    for (const b of buttons) b.classList.remove("active");
+                    btn.classList.add("active");
+                });
+                buttons.push(btn);
+                btnRow.appendChild(btn);
+            }
+
+            settingsPopup.appendChild(btnRow);
+            document.body.appendChild(settingsPopup);
+
+            const removeListeners = () => {
+                document.removeEventListener("mousedown", closeOnOutside);
+                document.removeEventListener("keydown", closeOnEsc);
+            };
+            const closeOnOutside = (ev: MouseEvent) => {
+                if (settingsPopup && !settingsPopup.contains(ev.target as Node) && ev.target !== settingsBtn && !settingsBtn.contains(ev.target as Node)) {
+                    settingsPopup.remove();
+                    settingsPopup = null;
+                    removeListeners();
+                }
+            };
+            const closeOnEsc = (ev: KeyboardEvent) => {
+                if (ev.key === "Escape" && settingsPopup) {
+                    settingsPopup.remove();
+                    settingsPopup = null;
+                    removeListeners();
+                }
+            };
+            document.addEventListener("mousedown", closeOnOutside);
+            document.addEventListener("keydown", closeOnEsc);
+        });
+    }
+}
+
 const coordsEl = document.getElementById("status-coords");
 const busyEl = document.getElementById("status-busy");
 const helpEl = document.getElementById("status-help");
