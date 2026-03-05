@@ -158,28 +158,27 @@ def _discover_packages(packages_path: Path) -> list[str]:
     return packages
 
 
+def _get_local_packages_repo_path() -> Path | None:
+    """Return the provisioned sibling packages repo if present."""
+    multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
+    repo_path = _repo_root().parent / "packages"
+    if not repo_path.exists() or not (repo_path / ".git").exists():
+        return None
+    if not (repo_path / multipackage_subdir).exists():
+        return None
+    return repo_path
+
+
 @pytest.fixture(scope="session")
-def packages_repo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def packages_repo_path() -> Path:
     """
     Session-scoped fixture that provides the packages repo path.
 
-    Uses the local sibling packages repo if available (fastest),
-    otherwise clones fresh to a temp directory.
+    Uses the provisioned sibling packages repo.
     """
-    # Option 1: Use local packages repo if available (for local dev)
-    local_packages = _repo_root().parent / "packages"
-    if local_packages.exists() and (local_packages / ".git").exists():
-        return local_packages
-
-    # Option 2: Clone fresh to temp directory
-    tmp_dir = tmp_path_factory.mktemp("packages-repo")
-    repo_path = tmp_dir / "packages"
-
-    try:
-        clone_repo(PACKAGES_REPO.repo_uri, repo_path)
-    except CalledProcessError as ex:
-        raise CloneError(f"Failed to clone {PACKAGES_REPO.repo_uri}") from ex
-
+    repo_path = _get_local_packages_repo_path()
+    if repo_path is None:
+        pytest.skip("packages repo not provisioned at ../packages")
     return repo_path
 
 
@@ -239,17 +238,13 @@ def pytest_generate_tests(metafunc: pytest.Metafunc):
     if "package_name" not in metafunc.fixturenames:
         return
 
-    # For package tests, we need to discover packages
-    # This requires the repo to exist - use indirect parameterization
-    # The actual package list will be validated at test time
+    repo_path = _get_local_packages_repo_path()
     multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
-    packages_path = _repo_root().parent / "packages" / multipackage_subdir
-
-    if packages_path.exists():
-        packages = _discover_packages(packages_path)
-    else:
-        # Fallback: no packages discovered, test will clone and discover
-        packages = []
+    packages = (
+        _discover_packages(repo_path / multipackage_subdir)
+        if repo_path is not None
+        else []
+    )
 
     if packages:
         params = []
@@ -280,12 +275,7 @@ def test_package(
     multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
 
     if package_name is None:
-        # No packages were discovered at collection time - discover now
-        packages = _discover_packages(packages_repo_path / multipackage_subdir)
-        if not packages:
-            pytest.skip("No packages found in repo")
-        # Just test the first one as a sanity check
-        package_name = packages[0]
+        pytest.skip("No packages found in repo")
 
     source_package_path = packages_repo_path / multipackage_subdir / package_name
     if not source_package_path.exists():

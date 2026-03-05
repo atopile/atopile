@@ -23,6 +23,9 @@ jobs:
         fetch-depth: 100
         fetch-tags: true
 
+    - name: Checkout packages repo
+      run: git clone --depth 1 https://github.com/atopile/packages "$GITHUB_WORKSPACE/../packages"
+
     - name: Prepare artifacts dir
       run: mkdir -p artifacts
 
