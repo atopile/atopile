@@ -136,6 +136,12 @@ class _ProjectTest:
     skip_reason: str | None = None
 
 
+def _project_test_id(test_cfg: _ProjectTest) -> str:
+    if test_cfg.project_path == ".":
+        return test_cfg.repo_uri
+    return f"{test_cfg.repo_uri}/{test_cfg.project_path}"
+
+
 SINGLE_PROJECTS: list[_ProjectTest] = [
     _ProjectTest("atopile/spin-servo-drive", skip_reason="Needs upgrading"),
     _ProjectTest("atopile/atopile", "examples/auto-picking"),
@@ -222,7 +228,7 @@ def project_repo_paths(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Pa
 
 @pytest.mark.slow
 @pytest.mark.regression
-@pytest.mark.parametrize("test_cfg", SINGLE_PROJECTS)
+@pytest.mark.parametrize("test_cfg", SINGLE_PROJECTS, ids=_project_test_id)
 def test_single_projects(
     test_cfg: _ProjectTest,
     project_repo_paths: dict[str, Path],
