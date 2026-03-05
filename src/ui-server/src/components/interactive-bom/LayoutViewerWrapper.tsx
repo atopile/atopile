@@ -30,11 +30,11 @@ export function LayoutViewerWrapper() {
       readOnly: true,
     });
 
-    editor.onModelLoad = (model) => {
+    editor.setOnModelLoad((model) => {
       setRenderModel(model);
-    };
+    });
 
-    editor.onSelectionChange = (indices) => {
+    editor.setOnSelectionChange((indices) => {
       if (indices.length === 0) {
         setSelectedGroup(null);
         return;
@@ -42,7 +42,7 @@ export function LayoutViewerWrapper() {
       // Find which BomGroup contains the first selected index
       const groupId = useInteractiveBomStore.getState().fpIndexToGroupId.get(indices[0]!);
       setSelectedGroup(groupId ?? null);
-    };
+    });
 
     editor.init();
     editorRef.current = editor;

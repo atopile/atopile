@@ -160,8 +160,8 @@ export class Editor {
     private actionNonce = 0;
 
     // External selection callbacks
-    onSelectionChange: ((selectedIndices: number[]) => void) | null = null;
-    onModelLoad: ((model: RenderModel) => void) | null = null;
+    private onSelectionChangeCallback: ((selectedIndices: number[]) => void) | null = null;
+    private onModelLoadCallback: ((model: RenderModel) => void) | null = null;
 
     // Stored handler references for cleanup
     private _onMouseUp: ((e: MouseEvent) => void) | null = null;
@@ -281,7 +281,7 @@ export class Editor {
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
-        if (this.onModelLoad) this.onModelLoad(this.model);
+        if (this.onModelLoadCallback) this.onModelLoadCallback(this.model);
     }
 
     private applyDelta(delta: RenderDelta) {
@@ -511,7 +511,7 @@ export class Editor {
     }
 
     private notifySelectionChanged(): void {
-        if (this.onSelectionChange) {
+        if (this.onSelectionChangeCallback) {
             let indices: number[];
             if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
                 indices = [this.selectedFpIndex];
@@ -523,7 +523,7 @@ export class Editor {
             } else {
                 indices = [];
             }
-            this.onSelectionChange(indices);
+            this.onSelectionChangeCallback(indices);
         }
     }
 
@@ -1458,6 +1458,14 @@ export class Editor {
             this.setMultiSelection(indices);
         }
         this.repaintWithSelection();
+    }
+
+    setOnSelectionChange(cb: (selectedIndices: number[]) => void) {
+        this.onSelectionChangeCallback = cb;
+    }
+
+    setOnModelLoad(cb: (model: RenderModel) => void) {
+        this.onModelLoadCallback = cb;
     }
 
     setOnActionBusyChanged(cb: (busy: boolean) => void) {
