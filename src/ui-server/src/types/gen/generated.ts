@@ -28,10 +28,12 @@ export interface Project {
  * A build target from ato.yaml.
  */
 export interface TargetElement {
-    entry:      string;
-    lastBuild?: null | TargetBuildTargetStatus;
-    name:       string;
-    root:       string;
+    boards?:                string[];
+    entry:                  string;
+    isSystem?:              boolean;
+    lastBuild?:             null | TargetBuildTargetStatus;
+    name:                   string;
+    root:                   string;
     [property: string]: any;
 }
 
@@ -65,10 +67,12 @@ export enum BuildStatus {
  * A build target from ato.yaml.
  */
 export interface BuildTarget {
-    entry:      string;
-    lastBuild?: null | BuildTargetBuildTargetStatus;
-    name:       string;
-    root:       string;
+    boards?:                string[];
+    entry:                  string;
+    isSystem?:              boolean;
+    lastBuild?:             null | BuildTargetBuildTargetStatus;
+    name:                   string;
+    root:                   string;
     [property: string]: any;
 }
 
@@ -711,6 +715,7 @@ export enum EventType {
     Open3D = "open_3d",
     OpenKicad = "open_kicad",
     OpenLayout = "open_layout",
+    OpenMultiboard = "open_multiboard",
     PackageModified = "package_modified",
     PackagesChanged = "packages_changed",
     PackagesDownloadsUpdated = "packages_downloads_updated",

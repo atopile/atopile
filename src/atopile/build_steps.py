@@ -21,6 +21,7 @@ from atopile.compiler.build import build_stage_2
 from atopile.config import PROJECT_CONFIG_FILENAME, BuildType, config
 from atopile.errors import (
     UserBadParameterError,
+    UserDesignCheckException,
     UserException,
     UserExportError,
     UserPickError,
@@ -536,6 +537,27 @@ def instantiate_app_step(ctx: BuildStepContext) -> None:
 def prepare_build(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     ctx.solver = Solver()
+
+    # Check for explicit is_multiboard trait
+    ctx.is_system_build = app.has_trait(F.is_multiboard)
+
+    if ctx.is_system_build:
+        boards = list(
+            app.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.is_board,
+            )
+        )
+        ctx.boards = boards
+        logger.info(
+            "System build detected with %d boards: %s",
+            len(boards),
+            [b.get_name() for b in boards],
+        )
+        # System builds don't produce a PCB — skip PCB creation
+        return
+
     if ctx.pcb is None:
         ctx.pcb = (
             F.PCB.bind_typegraph(app.tg)
@@ -571,6 +593,8 @@ def post_instantiation_graph_check(ctx: BuildStepContext) -> None:
     - Applying default constraints (has_default_constraint)
     - Early graph validation to catch malformed connections
     """
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     check_design(
         app,
@@ -592,6 +616,8 @@ def post_instantiation_setup(ctx: BuildStepContext) -> None:
     - Connecting deprecated aliases (ElectricPower vcc/gnd)
     - Connecting electric references (has_single_electric_reference)
     """
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     check_design(
         app,
@@ -616,6 +642,8 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     - Setting address lines based on solved offset (Addressor)
     - Other verification checks
     """
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     check_design(
         app,
@@ -625,11 +653,39 @@ def post_instantiation_design_check(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "cross-board-drc",
+    description="Cross-board DRC",
+    dependencies=[post_instantiation_design_check],
+)
+def cross_board_drc(ctx: BuildStepContext) -> None:
+    """Check for cross-board connections that don't pass through a harness."""
+    if not ctx.is_system_build:
+        return
+    from atopile.cross_board_drc import (
+        CrossBoardDRCFault,
+        check_cross_board_connections,
+    )
+
+    app = ctx.require_app()
+    violations = check_cross_board_connections(app, ctx.boards)
+
+    with accumulate(UserDesignCheckException) as acc:
+        for v in violations:
+            with acc.collect():
+                raise CrossBoardDRCFault(v.message, nodes=[app])
+
+    if not violations:
+        logger.info("Cross-board DRC passed: all inter-board connections use harnesses")
+
+
+@muster.register(
     "load-pcb",
     description="Loading PCB",
     dependencies=[post_instantiation_design_check],
 )
 def load_pcb(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     pcb = ctx.require_pcb()
     pcb.run_transformer()
     if config.build.keep_designators:
@@ -638,6 +694,8 @@ def load_pcb(ctx: BuildStepContext) -> None:
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
 def pick_parts(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     solver = ctx.require_solver()
     if config.build.keep_picked_parts:
@@ -657,6 +715,8 @@ def pick_parts(ctx: BuildStepContext) -> None:
     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
 )
 def prepare_nets(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     pcb = ctx.require_pcb()
     logger.info("Preparing nets")
@@ -690,6 +750,8 @@ def prepare_nets(ctx: BuildStepContext) -> None:
     dependencies=[prepare_nets],
 )
 def post_solve_checks(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     logger.info("Running checks")
     check_design(
@@ -703,6 +765,8 @@ def post_solve_checks(ctx: BuildStepContext) -> None:
     "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
 )
 def update_pcb(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     pcb = ctx.require_pcb()
 
@@ -844,6 +908,8 @@ def update_pcb(ctx: BuildStepContext) -> None:
     "post-pcb-checks", description="Running post-pcb checks", dependencies=[update_pcb]
 )
 def post_pcb_checks(ctx: BuildStepContext) -> None:
+    if ctx.is_system_build:
+        return
     pcb = ctx.require_pcb()
     _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
@@ -862,12 +928,287 @@ def build_design(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "system-bom",
+    description="Generating system BOM",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_system_bom(ctx: BuildStepContext) -> None:
+    """Generate per-board BOMs and a system-level summary."""
+    if not ctx.is_system_build:
+        return
+    from faebryk.exporters.bom.system_bom import write_system_bom
+
+    write_system_bom(
+        ctx.require_app(),
+        ctx.boards,
+        config.build.paths.output_base.parent,
+        build_id=ctx.build_id,
+    )
+
+
+@muster.register(
+    "system-3d",
+    description="Generating system 3D manifest",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_system_3d(ctx: BuildStepContext) -> None:
+    """Generate a multiboard manifest JSON for the 3D viewer."""
+    if not ctx.is_system_build:
+        return
+
+    app = ctx.require_app()
+
+    harnesses = list(
+        app.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Harness.is_harness,
+        )
+    )
+
+    # Build board UUID set for ancestry lookup
+    board_uuids: set[int] = set()
+    board_by_uuid: dict[int, fabll.Node] = {}
+    for board in ctx.boards:
+        uid = board.instance.node().get_uuid()
+        board_uuids.add(uid)
+        board_by_uuid[uid] = board
+
+    def _get_ancestor_board(node: fabll.Node) -> fabll.Node | None:
+        """Walk up from node to find which board it belongs to."""
+        current = node
+        while True:
+            parent_result = current.get_parent()
+            if parent_result is None:
+                return None
+            parent_node = parent_result[0]
+            uid = parent_node.instance.node().get_uuid()
+            if uid in board_uuids:
+                return parent_node
+            current = parent_node
+
+    def _get_direct_peers(node: fabll.Node) -> list[fabll.Node]:
+        """Get only directly ~-connected interfaces (1-hop, no transitivity)."""
+        peers: list[fabll.Node] = []
+        node_ref = node.instance.node()
+        g = node.instance.g()
+
+        def _collect(_ctx: None, bound_edge: graph.BoundEdge) -> None:
+            edge = bound_edge.edge()
+            other = fbrk.EdgeInterfaceConnection.get_other_connected_node(
+                edge=edge, node=node_ref
+            )
+            if other is not None:
+                peers.append(fabll.Node.bind_instance(g.bind(node=other)))
+
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(
+            bound_node=node.instance,
+            ctx=None,
+            f=_collect,
+        )
+        return peers
+
+    def _find_harness_endpoints(
+        harness: fabll.Node,
+    ) -> list[dict[str, str]]:
+        """
+        For each connector on a harness, trace direct ~ edges from its pins
+        to find which board it connects to. Returns list of endpoint dicts.
+
+        Uses visit_connected_edges (1-hop) instead of get_connected (full net)
+        to distinguish which harness connector mates with which board.
+        """
+        connectors = list(
+            harness.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.Harness.is_connector_plug,
+            )
+        ) + list(
+            harness.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.Harness.is_connector_receptacle,
+            )
+        )
+
+        endpoints: list[dict[str, str]] = []
+        for connector in connectors:
+            # Get all interface children of this connector (its pins)
+            pins = list(
+                connector.get_children(
+                    direct_only=False,
+                    types=fabll.Node,
+                    required_trait=fabll.is_interface,
+                )
+            )
+
+            # Check the connector itself first, then its pins.
+            # When interfaces are connected with ~, the EdgeInterfaceConnection
+            # edge exists at the connector level (not at each pin).
+            nodes_to_check = [connector] + pins
+
+            connected_board: fabll.Node | None = None
+            connected_connector_name: str | None = None
+            for node in nodes_to_check:
+                direct_peers = _get_direct_peers(node)
+                for peer in direct_peers:
+                    board = _get_ancestor_board(peer)
+                    if board is not None:
+                        connected_board = board
+                        # Find the connector on the board side
+                        current = peer
+                        while True:
+                            if current.has_trait(
+                                F.Harness.is_connector_plug
+                            ) or current.has_trait(F.Harness.is_connector_receptacle):
+                                connected_connector_name = current.get_name()
+                                break
+                            parent_result = current.get_parent()
+                            if parent_result is None:
+                                break
+                            parent_node = parent_result[0]
+                            parent_uid = parent_node.instance.node().get_uuid()
+                            if parent_uid in board_uuids:
+                                break
+                            current = parent_node
+                        break
+                if connected_board is not None:
+                    break
+
+            if connected_board is not None:
+                endpoint = {
+                    "board": connected_board.get_name(),
+                }
+                if connected_connector_name:
+                    endpoint["connector"] = connected_connector_name
+                endpoints.append(endpoint)
+
+        return endpoints
+
+    # Build a mapping from board graph name -> build target name.
+    board_target_names = config.build.boards
+    graph_name_to_target: dict[str, str] = {}
+
+    if board_target_names:
+        entry_to_target: dict[str, str] = {}
+        for target_name in board_target_names:
+            board_cfg = config.project.builds.get(target_name)
+            if board_cfg and board_cfg.address:
+                module_name = (
+                    board_cfg.address.split(":")[-1] if ":" in board_cfg.address else ""
+                )
+                if module_name:
+                    entry_to_target[module_name] = target_name
+
+        for board in ctx.boards:
+            type_name = board.get_type_name()
+            short_type_name = (
+                type_name.split("::")[-1]
+                if type_name and "::" in type_name
+                else type_name
+            )
+            if short_type_name and short_type_name in entry_to_target:
+                graph_name_to_target[board.get_name()] = entry_to_target[
+                    short_type_name
+                ]
+            else:
+                if board.get_name() in board_target_names:
+                    graph_name_to_target[board.get_name()] = board.get_name()
+
+    def get_target_name(board: fabll.Node) -> str:
+        """Get the build target name for a board, falling back to graph name."""
+        return graph_name_to_target.get(board.get_name(), board.get_name())
+
+    # Build a map from board target name -> layout Path for connector position lookup
+    board_layout_map: dict[str, Path] = {}
+    if board_target_names:
+        for target_name in board_target_names:
+            board_cfg = config.project.builds.get(target_name)
+            if board_cfg and board_cfg.paths.layout.exists():
+                board_layout_map[target_name] = board_cfg.paths.layout
+
+    _pcb_cache: dict[str, kicad.pcb.PcbFile | None] = {}
+
+    def _find_connector_position(
+        board_name: str, connector_name: str
+    ) -> dict[str, float] | None:
+        """Look up a connector's footprint position in the board's layout file."""
+        target_name = graph_name_to_target.get(board_name, board_name)
+        layout_path = board_layout_map.get(target_name)
+        if not layout_path:
+            return None
+        key = str(layout_path)
+        if key not in _pcb_cache:
+            try:
+                _pcb_cache[key] = kicad.loads(kicad.pcb.PcbFile, layout_path)
+            except Exception:
+                _pcb_cache[key] = None
+        pcb_file = _pcb_cache[key]
+        if pcb_file is None:
+            return None
+        prefix = connector_name + "."
+        for fp in pcb_file.kicad_pcb.footprints:
+            addr = Property.try_get_property(fp.propertys, "atopile_address")
+            if addr and (addr == connector_name or addr.startswith(prefix)):
+                return {"x": fp.at.x, "y": fp.at.y}
+        return None
+
+    # Build harness entries with traced endpoints
+    harness_entries = []
+    for harness in harnesses:
+        endpoints = _find_harness_endpoints(harness)
+        # Enrich endpoints with connector footprint positions
+        for endpoint in endpoints:
+            connector_name = endpoint.get("connector")
+            if connector_name:
+                position = _find_connector_position(endpoint["board"], connector_name)
+                if position:
+                    endpoint["position"] = position
+        entry: dict = {
+            "name": harness.get_name(),
+            "type": harness.get_full_name(include_uuid=False, types=True),
+        }
+        if len(endpoints) >= 1:
+            entry["from"] = endpoints[0]
+        if len(endpoints) >= 2:
+            entry["to"] = endpoints[1]
+        harness_entries.append(entry)
+
+    manifest = {
+        "version": "1.1",
+        "type": "multiboard",
+        "boards": [
+            {
+                "name": board.get_name(),
+                "build_target": get_target_name(board),
+                "glb_path": (
+                    f"../{get_target_name(board)}/{get_target_name(board)}.pcba.glb"
+                ),
+            }
+            for board in ctx.boards
+        ],
+        "harnesses": harness_entries,
+    }
+
+    output_path = config.build.paths.output_base.with_suffix(".multiboard.json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+    logger.info("Wrote multiboard manifest to %s", output_path)
+
+
+@muster.register(
     "bom",
     dependencies=[build_design],
     produces_artifact=True,
 )
 def generate_bom(ctx: BuildStepContext) -> None:
     """Generate a BOM for the project in both CSV and JSON formats."""
+    if ctx.is_system_build:
+        return
     app = ctx.require_app()
     pickable_parts = [
         part
@@ -1179,6 +1520,11 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
         generate_variable_report,
         # generate_power_tree,
         generate_datasheets,
+        # System build targets — gated by ctx.is_system_build, so they're
+        # no-ops for regular board builds
+        cross_board_drc,
+        generate_system_bom,
+        generate_system_3d,
     ],
     virtual=True,
 )
