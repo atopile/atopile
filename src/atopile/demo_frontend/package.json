@@ -1,0 +1,21 @@
+{
+  "name": "atopile-demo-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run ./src/build.ts",
+    "build-scene": "bun run ./src/build-scene.ts",
+    "validate": "bun run ./src/validate.ts"
+  },
+  "dependencies": {
+    "earcut": "^3.0.2",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.3.0",
+    "@types/three": "^0.180.0",
+    "pngjs": "^7.0.0",
+    "puppeteer": "^24.37.0",
+    "typescript": "^5.9.2"
+  }
+}

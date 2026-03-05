@@ -24,6 +24,7 @@ from atopile.cli import (
     build,
     configure,
     create,
+    demo,
     dev,
     inspect_,
     install,
@@ -207,6 +208,7 @@ def cli(
 
 
 app.command()(build.build)
+app.command()(demo.demo)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
 app.command()(inspect_.inspect)
