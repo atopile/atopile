@@ -228,6 +228,57 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
+        # r_bottom = r_top * ratio / (1 - ratio)
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+            [
+                _r_bot_helper := F.Expressions.Divide.MakeChild(
+                    [
+                        _r_bot_helper_mul := F.Expressions.Multiply.MakeChild(
+                            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+                            [ratio],
+                        )
+                    ],
+                    [
+                        _r_bot_helper_sub := F.Expressions.Subtract.MakeChild(
+                            [
+                                _lit_one_b := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=1.0, unit=F.Units.Dimensionless
+                                )
+                            ],
+                            [ratio],
+                        )
+                    ],
+                )
+            ],
+            assert_=True,
+        ),
+        # r_top = r_bottom * (1 - ratio) / ratio
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+            [
+                _r_top_helper := F.Expressions.Divide.MakeChild(
+                    [
+                        _r_top_helper_mul := F.Expressions.Multiply.MakeChild(
+                            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+                            [
+                                _r_top_helper_sub := F.Expressions.Subtract.MakeChild(
+                                    [
+                                        _lit_one_t
+                                        := F.Literals.Numbers.MakeChild_SingleValue(
+                                            value=1.0, unit=F.Units.Dimensionless
+                                        )
+                                    ],
+                                    [ratio],
+                                )
+                            ],
+                        )
+                    ],
+                    [ratio],
+                )
+            ],
+            assert_=True,
+        ),
         F.Expressions.Is.MakeChild(
             [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
             [
