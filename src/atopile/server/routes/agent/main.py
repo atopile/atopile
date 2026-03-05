@@ -501,7 +501,7 @@ async def get_session_skills(
             status_code=404, detail=session_not_found_detail(session_id)
         )
 
-    skills_dir = orchestrator.skills_dir
+    skills_dir = orchestrator._config.skills_dir
     state = dict(session.skill_state)
     selected_skill_ids = [
         str(value)

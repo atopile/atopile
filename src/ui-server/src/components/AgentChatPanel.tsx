@@ -38,7 +38,7 @@ import './AgentChatPanel.css';
 
 type MessageRole = 'user' | 'assistant' | 'system';
 
-type AgentProgressPhase = 'thinking' | 'tool_start' | 'tool_end' | 'done' | 'stopped' | 'error' | 'compacting';
+type AgentProgressPhase = 'thinking' | 'tool_start' | 'tool_end' | 'done' | 'stopped' | 'error' | 'compacting' | 'design_questions';
 
 interface AgentChecklistItem {
   id: string;
@@ -51,6 +51,18 @@ interface AgentChecklistItem {
 interface AgentChecklist {
   items: AgentChecklistItem[];
   created_at: number;
+}
+
+interface DesignQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  default?: string;
+}
+
+interface DesignQuestionsData {
+  context: string;
+  questions: DesignQuestion[];
 }
 
 interface AgentProgressPayload {
@@ -73,6 +85,8 @@ interface AgentProgressPayload {
   contextLimitTokens?: unknown;
   usage?: unknown;
   checklist?: unknown;
+  context?: unknown;
+  questions?: unknown;
 }
 
 interface AgentTraceView extends AgentToolTrace {
@@ -94,6 +108,7 @@ interface AgentMessage {
   activity?: string;
   toolTraces?: AgentTraceView[];
   checklist?: AgentChecklist | null;
+  designQuestions?: DesignQuestionsData | null;
 }
 
 interface AgentChangedFile {
@@ -530,6 +545,26 @@ function parseChecklist(raw: unknown): AgentChecklist | null {
   };
 }
 
+function parseDesignQuestions(payload: AgentProgressPayload): DesignQuestionsData | null {
+  if (!Array.isArray(payload.questions)) return null;
+  const questions: DesignQuestion[] = [];
+  for (const raw of payload.questions) {
+    if (!raw || typeof raw !== 'object') continue;
+    const q = raw as Record<string, unknown>;
+    const id = typeof q.id === 'string' ? q.id : null;
+    const question = typeof q.question === 'string' ? q.question : null;
+    if (!id || !question) continue;
+    const options = Array.isArray(q.options)
+      ? (q.options as unknown[]).filter((o): o is string => typeof o === 'string')
+      : undefined;
+    const defaultOpt = typeof q.default === 'string' ? q.default : undefined;
+    questions.push({ id, question, options: options?.length ? options : undefined, default: defaultOpt });
+  }
+  if (questions.length === 0) return null;
+  const context = typeof payload.context === 'string' ? payload.context : '';
+  return { context, questions };
+}
+
 function readProgressPayload(detail: unknown): {
   sessionId: string | null;
   runId: string | null;
@@ -547,6 +582,7 @@ function readProgressPayload(detail: unknown): {
   totalTokens: number | null;
   contextLimitTokens: number | null;
   checklist: AgentChecklist | null;
+  designQuestions: DesignQuestionsData | null;
 } {
   if (!detail || typeof detail !== 'object') {
     return {
@@ -566,6 +602,7 @@ function readProgressPayload(detail: unknown): {
       totalTokens: null,
       contextLimitTokens: null,
       checklist: null,
+      designQuestions: null,
     };
   }
 
@@ -609,6 +646,7 @@ function readProgressPayload(detail: unknown): {
     : null;
 
   const checklist = parseChecklist(payload.checklist);
+  const designQuestions = phase === 'design_questions' ? parseDesignQuestions(payload) : null;
 
   return {
     sessionId,
@@ -627,6 +665,7 @@ function readProgressPayload(detail: unknown): {
     totalTokens,
     contextLimitTokens,
     checklist,
+    designQuestions,
   };
 }
 
@@ -763,6 +802,7 @@ function normalizeProgressPhase(value: unknown): AgentProgressPhase | null {
     || value === 'stopped'
     || value === 'error'
     || value === 'compacting'
+    || value === 'design_questions'
   ) {
     return value;
   }
@@ -1028,6 +1068,7 @@ function inferActivityFromProgress(
     }
     return inferToolActivityDetail(payload.trace.name, payload.trace.args);
   }
+  if (payload.phase === 'design_questions') return 'Questions for you';
   if (payload.phase === 'error') return 'Errored';
   if (payload.phase === 'done') return 'Complete';
   if (payload.phase === 'stopped') return 'Stopped';
@@ -1116,6 +1157,16 @@ function applyProgressToMessages(
         ...message,
         content: nextContent,
         activity: nextActivity ?? message.activity,
+        checklist: latestChecklist,
+      };
+    }
+
+    if (parsed.phase === 'design_questions' && parsed.designQuestions) {
+      return {
+        ...message,
+        content: parsed.designQuestions.context || 'Design questions',
+        pending: false,
+        designQuestions: parsed.designQuestions,
         checklist: latestChecklist,
       };
     }
@@ -1392,6 +1443,132 @@ function resolveBuildStatusForTraces(
     builds,
     pendingBuildIds,
   };
+}
+
+function DesignQuestionsCard({
+  data,
+  onSubmit,
+}: {
+  data: DesignQuestionsData;
+  onSubmit: (answers: string) => void;
+}) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const total = data.questions.length;
+  const question = data.questions[currentIndex];
+  if (!question) return null;
+
+  const currentAnswer = answers[question.id] ?? '';
+  const answeredCount = Object.values(answers).filter((v) => v.trim().length > 0).length;
+
+  const selectOption = (option: string) => {
+    setAnswers((prev) => ({ ...prev, [question.id]: option }));
+    if (currentIndex < total - 1) {
+      setCurrentIndex((i) => i + 1);
+    }
+  };
+
+  const handleSubmit = () => {
+    const lines: string[] = [];
+    if (data.context) {
+      lines.push(`Re: ${data.context}`);
+      lines.push('');
+    }
+    for (const q of data.questions) {
+      const answer = (answers[q.id] ?? '').trim() || q.default || 'No preference';
+      lines.push(`${q.id}: ${answer}`);
+    }
+    onSubmit(lines.join('\n'));
+  };
+
+  return (
+    <div className="agent-design-questions">
+      {data.context && (
+        <div className="agent-dq-context">{data.context}</div>
+      )}
+      <div className="agent-dq-nav">
+        <span className="agent-dq-counter">
+          Question {currentIndex + 1} of {total}
+        </span>
+        <span className="agent-dq-answered">
+          {answeredCount}/{total} answered
+        </span>
+      </div>
+      <div className="agent-dq-question">{question.question}</div>
+      {question.options && question.options.length > 0 && (
+        <div className="agent-dq-options">
+          {question.options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`agent-dq-option ${currentAnswer === option ? 'selected' : ''}`}
+              onClick={() => selectOption(option)}
+            >
+              {option}
+              {question.default === option && <span className="agent-dq-default-badge">default</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="agent-dq-text-row">
+        <input
+          type="text"
+          className="agent-dq-text-input"
+          placeholder={question.default ? `Default: ${question.default}` : 'Type your answer...'}
+          value={currentAnswer}
+          onChange={(e) => setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (currentIndex < total - 1) {
+                setCurrentIndex((i) => i + 1);
+              }
+            }
+          }}
+        />
+      </div>
+      <div className="agent-dq-actions">
+        <button
+          type="button"
+          className="agent-dq-prev"
+          disabled={currentIndex === 0}
+          onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+        >
+          Previous
+        </button>
+        {currentIndex < total - 1 ? (
+          <button
+            type="button"
+            className="agent-dq-next"
+            onClick={() => setCurrentIndex((i) => i + 1)}
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="agent-dq-submit"
+            onClick={handleSubmit}
+          >
+            Submit answers
+          </button>
+        )}
+      </div>
+      {total > 1 && (
+        <div className="agent-dq-dots">
+          {data.questions.map((q, i) => (
+            <button
+              key={q.id}
+              type="button"
+              className={`agent-dq-dot ${i === currentIndex ? 'active' : ''} ${(answers[q.id] ?? '').trim() ? 'answered' : ''}`}
+              onClick={() => setCurrentIndex(i)}
+              title={`${q.id}: ${q.question.substring(0, 50)}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelProps) {
@@ -2195,7 +2372,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         if (nextActivity) {
           next.activityLabel = nextActivity;
         }
-        if (parsed.phase === 'done' || parsed.phase === 'stopped' || parsed.phase === 'error') {
+        if (parsed.phase === 'design_questions' || parsed.phase === 'done' || parsed.phase === 'stopped' || parsed.phase === 'error') {
           next.isSending = false;
           next.isStopping = false;
           next.activeRunId = null;
@@ -2235,7 +2412,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           setActivityLabel(nextActivity);
         }
         setMessages((previous) => applyProgressToMessages(previous, pendingId, parsed, nextActivity));
-        if (parsed.phase === 'done' || parsed.phase === 'stopped' || parsed.phase === 'error') {
+        if (parsed.phase === 'design_questions' || parsed.phase === 'done' || parsed.phase === 'stopped' || parsed.phase === 'error') {
           setIsSending(false);
           setIsStopping(false);
           setActiveRunId(null);
@@ -2586,8 +2763,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     updateChatSnapshot,
   ]);
 
-  const sendMessage = useCallback(async () => {
-    const trimmed = input.trim();
+  const sendMessage = useCallback(async (directMessage?: string) => {
+    const trimmed = (directMessage ?? input).trim();
     if (!trimmed || !projectRoot || !sessionId || !activeChatId || isSending) return;
     const chatId = activeChatId;
     const chatPrefix = chatId;
@@ -2701,6 +2878,11 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       const response = await waitForRunCompletion(currentSessionId, run.runId);
       const finalizedTraces = response.toolTraces.map((trace) => ({ ...trace, running: false }));
 
+      // Preserve designQuestions from the pending message if they were set during progress
+      const pendingMsg = chatSnapshotsRef.current
+        .find((c) => c.id === chatId)
+        ?.messages.find((m) => m.id === pendingAssistantId);
+
       const assistantMessage: AgentMessage = {
         id: `${chatPrefix}-assistant-${Date.now()}`,
         role: 'assistant',
@@ -2709,6 +2891,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           finalizedTraces,
         ),
         toolTraces: finalizedTraces,
+        designQuestions: pendingMsg?.designQuestions ?? null,
       };
 
       updateChatSnapshot(chatId, (chat) => ({
@@ -3095,6 +3278,12 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                         </ReactMarkdown>
                       </div>
                     </div>
+                    {message.designQuestions && !message.pending && (
+                      <DesignQuestionsCard
+                        data={message.designQuestions}
+                        onSubmit={(answers) => void sendMessage(answers)}
+                      />
+                    )}
                     {message.role !== 'assistant' && toolTraceSection}
                     {message.checklist && message.checklist.items.length > 0 && (
                       <div className="agent-checklist-panel">

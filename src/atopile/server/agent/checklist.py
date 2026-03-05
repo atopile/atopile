@@ -28,7 +28,7 @@ class ChecklistItem:
     description: str
     criteria: str
     status: str = "not_started"  # not_started | doing | done | blocked
-    requirement_id: str | None = None  # Optional link to spec has_requirement id
+    requirement_id: str | None = None  # Optional link to spec requirement id in docstring
     source: str | None = None  # Optional provenance tag (e.g. "steering")
     message_id: str | None = None  # Optional link to tracked_messages
     justification: str | None = None  # Reason when marking done/blocked

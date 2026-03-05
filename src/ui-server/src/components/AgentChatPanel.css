@@ -1491,6 +1491,193 @@
   color: color-mix(in srgb, var(--agent-accent) 80%, var(--text-secondary));
 }
 
+/* ── Design Questions Card ─────────────────────── */
+
+.agent-design-questions {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px 8px;
+  border: 1px solid color-mix(in srgb, var(--agent-accent) 32%, var(--border-subtle));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--agent-accent) 4%, var(--background));
+}
+
+.agent-dq-context {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.35;
+}
+
+.agent-dq-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.agent-dq-counter {
+  font-size: 10px;
+  font-weight: 660;
+  text-transform: uppercase;
+  letter-spacing: 0.48px;
+  color: var(--text-secondary);
+}
+
+.agent-dq-answered {
+  font-size: 10px;
+  color: color-mix(in srgb, var(--agent-accent) 72%, var(--text-muted));
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-dq-question {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.agent-dq-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.agent-dq-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 90%, var(--agent-accent));
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+  line-height: 1.3;
+}
+
+.agent-dq-option:hover {
+  background: color-mix(in srgb, var(--agent-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--agent-accent) 44%, var(--border-subtle));
+}
+
+.agent-dq-option.selected {
+  background: color-mix(in srgb, var(--agent-accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-accent) 56%, var(--border-subtle));
+  font-weight: 600;
+}
+
+.agent-dq-default-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--agent-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--agent-accent) 80%, var(--text-secondary));
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.agent-dq-text-row {
+  margin-bottom: 8px;
+}
+
+.agent-dq-text-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--background) 90%, transparent);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.agent-dq-text-input:focus {
+  border-color: color-mix(in srgb, var(--agent-accent) 52%, var(--border-subtle));
+}
+
+.agent-dq-text-input::placeholder {
+  color: var(--text-muted);
+}
+
+.agent-dq-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.agent-dq-prev,
+.agent-dq-next,
+.agent-dq-submit {
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.agent-dq-prev:hover:not(:disabled),
+.agent-dq-next:hover {
+  background: color-mix(in srgb, var(--agent-accent) 8%, transparent);
+}
+
+.agent-dq-prev:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.agent-dq-submit {
+  background: color-mix(in srgb, var(--agent-accent) 14%, transparent);
+  font-weight: 600;
+}
+
+.agent-dq-submit:hover {
+  background: color-mix(in srgb, var(--agent-accent) 22%, transparent);
+}
+
+.agent-dq-dots {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+
+.agent-dq-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.agent-dq-dot.active {
+  border-color: var(--agent-accent);
+  background: color-mix(in srgb, var(--agent-accent) 44%, transparent);
+}
+
+.agent-dq-dot.answered {
+  background: color-mix(in srgb, var(--success) 48%, transparent);
+  border-color: color-mix(in srgb, var(--success) 52%, var(--border-subtle));
+}
+
+.agent-dq-dot.active.answered {
+  background: color-mix(in srgb, var(--agent-accent) 44%, transparent);
+  border-color: var(--agent-accent);
+}
+
 .agent-chat-error {
   padding: 0 12px 10px;
   font-size: 11px;

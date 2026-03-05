@@ -2818,6 +2818,20 @@ async def _tool_message_log_query(
     raise RuntimeError("message_log_query is intercepted by the runner")
 
 
+@_register_tool("design_questions")
+async def _tool_design_questions(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    raise RuntimeError("design_questions is intercepted by the runner")
+
+
+@_register_tool("layout_set_board_shape")
+async def _tool_layout_set_board_shape(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    raise RuntimeError("layout_set_board_shape is not yet implemented")
+
+
 async def execute_tool(
     *,
     name: str,

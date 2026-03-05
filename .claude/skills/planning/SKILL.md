@@ -11,16 +11,13 @@ description: "Spec-driven planning for complex design tasks: when to plan, how t
 - Fix a specific build error
 - Any task with a single clear action
 
-**Complex tasks — ask user, then spec:**
-- Multi-component system design (3+ new components interacting)
+**Complex tasks — always plan first:**
+- Multi-component system design (2+ ICs interacting)
 - New board or subsystem from scratch
 - Unclear or function-level requirements ("I need a motor driver", "design me a sensor board")
 - Tasks where you need to make multiple architectural choices
 
-**Trigger behavior:** When you detect a complex task, ask the user first:
-> "This looks like a multi-part design. Want me to write up a spec first so we're aligned on requirements?"
-
-If the user says yes (or similar), **immediately create the spec file in the same turn** — do not just announce that you will. If they say no or want you to just go, proceed directly with implementation.
+**Do not ask whether to plan.** For complex tasks, go straight into planning. Write the spec, create the checklist, call `design_questions` — all in one turn. The user sees the spec and questions, and can steer from there. This is faster than a back-and-forth about whether to plan.
 
 # The Spec IS the Design
 
@@ -28,82 +25,249 @@ The spec and the design are **one and the same** `.ato` file. A spec is just the
 
 **Do not create separate spec files.** The main `.ato` file IS the spec.
 
-**Do not suffix module names with "Spec".** `PowerFrontend`, not `PowerFrontendSpec`. These names persist into the final design — name them for what they are, not for the fact that they started as a spec.
+**Do not suffix module names with "Spec".** `PowerSupply`, not `PowerSupplySpec`. These names persist into the final design — name them for what they are, not for the fact that they started as a spec. See the **ato** skill §1.9 for naming guidance.
 
-# `has_requirement` — Design Intent
+# Project Structure
 
-`has_requirement` is the only spec trait. It captures natural language requirements the build can't verify automatically. Place it on whichever module owns the requirement — top-level for system-wide requirements, on a specific subsystem for module-specific ones.
+Every project with ICs should follow this structure. **IC wrapper packages are separate from the main design.**
 
-```ato
-trait has_requirement<id="R1", text="20A continuous", criteria="FET stage rated for 20A with thermal margin">
+```
+my-project/
+├── ato.yaml                        # All builds defined here
+├── main.ato                        # Top-level design — imports packages, not raw parts
+├── packages/
+│   ├── stm32g474/
+│   │   └── stm32g474.ato           # Wrapper: raw pins → standard interfaces
+│   ├── drv8317/
+│   │   └── drv8317.ato
+│   └── tcan3414/
+│       └── tcan3414.ato
+├── parts/                          # All raw parts (ICs + connectors)
+│   ├── STMicroelectronics_STM32G474CBT6/
+│   ├── TEXAS_INSTRUMENTS_DRV8317HREER/
+│   ├── Changzhou_Amass_Elec_XT30U_M/
+│   └── ...
+└── layouts/
 ```
 
-The spec viewer discovers modules by looking for `has_requirement` traits and groups them by module hierarchy. No other marker trait is needed — if a module has requirements, it shows up in the spec viewer.
+## What goes where
 
-These traits stay in the design permanently. They document design intent alongside the implementation.
+| Item | Location | Why |
+|------|----------|-----|
+| IC wrapper modules | `packages/<name>/<name>.ato` | Complex pin mapping, reusable |
+| All raw parts | `parts/` (project root) | Installed by `parts_install` |
+| Simple self-contained parts | Used directly in `main.ato` | No supporting components or high-level interfaces needed (e.g. connectors, LEDs, test points) |
+| Generic passives | stdlib (`import Resistor`) | No package needed |
+| Top-level design | `main.ato` | Imports wrappers, never raw `_package` |
 
-# Spec Format
+## Key rules
+
+- **ICs always get wrapper packages** — MCU, gate driver, transceiver, anything with complex pin mapping
+- **Wrapper modules expose standard interfaces** — `ElectricPower`, `I2C`, `SPI`, `CAN`, `UART`, `ElectricLogic`, not raw pins
+- **Self-contained parts don't need wrappers** — anything that doesn't need supporting components and doesn't expose high-level interfaces (connectors, LEDs, test points, mounting holes)
+- **No `ato.yaml` inside package directories** — all builds defined in the project root `ato.yaml`
+- **Package builds in `ato.yaml`** — each package gets its own build target for independent verification
+
+## `ato.yaml` format
+
+```yaml
+requires-atopile: ^0.14.0
+
+paths:
+  src: ./
+  layout: ./layouts
+
+builds:
+  default:
+    entry: main.ato:DualBLDCController
+
+  # Package builds — for independent testing
+  stm32g474:
+    entry: packages/stm32g474/stm32g474.ato:STM32G474
+    hide_designators: true
+  drv8317:
+    entry: packages/drv8317/drv8317.ato:DRV8317
+    hide_designators: true
+```
+
+## Package wrapper pattern
 
 ```ato
-#pragma experiment("TRAITS")
 #pragma experiment("BRIDGE_CONNECT")
 
 import ElectricPower
-import has_requirement
+import CAN
+import ElectricLogic
+import Capacitor
+
+from "parts/STMicroelectronics_STM32G474CBT6/STMicroelectronics_STM32G474CBT6.ato" import STMicroelectronics_STM32G474CBT6_package
+
+module STM32G474:
+    """STM32G474 MCU with decoupling and standard interfaces.
+
+    Exposes:
+    - power: 3.3V rail
+    - can: CAN FD interface (PA11/PA12)
+    - pwm_a: 3x PWM for motor A (TIM1: PA8/PA9/PA10)
+    - pwm_b: 3x PWM for motor B (TIM8: PB13/PB14/PB15)
+    """
+
+    # ── External interfaces ──
+    power = new ElectricPower
+    can = new CAN
+    pwm_a = new ElectricLogic[3]
+    pwm_b = new ElectricLogic[3]
+
+    # ── Package ──
+    package = new STMicroelectronics_STM32G474CBT6_package
+
+    # ── Power ──
+    power.hv ~ package.VDD
+    power.hv ~ package.VDDA
+    power.lv ~ package.VSS
+    power.lv ~ package.VSSA
+    assert power.voltage within 3.3V +/- 10%
+
+    # ── Decoupling ──
+    decoupling = new Capacitor[3]
+    for cap in decoupling:
+        cap.capacitance = 100nF +/- 10%
+        cap.package = "C0402"
+        power ~> cap ~> power.lv
+
+    # ── CAN ──
+    can.tx.line ~ package.PA11
+    can.rx.line ~ package.PA12
+    can.tx.reference ~ power
+    can.rx.reference ~ power
+
+    # ── PWM ──
+    pwm_a[0].line ~ package.PA8
+    pwm_a[1].line ~ package.PA9
+    pwm_a[2].line ~ package.PA10
+    pwm_b[0].line ~ package.PB13
+    pwm_b[1].line ~ package.PB14
+    pwm_b[2].line ~ package.PB15
+```
+
+## Clean `main.ato`
+
+```ato
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricPower
+
+from "packages/stm32g474/stm32g474.ato" import STM32G474
+from "packages/drv8317/drv8317.ato" import DRV8317
+from "packages/tcan3414/tcan3414.ato" import TCAN3414
+from "parts/Changzhou_Amass_Elec_XT30U_M/Changzhou_Amass_Elec_XT30U_M.ato" import Changzhou_Amass_Elec_XT30U_M_package
+
+module DualBLDCController:
+    """Dual BLDC motor controller for robot drivetrain."""
+
+    mcu = new STM32G474
+    motor_a = new DRV8317
+    motor_b = new DRV8317
+    can_phy = new TCAN3414
+
+    power = new ElectricPower
+    power ~ mcu.power
+    power ~ motor_a.motor_supply
+    power ~ motor_b.motor_supply
+
+    mcu.can ~ can_phy.can
+    mcu.pwm_a ~ motor_a.pwm
+    mcu.pwm_b ~ motor_b.pwm
+```
+
+# Requirements in Docstrings
+
+Capture natural-language requirements directly in the module's docstring under a `Requirements:` section. Place requirements on whichever module owns them — top-level for system-wide requirements, on a specific subsystem for module-specific ones.
+
+```ato
+module PowerStage:
+    """Three-phase MOSFET bridge sized for continuous motor current.
+
+    Requirements:
+    - R1: 20A continuous — FET stage rated for 20A with thermal margin
+    """
+```
+
+Format: `- R<id>: <short text> — <criteria>`
+
+These requirements stay in the design permanently. They document design intent alongside the implementation.
+
+# Spec Format
+
+The spec is the skeleton of the design. It defines architecture, requirements, and constraints — but leaves out implementation details (pin mappings, support circuits). Those get filled in during implementation.
+
+```ato
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricPower
+import CAN
+import ElectricLogic
 
 module BLDCController:
     """
     # BLDC Motor Controller
 
-    One-paragraph overview of what we're building and why.
+    Dual-motor BLDC controller using STM32G474 and two DRV8317 drivers.
 
     ## Key Decisions
-    - STM32H723 MCU — motor control timers + Ethernet MAC
-    - DRV8300 gate driver — 3-phase, integrated bootstrap
+    - STM32G474 MCU — motor control timers + CAN FD
+    - DRV8317 gate driver — 3-phase, integrated LDO
+
+    ## Requirements
+    - R1: MCU platform — Uses STM32G474
+    - R2: 5-18V input — Operating voltage range
+    - R3: Dual motor — 2x DRV8317 in 3-PWM mode
 
     ## Open Questions
-    - Current sensing topology: phase shunt vs low-side?
+    - Current sensing: phase shunt vs low-side?
     """
 
-    # ── Requirements ──────────────────────────────────────
-    trait has_requirement<id="R1", text="MCU platform", criteria="Uses STM32H723">
-    trait has_requirement<id="R2", text="20A continuous", criteria="FET stage rated for 20A">
-    trait has_requirement<id="R3", text="Board size", criteria="40mm x 60mm">
-
-    # ── Architecture ──────────────────────────────────────
-    power = new PowerFrontend
-    control = new ControlSubsystem
-    gate_driver = new GateDriverStage
-    comms = new CommsSubsystem
+    # ── Architecture ──
+    power = new PowerSupply
+    control = new MCU
+    motor_a = new MotorDrive
+    motor_b = new MotorDrive
+    comms = new CANTransceiver
 
     power.rail_3v3 ~ control.power
-    control.pwm ~ gate_driver.control
+    power.motor_supply ~ motor_a.supply
+    power.motor_supply ~ motor_b.supply
+    control.pwm_a ~ motor_a.pwm
+    control.pwm_b ~ motor_b.pwm
+    control.can ~ comms.can
 
-    # ── Constraints ───────────────────────────────────────
-    assert power.vin.voltage within 36V to 60V
+    assert power.vin.voltage within 5V to 18V
 
-module PowerFrontend:
-    """Power input and multi-rail regulation."""
-    trait has_requirement<id="R4", text="Input protection", criteria="TVS + fuse on input">
-
+module PowerSupply:
+    """Power input and regulation."""
     vin = new ElectricPower
     rail_3v3 = new ElectricPower
+    motor_supply = new ElectricPower
 
-    assert vin.voltage within 36V to 60V
-    assert rail_3v3.voltage within 3.3V +/- 5%
-
-module ControlSubsystem:
-    """STM32H723 MCU subsystem."""
+module MCU:
+    """STM32G474 with timers and comms peripherals."""
     power = new ElectricPower
-    pwm = new ElectricLogic
+    can = new CAN
+    pwm_a = new ElectricLogic[3]
+    pwm_b = new ElectricLogic[3]
 
-module GateDriverStage:
-    """DRV8300 3-phase gate driver + half-bridges."""
-    control = new ElectricLogic
+module MotorDrive:
+    """DRV8317 3-phase gate driver."""
+    supply = new ElectricPower
+    pwm = new ElectricLogic[3]
 
-module CommsSubsystem:
-    """USB-C programming, CAN FD, Ethernet."""
-    trait has_requirement<id="R5", text="CAN FD", criteria="Isolated CAN FD transceiver">
+module CANTransceiver:
+    """CAN FD transceiver with UAVCAN connector.
+
+    Requirements:
+    - R4: CAN FD transceiver with UAVCAN connector
+    """
+    can = new CAN
 ```
 
 ## How spec concepts map to ato
@@ -112,7 +276,7 @@ module CommsSubsystem:
 |---|---|
 | **Overview** | Module docstring (`"""..."""`) |
 | **Architecture** | Sub-modules + connections (`~`) |
-| **Requirements** | `trait has_requirement<id, text, criteria>` (on owning module) |
+| **Requirements** | `- R<id>: <text> — <criteria>` in module docstring |
 | **Formal constraints** | `assert` statements |
 | **Component selection** | `new` instantiations |
 | **Sub-system descriptions** | Child module docstrings |
@@ -125,33 +289,55 @@ When creating a spec, also create a checklist to track implementation progress. 
 ```
 checklist_create({
   items: [
-    {id: "R1", description: "MCU platform", criteria: "Uses STM32H723", requirement_id: "R1"},
-    {id: "R2", description: "Gate driver", criteria: "Uses DRV8300", requirement_id: "R2"},
-    {id: "step-1", description: "Create project structure", criteria: "ato.yaml + main .ato file exist"}
+    {id: "spec", description: "Write spec and project structure", criteria: "main.ato with architecture, ato.yaml with package builds"},
+    {id: "questions", description: "Gather design decisions", criteria: "design_questions called with all open questions"},
+    {id: "pkg-mcu", description: "Create MCU wrapper package", criteria: "packages/stm32g474/stm32g474.ato with standard interfaces"},
+    {id: "pkg-driver", description: "Create gate driver wrapper package", criteria: "packages/drv8317/drv8317.ato with standard interfaces"},
+    {id: "integrate", description: "Wire up top-level design", criteria: "main.ato connects packages through interfaces"},
+    {id: "build", description: "Build and verify", criteria: "Build passes or issues clearly identified"},
   ]
 })
 ```
 
-Items with `requirement_id` are linked to the spec's `has_requirement` traits. Items without it are standalone implementation steps.
-
 # Planning Flow
 
-When the user approves planning, execute ALL of steps 1-3 in the SAME turn — do not end your turn after announcing you will plan.
+The goal is to **front-load all questions and decisions**, then implement without interruption.
+
+## Phase 1: Spec & Ask (end turn after this)
+
+Do steps 1-5 in a SINGLE turn — do not end your turn after announcing you will plan.
 
 1. **Read** existing project files to understand current state.
-2. **Create spec** as the main `.ato` file — `has_requirement` traits on owning modules, sub-module architecture, docstrings, and formal constraints.
-3. **Create checklist** linking items to spec requirements.
-4. **List Open Questions** — present them to the user for clarification. End your turn here.
-5. **Wait for approval.** Do not start implementing until the user confirms the spec.
-6. **Execute** requirements one at a time. Mark checklist items as `doing` → `done` as you go. Fill in real components and connections into the existing modules.
-7. **Verify.** After all requirements are implemented, run the build and confirm all constraints pass.
+2. **Set up project structure** — create `ato.yaml` with package builds, create `packages/` directories.
+3. **Write the spec** as `main.ato` — architecture with sub-modules, requirements in docstrings, interface connections, and formal constraints. Use standard library interfaces (CAN, I2C, SPI, ElectricPower) in the spec, not raw ElectricLogic.
+4. **Create checklist** with items for each package wrapper + integration + build.
+5. **Call `design_questions`** with ALL open questions at once. Include suggested options and recommended defaults where possible — make it easy for the user to answer quickly. Your turn ends automatically after this call.
+
+Use `design_questions` any time you have multiple design decisions to gather. It presents structured questions with bullet-point options that the user can answer or override with freeform text. Do not trickle questions across multiple turns — batch them all into one `design_questions` call.
+
+## Phase 2: Lock decisions (brief)
+
+6. **Wait for user answers.** Incorporate all decisions into the spec and checklist in one pass.
+
+## Phase 3: Implement end-to-end (do not stop)
+
+7. **Create package wrappers** — one per IC. Install parts, read datasheets, map pins to interfaces.
+8. **Wire up `main.ato`** — connect packages through their interfaces. No raw `_package` imports here.
+9. **Build and verify** — run the build and fix issues.
+
+**Do not end your turn to ask follow-up questions** — make reasonable assumptions and note them. The user can course-correct via steering messages.
+
+## Phase 4: Report results
+
+10. **Return results** with a concise summary of what changed, build status, and any assumptions you made.
 
 # Rules
 
-- Always ask before entering planning mode — never force a spec on a simple task.
+- **Do not ask whether to plan** — for complex tasks, just do it. The user sees the spec and can steer.
 - The spec IS the design file — same modules, same names, same structure. It just starts abstract and gets filled in.
-- **Do not rename modules** when transitioning from spec to implementation. `PowerFrontend` stays `PowerFrontend`.
-- Place `has_requirement` on whichever module owns that requirement, not all on the top-level.
+- **Do not rename modules** when transitioning from spec to implementation. `PowerSupply` stays `PowerSupply`.
+- Place requirements in the docstring of whichever module owns them, not all on the top-level.
+- **IC wrappers go in `packages/`**, not in `main.ato`. Raw `_package` components are never imported in `main.ato`.
 - Update the spec as you learn things (it's a living document).
 - If a build fails during implementation, check if the fix still meets requirements before moving on.
 - For simple tasks, skip all of this — just implement directly.

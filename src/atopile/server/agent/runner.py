@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import inspect
 import json
 import logging
@@ -49,19 +50,65 @@ TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 
 _CHECKLIST_TOOLS = frozenset({"checklist_create", "checklist_update", "checklist_add_items"})
 _MESSAGE_TOOLS = frozenset({"message_acknowledge", "message_log_query"})
-_MANAGED_TOOLS = _CHECKLIST_TOOLS | _MESSAGE_TOOLS
+_PLANNING_TOOLS = frozenset({"design_questions"})
+_MANAGED_TOOLS = _CHECKLIST_TOOLS | _MESSAGE_TOOLS | _PLANNING_TOOLS
+
+# Tools that represent productive work (reading, editing, building, etc.)
+_WORK_TOOLS = frozenset({
+    "project_read_file",
+    "project_edit_file",
+    "project_list_files",
+    "project_create_path",
+    "build_run",
+    "build_create",
+    "build_rename",
+    "parts_search",
+    "parts_install",
+    "packages_search",
+    "packages_install",
+    "datasheet_read",
+    "design_diagnostics",
+    "autolayout_request_screenshot",
+    "layout_set_component_position",
+    "layout_set_board_shape",
+    "autolayout_run",
+    "autolayout_status",
+    "autolayout_fetch_to_layout",
+    "web_search",
+})
 
 
 _CHECKLIST_NUDGE_MSG = (
-    "You must create a checklist before your turn can end. "
-    "Call checklist_create with the items you plan to complete, "
-    "then start working through them."
+    "You've started doing real work (file edits, builds, searches) "
+    "but don't have a checklist yet. Create one with checklist_create "
+    "to track what you're doing, then continue working."
 )
 
-_MAX_CHECKLIST_NUDGES = 3
+_MAX_CHECKLIST_NUDGES = 1
 
 
 _MAX_MESSAGE_NUDGES = 2
+
+_DESIGN_REVIEW_ITEMS = [
+    ChecklistItem(
+        id="review_requirements",
+        description="Verify all user requirements are addressed in the design",
+        criteria="Each stated requirement has corresponding ato implementation",
+        source="review",
+    ),
+    ChecklistItem(
+        id="review_build",
+        description="Verify design builds successfully",
+        criteria="Build passes or unsolvable issue clearly identified",
+        source="review",
+    ),
+    ChecklistItem(
+        id="review_interfaces",
+        description="Verify standard library interfaces used where applicable",
+        criteria="I2C, SPI, CAN, Ethernet, Power used instead of raw Electrical/ElectricLogic",
+        source="review",
+    ),
+]
 
 # If the model responds without tool calls to this many consecutive
 # continuation/kickstart nudges, treat it as stuck and stop the loop.
@@ -119,13 +166,30 @@ def _build_kickstart_msg(checklist: Any) -> str:
     )
 
 
+def _has_ato_file_changes(traces: list[ToolTrace]) -> bool:
+    """Check whether any tool trace represents a successful .ato file modification."""
+    for trace in traces:
+        if trace.name not in ("project_edit_file", "project_create_path"):
+            continue
+        if not trace.ok:
+            continue
+        path = str(trace.args.get("path", ""))
+        if path.endswith(".ato"):
+            return True
+    return False
+
+
 @dataclass
 class _TurnState:
     checklist: Checklist | None = None
     checklist_nudge_count: int = 0
     current_message_id: str = ""
     message_nudge_count: int = 0
+    review_items_injected: bool = False
+    force_turn_end: bool = False
     consecutive_empty_continuations: int = 0
+    silent_retry_count: int = 0
+    _traces: list[ToolTrace] = field(default_factory=list)
 
 
 @dataclass
@@ -283,11 +347,19 @@ class AgentRunner:
         loops = 0
         last_response_id = previous_response_id
         started_at = time.monotonic()
-        telemetry: dict[str, Any] = {"api_retry_count": 0, "compaction_events": []}
+        telemetry: dict[str, Any] = {
+            "api_retry_count": 0,
+            "compaction_events": [],
+            "kickstart_count": 0,
+            "silent_retry_count": 0,
+            "checklist_tool_count": 0,
+            "work_tool_count": 0,
+        }
 
         # Checklist-driven continuation state
         turn_state = _TurnState(
             checklist=Checklist.from_skill_state(skill_state),
+            _traces=traces,
         )
         continuations_remaining = cfg.max_checklist_continuations
 
@@ -444,11 +516,46 @@ class AgentRunner:
                         _needs_kickstart
                         and turn_state.consecutive_empty_continuations <= _MAX_EMPTY_CONTINUATIONS
                     ):
+                        # Silent retry: re-prompt with empty messages
+                        # (same pattern as commentary continuation) before
+                        # falling back to a kickstart user-message injection.
+                        if turn_state.silent_retry_count < cfg.silent_retry_max:
+                            turn_state.silent_retry_count += 1
+                            log.info(
+                                "Silent retry %d/%d (empty=%s, streak=%d)",
+                                turn_state.silent_retry_count,
+                                cfg.silent_retry_max,
+                                _is_empty,
+                                turn_state.consecutive_empty_continuations,
+                            )
+                            await self._emit_trace(
+                                active_trace,
+                                "silent_retry",
+                                {
+                                    "loop": loops,
+                                    "attempt": turn_state.silent_retry_count,
+                                    "max": cfg.silent_retry_max,
+                                    "empty_streak": turn_state.consecutive_empty_continuations,
+                                },
+                            )
+                            telemetry["silent_retry_count"] = telemetry.get("silent_retry_count", 0) + 1
+                            response = await self._provider.complete(
+                                messages=[],
+                                instructions=instructions,
+                                tools=tool_defs,
+                                skill_state=skill_state,
+                                project_path=project_path,
+                                previous_response_id=last_response_id,
+                            )
+                            last_response_id = response.id or last_response_id
+                            continue
+
+                        # Silent retries exhausted — fall back to kickstart
                         continuations_remaining -= 1
                         kickstart_msg = _build_kickstart_msg(cl)
                         log.warning(
-                            "Model stuck (empty=%s, thinks_stuck=%s, streak=%d), "
-                            "sending kickstart",
+                            "Model stuck (empty=%s, thinks_stuck=%s, streak=%d, "
+                            "silent_retries_exhausted=True), sending kickstart",
                             _is_empty,
                             _model_thinks_stuck,
                             turn_state.consecutive_empty_continuations,
@@ -462,8 +569,10 @@ class AgentRunner:
                                 "is_empty": _is_empty,
                                 "model_thinks_stuck": _model_thinks_stuck,
                                 "model_text_snippet": resp_text[:200],
+                                "silent_retries_exhausted": True,
                             },
                         )
+                        telemetry["kickstart_count"] = telemetry.get("kickstart_count", 0) + 1
                         response = await self._provider.complete(
                             messages=[{"role": "user", "content": kickstart_msg}],
                             instructions=instructions,
@@ -526,10 +635,14 @@ class AgentRunner:
                             turn_state.consecutive_empty_continuations,
                         )
 
-                # No checklist yet — nudge the model to create one
-                # before allowing the turn to end.
+                # No checklist yet — nudge the model to create one,
+                # but only if it has done real work (read/edit/build/
+                # search).  Conversational responses (text-only or
+                # trivial tool calls) should not require a checklist.
+                has_done_work = telemetry.get("work_tool_count", 0) > 0
                 if (
-                    turn_state.checklist is None
+                    has_done_work
+                    and turn_state.checklist is None
                     and turn_state.checklist_nudge_count < _MAX_CHECKLIST_NUDGES
                 ):
                     turn_state.checklist_nudge_count += 1
@@ -666,9 +779,13 @@ class AgentRunner:
                     context_metrics=telemetry,
                 )
 
-            # Execute tool calls — reset the empty-continuation streak
-            # since the model is actively working.
-            turn_state.consecutive_empty_continuations = 0
+            # Execute tool calls — decay (not hard-reset) the empty-
+            # continuation streak so a persistent pattern still triggers,
+            # and reset silent retries for the next potential empty response.
+            turn_state.consecutive_empty_continuations = max(
+                0, turn_state.consecutive_empty_continuations - 2
+            )
+            turn_state.silent_retry_count = 0
             outputs: list[dict[str, Any]] = []
             tool_count = len(response.tool_calls)
             for tool_index, call in enumerate(response.tool_calls, start=1):
@@ -706,6 +823,16 @@ class AgentRunner:
                         session_id=session_id,
                         project_root=str(project_path),
                     )
+                    # Emit structured questions to frontend
+                    if call.name == "design_questions" and ok:
+                        await self._emit_progress(
+                            progress_callback,
+                            {
+                                "phase": "design_questions",
+                                "context": (call.arguments or {}).get("context", ""),
+                                "questions": (call.arguments or {}).get("questions", []),
+                            },
+                        )
                 else:
                     args, result_payload, ok = await self._execute_tool(
                         tool_name=call.name,
@@ -720,6 +847,51 @@ class AgentRunner:
 
                 if ok:
                     breaker.record_success()
+
+                    # Auto-doing: when the model calls a work tool
+                    # but hasn't explicitly moved any checklist item
+                    # to "doing", auto-transition the first
+                    # "not_started" item so the checklist stays in
+                    # sync without an extra tool call.
+                    if call.name in _WORK_TOOLS:
+                        telemetry["work_tool_count"] = telemetry.get("work_tool_count", 0) + 1
+                        cl = turn_state.checklist
+                        if cl is not None and not any(
+                            i.status == "doing" for i in cl.items
+                        ):
+                            for item in cl.items:
+                                if item.status == "not_started":
+                                    item.status = "doing"
+                                    cl.save_to_skill_state(skill_state)
+                                    await self._emit_trace(
+                                        active_trace,
+                                        "checklist_auto_doing",
+                                        {"item_id": item.id, "tool": call.name},
+                                    )
+                                    break
+                        elif cl is None and loops > 1:
+                            # Model is working without a checklist —
+                            # create an implicit one so continuations
+                            # and the "incomplete items" logic can work.
+                            turn_state.checklist = Checklist(
+                                items=[
+                                    ChecklistItem(
+                                        id="task_1",
+                                        description="Complete user request",
+                                        criteria="User request fulfilled",
+                                        status="doing",
+                                    )
+                                ],
+                                created_at=time.time(),
+                            )
+                            turn_state.checklist.save_to_skill_state(skill_state)
+                            await self._emit_trace(
+                                active_trace,
+                                "checklist_implicit_created",
+                                {"tool": call.name, "loop": loops},
+                            )
+                    elif call.name in _CHECKLIST_TOOLS:
+                        telemetry["checklist_tool_count"] = telemetry.get("checklist_tool_count", 0) + 1
                 else:
                     trip_msg = breaker.record_failure(
                         call.name, args, str(result_payload.get("error", ""))
@@ -776,6 +948,38 @@ class AgentRunner:
                             max_chars=cfg.tool_output_max_chars,
                         ),
                     )
+                )
+
+            # Force turn end (e.g. after design_questions)
+            if turn_state.force_turn_end:
+                log.info("Force turn end (loop=%d, traces=%d)", loops, len(traces))
+                if turn_state.checklist is not None:
+                    turn_state.checklist.save_to_skill_state(skill_state)
+                await self._emit_trace(
+                    active_trace,
+                    "turn_completed",
+                    {
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                        "reason": "design_questions",
+                    },
+                )
+                done_payload: dict[str, Any] = {
+                    "phase": "done",
+                    "loop": loops,
+                    "tool_calls_total": len(traces),
+                    "reason": "design_questions",
+                }
+                if turn_state.checklist is not None:
+                    done_payload["checklist"] = turn_state.checklist.to_dict()
+                await self._emit_progress(progress_callback, done_payload)
+                return AgentTurnResult(
+                    text=response.text or "Design questions sent to user.",
+                    tool_traces=traces,
+                    model=cfg.model,
+                    response_id=last_response_id,
+                    skill_state=skill_state,
+                    context_metrics=telemetry,
                 )
 
             # Append steering if available
@@ -911,8 +1115,27 @@ class AgentRunner:
         session_id: str = "",
         project_root: str = "",
     ) -> tuple[dict[str, Any], bool]:
-        """Handle checklist + message tools in-process."""
+        """Handle checklist + message + planning tools in-process."""
         try:
+            # ── Planning tools ─────────────────────────────────────
+            if tool_name == "design_questions":
+                context = str(args.get("context", ""))
+                questions = args.get("questions", [])
+                if not questions:
+                    return {"error": "questions list is empty"}, False
+                # Signal the runner to end the turn after this tool call.
+                state.force_turn_end = True
+                return {
+                    "ok": True,
+                    "status": "questions_sent",
+                    "question_count": len(questions),
+                    "message": (
+                        "Design questions sent to the user. "
+                        "Your turn is ending now — the user's answers "
+                        "will arrive as a new message."
+                    ),
+                }, True
+
             # ── Message tools ──────────────────────────────────────
             if tool_name == "message_acknowledge":
                 message_id = str(args.get("message_id", ""))
@@ -1118,6 +1341,17 @@ class AgentRunner:
                 )
                 if target is None:
                     return {"error": f"Item '{item_id}' not found."}, False
+                # Treat same-status transitions as a harmless no-op.
+                # This avoids errors when auto-doing already moved an
+                # item to "doing" before the model explicitly requests it.
+                if target.status == new_status:
+                    return {
+                        "ok": True,
+                        "item_id": item_id,
+                        "status": new_status,
+                        "noop": True,
+                        "checklist": state.checklist.summary_text(),
+                    }, True
                 allowed = VALID_TRANSITIONS.get(target.status, set())
                 if new_status not in allowed:
                     return {
@@ -1147,12 +1381,38 @@ class AgentRunner:
                     except Exception:
                         log.warning("Failed to persist checklist update", exc_info=True)
 
-                return {
+                # Auto-inject design review items when the last
+                # user-created item becomes terminal and .ato files
+                # were modified.  This keeps the agent working through
+                # review before the turn ends.
+                result: dict[str, Any] = {
                     "ok": True,
                     "item_id": item_id,
                     "status": new_status,
                     "checklist": state.checklist.summary_text(),
-                }, True
+                }
+                if (
+                    not state.review_items_injected
+                    and new_status in ("done", "blocked")
+                    and all(
+                        i.status in ("done", "blocked")
+                        for i in state.checklist.items
+                        if i.source != "review"
+                    )
+                    and _has_ato_file_changes(state._traces)
+                ):
+                    state.review_items_injected = True
+                    for ri in _DESIGN_REVIEW_ITEMS:
+                        state.checklist.items.append(copy.deepcopy(ri))
+                    state.checklist.save_to_skill_state(skill_state)
+                    result["review_items_added"] = True
+                    result["checklist"] = state.checklist.summary_text()
+                    result["message"] = (
+                        "Review items added to your checklist. "
+                        "Work through each review item before finishing."
+                    )
+
+                return result, True
 
             return {"error": f"Unknown managed tool: {tool_name}"}, False
         except Exception as exc:

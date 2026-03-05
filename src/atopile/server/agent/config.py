@@ -63,6 +63,7 @@ class AgentConfig:
     context_hard_max_tokens: int = 170_000
     prompt_cache_retention: str = "24h"
     max_checklist_continuations: int = 25
+    silent_retry_max: int = 2
     trace_enabled: bool = True
     trace_preview_max_chars: int = 4_000
 
@@ -101,7 +102,7 @@ class AgentConfig:
             fixed_skill_ids=fixed_skill_ids,
             fixed_skill_token_budgets=_parse_fixed_skill_token_budgets(
                 _env(
-                    "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS", "agent:10000,ato:40000,planning:3000"
+                    "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS", "agent:10000,ato:40000,planning:5000"
                 ),
                 default_skill_ids=fixed_skill_ids,
             ),
@@ -126,6 +127,9 @@ class AgentConfig:
             ),
             max_checklist_continuations=_env_int(
                 "ATOPILE_AGENT_MAX_CHECKLIST_CONTINUATIONS", "50", lo=0, hi=200
+            ),
+            silent_retry_max=_env_int(
+                "ATOPILE_AGENT_SILENT_RETRY_MAX", "2", lo=0, hi=5
             ),
             prompt_cache_retention=_env("ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"),
             trace_enabled=_env("ATOPILE_AGENT_TRACE_ENABLED", "1").strip().lower()

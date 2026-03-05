@@ -159,7 +159,12 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "name": "build_logs_search",
             "description": (
                 "Search build logs or list recent builds with status/error "
-                "summaries. Defaults to INFO/WARNING/ERROR/ALERT levels."
+                "summaries. Defaults to INFO/WARNING/ERROR/ALERT levels. "
+                "When a build_id is provided, check the top-level "
+                "'first_error' field first — it contains the first "
+                "ERROR/ALERT entry with message, stage, source_file, "
+                "source_line, and ato_traceback (if available), saving "
+                "you from scanning the full logs array."
             ),
             "parameters": {
                 "type": "object",
@@ -487,6 +492,49 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                         "default": 4,
                     },
                 },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "layout_set_board_shape",
+            "description": (
+                "Create or replace the rectangular board outline (Edge.Cuts) "
+                "in the KiCad PCB file. Clears any existing outline first. "
+                "Supports optional rounded corners."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "default": "default"},
+                    "width_mm": {
+                        "type": "number",
+                        "description": "Board width in mm.",
+                    },
+                    "height_mm": {
+                        "type": "number",
+                        "description": "Board height in mm.",
+                    },
+                    "corner_radius_mm": {
+                        "type": "number",
+                        "default": 0,
+                        "description": (
+                            "Rounded corner radius in mm. "
+                            "Must be <= min(width, height) / 2."
+                        ),
+                    },
+                    "center_x_mm": {
+                        "type": "number",
+                        "default": 100,
+                        "description": "Board center X coordinate in mm.",
+                    },
+                    "center_y_mm": {
+                        "type": "number",
+                        "default": 100,
+                        "description": "Board center Y coordinate in mm.",
+                    },
+                },
+                "required": ["width_mm", "height_mm"],
                 "additionalProperties": False,
             },
         },

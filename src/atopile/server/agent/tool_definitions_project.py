@@ -498,7 +498,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                                     "type": "string",
                                     "description": (
                                         "Optional link to a spec requirement "
-                                        "(e.g. R1 from has_requirement trait)"
+                                        "(e.g. R1 from module docstring)"
                                     ),
                                 },
                                 "source": {
@@ -673,6 +673,65 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                         "default": 20,
                     },
                 },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "design_questions",
+            "description": (
+                "Present structured design questions to the user during planning. "
+                "Use this to gather all design decisions at once before implementing. "
+                "Your turn will end after this tool is called — the user's answers "
+                "will arrive as a new message. Include suggested options where "
+                "possible to make it easy for the user to answer quickly."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Brief summary of what you are designing "
+                            "(shown as a header to the user)"
+                        ),
+                    },
+                    "questions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Short ID (e.g. Q1, Q2)",
+                                },
+                                "question": {
+                                    "type": "string",
+                                    "description": "The question to ask",
+                                },
+                                "options": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Suggested options. The user can also "
+                                        "provide a freeform answer instead."
+                                    ),
+                                },
+                                "default": {
+                                    "type": "string",
+                                    "description": (
+                                        "Recommended default if the user has "
+                                        "no preference (must be one of options)"
+                                    ),
+                                },
+                            },
+                            "required": ["id", "question"],
+                            "additionalProperties": False,
+                        },
+                        "minItems": 1,
+                    },
+                },
+                "required": ["context", "questions"],
                 "additionalProperties": False,
             },
         },

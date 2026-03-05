@@ -118,30 +118,135 @@ Always classify behavior as one of:
 
 This avoids false confidence and prevents hallucinated ato features.
 
-# 1.9 End-to-End Board Design Workflow
+## 1.9 Module Naming
+
+Name modules the way you'd label blocks on a system block diagram — by their **role in the system**, not their implementation topology. Avoid generic suffixes like `Subsystem`, `Unit`, `Block`, or `Section`.
+
+**Good names:**
+
+- `PowerSupply` — input protection, regulation, and distribution
+- `PowerInput` — connector, reverse polarity protection, and bulk decoupling
+- `BatteryCharger` — charge IC, sense resistors, and status output
+- `BMS` — cell balancing, protection, and fuel gauge
+- `GateDriver` — bootstrap, dead-time, and level shifting for a FET bridge
+- `MotorDrive` — integrated driver with current limit and fault output
+- `CurrentSense` — shunt and sense amplifier
+- `CANTransceiver` — transceiver, termination, and ESD (don't use `CAN` — it shadows the stdlib interface)
+- `USBPort` — connector, ESD, and pull-ups (don't use `USB` — too generic, may shadow stdlib types)
+- `EthernetPHY` — PHY, magnetics, and RJ45
+- `Radio` — RF front end, antenna match, and balun
+- `IMU` — accelerometer/gyro with decoupling
+- `ADCInput` — anti-alias filter, reference, and input scaling
+- `LevelShift` — voltage translation between power domains
+- `InputFilter` — common-mode choke and filter caps
+- `Clock` — crystal or oscillator with load caps
+- `Debug` — SWD/JTAG connector and pull-ups
+- `Indicators` — status LEDs with current-limiting resistors
+- `Protection` — ESD, TVS, or overvoltage clamping on an interface
+
+IC wrapper packages use the **part name** directly: `STM32G474`, `DRV8317`, `TCAN3414`.
+
+Inside a module, names get more specific — a `PowerSupply` module might contain a `BuckConverter` and an `LDO`. The name should match the level of abstraction: system-level blocks use system-level names.
+
+When in doubt, ask: *"what would this block be labelled on a system block diagram?"*
+
+# 1.10 End-to-End Board Design Workflow
 
 This is the canonical sequence for designing a board in atopile. Follow these phases in order. Each phase has a gate condition — do not advance until the gate is met.
 
-### Phase 1: Requirements
+### Phase 1: Planning — capture requirements as code
 
-Capture electrical, mechanical, and interface requirements before writing code.
+Translate the user's request into a **spec `.ato` file** that IS the design. The spec is not a separate document — it is the main `.ato` file at a high level of abstraction. As you implement, you fill in real components and wiring. The file grows; the structure stays.
 
-- Input voltage/current, output rails, communication buses, sensors, actuators.
-- Board size constraints, connector placement, mounting hole needs.
-- Manufacturing constraints (layer count, assembly house capabilities).
+**Step-by-step:**
 
-Gate: requirements are written down (even informally) before any `.ato` code.
+1. **Break the request into subsystems.** Each functional block becomes a `module` — power, MCU, sensors, comms, IO, etc.
+2. **Define interfaces at module boundaries.** Use stdlib interfaces (`ElectricPower`, `I2C`, `SPI`, `UART`, `ElectricLogic`, etc.) to declare how modules connect. Do NOT wire pins yet.
+3. **Capture requirements as `has_requirement` traits.** Place each requirement on the module that owns it. Requirements document design intent that `assert` constraints alone can't express.
+4. **Add formal constraints** with `assert` for voltage, current, frequency bounds.
+5. **Wire modules together** at the interface level (`~`).
+6. **Create a checklist** linking items to requirement IDs for tracking.
 
-### Phase 2: High-level block design
+**Example spec — the design file starts like this:**
 
-Define the architecture as modules and interfaces in `.ato`. Do not wire pins yet.
+```ato
+#pragma experiment("TRAITS")
 
-- One integration module that composes child modules.
-- Each major subsystem (power, MCU, sensors, comms, IO) is its own module/file.
-- Public interfaces (`ElectricPower`, `I2C`, `SPI`, `UART`, etc.) at module boundaries.
-- Follow Section 12 decomposition rules.
+import ElectricPower
+import I2C
+import SPI
+import ElectricLogic
+import has_requirement
 
-Gate: architecture plan exists with module boundaries, interface contracts, and file ownership.
+module SensorBoard:
+    """
+    # Environmental Sensor Board
+
+    Battery-powered sensor node with temperature, humidity, and
+    pressure sensing, BLE comms, and USB-C charging.
+
+    ## Key Decisions
+    - nRF52840 for BLE + low power
+    - BME280 for temp/humidity/pressure
+
+    ## Open Questions
+    - Battery chemistry: LiPo vs coin cell?
+    """
+
+    # ── Requirements ──────────────────────────────────────
+    trait has_requirement<id="R1", text="BLE connectivity", criteria="nRF52840 with BLE 5.0">
+    trait has_requirement<id="R2", text="Environmental sensing", criteria="BME280 for temp/humidity/pressure">
+    trait has_requirement<id="R3", text="USB-C charging", criteria="5V USB-C input with charge IC">
+    trait has_requirement<id="R4", text="Board size", criteria="25mm x 30mm max">
+
+    # ── Architecture ──────────────────────────────────────
+    power = new PowerSupply
+    mcu = new MCU
+    sensors = new EnvironmentalSensor
+    comms = new Radio
+
+    # Interface-level wiring (no pins yet)
+    power.rail_3v3 ~ mcu.power
+    power.rail_3v3 ~ sensors.power
+    mcu.i2c ~ sensors.i2c
+    mcu.spi ~ comms.spi
+
+    # ── Constraints ───────────────────────────────────────
+    assert power.usb_in.voltage within 4.5V to 5.5V
+    assert power.rail_3v3.voltage within 3.3V +/- 5%
+
+module PowerSupply:
+    """USB-C input, charge controller, LDO regulation."""
+    trait has_requirement<id="R5", text="Battery charging", criteria="LiPo charge IC with thermal protection">
+
+    usb_in = new ElectricPower
+    battery = new ElectricPower
+    rail_3v3 = new ElectricPower
+
+module MCU:
+    """nRF52840 with crystal, decoupling, and debug header."""
+    power = new ElectricPower
+    i2c = new I2C
+    spi = new SPI
+
+module EnvironmentalSensor:
+    """BME280 environmental sensor."""
+    power = new ElectricPower
+    i2c = new I2C
+
+module Radio:
+    """BLE antenna matching and RF front end."""
+    spi = new SPI
+```
+
+**Key rules for this phase:**
+- Module names are final — `PowerSupply` stays `PowerSupply` through implementation. Do NOT suffix with "Spec".
+- Place `has_requirement` on the module that owns it, not all on the top-level.
+- Use docstrings for overview, key decisions, and open questions.
+- Present open questions to the user and wait for answers before implementing.
+- Requires `#pragma experiment("TRAITS")` and `import has_requirement`.
+
+Gate: spec `.ato` file exists with module hierarchy, interfaces, requirement traits, and constraints. User has approved the architecture.
 
 ### Phase 3: Find existing packages
 
