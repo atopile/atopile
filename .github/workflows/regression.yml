@@ -1,68 +1,126 @@
 name: regression
 
 on:
-  push:
-    branches: [main]  # Adjust this if your default branch has a different name
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
-  workflow_dispatch:  # Add manual trigger capability
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * *"
+  release:
+    types:
+      - published
+
+env:
+  KICAD_VERSION: "9.0"
 
 jobs:
   regression:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    if: ${{
-        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'regression-required')) ||
-        (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-      }}
+    runs-on: [self-hosted]
+    env:
+      UV_PYTHON: "3.14"
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
-
-    # Required due to a bug in the checkout action
-    # https://github.com/actions/checkout/issues/1471
-    - run: git fetch --prune --unshallow --tags
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: actions/checkout@v6
       with:
-        version: 0.8
+        fetch-depth: 100
+        fetch-tags: true
+
+    - name: Checkout packages repo
+      run: |
+        if [ -d "$GITHUB_WORKSPACE/../packages" ]; then
+          git -C "$GITHUB_WORKSPACE/../packages" pull --ff-only || true
+        else
+          git clone --depth 1 https://github.com/atopile/packages "$GITHUB_WORKSPACE/../packages"
+        fi
+
+    - name: Prepare artifacts dir
+      run: mkdir -p artifacts
+
+    - name: Check for uv
+      id: check-uv
+      run: echo "has-uv=$(command -v uv >/dev/null 2>&1 && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+    - name: Install uv + Python
+      if: steps.check-uv.outputs.has-uv != 'true'
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: "3.14"
         enable-cache: true
         cache-dependency-glob: "uv.lock"
 
-    - name: "Set up Python"
-      uses: actions/setup-python@v5
+    - name: "Install dependencies"
+      run: |
+        uv sync --dev --no-install-project --frozen
+
+    - name: Compute zig cache key
+      id: zig-hash
+      run: |
+        PYTHON=$(uv python find)
+        echo "hash=$($PYTHON src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
+        echo "pyver=$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')" >> "$GITHUB_OUTPUT"
+
+    - name: Restore zig cache
+      id: zig-cache
+      uses: actions/cache/restore@v4
       with:
-        python-version-file: "pyproject.toml"
+        path: src/faebryk/core/zig/zig-out
+        key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.zig-hash.outputs.pyver }}-${{ steps.zig-hash.outputs.hash }}
+
+    - name: "Compile & build package"
+      run: |
+        uv pip install --no-deps .
+      env:
+        ATOPILE_ZIG_OUT_DIR: ${{ github.workspace }}/src/faebryk/core/zig/zig-out
+
+    - name: Save zig cache
+      if: steps.zig-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: src/faebryk/core/zig/zig-out
+        key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.zig-hash.outputs.pyver }}-${{ steps.zig-hash.outputs.hash }}
+
+    - name: Check ato version
+      run: |
+        PYTHON=$(uv python find)
+        git describe --tags --dirty --long
+        $PYTHON -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"
+        $PYTHON -m atopile self-check
+        $PYTHON -m atopile --version
+        $PYTHON -m atopile --semver
 
     - name: Run pytest
       id: pytest
       continue-on-error: true
-      # Regular tests are run as part of the pytest workflow
       run: |
-        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
+        PYTHON=$(uv python find)
+        $PYTHON -m atopile dev test -- -m "not not_in_ci and regression"
       env:
         GH_TOKEN: ${{ github.token }}
-        PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
-        PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
-        COLUMNS: 150  # rich console width will be pulled from this
+        COLUMNS: 150 # rich console width will be pulled from this
+        FBRK_TEST_REPORT_INTERVAL: 10
+        FBRK_TEST_LONG_THRESHOLD: 30
+        FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
+        FBRK_TEST_WORKERS: 24 # cap concurrency to reduce external API pressure
+        FBRK_TEST_PERIODIC_HTML: 0
+        FBRK_TEST_GENERATE_HTML: 1
+        # threshold for worker to restart after exceeding after a test run
+        FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
+        PYTHON_UNBUFFERED: 1
+        FBRK_TEST_LOG_VIEWER: 0
+        FBRK_TEST_TEST_TIMEOUT: 600
 
-    - name: Upload all test artifacts
-      if: steps.pytest.outcome == 'failure'
+    - name: Upload test report json artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: test-artifacts
-        path: artifacts/**
-        if-no-files-found: warn
+        name: test-report.json
+        path: artifacts/test-report.json
+        if-no-files-found: error
 
-    # Upload the report as a separate artifact
-    # to make it easier to find since it's typically
-    # the first place we look for the failure
-    - name: Upload all test report
-      if: steps.pytest.outcome == 'failure'
+    - name: Upload test report html artifact
       uses: actions/upload-artifact@v4
       with:
-        name: test-report
+        name: test-report.html
         path: artifacts/test-report.html
+        if-no-files-found: warn
 
     - name: Check pytest status
       if: steps.pytest.outcome == 'failure'

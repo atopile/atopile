@@ -31,6 +31,20 @@ ENABLE_PROFILING = False
 SKIP_PACKAGE_DIRS = {"archive", "logos", ".git", "__pycache__"}
 
 
+def clone_repo(repo_uri: str, path: Path):
+    """Clone a repository without depending on the GitHub CLI."""
+    if not Path(repo_uri).exists() and not repo_uri.startswith(
+        ("https://", "ssh://", "git@")
+    ):
+        repo_uri = f"https://github.com/{repo_uri}"
+    run_live(
+        ["git", "clone", "--depth", "1", repo_uri, str(path)],
+        cwd=path.parent,
+        stdout=print,
+        stderr=print,
+    )
+
+
 def build_project(prj_path: Path, request: pytest.FixtureRequest):
     """Generically "build" the project."""
     friendly_node_name = pathvalidate.sanitize_filename(str(request.node.name))
@@ -61,8 +75,8 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
                 *profile,
                 "-m",
                 "atopile",
-                "-v",
                 "build",
+                "-v",
                 *ato_build_args,
             ],
             env={**os.environ, **ato_build_env},
@@ -115,9 +129,29 @@ class _TestRepo:
         return self
 
 
-# Single-project repos (not multipackage)
-SINGLE_REPOS = [
-    _TestRepo("atopile/spin-servo-drive").skip("Needs upgrading"),
+@dataclass(frozen=True)
+class _ProjectTest:
+    repo_uri: str
+    project_path: str = "."
+    skip_reason: str | None = None
+
+
+def _project_test_id(test_cfg: _ProjectTest) -> str:
+    if test_cfg.project_path == ".":
+        return test_cfg.repo_uri
+    return f"{test_cfg.repo_uri}/{test_cfg.project_path}"
+
+
+SINGLE_PROJECTS: list[_ProjectTest] = [
+    _ProjectTest("atopile/spin-servo-drive", skip_reason="Needs upgrading"),
+    _ProjectTest("atopile/atopile", "examples/auto-picking"),
+    _ProjectTest("atopile/atopile", "examples/equations"),
+    _ProjectTest("atopile/atopile", "examples/esp32_minimal"),
+    _ProjectTest("atopile/atopile", "examples/fabll_minimal"),
+    _ProjectTest("atopile/atopile", "examples/i2c"),
+    _ProjectTest("atopile/atopile", "examples/layout_reuse"),
+    _ProjectTest("atopile/atopile", "examples/led_badge"),
+    _ProjectTest("atopile/atopile", "examples/quickstart"),
 ]
 
 # Multipackage repo configuration
@@ -148,43 +182,43 @@ def _discover_packages(packages_path: Path) -> list[str]:
     return packages
 
 
+def _get_local_packages_repo_path() -> Path | None:
+    """Return the provisioned sibling packages repo if present."""
+    multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
+    repo_path = _repo_root().parent / "packages"
+    if not repo_path.exists() or not (repo_path / ".git").exists():
+        return None
+    if not (repo_path / multipackage_subdir).exists():
+        return None
+    return repo_path
+
+
 @pytest.fixture(scope="session")
-def packages_repo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def packages_repo_path() -> Path:
     """
     Session-scoped fixture that provides the packages repo path.
 
-    Uses the local sibling packages repo if available (fastest),
-    otherwise clones fresh to a temp directory.
+    Uses the provisioned sibling packages repo.
     """
-    # Option 1: Use local packages repo if available (for local dev)
-    local_packages = _repo_root().parent / "packages"
-    if local_packages.exists() and (local_packages / ".git").exists():
-        return local_packages
-
-    # Option 2: Clone fresh to temp directory
-    tmp_dir = tmp_path_factory.mktemp("packages-repo")
-    repo_path = tmp_dir / "packages"
-
-    try:
-        run_live(
-            [
-                "gh",
-                "repo",
-                "clone",
-                PACKAGES_REPO.repo_uri,
-                str(repo_path),
-                "--",
-                "--depth",
-                "1",
-            ],
-            cwd=tmp_dir,
-            stdout=print,
-            stderr=print,
-        )
-    except CalledProcessError as ex:
-        raise CloneError(f"Failed to clone {PACKAGES_REPO.repo_uri}") from ex
-
+    repo_path = _get_local_packages_repo_path()
+    if repo_path is None:
+        pytest.skip("packages repo not provisioned at ../packages")
     return repo_path
+
+
+@pytest.fixture(scope="session")
+def project_repo_paths(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
+    """Clone each external project repo once per test session."""
+    cache_dir = tmp_path_factory.mktemp("project-repos")
+    repo_paths: dict[str, Path] = {}
+    for repo_uri in sorted({test.repo_uri for test in SINGLE_PROJECTS}):
+        repo_path = cache_dir / repo_uri.replace("/", "__")
+        try:
+            clone_repo(repo_uri, repo_path)
+        except CalledProcessError as ex:
+            raise CloneError(f"Failed to clone {repo_uri}") from ex
+        repo_paths[repo_uri] = repo_path
+    return repo_paths
 
 
 # ============================================================================
@@ -194,43 +228,30 @@ def packages_repo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.mark.slow
 @pytest.mark.regression
-@pytest.mark.parametrize(
-    "test_cfg",
-    SINGLE_REPOS,
-    ids=lambda x: x.repo_uri,
-)
+@pytest.mark.parametrize("test_cfg", SINGLE_PROJECTS, ids=_project_test_id)
 def test_single_projects(
-    test_cfg: _TestRepo,
+    test_cfg: _ProjectTest,
+    project_repo_paths: dict[str, Path],
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):
     """Test single-project repositories (not multipackage)."""
-    repo_uri = test_cfg.repo_uri
-    skip_reason = test_cfg.skip_reason
+    repo_path = project_repo_paths[test_cfg.repo_uri]
+    test_repo_path = tmp_path / "project"
+    shutil.copytree(repo_path, test_repo_path)
 
-    # Clone the repository
-    try:
-        run_live(
-            ["gh", "repo", "clone", repo_uri, "project", "--", "--depth", "1"],
-            cwd=tmp_path,
-            stdout=print,
-            stderr=print,
-        )
-    except CalledProcessError as ex:
-        raise CloneError from ex
-
-    prj_path = tmp_path / "project"
+    prj_path = test_repo_path / test_cfg.project_path
 
     try:
         sync_project(prj_path)
         build_project(prj_path, request=request)
     except (InstallError, BuildError):
-        if skip_reason:
-            pytest.skip(f"xfail: {skip_reason}")
+        if test_cfg.skip_reason:
+            pytest.skip(f"xfail: {test_cfg.skip_reason}")
         else:
             raise
 
-    repo = git.Repo(prj_path)
+    repo = git.Repo(test_repo_path)
     diff = repo.index.diff(None)
     if diff and any(
         item.a_path is not None and item.a_path.endswith(".kicad_pcb") for item in diff
@@ -248,17 +269,13 @@ def pytest_generate_tests(metafunc: pytest.Metafunc):
     if "package_name" not in metafunc.fixturenames:
         return
 
-    # For package tests, we need to discover packages
-    # This requires the repo to exist - use indirect parameterization
-    # The actual package list will be validated at test time
+    repo_path = _get_local_packages_repo_path()
     multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
-    packages_path = _repo_root().parent / "packages" / multipackage_subdir
-
-    if packages_path.exists():
-        packages = _discover_packages(packages_path)
-    else:
-        # Fallback: no packages discovered, test will clone and discover
-        packages = []
+    packages = (
+        _discover_packages(repo_path / multipackage_subdir)
+        if repo_path is not None
+        else []
+    )
 
     if packages:
         params = []
@@ -289,12 +306,7 @@ def test_package(
     multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
 
     if package_name is None:
-        # No packages were discovered at collection time - discover now
-        packages = _discover_packages(packages_repo_path / multipackage_subdir)
-        if not packages:
-            pytest.skip("No packages found in repo")
-        # Just test the first one as a sanity check
-        package_name = packages[0]
+        pytest.skip("No packages found in repo")
 
     source_package_path = packages_repo_path / multipackage_subdir / package_name
     if not source_package_path.exists():
