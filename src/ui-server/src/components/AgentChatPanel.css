@@ -665,39 +665,28 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
 }
 
-.agent-tool-group-toggle {
+.agent-tool-group.scrollable .agent-tool-traces {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.agent-tool-group-header {
   width: 100%;
-  border: 0;
-  background: transparent;
   color: var(--text-muted);
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 0 1px;
-  text-align: left;
   font-size: 10px;
-}
-
-.agent-tool-group-toggle.collapsible {
-  cursor: pointer;
-}
-
-.agent-tool-group-toggle.static {
-  cursor: default;
-}
-
-.agent-tool-group-toggle:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--agent-accent) 44%, transparent);
-  outline-offset: 1px;
-  border-radius: 5px;
 }
 
 .agent-tool-group-title {
@@ -716,40 +705,6 @@
   white-space: nowrap;
 }
 
-.agent-tool-group-count {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.agent-tool-group-chevron {
-  color: var(--text-muted);
-  transition: transform var(--transition-fast), color var(--transition-fast);
-}
-
-.agent-tool-group-chevron.open {
-  transform: rotate(180deg);
-  color: var(--agent-accent);
-}
-
-.agent-tool-group-chevron.hidden {
-  opacity: 0;
-}
-
-.agent-tool-group-more {
-  align-self: flex-start;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 10px;
-  line-height: 1.3;
-  cursor: pointer;
-  padding: 0 2px 1px;
-  text-transform: lowercase;
-}
-
-.agent-tool-group-more:hover {
-  color: var(--text-primary);
-}
 
 .agent-tool-traces {
   width: 100%;
@@ -782,25 +737,6 @@
   min-width: 0;
 }
 
-.agent-tool-trace-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-}
-
-.agent-tool-trace-toggle:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--agent-accent) 52%, transparent);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
 
 .agent-tool-trace.ok {
   color: color-mix(in srgb, var(--text-secondary) 94%, var(--text-muted));
@@ -882,16 +818,6 @@
   color: color-mix(in srgb, var(--error) 82%, var(--text-primary));
 }
 
-.agent-tool-chevron {
-  flex-shrink: 0;
-  color: color-mix(in srgb, currentColor 70%, var(--text-muted));
-  transition: transform var(--transition-fast), color var(--transition-fast);
-}
-
-.agent-tool-chevron.open {
-  transform: rotate(180deg);
-  color: var(--text-primary);
-}
 
 .agent-tool-details {
   display: flex;
