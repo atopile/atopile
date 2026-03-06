@@ -87,6 +87,10 @@ function applyDeltaToZone(zone: ZoneModel, coords: { outline: number[]; fills: n
     }
 }
 
+export interface EditorOptions {
+    readOnly?: boolean;
+}
+
 export class Editor {
     private canvas: HTMLCanvasElement;
     private textOverlay: HTMLCanvasElement;
@@ -97,6 +101,8 @@ export class Editor {
     private client: LayoutClient;
     private renderLoop: RenderLoop;
     private model: RenderModel | null = null;
+    private readonly readOnly: boolean;
+    private readonly container: HTMLElement;
     private footprintIndex: SpatialIndex = new SpatialIndex(5);
     private footprintBBoxes: BBox[] = [];
     private textIndex: SpatialIndex = new SpatialIndex(10);
@@ -153,11 +159,23 @@ export class Editor {
     private pendingActionRequests = 0;
     private actionNonce = 0;
 
+    // External selection callbacks
+    private onSelectionChangeCallback: ((selectedIndices: number[]) => void) | null = null;
+    private onModelLoadCallback: ((model: RenderModel) => void) | null = null;
+
     // Snap-to-grid callback: transforms raw drag delta into snapped delta
     private snapDelta: ((dx: number, dy: number) => { dx: number; dy: number }) | null = null;
 
-    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws") {
+    // Stored handler references for cleanup
+    private _onMouseUp: ((e: MouseEvent) => void) | null = null;
+    private _onKeyDown: ((e: KeyboardEvent) => void) | null = null;
+    private _onResize: (() => void) | null = null;
+    private _onBeforeUnload: (() => void) | null = null;
+
+    constructor(canvas: HTMLCanvasElement, baseUrl: string, apiPrefix = "/api", wsPath = "/ws", container?: HTMLElement, options?: EditorOptions) {
         this.canvas = canvas;
+        this.readOnly = options?.readOnly ?? false;
+        this.container = container ?? canvas.parentElement!;
         this.textOverlay = this.createTextOverlay();
         this.textCtx = this.textOverlay.getContext("2d");
         this.syncTextOverlayViewport();
@@ -168,32 +186,29 @@ export class Editor {
         this.renderLoop = new RenderLoop(() => this.onRenderFrame());
 
         this.setupMouseHandlers();
-        this.setupKeyboardHandlers();
+        if (!this.readOnly) {
+            this.setupKeyboardHandlers();
+        }
         this.setupResizeHandler();
-        window.addEventListener("beforeunload", () => {
+        this._onBeforeUnload = () => {
             this.renderLoop.stop();
             this.client.disconnect();
-        });
+        };
+        window.addEventListener("beforeunload", this._onBeforeUnload);
         this.renderer.setup();
         this.renderLoop.start();
     }
 
     private createTextOverlay(): HTMLCanvasElement {
-        const existing = document.getElementById("editor-text-overlay");
-        if (existing instanceof HTMLCanvasElement) {
-            return existing;
-        }
-
         const overlay = document.createElement("canvas");
-        overlay.id = "editor-text-overlay";
-        overlay.style.position = "fixed";
+        overlay.style.position = "absolute";
         overlay.style.top = "0";
         overlay.style.left = "0";
-        overlay.style.width = "100vw";
-        overlay.style.height = "100vh";
+        overlay.style.width = "100%";
+        overlay.style.height = "100%";
         overlay.style.pointerEvents = "none";
         overlay.style.zIndex = "9";
-        document.body.appendChild(overlay);
+        this.container.appendChild(overlay);
         return overlay;
     }
 
@@ -212,12 +227,10 @@ export class Editor {
     private syncTextOverlayViewport(
         viewport = this.getCanvasViewportMetrics(),
     ): void {
-        const left = `${viewport.left}px`;
-        const top = `${viewport.top}px`;
         const width = `${viewport.width}px`;
         const height = `${viewport.height}px`;
-        if (this.textOverlay.style.left !== left) this.textOverlay.style.left = left;
-        if (this.textOverlay.style.top !== top) this.textOverlay.style.top = top;
+        if (this.textOverlay.style.left !== "0px") this.textOverlay.style.left = "0px";
+        if (this.textOverlay.style.top !== "0px") this.textOverlay.style.top = "0px";
         if (this.textOverlay.style.width !== width) this.textOverlay.style.width = width;
         if (this.textOverlay.style.height !== height) this.textOverlay.style.height = height;
     }
@@ -225,6 +238,21 @@ export class Editor {
     async init() {
         await this.fetchAndPaint();
         this.connectWebSocket();
+    }
+
+    dispose() {
+        this.renderLoop.stop();
+        this.client.disconnect();
+        this.panAndZoom.dispose();
+
+        if (this._onMouseUp) window.removeEventListener("mouseup", this._onMouseUp);
+        if (this._onKeyDown) window.removeEventListener("keydown", this._onKeyDown);
+        if (this._onResize) window.removeEventListener("resize", this._onResize);
+        if (this._onBeforeUnload) window.removeEventListener("beforeunload", this._onBeforeUnload);
+
+        if (this.textOverlay.parentNode) {
+            this.textOverlay.parentNode.removeChild(this.textOverlay);
+        }
     }
 
     private async fetchAndPaint() {
@@ -256,6 +284,7 @@ export class Editor {
         }
         this.requestRedraw();
         if (this.onLayersChanged) this.onLayersChanged();
+        if (this.onModelLoadCallback) this.onModelLoadCallback(this.model);
     }
 
     private applyDelta(delta: RenderDelta) {
@@ -484,6 +513,23 @@ export class Editor {
         this.singleOverrideMode = false;
     }
 
+    private notifySelectionChanged(): void {
+        if (this.onSelectionChangeCallback) {
+            let indices: number[];
+            if (this.selectionMode === "single" && this.selectedFpIndex >= 0) {
+                indices = [this.selectedFpIndex];
+            } else if (this.selectionMode === "multi") {
+                indices = [...this.selectedMultiIndices];
+            } else if (this.selectionMode === "group" && this.selectedGroupId) {
+                const group = this.groupsById.get(this.selectedGroupId);
+                indices = group ? [...group.memberIndices] : [];
+            } else {
+                indices = [];
+            }
+            this.onSelectionChangeCallback(indices);
+        }
+    }
+
     private setSingleSelection(index: number, enterOverride: boolean) {
         this.selectionMode = "single";
         this.selectedFpIndex = index;
@@ -494,6 +540,7 @@ export class Editor {
         } else if (!this.groupIdByFpIndex.has(index)) {
             this.singleOverrideMode = false;
         }
+        this.notifySelectionChanged();
     }
 
     private setMultiSelection(indices: number[]) {
@@ -511,6 +558,7 @@ export class Editor {
         this.selectedGroupId = null;
         this.selectedFpIndex = -1;
         this.singleOverrideMode = false;
+        this.notifySelectionChanged();
     }
 
     private setGroupSelection(groupId: string) {
@@ -519,6 +567,7 @@ export class Editor {
         this.selectedFpIndex = -1;
         this.selectedMultiIndices = [];
         this.singleOverrideMode = false;
+        this.notifySelectionChanged();
     }
 
     private clearSelection(exitSingleOverride = false) {
@@ -536,6 +585,7 @@ export class Editor {
         if (exitSingleOverride) {
             this.singleOverrideMode = false;
         }
+        this.notifySelectionChanged();
     }
 
     private selectedGroup(): UiFootprintGroup | null {
@@ -875,7 +925,7 @@ export class Editor {
         };
     }
 
-    private maybeStartPendingDrag(currentWorld: Vec2, currentScreen: Vec2): boolean {
+    private maybeStartPendingDrag(_currentWorld: Vec2, currentScreen: Vec2): boolean {
         const pending = this.pendingDrag;
         if (!pending) return false;
         const dx = currentScreen.x - pending.startScreen.x;
@@ -1007,7 +1057,7 @@ export class Editor {
 
             if (!this.model) return;
 
-            if (e.shiftKey) {
+            if (!this.readOnly && e.shiftKey) {
                 this.clearDragState();
                 this.isBoxSelecting = true;
                 this.boxSelectStartWorld = worldPos;
@@ -1039,14 +1089,16 @@ export class Editor {
                     }
                 }
 
-                const dragTargets = this.selectedIndicesForDrag(hitIdx);
-                const isGroupDrag = this.selectionMode === "group";
-                const dragTrackUuids = isGroupDrag ? (this.selectedGroup()?.trackMemberUuids ?? []) : [];
-                const dragViaUuids = isGroupDrag ? (this.selectedGroup()?.viaMemberUuids ?? []) : [];
-                const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
-                const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
-                const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
-                this.setPendingDrag(worldPos, this.lastMouseScreen, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids);
+                if (!this.readOnly) {
+                    const dragTargets = this.selectedIndicesForDrag(hitIdx);
+                    const isGroupDrag = this.selectionMode === "group";
+                    const dragTrackUuids = isGroupDrag ? (this.selectedGroup()?.trackMemberUuids ?? []) : [];
+                    const dragViaUuids = isGroupDrag ? (this.selectedGroup()?.viaMemberUuids ?? []) : [];
+                    const dragDrawingUuids = isGroupDrag ? (this.selectedGroup()?.graphicMemberUuids ?? []) : [];
+                    const dragTextUuids = isGroupDrag ? (this.selectedGroup()?.textMemberUuids ?? []) : [];
+                    const dragZoneUuids = isGroupDrag ? (this.selectedGroup()?.zoneMemberUuids ?? []) : [];
+                    this.setPendingDrag(worldPos, this.lastMouseScreen, dragTargets, dragTrackUuids, dragViaUuids, dragDrawingUuids, dragTextUuids, dragZoneUuids);
+                 }
                 this.repaintWithSelection();
             } else {
                 // Check if clicking inside a graphic-only group's bounding box.
@@ -1067,8 +1119,10 @@ export class Editor {
                 }
                 if (hitGraphicGroupId) {
                     this.setGroupSelection(hitGraphicGroupId);
-                    const group = this.groupsById.get(hitGraphicGroupId)!;
-                    this.setPendingDrag(worldPos, this.lastMouseScreen, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids);
+                    if (!this.readOnly) {
+                        const group = this.groupsById.get(hitGraphicGroupId)!;
+                        this.setPendingDrag(worldPos, this.lastMouseScreen, [], [], [], group.graphicMemberUuids, group.textMemberUuids, group.zoneMemberUuids);
+                    }
                     this.repaintWithSelection();
                 } else {
                     this.pendingDrag = null;
@@ -1129,7 +1183,7 @@ export class Editor {
             this.requestRedraw();
         });
 
-        window.addEventListener("mouseup", async (e: MouseEvent) => {
+        this._onMouseUp = async (e: MouseEvent) => {
             if (e.button !== 0) return;
 
             if (this.isBoxSelecting) {
@@ -1216,11 +1270,12 @@ export class Editor {
                 this.restorePostDragRendering();
                 this.repaintWithSelection();
             }
-        });
+        };
+        window.addEventListener("mouseup", this._onMouseUp);
     }
 
     private setupKeyboardHandlers() {
-        window.addEventListener("keydown", async (e: KeyboardEvent) => {
+        this._onKeyDown = async (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 if (this.isDragging) {
                     this.revertDragPositions();
@@ -1260,13 +1315,15 @@ export class Editor {
                 await this.executeAction({ command: "redo" });
                 return;
             }
-        });
+        };
+        window.addEventListener("keydown", this._onKeyDown);
     }
 
     private setupResizeHandler() {
-        window.addEventListener("resize", () => {
+        this._onResize = () => {
             this.requestRedraw();
-        });
+        };
+        window.addEventListener("resize", this._onResize);
     }
 
     private async rotateSelection(deltaDegrees: number) {
@@ -1389,6 +1446,29 @@ export class Editor {
         this.onMouseMoveCallback = cb;
     }
 
+    getModel(): RenderModel | null {
+        return this.model;
+    }
+
+    selectFootprintsByIndices(indices: number[]): void {
+        if (indices.length === 0) {
+            this.clearSelection(true);
+        } else if (indices.length === 1) {
+            this.setSingleSelection(indices[0]!, false);
+        } else {
+            this.setMultiSelection(indices);
+        }
+        this.repaintWithSelection();
+    }
+
+    setOnSelectionChange(cb: (selectedIndices: number[]) => void) {
+        this.onSelectionChangeCallback = cb;
+    }
+
+    setOnModelLoad(cb: (model: RenderModel) => void) {
+        this.onModelLoadCallback = cb;
+    }
+
     setOnActionBusyChanged(cb: (busy: boolean) => void) {
         this.onActionBusyChanged = cb;
         cb(this.pendingActionRequests > 0);
@@ -1414,7 +1494,7 @@ export class Editor {
     }
 
     private drawTextOverlay() {
-        if (!this.textCtx || !this.model) return;
+        if (!this.textCtx || !this.model || this.readOnly) return;
         const viewport = this.getCanvasViewportMetrics();
         this.syncTextOverlayViewport(viewport);
         const visibleFpIndices = this.footprintIndex.query(this.camera.bbox);

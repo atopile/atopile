@@ -44,7 +44,7 @@ export function createSearchMatcher(
 
   if (options.isRegex) {
     try {
-      const flags = options.caseSensitive ? 'g' : 'gi';
+      const flags = options.caseSensitive ? '' : 'i';
       const regex = new RegExp(trimmed, flags);
       return (text: string) => ({
         matches: regex.test(text),

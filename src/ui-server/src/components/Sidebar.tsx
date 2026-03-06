@@ -265,7 +265,7 @@ export function Sidebar() {
   }, [openManufacturingWizard]);
 
   const handleOpenOutput = useCallback(async (
-    output: 'openKiCad' | 'open3D' | 'openLayout',
+    output: 'openKiCad' | 'open3D' | 'openLayout' | 'openInteractiveBom',
     projectRoot: string,
     targetName: string
   ) => {
@@ -273,6 +273,7 @@ export function Sidebar() {
       openKiCad: 'KiCad',
       open3D: '3D view',
       openLayout: 'Layout',
+      openInteractiveBom: 'Interactive BOM',
     };
     const outputName = outputNames[output] || output;
 
@@ -291,6 +292,23 @@ export function Sidebar() {
           message: error,
         });
         return;
+      }
+
+      // For iBOM, the action response carries the data directly — no WS event needed
+      if (output === 'openInteractiveBom' && response.result) {
+        const result = response.result as Record<string, unknown>;
+        const path = typeof result.path === 'string' ? result.path : null;
+        const ibomProjectRoot = typeof result.project_root === 'string' ? result.project_root : null;
+        const ibomTargetName = typeof result.target_name === 'string' ? result.target_name : null;
+        postMessage({
+          type: 'openSignals',
+          openLayout: null,
+          openKicad: null,
+          open3d: null,
+          openInteractiveBom: path,
+          ibomProjectRoot,
+          ibomTargetName,
+        });
       }
     } catch (error) {
       console.warn('Failed to open output', error);
@@ -427,6 +445,7 @@ export function Sidebar() {
             onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
+            onOpenInteractiveBom={(projectRoot, targetName) => handleOpenOutput('openInteractiveBom', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
             onCreateTarget={async (projectRoot, data) => {
               const response = await sendActionWithResponse('addBuildTarget', {

@@ -215,7 +215,7 @@ export class RenderLayer {
     transform: Matrix3 | null = null;
 
     constructor(
-        private gl: WebGL2RenderingContext,
+        gl: WebGL2RenderingContext,
         public name: string,
         depth: number,
     ) {

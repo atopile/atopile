@@ -1,0 +1,199 @@
+/* ============================================
+   Interactive BOM styles
+   ============================================ */
+
+.ibom-app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--bg-primary, #1e1e2e);
+  color: var(--text-primary, #cdd6f4);
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: var(--font-size-sm, 12px);
+}
+
+/* ---- Sidebar ---- */
+
+.ibom-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  min-width: 280px;
+  max-width: 50vw;
+  border-right: 1px solid var(--border-color, #45475a);
+  background: var(--bg-primary, #1e1e2e);
+  position: relative;
+  overflow: hidden;
+}
+
+.ibom-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 6px);
+  padding: var(--spacing-md, 10px);
+  border-bottom: 1px solid var(--border-subtle, #313244);
+  flex-shrink: 0;
+}
+
+.ibom-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 3px);
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-muted, #7f849c);
+}
+
+.ibom-summary-sep {
+  margin: 0 2px;
+}
+
+/* ---- List header ---- */
+
+.ibom-list-header {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-xs, 3px) var(--spacing-md, 10px);
+  border-bottom: 1px solid var(--border-subtle, #313244);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 600;
+  color: var(--text-muted, #7f849c);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* ---- List ---- */
+
+.ibom-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-xs, 3px) 0;
+}
+
+.ibom-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl, 20px);
+  color: var(--text-muted, #7f849c);
+  font-size: var(--font-size-sm, 12px);
+}
+
+/* ---- Row ---- */
+
+.ibom-row {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-xs, 3px) var(--spacing-md, 10px);
+  cursor: pointer;
+  transition: background var(--transition-fast, 0.1s ease);
+  border-left: 2px solid transparent;
+}
+
+.ibom-row:hover,
+.ibom-row.ibom-row-hovered {
+  background: var(--bg-hover, #45475a);
+}
+
+.ibom-row.ibom-row-selected {
+  background: var(--selected, rgba(249, 80, 21, 0.08));
+  border-left-color: var(--accent, #f95015);
+}
+
+.ibom-row-qty {
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+  color: var(--text-muted, #7f849c);
+  font-size: var(--font-size-xs, 11px);
+}
+
+.ibom-row-designators {
+  flex: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary, #cdd6f4);
+  padding-left: var(--spacing-sm, 6px);
+}
+
+.ibom-row-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary, #bac2de);
+}
+
+/* ---- Detail panel ---- */
+
+.ibom-detail-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary, #181825);
+  border-top: 1px solid var(--border-color, #45475a);
+  max-height: 50%;
+  overflow-y: auto;
+  z-index: var(--z-elevated, 10);
+}
+
+.ibom-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm, 6px) var(--spacing-md, 10px);
+  border-bottom: 1px solid var(--border-subtle, #313244);
+}
+
+.ibom-detail-title {
+  font-weight: 600;
+  font-size: var(--font-size-sm, 12px);
+  color: var(--text-primary, #cdd6f4);
+}
+
+.ibom-detail-body {
+  padding: var(--spacing-sm, 6px) var(--spacing-md, 10px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 3px);
+}
+
+.ibom-detail-field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm, 6px);
+  font-size: var(--font-size-xs, 11px);
+  line-height: 1.6;
+}
+
+.ibom-detail-label {
+  width: 90px;
+  flex-shrink: 0;
+  color: var(--text-muted, #7f849c);
+  font-weight: 500;
+}
+
+.ibom-detail-value {
+  color: var(--text-primary, #cdd6f4);
+  word-break: break-all;
+}
+
+/* ---- Viewer ---- */
+
+.ibom-viewer {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #1a1a2e;
+}
+
+.ibom-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

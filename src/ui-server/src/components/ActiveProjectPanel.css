@@ -731,6 +731,7 @@
   height: 28px;
   min-height: 28px;
   width: 100%;
+  overflow: hidden;
 }
 
 .action-btn {
@@ -738,10 +739,11 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  flex: 1 1 auto;
-  min-width: fit-content;
+  flex: 1 1 0;
+  min-width: 28px;
   height: 100%;
   padding: 0 12px;
+  overflow: hidden;
   border: none !important;
   border-radius: 0 !important;
   background: transparent !important;
@@ -846,8 +848,9 @@
   background: color-mix(in srgb, var(--ctp-red, #f38ba8) 20%, transparent);
 }
 
-/* Hide labels when container is narrow */
-@container (max-width: 280px) {
+/* Hide labels when container is narrow — threshold must be above
+   the total width of all buttons with text (~460px with Manufacture) */
+@container (max-width: 500px) {
   .action-btn .action-label {
     display: none;
   }

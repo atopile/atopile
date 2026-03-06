@@ -255,6 +255,7 @@ function handleMessage(event: MessageEvent): void {
               openLayout: openLayout ?? null,
               openKicad: openKicad ?? null,
               open3d: open3D ?? null,
+              openInteractiveBom: null,
             });
           }
 
@@ -661,6 +662,7 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: path,
         openKicad: null,
         open3d: null,
+        openInteractiveBom: null,
       });
       break;
     }
@@ -671,6 +673,7 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: null,
         openKicad: path,
         open3d: null,
+        openInteractiveBom: null,
       });
       break;
     }
@@ -681,6 +684,7 @@ function handleEventMessage(message: EventMessage): void {
         openLayout: null,
         openKicad: null,
         open3d: path,
+        openInteractiveBom: null,
       });
       break;
     }

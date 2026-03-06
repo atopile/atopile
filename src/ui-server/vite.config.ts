@@ -333,6 +333,13 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), screenshotPlugin()],
     // Use relative base path for VS Code webviews
     base: './',
+    resolve: {
+      alias: {
+        '@layout-viewer': resolve(__dirname, '../atopile/layout_server/frontend/src'),
+        // Resolve earcut from ui-server's node_modules (not the layout frontend source dir)
+        'earcut': resolve(__dirname, 'node_modules/earcut'),
+      },
+    },
     // Dev server settings
     server: {
       port: 5173,
@@ -353,6 +360,7 @@ export default defineConfig(({ mode }) => {
               logViewer: resolve(__dirname, 'log-viewer.html'),
               testExplorer: resolve(__dirname, 'test-explorer.html'),
               migrate: resolve(__dirname, 'migrate.html'),
+              interactiveBom: resolve(__dirname, 'interactive-bom.html'),
             },
         output: {
           entryFileNames: '[name].js',
