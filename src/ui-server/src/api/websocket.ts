@@ -17,7 +17,8 @@ import { postMessage } from './vscodeApi';
 const RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 10000; // Reduced from 30s for faster reconnection
 const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
-const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
+// Allow backend restart/recovery to finish before forcing a reconnect loop.
+const CONNECTION_TIMEOUT_MS = 15000;
 
 // Message types from backend
 interface StateMessage {
@@ -48,6 +49,11 @@ let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 let isIntentionallyClosed = false;
 let requestCounter = 0;
+
+// Backend status tracking for reconnection coordination.
+// When the backend is starting/stopped/error, the UI pauses reconnection
+// to avoid a thundering herd when the backend restarts.
+let backendState: string = 'running';
 const pendingRequests = new Map<string, {
   resolve: (message: ActionResultMessage) => void;
   reject: (error: Error) => void;
@@ -736,7 +742,6 @@ function handleEventMessage(message: EventMessage): void {
       }
       break;
     case 'atopile_config_changed':
-      console.log('[WS] Received atopile_config_changed raw data:', JSON.stringify(data, null, 2));
       updateAtopileConfig(data);
       break;
     case EventType.LogViewCurrentIDChanged:
@@ -841,16 +846,6 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
     update.fromSpec = fromSpec;
   }
 
-  console.log('[WS] updateAtopileConfig received:', {
-    actualVersion,
-    actualSource,
-    actualBinaryPath,
-    fromBranch,
-    fromSpec,
-    source: data.source,
-    localPath: data.local_path || data.localPath,
-  });
-
   // User's selection in the dropdown
   if (typeof data.source === 'string') {
     update.source = data.source as AppState['atopile']['source'];
@@ -893,6 +888,13 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
 function scheduleReconnect(): void {
   if (isIntentionallyClosed) return;
 
+  // Pause reconnection while the backend is starting, stopped, or errored.
+  // The backendStatus handler will trigger a reconnect when the backend is ready.
+  if (backendState === 'starting' || backendState === 'stopped' || backendState === 'error') {
+    console.log(`[WS] Backend ${backendState}, pausing reconnect`);
+    return;
+  }
+
   // Don't schedule if already scheduled
   if (reconnectTimeout) {
     console.log('[WS] Reconnect already scheduled');
@@ -914,10 +916,34 @@ function scheduleReconnect(): void {
   }, delay);
 }
 
+/**
+ * Notify the WebSocket module of the backend server's current state.
+ * Called by useConnection when the extension sends a backendStatus message.
+ * When the backend transitions to 'running', this triggers an immediate reconnect.
+ */
+export function notifyBackendStatus(serverState: string, _connected: boolean): void {
+  const wasDown = backendState === 'starting' || backendState === 'stopped' || backendState === 'error';
+  backendState = serverState;
+
+  // Backend just became running — reset backoff and reconnect immediately
+  if (wasDown && serverState === 'running') {
+    console.log('[WS] Backend is running, resetting backoff and reconnecting');
+    reconnectAttempts = 0;
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      connect();
+    }
+  }
+}
+
 // Export for use in components
 export default {
   connect,
   disconnect,
   sendAction,
   isConnected,
+  notifyBackendStatus,
 };

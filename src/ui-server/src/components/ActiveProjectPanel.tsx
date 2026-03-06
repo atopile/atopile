@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
+import { IS_WEB_IDE } from '../api/config'
 import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
@@ -1105,20 +1106,23 @@ export function ActiveProjectPanel({
             </button>
           )}
 
-          <div className="action-divider" />
-
-          <button
-            className="action-btn"
-            onClick={() => {
-              if (!activeTarget) return
-              onOpenKiCad(activeTarget.root, activeTarget.name)
-            }}
-            disabled={!activeTarget}
-            title={getOutputTooltip('KiCad schematic editor')}
-          >
-            <Layers size={12} />
-            <span className="action-label">KiCad</span>
-          </button>
+          {!IS_WEB_IDE && (
+            <>
+              <div className="action-divider" />
+              <button
+                className="action-btn"
+                onClick={() => {
+                  if (!activeTarget) return
+                  onOpenKiCad(activeTarget.root, activeTarget.name)
+                }}
+                disabled={!activeTarget}
+                title={getOutputTooltip('KiCad schematic editor')}
+              >
+                <Layers size={12} />
+                <span className="action-label">KiCad</span>
+              </button>
+            </>
+          )}
 
           <div className="action-divider" />
 

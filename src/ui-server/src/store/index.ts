@@ -471,6 +471,14 @@ export const useStore = create<Store>()(
         if (!_readySignalled && projects.length > 0) {
           _readySignalled = true;
           postMessage({ type: 'webviewReady' });
+          // Always sync the current selection to the extension host on startup
+          // (the subscribe-based selectionChanged only fires on *changes*, so
+          // persisted-state restoration would otherwise be invisible).
+          postMessage({
+            type: 'selectionChanged',
+            projectRoot: selectedProjectRoot,
+            targetNames: selectedTargetNames,
+          });
         }
 
         return {
@@ -781,20 +789,13 @@ export const useStore = create<Store>()(
 
       // atopile config
       setAtopileConfig: (update) => {
-        console.log('[Store] setAtopileConfig update:', update);
         set((state) => {
-          const newAtopile = {
-            ...state.atopile,
-            ...update,
+          return {
+            atopile: {
+              ...state.atopile,
+              ...update,
+            },
           };
-          console.log('[Store] setAtopileConfig new state:', {
-            actualBinaryPath: newAtopile.actualBinaryPath,
-            localPath: newAtopile.localPath,
-            source: newAtopile.source,
-            actualVersion: newAtopile.actualVersion,
-            fromBranch: newAtopile.fromBranch,
-          });
-          return { atopile: newAtopile };
         });
       },
 
