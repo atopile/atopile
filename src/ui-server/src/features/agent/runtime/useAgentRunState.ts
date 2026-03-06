@@ -374,7 +374,7 @@ export function useAgentRunState({
       const finalizedTraces = response.toolTraces.map((trace) => ({ ...trace, running: false }));
 
       const buildFinalMessage = (pending: AgentMessage | undefined): AgentMessage => ({
-        id: `${chatPrefix}-assistant-${Date.now()}`,
+        id: pending?.id ?? pendingAssistantId,
         role: 'assistant',
         content: pending?.designQuestions
           ? normalizeAssistantText(response.assistantMessage)
@@ -421,7 +421,7 @@ export function useAgentRunState({
         messages: chat.messages.map((entry) =>
           entry.id === pendingAssistantId
             ? {
-                id: cancelled ? `${chatPrefix}-assistant-stopped-${Date.now()}` : `${chatPrefix}-assistant-error-${Date.now()}`,
+                id: entry.id,
                 role: 'assistant',
                 content: cancelled ? `Stopped: ${message}` : runLost ? `Request interrupted: ${message}` : `Request failed: ${message}`,
                 activity: cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored',
@@ -442,7 +442,7 @@ export function useAgentRunState({
         setMessages((previous) => previous.map((entry) =>
           entry.id === pendingAssistantId
             ? {
-                id: cancelled ? `${chatPrefix}-assistant-stopped-${Date.now()}` : `${chatPrefix}-assistant-error-${Date.now()}`,
+                id: entry.id,
                 role: 'assistant',
                 content: cancelled ? `Stopped: ${message}` : runLost ? `Request interrupted: ${message}` : `Request failed: ${message}`,
                 activity: cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored',

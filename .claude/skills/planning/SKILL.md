@@ -63,7 +63,8 @@ my-project/
 ## Key rules
 
 - **ICs always get wrapper packages** — MCU, gate driver, transceiver, anything with complex pin mapping
-- **Wrapper modules expose standard interfaces** — `ElectricPower`, `I2C`, `SPI`, `CAN`, `UART`, `ElectricLogic`, not raw pins
+- **Wrapper modules expose standard interfaces** — `ElectricPower`, `I2C`, `SPI`, `CAN`, `UART`, `SWD`, `USB2_0`, `USB2_0_IF`, `ElectricLogic`, `ElectricSignal`, not raw pins
+- **Check stdlib before defining new interfaces** — if stdlib already has the right interface, or the boundary can be modeled as arrays/composition of stdlib interfaces, use that instead of inventing a project-local interface
 - **Self-contained parts don't need wrappers** — anything that doesn't need supporting components and doesn't expose high-level interfaces (connectors, LEDs, test points, mounting holes)
 - **No `ato.yaml` inside package directories** — all builds defined in the project root `ato.yaml`
 - **Package builds in `ato.yaml`** — each package gets its own build target for independent verification
@@ -312,7 +313,7 @@ Do steps 1-5 in a SINGLE turn — do not end your turn after announcing you will
 
 1. **Read** existing project files to understand current state.
 2. **Set up project structure** — create `ato.yaml` with package builds, create `packages/` directories.
-3. **Write the spec** as `main.ato` — architecture with sub-modules, requirements in docstrings, interface connections, and formal constraints. Use standard library interfaces (CAN, I2C, SPI, ElectricPower) in the spec, not raw ElectricLogic.
+3. **Write the spec** as `main.ato` — architecture with sub-modules, requirements in docstrings, interface connections, and formal constraints. Use standard library interfaces (CAN, I2C, SPI, SWD, USB2_0, ElectricPower, ElectricLogic, ElectricSignal) in the spec instead of inventing local interfaces unless there is a real reusable boundary not covered by stdlib.
 4. **Create checklist** with items for each package wrapper + integration + build.
 5. **Call `design_questions`** with ALL open questions at once. Include suggested options and recommended defaults where possible — make it easy for the user to answer quickly. Your turn ends automatically after this call.
 
@@ -325,6 +326,7 @@ Use `design_questions` any time you have multiple design decisions to gather. It
 ## Phase 3: Implement end-to-end (do not stop)
 
 7. **Create package wrappers** — one per IC. Install parts, read datasheets, map pins to interfaces.
+   - Before committing to an unfamiliar IC, motor driver, PMIC, RF part, or other high-risk part, do a brief `web_search` pass to compare families, confirm the typical topology, and find reference-circuit guidance.
 8. **Wire up `main.ato`** — connect packages through their interfaces. No raw `_package` imports here.
 9. **Build and verify** — run the build and fix issues.
 

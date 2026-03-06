@@ -57,6 +57,9 @@ export function AgentMessagesView({
   onOpenFileDiff,
 }: AgentMessagesViewProps) {
   const [expandedChecklistMessages, setExpandedChecklistMessages] = useState<Set<string>>(new Set());
+  const latestChecklistMessageId = [...messages]
+    .reverse()
+    .find((message) => (message.checklist?.items.length ?? 0) > 0)?.id ?? null;
 
   return (
     <>
@@ -65,7 +68,10 @@ export function AgentMessagesView({
           const allTraceEntries = (message.toolTraces ?? []).map((trace, index) => ({ trace, index }));
           const hasToolTraces = allTraceEntries.length > 0;
           const canCollapseToolGroup = allTraceEntries.length > TOOL_TRACE_PREVIEW_COUNT;
-          const isToolGroupExpanded = !canCollapseToolGroup || expandedTraceGroups.has(message.id);
+          const hasExpandedTrace = allTraceEntries.some(({ trace, index }) =>
+            expandedTraceKeys.has(traceExpansionKey(message.id, trace, index)));
+          const isToolGroupExpanded =
+            !canCollapseToolGroup || expandedTraceGroups.has(message.id) || hasExpandedTrace;
           const visibleTraceEntries = isToolGroupExpanded
             ? allTraceEntries
             : allTraceEntries.slice(-TOOL_TRACE_PREVIEW_COUNT);
@@ -107,7 +113,7 @@ export function AgentMessagesView({
 
                   return (
                     <div
-                      key={`${message.id}-trace-${trace.callId ?? index}`}
+                      key={currentTraceKey}
                       className={`agent-tool-trace ${trace.running ? 'running' : trace.ok ? 'ok' : 'error'} ${expanded ? 'expanded' : ''}`}
                     >
                       <div className="agent-tool-trace-head">
@@ -242,7 +248,7 @@ export function AgentMessagesView({
                 />
               )}
               {message.role !== 'assistant' && toolTraceSection}
-              {message.checklist && checklistCount > 0 && (
+              {message.checklist && checklistCount > 0 && latestChecklistMessageId === message.id && (
                 <div className="agent-checklist-panel">
                   <div className="agent-checklist-head">
                     <span className="agent-checklist-title">Checklist</span>

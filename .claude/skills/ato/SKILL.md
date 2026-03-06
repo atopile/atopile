@@ -29,7 +29,7 @@ Capture user intent as ato code. Focus on **high-level architecture** — think 
 - **Good naming** — name modules by their role in the system, not implementation topology (see Section 1.1).
 - **Module boundaries** should encapsulate common functionality to avoid duplication at the top level.
 - **Use high-level interfaces** (`ElectricPower`, `I2C`, `SPI`, `UART`, `ElectricLogic`) instead of low-level electrical connections where possible.
-- **Custom interfaces** — you can create project-specific interfaces if needed, but check the stdlib first (see Section 3).
+- **Custom interfaces are rare** — before defining a new `interface`, check the stdlib first with `stdlib_list` / `stdlib_get_item`. If an existing stdlib interface or a simple composition/array of stdlib interfaces works, use that instead.
 - **Capture requirements** in the module docstring under a `Requirements:` section on the module that owns them.
 - **Add formal constraints** with `assert` for voltage, current, frequency bounds.
 - **Wire modules together** at the interface level (`~`). Do NOT wire pins yet.
@@ -155,24 +155,26 @@ Search the atopile package registry before building from scratch.
 
 When `packages_search` returns no match for a needed IC, connector, or module, **create a local driver package** instead of giving up or asking the user to find one.
 
-> **Tools:** `parts_search` → `parts_install(create_package=true)` → `datasheet_read` → `project_read_file` (to inspect the generated wrapper package) → `project_edit_file` (to refine that wrapper in place) → `workspace_list_targets` (to discover nested package targets).
+> **Tools:** `parts_search` → `web_search` (when comparing families, validating topology, or finding reference circuits) → `parts_install(create_package=true)` → `datasheet_read` → `project_read_file` (to inspect the generated wrapper package) → `project_edit_file` (to refine that wrapper in place) → `workspace_list_targets` (to discover nested package targets).
 
 **Step-by-step recipe:**
 
 1. **Find the part**: Use `parts_search` to find the LCSC component (e.g., `parts_search("LAN8742A")`).
-2. **Install as a local package**: Use `parts_install` with the LCSC ID and `create_package=true`. This installs the raw part and generates the canonical reusable wrapper package under `packages/`.
-3. **Read the datasheet**: Use `datasheet_read` with the LCSC ID to get pin functions, electrical specs, and typical application circuit.
-4. **Read the generated files**: Inspect the generated wrapper under `packages/<PartName>/<PartName>.ato` and the installed raw part it imports to see available interfaces and exact pin names.
-5. **Refine the wrapper package** if needed:
+2. **Research the part family when needed**: Use `web_search` before locking the part if you need application notes, common reference circuits, family comparisons, or confirmation that the chosen topology is standard and robust.
+3. **Install as a local package**: Use `parts_install` with the LCSC ID and `create_package=true`. This installs the raw part and generates the canonical reusable wrapper package under `packages/`.
+4. **Read the datasheet**: Use `datasheet_read` with the LCSC ID to get pin functions, electrical specs, and typical application circuit.
+5. **Read the generated files**: Inspect the generated wrapper under `packages/<PartName>/<PartName>.ato` and the installed raw part it imports to see available interfaces and exact pin names.
+6. **Refine the wrapper package** if needed:
    - Treat `packages/<PartName>/<PartName>.ato` as the canonical wrapper module for that part.
    - Edit that generated package file in place rather than creating another wrapper layer.
    - Keep the raw installed part file unchanged.
-   - Expose standard interfaces such as `ElectricPower`, `I2C`, `SPI`, `UART`, `CAN`, or `ElectricLogic`.
+   - Expose standard interfaces such as `ElectricPower`, `I2C`, `SPI`, `UART`, `CAN`, `SWD`, `USB2_0`, `USB2_0_IF`, `ElectricLogic`, or `ElectricSignal`.
+   - Before writing any custom `interface`, check `stdlib_list` / `stdlib_get_item` for an existing stdlib interface and prefer stdlib arrays/composition over project-local aggregate interfaces.
    - Map the internal `_package` component pins to those interfaces.
    - Add decoupling capacitors and required passives.
    - Set voltage/current constraints from the datasheet.
-6. **Discover targets**: Run `workspace_list_targets` after package creation if you need to inspect or build nested package targets.
-7. **Import and use** the local package in your top-level design directly from `packages/<PartName>/<PartName>.ato`.
+7. **Discover targets**: Run `workspace_list_targets` after package creation if you need to inspect or build nested package targets.
+8. **Import and use** the local package in your top-level design directly from `packages/<PartName>/<PartName>.ato`.
 
 **Example: refining a generated local I2C mux wrapper**
 
@@ -255,8 +257,15 @@ Choose components using generics + constraints wherever possible.
 
 - Use stdlib generics (`Resistor`, `Capacitor`, `Inductor`, `Diode`, `LED`, `Fuse`) with value + package constraints for auto-picking. Prefer generics over locked parts.
 - Use `parts_search` only when a specific part is needed (IC, connector, specialized component).
+- Use `web_search` before locking a part when you need to compare candidate families, confirm the recommended implementation pattern, or find a solid reference circuit/application note.
 - Use `parts_install` for parts that need explicit LCSC IDs, and prefer `create_package=true` when the part should become a reusable local wrapper.
+- Use `datasheet_read` after selecting a concrete part to validate exact pins, limits, and supporting circuitry.
 - Lock only high-risk parts (MCU, PMIC, RF, connectors). Leave commodity passives auto-picked.
+- Before inventing a project-local `interface`, check whether the wrapper boundary can be represented as:
+  - a stdlib interface (`SPI`, `UART`, `SWD`, `USB2_0_IF`, etc.)
+  - an array of stdlib signals/interfaces (`new ElectricLogic[3]`, `new ElectricPower[3]`, `new ElectricSignal[3]`)
+  - a few named stdlib fields directly on the module
+- Only define a custom interface when it represents a real reusable protocol/boundary that stdlib or simple composition does not already cover.
 
 ### 4d: Detailed wiring and constraints
 

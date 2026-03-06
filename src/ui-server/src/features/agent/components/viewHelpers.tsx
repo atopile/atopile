@@ -67,6 +67,21 @@ interface TraceDetailsSummary {
   };
 }
 
+function stableStringify(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${key}:${stableStringify(record[key])}`).join(',')}}`;
+  }
+  return '';
+}
+
 function formatTracePreviewValue(value: unknown, maxLength = 88): string {
   if (value === null) return 'null';
   if (typeof value === 'undefined') return 'undefined';
@@ -190,7 +205,8 @@ export function summarizeTraceDetails(trace: AgentTraceView): TraceDetailsSummar
 }
 
 export function traceExpansionKey(messageId: string, trace: AgentTraceView, index: number): string {
-  return `${messageId}:${trace.callId ?? `${trace.name}:${index}`}`;
+  if (trace.callId) return `${messageId}:${trace.callId}`;
+  return `${messageId}:${trace.name}:${stableStringify(trace.args)}:${index}`;
 }
 
 export function summarizeToolTrace(trace: AgentTraceView): string {

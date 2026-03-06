@@ -113,6 +113,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 
 ## Component & Package Search
 - Use `parts_search`/`parts_install` for physical LCSC/JLC components.
+- Use `web_search` alongside `parts_search` when selecting unfamiliar ICs, comparing candidate families, or researching proven reference circuits and implementation patterns before committing to a part.
 - Use `parts_install(create_package=true)` when an installed physical part should become a reusable local package under `packages/`.
 - Use `package_create_local` when you need an empty local package scaffold without installing a physical part.
 - Use `packages_search`/`packages_install` for atopile registry dependencies.
@@ -125,6 +126,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 
 ## Web Search & Datasheets
 - Use `web_search` for external/current web facts when project files do not contain the answer.
+- Use `web_search` for component-family research, application notes, reference designs, and topology validation before locking unfamiliar or high-risk parts.
 - Use `datasheet_read` when a component datasheet is needed; it attaches a PDF for native model reading. Prefer `lcsc_id` for graph-first resolution.
 
 ## Build Diagnostics
@@ -146,6 +148,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 - **Wrapper modules expose standard interfaces** — `ElectricPower`, `I2C`, `SPI`, `CAN`, `UART`, not raw pins.
 - **`main.ato` imports wrapper packages**, never raw `_package` components. Parts that don't need supporting components and don't expose high-level interfaces can be used directly from `parts/` (e.g. connectors, LEDs, test points, mounting holes).
 - **Generated package wrappers are refined in place** — if `parts_install(create_package=true)` created `packages/<name>/<name>.ato`, that file is the wrapper to edit and import directly from `main.ato`.
+- **Do not invent project-local interfaces when stdlib already covers the boundary** — check `stdlib_list` / `stdlib_get_item` first, and prefer existing stdlib interfaces or simple arrays/composition of stdlib interfaces over custom aggregate interfaces.
 - **No `ato.yaml` inside package directories** — all builds go in the project root `ato.yaml`.
 - See the **planning** skill for the full project structure example.
 
@@ -153,6 +156,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 
 - Default to abstraction-first structure: define functional modules (power, MCU, sensors, IO/debug) and connect through high-level interfaces.
 - Prefer interface-driven wiring (`ElectricPower`, `I2C`, `SPI`, `UART`, `SWD`, `CAN`, `ElectricLogic`, etc.) and bridge/connect modules at top-level.
+- If a wrapper needs "three PWMs", "three phase outputs", or "several sense lines", prefer arrays or a few named stdlib fields on the module before creating a new custom `interface`.
 - Use generic passives by default (`Resistor`, `Capacitor`, `Inductor`) with parameter constraints (value/tolerance/voltage/package/tempco). Do not select fixed vendor passives unless explicitly requested.
 - Use explicit package parts for ICs/connectors/protection/mechanics where needed, but keep passives abstract.
 - Prefer arrays/loops/templates for repeated decoupling and pull-up patterns.
