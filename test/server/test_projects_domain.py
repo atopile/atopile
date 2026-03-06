@@ -70,3 +70,64 @@ builds:
     assert (package_root / "layouts").is_dir()
     assert not (package_root / "elec").exists()
     assert package_ato["paths"]["layout"] == "./layouts"
+
+
+def test_create_local_package_writes_file_dependency_identifier(tmp_path: Path):
+    project_root = tmp_path / "demo"
+    project_root.mkdir()
+    (project_root / "ato.yaml").write_text(
+        """
+requires-atopile: ^0.14.0
+paths:
+  src: ./
+  layout: ./layouts
+builds:
+  default:
+    entry: main.ato:App
+""".strip()
+    )
+
+    projects_domain.create_local_package(project_root, "Raspberry_Pi_RP2040", "RP2040")
+
+    project_ato = yaml.safe_load((project_root / "ato.yaml").read_text(encoding="utf-8"))
+
+    assert project_ato["dependencies"] == [
+        {
+            "type": "file",
+            "path": "./packages/Raspberry_Pi_RP2040",
+            "identifier": "local/raspberry-pi-rp2040",
+        }
+    ]
+
+
+def test_create_local_package_backfills_existing_file_dependency_identifier(
+    tmp_path: Path,
+):
+    project_root = tmp_path / "demo"
+    project_root.mkdir()
+    (project_root / "ato.yaml").write_text(
+        """
+requires-atopile: ^0.14.0
+paths:
+  src: ./
+  layout: ./layouts
+builds:
+  default:
+    entry: main.ato:App
+dependencies:
+  - type: file
+    path: ./packages/Raspberry_Pi_RP2040
+""".strip()
+    )
+
+    projects_domain.create_local_package(project_root, "Raspberry_Pi_RP2040", "RP2040")
+
+    project_ato = yaml.safe_load((project_root / "ato.yaml").read_text(encoding="utf-8"))
+
+    assert project_ato["dependencies"] == [
+        {
+            "type": "file",
+            "path": "./packages/Raspberry_Pi_RP2040",
+            "identifier": "local/raspberry-pi-rp2040",
+        }
+    ]
