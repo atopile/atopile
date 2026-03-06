@@ -113,6 +113,22 @@ class is_pcb_stackup(fabll.Node):
         stackup = self.get_stackup()
         return stackup.get_children(direct_only=True, types=PCBLayer)
 
+    def get_manufacturer(self) -> is_pcb_manufacturer:
+        manu_n = self.get_stackup().get_children(
+            direct_only=True, types=fabll.Node, required_trait=is_pcb_manufacturer
+        )
+        if not manu_n:
+            raise UserException(
+                f"Stackup '{self.get_stackup().get_name()}' does not have a "
+                "manufacturer."
+            )
+        if len(manu_n) > 1:
+            raise UserException(
+                f"Stackup '{self.get_stackup().get_name()}' has multiple manufacturers:"
+                f" {', '.join(mn.get_name() for mn in manu_n)}"
+            )
+        return manu_n[0].get_trait(is_pcb_manufacturer)
+
 
 class is_pcb(fabll.Node):
     """

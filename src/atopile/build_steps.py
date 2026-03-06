@@ -52,6 +52,7 @@ from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.exporters.pcb.stackup import export_stackup_markdown
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
@@ -1088,6 +1089,15 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
             )
         except Exception as e:
             logger.warning(f"Failed to generate PCB summary: {e}")
+
+        # Export stackup as markdown
+        try:
+            export_stackup_markdown(
+                app,
+                path=config.build.paths.output_base.with_suffix(".stackup.md"),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate stackup markdown: {e}")
 
         # Copy kicad_pcb to build directory for manufacturing export
         import shutil
