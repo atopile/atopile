@@ -1,7 +1,8 @@
-import { Plus, Minimize2, Maximize2, MessageSquareText } from 'lucide-react';
+import { ChevronDown, Plus, Minimize2, Maximize2, MessageSquareText } from 'lucide-react';
 import { AgentComposer } from '../features/agent/components/AgentComposer';
 import { AgentHistoryDrawer } from '../features/agent/components/AgentHistoryDrawer';
 import { AgentMessagesView } from '../features/agent/components/AgentMessagesView';
+import { formatCount, renderLineDelta } from '../features/agent/components/viewHelpers';
 import { useAgentChatRuntime } from '../features/agent/useAgentChatRuntime';
 import './AgentChatPanel.css';
 
@@ -100,17 +101,53 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
             <AgentMessagesView
               messagesRef={runtime.messagesRef}
               messages={runtime.messages}
-              expandedTraceGroups={runtime.expandedTraceGroups}
               expandedTraceKeys={runtime.expandedTraceKeys}
               latestBuildStatus={runtime.latestBuildStatus}
-              changedFilesSummary={runtime.changedFilesSummary}
-              changesExpanded={runtime.changesExpanded}
-              onToggleTraceGroupExpanded={runtime.toggleTraceGroupExpanded}
               onToggleTraceExpanded={runtime.toggleTraceExpanded}
-              onToggleChangesExpanded={() => runtime.setChangesExpanded((value) => !value)}
               onSubmitDesignQuestions={(answers) => void runtime.sendMessage({ directMessage: answers, hideUserMessage: true })}
-              onOpenFileDiff={runtime.openFileDiff}
             />
+
+            {runtime.changedFilesSummary && (
+              <div className="agent-changes-summary">
+                <button
+                  type="button"
+                  className="agent-changes-toggle"
+                  onClick={() => runtime.setChangesExpanded((value) => !value)}
+                  aria-expanded={runtime.changesExpanded}
+                >
+                  <ChevronDown
+                    size={12}
+                    className={`agent-changes-chevron ${runtime.changesExpanded ? 'open' : ''}`}
+                  />
+                  <span className="agent-changes-title">
+                    {formatCount(runtime.changedFilesSummary.files.length, 'changed file', 'changed files')}
+                  </span>
+                  <span className="agent-changes-stats">
+                    {renderLineDelta(
+                      runtime.changedFilesSummary.totalAdded,
+                      runtime.changedFilesSummary.totalRemoved,
+                      'agent-line-delta-compact',
+                    )}
+                  </span>
+                </button>
+                {runtime.changesExpanded && (
+                  <div className="agent-changes-list">
+                    {runtime.changedFilesSummary.files.map((file) => (
+                      <button
+                        key={file.path}
+                        type="button"
+                        className="agent-changes-file"
+                        onClick={() => runtime.openFileDiff(file)}
+                        title={file.path}
+                      >
+                        <span className="agent-changes-file-path">{file.path}</span>
+                        {renderLineDelta(file.added, file.removed, 'agent-line-delta-compact')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <AgentComposer
               composerInputRef={runtime.composerInputRef}

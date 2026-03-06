@@ -1,5 +1,5 @@
-import { useState, type RefObject } from 'react';
-import { AlertCircle, Check, Loader2, X } from 'lucide-react';
+import type { RefObject } from 'react';
+import { AlertCircle, Check, ChevronDown, Loader2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BuildQueueItem } from '../../../components/BuildQueueItem';
@@ -14,11 +14,8 @@ import {
   summarizeToolTraceGroup,
   summarizeTraceDetails,
   traceExpansionKey,
-  type AgentChangedFilesSummary,
 } from './viewHelpers';
 import type { QueuedBuild } from '../../../types/build';
-
-const CHECKLIST_TERMINAL_PREVIEW_COUNT = 10;
 
 interface MessageBuildStatusState {
   messageId: string;
@@ -29,29 +26,20 @@ interface MessageBuildStatusState {
 interface AgentMessagesViewProps {
   messagesRef: RefObject<HTMLDivElement>;
   messages: AgentMessage[];
-  expandedTraceGroups: Set<string>;
   expandedTraceKeys: Set<string>;
   latestBuildStatus: MessageBuildStatusState | null;
-  changedFilesSummary: AgentChangedFilesSummary | null;
-  changesExpanded: boolean;
-  onToggleTraceGroupExpanded: (messageId: string) => void;
   onToggleTraceExpanded: (traceKey: string) => void;
-  onToggleChangesExpanded: () => void;
   onSubmitDesignQuestions: (answers: string) => void;
-  onOpenFileDiff: (file: NonNullable<AgentChangedFilesSummary>['files'][number]) => void;
 }
 
 export function AgentMessagesView({
   messagesRef,
   messages,
+  expandedTraceKeys,
   latestBuildStatus,
-  changedFilesSummary,
-  changesExpanded,
-  onToggleChangesExpanded,
+  onToggleTraceExpanded,
   onSubmitDesignQuestions,
-  onOpenFileDiff,
 }: AgentMessagesViewProps) {
-  const [expandedChecklistMessages, setExpandedChecklistMessages] = useState<Set<string>>(new Set());
   const latestChecklistMessageId = [...messages]
     .reverse()
     .find((message) => (message.checklist?.items.length ?? 0) > 0)?.id ?? null;
@@ -72,25 +60,35 @@ export function AgentMessagesView({
               <div className="agent-tool-traces">
                 {allTraceEntries.map(({ trace, index }) => {
                   const currentTraceKey = traceExpansionKey(message.id, trace, index);
+                  const expanded = expandedTraceKeys.has(currentTraceKey);
                   const details = summarizeTraceDetails(trace);
                   const traceDiff = readTraceDiff(trace);
 
                   return (
                     <div
                       key={currentTraceKey}
-                      className={`agent-tool-trace ${trace.running ? 'running' : trace.ok ? 'ok' : 'error'}`}
+                      className={`agent-tool-trace ${trace.running ? 'running' : trace.ok ? 'ok' : 'error'} ${expanded ? 'expanded' : ''}`}
                     >
                       <div className="agent-tool-trace-head">
-                        {trace.running
-                          ? <Loader2 size={11} className="agent-tool-spin agent-tool-status-icon running" />
-                          : trace.ok
-                            ? <Check size={11} className="agent-tool-status-icon ok" />
-                            : <X size={11} className="agent-tool-status-icon error" />}
-                        <span className="agent-tool-name">{trace.name}</span>
-                        <span className="agent-tool-summary">{summarizeToolTrace(trace)}</span>
-                        {traceDiff && renderLineDelta(traceDiff.added, traceDiff.removed, 'agent-line-delta-compact')}
+                        <button
+                          type="button"
+                          className="agent-tool-trace-toggle"
+                          onClick={() => onToggleTraceExpanded(currentTraceKey)}
+                          aria-expanded={expanded}
+                        >
+                          {trace.running
+                            ? <Loader2 size={11} className="agent-tool-spin agent-tool-status-icon running" />
+                            : trace.ok
+                              ? <Check size={11} className="agent-tool-status-icon ok" />
+                              : <X size={11} className="agent-tool-status-icon error" />}
+                          <span className="agent-tool-name">{trace.name}</span>
+                          <span className="agent-tool-summary">{summarizeToolTrace(trace)}</span>
+                          {traceDiff && renderLineDelta(traceDiff.added, traceDiff.removed, 'agent-line-delta-compact')}
+                          <ChevronDown size={11} className={`agent-tool-chevron ${expanded ? 'open' : ''}`} />
+                        </button>
                       </div>
-                      <div className="agent-tool-details">
+                      {expanded && (
+                        <div className="agent-tool-details">
                         <div className="agent-tool-detail-row">
                           <span className="agent-tool-detail-label">status</span>
                           <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
@@ -132,22 +130,23 @@ export function AgentMessagesView({
                             <span className="agent-tool-detail-label">
                               {trace.ok || trace.running ? 'output' : 'error'}
                             </span>
-                            <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
-                              {details.output.text}
-                            </span>
-                          </div>
-                        )}
+                          <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
+                            {details.output.text}
+                          </span>
+                        </div>
+                      )}
                         {details.output.hiddenCount > 0 && (
                           <div className="agent-tool-detail-row">
                             <span className="agent-tool-detail-label">
                               {trace.ok || trace.running ? 'output+' : 'error+'}
                             </span>
-                            <span className="agent-tool-detail-value agent-tool-detail-muted">
-                              +{details.output.hiddenCount} more fields
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                          <span className="agent-tool-detail-value agent-tool-detail-muted">
+                            +{details.output.hiddenCount} more fields
+                          </span>
+                        </div>
+                      )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -159,12 +158,7 @@ export function AgentMessagesView({
           const checklistCount = message.checklist?.items.length ?? 0;
           const terminalItems = message.checklist?.items.filter((item) => item.status === 'done' || item.status === 'blocked') ?? [];
           const activeChecklistItems = message.checklist?.items.filter((item) => item.status !== 'done' && item.status !== 'blocked') ?? [];
-          const hiddenTerminalCount = Math.max(0, terminalItems.length - CHECKLIST_TERMINAL_PREVIEW_COUNT);
-          const isChecklistExpanded = expandedChecklistMessages.has(message.id);
-          const visibleTerminalItems = isChecklistExpanded
-            ? terminalItems
-            : terminalItems.slice(-CHECKLIST_TERMINAL_PREVIEW_COUNT);
-          const visibleChecklistItems = [...activeChecklistItems, ...visibleTerminalItems];
+          const visibleChecklistItems = [...activeChecklistItems, ...terminalItems];
 
           return (
             <div key={message.id} className={`agent-message-row ${message.role} ${message.pending ? 'pending' : ''}`}>
@@ -227,27 +221,6 @@ export function AgentMessagesView({
                       </div>
                     ))}
                   </div>
-                  {hiddenTerminalCount > 0 && (
-                    <button
-                      type="button"
-                      className="agent-checklist-more"
-                      onClick={() => {
-                        setExpandedChecklistMessages((current) => {
-                          const next = new Set(current);
-                          if (next.has(message.id)) {
-                            next.delete(message.id);
-                          } else {
-                            next.add(message.id);
-                          }
-                          return next;
-                        });
-                      }}
-                    >
-                      {isChecklistExpanded
-                        ? `show recent ${CHECKLIST_TERMINAL_PREVIEW_COUNT}`
-                        : `show all ${checklistCount} items`}
-                    </button>
-                  )}
                 </div>
               )}
               {latestBuildStatus && latestBuildStatus.messageId === message.id && (
@@ -276,37 +249,6 @@ export function AgentMessagesView({
                   {latestBuildStatus.pendingBuildIds.length > 0 && (
                     <div className="agent-build-status-pending">
                       Tracking {latestBuildStatus.pendingBuildIds.map(compactBuildId).join(', ')}
-                    </div>
-                  )}
-                </div>
-              )}
-              {changedFilesSummary && changedFilesSummary.messageId === message.id && (
-                <div className="agent-changes-panel">
-                  <button
-                    type="button"
-                    className={`agent-changes-header ${changesExpanded ? 'expanded' : ''}`}
-                    onClick={onToggleChangesExpanded}
-                    aria-expanded={changesExpanded}
-                  >
-                    <span className="agent-changes-title">Changed files</span>
-                    <span className="agent-changes-summary">
-                      {formatCount(changedFilesSummary.files.length, 'file', 'files')}
-                      {renderLineDelta(changedFilesSummary.totalAdded, changedFilesSummary.totalRemoved, 'agent-line-delta-compact')}
-                    </span>
-                  </button>
-                  {changesExpanded && (
-                    <div className="agent-changes-list">
-                      {changedFilesSummary.files.map((file) => (
-                        <button
-                          key={file.path}
-                          type="button"
-                          className="agent-changes-file"
-                          onClick={() => onOpenFileDiff(file)}
-                        >
-                          <span className="agent-changes-file-path">{file.path}</span>
-                          {renderLineDelta(file.added, file.removed, 'agent-line-delta-compact')}
-                        </button>
-                      ))}
                     </div>
                   )}
                 </div>

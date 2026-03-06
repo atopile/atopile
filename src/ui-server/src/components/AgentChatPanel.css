@@ -737,6 +737,31 @@
   min-width: 0;
 }
 
+.agent-tool-trace-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-tool-trace-toggle:hover {
+  color: var(--text-primary);
+}
+
+.agent-tool-trace-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--agent-accent) 52%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 
 .agent-tool-trace.ok {
   color: color-mix(in srgb, var(--text-secondary) 94%, var(--text-muted));
@@ -816,6 +841,17 @@
 
 .agent-line-removed {
   color: color-mix(in srgb, var(--error) 82%, var(--text-primary));
+}
+
+.agent-tool-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.agent-tool-chevron.open {
+  transform: rotate(180deg);
+  color: var(--agent-accent);
 }
 
 
@@ -1283,14 +1319,17 @@
 }
 
 .agent-changes-summary {
-  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 76%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  margin: 0 10px 2px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--bg-secondary) 70%, transparent) 0%,
-      color-mix(in srgb, var(--bg-primary) 88%, transparent) 100%
+      color-mix(in srgb, var(--bg-secondary) 62%, var(--bg-primary)) 0%,
+      color-mix(in srgb, var(--bg-primary) 94%, transparent) 100%
     );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
 }
 
 .agent-changes-toggle {
@@ -1301,14 +1340,25 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  font-size: 11px;
+  gap: 10px;
+  padding: 8px 11px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .agent-changes-toggle:hover {
   color: var(--text-primary);
+  background: color-mix(in srgb, var(--agent-accent) 5%, transparent);
+}
+
+.agent-changes-toggle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent-accent) 26%, transparent);
 }
 
 .agent-changes-chevron {
@@ -1326,38 +1376,51 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: color-mix(in srgb, var(--agent-accent) 56%, var(--text-secondary));
 }
 
 .agent-changes-stats {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .agent-changes-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 0 6px 6px;
+  gap: 4px;
+  padding: 0 8px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 58%, transparent);
+  background: color-mix(in srgb, var(--bg-primary) 52%, transparent);
 }
 
 .agent-changes-file {
   width: 100%;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
   color: var(--text-secondary);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 7px 8px;
   font-size: 11px;
   cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .agent-changes-file:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--agent-accent) 7%, transparent);
+  border-color: color-mix(in srgb, var(--agent-accent) 18%, transparent);
+}
+
+.agent-changes-file:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--agent-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--agent-accent) 8%, transparent);
 }
 
 .agent-changes-file-path {
@@ -1366,6 +1429,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  font-weight: 520;
 }
 
 .agent-changes-file-stats {
@@ -1485,22 +1549,9 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-}
-
-.agent-checklist-more {
-  align-self: flex-start;
-  margin-top: 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.agent-checklist-more:hover {
-  color: var(--text-secondary);
+  max-height: 124px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .agent-checklist-item {
