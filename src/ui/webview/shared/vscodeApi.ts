@@ -6,29 +6,89 @@
  */
 export const vscode = acquireVsCodeApi();
 
-/**
- * Forward console.log/warn/error to the extension host OutputChannel.
- */
-const _origLog = console.log;
-const _origWarn = console.warn;
-const _origError = console.error;
+class WebviewRequestBroker {
+  private _pendingRequests = new Map<
+    string,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  private _requestCounter = 0;
 
-function forward(level: "log" | "warn" | "error", args: unknown[]) {
-  const message = args
-    .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
-    .join(" ");
-  vscode.postMessage({ type: "log", level, message });
+  constructor() {
+    window.addEventListener("message", (event: MessageEvent) => {
+      this._handleMessage(event);
+    });
+  }
+
+  request<T>(type: string, payload: Record<string, unknown> = {}): Promise<T> {
+    const requestId = `req-${this._requestCounter++}`;
+    return new Promise<T>((resolve, reject) => {
+      this._pendingRequests.set(requestId, { resolve, reject });
+      vscode.postMessage({
+        ...payload,
+        requestId,
+        type,
+      });
+    });
+  }
+
+  private _handleMessage(event: MessageEvent): void {
+    const data = event.data as {
+      type?: unknown;
+      requestId?: unknown;
+      ok?: unknown;
+      result?: unknown;
+      error?: unknown;
+    };
+    if (data.type !== "response" || typeof data.requestId !== "string") {
+      return;
+    }
+
+    const pending = this._pendingRequests.get(data.requestId);
+    if (!pending) {
+      return;
+    }
+    this._pendingRequests.delete(data.requestId);
+
+    if (data.ok === false) {
+      pending.reject(new Error(typeof data.error === "string" ? data.error : "Request failed"));
+      return;
+    }
+
+    pending.resolve(data.result);
+  }
 }
 
-console.log = (...args: unknown[]) => {
-  _origLog.apply(console, args);
-  forward("log", args);
-};
-console.warn = (...args: unknown[]) => {
-  _origWarn.apply(console, args);
-  forward("warn", args);
-};
-console.error = (...args: unknown[]) => {
-  _origError.apply(console, args);
-  forward("error", args);
-};
+export const requestBroker = new WebviewRequestBroker();
+
+class WebviewConsoleBridge {
+  private readonly _origLog = console.log;
+  private readonly _origWarn = console.warn;
+  private readonly _origError = console.error;
+
+  install(): void {
+    console.log = (...args: unknown[]) => {
+      this._origLog.apply(console, args);
+      this._forward("log", args);
+    };
+    console.warn = (...args: unknown[]) => {
+      this._origWarn.apply(console, args);
+      this._forward("warn", args);
+    };
+    console.error = (...args: unknown[]) => {
+      this._origError.apply(console, args);
+      this._forward("error", args);
+    };
+  }
+
+  private _forward(level: "log" | "warn" | "error", args: unknown[]): void {
+    const message = args
+      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .join(" ");
+    vscode.postMessage({ type: "log", level, message });
+  }
+}
+
+new WebviewConsoleBridge().install();

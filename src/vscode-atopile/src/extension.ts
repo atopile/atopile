@@ -5,13 +5,15 @@ import { WebviewManager } from "./webviewManager";
 import { AtoResolver } from "./atoResolver";
 import { HubWebSocketClient } from "./hubWebSocketClient";
 import { findFreePort } from "../../ui/hub/utils";
+import { openKicadForBuild } from "./kicad";
 
 const HUB_READY_MARKER = "ATOPILE_HUB_READY";
 const CORE_SERVER_READY_MARKER = "ATOPILE_SERVER_READY";
 
 const panels = [
   { id: "panel-developer", label: "Developer" },
-  { id: "panel-b", label: "Panel B" },
+  { id: "panel-layout", label: "Layout" },
+  { id: "panel-3d", label: "3D Model" },
 ];
 
 let hub: ProcessManager | undefined;
@@ -143,6 +145,54 @@ function registerCommands(
       );
       if (pick) wm.openPanel(pick.id);
     }),
+
+    vscode.commands.registerCommand(
+      "atopile.openKicad",
+      async ({
+        projectRoot,
+        target,
+      }: {
+        projectRoot?: string;
+        target?: string;
+      } = {}) => {
+        if (!projectRoot || !target) {
+          vscode.window.showErrorMessage("Select a project and target first.");
+          return;
+        }
+
+        try {
+          await openKicadForBuild(projectRoot, target);
+        } catch (err) {
+          vscode.window.showErrorMessage(
+            `Failed to open KiCad: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "atopile.openFile",
+      async ({ path }: { path?: string } = {}) => {
+        if (!path) {
+          return;
+        }
+
+        await vscode.window.showTextDocument(vscode.Uri.file(path));
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "atopile.browseFolder",
+      async (): Promise<string | undefined> => {
+        const result = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: "Select folder",
+        });
+        return result?.[0]?.fsPath;
+      },
+    ),
   );
 }
 

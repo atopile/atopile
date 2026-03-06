@@ -1,12 +1,48 @@
 import * as cp from 'child_process';
 import { glob } from 'glob';
 import * as path from 'path';
-import * as util from 'util';
-import { traceError, traceInfo, traceWarn } from './log/logging';
-import { captureEvent } from './telemetry';
-import { getExtension } from './vscodeapi';
+import * as vscode from 'vscode';
+import * as yaml from 'js-yaml';
+import type { AtoYaml, BuildTarget } from '../../ui/shared/types';
 
-const execFile = util.promisify(cp.execFile);
+async function loadBuilds(): Promise<BuildTarget[]> {
+    const builds: BuildTarget[] = [];
+    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
+
+    for (const manifest of manifests) {
+        try {
+            const file = await vscode.workspace.fs.readFile(manifest);
+            const data = yaml.load(String.fromCharCode(...file)) as AtoYaml;
+            const rootDir = path.dirname(manifest.fsPath);
+            const layoutSubDir = data.paths?.layout || 'elec/layout';
+
+            for (const [name, buildCfg] of Object.entries(data.builds)) {
+                try {
+                    let layoutPath = path.join(buildCfg.paths?.layout || layoutSubDir, name, `${name}.kicad_pcb`);
+                    const modelPath = path.join(rootDir, 'build', 'builds', name, `${name}.pcba.glb`);
+
+                    if (!path.isAbsolute(layoutPath)) {
+                        layoutPath = path.resolve(rootDir, layoutPath);
+                    }
+
+                    builds.push({
+                        name,
+                        entry: buildCfg.entry,
+                        pcb_path: layoutPath,
+                        model_path: modelPath,
+                        root: rootDir,
+                    });
+                } catch (err) {
+                    console.error(`Error processing build config ${name}: ${err}`);
+                }
+            }
+        } catch {
+            // skip unreadable manifests
+        }
+    }
+
+    return builds;
+}
 
 /**
  * Creates a new environment object with Python virtual environment-specific
@@ -66,23 +102,19 @@ export async function findKicadBin(bin_name: string): Promise<string> {
 
     if (paths.length === 0) {
         throw new Error(
-            `Could not find ${bin_name} executable. Searched based on platform: ${platform}. 
+            `Could not find ${bin_name} executable. Searched based on platform: ${platform}.
             Ensure KiCad is installed and in a standard location.`,
         );
     }
 
     if (paths.length > 1) {
-        traceWarn(`Found multiple ${bin_name} executables: ${paths.join(', ')}. Using the first one.`);
+        console.warn(`Found multiple ${bin_name} executables: ${paths.join(', ')}. Using the first one.`);
     }
 
-    const path = paths[0];
+    const binPath = paths[0];
 
-    traceInfo(`Found pcbnew executable: ${path}`);
-    return path;
-}
-
-export async function findKicadCli(): Promise<string> {
-    return findKicadBin('kicad-cli');
+    console.log(`Found pcbnew executable: ${binPath}`);
+    return binPath;
 }
 
 export async function findPcbnew(): Promise<string> {
@@ -99,7 +131,7 @@ export async function openPcb(pcbPath: string): Promise<void> {
     const pcbnewExecutable = await findPcbnew();
     const cleanedEnv = removeVenvFromEnv();
 
-    traceInfo(`Launching pcbnew with ${pcbnewExecutable} ${pcbPath}`);
+    console.log(`Launching pcbnew with ${pcbnewExecutable} ${pcbPath}`);
     const child = cp.spawn(pcbnewExecutable, [pcbPath], {
         detached: true,
         stdio: 'ignore', // Corresponds to stderr=subprocess.DEVNULL and not waiting
@@ -108,7 +140,7 @@ export async function openPcb(pcbPath: string): Promise<void> {
 
     child.on('error', (err) => {
         // This error usually means the executable could not be found or run
-        traceError(`Failed to start pcbnew with ${pcbPath}:`, err);
+        console.error(`Failed to start pcbnew with ${pcbPath}:`, err);
         throw new Error(`Failed to launch pcbnew: ${err.message}`);
     });
 
@@ -116,85 +148,14 @@ export async function openPcb(pcbPath: string): Promise<void> {
 }
 
 /**
- * Optimizes a GLB file using gltf-transform with Draco compression.
- * This can reduce file sizes by ~95% (e.g., 29MB → 1.6MB).
- * @param inputPath The path to the raw GLB file from KiCad export.
- * @param outputPath The path to write the optimized GLB file.
- * @param signal Optional AbortSignal to cancel the optimization.
- * @throws Error if optimization fails or times out (3 minute limit).
+ * Finds the PCB path for a build target and opens it with pcbnew.
+ * @throws Error if the build target cannot be found.
  */
-export async function optimizeGLB(inputPath: string, outputPath: string, signal?: AbortSignal): Promise<void> {
-    const timeoutMs = 600000; // 10 minutes for large/complex files
-
-    // Get the extension path where @gltf-transform/cli is installed
-    const extensionPath = getExtension().extensionUri.fsPath;
-
-    // Find the gltf-transform binary in node_modules
-    const binPath = path.join(extensionPath, 'node_modules', '.bin', 'gltf-transform');
-    const binPathWindows = binPath + '.cmd';
-    const actualBinPath = process.platform === 'win32' ? binPathWindows : binPath;
-
-    // Check if binary exists
-    const fs = require('fs');
-    const binExists = fs.existsSync(actualBinPath);
-
-    const command = binExists ? actualBinPath : (process.platform === 'win32' ? 'npx.cmd' : 'npx');
-    // When using npx, we need the full package name @gltf-transform/cli
-    // The binary is named 'gltf-transform' but npx needs the package name
-    const commandArgs = binExists
-        ? ['optimize', inputPath, outputPath, '--compress', 'draco']
-        : ['--package', '@gltf-transform/cli', 'gltf-transform', 'optimize', inputPath, outputPath, '--compress', 'draco'];
-
-    try {
-        await execFile(command, commandArgs, {
-            timeout: timeoutMs,
-            signal,
-            cwd: extensionPath, // Run from extension directory
-        });
-        traceInfo(`GLB optimized: ${outputPath}`);
-    } catch (error) {
-        if (signal?.aborted) {
-            throw new Error('GLB optimization cancelled');
-        }
-        traceError('GLB optimization failed:', error);
-        throw error;
+export async function openKicadForBuild(projectRoot: string, target: string): Promise<void> {
+    const builds = await loadBuilds();
+    const build = builds.find((b) => b.root === projectRoot && b.name === target);
+    if (!build) {
+        throw new Error(`No build config found for target "${target}".`);
     }
-}
-
-export async function build3DModelGLB(pcbPath: string, modelPath: string) {
-    const flags = [
-        '--force',
-        '--include-tracks',
-        '--include-zones',
-        '--grid-origin',
-        '--subst-models',
-        '--no-dnp',
-        '--cut-vias-in-body',
-        '--include-pads',
-        '--include-soldermask',
-        '--include-silkscreen',
-    ];
-    const _args = {
-        '--define-var': `KIPRJMOD=${path.dirname(pcbPath)}`,
-        '--output': modelPath,
-    };
-    const positional = [pcbPath];
-
-    // convert args to [k1, v1, k2, v2, ...]
-    const args = Object.entries(_args).flatMap(([key, value]) => [key, value]);
-
-    const command = await findKicadCli();
-    const commandArgs = ['pcb', 'export', 'glb', ...flags, ...args, ...positional];
-
-    const fullCommand = [command, ...commandArgs].join(' ');
-    traceInfo(`Attempting to run: ${fullCommand}`);
-
-    const { stdout, stderr } = await execFile(command, commandArgs);
-    traceInfo(`Successfully generated 3D model: ${modelPath}`);
-    if (stdout) {
-        traceInfo('kicad-cli stdout:\n', stdout);
-    }
-    if (stderr) {
-        traceWarn('kicad-cli stderr:\n', stderr);
-    }
+    await openPcb(build.pcb_path);
 }

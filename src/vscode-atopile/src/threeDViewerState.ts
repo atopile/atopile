@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
-import { Build } from './manifest';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as cp from 'child_process';
+import * as util from 'util';
 import { FileResource, FileResourceWatcher } from './file-resource-watcher';
 import { traceInfo, traceWarn } from './log/logging';
-import { optimizeGLB } from './kicad';
+import type { BuildTarget } from '../../ui/shared/types';
+
+const execFile = util.promisify(cp.execFile);
 
 /**
  * 3D Model Viewer State - focuses on what the viewer should display:
@@ -81,6 +85,35 @@ function clearBuildTimeout() {
     }
 }
 
+async function optimizeGLB(inputPath: string, outputPath: string, signal?: AbortSignal): Promise<void> {
+    const timeoutMs = 600000;
+    const extensionPath = vscode.extensions.getExtension('atopile.atopile')!.extensionPath;
+    const binPath = path.join(extensionPath, 'node_modules', '.bin', 'gltf-transform');
+    const actualBinPath = process.platform === 'win32' ? `${binPath}.cmd` : binPath;
+    const command = fs.existsSync(actualBinPath)
+        ? actualBinPath
+        : process.platform === 'win32'
+            ? 'npx.cmd'
+            : 'npx';
+    const commandArgs = fs.existsSync(actualBinPath)
+        ? ['optimize', inputPath, outputPath, '--compress', 'draco']
+        : ['--package', '@gltf-transform/cli', 'gltf-transform', 'optimize', inputPath, outputPath, '--compress', 'draco'];
+
+    try {
+        await execFile(command, commandArgs, {
+            timeout: timeoutMs,
+            signal,
+            cwd: extensionPath,
+        });
+        traceInfo(`3dmodel: Optimized GLB: ${outputPath}`);
+    } catch (error) {
+        if (signal?.aborted) {
+            throw new Error('GLB optimization cancelled');
+        }
+        throw error;
+    }
+}
+
 async function runOptimization(rawPath: string) {
     cancelOptimization();
 
@@ -143,7 +176,7 @@ class ThreeDModelWatcher extends FileResourceWatcher<ThreeDModel> {
         super('3D Model');
     }
 
-    protected getResourceForBuild(build: Build | undefined): ThreeDModel | undefined {
+    protected getResourceForBuild(build: BuildTarget | undefined): ThreeDModel | undefined {
         if (!build?.entry) {
             return undefined;
         }

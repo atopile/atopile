@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
 
+const webviewCommandMap = {
+  browseFolder: "atopile.browseFolder",
+  openFile: "atopile.openFile",
+  openKicad: "atopile.openKicad",
+} as const satisfies Record<string, string>;
+
 /**
  * Manages all atopile webviews — both the sidebar panel and
  * editor-tab panels. Shares a single HTML template across both.
@@ -78,6 +84,8 @@ export class WebviewManager implements vscode.WebviewViewProvider {
 
   private _registerMessageHandler(webview: vscode.Webview): void {
     webview.onDidReceiveMessage(async (msg) => {
+      const requestId = typeof msg.requestId === "string" ? msg.requestId : undefined;
+
       if (msg.type === "log" && typeof msg.message === "string") {
         const prefix = msg.level === "error" ? "[Webview] ERR" : msg.level === "warn" ? "[Webview] WARN" : "[Webview]";
         this._output.appendLine(`${prefix} ${msg.message}`);
@@ -89,25 +97,39 @@ export class WebviewManager implements vscode.WebviewViewProvider {
         return;
       }
 
-      if (msg.type === "openFile" && typeof msg.path === "string") {
-        const uri = vscode.Uri.file(msg.path);
-        await vscode.window.showTextDocument(uri);
+      const command = typeof msg.type === "string" ? webviewCommandMap[msg.type as keyof typeof webviewCommandMap] : undefined;
+      if (command) {
+        const { requestId: _, type: __, ...args } = msg as Record<string, unknown>;
+        try {
+          const result = await vscode.commands.executeCommand(command, args);
+          if (requestId) {
+            void webview.postMessage({
+              type: "response",
+              requestId,
+              ok: true,
+              result,
+            });
+          }
+        } catch (err) {
+          if (requestId) {
+            void webview.postMessage({
+              type: "response",
+              requestId,
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         return;
       }
 
-      if (msg.type === "browseFolder") {
-        const result = await vscode.window.showOpenDialog({
-          canSelectFiles: false,
-          canSelectFolders: true,
-          canSelectMany: false,
-          openLabel: "Select folder",
+      if (requestId) {
+        void webview.postMessage({
+          type: "response",
+          requestId,
+          ok: false,
+          error: `Unsupported request type: ${String(msg.type)}`,
         });
-        if (result?.[0]) {
-          webview.postMessage({
-            type: "folderSelected",
-            path: result[0].fsPath,
-          });
-        }
       }
     });
   }

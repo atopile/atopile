@@ -204,6 +204,13 @@ function App() {
                   targets: [projectState.selectedTarget],
                 })
               }
+              onOpenKicad={() =>
+                vscode.postMessage({
+                  type: "openKicad",
+                  projectRoot: projectState.selectedProject,
+                  target: projectState.selectedTarget,
+                })
+              }
               buildDisabled={
                 !projectState.selectedProject || !projectState.selectedTarget
               }

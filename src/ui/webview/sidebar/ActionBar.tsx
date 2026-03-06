@@ -5,11 +5,12 @@ import "./ActionBar.css";
 
 interface ActionBarProps {
   onBuild: () => void;
+  onOpenKicad: () => void;
   buildDisabled: boolean;
   isBuilding: boolean;
 }
 
-export function ActionBar({ onBuild, buildDisabled, isBuilding }: ActionBarProps) {
+export function ActionBar({ onBuild, onOpenKicad, buildDisabled, isBuilding }: ActionBarProps) {
   return (
     <div className="action-bar-wrapper">
       <div className="build-actions-row">
@@ -27,26 +28,45 @@ export function ActionBar({ onBuild, buildDisabled, isBuilding }: ActionBarProps
 
         <div className="action-divider" />
 
-        {/* KiCad — placeholder */}
-        <Button variant="ghost" size="sm" className="action-btn" disabled>
-          <Compass size={12} />
-          <span className="action-label">KiCad</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="action-btn"
+          disabled={buildDisabled}
+          onClick={() =>
+            vscode.postMessage({ type: "openPanel", panelId: "panel-layout" })
+          }
+        >
+          <Layout size={12} />
+          <span className="action-label">Layout</span>
         </Button>
 
         <div className="action-divider" />
 
-        {/* 3D — placeholder */}
-        <Button variant="ghost" size="sm" className="action-btn" disabled>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="action-btn"
+          disabled={buildDisabled}
+          onClick={() =>
+            vscode.postMessage({ type: "openPanel", panelId: "panel-3d" })
+          }
+        >
           <Box size={12} />
           <span className="action-label">3D</span>
         </Button>
 
         <div className="action-divider" />
 
-        {/* Layout — placeholder */}
-        <Button variant="ghost" size="sm" className="action-btn" disabled>
-          <Layout size={12} />
-          <span className="action-label">Layout</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="action-btn"
+          disabled={buildDisabled}
+          onClick={onOpenKicad}
+        >
+          <Compass size={12} />
+          <span className="action-label">KiCad</span>
         </Button>
 
         <div className="action-divider" />

@@ -1,6 +1,5 @@
-import { useEffect } from "react";
 import { render } from "../shared/render";
-import { vscode } from "../shared/vscodeApi";
+import { requestBroker } from "../shared/vscodeApi";
 import { WebviewWebSocketClient, webviewClient } from "../shared/webviewWebSocketClient";
 import {
   Field,
@@ -25,16 +24,6 @@ function App() {
     webviewClient?.sendAction("updateExtensionSetting", { key, value });
   };
 
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.data.type === "folderSelected" && typeof event.data.path === "string") {
-        updateSetting("devPath", event.data.path);
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
-
   return (
     <div className="panel-centered">
       <h2>Settings</h2>
@@ -52,7 +41,12 @@ function App() {
           />
           <Button
             variant="outline"
-            onClick={() => vscode.postMessage({ type: "browseFolder" })}
+            onClick={async () => {
+              const path = await requestBroker.request<string | undefined>("browseFolder");
+              if (path) {
+                updateSetting("devPath", path);
+              }
+            }}
           >
             Browse
           </Button>

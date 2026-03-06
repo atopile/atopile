@@ -82,6 +82,29 @@ export class Build {
   returnCode?: number | null;
 }
 
+export interface BuildTarget {
+  name: string;
+  entry: string;
+  pcb_path: string;
+  model_path: string;
+  root: string;
+}
+
+export interface AtoYaml {
+  paths?: {
+    layout?: string;
+  };
+  builds: Record<
+    string,
+    {
+      entry: string;
+      paths?: {
+        layout?: string;
+      };
+    }
+  >;
+}
+
 // -- Packages panel types --------------------------------------------------
 
 export interface PackageSummaryItem {

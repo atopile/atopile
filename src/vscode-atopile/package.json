@@ -103,7 +103,12 @@
         "vscode:prepublish": "bun run build",
         "package": "vsce package"
     },
+    "dependencies": {
+        "glob": "^11.0.0",
+        "js-yaml": "^4.1.1"
+    },
     "devDependencies": {
+        "@types/js-yaml": "^4.0.9",
         "@types/node": "^25.3.2",
         "@types/vscode": "^1.109.0",
         "@types/ws": "^8.18.1",
