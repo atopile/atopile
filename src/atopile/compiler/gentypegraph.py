@@ -219,11 +219,8 @@ class ActionsFactory:
         )
 
         target_suffix = "_".join(str(p) for p in target_path) if target_path else "self"
-        discriminator = getattr(field, "_trait_discriminator", None)
-        disc_suffix = f"_{discriminator}" if discriminator else ""
         trait_identifier = (
-            f"{ActionsFactory.TRAIT_ID_PREFIX}{target_suffix}_"
-            f"{trait_class_name}{disc_suffix}"
+            f"{ActionsFactory.TRAIT_ID_PREFIX}{target_suffix}_{trait_class_name}"
         )
         field._set_locator(trait_identifier)
 
