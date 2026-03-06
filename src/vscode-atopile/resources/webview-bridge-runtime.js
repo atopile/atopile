@@ -134,6 +134,15 @@
       },
       dispatchEvent: function (eventObject) {
         var type = eventObject && eventObject.type ? eventObject.type : '';
+        var handlerName = type ? 'on' + type : '';
+        var propertyHandler = handlerName ? socket[handlerName] : null;
+        if (typeof propertyHandler === 'function') {
+          try {
+            propertyHandler.call(socket, eventObject);
+          } catch (err) {
+            console.error(err);
+          }
+        }
         var callbacks = listeners[type] || [];
         for (var i = 0; i < callbacks.length; i++) {
           try {
@@ -306,17 +315,11 @@
       case 'wsProxyOpen': {
         instance._readyState = 1;
         var openEvent = createCompatEvent('open');
-        if (instance.onopen) {
-          instance.onopen(openEvent);
-        }
         instance.dispatchEvent(openEvent);
         break;
       }
       case 'wsProxyMessage': {
         var messageEvent = createCompatEvent('message', { data: message.data });
-        if (instance.onmessage) {
-          instance.onmessage(messageEvent);
-        }
         instance.dispatchEvent(messageEvent);
         break;
       }
@@ -326,18 +329,12 @@
           code: message.code || 1000,
           reason: message.reason || '',
         });
-        if (instance.onclose) {
-          instance.onclose(closeEvent);
-        }
         instance.dispatchEvent(closeEvent);
         wsProxyInstances.delete(message.id);
         break;
       }
       case 'wsProxyError': {
         var errorEvent = createCompatEvent('error');
-        if (instance.onerror) {
-          instance.onerror(errorEvent);
-        }
         instance.dispatchEvent(errorEvent);
         break;
       }

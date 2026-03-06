@@ -206,8 +206,9 @@ async function runDemoMode(): Promise<void> {
         return;
     }
 
-    traceInfo('[demo] Calling backendServer.loadLayout...');
-    const ready = await backendServer.loadLayout(layoutRoot);
+    const layoutTarget = target?.name ?? 'default';
+    traceInfo(`[demo] Calling backendServer.loadLayout with target=${layoutTarget}...`);
+    const ready = await backendServer.loadLayout(layoutRoot, layoutTarget);
     traceInfo(`[demo] loadLayout returned ${ready}`);
     if (ready) {
         traceInfo('[demo] Executing atopile.kicanvas_preview');
