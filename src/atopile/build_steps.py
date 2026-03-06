@@ -52,6 +52,7 @@ from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.exporters.pcb.stackup import export_stackup_markdown
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
@@ -361,8 +362,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -536,6 +541,23 @@ def instantiate_app_step(ctx: BuildStepContext) -> None:
 def prepare_build(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     ctx.solver = Solver()
+
+    # Check if build has multiple boards (PCBs) or stackups
+    board_nodes = app.get_children(
+        direct_only=False, types=fabll.Node, required_trait=F.PCBManu.is_pcb
+    )
+    if len(board_nodes) > 1:
+        raise UserException(
+            "Build has multiple boards: "
+            f"{', '.join(board_node.get_name() for board_node in board_nodes)}, "
+            "currently not supported."
+        )
+    elif len(board_nodes) == 0:
+        logger.warning("No board definition found in design.")
+    else:
+        board = board_nodes[0].get_trait(F.PCBManu.is_pcb)
+        _ = board.get_stackup()  # validate stackup
+
     if ctx.pcb is None:
         ctx.pcb = (
             F.PCB.bind_typegraph(app.tg)
@@ -1070,6 +1092,15 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
             )
         except Exception as e:
             logger.warning(f"Failed to generate PCB summary: {e}")
+
+        # Export stackup as markdown
+        try:
+            export_stackup_markdown(
+                app,
+                path=config.build.paths.output_base.with_suffix(".stackup.md"),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate stackup markdown: {e}")
 
         # Copy kicad_pcb to build directory for manufacturing export
         import shutil

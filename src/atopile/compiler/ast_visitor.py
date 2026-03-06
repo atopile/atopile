@@ -106,6 +106,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.TestPoint,
         F.MountingHole,
         F.NetTie,
+        F.PCBManu.PCBLayer,
     }
 ) | (
     # Traits
@@ -125,6 +126,10 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.is_auto_generated,
         F.Pickable.is_pickable,
         F.requires_external_usage,
+        F.PCBManu.is_pcb_manufacturer,
+        F.PCBManu.is_company,
+        F.PCBManu.is_pcb_stackup,
+        F.PCBManu.is_pcb,
     }
 )
 

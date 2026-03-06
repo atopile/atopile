@@ -1,0 +1,60 @@
+#pragma experiment("TRAITS")
+
+import is_pcb_stackup
+import PCBLayer
+import is_pcb_manufacturer
+import is_company
+import has_part_removed
+
+module JLCPCB:
+    trait is_pcb_manufacturer
+    trait is_company<name = "JLCPCB", country = "CHN", website = "https://www.jlcpcb.com">
+    trait has_part_removed  # suppress picker warning (ato limitation)
+
+module JLC041612_3313:
+    """JLCPCB 4-layer 1.6mm layer."""
+    trait is_pcb_stackup
+    trait has_part_removed  # suppress picker warning (ato limitation)
+    is_default_stackup = True
+    manufacturer = new JLCPCB
+    layers = new PCBLayer[9]
+
+    # layer_type (top to bottom)
+    layers[0].layer_type = "COPPER"
+    layers[1].layer_type = "SUBSTRATE"
+    layers[2].layer_type = "SUBSTRATE"
+    layers[3].layer_type = "COPPER"
+    layers[4].layer_type = "CORE"
+    layers[5].layer_type = "COPPER"
+    layers[6].layer_type = "SUBSTRATE"
+    layers[7].layer_type = "SUBSTRATE"
+    layers[8].layer_type = "COPPER"
+
+    # is_layer.thickness
+    layers[0].thickness = 0.035mm
+    layers[1].thickness = 0.107mm
+    layers[2].thickness = 0.0935mm
+    layers[3].thickness = 0.061mm
+    layers[4].thickness = 0.96mm
+    layers[5].thickness = 0.061mm
+    layers[6].thickness = 0.0935mm
+    layers[7].thickness = 0.107mm
+    layers[8].thickness = 0.035mm
+
+    # material
+    layers[0].material = "COPPER"
+    layers[1].material = "FR4"
+    layers[2].material = "FR4"
+    layers[3].material = "COPPER"
+    layers[4].material = "FR4"
+    layers[5].material = "COPPER"
+    layers[6].material = "FR4"
+    layers[7].material = "FR4"
+    layers[8].material = "COPPER"
+
+    # is_layer.relative_permittivity (dielectric layers)
+    layers[1].relative_permittivity = 4.1
+    layers[2].relative_permittivity = 4.16
+    layers[4].relative_permittivity = 4.53
+    layers[6].relative_permittivity = 4.16
+    layers[7].relative_permittivity = 4.1

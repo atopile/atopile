@@ -124,9 +124,11 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
         except KeyErrorNotFound:
             continue
 
-        file_path = (
-            Path(path_trait.get_path()).resolve().relative_to(config.project.paths.root)
-        )
+        resolved = Path(path_trait.get_path()).resolve()
+        try:
+            file_path = resolved.relative_to(config.project.paths.root)
+        except ValueError:
+            continue
         # get_type_name() returns "file.ato::ModuleName", but build addresses are
         # "file.ato:ModuleName". Extract just the module name to match correctly.
         full_type_name = not_none(module.get_type_name())
