@@ -49,29 +49,31 @@ from .models import (
     run_not_found_detail,
     session_not_found_detail,
 )
-from .tools import router as tools_router
-from .utils import (
-    build_run_trace_callback,
-    build_send_message_response,
+from .state import (
     cleanup_finished_runs,
-    emit_agent_progress,
     ensure_session_idle,
-    invalidate_session_response_chain,
-    is_chain_integrity_error,
-    log_agent_event,
     normalize_running_run_state,
-    orchestrator,
     persist_sessions_state,
     release_sync_turn,
     reserve_background_run,
     reserve_sync_turn,
     reset_session_state,
-    run_turn_in_background,
-    run_turn_with_chain_recovery,
     runs_by_id,
     runs_lock,
     sessions_by_id,
     sessions_lock,
+)
+from .tools import router as tools_router
+from .utils import (
+    build_run_trace_callback,
+    build_send_message_response,
+    emit_agent_progress,
+    invalidate_session_response_chain,
+    is_chain_integrity_error,
+    log_agent_event,
+    orchestrator,
+    run_turn_in_background,
+    run_turn_with_chain_recovery,
 )
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
