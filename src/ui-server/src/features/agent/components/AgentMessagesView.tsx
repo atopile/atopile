@@ -1,5 +1,5 @@
 import { useState, type RefObject } from 'react';
-import { AlertCircle, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Loader2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BuildQueueItem } from '../../../components/BuildQueueItem';
@@ -124,10 +124,10 @@ export function AgentMessagesView({
                           aria-expanded={expanded}
                         >
                           {trace.running
-                            ? <Loader2 size={11} className="agent-tool-spin" />
+                            ? <Loader2 size={11} className="agent-tool-spin agent-tool-status-icon running" />
                             : trace.ok
-                              ? <CheckCircle2 size={11} />
-                              : <AlertCircle size={11} />}
+                              ? <Check size={11} className="agent-tool-status-icon ok" />
+                              : <X size={11} className="agent-tool-status-icon error" />}
                           <span className="agent-tool-name">{trace.name}</span>
                           <span className="agent-tool-summary">{summarizeToolTrace(trace)}</span>
                           {traceDiff && renderLineDelta(traceDiff.added, traceDiff.removed, 'agent-line-delta-compact')}

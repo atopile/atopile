@@ -73,6 +73,7 @@ export function useAgentSessionState({
   const activityStartedAtRef = useRef<number | null>(null);
   const chatSnapshotsRef = useRef<AgentChatSnapshot[]>([]);
   const activeChatIdRef = useRef<string | null>(null);
+  const loadedChatIdRef = useRef<string | null>(null);
 
   const projectModules = useStore((state) => (projectRoot ? state.projectModules[projectRoot] ?? [] : []));
   const projectFileNodes = useStore((state) => (projectRoot ? state.projectFiles[projectRoot] ?? [] : []));
@@ -287,6 +288,7 @@ export function useAgentSessionState({
     const snapshot = chatSnapshotsRef.current.find((chat) => chat.id === chatId);
     if (!snapshot) return;
     setActiveChatId(chatId);
+    loadedChatIdRef.current = chatId;
     loadSnapshotIntoView(snapshot);
   }, [loadSnapshotIntoView]);
 
@@ -386,6 +388,7 @@ export function useAgentSessionState({
 
   useEffect(() => {
     if (!projectRoot) {
+      loadedChatIdRef.current = null;
       setActiveChatId(null);
       setSessionId(null);
       setMessages([{ id: 'agent-empty', role: 'system', content: 'Select a project to start an agent session.' }]);
@@ -417,7 +420,10 @@ export function useAgentSessionState({
     if (activeChatId !== target.id) {
       setActiveChatId(target.id);
     }
-    loadSnapshotIntoView(target);
+    if (loadedChatIdRef.current !== target.id) {
+      loadedChatIdRef.current = target.id;
+      loadSnapshotIntoView(target);
+    }
   }, [activeChatByProject, activeChatId, createAndActivateChat, isSnapshotsHydrated, loadSnapshotIntoView, projectRoot, resetChatUiState, setActivityElapsedSeconds, setActivityLabel, setActiveRunId, setError, setInput, setIsSending, setIsSessionLoading, setIsStopping, setMessages, setSessionId]);
 
   return {
