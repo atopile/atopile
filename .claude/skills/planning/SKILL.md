@@ -180,6 +180,9 @@ module DualBLDCController:
     mcu.pwm_b ~ motor_b.pwm
 ```
 
+The file at `packages/<name>/<name>.ato` is the canonical wrapper boundary for that part or subsystem.
+Refine that file in place. `main.ato` should import those wrapper packages directly rather than routing through an extra wrapper aggregator file.
+
 # Requirements in Docstrings
 
 Capture natural-language requirements directly in the module's docstring under a `Requirements:` section. Place requirements on whichever module owns them — top-level for system-wide requirements, on a specific subsystem for module-specific ones.

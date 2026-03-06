@@ -40,8 +40,10 @@ _TRACE_DISABLE_VALUES = {"0", "false", "no", "off"}
 class AgentConfig:
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-5.4"
+    summary_model: str = "gpt-5.4-mini"
     api_key: str | None = None
     timeout_s: float = 120.0
+    summary_timeout_s: float = 8.0
     max_tool_loops: int = 240
     max_turn_seconds: float = 7_200.0
     api_retries: int = 4
@@ -68,6 +70,9 @@ class AgentConfig:
     silent_retry_max: int = 2
     trace_enabled: bool = True
     trace_preview_max_chars: int = 4_000
+    activity_summary_enabled: bool = True
+    activity_summary_max_events: int = 6
+    activity_summary_min_interval_s: float = 1.5
 
     @classmethod
     def from_env(cls) -> AgentConfig:
@@ -87,9 +92,13 @@ class AgentConfig:
         return cls(
             base_url=_env("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1"),
             model=_env("ATOPILE_AGENT_MODEL", "gpt-5.4"),
+            summary_model=_env("ATOPILE_AGENT_SUMMARY_MODEL", "gpt-5.4-mini"),
             api_key=os.getenv("ATOPILE_AGENT_OPENAI_API_KEY")
             or os.getenv("OPENAI_API_KEY"),
             timeout_s=_env_float("ATOPILE_AGENT_TIMEOUT_S", "120"),
+            summary_timeout_s=_env_float(
+                "ATOPILE_AGENT_SUMMARY_TIMEOUT_S", "8", lo=1.0, hi=30.0
+            ),
             max_tool_loops=_env_int("ATOPILE_AGENT_MAX_TOOL_LOOPS", "240"),
             max_turn_seconds=_env_float(
                 "ATOPILE_AGENT_MAX_TURN_SECONDS", "7200", lo=30.0, hi=7_200.0
@@ -139,5 +148,18 @@ class AgentConfig:
             not in _TRACE_DISABLE_VALUES,
             trace_preview_max_chars=_env_int(
                 "ATOPILE_AGENT_TRACE_PREVIEW_MAX_CHARS", "4000", lo=300, hi=20000
+            ),
+            activity_summary_enabled=_env("ATOPILE_AGENT_ACTIVITY_SUMMARY_ENABLED", "1")
+            .strip()
+            .lower()
+            not in _TRACE_DISABLE_VALUES,
+            activity_summary_max_events=_env_int(
+                "ATOPILE_AGENT_ACTIVITY_SUMMARY_MAX_EVENTS", "6", lo=2, hi=12
+            ),
+            activity_summary_min_interval_s=_env_float(
+                "ATOPILE_AGENT_ACTIVITY_SUMMARY_MIN_INTERVAL_S",
+                "1.5",
+                lo=0.0,
+                hi=10.0,
             ),
         )

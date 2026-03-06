@@ -47,6 +47,7 @@ export interface AgentProgressPayload {
   trace?: unknown;
   status_text?: unknown;
   detail_text?: unknown;
+  activity_summary?: unknown;
   loop?: unknown;
   tool_index?: unknown;
   tool_count?: unknown;

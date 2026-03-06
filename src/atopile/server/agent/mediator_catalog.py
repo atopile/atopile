@@ -345,11 +345,22 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
     "package_create_local": ToolDirectoryItem(
         name="package_create_local",
         category="project",
-        purpose="Create a local sub-package.",
-        tooltip="Create a package under packages/ and add it as a file dependency.",
+        purpose="Create an empty local sub-package scaffold.",
+        tooltip=(
+            "Create a reusable package under packages/ and add it as a file "
+            "dependency when no physical part install is needed."
+        ),
         inputs=["name", "entry_module", "description"],
         typical_output="path, identifier, import_statement",
-        keywords=["subpackage", "local package", "packages dir", "reusable module"],
+        keywords=[
+            "subpackage",
+            "local package",
+            "create local package",
+            "reusable local package",
+            "packages dir",
+            "reusable module",
+            "package scaffold",
+        ],
         tool_role="execution",
     ),
     "workspace_list_targets": ToolDirectoryItem(
@@ -357,7 +368,8 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         category="project",
         purpose="List workspace build targets.",
         tooltip=(
-            "Discover targets from nested ato.yaml files under the current project."
+            "Discover targets from nested ato.yaml files under the current "
+            "project, especially after creating local packages."
         ),
         inputs=[],
         typical_output="projects, total_targets",
@@ -366,11 +378,23 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
     "parts_install": ToolDirectoryItem(
         name="parts_install",
         category="parts",
-        purpose="Install an LCSC part to project.",
-        tooltip="Install a part by LCSC id into current project.",
+        purpose="Install an LCSC part or create a packaged wrapper for it.",
+        tooltip=(
+            "Install a part by LCSC id into the current project, or set "
+            "create_package=true to generate a reusable local package under "
+            "packages/."
+        ),
         inputs=["lcsc_id", "create_package"],
-        typical_output="success, lcsc_id",
-        keywords=["install part", "lcsc id", "add part"],
+        typical_output=(
+            "success, lcsc_id, path, created_package, identifier, import_statement"
+        ),
+        keywords=[
+            "install part",
+            "lcsc id",
+            "add part",
+            "local package",
+            "wrapper package",
+        ],
         tool_role="execution",
     ),
     "datasheet_read": ToolDirectoryItem(

@@ -12,6 +12,7 @@ from typing import Any
 
 from atopile.dataclasses import AgentEventRow, AppContext
 from atopile.server.agent import AgentRunner, mediator
+from atopile.server.agent.activity_summary import ActivitySummarizer
 from atopile.server.agent.config import AgentConfig
 from atopile.server.agent.provider import OpenAIProvider
 from atopile.server.agent.registry import ToolRegistry
@@ -57,6 +58,7 @@ orchestrator = AgentRunner(
     provider=OpenAIProvider(config=_config),
     registry=ToolRegistry(),
 )
+activity_summarizer = ActivitySummarizer(config=_config)
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +154,7 @@ async def run_turn_with_chain_recovery(
     user_message: str,
     session_id: str,
     selected_targets: list[str] | None,
+    prior_skill_state: dict[str, Any] | None,
     tool_memory: dict[str, dict[str, Any]],
     progress_callback: Any = None,
     consume_steering_messages: Any = None,
@@ -167,6 +170,7 @@ async def run_turn_with_chain_recovery(
             session_id=session_id,
             selected_targets=selected_targets,
             previous_response_id=session.last_response_id,
+            prior_skill_state=prior_skill_state,
             tool_memory=tool_memory,
             progress_callback=progress_callback,
             consume_steering_messages=consume_steering_messages,
@@ -191,6 +195,7 @@ async def run_turn_with_chain_recovery(
             session_id=session_id,
             selected_targets=selected_targets,
             previous_response_id=None,
+            prior_skill_state=prior_skill_state,
             tool_memory=tool_memory,
             progress_callback=progress_callback,
             consume_steering_messages=consume_steering_messages,
@@ -368,11 +373,19 @@ async def emit_agent_progress(
     run_id: str | None,
     payload: dict[str, Any],
 ) -> None:
+    activity_summary = await activity_summarizer.summarize(
+        session_id=session_id,
+        run_id=run_id,
+        project_root=project_root,
+        payload=payload,
+    )
     event_payload: dict[str, Any] = {
         "session_id": session_id,
         "project_root": project_root,
         **payload,
     }
+    if activity_summary:
+        event_payload["activity_summary"] = activity_summary
     if run_id:
         event_payload["run_id"] = run_id
     await get_event_bus().emit(EVENT_AGENT_PROGRESS, event_payload)
@@ -497,6 +510,7 @@ async def run_turn_in_background(
             user_message=run.message,
             session_id=session_id,
             selected_targets=run.selected_targets,
+            prior_skill_state=session.skill_state,
             tool_memory=session.tool_memory,
             progress_callback=_emit_progress,
             consume_steering_messages=_consume_steering_messages,

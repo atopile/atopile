@@ -114,6 +114,28 @@ def test_suggest_tools_surfaces_parts_for_physical_component_queries() -> None:
     assert "parts_search" in names
 
 
+def test_suggest_tools_surfaces_package_creation_for_local_package_requests() -> None:
+    suggestions = mediator.suggest_tools(
+        message="create a reusable local package for this lcsc part",
+        history=[],
+        selected_targets=["default"],
+        tool_memory={},
+    )
+    names = _suggestion_names(suggestions)
+    assert "parts_install" in names
+    assert "package_create_local" in names
+
+
+def test_tool_directory_describes_parts_install_package_flow() -> None:
+    directory = {entry["name"]: entry for entry in mediator.get_tool_directory()}
+
+    assert "create_package=true" in directory["parts_install"]["tooltip"]
+    assert (
+        "empty local sub-package scaffold"
+        in directory["package_create_local"]["purpose"]
+    )
+
+
 def test_suggest_tools_surfaces_datasheet_for_lcsc_id() -> None:
     suggestions = mediator.suggest_tools(
         message="check datasheet for C521608 and review pin functions",

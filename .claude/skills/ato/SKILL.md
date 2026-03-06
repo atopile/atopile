@@ -30,7 +30,7 @@ Capture user intent as ato code. Focus on **high-level architecture** — think 
 - **Module boundaries** should encapsulate common functionality to avoid duplication at the top level.
 - **Use high-level interfaces** (`ElectricPower`, `I2C`, `SPI`, `UART`, `ElectricLogic`) instead of low-level electrical connections where possible.
 - **Custom interfaces** — you can create project-specific interfaces if needed, but check the stdlib first (see Section 3).
-- **Capture requirements** as `has_requirement` traits on the module that owns them.
+- **Capture requirements** in the module docstring under a `Requirements:` section on the module that owns them.
 - **Add formal constraints** with `assert` for voltage, current, frequency bounds.
 - **Wire modules together** at the interface level (`~`). Do NOT wire pins yet.
 
@@ -38,7 +38,7 @@ Capture user intent as ato code. Focus on **high-level architecture** — think 
 
 1. **Break the request into subsystems.** Each functional block becomes a `module` — power, MCU, sensors, comms, IO, etc.
 2. **Define interfaces at module boundaries.** Use stdlib interfaces to declare how modules connect.
-3. **Capture requirements as `has_requirement` traits.** Place each requirement on the module that owns it.
+3. **Capture requirements in docstrings.** Add a `Requirements:` section to the docstring of the module that owns each requirement.
 4. **Add formal constraints** with `assert` for voltage, current, frequency bounds.
 5. **Wire modules together** at the interface level (`~`).
 6. **Create a checklist** linking items to requirement IDs for tracking.
@@ -46,13 +46,10 @@ Capture user intent as ato code. Focus on **high-level architecture** — think 
 **Example spec:**
 
 ```ato
-#pragma experiment("TRAITS")
-
 import ElectricPower
 import I2C
 import SPI
 import ElectricLogic
-import has_requirement
 
 module SensorBoard:
     """
@@ -61,6 +58,12 @@ module SensorBoard:
     Battery-powered sensor node with temperature, humidity, and
     pressure sensing, BLE comms, and USB-C charging.
 
+    ## Requirements
+    - R1: BLE connectivity — nRF52840 with BLE 5.0
+    - R2: Environmental sensing — BME280 for temp/humidity/pressure
+    - R3: USB-C charging — 5V USB-C input with charge IC
+    - R4: Board size — 25mm x 30mm max
+
     ## Key Decisions
     - nRF52840 for BLE + low power
     - BME280 for temp/humidity/pressure
@@ -68,12 +71,6 @@ module SensorBoard:
     ## Open Questions
     - Battery chemistry: LiPo vs coin cell?
     """
-
-    # ── Requirements ──────────────────────────────────────
-    trait has_requirement<id="R1", text="BLE connectivity", criteria="nRF52840 with BLE 5.0">
-    trait has_requirement<id="R2", text="Environmental sensing", criteria="BME280 for temp/humidity/pressure">
-    trait has_requirement<id="R3", text="USB-C charging", criteria="5V USB-C input with charge IC">
-    trait has_requirement<id="R4", text="Board size", criteria="25mm x 30mm max">
 
     # ── Architecture ──────────────────────────────────────
     power = new PowerSupply
@@ -92,8 +89,12 @@ module SensorBoard:
     assert power.rail_3v3.voltage within 3.3V +/- 5%
 
 module PowerSupply:
-    """USB-C input, charge controller, LDO regulation."""
-    trait has_requirement<id="R5", text="Battery charging", criteria="LiPo charge IC with thermal protection">
+    """
+    USB-C input, charge controller, LDO regulation.
+
+    ## Requirements
+    - R5: Battery charging — LiPo charge IC with thermal protection
+    """
 
     usb_in = new ElectricPower
     battery = new ElectricPower
@@ -117,14 +118,13 @@ module Radio:
 
 **Key rules for this step:**
 - Module names are final — `PowerSupply` stays `PowerSupply` through implementation. Do NOT suffix with "Spec".
-- Place `has_requirement` on the module that owns it, not all on the top-level.
+- Place requirements in the docstring of the module that owns them, not all on the top-level.
 - Use docstrings for overview, key decisions, and open questions.
 - Present open questions to the user and wait for answers before implementing.
-- Requires `#pragma experiment("TRAITS")` and `import has_requirement`.
 
 > **Tools:** Use `stdlib_list` / `stdlib_get_item` to check available interfaces and components before defining custom ones. Use `examples_search` / `examples_read_ato` to find reference designs for similar systems.
 
-Gate: spec `.ato` file exists with module hierarchy, interfaces, requirement traits, and constraints.
+Gate: spec `.ato` file exists with module hierarchy, interfaces, requirements in docstrings, and constraints.
 
 ## Step 3: Get Signoff
 
@@ -155,26 +155,28 @@ Search the atopile package registry before building from scratch.
 
 When `packages_search` returns no match for a needed IC, connector, or module, **create a local driver package** instead of giving up or asking the user to find one.
 
-> **Tools:** `parts_search` → `parts_install` → `datasheet_read` → `project_read_file` (to inspect auto-generated .ato) → `project_create_file` (to write the driver module).
+> **Tools:** `parts_search` → `parts_install(create_package=true)` → `datasheet_read` → `project_read_file` (to inspect the generated wrapper package) → `project_edit_file` (to refine that wrapper in place) → `workspace_list_targets` (to discover nested package targets).
 
 **Step-by-step recipe:**
 
 1. **Find the part**: Use `parts_search` to find the LCSC component (e.g., `parts_search("LAN8742A")`).
-2. **Install the part**: Use `parts_install` with the LCSC ID to download symbol, footprint, and 3D model into `parts/`.
+2. **Install as a local package**: Use `parts_install` with the LCSC ID and `create_package=true`. This installs the raw part and generates the canonical reusable wrapper package under `packages/`.
 3. **Read the datasheet**: Use `datasheet_read` with the LCSC ID to get pin functions, electrical specs, and typical application circuit.
-4. **Read the installed part .ato**: Check the auto-generated `.ato` file in `parts/<Manufacturer_MPN>/` to see the available pin names.
-5. **Create the driver module**: Write a `.ato` file (e.g., `lan8742a_driver.ato`) that:
-   - Imports the installed part and stdlib interfaces
-   - Creates a module with public interface fields (e.g., `power`, `rmii`, `mdio`)
-   - Instantiates the part internally (`ic = new <InstalledPartType>`)
-   - Maps IC pins to interface signals
-   - Adds decoupling capacitors and required passives
-   - Sets voltage/current constraints from the datasheet
-6. **Import and use** the driver in your top-level design.
+4. **Read the generated files**: Inspect the generated wrapper under `packages/<PartName>/<PartName>.ato` and the installed raw part it imports to see available interfaces and exact pin names.
+5. **Refine the wrapper package** if needed:
+   - Treat `packages/<PartName>/<PartName>.ato` as the canonical wrapper module for that part.
+   - Edit that generated package file in place rather than creating another wrapper layer.
+   - Keep the raw installed part file unchanged.
+   - Expose standard interfaces such as `ElectricPower`, `I2C`, `SPI`, `UART`, `CAN`, or `ElectricLogic`.
+   - Map the internal `_package` component pins to those interfaces.
+   - Add decoupling capacitors and required passives.
+   - Set voltage/current constraints from the datasheet.
+6. **Discover targets**: Run `workspace_list_targets` after package creation if you need to inspect or build nested package targets.
+7. **Import and use** the local package in your top-level design directly from `packages/<PartName>/<PartName>.ato`.
 
-**Example: creating a local I2C mux driver**
+**Example: refining a generated local I2C mux wrapper**
 
-The auto-generated part file (`parts/Manufacturer_MPN/Manufacturer_MPN.ato`) is a `component` with signal-to-pin mappings and traits — do NOT edit it. Write a separate driver module that wraps it.
+The generated package file under `packages/<PartName>/<PartName>.ato` is the wrapper you should refine. The raw part component it imports is not the place to edit behavior.
 
 ```ato
 #pragma experiment("BRIDGE_CONNECT")
@@ -230,10 +232,14 @@ module TI_TCA9548A:
 
 **Key rules:**
 - Always `parts_install` first — never reference a part that hasn't been installed.
-- Always **read the auto-generated `.ato` file** to see the exact signal names (e.g., `package.VCC`, `package.SDA`). Do NOT guess pin names.
+- Prefer `parts_install(create_package=true)` for ICs and other reusable wrapped parts.
+- Use `package_create_local` only when you need an empty local package scaffold without installing a physical part.
+- Always **read the generated package and raw part `.ato` files** to see the exact signal names (e.g., `package.VCC`, `package.SDA`). Do NOT guess pin names.
 - Always read the datasheet to get correct pin mapping, constraints, and recommended decoupling.
-- The auto-generated file is a `component` — never edit it. Write a separate `module` that wraps it.
-- Instantiate the component as `package = new <ComponentName>`.
+- The generated package file under `packages/` is the canonical wrapper for that part. Refine it in place.
+- The raw installed file is a `component` — never edit it.
+- Instantiate the raw component inside the wrapper as `package = new <ComponentName>`.
+- `main.ato` should import wrapper packages directly from `packages/<name>/<name>.ato`, not through an extra aggregator wrapper file.
 - Connect interfaces via `.line` and `.reference` (e.g., `i2c.sda.line ~ package.SDA`; `i2c.sda.reference ~ power`).
 - Use bridge connect `~>` for decoupling caps in series (e.g., `power.hv ~> cap ~> power.lv`).
 - Use `.capacitance` for Capacitor values, `.resistance` for Resistor values (NOT `.value`).
@@ -249,7 +255,7 @@ Choose components using generics + constraints wherever possible.
 
 - Use stdlib generics (`Resistor`, `Capacitor`, `Inductor`, `Diode`, `LED`, `Fuse`) with value + package constraints for auto-picking. Prefer generics over locked parts.
 - Use `parts_search` only when a specific part is needed (IC, connector, specialized component).
-- Use `parts_install` for parts that need explicit LCSC IDs.
+- Use `parts_install` for parts that need explicit LCSC IDs, and prefer `create_package=true` when the part should become a reusable local wrapper.
 - Lock only high-risk parts (MCU, PMIC, RF, connectors). Leave commodity passives auto-picked.
 
 ### 4d: Detailed wiring and constraints
@@ -275,28 +281,6 @@ Run builds and fix issues iteratively until everything passes. **Build submodule
 - Use `design_diagnostics` for silent failures.
 - Fix issues using Section 5 troubleshooting.
 - Repeat until build passes cleanly.
-
-### 5b: Board shape
-
-Add a `RectangularBoardShape` to define the physical PCB outline.
-
-```ato
-import RectangularBoardShape
-
-board = new RectangularBoardShape
-board.width = 30mm
-board.height = 40mm
-board.corner_radius = 2mm
-board.mounting_hole_diameter = 3.2mm
-```
-
-- `width` and `height` are required (in mm).
-- `corner_radius` is required (use `0mm` for sharp corners). Cannot exceed half the smallest dimension.
-- `mounting_hole_diameter` is optional — creates 4 corner mounting holes when set.
-- Only one board shape per design is allowed.
-- `RectangularBoardShape` is stdlib-allowlisted — use bare `import`, no path needed.
-
-Gate: build completes without errors.
 
 ## Step 6: Summary
 
@@ -648,6 +632,7 @@ Bare `import X` must resolve to a stdlib-allowlisted type or trait. If not allow
 
 ```ato
 from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
+from "packages/stm32g474/stm32g474.ato" import STM32G474
 from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
 from "./power/buck_5v.ato" import Buck5V
 ```
@@ -655,19 +640,22 @@ from "./power/buck_5v.ato" import Buck5V
 **Rules:**
 - One import per line (multi-import `import A, B` is deprecated).
 - Use path imports for anything not in the stdlib allowlist.
+- `main.ato` should import reusable local wrappers directly from `packages/<name>/<name>.ato`.
+- Use `./relative/path.ato` for truly local sibling files, not for canonical wrapper packages under `packages/`.
 
 ## 2.8 Traits
 
-Traits attach metadata and behavior to blocks. Requires the `TRAITS` pragma.
+Traits attach metadata and behavior to blocks. Use them only for traits that are actually supported by the language/runtime.
 
 ```ato
 #pragma experiment("TRAITS")
-import has_requirement
 import can_bridge_by_name
 
 module MyModule:
-    # Trait on current module
-    trait has_requirement<id="R1", text="Supply voltage", criteria="3.3V regulated">
+    """
+    Requirements:
+    - R1: Supply voltage — 3.3V regulated
+    """
 
     # Bridge trait for series-path modules
     trait can_bridge_by_name<input_name="power_in", output_name="power_out">
@@ -680,7 +668,6 @@ Common traits:
 
 | Trait | Purpose |
 |-------|---------|
-| `has_requirement` | Document design requirements with ID, text, and criteria |
 | `can_bridge_by_name` | Enable `~>` bridge connect through a module's named in/out fields |
 | `has_part_removed` | Suppress part picking for non-BOM placeholders |
 | `has_single_electric_reference` | Declare shared reference rail for an interface |
@@ -998,17 +985,6 @@ Series protection element with bridge capability.
 
 Pre-built voltage divider module with `r_top`, `r_bottom`, and ratio equations.
 
-### `RectangularBoardShape`
-
-PCB outline definition (see Step 5b).
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `width` | length (mm) | Board width (required) |
-| `height` | length (mm) | Board height (required) |
-| `corner_radius` | length (mm) | Corner rounding (required, use `0mm` for sharp) |
-| `mounting_hole_diameter` | length (mm) | Optional — creates 4 corner holes when set |
-
 ### `MountingHole`
 
 Standalone mounting hole for mechanical attachment.
@@ -1025,13 +1001,16 @@ Net tie for connecting separate nets on the PCB.
 
 Traits require `#pragma experiment("TRAITS")` and must be imported.
 
-### `has_requirement`
+### Requirements in docstrings
 
-Document design requirements. Place on the module that owns the requirement.
+Document design requirements in the owning module's docstring.
 
 ```ato
-import has_requirement
-trait has_requirement<id="R1", text="Supply voltage", criteria="3.3V regulated from USB">
+module PowerSupply:
+    """
+    Requirements:
+    - R1: Supply voltage — 3.3V regulated from USB
+    """
 ```
 
 ### `can_bridge_by_name`
@@ -1267,18 +1246,12 @@ module TI_INA228:
 #pragma experiment("BRIDGE_CONNECT")
 
 import ElectricPower
-import RectangularBoardShape
 
 from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
 from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
 from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
 
 module ESP32_MINIMAL:
-    board = new RectangularBoardShape
-    board.width = 30mm
-    board.height = 25mm
-    board.corner_radius = 2mm
-
     micro = new ESP32_C3_MINI_1
     usb_c = new USB2_0TypeCHorizontalConnector
     ldo_3V3 = new TI_TLV75901

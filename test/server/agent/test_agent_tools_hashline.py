@@ -41,7 +41,10 @@ def _clear_agent_tool_caches() -> None:
 
 
 def test_tool_definitions_advertise_hashline_editor() -> None:
-    names = {tool_def["name"] for tool_def in tools.get_tool_definitions()}
+    definitions = {
+        tool_def["name"]: tool_def for tool_def in tools.get_tool_definitions()
+    }
+    names = set(definitions)
 
     assert "package_create_local" in names
     assert "workspace_list_targets" in names
@@ -71,6 +74,12 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "layout_set_component_position" in names
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
+    assert "create_package=true" in definitions["parts_install"]["description"]
+    assert "local sub-package" in definitions["package_create_local"]["description"]
+    assert (
+        "discover new build targets"
+        in definitions["workspace_list_targets"]["description"]
+    )
 
 
 def test_execute_tool_allows_read_tool(tmp_path: Path) -> None:

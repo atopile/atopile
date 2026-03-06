@@ -89,6 +89,7 @@ export function readProgressPayload(detail: unknown): {
   args: Record<string, unknown>;
   statusText: string | null;
   detailText: string | null;
+  activitySummary: string | null;
   loop: number | null;
   toolIndex: number | null;
   toolCount: number | null;
@@ -109,6 +110,7 @@ export function readProgressPayload(detail: unknown): {
       args: {},
       statusText: null,
       detailText: null,
+      activitySummary: null,
       loop: null,
       toolIndex: null,
       toolCount: null,
@@ -131,6 +133,9 @@ export function readProgressPayload(detail: unknown): {
     : {};
   const statusText = typeof payload.status_text === 'string' ? payload.status_text : null;
   const detailText = typeof payload.detail_text === 'string' ? payload.detail_text : null;
+  const activitySummary = typeof payload.activity_summary === 'string'
+    ? trimSingleLine(payload.activity_summary, 96)
+    : null;
   const loop = toFiniteNumber(payload.loop);
   const toolIndex = toFiniteNumber(payload.tool_index);
   const toolCount = toFiniteNumber(payload.tool_count);
@@ -172,6 +177,7 @@ export function readProgressPayload(detail: unknown): {
     args,
     statusText,
     detailText,
+    activitySummary,
     loop,
     toolIndex,
     toolCount,
@@ -343,8 +349,10 @@ export function inferActivityFromProgress(
     trace: AgentToolTrace | null;
     statusText: string | null;
     detailText: string | null;
+    activitySummary: string | null;
   },
 ): string | null {
+  if (payload.activitySummary) return payload.activitySummary;
   if (payload.phase === 'thinking' || payload.phase === 'compacting') {
     const status = payload.statusText || (payload.phase === 'compacting' ? 'Compacting context' : 'Thinking');
     if (payload.detailText) {

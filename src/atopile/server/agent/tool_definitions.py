@@ -37,7 +37,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "parts_install",
-            "description": "Install an LCSC part into the selected project.",
+            "description": (
+                "Install an LCSC part into the selected project. Set "
+                "create_package=true to also generate the canonical reusable "
+                "wrapper package under packages/ for that part. Refine that "
+                "generated package file in place and import it directly from "
+                "main.ato."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {

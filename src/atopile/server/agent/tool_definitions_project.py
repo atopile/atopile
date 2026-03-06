@@ -12,8 +12,10 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "type": "function",
             "name": "package_create_local",
             "description": (
-                "Create a local sub-package under packages/ and add it as a file "
-                "dependency of the selected project."
+                "Create an empty local sub-package under packages/ and add it as "
+                "a file dependency of the selected project. Use this when you "
+                "need a reusable local module scaffold without installing a "
+                "physical part."
             ),
             "parameters": {
                 "type": "object",
@@ -31,7 +33,8 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "name": "workspace_list_targets",
             "description": (
                 "List build targets from every nested ato.yaml under the selected "
-                "project, including local sub-packages."
+                "project, including local sub-packages. Use this after creating "
+                "or installing packages to discover new build targets."
             ),
             "parameters": {
                 "type": "object",
