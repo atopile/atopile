@@ -329,6 +329,7 @@ class AgentRunner:
         session_id: str = "",
         selected_targets: list[str] | None = None,
         previous_response_id: str | None = None,
+        prior_skill_state: dict[str, Any] | None = None,
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
         consume_steering_messages: SteeringMessagesCallback | None = None,
@@ -349,6 +350,26 @@ class AgentRunner:
             selected_targets=selected,
             include_session_primer=include_primer,
         )
+        if isinstance(prior_skill_state, dict):
+            persisted_state = {
+                key: value
+                for key, value in prior_skill_state.items()
+                if key
+                not in {
+                    "mode",
+                    "skills_dir",
+                    "requested_skill_ids",
+                    "selected_skill_ids",
+                    "selected_skills",
+                    "missing_skill_ids",
+                    "per_skill_max_chars",
+                    "reasoning",
+                    "total_chars",
+                    "max_chars",
+                    "generated_at",
+                }
+            }
+            skill_state.update(copy.deepcopy(persisted_state))
 
         # Build initial input
         user_content = await build_initial_user_message(
@@ -1352,26 +1373,40 @@ class AgentRunner:
                 raw_items = args.get("items", [])
                 if not raw_items:
                     return {"error": "items list is empty"}, False
-                if state.checklist is not None:
-                    return {
-                        "error": "Checklist already exists. Use checklist_update."
-                    }, False
 
                 now_iso = datetime.now(timezone.utc).isoformat()
-                items = [
-                    ChecklistItem(
-                        id=str(it["id"]),
-                        description=str(it["description"]),
-                        criteria=str(it["criteria"]),
-                        requirement_id=it.get("requirement_id"),
-                        source=it.get("source"),
-                        message_id=_resolve_message_id(
-                            it.get("message_id"), state.current_message_id
-                        ),
+                items = []
+                for it in raw_items:
+                    items.append(
+                        ChecklistItem(
+                            id=str(it["id"]),
+                            description=str(it["description"]),
+                            criteria=str(it["criteria"]),
+                            requirement_id=it.get("requirement_id"),
+                            source=it.get("source"),
+                            message_id=_resolve_message_id(
+                                it.get("message_id"), state.current_message_id
+                            ),
+                        )
                     )
-                    for it in raw_items
-                ]
-                state.checklist = Checklist(items=items, created_at=time.time())
+
+                existing = state.checklist
+                created = existing is None
+                if existing is None:
+                    state.checklist = Checklist(items=[], created_at=time.time())
+                    existing = state.checklist
+
+                existing_ids = {item.id for item in existing.items}
+                added: list[ChecklistItem] = []
+                skipped: list[str] = []
+                for item in items:
+                    if item.id in existing_ids:
+                        skipped.append(item.id)
+                        continue
+                    existing.items.append(item)
+                    existing_ids.add(item.id)
+                    added.append(item)
+
                 state.checklist.save_to_skill_state(skill_state)
 
                 # Persist items and update linked messages
@@ -1380,7 +1415,7 @@ class AgentRunner:
                         from atopile.model.sqlite import MessageLog
 
                         linked_message_ids: set[str] = set()
-                        for item in items:
+                        for item in added:
                             MessageLog.save_checklist_item(
                                 TrackedChecklistItem(
                                     item_id=item.id,
@@ -1404,9 +1439,19 @@ class AgentRunner:
                     except Exception:
                         log.warning("Failed to persist checklist items", exc_info=True)
 
+                if created:
+                    message = f"Checklist created with {len(added)} items."
+                else:
+                    message = f"Checklist already existed. Added {len(added)} item(s)."
+                if skipped:
+                    message += (
+                        f" Skipped {len(skipped)} duplicate(s): {', '.join(skipped)}."
+                    )
                 return {
                     "ok": True,
-                    "message": f"Checklist created with {len(items)} items.",
+                    "message": message,
+                    "added": len(added),
+                    "skipped": skipped,
                     "checklist": state.checklist.summary_text(),
                 }, True
 

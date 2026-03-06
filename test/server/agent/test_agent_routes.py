@@ -11,7 +11,11 @@ import atopile.server.routes.agent.state as agent_state
 from atopile.dataclasses import AppContext
 from atopile.server.routes.agent import main as agent_routes
 from atopile.server.routes.agent import utils as agent_utils
-from atopile.server.routes.agent.models import AgentRun
+from atopile.server.routes.agent.models import (
+    AgentRun,
+    AgentSession,
+    SendMessageRequest,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +23,10 @@ def _clear_agent_route_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(agent_routes, "persist_sessions_state", lambda: None)
     monkeypatch.setattr(agent_utils, "persist_sessions_state", lambda: None)
     monkeypatch.setattr(agent_state, "persist_sessions_state", lambda: None)
+    monkeypatch.setattr(agent_routes, "log_agent_event", lambda *_, **__: None)
+    monkeypatch.setattr(agent_utils, "log_agent_event", lambda *_, **__: None)
+    monkeypatch.setattr(agent_utils.mediator, "suggest_tools", lambda **_: [])
+    monkeypatch.setattr(agent_utils.mediator, "get_tool_memory_view", lambda _: [])
 
     with agent_state.sessions_lock:
         agent_state.sessions_by_id.clear()
@@ -194,20 +202,16 @@ async def test_second_sync_message_conflicts_while_first_is_running(
 
 @pytest.mark.anyio
 async def test_sync_chain_integrity_error_retries_without_last_response_id(
-    client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     project_root: Path,
 ) -> None:
-    create = await client.post(
-        "/api/agent/sessions",
-        json={"projectRoot": str(project_root)},
+    session = AgentSession(
+        session_id="session_sync",
+        project_root=str(project_root),
+        last_response_id="resp_bad",
     )
-    assert create.status_code == 200
-    session_id = create.json()["sessionId"]
-
     with agent_state.sessions_lock:
-        session = agent_state.sessions_by_id[session_id]
-        session.last_response_id = "resp_bad"
+        agent_state.sessions_by_id[session.session_id] = session
 
     calls: list[object] = []
 
@@ -231,19 +235,19 @@ async def test_sync_chain_integrity_error_retries_without_last_response_id(
 
     monkeypatch.setattr(agent_routes.orchestrator, "run_turn", fake_run_turn)
 
-    response = await client.post(
-        f"/api/agent/sessions/{session_id}/messages",
-        json={
-            "message": "continue",
-            "projectRoot": str(project_root),
-            "selectedTargets": [],
-        },
+    response = await agent_routes.send_message(
+        session_id=session.session_id,
+        request=SendMessageRequest(
+            message="continue",
+            projectRoot=str(project_root),
+            selectedTargets=[],
+        ),
+        ctx=AppContext(workspace_paths=[project_root.parent]),
     )
-    assert response.status_code == 200
-    assert response.json()["assistantMessage"] == "recovered"
+    assert response.assistant_message == "recovered"
 
     with agent_state.sessions_lock:
-        session = agent_state.sessions_by_id[session_id]
+        session = agent_state.sessions_by_id[session.session_id]
         assert session.last_response_id == "resp_recovered"
 
     assert calls == ["resp_bad", None]

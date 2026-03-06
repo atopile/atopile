@@ -203,6 +203,7 @@ async def send_message(
                 user_message=request.message,
                 session_id=session_id,
                 selected_targets=request.selected_targets,
+                prior_skill_state=session.skill_state,
                 tool_memory=session.tool_memory,
                 progress_callback=emit_progress,
                 trace_callback=trace_callback,

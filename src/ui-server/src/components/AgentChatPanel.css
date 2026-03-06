@@ -1418,6 +1418,22 @@
   gap: 0;
 }
 
+.agent-checklist-more {
+  align-self: flex-start;
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.agent-checklist-more:hover {
+  color: var(--text-secondary);
+}
+
 .agent-checklist-item {
   display: flex;
   align-items: center;
