@@ -36,10 +36,9 @@ def _needs_npm_install(project_dir: Path) -> bool:
     node_modules = project_dir / "node_modules"
     if not node_modules.exists():
         return True
-    for marker in ("package-lock.json", "package.json"):
-        p = project_dir / marker
-        if p.exists() and p.stat().st_mtime > node_modules.stat().st_mtime:
-            return True
+    lock = project_dir / "package-lock.json"
+    if lock.exists() and lock.stat().st_mtime > node_modules.stat().st_mtime:
+        return True
     return False
 
 
