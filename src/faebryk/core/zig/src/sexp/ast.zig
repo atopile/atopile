@@ -315,27 +315,46 @@ pub const SExp = struct {
 
 // TODO: string escaping is super slow, consider using single quotes instead in the params
 
-// Helper function to escape quotes in strings
+// Helper function to escape special characters in strings for KiCad S-expression output
 pub fn writeEscapedString(str: []const u8, writer: anytype) !void {
-    // Count the number of quotes to determine the required size
     try writer.writeByte('"');
-    var last_char: u8 = 0;
     for (str) |c| {
-        if (c == '"' and last_char != '\\') try writer.writeByte('\\');
-        try writer.writeByte(c);
-        last_char = c;
+        switch (c) {
+            '\\' => try writer.writeAll("\\\\"),
+            '"' => try writer.writeAll("\\\""),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            else => try writer.writeByte(c),
+        }
     }
     try writer.writeByte('"');
 }
 
 fn _unescape_string(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
     var unescaped = std.array_list.Managed(u8).init(allocator);
-    // Pre-allocate with known maximum capacity since unescaping can only remove characters
+    // Pre-allocate with known maximum capacity since unescaping can only shrink the string
     try unescaped.ensureTotalCapacity(str.len);
 
-    for (str) |c| {
-        if (c != '\\') {
-            try unescaped.append(c);
+    var i: usize = 0;
+    while (i < str.len) {
+        if (str[i] == '\\' and i + 1 < str.len) {
+            switch (str[i + 1]) {
+                'n' => try unescaped.append('\n'),
+                'r' => try unescaped.append('\r'),
+                't' => try unescaped.append('\t'),
+                '\\' => try unescaped.append('\\'),
+                '"' => try unescaped.append('"'),
+                else => {
+                    // Unknown escape sequence: preserve both characters
+                    try unescaped.append(str[i]);
+                    try unescaped.append(str[i + 1]);
+                },
+            }
+            i += 2;
+        } else {
+            try unescaped.append(str[i]);
+            i += 1;
         }
     }
     return try unescaped.toOwnedSlice();
