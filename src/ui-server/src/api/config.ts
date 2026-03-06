@@ -8,6 +8,7 @@ interface AtopileWindow extends Window {
   __ATOPILE_WS_URL__?: string;
   __ATOPILE_WORKSPACE_FOLDERS__?: string[];
   __ATOPILE_ENABLE_CHAT__?: boolean;
+  __ATOPILE_IS_WEB_IDE__?: boolean;
 }
 
 const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
@@ -74,6 +75,11 @@ export const ENABLE_CHAT_OVERRIDE: boolean | null =
   win.__ATOPILE_ENABLE_CHAT__ !== undefined
     ? Boolean(win.__ATOPILE_ENABLE_CHAT__)
     : parseOptionalBoolean(import.meta.env.VITE_ENABLE_CHAT);
+
+/**
+ * True when running inside the browser-based web-ide container.
+ */
+export const IS_WEB_IDE = win.__ATOPILE_IS_WEB_IDE__ === true;
 
 /**
  * Get workspace folders from injected globals or URL query params.

@@ -15,6 +15,7 @@ import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
+import { getConfiguredBackendPort, hasConfiguredBackendPort } from './environment';
 
 const BACKEND_HOST = '127.0.0.1';
 
@@ -103,6 +104,9 @@ class BackendServerManager implements vscode.Disposable {
     private _port: number = 0;
     private _apiUrl: string = buildApiUrl(0);
     private _wsUrl: string = buildWsUrl(0);
+    private _internalApiUrl: string = buildApiUrl(0);
+    private _recoverTimer: NodeJS.Timeout | undefined;
+    private _recoverAttempts = 0;
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
@@ -296,8 +300,16 @@ class BackendServerManager implements vscode.Disposable {
 
     /**
      * Update the status bar item to reflect current connection state.
+     * Also notifies the webview so the UI can coordinate reconnection.
      */
     private _updateStatusBar(): void {
+        // Notify webview of backend state for reconnection coordination
+        this._onWebviewMessage.fire({
+            type: 'backendStatus',
+            serverState: this._serverState,
+            isConnected: this._isConnected,
+        });
+
         if (!this._statusBarItem) return;
 
         if (this._serverState === 'starting') {
@@ -351,14 +363,34 @@ class BackendServerManager implements vscode.Disposable {
         return this._apiUrl;
     }
 
+    get internalApiUrl(): string {
+        return this._internalApiUrl;
+    }
+
     get wsUrl(): string {
         return this._wsUrl;
     }
 
-    private _setPort(port: number): void {
+    private async _setPort(port: number): Promise<void> {
         this._port = port;
-        this._apiUrl = buildApiUrl(port);
-        this._wsUrl = buildWsUrl(port);
+        this._internalApiUrl = buildApiUrl(port);
+
+        // In browser-based VS Code (e.g., OpenVSCode Server), the webview runs in
+        // the browser and can't reach 127.0.0.1:<port> inside Docker/the remote host.
+        // Use asExternalUri to get a URL the browser can reach via VS Code's port proxy.
+        try {
+            const externalUri = await vscode.env.asExternalUri(
+                vscode.Uri.parse(`http://localhost:${port}`)
+            );
+            const externalBase = externalUri.toString().replace(/\/$/, '');
+            this._apiUrl = externalBase;
+            this._wsUrl = externalBase.replace(/^http/, 'ws') + '/ws/state';
+            traceInfo(`BackendServer: External URLs: api=${this._apiUrl} ws=${this._wsUrl}`);
+        } catch {
+            // Fallback to internal URLs (works in desktop VS Code)
+            this._apiUrl = this._internalApiUrl;
+            this._wsUrl = buildWsUrl(port);
+        }
     }
 
     /**
@@ -371,8 +403,53 @@ class BackendServerManager implements vscode.Disposable {
             traceInfo(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}, firing onStatusChange`);
             this._onStatusChange.fire(connected);
             this._updateStatusBar();
+        }
 
-            // No-op: connection state shouldn't trigger backend configuration.
+        if (connected) {
+            this._clearRecoveryTimer();
+            this._recoverAttempts = 0;
+        } else {
+            this._scheduleRecoveryCheck();
+        }
+    }
+
+    private _clearRecoveryTimer(): void {
+        if (this._recoverTimer) {
+            clearTimeout(this._recoverTimer);
+            this._recoverTimer = undefined;
+        }
+    }
+
+    private _scheduleRecoveryCheck(): void {
+        if (this._recoverTimer || this._serverState === 'starting') {
+            return;
+        }
+
+        const delayMs = Math.min(10000, 1000 * Math.max(1, this._recoverAttempts + 1));
+        this._recoverTimer = setTimeout(() => {
+            this._recoverTimer = undefined;
+            void this._attemptRecovery();
+        }, delayMs);
+    }
+
+    private async _attemptRecovery(): Promise<void> {
+        if (this._isConnected || this._serverState === 'starting') {
+            return;
+        }
+
+        const healthy = await checkServerHealthHttp(this._internalApiUrl);
+        if (healthy) {
+            traceVerbose('BackendServer: Recovery check found healthy backend');
+            this._recoverAttempts = 0;
+            return;
+        }
+
+        this._recoverAttempts += 1;
+        traceInfo(`BackendServer: Recovery attempt ${this._recoverAttempts}, backend not reachable on ${this._internalApiUrl}`);
+
+        const started = await this.startServer(this._port || undefined);
+        if (!started && !this._isConnected) {
+            this._scheduleRecoveryCheck();
         }
     }
 
@@ -429,10 +506,39 @@ class BackendServerManager implements vscode.Disposable {
         traceInfo('[BackendServer] Starting server initialization...');
 
         try {
-            // Get a port to use - prefer the provided port, or get an available one
-            const port = preferredPort || await getAvailablePort();
-            this._setPort(port);
-            traceInfo(`[BackendServer] Using port: ${port}`);
+            // Get a port to use - prefer the provided port, env var, or get an available one
+            const envPort = getConfiguredBackendPort();
+            const envHost = process.env.ATOPILE_BACKEND_HOST;
+            traceInfo(`[BackendServer] Env vars: ATOPILE_BACKEND_PORT=${process.env.ATOPILE_BACKEND_PORT ?? '(not set)'}, ATOPILE_BACKEND_HOST=${envHost ?? '(not set)'}`);
+            const port = preferredPort || envPort || await getAvailablePort();
+            await this._setPort(port);
+            traceInfo(`[BackendServer] Using port: ${port} (preferred=${preferredPort}, envPort=${envPort})`);
+
+            // When a new extension host connects (e.g. browser reconnect), another host may
+            // already be running the backend on this fixed port. Reuse it instead of spawning
+            // a second `ato serve` process that exits immediately with "already running".
+            // In web-ide mode (ATOPILE_BACKEND_PORT set), the entrypoint pre-starts the
+            // backend, so poll for up to 15s to give it time to become ready.
+            const preStartWaitMs = hasConfiguredBackendPort() ? 15_000 : 0;
+            const pollStart = Date.now();
+            do {
+                if (await checkServerHealthHttp(this._internalApiUrl)) {
+                    this._log('info', `server: Reusing existing backend on port ${this.port}`);
+                    this._serverReady = true;
+                    this._serverState = 'running';
+                    this._updateStatusBar();
+                    this._onWebviewMessage.fire({
+                        type: 'atopileInstalling',
+                        message: 'Connecting to server...',
+                    });
+                    return true;
+                }
+                if (preStartWaitMs > 0 && Date.now() - pollStart < preStartWaitMs) {
+                    await new Promise(r => setTimeout(r, 500));
+                } else {
+                    break;
+                }
+            } while (true);
 
             const workspaceRoots = getWorkspaceRoots();
             traceInfo(`[BackendServer] Workspace roots: ${workspaceRoots.join(', ') || '(none)'}`);
@@ -498,11 +604,13 @@ class BackendServerManager implements vscode.Disposable {
             // Get the actual binary path (first element of the command)
             const atoBinaryPath = atoBin.command[0];
 
-            // Build command args: ato serve backend --port <port> [--workspace <path>...]
+            // Build command args: ato serve backend --port <port> [--host <host>] [--workspace <path>...]
+            const backendHost = process.env.ATOPILE_BACKEND_HOST;
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                ...(backendHost ? ['--host', backendHost] : []),
                 '--no-gen',
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
@@ -557,9 +665,11 @@ class BackendServerManager implements vscode.Disposable {
 
             this._process = child;
 
+            let stdoutCollected = '';
             let stderrCollected = '';
             child.stdout?.on('data', (data: Buffer) => {
                 const text = data.toString();
+                stdoutCollected += text;
                 this._stdoutBuffer = this._processBufferedOutput(this._stdoutBuffer, text, 'info').newBuffer;
                 this._schedulePartialFlush('stdout');
             });
@@ -588,6 +698,12 @@ class BackendServerManager implements vscode.Disposable {
                     this._serverState = 'error';
                     this._updateStatusBar();
                 } else if (this._serverState === 'running') {
+                    const combinedOutput = `${stdoutCollected}\n${stderrCollected}`.toLowerCase();
+                    if (!signal && code === 0 && combinedOutput.includes('already running on port')) {
+                        this._log('info', `server: Backend already running on port ${this.port}, attached to existing process`);
+                        this._updateStatusBar();
+                        return;
+                    }
                     this._serverState = 'stopped';
                     this._lastError = exitMsg;
                     this._updateStatusBar();
@@ -669,7 +785,8 @@ class BackendServerManager implements vscode.Disposable {
             if (this._process !== child) {
                 return false;
             }
-            if (await checkServerHealthHttp(this.apiUrl)) {
+            // Use internal URL for health checks (extension host runs on same machine as server)
+            if (await checkServerHealthHttp(this._internalApiUrl)) {
                 return true;
             }
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -716,6 +833,9 @@ class BackendServerManager implements vscode.Disposable {
      * Stop the backend server.
      */
     async stopServer(): Promise<void> {
+        this._clearRecoveryTimer();
+        this._recoverAttempts = 0;
+
         if (this._process) {
             traceInfo('BackendServer: Stopping server...');
             this._log('info', 'server: Stopping...');
@@ -797,6 +917,59 @@ class BackendServerManager implements vscode.Disposable {
         };
     }
 
+    private async _isLayoutModelReady(): Promise<boolean> {
+        try {
+            const response = await axios.get(
+                `${this._internalApiUrl}/api/layout/render-model`,
+                { timeout: 2000 },
+            );
+            return response.status === 200;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Ask the backend to load a PCB into layout service, then wait until
+     * the layout render model is actually available.
+     *
+     * We trigger `openLayout` through the sidebar webview action path
+     * (`switchLayout` -> ui-server -> WS action), then gate on
+     * `/api/layout/render-model` readiness.
+     */
+    async loadLayout(projectRoot: string, target: string = 'default'): Promise<boolean> {
+        if (!projectRoot) {
+            return false;
+        }
+
+        const timeoutMs = 20000;
+        const pollMs = 250;
+        const retriggerMs = 1000;
+        const start = Date.now();
+        let nextTrigger = 0;
+
+        while (Date.now() - start < timeoutMs) {
+            const now = Date.now();
+            if (now >= nextTrigger) {
+                this.sendToWebview({
+                    type: 'switchLayout',
+                    projectRoot,
+                    targetName: target,
+                });
+                nextTrigger = now + retriggerMs;
+            }
+
+            if (await this._isLayoutModelReady()) {
+                return true;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, pollMs));
+        }
+
+        traceError(`BackendServer: Timed out waiting for layout model (project=${projectRoot}, target=${target})`);
+        return false;
+    }
+
     /**
      * Send a message to the webview (for forwarding to backend via WebSocket).
      */
@@ -805,6 +978,8 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     dispose(): void {
+        this._clearRecoveryTimer();
+
         // Stop the server gracefully
         if (this._process) {
             this._process.kill('SIGTERM');

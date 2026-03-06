@@ -11,6 +11,7 @@ import * as which from 'which';
 import { getProjectRoot } from './utilities';
 import { getAtopileWorkspaceFolders, getWorkspaceFolders, getWorkspaceFolder } from './vscodeapi';
 import * as vscode from 'vscode';
+import { isWebIdeHost } from './environment';
 
 export interface AtoBinInfo {
     init: boolean;
@@ -286,8 +287,27 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         return null;
     }
 
-    // 3. No user configuration - use default (extension-managed)
+    // 3. No user configuration - try ato on PATH first (e.g. Docker with pre-installed ato)
+    traceInfo(`[findbin] No user configuration, checking PATH for ato...`);
+    const atoOnPath = await which('ato', { nothrow: true });
+    if (atoOnPath) {
+        traceInfo(`[findbin] Found ato on PATH: ${atoOnPath}`);
+        const pathBin: AtoBinLocator = { command: [atoOnPath], source: 'system-path' };
+        const pathWorks = await _runSelfCheck(pathBin, _timeout_ms);
+        if (pathWorks) {
+            traceInfo(`[findbin] SUCCESS: Using ato from PATH: ${atoOnPath}`);
+            traceInfo(`[findbin] ========== Search complete ==========`);
+            return pathBin;
+        }
+        traceInfo(`[findbin] ato on PATH failed self-check, falling back to default`);
+    }
+
+    // 4. Fall back to extension-managed uv installation
     const defaultFrom = getDefaultAtoFrom();
+    traceInfo(`[findbin] Using default mode (extension-managed)`);
+    traceInfo(`[findbin] Default source: ${defaultFrom}`);
+
+
     const defaultBin = await _getDefaultAtoBin();
     if (!defaultBin) {
         g_lastFailureMessage = `uv is not available for default installation`;
@@ -375,6 +395,17 @@ function isTerminalValid(terminal: vscode.Terminal | undefined): terminal is vsc
 }
 
 /**
+ * In web-ide mode, the user shell is set to restricted-shell.sh which blocks
+ * interactive use.  Force /bin/bash so programmatic terminal commands work.
+ * On other platforms, omit shellPath so VS Code uses the user's default shell.
+ */
+export function getTerminalShellPath(): string | undefined {
+    const isWebIde =
+        isWebIdeHost();
+    return isWebIde ? '/bin/bash' : undefined;
+}
+
+/**
  * Get or create the build terminal, reusing if it still exists.
  */
 function getOrCreateBuildTerminal(name: string, cwd: string | undefined, hideFromUser: boolean): vscode.Terminal {
@@ -388,6 +419,7 @@ function getOrCreateBuildTerminal(name: string, cwd: string | undefined, hideFro
     // Create new terminal and track it
     g_buildTerminal = vscode.window.createTerminal({
         name: `ato: ${name}`,
+        shellPath: getTerminalShellPath(),
         cwd: cwd,
         hideFromUser: hideFromUser,
     });
@@ -416,6 +448,7 @@ export async function runAtoCommandInTerminal(
         } else {
             terminal = vscode.window.createTerminal({
                 name: `ato: ${terminal_or_name}`,
+                shellPath: getTerminalShellPath(),
                 cwd: cwd,
                 hideFromUser: hideFromUser,
             });
