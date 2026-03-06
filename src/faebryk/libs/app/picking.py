@@ -65,7 +65,8 @@ def save_part_info_to_pcb(app: fabll.Node):
             types=fabll.Node,
             required_trait=F.Parameters.is_parameter,
         ):
-            lit = p.get_trait(F.Parameters.is_parameter_operatable).try_extract_subset()
+            po = p.get_trait(F.Parameters.is_parameter_operatable)
+            lit = po.try_extract_subset()
             if lit is None:
                 continue
             data[f"{Properties.param_prefix}{p.get_name()}"] = json.dumps(

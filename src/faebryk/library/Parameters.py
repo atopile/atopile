@@ -337,7 +337,12 @@ class is_parameter_operatable(fabll.Node):
 
         if not lits:
             return None
-        lit_merged = F.Literals.is_literal.op_setic_intersect(*lits)
+        merge = (
+            F.Literals.is_literal.op_setic_intersect
+            if superset
+            else F.Literals.is_literal.op_setic_union
+        )
+        lit_merged = merge(*lits)
 
         if lit_type is None or lit_type is is_literal:
             return cast(T, lit_merged)
@@ -411,7 +416,7 @@ class is_parameter_operatable(fabll.Node):
 
         subset_str = ""
         if subset is not None:
-            subset_str = f"{{⊇|{format_lit(subset)}}}"
+            subset_str += f"{{⊇|{format_lit(subset)}}}"
 
         return f"{subset_str}{superset_str}"
 

@@ -2391,226 +2391,6 @@ def test_correlated_no_contradiction_different_sets():
     solver.simplify(E.tg, E.g)
 
 
-# Lower estimation tests ---------------------------------------------------------------
-def test_lower_estimation_with_uncorrelated_params():
-    """
-    When parameters are marked as uncorrelated via Anticorrelated(...),
-    lower estimation should propagate subset literals through expressions.
-
-    A ⊇ {4..6}, B ⊇ {2..3}, Anticorrelated(A, B)
-    C = A + B
-    => C ⊇ {6..9} (propagated from subset literals)
-    """
-    E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
-
-    # Mark A and B as uncorrelated
-    E.anticorrelated(A, B, assert_=True)
-
-    # A ⊇ {4..6} means {4..6} is a subset of A (A contains at least {4..6})
-    E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
-    # B ⊇ {2..3}
-    E.is_superset(B, E.lit_op_range((2, 3)), assert_=True)
-
-    # C = A + B
-    C = E.add(A, B)
-
-    solver = Solver()
-    result = solver.simplify(E.tg, E.g)
-
-    # The lower estimation should propagate: C ⊇ {4..6} + {2..3} = {6..9}
-    # So extract_superset(C) should include at least {6..9}
-    extracted = result.data.mutation_map.try_extract_superset(
-        C.as_parameter_operatable.force_get()
-    )
-    assert extracted is not None
-
-    # The extracted superset should be within or equal to {6..9}
-    # (it could be wider if upper bounds also apply)
-    extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-    min_val = extracted_nums.get_min_value()
-    max_val = extracted_nums.get_max_value()
-
-    # Lower bound should be at most 6 (since we're propagating lower bounds)
-    assert min_val <= 6, f"Expected min <= 6, got {min_val}"
-    # Upper bound should be at least 9
-    assert max_val >= 9, f"Expected max >= 9, got {max_val}"
-
-
-def test_lower_estimation_skipped_when_correlated():
-    """
-    When parameters are NOT marked as uncorrelated (default is anticorrelated),
-    lower estimation should NOT propagate subset literals.
-
-    A ⊇ {4..6}, B ⊇ {2..3} (no anticorrelation marker)
-    C = A + B
-    => C should NOT have tightened bounds from lower estimation
-    """
-    E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
-
-    # No anticorrelation marker - default is maybe-correlated
-
-    # A ⊇ {4..6}
-    E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
-    # B ⊇ {2..3}
-    E.is_superset(B, E.lit_op_range((2, 3)), assert_=True)
-
-    # C = A + B
-    C = E.add(A, B)
-
-    solver = Solver()
-    result = solver.simplify(E.tg, E.g)
-
-    # Without anticorrelation, lower estimation should not apply
-    # C should still be unbounded (or only bounded by domain)
-    extracted = result.data.mutation_map.try_extract_superset(
-        C.as_parameter_operatable.force_get()
-    )
-
-    if extracted is not None:
-        extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-        min_val = extracted_nums.get_min_value()
-        max_val = extracted_nums.get_max_value()
-
-        # If lower estimation was incorrectly applied, we'd have min=6, max=9
-        # Without it, bounds should be wider (e.g., unbounded or domain-bounded)
-        # Check that bounds are NOT exactly {6..9}
-        is_tightly_bounded = abs(min_val - 6) < 0.01 and abs(max_val - 9) < 0.01
-        assert not is_tightly_bounded, (
-            f"Lower estimation should not apply without anticorrelation marker, "
-            f"but got bounds [{min_val}, {max_val}]"
-        )
-
-
-def test_lower_estimation_multiply_uncorrelated():
-    """
-    Test lower estimation with multiplication of uncorrelated parameters.
-
-    A ⊇ {2..3}, B ⊇ {4..5}, Anticorrelated(A, B)
-    C = A * B
-    => C ⊇ {8..15}
-    """
-    E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
-
-    # Mark A and B as uncorrelated
-    E.anticorrelated(A, B, assert_=True)
-
-    # A ⊇ {2..3}
-    E.is_superset(A, E.lit_op_range((2, 3)), assert_=True)
-    # B ⊇ {4..5}
-    E.is_superset(B, E.lit_op_range((4, 5)), assert_=True)
-
-    # C = A * B
-    C = E.multiply(A, B)
-
-    solver = Solver()
-    result = solver.simplify(E.tg, E.g)
-
-    extracted = result.data.mutation_map.try_extract_superset(
-        C.as_parameter_operatable.force_get()
-    )
-    assert extracted is not None
-
-    extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-    min_val = extracted_nums.get_min_value()
-    max_val = extracted_nums.get_max_value()
-
-    # {2..3} * {4..5} = {8..15}
-    assert min_val <= 8, f"Expected min <= 8, got {min_val}"
-    assert max_val >= 15, f"Expected max >= 15, got {max_val}"
-
-
-def test_lower_estimation_partial_uncorrelation():
-    """
-    Test that lower estimation requires ALL parameters to be pairwise anticorrelated.
-
-    A ⊇ {1..2}, B ⊇ {3..4}, C ⊇ {5..6}
-    Anticorrelated(A, B) but NOT Anticorrelated(A, C) or Anticorrelated(B, C)
-    D = A + B + C
-    => Lower estimation should NOT apply (not all pairs uncorrelated)
-    """
-    E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
-    C = E.parameter_op()
-
-    # Only mark A and B as anticorrelated, not the full set
-    E.anticorrelated(A, B, assert_=True)
-
-    E.is_superset(A, E.lit_op_range((1, 2)), assert_=True)
-    E.is_superset(B, E.lit_op_range((3, 4)), assert_=True)
-    E.is_superset(C, E.lit_op_range((5, 6)), assert_=True)
-
-    # D = A + B + C = (A + B) + C
-    D = E.add(E.add(A, B), C)
-
-    solver = Solver()
-    result = solver.simplify(E.tg, E.g)
-
-    extracted = result.data.mutation_map.try_extract_superset(
-        D.as_parameter_operatable.force_get()
-    )
-
-    if extracted is not None:
-        extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-        min_val = extracted_nums.get_min_value()
-        max_val = extracted_nums.get_max_value()
-
-        # If full lower estimation applied, we'd get {9..12}
-        # Without full anticorrelation, bounds should be wider
-        abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
-        # Note: partial anticorrelation might still allow some propagation
-        # for the A+B subexpression, but not the full D expression
-
-
-def test_lower_estimation_blocked_when_param_in_multiple_operands():
-    """
-    A - A canonicalizes to Add(A, Multiply(-1, A)).
-    Both operands share leaf parameter A.
-    Lower estimation must NOT fire — it would produce
-    an incorrect lower bound due to the dependency problem.
-    """
-    E = BoundExpressions()
-    A = E.parameter_op()
-
-    # A ⊇ {3..7}
-    E.is_superset(A, E.lit_op_range((3, 7)), assert_=True)
-
-    # C = A - A
-    C = E.subtract(A, A)
-
-    solver = Solver()
-    try:
-        result = solver.simplify(E.tg, E.g)
-    except NotImplementedError:
-        # Solver hits unrelated invariants code path for A*0 —
-        # no incorrect bound was produced, test passes.
-        return
-
-    # Lower estimation should NOT produce a superset bound of [-4, 4]
-    extracted = result.data.mutation_map.try_extract_superset(
-        C.as_parameter_operatable.force_get()
-    )
-
-    if extracted is not None:
-        extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-        min_val = extracted_nums.get_min_value()
-        max_val = extracted_nums.get_max_value()
-
-        # If lower estimation incorrectly fired, we'd get [-4, 4]
-        # The correct answer is {0} (or at least NOT [-4, 4])
-        is_incorrectly_wide = min_val <= -3.9 and max_val >= 3.9
-        assert not is_incorrectly_wide, (
-            f"Lower estimation should not apply when parameter appears in "
-            f"multiple operands, but got bounds [{min_val}, {max_val}]"
-        )
-
-
 def test_fold_not_false():
     E = BoundExpressions()
     A = E.bool_parameter_op()
@@ -3146,103 +2926,60 @@ def test_commit_raises_without_solve():
         solver.commit()
 
 
-def test_mixed_estimation_sop_exact():
-    """
-    SOP expression (each variable appears once) with both upper and lower bounds
-    on all operands produces exact interval result via mixed estimation.
-
-    A ⊆ {4..6}, A ⊇ {4..6}, B ⊆ {2..3}, B ⊇ {2..3}
-    C = A + B
-    => C ⊆ {6..9}
-    """
+def test_subset_extraction_survives_canonicalization():
     E = BoundExpressions()
     A = E.parameter_op()
-    B = E.parameter_op()
+    A_po = A.as_parameter_operatable.force_get()
 
-    # Both upper and lower bounds (exact bounds)
-    E.is_subset(A, E.lit_op_range((4, 6)), assert_=True)
+    E.is_superset(A, E.lit_op_range((1, 5)), assert_=True)
     E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
-    E.is_subset(B, E.lit_op_range((2, 3)), assert_=True)
-    E.is_superset(B, E.lit_op_range((2, 3)), assert_=True)
-
-    # C = A + B
-    C = E.add(A, B)
 
     solver = Solver()
-    assert _extract_and_check(C, solver, E.lit_op_range((6, 9)))
+    result = solver.simplify(E.tg, E.g).data.mutation_map
+    mapped_A = not_none(result.map_forward(A_po).maps_to)
+
+    subset = mapped_A.try_extract_subset(lit_type=F.Literals.Numbers)
+    expected_subset = fabll.Traits(
+        E.lit_op_range((1, 6)).as_literal.force_get()
+    ).get_obj(F.Literals.Numbers)
+
+    assert subset is not None
+    assert subset.op_setic_equals(expected_subset)
 
 
-def test_mixed_estimation_non_sop_conservative():
-    """
-    Non-SOP expression (variable appears twice) produces safely widened
-    but valid superset via mixed estimation.
-
-    A ⊆ {2..4}, A ⊇ {2..4}
-    C = A + A (same variable in both operands)
-    => C ⊆ {4..8} (Minkowski: [2,4]+[2,4] = [4,8], which is a valid superset
-       of the true range [4,8])
-    """
+def test_uncertainty_estimation_single_source_add_and_inverse():
     E = BoundExpressions()
-    A = E.parameter_op()
+    A = E.parameter_op(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+    B = E.parameter_op()
+    C = E.parameter_op()
 
-    E.is_subset(A, E.lit_op_range((2, 4)), assert_=True)
-    E.is_superset(A, E.lit_op_range((2, 4)), assert_=True)
-
-    # C = A + A (non-SOP: same variable twice)
-    C = E.add(A, A)
+    E.is_superset(
+        A,
+        E.lit_op_range((4, 6)),
+        assert_=True,
+    )
+    E.is_(B, E.add(A, E.lit_op_range((1, 3))), assert_=True)
+    E.is_(
+        C,
+        E.multiply(E.lit_op_range((1, 2)), E.power(A, E.lit_op_single(-1))),
+        assert_=True,
+    )
 
     solver = Solver()
-    result = solver.simplify(E.tg, E.g)
-
-    # Should have a superset bound
-    extracted = result.data.mutation_map.try_extract_superset(
-        C.as_parameter_operatable.force_get()
-    )
-    assert extracted is not None
-
-    extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-    min_val = extracted_nums.get_min_value()
-    max_val = extracted_nums.get_max_value()
-
-    # The true range of A+A where A ∈ [2,4] is [4,8]
-    # Mixed estimation with Minkowski gives [2,4]+[2,4] = [4,8]
-    # Result should be a valid superset: min <= 4 and max >= 8
-    assert min_val <= 4, f"Expected min <= 4, got {min_val}"
-    assert max_val >= 8, f"Expected max >= 8, got {max_val}"
+    assert _extract_and_check(B, solver, E.lit_op_range((7, 7)))
+    assert _extract_and_check(C, solver, E.lit_op_range((1 / 4, 1 / 3)))
 
 
-def test_mixed_estimation_skipped_partial_bounds():
-    """
-    Mixed estimation should NOT fire when operands have only one bound direction.
-
-    A ⊆ {4..6} (upper bound only), B ⊆ {2..3} (upper bound only)
-    C = A + B
-    => No mixed estimation (only upper estimation applies)
-    """
+def test_lower_bounds_do_not_shrink_superset_from_same_operand():
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
-
-    # Only upper bounds, no lower bounds
-    E.is_subset(A, E.lit_op_range((4, 6)), assert_=True)
-    E.is_subset(B, E.lit_op_range((2, 3)), assert_=True)
-
-    # C = A + B
     C = E.add(A, B)
 
+    E.is_subset(A, E.lit_op_range((0, 10)), assert_=True)
+    E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
+    E.is_subset(B, E.lit_op_range((0, 10)), assert_=True)
+    E.is_superset(B, E.lit_op_range((4, 6)), assert_=True)
+
     solver = Solver()
-    result = solver.simplify(E.tg, E.g)
-
-    # Upper estimation should still work (giving superset bound)
-    extracted = result.data.mutation_map.try_extract_superset(
-        C.as_parameter_operatable.force_get()
-    )
-    assert extracted is not None
-
-    extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
-    min_val = extracted_nums.get_min_value()
-    max_val = extracted_nums.get_max_value()
-
-    # Upper estimation: [4,6]+[2,3] = [6,9]
-    assert min_val <= 6, f"Expected min <= 6, got {min_val}"
-    assert max_val >= 9, f"Expected max >= 9, got {max_val}"
+    assert _extract_and_check(C, solver, E.lit_op_range((0, 20)))

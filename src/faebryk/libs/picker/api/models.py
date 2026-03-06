@@ -273,6 +273,8 @@ class Component:
 
                 # param ⊇ literal: the design must be valid if the parameter takes any
                 # value in the literal's range.
+                # IMPORTANT: Do not add a corresponding upper bound constraint. The
+                # lower bound alone needs to be sufficient for solving.
                 from faebryk.library.Expressions import IsSuperset
 
                 IsSuperset.bind_typegraph(tg=module.tg).create_instance(

@@ -631,7 +631,9 @@ def _no_inconsistent_bounds(
         ]
         if not lower_bounds:
             return
-        lower_lit = lower_bounds[0]
+        lower_lit = F.Literals.is_literal.op_setic_union(
+            *lower_bounds, g=mutator.G_transient, tg=mutator.tg_in
+        )
 
         if not lower_lit.op_setic_is_subset_of(
             superset_lit, g=mutator.G_transient, tg=mutator.tg_in

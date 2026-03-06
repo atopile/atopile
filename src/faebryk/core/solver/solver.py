@@ -53,8 +53,7 @@ class Solver:
             structural.predicate_unconstrained_operands_deduce,
             structural.transitive_subset,
             structural.upper_estimation_of_expressions_with_supersets,
-            structural.lower_estimation_of_expressions_with_subsets,
-            structural.mixed_estimation,
+            structural.uncertainty_estimation_single_source,
             structural.correlated_contradiction,
         ]
 

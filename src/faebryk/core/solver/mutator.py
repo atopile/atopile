@@ -1548,7 +1548,7 @@ class ExpressionBuilder[
             # order-sensitive comparison for non-commutative expressions
             all(
                 _operand_matches(x1, x2)
-                for x1, x2 in zip_equal(self.operands, other_ops)
+                for x1, x2 in zip(self.operands, other_ops, strict=True)
             )
             # order-insensitive comparison for commutative expressions
             if other_obj.try_get_trait(F.Expressions.is_commutative) is None
@@ -1857,7 +1857,7 @@ class Mutator:
             operands=list(operands),
             assert_=assert_,
             terminate=self.is_terminated(expr),
-            traits=traits if traits is not None else [],
+            traits=traits,
         )
 
         expr_obj = fabll.Traits(expr).get_obj_raw()
@@ -2154,6 +2154,7 @@ class Mutator:
                 F.Parameters.can_be_operand,
                 self.G_in,
             )
+            if op.try_get_sibling_trait(is_irrelevant) is None
         ]
 
         if not current_relevant:

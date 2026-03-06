@@ -496,8 +496,8 @@ class MutatorUtils:
                         frozenset({orig, leaf_param}) in anticorrelated_pairs
                         for orig in original_params
                     ):
-                        # Don't follow transitively, but include predicates that have a
-                        # literal operand (won't introduce unknowns)
+                        # Don't follow transitively, but include all predicates
+                        # that constrain this parameter
                         leaf_op = leaf_po.as_operand.get()
                         roots.update(
                             {
@@ -790,6 +790,8 @@ class MutatorUtils:
                     name=trait.name.get().get_single(),
                     detail=trait.detail.get().get_single() or None,
                 )
+            case F.Expressions.is_expression_representative():
+                pass
             case is_relevant() | is_irrelevant():
                 pass
             case _:
