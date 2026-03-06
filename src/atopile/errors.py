@@ -785,27 +785,32 @@ def _format_value(val: object) -> str:
 
 def _get_pretty_repr(value: object, max_len: int = 200) -> str:
     """Get pretty repr using __rich_repr__ or fallback to repr."""
-    rich_repr = getattr(value, "__rich_repr__", None)
-    if callable(rich_repr) and getattr(rich_repr, "__self__", None) is not None:
-        type_name = type(value).__name__
-        rich_repr_parts = []
-        for item in rich_repr():
-            if isinstance(item, tuple):
-                if len(item) == 2:
-                    key, val = item
-                    if key is None:
-                        rich_repr_parts.append(_format_value(val))
-                    else:
-                        rich_repr_parts.append(f"{key}={_format_value(val)}")
-                elif len(item) == 1:
-                    rich_repr_parts.append(_format_value(item[0]))
-            else:
-                rich_repr_parts.append(_format_value(item))
-        result = f"{type_name}({', '.join(rich_repr_parts)})"
-        return result[:max_len] + "..." if len(result) > max_len else result
+    try:
+        rich_repr = getattr(value, "__rich_repr__", None)
+        if callable(rich_repr) and getattr(rich_repr, "__self__", None) is not None:
+            type_name = type(value).__name__
+            rich_repr_parts = []
+            for item in rich_repr():
+                if isinstance(item, tuple):
+                    if len(item) == 2:
+                        key, val = item
+                        if key is None:
+                            rich_repr_parts.append(_format_value(val))
+                        else:
+                            rich_repr_parts.append(f"{key}={_format_value(val)}")
+                    elif len(item) == 1:
+                        rich_repr_parts.append(_format_value(item[0]))
+                else:
+                    rich_repr_parts.append(_format_value(item))
+            result = f"{type_name}({', '.join(rich_repr_parts)})"
+            return result[:max_len] + "..." if len(result) > max_len else result
 
-    result = repr(value)
-    return result[:max_len] + "..." if len(result) > max_len else result
+        # Use object.__repr__ to avoid segfaults from zig-backed objects
+        # with freed memory during error handling
+        result = object.__repr__(value)
+        return result[:max_len] + "..." if len(result) > max_len else result
+    except Exception:
+        return "<unable to represent>"
 
 
 def _serialize_local_var(

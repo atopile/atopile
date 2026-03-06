@@ -447,6 +447,8 @@ class AtoLogger(logging.Logger):
     @classmethod
     def set_active_test_name(cls, test: str) -> None:
         """Set the current test name on the active test logger context."""
+        if cls._active_test_logger is None:
+            raise RuntimeError("No active test logging context")
         cls._active_test_logger.stage_or_test_name = test
 
     @staticmethod
