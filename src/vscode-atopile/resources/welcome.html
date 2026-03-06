@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to atopile</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --ato-orange: #f95015;
+            --ato-orange-light: #ff6b35;
+            --ato-navy: #070a23;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        body {
+            background: var(--vscode-editor-background, var(--ato-navy));
+            color: var(--vscode-editor-foreground, #cdd6f4);
+            font-family: 'Barlow', var(--vscode-font-family, sans-serif);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        /* --- Ephemeral banner --- */
+        .ephemeral-banner {
+            background: rgba(249, 80, 21, 0.08);
+            border-bottom: 1px solid rgba(249, 80, 21, 0.2);
+            padding: 10px 24px;
+            text-align: center;
+            font-size: 13px;
+            color: var(--vscode-editor-foreground, #bac2de);
+            letter-spacing: 0.01em;
+        }
+        .ephemeral-banner strong {
+            color: var(--ato-orange);
+        }
+
+        /* --- Hero --- */
+        .hero {
+            text-align: center;
+            padding: 56px 24px 40px;
+            position: relative;
+        }
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            max-width: 500px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(249,80,21,0.3), transparent);
+        }
+        .hero-logo {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 24px;
+            opacity: 0.9;
+        }
+        .hero h1 {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 800;
+            font-size: 2.4em;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #fff 0%, #bac2de 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero .tagline {
+            font-size: 1.1em;
+            color: var(--vscode-descriptionForeground, #a6adc8);
+            font-weight: 400;
+        }
+
+        /* --- Content area --- */
+        .content {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 24px 64px;
+        }
+
+        /* --- Steps --- */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 16px 20px;
+            background: var(--vscode-textBlockQuote-background, rgba(255,255,255,0.03));
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.06));
+            border-radius: 8px;
+            transition: border-color 0.15s ease;
+        }
+        .step:hover {
+            border-color: rgba(249, 80, 21, 0.3);
+        }
+        .step-num {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--ato-orange);
+            color: #fff;
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1px;
+        }
+        .step-text { flex: 1; }
+        .step-title {
+            font-weight: 700;
+            font-size: 0.95em;
+            margin-bottom: 2px;
+        }
+        .step-desc {
+            font-size: 0.88em;
+            color: var(--vscode-descriptionForeground, #a6adc8);
+            line-height: 1.5;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', var(--vscode-editor-font-family, monospace);
+            font-size: 0.9em;
+            background: var(--vscode-textCodeBlock-background, rgba(249,80,21,0.08));
+            color: var(--ato-orange-light);
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+
+        /* --- Section headings --- */
+        h2 {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 700;
+            font-size: 1.15em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--vscode-descriptionForeground, #a6adc8);
+            margin-bottom: 16px;
+        }
+
+        /* --- CTA card --- */
+        .cta-card {
+            background: linear-gradient(135deg, rgba(249,80,21,0.06) 0%, rgba(249,80,21,0.02) 100%);
+            border: 1px solid rgba(249, 80, 21, 0.2);
+            border-radius: 10px;
+            padding: 28px;
+            text-align: center;
+        }
+        .cta-card h3 {
+            font-family: 'Barlow', sans-serif;
+            font-weight: 700;
+            font-size: 1.2em;
+            margin-bottom: 8px;
+        }
+        .cta-card p {
+            color: var(--vscode-descriptionForeground, #a6adc8);
+            font-size: 0.95em;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .cta-btn {
+            display: inline-block;
+            background: var(--ato-orange);
+            color: #fff;
+            font-family: 'Barlow', sans-serif;
+            font-weight: 700;
+            font-size: 0.95em;
+            padding: 10px 28px;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: background 0.15s ease;
+        }
+        .cta-btn:hover { background: var(--ato-orange-light); }
+
+        /* --- Links --- */
+        a { color: var(--ato-orange-light); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* --- Docs links --- */
+        .docs-links {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+        .docs-link {
+            flex: 1;
+            min-width: 140px;
+            padding: 14px 16px;
+            background: var(--vscode-textBlockQuote-background, rgba(255,255,255,0.03));
+            border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.06));
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--vscode-editor-foreground, #cdd6f4);
+            transition: border-color 0.15s ease;
+            text-align: center;
+        }
+        .docs-link:hover {
+            border-color: rgba(249, 80, 21, 0.3);
+            text-decoration: none;
+        }
+        .docs-link-icon { font-size: 1.4em; margin-bottom: 4px; }
+        .docs-link-label { font-weight: 600; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="ephemeral-banner">
+        <strong>Ephemeral playground</strong> &mdash;
+        this is a temporary sandbox. Nothing is saved &mdash; your changes are lost when the session ends.
+    </div>
+
+    <div class="hero">
+        <img class="hero-logo" src="{{logoUri}}" alt="atopile" />
+        <h1>Welcome to atopile</h1>
+        <p class="tagline">Design electronics with code</p>
+    </div>
+
+    <div class="content">
+        <h2>Getting started</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-text">
+                    <div class="step-title">Explore the editor</div>
+                    <div class="step-desc">The entry <code>.ato</code> file is open beside this tab &mdash; it defines a simple circuit with real components.</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-text">
+                    <div class="step-title">See the layout</div>
+                    <div class="step-desc">The PCB layout viewer opens automatically. Edit the code and watch the board update in real-time.</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-text">
+                    <div class="step-title">Try something</div>
+                    <div class="step-desc">Add a component, change a value, connect a signal &mdash; the toolchain rebuilds instantly.</div>
+                </div>
+            </div>
+        </div>
+
+        <h2>Learn more</h2>
+        <div class="docs-links">
+            <a class="docs-link" href="https://docs.atopile.io">
+                <div class="docs-link-icon">&#128218;</div>
+                <div class="docs-link-label">Documentation</div>
+            </a>
+            <a class="docs-link" href="https://github.com/atopile/atopile">
+                <div class="docs-link-icon">&#128187;</div>
+                <div class="docs-link-label">Source code</div>
+            </a>
+            <a class="docs-link" href="https://discord.gg/nr5V3cVPBb">
+                <div class="docs-link-icon">&#128172;</div>
+                <div class="docs-link-label">Community</div>
+            </a>
+        </div>
+
+        <div class="cta-card">
+            <h3>Ready to build for real?</h3>
+            <p>Set up atopile locally in about 5 minutes.<br/>Full toolchain, persistent projects, KiCad export.</p>
+            <a class="cta-btn" href="{{quickstartUrl}}">Get started</a>
+        </div>
+    </div>
+</body>
+</html>

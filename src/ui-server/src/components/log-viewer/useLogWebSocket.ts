@@ -4,6 +4,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { WS_LOGS_URL } from '../../api';
+import { useStore } from '../../store';
 import {
   ConnectionState,
   LogEntry,
@@ -79,6 +80,14 @@ export function useLogWebSocket(options: UseLogWebSocketOptions = {}): UseLogWeb
       setConnectionState('disconnected');
       setStreaming(false);
 
+      // Only auto-reconnect if the main WS is connected.
+      // When the main WS is down, we pause and let the main WS
+      // lifecycle trigger our reconnect via the store subscription.
+      const mainWsConnected = useStore.getState().isConnected;
+      if (!mainWsConnected) {
+        return;
+      }
+
       // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
       reconnectAttempts.current++;
@@ -140,6 +149,27 @@ export function useLogWebSocket(options: UseLogWebSocketOptions = {}): UseLogWeb
       }
     };
   }, []);
+
+  // Coordinate with main WS: when main connects, trigger log WS reconnect;
+  // when main disconnects, pause log WS reconnect attempts.
+  const mainWsConnected = useStore((state) => state.isConnected);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+
+    if (mainWsConnected) {
+      // Main WS just connected — reset backoff and reconnect log WS if needed
+      reconnectAttempts.current = 0;
+      if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+        connect();
+      }
+    } else {
+      // Main WS disconnected — pause log WS reconnect
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+    }
+  }, [mainWsConnected, connect]);
 
   // Expose connect function for lazy connection
   const ensureConnected = useCallback(() => {

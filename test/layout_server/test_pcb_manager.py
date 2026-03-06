@@ -252,6 +252,20 @@ def test_redo_cleared_after_new_action(manager_v8: PcbManager):
     assert not manager_v8.can_redo
 
 
+def test_render_delta_falls_back_for_unsupported_object(
+    manager_v8: PcbManager, monkeypatch: pytest.MonkeyPatch
+):
+    class Unsupported:
+        uuid = "unsupported-uuid"
+
+    monkeypatch.setattr(
+        manager_v8,
+        "_resolve_to_objects",
+        lambda uuids: [Unsupported()],
+    )
+    assert manager_v8.get_render_delta_for_uuids(["unsupported-uuid"]) is None
+
+
 # --- Rotate tests ---
 
 

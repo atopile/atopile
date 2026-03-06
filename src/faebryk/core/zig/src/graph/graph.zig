@@ -7,10 +7,48 @@ const base_allocator = std.heap.page_allocator;
 var arena_allocator = std.heap.ArenaAllocator.init(base_allocator);
 var global_graph_allocator: std.mem.Allocator = arena_allocator.allocator();
 
-// Static storage for edges and attributes (temporary - will be replaced with proper allocator)
+// Static storage for nodes and edges (temporary - will be replaced with proper allocator)
 var Nodes: [8 * 1024 * 1024]Node = undefined;
 var Edges: [16 * 1024 * 1024]Edge = undefined;
-var Attrs: [4 * 1024 * 1024]DynamicAttributes = undefined;
+
+// Heap-allocated storage for dynamic attributes (large designs exhaust 4M static entries)
+const ATTRS_CAPACITY: usize = 16 * 1024 * 1024;
+var Attrs: []DynamicAttributes = &.{};
+var attrs_initialized: bool = false;
+
+fn ensureAttrsInitialized() void {
+    if (!attrs_initialized) {
+        var low: usize = 1;
+        var high: usize = ATTRS_CAPACITY;
+        var best: ?[]DynamicAttributes = null;
+
+        while (low <= high) {
+            const mid = low + (high - low) / 2;
+            const candidate = base_allocator.alloc(DynamicAttributes, mid) catch {
+                if (mid == 0) break;
+                high = mid - 1;
+                continue;
+            };
+
+            if (best) |prev| {
+                base_allocator.free(prev);
+            }
+            best = candidate;
+            low = mid + 1;
+        }
+
+        Attrs = best orelse @panic("Failed to allocate DynamicAttributes pool");
+        attrs_initialized = true;
+
+        if (Attrs.len < ATTRS_CAPACITY) {
+            const mib = (Attrs.len * @sizeOf(DynamicAttributes)) / (1024 * 1024);
+            std.log.warn(
+                "DynamicAttributes pool capped at {d}/{d} entries ({d} MiB)",
+                .{ Attrs.len, ATTRS_CAPACITY, mib },
+            );
+        }
+    }
+}
 
 // =============================================================================
 // Data types
@@ -374,7 +412,11 @@ pub const DynamicAttributesReference = struct {
 
     /// Create a new initialized DynamicAttributesReference
     pub fn init() DynamicAttributesReference {
+        ensureAttrsInitialized();
         DynamicAttributes.counter += 1;
+        if (DynamicAttributes.counter >= Attrs.len) {
+            @panic("DynamicAttributes counter overflow: too many attributes allocated");
+        }
         Attrs[DynamicAttributes.counter] = .{};
         return .{
             .uuid = DynamicAttributes.counter,
