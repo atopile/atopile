@@ -1,15 +1,39 @@
-import { Vec2 } from "./math";
+import { Vec2, BBox } from "./math";
 import { Camera2 } from "./camera";
 import { PanAndZoom } from "./pan-and-zoom";
 import { Renderer } from "./webgl/renderer";
 import { paintStaticBoard, computeBBox } from "./painter";
 import { renderTextOverlay } from "./text_overlay";
 import { RenderLoop } from "./render_loop";
-import type { LayerModel, RenderModel } from "./types";
+import type { EdgeModel, LayerModel, Point2, RenderModel } from "./types";
 
 export interface StaticLayoutViewerOptions {
     minZoom?: number;
     maxZoom?: number;
+}
+
+function pushPoint(points: Vec2[], point?: Point2 | null): void {
+    if (!point) return;
+    points.push(new Vec2(point.x, point.y));
+}
+
+function computeBoardEdgeBBox(model: RenderModel): BBox | null {
+    const points: Vec2[] = [];
+    for (const edge of model.board.edges) {
+        pushPoint(points, edge.start);
+        pushPoint(points, edge.end);
+        pushPoint(points, edge.mid);
+        pushPoint(points, edge.center);
+        if (edge.type === "circle" && edge.center && edge.end) {
+            const radius = Math.hypot(edge.end.x - edge.center.x, edge.end.y - edge.center.y);
+            if (radius > 0) {
+                points.push(new Vec2(edge.center.x - radius, edge.center.y - radius));
+                points.push(new Vec2(edge.center.x + radius, edge.center.y + radius));
+            }
+        }
+    }
+    if (points.length === 0) return null;
+    return BBox.from_points(points).grow(2);
 }
 
 export class StaticLayoutViewer {
@@ -47,7 +71,8 @@ export class StaticLayoutViewer {
         this.overlay.style.pointerEvents = "none";
 
         const rootStyle = this.container.style;
-        if (!rootStyle.position) rootStyle.position = "relative";
+        const computedPosition = getComputedStyle(this.container).position;
+        if (computedPosition === "static") rootStyle.position = "relative";
         if (!rootStyle.overflow) rootStyle.overflow = "hidden";
 
         this.container.appendChild(this.canvas);
@@ -70,6 +95,7 @@ export class StaticLayoutViewer {
 
         this.resizeObserver = new ResizeObserver(() => {
             this.syncOverlaySize();
+            this.fitToView();
             this.requestRedraw();
         });
         this.resizeObserver.observe(this.container);
@@ -81,6 +107,7 @@ export class StaticLayoutViewer {
         this.model = model;
         paintStaticBoard(this.renderer, model, this.hiddenLayers);
         this.fitToView();
+        this.renderer.updateGrid(this.camera.bbox, 1.0);
         this.requestRedraw();
     }
 
@@ -91,7 +118,8 @@ export class StaticLayoutViewer {
             rect.width || this.canvas.clientWidth || 1,
             rect.height || this.canvas.clientHeight || 1,
         );
-        this.camera.bbox = computeBBox(this.model);
+        this.camera.bbox = computeBoardEdgeBBox(this.model) ?? computeBBox(this.model);
+        this.renderer.updateGrid(this.camera.bbox, 1.0);
     }
 
     setHiddenLayers(layers: Iterable<string>): void {
@@ -163,6 +191,7 @@ export class StaticLayoutViewer {
             rect.width || this.canvas.clientWidth || 1,
             rect.height || this.canvas.clientHeight || 1,
         );
+        this.renderer.updateGrid(this.camera.bbox, 1.0);
         this.renderer.draw(this.camera.matrix);
         this.drawTextOverlay();
     }

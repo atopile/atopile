@@ -68,17 +68,25 @@ function ensureStyles(): void {
     style.id = "atopile-demo-styles";
     style.textContent = `
       .atopile-demo-root {
-        --demo-bg: radial-gradient(circle at top left, rgba(255, 204, 112, 0.18), transparent 38%), linear-gradient(160deg, #071018 0%, #10212a 48%, #05090d 100%);
-        --demo-panel: rgba(7, 17, 24, 0.78);
-        --demo-panel-strong: rgba(9, 19, 28, 0.92);
-        --demo-border: rgba(255, 255, 255, 0.12);
-        --demo-text: #ecf3f8;
-        --demo-text-muted: rgba(236, 243, 248, 0.72);
-        --demo-accent: #ffc768;
-        --demo-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+        --demo-bg:
+          linear-gradient(rgba(255, 103, 31, 0.11) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 103, 31, 0.11) 1px, transparent 1px),
+          linear-gradient(rgba(255, 103, 31, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 103, 31, 0.035) 1px, transparent 1px),
+          radial-gradient(circle at 50% 42%, rgba(255, 103, 31, 0.22), transparent 16%),
+          radial-gradient(circle at 50% 44%, rgba(255, 103, 31, 0.1), transparent 28%),
+          linear-gradient(180deg, #0a0f18 0%, #09111b 48%, #060b13 100%);
+        --demo-panel: rgba(8, 13, 21, 0.86);
+        --demo-panel-strong: rgba(10, 15, 24, 0.96);
+        --demo-border: rgba(255, 103, 31, 0.16);
+        --demo-text: #edf1fb;
+        --demo-text-muted: rgba(173, 186, 211, 0.72);
+        --demo-accent: #ff671f;
+        --demo-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
         color: var(--demo-text);
         font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
         background: var(--demo-bg);
+        background-size: 42px 42px, 42px 42px, 14px 14px, 14px 14px, auto, auto, auto;
         border-radius: 28px;
         overflow: hidden;
         border: 1px solid var(--demo-border);
@@ -93,8 +101,8 @@ function ensureStyles(): void {
         gap: 24px;
         align-items: end;
         padding: 22px 24px 16px;
-        background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0));
-        border-bottom: 1px solid rgba(255,255,255,0.08);
+        background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0));
+        border-bottom: 1px solid rgba(255, 103, 31, 0.12);
       }
       .atopile-demo-title {
         margin: 0;
@@ -112,17 +120,18 @@ function ensureStyles(): void {
         gap: 8px;
         padding: 8px 12px;
         border-radius: 999px;
-        background: rgba(255, 199, 104, 0.14);
+        background: rgba(255, 103, 31, 0.14);
         color: var(--demo-accent);
         font-size: 0.8rem;
         text-transform: uppercase;
         letter-spacing: 0.12em;
+        box-shadow: 0 0 32px rgba(255, 103, 31, 0.18);
       }
       .atopile-demo-content {
         display: grid;
         grid-template-rows: minmax(320px, 0.95fr) minmax(420px, 1.05fr);
         gap: 1px;
-        background: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 103, 31, 0.12);
       }
       .atopile-demo-pane {
         position: relative;
@@ -139,9 +148,9 @@ function ensureStyles(): void {
         align-items: center;
         padding: 7px 11px;
         border-radius: 999px;
-        background: rgba(7, 17, 24, 0.72);
+        background: rgba(7, 12, 20, 0.82);
         backdrop-filter: blur(16px);
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(255, 103, 31, 0.14);
         font-size: 0.78rem;
         color: var(--demo-text-muted);
       }
@@ -149,94 +158,338 @@ function ensureStyles(): void {
         color: var(--demo-text);
         font-weight: 600;
       }
-      .atopile-demo-layout-surface,
       .atopile-demo-model-surface {
         position: absolute;
         inset: 0;
       }
       .atopile-demo-layout-shell {
+        --bg-deep: #080c14;
+        --surface: rgba(12,18,32,0.82);
+        --surface-solid: #0f1524;
+        --border: rgba(255,255,255,0.07);
+        --border-accent: rgba(224,160,56,0.25);
+        --text-primary: #e2e5ea;
+        --text-secondary: #6b7280;
+        --accent: #e0a038;
+        --accent-glow: rgba(224,160,56,0.12);
         position: absolute;
         inset: 0;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 220px;
+        overflow: hidden;
+        background: var(--bg-deep);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
-      .atopile-demo-layout-surface {
-        position: relative;
+      .atopile-demo-layout-shell * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
-      .layer-panel {
-        position: relative;
-        z-index: 2;
+      .atopile-demo-layout-shell canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+      .atopile-demo-layout-shell .layout-viewport {
+        position: absolute;
+        inset: 0 180px 32px 0;
+        overflow: hidden;
+      }
+      .atopile-demo-layout-shell #editor-canvas {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      .atopile-demo-layout-shell #initial-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 12, 20, 0.88);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        z-index: 60;
+        opacity: 1;
+        pointer-events: auto;
+        transition: opacity 0.2s ease;
+      }
+      .atopile-demo-layout-shell #initial-loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .atopile-demo-layout-shell .initial-loading-content {
+        min-width: 220px;
         display: flex;
         flex-direction: column;
+        align-items: center;
         gap: 10px;
-        padding: 70px 12px 12px;
-        background: linear-gradient(180deg, rgba(8, 15, 22, 0.96), rgba(8, 15, 22, 0.88));
-        border-left: 1px solid rgba(255,255,255,0.08);
-        overflow: auto;
+        color: var(--text-primary);
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+      .atopile-demo-layout-shell .initial-loading-spinner {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-top-color: var(--accent);
+        animation: initial-loading-spin 0.8s linear infinite;
+      }
+      .atopile-demo-layout-shell .initial-loading-message {
+        color: var(--text-primary);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+      .atopile-demo-layout-shell .initial-loading-subtext {
+        color: var(--text-secondary);
+        font-size: 10px;
+      }
+      .atopile-demo-layout-shell #vignette {
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 120px rgba(0,0,0,0.3);
+        pointer-events: none;
+        z-index: 5;
+      }
+      .atopile-demo-layout-shell #editor-canvas .atopile-static-layout-viewer {
+        position: absolute;
+        inset: 0;
+      }
+      .atopile-demo-layout-shell #status {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 12px;
+        background: var(--surface);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-top: 1px solid var(--border);
+        z-index: 30;
+        font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: var(--text-secondary);
+      }
+      .atopile-demo-layout-shell #status::before {
+        content: "";
+        position: absolute;
+        top: -1px;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border-accent), transparent);
+      }
+      .atopile-demo-layout-shell #status span {
+        white-space: nowrap;
+      }
+      .atopile-demo-layout-shell #status-coords {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-primary);
+        letter-spacing: 0.02em;
+        min-width: 180px;
+      }
+      .atopile-demo-layout-shell #status-busy {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        opacity: 0;
+        color: var(--text-secondary);
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+        min-width: 74px;
+      }
+      .atopile-demo-layout-shell .status-busy-spinner {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1.5px solid rgba(255, 255, 255, 0.2);
+        border-top-color: var(--accent);
+        animation: status-busy-spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+      .atopile-demo-layout-shell #status-fps {
+        font-variant-numeric: tabular-nums;
+        color: var(--text-secondary);
+        font-size: 10px;
+        min-width: 48px;
+      }
+      .atopile-demo-layout-shell #status-help {
+        color: var(--text-secondary);
+        font-size: 10px;
+        text-align: right;
+        margin-left: auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .atopile-demo-layout-shell #layer-panel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 32px;
+        width: 180px;
+        background: var(--surface);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-left: 1px solid var(--border);
+        border-radius: 4px 0 0 0;
+        z-index: 7;
+        font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: var(--text-primary);
+        transform: translateX(0);
+        transition: transform 0.2s ease;
+        display: flex;
+        flex-direction: column;
+      }
+      .atopile-demo-layout-shell #layer-panel.collapsed {
+        transform: translateX(100%);
       }
       .layer-panel-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 0.72rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--demo-text-muted);
+        padding: 10px 12px;
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        position: relative;
+      }
+      .layer-panel-header::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        left: 12px;
+        right: 12px;
+        height: 1px;
+        background: var(--border-accent);
+      }
+      .layer-collapse-btn {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 10px;
+        transition: opacity 0.15s, color 0.15s;
+        color: var(--text-secondary);
+      }
+      .layer-collapse-btn:hover {
+        opacity: 1;
+        color: var(--accent);
+      }
+      .layer-expand-tab {
+        display: none;
+        position: absolute;
+        top: 50%;
+        right: 0;
+        transform: translateY(-50%);
+        writing-mode: vertical-rl;
+        background: var(--surface);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--border);
+        border-right: none;
+        border-radius: 4px 0 0 4px;
+        padding: 10px 5px;
+        cursor: pointer;
+        font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: var(--accent);
+        z-index: 8;
+        transition: background 0.15s;
+      }
+      .layer-expand-tab:hover {
+        background: var(--accent-glow);
+      }
+      .layer-expand-tab.visible {
+        display: block;
       }
       .layer-panel-content {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        overflow-y: auto;
+        padding: 4px 0;
+        flex: 1;
+      }
+      .layer-panel-content::-webkit-scrollbar {
+        width: 4px;
+      }
+      .layer-panel-content::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .layer-panel-content::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.08);
+        border-radius: 2px;
+      }
+      .layer-panel-content::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,0.14);
       }
       .layer-row,
       .layer-group-header {
-        display: grid;
-        grid-template-columns: auto auto minmax(0, 1fr);
+        display: flex;
         align-items: center;
-        gap: 10px;
-        font-size: 0.84rem;
-        color: var(--demo-text);
-        border-radius: 12px;
-        padding: 8px 10px;
+        gap: 6px;
+        padding: 3px 12px;
         cursor: pointer;
-        transition: background 120ms ease, opacity 120ms ease;
+        transition: background 0.15s, color 0.15s, opacity 0.12s;
       }
-      .layer-row:hover,
       .layer-group-header:hover {
-        background: rgba(255,255,255,0.06);
+        background: rgba(224,160,56,0.06);
+        color: var(--text-primary);
       }
       .layer-swatch {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+        display: inline-block;
+        width: 12px;
+        height: 4px;
+        border-radius: 2px;
+        flex-shrink: 0;
       }
       .layer-chevron {
-        width: 12px;
-        color: var(--demo-text-muted);
+        font-size: 10px;
+        width: 10px;
+        color: var(--text-secondary);
         text-align: center;
+        flex-shrink: 0;
       }
       .layer-group-name,
       .layer-label {
+        flex: 1;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .layer-group-header {
+        font-weight: 600;
+        font-size: 11px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+      }
       .layer-group-children {
-        margin-left: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
+        padding-left: 22px;
         overflow: hidden;
+        transition: max-height 0.2s ease;
+        flex-shrink: 0;
+      }
+      .layer-row {
+        padding: 4px 12px;
+        border-left: 2px solid transparent;
+      }
+      .layer-row:hover {
+        background: rgba(224,160,56,0.06);
       }
       .layer-top-level {
-        grid-template-columns: auto minmax(0, 1fr);
+        padding-left: 22px;
       }
       .atopile-demo-model-surface {
         background:
-          radial-gradient(circle at 30% 24%, rgba(255, 199, 104, 0.22), transparent 20%),
-          radial-gradient(circle at 75% 20%, rgba(124, 211, 255, 0.16), transparent 26%),
-          linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+          radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.035), transparent 26%),
+          linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
       }
       .atopile-demo-model-surface model-viewer {
         width: 100%;
@@ -280,19 +533,21 @@ function ensureStyles(): void {
       @keyframes atopile-demo-spin {
         to { transform: rotate(360deg); }
       }
+      @keyframes initial-loading-spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes status-busy-spin {
+        to { transform: rotate(360deg); }
+      }
       @media (max-width: 920px) {
         .atopile-demo-pane {
           min-height: 360px;
         }
-        .atopile-demo-layout-shell {
-          grid-template-columns: 1fr;
-          grid-template-rows: minmax(0, 1fr) auto;
+        .atopile-demo-layout-shell .layout-viewport {
+          inset: 0 170px 32px 0;
         }
-        .atopile-demo-layer-panel {
-          padding-top: 12px;
-          border-left: 0;
-          border-top: 1px solid rgba(255,255,255,0.08);
-          max-height: 180px;
+        .atopile-demo-layout-shell #layer-panel {
+          width: 170px;
         }
       }
     `;
@@ -346,15 +601,18 @@ function createEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
     const sky = new THREE.Mesh(
         new THREE.SphereGeometry(20, 32, 16),
         new THREE.MeshBasicMaterial({
-            color: new THREE.Color("#d9e6f2"),
+            color: new THREE.Color("#b8b2a8"),
             side: THREE.BackSide,
         }),
     );
     envScene.add(sky);
-    const warm = new THREE.PointLight(0xffe2b8, 25, 0, 2);
-    warm.position.set(7, 10, 6);
+    const warm = new THREE.PointLight(0xffddb0, 14, 0, 2);
+    warm.position.set(7, 8, 5);
     envScene.add(warm);
-    const cool = new THREE.PointLight(0x9dd6ff, 18, 0, 2);
+    const accent = new THREE.PointLight(0xff8a32, 5.5, 0, 2);
+    accent.position.set(-3, 3.5, 9);
+    envScene.add(accent);
+    const cool = new THREE.PointLight(0x8cb9e6, 6, 0, 2);
     cool.position.set(-8, 6, -10);
     envScene.add(cool);
     const envTarget = pmrem.fromScene(envScene);
@@ -368,6 +626,41 @@ function looksLikeBoardSilkscreen(materialName: string, meshName: string): boole
     const material = materialName.toLowerCase();
     const mesh = meshName.toLowerCase();
     return mesh.includes("silkscreen") || material === "mat_22" || material === "mat_23";
+}
+
+function buildBackgroundGrid(bounds: THREE.Box3): THREE.Object3D {
+    const spanX = Math.max(bounds.max.x - bounds.min.x, 1);
+    const spanZ = Math.max(bounds.max.z - bounds.min.z, 1);
+    const baseCellSize = 14;
+    const majorCellInterval = 3;
+
+    const targetSpan = Math.max(Math.max(spanX, spanZ) + baseCellSize * 4, baseCellSize * 6);
+    const baseDivisions = Math.max(
+        majorCellInterval * 2,
+        Math.ceil(targetSpan / baseCellSize),
+    );
+    const spanDivisions = Math.ceil(baseDivisions / majorCellInterval) * majorCellInterval;
+
+    const width = spanDivisions * baseCellSize;
+    const height = spanDivisions / majorCellInterval;
+    const floorHeight = bounds.max.y - bounds.min.y;
+    const floorY = bounds.min.y - Math.max(floorHeight * 0.08, 0.02);
+
+    const minorGrid = new THREE.GridHelper(width, spanDivisions, 0x202a36, 0x101922);
+    minorGrid.material.opacity = 0.2;
+    minorGrid.material.transparent = true;
+    minorGrid.position.y = floorY;
+    minorGrid.material.depthWrite = false;
+
+    const majorGrid = new THREE.GridHelper(width, height, 0x2a3b4f, 0x2a3b4f);
+    majorGrid.material.opacity = 0.4;
+    majorGrid.material.transparent = true;
+    majorGrid.position.y = floorY;
+    majorGrid.material.depthWrite = false;
+
+    const grid = new THREE.Group();
+    grid.add(majorGrid, minorGrid);
+    return grid;
 }
 
 function applyBoardMaterialStyle(node: THREE.Mesh, material: THREE.Material): void {
@@ -397,20 +690,20 @@ function applyBoardMaterialStyle(node: THREE.Mesh, material: THREE.Material): vo
     }
 
     if (materialName === "mat_24" || materialName === "mat_25") {
-        material.color = new THREE.Color("#111111");
-        material.roughness = 0.96;
-        material.metalness = 0.02;
-        material.envMapIntensity = 0.04;
-        material.opacity = 0.94;
-        material.transparent = true;
+        material.color = new THREE.Color("#161719");
+        material.roughness = 0.88;
+        material.metalness = 0.01;
+        material.envMapIntensity = 0.035;
+        material.opacity = 1;
+        material.transparent = false;
         material.needsUpdate = true;
         return;
     }
 
     if (materialName === "mat_26" || materialName === "mat_6") {
-        material.color = new THREE.Color("#161616");
-        material.roughness = 0.98;
-        material.metalness = 0.0;
+        material.color = new THREE.Color("#202225");
+        material.roughness = 0.9;
+        material.metalness = 0.01;
         material.envMapIntensity = 0.03;
         material.needsUpdate = true;
         return;
@@ -418,18 +711,18 @@ function applyBoardMaterialStyle(node: THREE.Mesh, material: THREE.Material): vo
 
     if (materialName === "mat_20" || materialName === "mat_21") {
         material.color = new THREE.Color(
-            materialName === "mat_20" ? "#c79a2b" : "#c9ced4",
+            materialName === "mat_20" ? "#c8a24a" : "#c7ccd3",
         );
-        material.roughness = 0.34;
-        material.metalness = 0.9;
-        material.envMapIntensity = materialName === "mat_20" ? 0.28 : 0.18;
+        material.roughness = materialName === "mat_20" ? 0.42 : 0.3;
+        material.metalness = 0.88;
+        material.envMapIntensity = materialName === "mat_20" ? 0.22 : 0.16;
         material.needsUpdate = true;
         return;
     }
 
-    material.envMapIntensity = 0.18;
+    material.envMapIntensity = 0.08;
     material.roughness = Math.max(material.roughness, 0.72);
-    material.metalness = Math.min(material.metalness, 0.35);
+    material.metalness = Math.min(material.metalness, 0.28);
     material.needsUpdate = true;
 }
 
@@ -448,7 +741,7 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.92;
+    renderer.toneMappingExposure = 1.22;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     const scene = new THREE.Scene();
@@ -467,16 +760,28 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     const envMap = createEnvironmentMap(renderer);
     scene.environment = envMap;
 
-    const hemi = new THREE.HemisphereLight(0xe7f1ff, 0x0c0f12, 1.8);
+    const hemi = new THREE.HemisphereLight(0xe7dccd, 0x0b0d10, 1.0);
     scene.add(hemi);
 
-    const key = new THREE.DirectionalLight(0xfff1d6, 3.4);
-    key.position.set(80, 110, 70);
+    const key = new THREE.DirectionalLight(0xffe4bd, 2.4);
+    key.position.set(46, 72, 34);
     scene.add(key);
 
-    const fill = new THREE.DirectionalLight(0x9ccfff, 1.6);
-    fill.position.set(-70, 40, -80);
+    const fill = new THREE.DirectionalLight(0x9bb8d4, 0.35);
+    fill.position.set(-54, 28, -56);
     scene.add(fill);
+
+    const rim = new THREE.DirectionalLight(0xfff1dc, 0.28);
+    rim.position.set(-12, 18, 62);
+    scene.add(rim);
+
+    const glow = new THREE.PointLight(0xff8a32, 0.7, 0, 2);
+    glow.position.set(-28, 22, 18);
+    scene.add(glow);
+
+    const glowSecondary = new THREE.PointLight(0xff671f, 0.4, 0, 2);
+    glowSecondary.position.set(32, 14, -6);
+    scene.add(glowSecondary);
 
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
@@ -499,6 +804,8 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     const center = bounds.getCenter(new THREE.Vector3());
     const size = bounds.getSize(new THREE.Vector3());
     root.position.sub(center);
+    const centeredBounds = bounds.clone().translate(new THREE.Vector3(-center.x, -center.y, -center.z));
+    scene.add(buildBackgroundGrid(centeredBounds));
 
     let currentRadius = 0.01;
 
@@ -566,14 +873,35 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     };
 }
 
-function rgbaToCss([r, g, b, a]: [number, number, number, number]): string {
-    return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a.toFixed(3)})`;
-}
-
 interface LayerGroup {
     group: string;
     layers: LayerModel[];
 }
+
+const DEMO_HIDDEN_LAYER_GROUPS = new Set(["Cmts", "Dwgs", "Eco1", "Eco2", "User"]);
+const DEMO_HIDDEN_OBJECT_FILTERS = ["__type:zones"];
+
+const OBJECT_ROOT_FILTERS = [
+    { id: "__type:zones", label: "Zones", color: "#5a8a3a" },
+    { id: "__type:tracks", label: "Tracks & Vias", color: "#c05030" },
+    { id: "__type:pads", label: "Pads", color: "#a07020" },
+] as const;
+
+const TEXT_SHAPES_FILTERS = [
+    { id: "__type:text", label: "Text", color: "#4a8cad" },
+    { id: "__type:shapes", label: "Shapes", color: "#356982" },
+] as const;
+
+const TEXT_SHAPES_FILTER_IDS = TEXT_SHAPES_FILTERS.map((item) => item.id);
+const OBJECT_TYPE_IDS = [
+    ...OBJECT_ROOT_FILTERS.map((item) => item.id),
+    ...TEXT_SHAPES_FILTER_IDS,
+];
+
+let panelCollapsed = false;
+const collapsedGroups = new Set<string>();
+let objectTypesExpanded = false;
+let textShapesExpanded = false;
 
 function groupLayers(layers: LayerModel[]): { groups: LayerGroup[]; topLevel: LayerModel[] } {
     const grouped = new Map<string, LayerModel[]>();
@@ -604,18 +932,67 @@ function colorToCss(layerName: string, layerById: Map<string, LayerModel>): stri
     return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
 
+function createSwatch(color: string): HTMLSpanElement {
+    const swatch = document.createElement("span");
+    swatch.className = "layer-swatch";
+    swatch.style.background = color;
+    return swatch;
+}
+
+function computeDemoHiddenLayers(
+    layers: LayerModel[],
+    manifestHidden: Iterable<string>,
+): string[] {
+    const hidden = new Set(manifestHidden);
+    for (const id of DEMO_HIDDEN_OBJECT_FILTERS) hidden.add(id);
+    for (const layer of layers) {
+        if (layer.group && DEMO_HIDDEN_LAYER_GROUPS.has(layer.group)) {
+            hidden.add(layer.id);
+        }
+    }
+    return [...hidden];
+}
+
 function renderLayerSelector(
     container: HTMLElement,
     layoutViewer: StaticLayoutViewer,
     initiallyHidden: string[],
 ): void {
     const hiddenLayers = new Set(initiallyHidden);
-    const panel = document.createElement("aside");
-    panel.className = "layer-panel";
+    const panel = container.querySelector<HTMLElement>("#layer-panel");
+    if (!panel) {
+        throw new Error("Layout scaffold missing #layer-panel");
+    }
+    panel.replaceChildren();
+    panel.className = "";
+    panel.id = "layer-panel";
 
     const header = document.createElement("div");
     header.className = "layer-panel-header";
-    header.innerHTML = "<span>Layers</span>";
+
+    const headerTitle = document.createElement("span");
+    headerTitle.textContent = "Layers";
+
+    const expandTab = document.createElement("div");
+    expandTab.className = "layer-expand-tab";
+    expandTab.textContent = "Layers";
+    expandTab.addEventListener("click", () => {
+        panelCollapsed = false;
+        panel.classList.remove("collapsed");
+        expandTab.classList.remove("visible");
+    });
+
+    const collapseBtn = document.createElement("span");
+    collapseBtn.className = "layer-collapse-btn";
+    collapseBtn.textContent = "\u25C0";
+    collapseBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        panelCollapsed = true;
+        panel.classList.add("collapsed");
+        expandTab.classList.add("visible");
+    });
+
+    header.append(headerTitle, collapseBtn);
     panel.appendChild(header);
 
     const content = document.createElement("div");
@@ -636,20 +1013,184 @@ function renderLayerSelector(
         row.style.opacity = allVisible ? "1" : allHidden ? "0.3" : "0.6";
     };
 
+    const objectRows = new Map<string, HTMLElement>();
+
+    const objGroupRow = document.createElement("div");
+    objGroupRow.className = "layer-group-header";
+
+    const objChevron = document.createElement("span");
+    objChevron.className = "layer-chevron";
+    objChevron.textContent = objectTypesExpanded ? "\u25BE" : "\u25B8";
+
+    const objSwatch = createSwatch("linear-gradient(135deg, #5a8a3a 50%, #c05030 50%)");
+
+    const objLabel = document.createElement("span");
+    objLabel.className = "layer-group-name";
+    objLabel.textContent = "Objects";
+
+    objGroupRow.append(objChevron, objSwatch, objLabel);
+
+    const objChildContainer = document.createElement("div");
+    objChildContainer.className = "layer-group-children";
+    if (!objectTypesExpanded) {
+        objChildContainer.style.maxHeight = "0";
+    }
+
+    const updateObjGroupVisual = () => updateGroupVisual(objGroupRow, [...OBJECT_TYPE_IDS]);
+
+    const updateTextShapesGroupVisual = (row: HTMLElement) => {
+        updateGroupVisual(row, [...TEXT_SHAPES_FILTER_IDS]);
+    };
+
+    const updateObjectRows = (textShapesGroupRow: HTMLElement) => {
+        for (const [id, row] of objectRows.entries()) {
+            updateRowVisual(row, !hiddenLayers.has(id));
+        }
+        updateTextShapesGroupVisual(textShapesGroupRow);
+        updateObjGroupVisual();
+    };
+
+    objChevron.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (objectTypesExpanded) {
+            objectTypesExpanded = false;
+            objChevron.textContent = "\u25B8";
+            objChildContainer.style.maxHeight = `${objChildContainer.scrollHeight}px`;
+            requestAnimationFrame(() => { objChildContainer.style.maxHeight = "0"; });
+        } else {
+            objectTypesExpanded = true;
+            objChevron.textContent = "\u25BE";
+            objChildContainer.style.maxHeight = `${objChildContainer.scrollHeight}px`;
+            const onEnd = () => {
+                objChildContainer.style.maxHeight = "";
+                objChildContainer.removeEventListener("transitionend", onEnd);
+            };
+            objChildContainer.addEventListener("transitionend", onEnd);
+        }
+    });
+
+    let textShapesGroupRow: HTMLElement;
+
+    objGroupRow.addEventListener("click", () => {
+        const allVisible = OBJECT_TYPE_IDS.every((id) => !hiddenLayers.has(id));
+        for (const id of OBJECT_TYPE_IDS) {
+            if (allVisible) hiddenLayers.add(id);
+            else hiddenLayers.delete(id);
+        }
+        updateObjectRows(textShapesGroupRow);
+        applyHiddenLayers();
+    });
+
+    for (const objectType of OBJECT_ROOT_FILTERS) {
+        const row = document.createElement("div");
+        row.className = "layer-row";
+
+        const swatch = createSwatch(objectType.color);
+        const label = document.createElement("span");
+        label.className = "layer-label";
+        label.textContent = objectType.label;
+
+        row.append(swatch, label);
+        updateRowVisual(row, !hiddenLayers.has(objectType.id));
+        row.addEventListener("click", () => {
+            if (hiddenLayers.has(objectType.id)) hiddenLayers.delete(objectType.id);
+            else hiddenLayers.add(objectType.id);
+            updateObjectRows(textShapesGroupRow);
+            applyHiddenLayers();
+        });
+
+        objectRows.set(objectType.id, row);
+        objChildContainer.appendChild(row);
+    }
+
+    textShapesGroupRow = document.createElement("div");
+    textShapesGroupRow.className = "layer-group-header";
+
+    const textShapesChevron = document.createElement("span");
+    textShapesChevron.className = "layer-chevron";
+    textShapesChevron.textContent = textShapesExpanded ? "\u25BE" : "\u25B8";
+
+    const textShapesSwatch = createSwatch("linear-gradient(135deg, #4a8cad 50%, #356982 50%)");
+
+    const textShapesLabel = document.createElement("span");
+    textShapesLabel.className = "layer-group-name";
+    textShapesLabel.textContent = "Text & Shapes";
+
+    textShapesGroupRow.append(textShapesChevron, textShapesSwatch, textShapesLabel);
+
+    const textShapesChildContainer = document.createElement("div");
+    textShapesChildContainer.className = "layer-group-children";
+    if (!textShapesExpanded) {
+        textShapesChildContainer.style.maxHeight = "0";
+    }
+
+    textShapesChevron.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (textShapesExpanded) {
+            textShapesExpanded = false;
+            textShapesChevron.textContent = "\u25B8";
+            textShapesChildContainer.style.maxHeight = `${textShapesChildContainer.scrollHeight}px`;
+            requestAnimationFrame(() => { textShapesChildContainer.style.maxHeight = "0"; });
+        } else {
+            textShapesExpanded = true;
+            textShapesChevron.textContent = "\u25BE";
+            textShapesChildContainer.style.maxHeight = `${textShapesChildContainer.scrollHeight}px`;
+            const onEnd = () => {
+                textShapesChildContainer.style.maxHeight = "";
+                textShapesChildContainer.removeEventListener("transitionend", onEnd);
+            };
+            textShapesChildContainer.addEventListener("transitionend", onEnd);
+        }
+    });
+
+    textShapesGroupRow.addEventListener("click", () => {
+        const allVisible = TEXT_SHAPES_FILTER_IDS.every((id) => !hiddenLayers.has(id));
+        for (const id of TEXT_SHAPES_FILTER_IDS) {
+            if (allVisible) hiddenLayers.add(id);
+            else hiddenLayers.delete(id);
+        }
+        updateObjectRows(textShapesGroupRow);
+        applyHiddenLayers();
+    });
+
+    for (const objectType of TEXT_SHAPES_FILTERS) {
+        const row = document.createElement("div");
+        row.className = "layer-row";
+
+        const swatch = createSwatch(objectType.color);
+        const label = document.createElement("span");
+        label.className = "layer-label";
+        label.textContent = objectType.label;
+
+        row.append(swatch, label);
+        updateRowVisual(row, !hiddenLayers.has(objectType.id));
+        row.addEventListener("click", () => {
+            if (hiddenLayers.has(objectType.id)) hiddenLayers.delete(objectType.id);
+            else hiddenLayers.add(objectType.id);
+            updateObjectRows(textShapesGroupRow);
+            applyHiddenLayers();
+        });
+
+        objectRows.set(objectType.id, row);
+        textShapesChildContainer.appendChild(row);
+    }
+
+    objChildContainer.append(textShapesGroupRow, textShapesChildContainer);
+    updateObjectRows(textShapesGroupRow);
+    content.append(objGroupRow, objChildContainer);
+
     for (const group of groups) {
         const groupIds = group.layers.map((layer) => layer.id);
-        let collapsed = false;
+        const isCollapsed = collapsedGroups.has(group.group);
 
         const groupRow = document.createElement("div");
         groupRow.className = "layer-group-header";
 
         const chevron = document.createElement("span");
         chevron.className = "layer-chevron";
-        chevron.textContent = "▾";
+        chevron.textContent = isCollapsed ? "\u25B8" : "\u25BE";
 
-        const swatch = document.createElement("span");
-        swatch.className = "layer-swatch";
-        swatch.style.background = colorToCss(groupIds[0]!, layerById);
+        const swatch = createSwatch(colorToCss(groupIds[0]!, layerById));
 
         const label = document.createElement("span");
         label.className = "layer-group-name";
@@ -659,25 +1200,22 @@ function renderLayerSelector(
 
         const childContainer = document.createElement("div");
         childContainer.className = "layer-group-children";
+        if (isCollapsed) {
+            childContainer.style.maxHeight = "0";
+        }
 
         const childRows: Array<{ id: string; row: HTMLElement }> = [];
         for (const layer of group.layers) {
             const row = document.createElement("div");
             row.className = "layer-row";
 
-            const spacer = document.createElement("span");
-            spacer.className = "layer-chevron";
-            spacer.textContent = "";
-
-            const childSwatch = document.createElement("span");
-            childSwatch.className = "layer-swatch";
-            childSwatch.style.background = rgbaToCss(layer.color);
+            const childSwatch = createSwatch(colorToCss(layer.id, layerById));
 
             const childLabel = document.createElement("span");
             childLabel.className = "layer-label";
             childLabel.textContent = layer.label ?? layer.id;
 
-            row.append(spacer, childSwatch, childLabel);
+            row.append(childSwatch, childLabel);
             updateRowVisual(row, !hiddenLayers.has(layer.id));
             row.addEventListener("click", () => {
                 if (hiddenLayers.has(layer.id)) hiddenLayers.delete(layer.id);
@@ -706,9 +1244,23 @@ function renderLayerSelector(
         });
         chevron.addEventListener("click", (event) => {
             event.stopPropagation();
-            collapsed = !collapsed;
-            chevron.textContent = collapsed ? "▸" : "▾";
-            childContainer.style.display = collapsed ? "none" : "flex";
+            if (collapsedGroups.has(group.group)) {
+                collapsedGroups.delete(group.group);
+                chevron.textContent = "\u25BE";
+                childContainer.style.maxHeight = `${childContainer.scrollHeight}px`;
+                const onEnd = () => {
+                    childContainer.style.maxHeight = "";
+                    childContainer.removeEventListener("transitionend", onEnd);
+                };
+                childContainer.addEventListener("transitionend", onEnd);
+            } else {
+                collapsedGroups.add(group.group);
+                chevron.textContent = "\u25B8";
+                childContainer.style.maxHeight = `${childContainer.scrollHeight}px`;
+                requestAnimationFrame(() => {
+                    childContainer.style.maxHeight = "0";
+                });
+            }
         });
 
         content.append(groupRow, childContainer);
@@ -718,9 +1270,7 @@ function renderLayerSelector(
         const row = document.createElement("div");
         row.className = "layer-row layer-top-level";
 
-        const swatch = document.createElement("span");
-        swatch.className = "layer-swatch";
-        swatch.style.background = rgbaToCss(layer.color);
+        const swatch = createSwatch(colorToCss(layer.id, layerById));
 
         const label = document.createElement("span");
         label.className = "layer-label";
@@ -737,7 +1287,12 @@ function renderLayerSelector(
         content.appendChild(row);
     }
 
-    container.appendChild(panel);
+    if (panelCollapsed) {
+        panel.classList.add("collapsed");
+        expandTab.classList.add("visible");
+    }
+
+    container.appendChild(expandTab);
 }
 
 export async function mount(target: HTMLElement | string, options: MountOptions = {}): Promise<void> {
@@ -771,12 +1326,26 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
     layoutPane.innerHTML = `
       <div class="atopile-demo-pane-header"><strong>Layout</strong> Read only</div>
       <div class="atopile-demo-layout-shell">
-        <div class="atopile-demo-layout-surface"></div>
-      </div>
-      <div class="atopile-demo-loading" data-role="layout-loading">
-        <div class="atopile-demo-loading-card">
-          <div class="atopile-demo-spinner"></div>
-          <div>Loading layout model...</div>
+        <div class="layout-viewport">
+          <div id="editor-canvas"></div>
+          <div id="vignette"></div>
+        </div>
+        <div id="initial-loading" role="status" aria-live="polite" aria-busy="true">
+          <div class="initial-loading-content">
+            <div class="initial-loading-spinner"></div>
+            <div class="initial-loading-message">Loading PCB</div>
+            <div class="initial-loading-subtext">Building scene geometry...</div>
+          </div>
+        </div>
+        <div id="layer-panel"></div>
+        <div id="status">
+          <span id="status-coords"></span>
+          <span id="status-busy" aria-hidden="true">
+            <span class="status-busy-spinner"></span>
+            Syncing...
+          </span>
+          <span id="status-fps"></span>
+          <span id="status-help">Scroll zoom · Middle-click pan · Click group/select · Shift-drag box-select · Double-click single · Esc clear · R rotate · F flip · Ctrl+Z undo · Ctrl+Shift+Z redo</span>
         </div>
       </div>
     `;
@@ -799,11 +1368,12 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
     content.appendChild(modelPane);
     root.append(hero, content);
 
-    const layoutSurface = layoutPane.querySelector<HTMLElement>(".atopile-demo-layout-surface");
+    const layoutShell = layoutPane.querySelector<HTMLElement>(".atopile-demo-layout-shell");
+    const layoutSurface = layoutPane.querySelector<HTMLElement>("#editor-canvas");
+    const layoutInitialLoading = layoutPane.querySelector<HTMLElement>("#initial-loading");
     const modelSurface = modelPane.querySelector<HTMLElement>(".atopile-demo-model-surface");
-    const layoutLoading = layoutPane.querySelector<HTMLElement>("[data-role='layout-loading']");
     const modelLoading = modelPane.querySelector<HTMLElement>("[data-role='model-loading']");
-    if (!layoutSurface || !modelSurface || !layoutLoading || !modelLoading) {
+    if (!layoutShell || !layoutSurface || !layoutInitialLoading || !modelSurface || !modelLoading) {
         throw new Error("Demo bundle failed to initialize");
     }
 
@@ -812,13 +1382,14 @@ export async function mount(target: HTMLElement | string, options: MountOptions 
 
     try {
         const layoutModel = await fetchLayoutModel(assetBase, manifest);
+        const hiddenLayoutLayers = computeDemoHiddenLayers(
+            layoutModel.layers,
+            manifest.hiddenLayoutLayers ?? [],
+        );
         layoutViewer.setModel(layoutModel);
-        layoutViewer.setHiddenLayers(manifest.hiddenLayoutLayers ?? []);
-        const layoutShell = layoutPane.querySelector<HTMLElement>(".atopile-demo-layout-shell");
-        if (layoutShell) {
-            renderLayerSelector(layoutShell, layoutViewer, manifest.hiddenLayoutLayers ?? []);
-        }
-        layoutLoading.remove();
+        layoutViewer.setHiddenLayers(hiddenLayoutLayers);
+        renderLayerSelector(layoutShell, layoutViewer, hiddenLayoutLayers);
+        layoutInitialLoading.remove();
         setDemoState({ layoutLoaded: true });
 
         disposeModelViewer = await mountThreeViewer(
