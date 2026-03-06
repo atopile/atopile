@@ -1,6 +1,33 @@
-import type { ActionCommand, RenderModel, StatusResponse } from "./types";
+import type { ActionCommand, LayoutWsMessage, RenderModel, StatusResponse } from "./types";
 
-type UpdateHandler = (model: RenderModel) => void;
+type UpdateHandler = (message: LayoutWsMessage) => void;
+
+function extractErrorMessage(payload: unknown, status: number): string {
+    if (payload && typeof payload === "object") {
+        const obj = payload as Record<string, unknown>;
+        if (typeof obj.message === "string" && obj.message.trim()) {
+            return obj.message;
+        }
+        if (typeof obj.detail === "string" && obj.detail.trim()) {
+            return obj.detail;
+        }
+        if (Array.isArray(obj.detail)) {
+            const parts = obj.detail
+                .map(item => {
+                    if (item && typeof item === "object") {
+                        const entry = item as Record<string, unknown>;
+                        if (typeof entry.msg === "string" && entry.msg.trim()) return entry.msg;
+                    }
+                    return "";
+                })
+                .filter(Boolean);
+            if (parts.length > 0) {
+                return parts.join("; ");
+            }
+        }
+    }
+    return `Request failed (${status})`;
+}
 
 export class LayoutClient {
     private readonly baseUrl: string;
@@ -20,21 +47,48 @@ export class LayoutClient {
         return await resp.json() as RenderModel;
     }
 
-    async notifySelection(uuids: string[]): Promise<void> {
-        await fetch(`${this.baseUrl}${this.apiPrefix}/notify-selection`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ uuids }),
-        });
-    }
-
     async executeAction(action: ActionCommand): Promise<StatusResponse> {
-        const resp = await fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
+        const postAction = async (payload: ActionCommand): Promise<Response> => fetch(`${this.baseUrl}${this.apiPrefix}/execute-action`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(action),
+            body: JSON.stringify(payload),
         });
-        return await resp.json() as StatusResponse;
+
+        const resp = await postAction(action);
+
+        let payload: unknown = null;
+        try {
+            payload = await resp.json();
+        } catch {
+            payload = null;
+        }
+
+        if (
+            payload
+            && typeof payload === "object"
+            && "status" in payload
+            && (((payload as Record<string, unknown>).status) === "ok" || ((payload as Record<string, unknown>).status) === "error")
+        ) {
+            return payload as StatusResponse;
+        }
+
+        if (!resp.ok) {
+            return {
+                status: "error",
+                code: `http_${resp.status}`,
+                message: extractErrorMessage(payload, resp.status),
+                delta: null,
+                action_id: null,
+            };
+        }
+
+        return {
+            status: "error",
+            code: "invalid_response",
+            message: "Layout action response payload is missing status.",
+            delta: null,
+            action_id: null,
+        };
     }
 
     connect(onUpdate: UpdateHandler): void {
@@ -42,9 +96,12 @@ export class LayoutClient {
         this.ws = new WebSocket(wsUrl);
         this.ws.onopen = () => console.log("WS connected");
         this.ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data) as { type?: string; model?: RenderModel };
-            if (msg.type === "layout_updated" && msg.model) {
-                onUpdate(msg.model);
+            const msg = JSON.parse(event.data) as LayoutWsMessage;
+            if (
+                (msg.type === "layout_updated" && msg.model)
+                || (msg.type === "layout_delta" && msg.delta)
+            ) {
+                onUpdate(msg);
             }
         };
         this.ws.onerror = (err) => console.error("WS error:", err);

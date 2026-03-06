@@ -2,11 +2,13 @@
   "name": "pcb-layout-editor",
   "private": true,
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --outfile=../static/editor.js --format=esm --sourcemap",
+    "build": "esbuild src/main.ts --bundle --outfile=../static/editor.js --format=esm --sourcemap && npm run copy-to-vscode",
+    "copy-to-vscode": "mkdir -p ../../../vscode-atopile/resources/layout-editor && cp ../static/editor.js ../../../vscode-atopile/resources/layout-editor/editor.js && cp ../static/editor.js.map ../../../vscode-atopile/resources/layout-editor/editor.js.map",
     "watch": "esbuild src/main.ts --bundle --outfile=../static/editor.js --format=esm --sourcemap --watch"
   },
   "devDependencies": {
     "esbuild": "^0.20.0",
+    "puppeteer": "^24.37.5",
     "typescript": "^5.3.0"
   },
   "dependencies": {

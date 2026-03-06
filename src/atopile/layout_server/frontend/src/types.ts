@@ -26,6 +26,15 @@ export interface RenderModel {
     zones: ZoneModel[];
 }
 
+export interface RenderDelta {
+    footprints: FootprintModel[];
+    tracks: TrackModel[];
+    vias: ViaModel[];
+    drawings: DrawingModel[];
+    texts: TextModel[];
+    zones: ZoneModel[];
+}
+
 export interface BoardModel {
     edges: EdgeModel[];
     width: number;
@@ -216,7 +225,15 @@ export interface StatusResponse {
     status: "ok" | "error";
     code: string;
     message: string | null;
-    model: RenderModel | null;
+    delta?: RenderDelta | null;
+    action_id?: string | null;
+}
+
+export interface LayoutWsMessage {
+    type?: string;
+    model?: RenderModel;
+    delta?: RenderDelta;
+    action_id?: string | null;
 }
 
 export interface MoveCommand {
@@ -224,25 +241,30 @@ export interface MoveCommand {
     uuids: string[];
     dx: number;
     dy: number;
+    client_action_id?: string | null;
 }
 
 export interface RotateCommand {
     command: "rotate";
     uuids: string[];
     delta_degrees: number;
+    client_action_id?: string | null;
 }
 
 export interface FlipCommand {
     command: "flip";
     uuids: string[];
+    client_action_id?: string | null;
 }
 
 export interface UndoCommand {
     command: "undo";
+    client_action_id?: string | null;
 }
 
 export interface RedoCommand {
     command: "redo";
+    client_action_id?: string | null;
 }
 
 export type ActionCommand =

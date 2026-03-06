@@ -46,7 +46,12 @@ export class Vec2 {
 
 type ElementArray = [number, number, number, number, number, number, number, number, number];
 
-/** 3x3 transformation matrix (column-major) */
+/** 3x3 transformation matrix (column-major) 
+ *  Memory layout:
+ *  0 3 6
+ *  1 4 7
+ *  2 5 8
+*/
 export class Matrix3 {
     elements: Float32Array;
 
@@ -73,7 +78,7 @@ export class Matrix3 {
     static rotation(radians: number): Matrix3 {
         const c = Math.cos(radians);
         const s = Math.sin(radians);
-        return new Matrix3([c, -s, 0, s, c, 0, 0, 0, 1]);
+        return new Matrix3([c, s, 0, -s, c, 0, 0, 0, 1]);
     }
 
     copy(): Matrix3 {
@@ -87,30 +92,36 @@ export class Matrix3 {
         return new Vec2(x, y);
     }
 
-    multiply_self(b: Matrix3): Matrix3 {
+    /** this = this * other */
+    multiply_self(other: Matrix3): Matrix3 {
         const a = this.elements;
-        const be = b.elements;
-        const a00 = a[0]!, a01 = a[1]!, a02 = a[2]!;
-        const a10 = a[3]!, a11 = a[4]!, a12 = a[5]!;
-        const a20 = a[6]!, a21 = a[7]!, a22 = a[8]!;
-        const b00 = be[0]!, b01 = be[1]!, b02 = be[2]!;
-        const b10 = be[3]!, b11 = be[4]!, b12 = be[5]!;
-        const b20 = be[6]!, b21 = be[7]!, b22 = be[8]!;
+        const b = other.elements;
+        
+        const a00 = a[0], a01 = a[1], a02 = a[2];
+        const a10 = a[3], a11 = a[4], a12 = a[5];
+        const a20 = a[6], a21 = a[7], a22 = a[8];
 
-        a[0] = b00 * a00 + b01 * a10 + b02 * a20;
-        a[1] = b00 * a01 + b01 * a11 + b02 * a21;
-        a[2] = b00 * a02 + b01 * a12 + b02 * a22;
-        a[3] = b10 * a00 + b11 * a10 + b12 * a20;
-        a[4] = b10 * a01 + b11 * a11 + b12 * a21;
-        a[5] = b10 * a02 + b11 * a12 + b12 * a22;
-        a[6] = b20 * a00 + b21 * a10 + b22 * a20;
-        a[7] = b20 * a01 + b21 * a11 + b22 * a21;
-        a[8] = b20 * a02 + b21 * a12 + b22 * a22;
+        const b00 = b[0], b01 = b[1], b02 = b[2];
+        const b10 = b[3], b11 = b[4], b12 = b[5];
+        const b20 = b[6], b21 = b[7], b22 = b[8];
+
+        a[0] = a00 * b00 + a10 * b01 + a20 * b02;
+        a[1] = a01 * b00 + a11 * b01 + a21 * b02;
+        a[2] = a02 * b00 + a12 * b01 + a22 * b02;
+
+        a[3] = a00 * b10 + a10 * b11 + a20 * b12;
+        a[4] = a01 * b10 + a11 * b11 + a21 * b12;
+        a[5] = a02 * b10 + a12 * b11 + a22 * b12;
+
+        a[6] = a00 * b20 + a10 * b21 + a20 * b22;
+        a[7] = a01 * b20 + a11 * b21 + a21 * b22;
+        a[8] = a02 * b20 + a12 * b21 + a22 * b22;
+
         return this;
     }
 
-    multiply(b: Matrix3): Matrix3 {
-        return this.copy().multiply_self(b);
+    multiply(other: Matrix3): Matrix3 {
+        return this.copy().multiply_self(other);
     }
 
     translate_self(x: number, y: number): Matrix3 {

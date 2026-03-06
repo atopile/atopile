@@ -1,16 +1,12 @@
 from pathlib import Path
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.dataclasses import Language, NodeInfo, NodeInfoOverview, NodeType
 from atopile.logging import get_logger
-from atopile.mcp.util import (
-    Language,
-    MCPTools,
-    NodeInfo,
-    NodeInfoOverview,
-    NodeType,
-)
+from atopile.mcp.util import MCPTools
 
 logger = get_logger(__name__)
 
@@ -74,14 +70,15 @@ def inspect_library_module_or_interface(name: str) -> NodeInfo:
 def get_library_modules_or_interfaces(
     include_modules: bool = True,
     include_interfaces: bool = True,
-    *,
-    typegraph: fbrk.TypeGraph,
 ) -> list[NodeInfoOverview]:
     """
     List all atopile standard library modules and interfaces.
     """
     if not include_modules and not include_interfaces:
         return []
+
+    g = graph.GraphView.create()
+    typegraph = fbrk.TypeGraph.create(g=g)
 
     results: list[NodeInfoOverview] = []
     for m in F.__dict__.values():
