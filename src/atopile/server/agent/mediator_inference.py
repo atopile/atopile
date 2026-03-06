@@ -7,7 +7,6 @@ from typing import Any
 _STALE_PREFIXES: list[tuple[str, float]] = [
     ("build", 90.0),
     ("design_", 90.0),
-    ("autolayout_", 75.0),
     ("layout_", 120.0),
     ("project_", 300.0),
 ]
@@ -103,40 +102,6 @@ def _summarize_build_run(result: dict[str, Any]) -> str:
     return "ok"
 
 
-def _summarize_autolayout_run(result: dict[str, Any]) -> str:
-    state = _str(result, "state")
-    return f"autolayout {state}" if state else "autolayout job queued"
-
-
-def _summarize_autolayout_status(result: dict[str, Any]) -> str:
-    state = _str(result, "state")
-    candidates = _int(result, "candidate_count")
-    if state:
-        if candidates is not None:
-            return f"state={state}; candidates={candidates}"
-        return f"state={state}"
-    latest = _str(result, "latest_job_id")
-    total = _int(result, "total_jobs")
-    if latest:
-        return (
-            f"latest job={latest}; total={total}"
-            if total is not None
-            else f"latest job={latest}"
-        )
-    return "ok"
-
-
-def _summarize_autolayout_fetch(result: dict[str, Any]) -> str:
-    candidate = _str(result, "selected_candidate_id")
-    if candidate:
-        return f"applied {candidate}"
-    if result.get("ready_to_apply") is False:
-        state = _str(result, "state")
-        if state:
-            return f"waiting ({state})"
-    return "layout candidate applied"
-
-
 def _summarize_screenshot(result: dict[str, Any]) -> str:
     view = _str(result, "view")
     return f"{view} screenshot rendered" if view else "screenshot rendered"
@@ -200,12 +165,7 @@ _SUMMARIZERS: dict[str, object] = {
     "project_move_path": _summarize_rename,
     "project_delete_path": _summarize_delete,
     "build_run": _summarize_build_run,
-    "autolayout_run": _summarize_autolayout_run,
-    "autolayout_status": _summarize_autolayout_status,
-    "autolayout_fetch_to_layout": _summarize_autolayout_fetch,
-    "autolayout_request_screenshot": _summarize_screenshot,
     "layout_run_drc": _summarize_drc,
-    "autolayout_configure_board_intent": _summarize_board_intent,
     "web_search": _summarize_web_search,
     "layout_get_component_position": _summarize_get_position,
     "layout_set_component_position": _summarize_set_position,

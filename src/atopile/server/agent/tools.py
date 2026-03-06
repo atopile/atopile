@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import secrets
 from collections import OrderedDict
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -29,28 +28,6 @@ from atopile.model import builds as builds_domain
 from atopile.model.sqlite import BuildHistory
 from atopile.server import module_introspection
 from atopile.server.agent import package_workers, policy
-from atopile.server.agent.tool_autolayout_web_helpers import (
-    _apply_component_highlight_overlay,
-    _archive_autolayout_iteration,
-    _autolayout_recommended_action,
-    _autolayout_state_value,
-    _choose_autolayout_candidate_id,
-    _default_screenshot_layers,
-    _discover_downloaded_artifacts,
-    _estimate_layout_component_count,
-    _exa_web_search,
-    _extract_candidate_id,
-    _normalize_domain_filters,
-    _normalize_highlight_components,
-    _normalize_plane_nets,
-    _normalize_screenshot_layers,
-    _recommended_autolayout_check_back_seconds,
-    _recommended_autolayout_timeout,
-    _select_latest_fetchable_job,
-    _summarize_autolayout_job,
-    _to_float_or_none,
-    _to_int_or_none,
-)
 from atopile.server.agent.tool_build_helpers import (
     _active_or_pending_build_ids,
     _build_empty_log_stub,
@@ -62,11 +39,8 @@ from atopile.server.agent.tool_build_helpers import (
     _trim_message,
 )
 from atopile.server.agent.tool_layout import (
-    _layout_component_payload,
     _layout_get_component_position,
     _layout_set_component_position,
-    _LayoutComponentRecord,
-    _resolve_highlight_components,
     _resolve_layout_file_for_tool,
 )
 from atopile.server.agent.tool_references import (
@@ -79,6 +53,7 @@ from atopile.server.agent.tool_references import (
     _search_example_ato_files,
     _search_package_reference_files,
 )
+from atopile.server.agent.tool_web_helpers import _exa_web_search
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import manufacturing as manufacturing_domain
 from atopile.server.domains import packages as packages_domain
@@ -86,24 +61,6 @@ from atopile.server.domains import parts_search as parts_domain
 from atopile.server.domains import problems as problems_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains import stdlib as stdlib_domain
-
-try:
-    from atopile.server.domains.autolayout.models import (
-        AutolayoutState,
-    )
-    from atopile.server.domains.autolayout.service import get_autolayout_service
-    from atopile.server.domains.autolayout.webhook_gateway import (
-        default_internal_api_base_url,
-        get_autolayout_webhook_gateway_manager,
-    )
-
-    _HAS_AUTOLAYOUT = True
-except ModuleNotFoundError:
-    AutolayoutState = None  # type: ignore[assignment,misc]
-    get_autolayout_service = None  # type: ignore[assignment,misc]
-    default_internal_api_base_url = None  # type: ignore[assignment,misc]
-    get_autolayout_webhook_gateway_manager = None  # type: ignore[assignment,misc]
-    _HAS_AUTOLAYOUT = False
 
 _openai_file_client: AsyncOpenAI | None = None
 _OPENAI_FILE_CACHE_MAX_ENTRIES = max(
@@ -133,9 +90,6 @@ _EXPECTED_MANUFACTURING_OUTPUT_KEYS: tuple[str, ...] = (
     "kicad_sch",
     "pcb_summary",
 )
-_AUTOLAYOUT_MAX_TIMEOUT_MINUTES = 2
-_AUTOLAYOUT_WEBHOOK_PATH = "/api/autolayout/webhooks/deeppcb"
-_AUTOLAYOUT_TUNNEL_PROVIDERS = {"cloudflared", "none"}
 
 
 def _datasheet_cache_key(*, project_root: Path, source_type: str, source: str) -> str:
@@ -322,6 +276,43 @@ def _resolve_web_search_max_age_hours(arguments: dict[str, Any]) -> int | None:
         return None
     max_age_hours = int(raw_max_age_hours)
     return max(-1, min(max_age_hours, 24 * 365))
+
+
+def _normalize_domain_filters(raw: Any, *, field_name: str) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"{field_name} must be an array of domain strings")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError(f"{field_name} must contain only strings")
+        domain = item.strip().lower()
+        if not domain or domain in seen:
+            continue
+        seen.add(domain)
+        normalized.append(domain)
+    return normalized
+
+
+def _to_float_or_none(value: Any, *, field_name: str) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a number") from exc
+
+
+def _to_int_or_none(value: Any, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
 
 
 def _get_openai_file_client() -> AsyncOpenAI:
@@ -1778,718 +1769,6 @@ async def _tool_design_diagnostics(
     }
 
 
-def _resolve_autolayout_tunnel_provider(arguments: dict[str, Any]) -> str:
-    raw_value = arguments.get("tunnel_provider")
-    if raw_value is None:
-        return "cloudflared"
-    provider = str(raw_value).strip().lower()
-    if provider not in _AUTOLAYOUT_TUNNEL_PROVIDERS:
-        allowed = ", ".join(sorted(_AUTOLAYOUT_TUNNEL_PROVIDERS))
-        raise ValueError(f"tunnel_provider must be one of: {allowed}")
-    return provider
-
-
-def _resolve_internal_api_base_url(arguments: dict[str, Any]) -> str:
-    raw = arguments.get("internal_api_base_url")
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip().rstrip("/")
-    return default_internal_api_base_url()
-
-
-@_register_tool("autolayout_webhook_gateway")
-async def _tool_autolayout_webhook_gateway(
-    arguments: dict[str, Any], project_root: Path, ctx: AppContext
-) -> dict[str, Any]:
-    _ = (project_root, ctx)
-    action = str(arguments.get("action", "status")).strip().lower()
-    if action not in {"start", "status", "stop"}:
-        raise ValueError("action must be one of: start, status, stop")
-
-    manager = get_autolayout_webhook_gateway_manager()
-
-    if action == "start":
-        tunnel_provider = _resolve_autolayout_tunnel_provider(arguments)
-        internal_base_url = _resolve_internal_api_base_url(arguments)
-        gateway_host = (
-            str(arguments.get("gateway_host", "127.0.0.1")).strip() or "127.0.0.1"
-        )
-        gateway_port = int(arguments.get("gateway_port", 0))
-        requested_token = arguments.get("webhook_token")
-        webhook_token = (
-            str(requested_token).strip()
-            if isinstance(requested_token, str) and requested_token.strip()
-            else secrets.token_urlsafe(32)
-        )
-
-        status = await asyncio.to_thread(
-            manager.start,
-            internal_base_url=internal_base_url,
-            webhook_path=_AUTOLAYOUT_WEBHOOK_PATH,
-            tunnel_provider=tunnel_provider,
-            gateway_host=gateway_host,
-            gateway_port=gateway_port,
-            webhook_token=webhook_token,
-        )
-        service = get_autolayout_service()
-        if isinstance(status.get("webhook_url"), str):
-            await asyncio.to_thread(
-                service.configure_deeppcb_webhook_defaults,
-                webhook_url=str(status["webhook_url"]),
-                webhook_token=str(status.get("webhook_token") or ""),
-            )
-        return {
-            "action": "start",
-            "status": status,
-            "next_step": (
-                "Pass status.webhook_url and status.webhook_token to autolayout_run, "
-                "or run autolayout_run with auto_setup_webhook=true."
-            ),
-        }
-
-    if action == "stop":
-        status = await asyncio.to_thread(manager.stop)
-        return {"action": "stop", "status": status}
-
-    status = await asyncio.to_thread(manager.status)
-    return {"action": "status", "status": status}
-
-
-@_register_tool("autolayout_run")
-async def _tool_autolayout_run(
-    arguments: dict[str, Any], project_root: Path, ctx: AppContext
-) -> dict[str, Any]:
-    build_target = str(arguments.get("build_target", "default")).strip() or "default"
-
-    raw_constraints = arguments.get("constraints")
-    if raw_constraints is None:
-        constraints: dict[str, Any] = {}
-    elif isinstance(raw_constraints, dict):
-        constraints = dict(raw_constraints)
-    else:
-        raise ValueError("constraints must be an object")
-
-    raw_options = arguments.get("options")
-    if raw_options is None:
-        options: dict[str, Any] = {}
-    elif isinstance(raw_options, dict):
-        options = dict(raw_options)
-    else:
-        raise ValueError("options must be an object")
-
-    job_type = arguments.get("job_type")
-    if isinstance(job_type, str) and job_type.strip():
-        options.setdefault("jobType", job_type.strip())
-
-    routing_type = arguments.get("routing_type")
-    if isinstance(routing_type, str) and routing_type.strip():
-        options.setdefault("routingType", routing_type.strip())
-
-    guidance_job_type = str(options.get("jobType", "Routing"))
-    component_count: int | None = None
-    try:
-        build_cfg = _resolve_build_target(project_root, build_target)
-        component_count = _estimate_layout_component_count(build_cfg.paths.layout)
-    except Exception:
-        component_count = None
-    timeout_guidance = _recommended_autolayout_timeout(
-        component_count=component_count,
-        job_type=guidance_job_type,
-    )
-
-    timeout_source = "service_default"
-    timeout_minutes = arguments.get("timeout_minutes")
-    requested_timeout_minutes: int
-    if timeout_minutes is not None:
-        requested_timeout_minutes = int(timeout_minutes)
-        timeout_source = "explicit_argument"
-    elif "timeout" in options:
-        requested_timeout_minutes = int(options["timeout"])
-        timeout_source = "options_object"
-    elif "timeout_minutes" in options:
-        requested_timeout_minutes = int(options["timeout_minutes"])
-        timeout_source = "options_object"
-    else:
-        requested_timeout_minutes = int(timeout_guidance["start_timeout_minutes"])
-        timeout_source = "heuristic_component_count"
-
-    normalized_requested_timeout = max(1, requested_timeout_minutes)
-    applied_timeout_minutes = min(
-        normalized_requested_timeout,
-        _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
-    )
-    timeout_capped = applied_timeout_minutes != normalized_requested_timeout
-    options["timeout"] = applied_timeout_minutes
-    options.pop("timeout_minutes", None)
-
-    max_batch_timeout = arguments.get("max_batch_timeout")
-    if max_batch_timeout is not None:
-        options.setdefault("maxBatchTimeout", int(max_batch_timeout))
-
-    webhook_url = arguments.get("webhook_url")
-    if isinstance(webhook_url, str) and webhook_url.strip():
-        options.setdefault("webhook_url", webhook_url.strip())
-
-    webhook_token = arguments.get("webhook_token")
-    if isinstance(webhook_token, str) and webhook_token.strip():
-        options.setdefault("webhook_token", webhook_token.strip())
-
-    resume_board_id = arguments.get("resume_board_id")
-    if isinstance(resume_board_id, str) and resume_board_id.strip():
-        options.setdefault("resume_board_id", resume_board_id.strip())
-        options.setdefault(
-            "resume_stop_first",
-            bool(arguments.get("resume_stop_first", True)),
-        )
-
-    auto_setup_webhook = bool(arguments.get("auto_setup_webhook", False))
-    webhook_setup: dict[str, Any] | None = None
-    has_webhook_url = any(
-        isinstance(options.get(key), str) and str(options.get(key)).strip()
-        for key in ("webhook_url", "webhookUrl", "webHookUrl")
-    )
-    if auto_setup_webhook and not has_webhook_url:
-        tunnel_provider = _resolve_autolayout_tunnel_provider(arguments)
-        internal_base_url = _resolve_internal_api_base_url(arguments)
-        gateway_host = (
-            str(arguments.get("gateway_host", "127.0.0.1")).strip() or "127.0.0.1"
-        )
-        gateway_port = int(arguments.get("gateway_port", 0))
-        requested_setup_token = options.get("webhook_token") or options.get(
-            "webhookToken"
-        )
-        setup_token = (
-            str(requested_setup_token).strip()
-            if isinstance(requested_setup_token, str)
-            and str(requested_setup_token).strip()
-            else secrets.token_urlsafe(32)
-        )
-        manager = get_autolayout_webhook_gateway_manager()
-        webhook_setup = await asyncio.to_thread(
-            manager.start,
-            internal_base_url=internal_base_url,
-            webhook_path=_AUTOLAYOUT_WEBHOOK_PATH,
-            tunnel_provider=tunnel_provider,
-            gateway_host=gateway_host,
-            gateway_port=gateway_port,
-            webhook_token=setup_token,
-        )
-        setup_webhook_url = str(webhook_setup.get("webhook_url", "")).strip()
-        if not setup_webhook_url:
-            raise RuntimeError(
-                "Auto webhook setup failed: no webhook_url returned by gateway."
-            )
-        options.setdefault("webhook_url", setup_webhook_url)
-        setup_webhook_token = webhook_setup.get("webhook_token")
-        if isinstance(setup_webhook_token, str) and setup_webhook_token.strip():
-            options.setdefault("webhook_token", setup_webhook_token.strip())
-
-    resolved_webhook_url = next(
-        (
-            str(options.get(key)).strip()
-            for key in ("webhook_url", "webhookUrl", "webHookUrl")
-            if isinstance(options.get(key), str) and str(options.get(key)).strip()
-        ),
-        None,
-    )
-    resolved_webhook_token = next(
-        (
-            str(options.get(key)).strip()
-            for key in ("webhook_token", "webhookToken", "webHookToken")
-            if isinstance(options.get(key), str) and str(options.get(key)).strip()
-        ),
-        None,
-    )
-
-    service = get_autolayout_service()
-    if (
-        resolved_webhook_url
-        and hasattr(service, "configure_deeppcb_webhook_defaults")
-        and callable(getattr(service, "configure_deeppcb_webhook_defaults"))
-    ):
-        await asyncio.to_thread(
-            service.configure_deeppcb_webhook_defaults,
-            webhook_url=resolved_webhook_url,
-            webhook_token=resolved_webhook_token,
-        )
-    job = await asyncio.to_thread(
-        service.start_job,
-        str(project_root),
-        build_target,
-        constraints,
-        options,
-    )
-
-    return {
-        "job_id": job.job_id,
-        "provider": job.provider,
-        "build_target": job.build_target,
-        "state": _autolayout_state_value(job.state),
-        "provider_job_ref": job.provider_job_ref,
-        "requested_timeout_minutes": normalized_requested_timeout,
-        "applied_timeout_minutes": applied_timeout_minutes,
-        "timeout_cap_minutes": _AUTOLAYOUT_MAX_TIMEOUT_MINUTES,
-        "timeout_capped": timeout_capped,
-        "timeout_source": timeout_source,
-        "timeout_guidance": timeout_guidance,
-        "options": dict(job.options),
-        "constraints": dict(job.constraints),
-        "background": True,
-        "webhook_setup": webhook_setup,
-        "webhook_url": resolved_webhook_url,
-        "webhook_token_configured": bool(resolved_webhook_token),
-        "job": job.to_dict(),
-        "next_step": (
-            "Use autolayout_status with this job_id to monitor candidates, "
-            "then autolayout_fetch_to_layout to apply one into layouts/."
-        ),
-    }
-
-
-@_register_tool("autolayout_status")
-async def _tool_autolayout_status(
-    arguments: dict[str, Any], project_root: Path, ctx: AppContext
-) -> dict[str, Any]:
-    requested_job_id = arguments.get("job_id")
-    job_id = (
-        str(requested_job_id).strip()
-        if isinstance(requested_job_id, str) and str(requested_job_id).strip()
-        else ""
-    )
-    refresh = bool(arguments.get("refresh", False))
-    include_candidates = bool(arguments.get("include_candidates", True))
-    wait_seconds = max(0, int(arguments.get("wait_seconds", 0)))
-    poll_interval_seconds = max(
-        1,
-        int(arguments.get("poll_interval_seconds", 10)),
-    )
-
-    service = get_autolayout_service()
-    if not job_id:
-        jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-        summaries = [_summarize_autolayout_job(job) for job in jobs[:20]]
-        latest_job = jobs[0] if jobs else None
-        return {
-            "job_id": None,
-            "project_root": str(project_root),
-            "total_jobs": len(summaries),
-            "latest_job_id": latest_job.job_id if latest_job else None,
-            "latest_build_target": latest_job.build_target if latest_job else None,
-            "recommended_action": (
-                "inspect_or_fetch_latest_job"
-                if latest_job is not None
-                else "run_autolayout"
-            ),
-            "message": (
-                "No job_id provided; returning recent autolayout history for "
-                "this project."
-            ),
-            "jobs": summaries,
-        }
-
-    try:
-        if refresh:
-            job = await asyncio.to_thread(service.refresh_job, job_id)
-        else:
-            job = await asyncio.to_thread(service.get_job, job_id)
-    except KeyError:
-        jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-        summaries = [_summarize_autolayout_job(item) for item in jobs[:20]]
-        latest_job = jobs[0] if jobs else None
-        return {
-            "job_id": job_id,
-            "found": False,
-            "recommended_action": (
-                "inspect_or_fetch_latest_job"
-                if latest_job is not None
-                else "run_autolayout"
-            ),
-            "latest_job_id": latest_job.job_id if latest_job else None,
-            "message": (
-                f"Unknown autolayout job '{job_id}'. Returning recent jobs "
-                "for this project."
-            ),
-            "jobs": summaries,
-        }
-
-    polls = 0
-    waited_seconds = 0
-    if wait_seconds > 0:
-        while (
-            _autolayout_state_value(job.state)
-            in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}
-            and isinstance(job.provider_job_ref, str)
-            and job.provider_job_ref.strip()
-            and waited_seconds < wait_seconds
-        ):
-            sleep_for = min(poll_interval_seconds, wait_seconds - waited_seconds)
-            await asyncio.sleep(sleep_for)
-            waited_seconds += sleep_for
-            polls += 1
-            job = await asyncio.to_thread(
-                service.refresh_job if refresh else service.get_job,
-                job_id,
-            )
-
-    candidates_payload: list[dict[str, Any]] = []
-    if include_candidates:
-        candidates = await asyncio.to_thread(
-            service.list_candidates,
-            job_id,
-            False,
-        )
-        candidates_payload = [candidate.to_dict() for candidate in candidates]
-
-    state_value = _autolayout_state_value(job.state)
-    terminal = state_value in {
-        AutolayoutState.COMPLETED.value,
-        AutolayoutState.FAILED.value,
-        AutolayoutState.CANCELLED.value,
-    }
-
-    candidate_count = (
-        len(candidates_payload) if include_candidates else len(job.candidates)
-    )
-    recommended_action = _autolayout_recommended_action(
-        state_value=state_value,
-        candidate_count=candidate_count,
-        provider_job_ref=job.provider_job_ref,
-    )
-    recent_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-    recent_summaries = [
-        _summarize_autolayout_job(item)
-        for item in recent_jobs[:10]
-        if item.job_id != job.job_id
-    ]
-
-    return {
-        "job_id": job.job_id,
-        "provider_job_ref": job.provider_job_ref,
-        "state": state_value,
-        "terminal": terminal,
-        "candidate_count": candidate_count,
-        "selected_candidate_id": job.selected_candidate_id,
-        "applied_candidate_id": job.applied_candidate_id,
-        "check_in": {
-            "wait_seconds": wait_seconds,
-            "waited_seconds": waited_seconds,
-            "poll_interval_seconds": poll_interval_seconds,
-            "polls": polls,
-        },
-        "recommended_action": recommended_action,
-        "job": job.to_dict(),
-        "candidates": candidates_payload if include_candidates else None,
-        "recent_jobs": recent_summaries,
-    }
-
-
-@_register_tool("autolayout_fetch_to_layout")
-async def _tool_autolayout_fetch_to_layout(
-    arguments: dict[str, Any], project_root: Path, ctx: AppContext
-) -> dict[str, Any]:
-    requested_job_id = arguments.get("job_id")
-    job_id = (
-        str(requested_job_id).strip()
-        if isinstance(requested_job_id, str) and str(requested_job_id).strip()
-        else ""
-    )
-    requested_candidate_id = arguments.get("candidate_id")
-    candidate_id = (
-        str(requested_candidate_id).strip()
-        if isinstance(requested_candidate_id, str)
-        and str(requested_candidate_id).strip()
-        else None
-    )
-    archive_iteration = bool(arguments.get("archive_iteration", True))
-
-    service = get_autolayout_service()
-    if not job_id:
-        known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-        selected_job = _select_latest_fetchable_job(known_jobs)
-        if selected_job is None:
-            return {
-                "job_id": None,
-                "ready_to_apply": False,
-                "applied": False,
-                "recommended_action": "run_autolayout",
-                "message": (
-                    "No autolayout jobs found for this project. Run "
-                    "autolayout_run first."
-                ),
-                "jobs": [],
-            }
-        job_id = selected_job.job_id
-
-    try:
-        job = await asyncio.to_thread(service.refresh_job, job_id)
-    except KeyError:
-        known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
-        summaries = [_summarize_autolayout_job(item) for item in known_jobs[:20]]
-        latest_job = known_jobs[0] if known_jobs else None
-        return {
-            "job_id": job_id,
-            "ready_to_apply": False,
-            "applied": False,
-            "found": False,
-            "recommended_action": (
-                "inspect_or_fetch_latest_job"
-                if latest_job is not None
-                else "run_autolayout"
-            ),
-            "latest_job_id": latest_job.job_id if latest_job else None,
-            "message": (
-                f"Unknown autolayout job '{job_id}'. Returning recent jobs "
-                "for this project."
-            ),
-            "jobs": summaries,
-        }
-
-    candidates = await asyncio.to_thread(service.list_candidates, job_id, False)
-    state_value = _autolayout_state_value(job.state)
-    candidate_count = len(candidates)
-
-    if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
-        recommended_wait_seconds = _recommended_autolayout_check_back_seconds(
-            state=state_value,
-            candidate_count=candidate_count,
-        )
-        return {
-            "job_id": job.job_id,
-            "provider_job_ref": job.provider_job_ref,
-            "state": state_value,
-            "candidate_count": candidate_count,
-            "ready_to_apply": False,
-            "applied": False,
-            "recommended_wait_seconds": recommended_wait_seconds,
-            "recommended_action": "check_status_then_retry_fetch",
-            "message": (
-                f"Autolayout is still {state_value}; do not fetch/apply yet. "
-                f"Check back in {recommended_wait_seconds} seconds with "
-                "autolayout_status, then call autolayout_fetch_to_layout when "
-                "state is awaiting_selection or completed."
-            ),
-            "job": job.to_dict(),
-        }
-
-    if state_value in {
-        AutolayoutState.FAILED.value,
-        AutolayoutState.CANCELLED.value,
-    }:
-        return {
-            "job_id": job.job_id,
-            "provider_job_ref": job.provider_job_ref,
-            "state": state_value,
-            "candidate_count": candidate_count,
-            "ready_to_apply": False,
-            "applied": False,
-            "recommended_action": "retry_or_resume_with_adjusted_options",
-            "message": (
-                f"Autolayout is {state_value}; no candidate can be applied yet. "
-                "Use autolayout_status for details, then rerun or resume with "
-                "autolayout_run."
-            ),
-            "job": job.to_dict(),
-        }
-
-    selected_candidate_id = _choose_autolayout_candidate_id(
-        candidates=candidates,
-        requested_id=candidate_id,
-    )
-    if not selected_candidate_id and isinstance(job.provider_job_ref, str):
-        selected_candidate_id = job.provider_job_ref
-    if not selected_candidate_id:
-        raise ValueError(
-            "No candidate available yet. Wait for autolayout_status to show "
-            "candidates and retry."
-        )
-
-    if any(
-        _extract_candidate_id(candidate) == selected_candidate_id
-        for candidate in candidates
-    ):
-        await asyncio.to_thread(
-            service.select_candidate,
-            job_id,
-            selected_candidate_id,
-        )
-
-    applied = await asyncio.to_thread(
-        service.apply_candidate,
-        job_id,
-        selected_candidate_id,
-    )
-
-    downloaded_candidate_path: str | None = None
-    downloaded_artifacts: dict[str, str] = {}
-    archived_iteration_path: str | None = None
-    work_dir_str = str(applied.work_dir or "").strip()
-    if work_dir_str:
-        work_dir = Path(work_dir_str)
-        downloads_dir = work_dir / "downloads"
-        downloaded_artifacts = _discover_downloaded_artifacts(
-            downloads_dir=downloads_dir,
-            candidate_id=selected_candidate_id,
-        )
-        downloaded_candidate_path = downloaded_artifacts.get("kicad_pcb")
-
-    applied_layout_str = str(
-        applied.applied_layout_path or applied.layout_path or ""
-    ).strip()
-    applied_layout: Path | None = None
-    if archive_iteration and applied_layout_str:
-        candidate_layout = Path(applied_layout_str)
-        if candidate_layout.exists():
-            applied_layout = candidate_layout
-
-    if archive_iteration and applied_layout is not None:
-        source_for_archive = (
-            Path(downloaded_candidate_path)
-            if isinstance(downloaded_candidate_path, str)
-            and downloaded_candidate_path
-            and Path(downloaded_candidate_path).exists()
-            else applied_layout
-        )
-        archived = await asyncio.to_thread(
-            _archive_autolayout_iteration,
-            source_layout=source_for_archive,
-            destination_layout_dir=applied_layout.parent,
-            layout_stem=applied_layout.stem,
-            build_target=applied.build_target,
-            job_id=applied.job_id,
-            candidate_id=selected_candidate_id,
-        )
-        archived_iteration_path = str(archived)
-
-    return {
-        "job_id": applied.job_id,
-        "provider_job_ref": applied.provider_job_ref,
-        "selected_candidate_id": selected_candidate_id,
-        "applied_layout_path": applied.applied_layout_path,
-        "backup_layout_path": applied.backup_layout_path,
-        "downloaded_candidate_path": downloaded_candidate_path,
-        "downloaded_artifacts": downloaded_artifacts,
-        "archived_iteration_path": archived_iteration_path,
-        "job": applied.to_dict(),
-    }
-
-
-@_register_tool("autolayout_request_screenshot")
-async def _tool_autolayout_request_screenshot(
-    arguments: dict[str, Any], project_root: Path, ctx: AppContext
-) -> dict[str, Any]:
-    from faebryk.exporters.pcb.kicad.artifacts import (
-        KicadCliExportError,
-        export_3d_board_render,
-        export_svg,
-    )
-
-    target = str(arguments.get("target", "default")).strip() or "default"
-    view = str(arguments.get("view", "2d")).strip().lower() or "2d"
-    if view not in {"2d", "3d", "both"}:
-        raise ValueError("view must be one of: 2d, 3d, both")
-    side = str(arguments.get("side", "top")).strip().lower() or "top"
-    if side not in {"top", "bottom", "both"}:
-        raise ValueError("side must be one of: top, bottom, both")
-
-    explicit_layers = _normalize_screenshot_layers(arguments.get("layers"))
-    layers = explicit_layers or _default_screenshot_layers(side)
-    highlight_components = _normalize_highlight_components(
-        arguments.get("highlight_components")
-    )
-    highlight_fuzzy_limit = max(
-        1, min(20, int(arguments.get("highlight_fuzzy_limit", 6)))
-    )
-    dim_others = bool(arguments.get("dim_others", True))
-    dim_opacity = float(arguments.get("dim_opacity", 0.72))
-    if dim_opacity < 0.0 or dim_opacity > 1.0:
-        raise ValueError("dim_opacity must be between 0.0 and 1.0")
-
-    build_cfg = _resolve_build_target(project_root, target)
-    layout_path = build_cfg.paths.layout
-    if not layout_path.exists():
-        raise ValueError(f"Layout file does not exist: {layout_path}")
-
-    highlighted_records: list[_LayoutComponentRecord] = []
-    unresolved_highlights: list[dict[str, Any]] = []
-    if highlight_components:
-        highlighted_records, unresolved_highlights = await asyncio.to_thread(
-            _resolve_highlight_components,
-            layout_path=layout_path,
-            queries=highlight_components,
-            fuzzy_limit=highlight_fuzzy_limit,
-        )
-    highlighted_references = {
-        record.reference
-        for record in highlighted_records
-        if isinstance(record.reference, str) and record.reference.strip()
-    }
-
-    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-    output_dir = build_cfg.paths.output_base.parent / "autolayout" / "screenshots"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_paths: dict[str, str] = {}
-    highlight_overlay_result: dict[str, Any] | None = None
-    try:
-        if view in {"2d", "both"}:
-            two_d = output_dir / f"{target}.{timestamp}.2d.svg"
-            await asyncio.to_thread(
-                export_svg,
-                pcb_file=layout_path,
-                svg_file=two_d,
-                project_dir=layout_path.parent,
-                layers=",".join(layers),
-            )
-            output_paths["2d"] = str(two_d)
-
-            if dim_others and highlighted_references:
-                highlight_overlay_result = await asyncio.to_thread(
-                    _apply_component_highlight_overlay,
-                    base_svg_path=two_d,
-                    layout_path=layout_path,
-                    project_dir=layout_path.parent,
-                    layers=layers,
-                    highlighted_references=highlighted_references,
-                    dim_opacity=dim_opacity,
-                )
-
-        if view in {"3d", "both"}:
-            three_d = output_dir / f"{target}.{timestamp}.3d.png"
-            await asyncio.to_thread(
-                export_3d_board_render,
-                pcb_file=layout_path,
-                image_file=three_d,
-                project_dir=layout_path.parent,
-            )
-            output_paths["3d"] = str(three_d)
-    except KicadCliExportError as exc:
-        raise RuntimeError(f"Failed to render screenshot: {exc}") from exc
-
-    return {
-        "success": True,
-        "target": target,
-        "view": view,
-        "side": side,
-        "layout_path": str(layout_path),
-        "output_dir": str(output_dir),
-        "layers": layers if view in {"2d", "both"} else None,
-        "drawing_sheet_excluded": True,
-        "screenshot_paths": output_paths,
-        "highlight": {
-            "requested": highlight_components,
-            "resolved": [
-                _layout_component_payload(record) for record in highlighted_records
-            ],
-            "unresolved": unresolved_highlights,
-            "dim_others": dim_others,
-            "dim_opacity": dim_opacity if dim_others else None,
-            "applied": bool(
-                highlight_overlay_result and highlight_overlay_result.get("applied")
-            ),
-            "overlay_result": highlight_overlay_result,
-        },
-    }
-
-
 @_register_tool("layout_get_component_position")
 async def _tool_layout_get_component_position(
     arguments: dict[str, Any], project_root: Path, ctx: AppContext
@@ -2578,7 +1857,7 @@ async def _tool_layout_run_drc(
         raise RuntimeError(f"Failed to run KiCad DRC: {exc}") from exc
 
     timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
-    report_dir = build_cfg.paths.output_base.parent / "autolayout" / "drc"
+    report_dir = build_cfg.paths.output_base.parent / "layout" / "drc"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{target}.{timestamp}.drc.json"
     await asyncio.to_thread(drc_report.dumps, report_path)
@@ -2688,130 +1967,6 @@ async def _tool_layout_run_drc(
         "clean": error_count == 0 and warning_count == 0 and total_findings == 0,
         "findings": findings,
         "findings_truncated": total_findings > len(findings),
-    }
-
-
-@_register_tool("autolayout_configure_board_intent")
-async def _tool_autolayout_configure_board_intent(
-    arguments: dict[str, Any], project_root: Path, ctx: AppContext
-) -> dict[str, Any]:
-    build_target = str(arguments.get("build_target", "default")).strip() or "default"
-    enable_ground_pours = bool(arguments.get("enable_ground_pours", True))
-    plane_nets = _normalize_plane_nets(arguments.get("plane_nets"))
-    plane_mode = str(arguments.get("plane_mode", "solid")).strip().lower() or "solid"
-    if plane_mode not in {"solid", "hatched"}:
-        raise ValueError("plane_mode must be one of: solid, hatched")
-
-    min_plane_clearance_mm = _to_float_or_none(
-        arguments.get("min_plane_clearance_mm"),
-        field_name="min_plane_clearance_mm",
-    )
-    layer_count = _to_int_or_none(
-        arguments.get("layer_count"),
-        field_name="layer_count",
-    )
-    board_thickness_mm = _to_float_or_none(
-        arguments.get("board_thickness_mm"),
-        field_name="board_thickness_mm",
-    )
-    outer_copper_oz = _to_float_or_none(
-        arguments.get("outer_copper_oz"),
-        field_name="outer_copper_oz",
-    )
-    inner_copper_oz = _to_float_or_none(
-        arguments.get("inner_copper_oz"),
-        field_name="inner_copper_oz",
-    )
-    dielectric_er = _to_float_or_none(
-        arguments.get("dielectric_er"),
-        field_name="dielectric_er",
-    )
-    preserve_existing_raw = arguments.get("preserve_existing_routing")
-    preserve_existing_routing = (
-        bool(preserve_existing_raw) if isinstance(preserve_existing_raw, bool) else None
-    )
-    notes = arguments.get("notes")
-    notes_clean = (
-        str(notes).strip() if isinstance(notes, str) and notes.strip() else None
-    )
-
-    data, ato_file = await asyncio.to_thread(
-        projects_domain.load_ato_yaml,
-        project_root,
-    )
-    builds = data.get("builds")
-    if not isinstance(builds, dict):
-        raise ValueError("Invalid ato.yaml: missing builds mapping")
-    if build_target not in builds:
-        known = ", ".join(sorted(str(key) for key in builds.keys()))
-        raise ValueError(f"Unknown build_target '{build_target}'. Available: {known}")
-
-    build_cfg = builds.get(build_target)
-    if not isinstance(build_cfg, dict):
-        raise ValueError(
-            f"Unsupported build target shape for '{build_target}'; expected mapping."
-        )
-
-    autolayout_cfg = build_cfg.get("autolayout")
-    if not isinstance(autolayout_cfg, dict):
-        autolayout_cfg = {}
-        build_cfg["autolayout"] = autolayout_cfg
-
-    constraints = autolayout_cfg.get("constraints")
-    if not isinstance(constraints, dict):
-        constraints = {}
-        autolayout_cfg["constraints"] = constraints
-
-    previous_constraints = json.loads(json.dumps(constraints))
-
-    plane_intent: dict[str, Any] = {
-        "enabled": enable_ground_pours,
-        "nets": plane_nets,
-        "mode": plane_mode,
-    }
-    if min_plane_clearance_mm is not None:
-        plane_intent["min_clearance_mm"] = min_plane_clearance_mm
-    constraints["plane_intent"] = plane_intent
-
-    stackup_intent: dict[str, Any] = {}
-    if layer_count is not None:
-        stackup_intent["layer_count"] = layer_count
-    if board_thickness_mm is not None:
-        stackup_intent["board_thickness_mm"] = board_thickness_mm
-    if outer_copper_oz is not None:
-        stackup_intent["outer_copper_oz"] = outer_copper_oz
-    if inner_copper_oz is not None:
-        stackup_intent["inner_copper_oz"] = inner_copper_oz
-    if dielectric_er is not None:
-        stackup_intent["dielectric_er"] = dielectric_er
-    if notes_clean is not None:
-        stackup_intent["notes"] = notes_clean
-    if stackup_intent:
-        constraints["stackup_intent"] = stackup_intent
-
-    if preserve_existing_routing is not None:
-        constraints["preserve_existing_routing"] = preserve_existing_routing
-
-    await asyncio.to_thread(projects_domain.save_ato_yaml, ato_file, data)
-
-    return {
-        "success": True,
-        "build_target": build_target,
-        "ato_yaml_path": str(ato_file),
-        "plane_intent": plane_intent,
-        "stackup_intent": constraints.get("stackup_intent"),
-        "preserve_existing_routing": constraints.get("preserve_existing_routing"),
-        "constraints_before": previous_constraints,
-        "constraints_after": constraints,
-        "provider_note": (
-            "DeepPCB public API does not currently document first-class "
-            "ground-pour/stackup parameters; this stores intent in project "
-            "config for agent workflows and future DeepPCB mapping."
-        ),
-        "next_step": (
-            "Run autolayout_run for placement/routing so the updated board "
-            "intent is applied."
-        ),
     }
 
 

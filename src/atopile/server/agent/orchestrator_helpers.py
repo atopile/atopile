@@ -564,22 +564,6 @@ def _loop_has_concrete_progress(loop_traces: list[ToolTrace]) -> bool:
         if not trace.ok:
             continue
 
-        if trace.name == "autolayout_fetch_to_layout":
-            if bool(trace.result.get("applied", False)):
-                return True
-            if isinstance(trace.result.get("applied_layout_path"), str):
-                return True
-            continue
-
-        if trace.name == "autolayout_status":
-            state = str(trace.result.get("state", "")).lower()
-            candidates = trace.result.get("candidate_count")
-            if state in {"awaiting_selection", "completed"} and isinstance(
-                candidates, int
-            ):
-                return candidates > 0
-            continue
-
         if trace.name in execution_tools:
             return True
 

@@ -227,75 +227,6 @@ _TERM_BOOST_RULES: list[tuple[tuple[str, ...], dict[str, float]]] = [
     ),
     (
         (
-            "autolayout",
-            "auto layout",
-            "autoroute",
-            "route board",
-            "routing",
-            "placement",
-            "deeppcb",
-            "pcb layout",
-        ),
-        {
-            "autolayout_run": 1.9,
-            "autolayout_status": 1.3,
-            "autolayout_fetch_to_layout": 1.3,
-            "autolayout_configure_board_intent": 1.1,
-            "autolayout_webhook_gateway": 1.0,
-        },
-    ),
-    (
-        (
-            "status",
-            "progress",
-            "check in",
-            "monitor",
-            "how is it going",
-            "poll",
-        ),
-        {"autolayout_status": 1.5},
-    ),
-    (
-        ("webhook", "cloudflared", "tunnel", "public callback", "deeppcb callback"),
-        {"autolayout_webhook_gateway": 2.2},
-    ),
-    (
-        (
-            "ground pour",
-            "ground plane",
-            "power plane",
-            "stackup",
-            "board thickness",
-            "copper weight",
-            "dielectric",
-            "impedance",
-            "controlled impedance",
-        ),
-        {"autolayout_configure_board_intent": 2.1},
-    ),
-    (
-        (
-            "fetch routed",
-            "fetch placement",
-            "apply candidate",
-            "pull layout",
-            "archive iteration",
-        ),
-        {"autolayout_fetch_to_layout": 1.8},
-    ),
-    (
-        (
-            "screenshot",
-            "render board",
-            "board image",
-            "2d image",
-            "3d image",
-            "board preview",
-        ),
-        {"autolayout_request_screenshot": 1.9},
-    ),
-    (
-        (
             "component position",
             "where is",
             "placement query",
@@ -330,9 +261,6 @@ _TARGET_BONUS_TOOLS = {
     "report_variables",
     "manufacturing_generate",
     "manufacturing_summary",
-    "autolayout_run",
-    "autolayout_request_screenshot",
-    "autolayout_configure_board_intent",
 }
 
 _DEFAULT_SUGGESTIONS = ("project_read_file", "project_list_modules", "build_run")

@@ -68,12 +68,8 @@ _WORK_TOOLS = frozenset(
         "packages_search",
         "packages_install",
         "design_diagnostics",
-        "autolayout_request_screenshot",
         "layout_set_component_position",
         "layout_set_board_shape",
-        "autolayout_run",
-        "autolayout_status",
-        "autolayout_fetch_to_layout",
         "web_search",
     }
 )

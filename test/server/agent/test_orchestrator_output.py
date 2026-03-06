@@ -484,18 +484,14 @@ def test_run_worker_turn_stops_after_no_concrete_progress(
                     "type": "function_call",
                     "id": f"fc_{call_counter['count']}",
                     "call_id": f"call_{call_counter['count']}",
-                    "name": "autolayout_status",
-                    "arguments": json.dumps({"job_id": "al-123456789abc"}),
+                    "name": "project_list_modules",
+                    "arguments": json.dumps({}),
                 }
             ],
         }
 
     async def fake_execute_tool(**_: object) -> dict[str, object]:
-        return {
-            "job_id": "al-123456789abc",
-            "state": "running",
-            "candidate_count": 0,
-        }
+        return {"modules": [], "total": 0}
 
     monkeypatch.setattr(orchestrator, "_build_context", fake_build_context)
     monkeypatch.setattr(

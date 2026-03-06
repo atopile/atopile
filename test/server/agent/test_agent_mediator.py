@@ -31,12 +31,7 @@ def test_get_tool_directory_includes_core_tools() -> None:
     assert "build_logs_search" in names
     assert "design_diagnostics" in names
     assert "manufacturing_generate" in names
-    assert "autolayout_run" in names
-    assert "autolayout_status" in names
-    assert "autolayout_fetch_to_layout" in names
-    assert "autolayout_request_screenshot" in names
     assert "layout_run_drc" in names
-    assert "autolayout_configure_board_intent" in names
     assert "examples_list" in names
     assert "examples_search" in names
     assert "examples_read_ato" in names
@@ -55,7 +50,6 @@ def test_discovery_tool_names_includes_read_tools() -> None:
     assert "project_search" in names
     assert "stdlib_list" in names
     assert "parts_search" in names
-    assert "autolayout_status" in names
     assert "web_search" in names
 
 
@@ -64,7 +58,6 @@ def test_execution_tool_names_includes_edit_tools() -> None:
     assert "project_edit_file" in names
     assert "project_create_file" in names
     assert "build_run" in names
-    assert "autolayout_run" in names
     assert "parts_install" in names
     assert "manufacturing_generate" in names
 
@@ -72,7 +65,7 @@ def test_execution_tool_names_includes_edit_tools() -> None:
 def test_both_role_tools_appear_in_both_sets() -> None:
     disc = discovery_tool_names()
     exec_ = execution_tool_names()
-    for tool in ("autolayout_webhook_gateway", "layout_run_drc"):
+    for tool in ("layout_run_drc",):
         assert tool in disc, f"{tool} missing from discovery"
         assert tool in exec_, f"{tool} missing from execution"
 
@@ -188,26 +181,6 @@ def test_suggest_tools_surfaces_manufacturing_generate() -> None:
     assert "manufacturing_generate" in _suggestion_names(suggestions)
 
 
-def test_suggest_tools_surfaces_autolayout_for_routing_intent() -> None:
-    suggestions = mediator.suggest_tools(
-        message="run deeppcb autoroute for target default in background",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-    assert "autolayout_run" in _suggestion_names(suggestions)
-
-
-def test_suggest_tools_surfaces_autolayout_status_for_status_requests() -> None:
-    suggestions = mediator.suggest_tools(
-        message="check in periodically on autolayout progress",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-    assert "autolayout_status" in _suggestion_names(suggestions)
-
-
 def test_suggest_tools_surfaces_drc_for_drc_requests() -> None:
     suggestions = mediator.suggest_tools(
         message="run a quick drc check for target default",
@@ -216,16 +189,6 @@ def test_suggest_tools_surfaces_drc_for_drc_requests() -> None:
         tool_memory={},
     )
     assert "layout_run_drc" in _suggestion_names(suggestions)
-
-
-def test_suggest_tools_surfaces_stackup_config_tool() -> None:
-    suggestions = mediator.suggest_tools(
-        message="set 4-layer stackup and add a GND ground plane pour",
-        history=[],
-        selected_targets=["default"],
-        tool_memory={},
-    )
-    assert "autolayout_configure_board_intent" in _suggestion_names(suggestions)
 
 
 def test_suggest_tools_surfaces_examples_search() -> None:
@@ -283,41 +246,3 @@ def test_update_tool_memory_summarizes_results() -> None:
     assert entry["tool_name"] == "project_edit_file"
     assert entry["ok"] is True
     assert "edits applied" in entry["summary"]
-
-
-def test_update_tool_memory_extracts_latest_autolayout_job_id() -> None:
-    traces = [
-        FakeTrace(
-            name="autolayout_status",
-            ok=True,
-            result={
-                "job_id": None,
-                "latest_job_id": "al-aaaaaaaaaaaa",
-                "jobs": [
-                    {"job_id": "al-aaaaaaaaaaaa"},
-                    {"job_id": "al-bbbbbbbbbbbb"},
-                ],
-            },
-        )
-    ]
-
-    updated = mediator.update_tool_memory({}, traces)
-    entry = updated["autolayout_status"]
-
-    assert entry["context_id"] == "al-aaaaaaaaaaaa"
-    assert "latest job" in entry["summary"]
-
-
-# --- prefilled_args are now empty (NLU removed) ---
-
-
-def test_suggest_tools_returns_empty_prefilled_args() -> None:
-    suggestions = mediator.suggest_tools(
-        message="run a quick drc check for target default",
-        history=[],
-        selected_targets=[],
-        tool_memory={},
-    )
-    for suggestion in suggestions:
-        assert suggestion["prefilled_args"] == {}
-        assert suggestion["prefilled_prompt"] is None

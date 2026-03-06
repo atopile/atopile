@@ -175,16 +175,12 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 # PCB Layout Flow
 
 1. **Place** critical connectors/components manually with `layout_set_component_position`.
-2. **Review** with `autolayout_request_screenshot` and iterate until placement is approved.
-3. **Run** `autolayout_run` for placement.
-4. **Monitor** with `autolayout_status` and only call `autolayout_fetch_to_layout` once state is `awaiting_selection` or `completed`.
-5. **Review** screenshots again, then run `autolayout_run` for routing and repeat status->fetch->review.
+2. **Query** existing placement with `layout_get_component_position` when adjusting a crowded board.
+3. **Run** `layout_run_drc` after major placement or routing changes.
 
 ## Layout Rules
-- Per-run autolayout timeout is capped at 2 minutes. Use iterative cycles: run, review, then resume with `resume_board_id`.
-- Use `autolayout_configure_board_intent` to encode ground pour and stackup assumptions before routing.
-- For crowded boards, use `autolayout_request_screenshot` with `highlight_components` to spotlight selected parts.
-- For manual placement, use `layout_get_component_position` to query, then `layout_set_component_position` for transforms. Check `placement_check` in results.
+- Use `layout_get_component_position` to inspect current placement before moving parts.
+- Use `layout_set_component_position` for deterministic transforms rather than broad rewrites.
 - Run `layout_run_drc` after major placement/routing changes.
 
 # Decision Policy
