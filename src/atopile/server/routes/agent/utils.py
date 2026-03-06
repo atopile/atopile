@@ -814,3 +814,45 @@ class TestAgentLogging:
             800,
             3210,
         )
+
+    def test_run_turn_with_chain_recovery_retries_without_last_response_id(
+        self, monkeypatch
+    ) -> None:
+        session = AgentSession(
+            session_id="session_1",
+            project_root="/tmp/project",
+            last_response_id="resp_bad",
+        )
+        calls: list[object] = []
+
+        async def fake_run_turn(**kwargs: object):
+            calls.append(kwargs.get("previous_response_id"))
+            if len(calls) == 1:
+                raise RuntimeError(
+                    "Model API request failed (400): No tool output found for "
+                    "function call call_123."
+                )
+            return {"ok": True}
+
+        monkeypatch.setattr(orchestrator, "run_turn", fake_run_turn)
+
+        import asyncio
+
+        result = asyncio.run(
+            run_turn_with_chain_recovery(
+                session=session,
+                ctx=AppContext(workspace_paths=[]),
+                project_root="/tmp/project",
+                history=[],
+                user_message="continue",
+                session_id=session.session_id,
+                run_id="run_1",
+                selected_targets=[],
+                prior_skill_state=None,
+                tool_memory={},
+            )
+        )
+
+        assert result == {"ok": True}
+        assert calls == ["resp_bad", None]
+        assert session.last_response_id is None
