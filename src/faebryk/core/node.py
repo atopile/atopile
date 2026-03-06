@@ -2342,7 +2342,7 @@ class is_interface(Node):
                 .keys(),
             )
             logger.info(f"Grouping complete. Elements: {len(connected)}")
-            logger.info({i.get_full_name() for i in connected})
+            logger.debug({i.get_full_name() for i in connected})
             buses[interface] = connected
             remaining.difference_update(connected)
 
