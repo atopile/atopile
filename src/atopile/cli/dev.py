@@ -31,6 +31,17 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 _npm = shutil.which("npm") or "npm"
 
 
+def _needs_npm_install(project_dir: Path) -> bool:
+    """Return True if npm install should be run for *project_dir*."""
+    node_modules = project_dir / "node_modules"
+    if not node_modules.exists():
+        return True
+    lock = project_dir / "package-lock.json"
+    if lock.exists() and lock.stat().st_mtime > node_modules.stat().st_mtime:
+        return True
+    return False
+
+
 def _spawn_shell_with_venv(worktree_path: Path) -> None:
     """Start an interactive shell in worktree_path with .venv activated."""
     shell = os.environ.get("SHELL")
@@ -80,10 +91,10 @@ def extension(
         raise FileNotFoundError(f"vscode extension directory not found: {vscode_dir}")
 
     if not skip_install:
-        if not (ui_server_dir / "node_modules").exists():
+        if _needs_npm_install(ui_server_dir):
             print("installing ui-server dependencies")
             subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
-        if not (vscode_dir / "node_modules").exists():
+        if _needs_npm_install(vscode_dir):
             print("installing vscode-atopile dependencies")
             subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
 
@@ -207,8 +218,7 @@ def compile(
         if not viz_dir.exists():
             raise FileNotFoundError(f"visualizer web directory not found: {viz_dir}")
 
-        node_modules = viz_dir / "node_modules"
-        if not node_modules.exists():
+        if _needs_npm_install(viz_dir):
             subprocess.run([_npm, "install"], cwd=viz_dir, check=True)
 
         subprocess.run([_npm, "run", "build"], cwd=viz_dir, check=True)
@@ -224,13 +234,7 @@ def compile(
                 f"vscode extension directory not found: {vscode_dir}"
             )
 
-        node_modules = vscode_dir / "node_modules"
-        package_lock = vscode_dir / "package-lock.json"
-        needs_install = not node_modules.exists() or (
-            package_lock.exists()
-            and package_lock.stat().st_mtime > node_modules.stat().st_mtime
-        )
-        if needs_install:
+        if _needs_npm_install(vscode_dir):
             subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
 
         # Update version with timestamp for dev builds
@@ -352,7 +356,7 @@ def ui(
     if not ui_server_dir.exists():
         raise FileNotFoundError(f"ui-server directory not found: {ui_server_dir}")
 
-    if not skip_install and not (ui_server_dir / "node_modules").exists():
+    if not skip_install and _needs_npm_install(ui_server_dir):
         print("Installing ui-server dependencies...")
         subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
 
@@ -980,8 +984,7 @@ def test(
     # Build the log viewer UI before starting tests
     ui_server_dir = repo_root() / "src" / "ui-server"
     if LOG_VIEWER and ui_server_dir.exists():
-        node_modules = ui_server_dir / "node_modules"
-        if not node_modules.exists():
+        if _needs_npm_install(ui_server_dir):
             typer.echo("Installing log viewer dependencies...")
             subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
         typer.echo("Building log viewer UI...")
