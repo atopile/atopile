@@ -2518,6 +2518,104 @@ class TestRetypeRuntime:
         )
 
 
+class TestRetypeInstanceIsolation:
+    """Tests that retype on one instance does NOT affect sibling instances.
+
+    Bug: when retyping a nested field on one instance (e.g., inst2.slot -> SlotB),
+    the retype modifies the shared type definition rather than creating an
+    instance-level specialization. This causes ALL instances of that type to
+    get the retyped child.
+    """
+
+    def test_retype_one_instance_does_not_affect_sibling(self):
+        """Retyping inst2.slot -> SlotB should NOT change inst1.slot's type.
+
+        Regression test for: retyping a nested field on one instance pollutes
+        the shared type definition, affecting all instances of the same type.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module SlotA:
+                a = new Electrical
+
+            module SlotB:
+                b = new Electrical
+
+            module Assembly:
+                slot = new SlotA
+
+            module App:
+                inst1 = new Assembly
+                inst2 = new Assembly
+                inst2.slot -> SlotB
+            """,
+            "App",
+        )
+
+        inst1 = _get_child(app_instance, "inst1")
+        inst2 = _get_child(app_instance, "inst2")
+        slot1 = _get_child(inst1, "slot")
+        slot2 = _get_child(inst2, "slot")
+
+        slot1_type = _get_type_name(slot1)
+        slot2_type = _get_type_name(slot2)
+
+        # inst2.slot should be SlotB (retyped)
+        assert "SlotB" in slot2_type, (
+            f"inst2.slot should be SlotB, got {slot2_type}"
+        )
+
+        # inst1.slot should still be SlotA (NOT affected by inst2's retype)
+        assert "SlotA" in slot1_type, (
+            f"inst1.slot should remain SlotA, got {slot1_type}"
+            " — retype on inst2 polluted the shared type definition"
+        )
+
+    def test_retype_one_instance_with_three_siblings(self):
+        """Only the retyped instance should change; other siblings stay original."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module TypeA:
+                x = new Electrical
+
+            module TypeB:
+                y = new Electrical
+
+            module Container:
+                child = new TypeA
+
+            module App:
+                c1 = new Container
+                c2 = new Container
+                c3 = new Container
+                c2.child -> TypeB
+            """,
+            "App",
+        )
+
+        c1 = _get_child(app_instance, "c1")
+        c2 = _get_child(app_instance, "c2")
+        c3 = _get_child(app_instance, "c3")
+
+        c1_child_type = _get_type_name(_get_child(c1, "child"))
+        c2_child_type = _get_type_name(_get_child(c2, "child"))
+        c3_child_type = _get_type_name(_get_child(c3, "child"))
+
+        assert "TypeB" in c2_child_type, (
+            f"c2.child should be TypeB, got {c2_child_type}"
+        )
+        assert "TypeA" in c1_child_type, (
+            f"c1.child should remain TypeA, got {c1_child_type}"
+        )
+        assert "TypeA" in c3_child_type, (
+            f"c3.child should remain TypeA, got {c3_child_type}"
+        )
+
+
 class TestImplicitParameterUnitInference:
     """Tests for implicit parameter unit inference from arithmetic expressions."""
 
