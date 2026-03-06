@@ -1309,42 +1309,6 @@
         "default": null,
         "title": "Via"
       },
-      "dependencyType": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Dependencytype"
-      },
-      "sourcePath": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Sourcepath"
-      },
-      "installedPath": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Installedpath"
-      },
       "status": {
         "anyOf": [
           {
