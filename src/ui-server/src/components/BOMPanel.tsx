@@ -420,6 +420,7 @@ interface BOMPanelProps {
   error?: string | null
   onGoToSource?: (path: string, line?: number) => void
   selectedProjectRoot?: string | null
+  selectedTargetRoot?: string | null
   selectedTargetNames?: string[]
   isExpanded?: boolean
 }
@@ -430,6 +431,7 @@ export function BOMPanel({
   error = null,
   onGoToSource: externalGoToSource,
   selectedProjectRoot,
+  selectedTargetRoot,
   isExpanded = false,
   selectedTargetNames,
 }: BOMPanelProps) {
@@ -447,9 +449,10 @@ export function BOMPanel({
   const lcscRequestIdRef = useRef(0)
   const lastLcscRefreshBuildIdRef = useRef<string | null>(null)
   const selectedTargetName = selectedTargetNames?.[0] ?? null
+  const activeProjectRoot = selectedTargetRoot ?? selectedProjectRoot ?? null
 
   useEffect(() => {
-    if (!selectedProjectRoot) {
+    if (!activeProjectRoot) {
       setLatestBuildInfo(null)
       setForceRefreshBuildId(null)
       lastLcscRefreshBuildIdRef.current = null
@@ -457,7 +460,7 @@ export function BOMPanel({
     }
 
     sendActionWithResponse('getBuildsByProject', {
-      projectRoot: selectedProjectRoot,
+      projectRoot: activeProjectRoot,
       target: selectedTargetName ?? undefined,
       limit: 1,
     })
@@ -476,7 +479,7 @@ export function BOMPanel({
         console.warn('Failed to load build info', error)
         setLatestBuildInfo(null)
       })
-  }, [selectedProjectRoot, selectedTargetName])
+  }, [activeProjectRoot, selectedTargetName])
 
   // Check if build is stale (older than 24 hours) to trigger LCSC refresh
   useEffect(() => {
@@ -530,7 +533,7 @@ export function BOMPanel({
     })
     sendActionWithResponse('fetchLcscParts', {
       lcscIds: missing,
-      projectRoot: selectedProjectRoot ?? undefined,
+      projectRoot: activeProjectRoot ?? undefined,
       target: selectedTargetName ?? undefined,
     })
       .then((response) => {
@@ -560,7 +563,7 @@ export function BOMPanel({
     lcscParts,
     forceRefreshBuildId,
     latestBuildInfo,
-    selectedProjectRoot,
+    activeProjectRoot,
     selectedTargetName,
   ])
 
