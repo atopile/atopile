@@ -918,7 +918,14 @@ class DBLogHandler(logging.Handler):
         raise exc_value.with_traceback(exc_tb)
 
     def emit(self, record: logging.LogRecord) -> None:
-        db_logger = self._resolve_db_target()
+        try:
+            db_logger = self._resolve_db_target()
+        except ImportError:
+            # Circular import during early module init (e.g. paths.py loading
+            # triggers a ConfigFlag warning before sqlite.py can import paths).
+            # Silently skip DB logging for this record; it still reaches the
+            # console handler.
+            return
 
         from atopile.errors import (
             extract_traceback_frames,
