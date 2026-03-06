@@ -25,7 +25,9 @@ async def test_install_part_route_supports_create_package(
         captured["project_root"] = project_root
         return {
             "identifier": "local/raspberry-pi-rp2040",
-            "path": f"{project_root}/packages/Raspberry_Pi_RP2040/Raspberry_Pi_RP2040.ato",
+            "path": (
+                f"{project_root}/packages/Raspberry_Pi_RP2040/Raspberry_Pi_RP2040.ato"
+            ),
             "created_package": True,
             "import_statement": (
                 'from "local/raspberry-pi-rp2040/Raspberry_Pi_RP2040.ato" '

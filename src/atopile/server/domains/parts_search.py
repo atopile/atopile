@@ -218,7 +218,9 @@ def handle_get_install_identifier(
     if not manufacturer:
         manufacturer = "UNKNOWN"
     if not partno:
-        raise errors.UserException(f"Part {lcsc_id} is missing a manufacturer part number")
+        raise errors.UserException(
+            f"Part {lcsc_id} is missing a manufacturer part number"
+        )
 
     identifier = f"{manufacturer}_{partno}"
     return {
@@ -227,7 +229,9 @@ def handle_get_install_identifier(
     }
 
 
-def handle_install_part_as_package(lcsc_id: str, project_root: str) -> dict[str, str | bool | dict[str, str]]:
+def handle_install_part_as_package(
+    lcsc_id: str, project_root: str
+) -> dict[str, str | bool | dict[str, str]]:
     from atopile.server.domains import projects as projects_domain
 
     package_seed = handle_get_install_identifier(lcsc_id, project_root)

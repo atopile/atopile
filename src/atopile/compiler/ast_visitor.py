@@ -63,7 +63,6 @@ STDLIB_ALLOWLIST: AllowListT = (
     # Modules
     {
         F.Addressor,
-        F.SinglePinAddressor,
         F.BJT,
         F.CAN_TTL,
         F.Capacitor,

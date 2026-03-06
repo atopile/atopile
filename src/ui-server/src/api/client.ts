@@ -344,14 +344,7 @@ export const api = {
         `/api/parts/installed?project_root=${encodeURIComponent(projectRoot)}`
       ),
     install: (lcscId: string, projectRoot: string, options?: { createPackage?: boolean }) =>
-      fetchJSON<{
-        success: boolean;
-        identifier?: string;
-        path?: string;
-        created_package?: boolean;
-        import_statement?: string;
-        error?: string;
-      }>(
+      fetchJSON<{ success: boolean; identifier?: string; path?: string; created_package?: boolean; import_statement?: string; error?: string }>(
         '/api/parts/install',
         {
           method: 'POST',

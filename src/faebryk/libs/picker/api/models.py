@@ -172,24 +172,17 @@ class Component:
 
     def get_price(self, qty: int = 1) -> float:
         """
-        Get the price for qty of the component including handling fees
+        Get the component price for qty units (no handling/setup fees).
 
         For handling fees and component price classifications, see:
         https://jlcpcb.com/help/article/pcb-assembly-faqs
+
+        Setup fees (e.g. $3 per unique extended part) are one-time charges
+        that should be tracked separately, not baked into unit cost.
         """
-        BASIC_HANDLING_FEE = 0
-        PREFERRED_HANDLING_FEE = 0
-        EXTENDED_HANDLING_FEE = 3
 
         if qty < 1:
             raise ValueError("Quantity must be greater than 0")
-
-        if self.is_basic:
-            handling_fee = BASIC_HANDLING_FEE
-        elif self.is_preferred:
-            handling_fee = PREFERRED_HANDLING_FEE
-        else:
-            handling_fee = EXTENDED_HANDLING_FEE
 
         unit_price = float("inf")
         try:
@@ -200,7 +193,7 @@ class Component:
         except LookupError:
             pass
 
-        return unit_price * qty + handling_fee
+        return unit_price * qty
 
     # TODO FIXME this used to be a cached property
     def attribute_literals(
