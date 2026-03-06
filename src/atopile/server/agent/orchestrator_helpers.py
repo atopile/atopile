@@ -746,7 +746,9 @@ def _build_function_call_outputs_for_model(
     size_bytes = result_payload.get("size_bytes") or result_payload.get(
         "bytes_uploaded", 0
     )
-    size_text = f" ({size_bytes:,} bytes)" if isinstance(size_bytes, (int, float)) else ""
+    size_text = (
+        f" ({size_bytes:,} bytes)" if isinstance(size_bytes, (int, float)) else ""
+    )
     outputs.append(
         {
             "role": "user",

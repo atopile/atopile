@@ -1682,7 +1682,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             f=collect,
         )
         return [
-            trait(edge.g().bind(node=fbrk.EdgeTrait.get_trait_instance_node(edge=edge.edge())))
+            trait(
+                edge.g().bind(
+                    node=fbrk.EdgeTrait.get_trait_instance_node(edge=edge.edge())
+                )
+            )
             for edge in edges
         ]
 

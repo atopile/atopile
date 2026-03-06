@@ -410,9 +410,7 @@ def inject_build_completed_steering(
         parts.append(f"error: {short_error}")
     parts.append(f"build_id={build_id}")
     if status.lower() in ("failed", "error"):
-        parts.append(
-            "Use build_logs_search with this build_id to see the full error."
-        )
+        parts.append("Use build_logs_search with this build_id to see the full error.")
     message = " | ".join(parts)
 
     with runs_lock:

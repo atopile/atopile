@@ -52,7 +52,9 @@ class AgentConfig:
             Path(__file__).resolve().parents[4] / ".claude" / "skills"
         )
     )
-    fixed_skill_ids: list[str] = field(default_factory=lambda: ["agent", "ato", "planning"])
+    fixed_skill_ids: list[str] = field(
+        default_factory=lambda: ["agent", "ato", "planning"]
+    )
     fixed_skill_token_budgets: dict[str, int] = field(default_factory=dict)
     fixed_skill_chars_per_token: float = 4.0
     fixed_skill_total_max_chars: int = 220_000
@@ -102,7 +104,8 @@ class AgentConfig:
             fixed_skill_ids=fixed_skill_ids,
             fixed_skill_token_budgets=_parse_fixed_skill_token_budgets(
                 _env(
-                    "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS", "agent:10000,ato:40000,planning:5000"
+                    "ATOPILE_AGENT_FIXED_SKILL_TOKEN_BUDGETS",
+                    "agent:10000,ato:40000,planning:5000",
                 ),
                 default_skill_ids=fixed_skill_ids,
             ),

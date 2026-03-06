@@ -154,7 +154,9 @@ async def send_message(
     reservation_token = reserve_sync_turn(session)
     if reservation_token is None:
         active_run = ensure_session_idle(session)
-        conflict_run_id = active_run.run_id if active_run else session.active_run_id or ""
+        conflict_run_id = (
+            active_run.run_id if active_run else session.active_run_id or ""
+        )
         raise HTTPException(
             status_code=409,
             detail=active_run_conflict_detail(conflict_run_id or "sync"),
@@ -277,7 +279,9 @@ async def create_run(
         )
     if not reserve_background_run(current, run):
         active_run = ensure_session_idle(current)
-        conflict_run_id = active_run.run_id if active_run else current.active_run_id or "sync"
+        conflict_run_id = (
+            active_run.run_id if active_run else current.active_run_id or "sync"
+        )
         raise HTTPException(
             status_code=409,
             detail=active_run_conflict_detail(conflict_run_id),

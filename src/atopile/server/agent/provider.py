@@ -178,9 +178,7 @@ class OpenAIProvider:
                 if _is_context_length_exceeded(
                     exc
                 ) and _payload_has_function_call_outputs(working_payload):
-                    if function_output_shrink_index < len(
-                        function_output_shrink_steps
-                    ):
+                    if function_output_shrink_index < len(function_output_shrink_steps):
                         max_chars = function_output_shrink_steps[
                             function_output_shrink_index
                         ]
@@ -199,9 +197,7 @@ class OpenAIProvider:
                 if (
                     _is_context_length_exceeded(exc)
                     and not compacted_once
-                    and isinstance(
-                        working_payload.get("previous_response_id"), str
-                    )
+                    and isinstance(working_payload.get("previous_response_id"), str)
                     and working_payload.get("previous_response_id")
                 ):
                     compacted_once = True
@@ -240,9 +236,7 @@ class OpenAIProvider:
             raise RuntimeError("Model API returned non-object response")
         return body
 
-    async def _compact_previous_response(
-        self, previous_response_id: str
-    ) -> str | None:
+    async def _compact_previous_response(self, previous_response_id: str) -> str | None:
         client = self._get_client()
         try:
             compacted = await client.responses.compact(

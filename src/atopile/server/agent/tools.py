@@ -86,6 +86,7 @@ from atopile.server.domains import parts_search as parts_domain
 from atopile.server.domains import problems as problems_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains import stdlib as stdlib_domain
+
 try:
     from atopile.server.domains.autolayout.models import (
         AutolayoutState,
@@ -1384,7 +1385,9 @@ async def _tool_build_run(
     exclude_targets = arguments.get("exclude_targets") or []
     if not isinstance(exclude_targets, list):
         raise ValueError("exclude_targets must be a list")
-    build_root = _resolve_nested_project_path(project_root, arguments.get("project_path"))
+    build_root = _resolve_nested_project_path(
+        project_root, arguments.get("project_path")
+    )
 
     request = BuildRequest(
         project_root=str(build_root),

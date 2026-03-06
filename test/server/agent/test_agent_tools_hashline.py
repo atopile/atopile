@@ -666,7 +666,10 @@ def test_package_create_local_creates_dependency_and_stub(tmp_path: Path) -> Non
 
     assert result["success"] is True
     assert result["identifier"] == "local/power-stage"
-    assert 'from "local/power-stage/power_stage.ato" import PowerStage' == result["import_statement"]
+    assert (
+        'from "local/power-stage/power_stage.ato" import PowerStage'
+        == result["import_statement"]
+    )
     assert (tmp_path / "packages" / "power-stage" / "power_stage.ato").exists()
     assert (tmp_path / "packages" / "power-stage" / "ato.yaml").exists()
     root_ato = (tmp_path / "ato.yaml").read_text(encoding="utf-8")
@@ -712,7 +715,10 @@ def test_parts_install_create_package_wraps_part(monkeypatch, tmp_path: Path) ->
     ) -> dict[str, str]:
         assert lcsc_id == "C12345"
         assert project_root == str(tmp_path)
-        return {"identifier": "Infineon_BSC010N04LS", "entry_module": "Infineon_BSC010N04LS"}
+        return {
+            "identifier": "Infineon_BSC010N04LS",
+            "entry_module": "Infineon_BSC010N04LS",
+        }
 
     def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
         assert lcsc_id == "C12345"
@@ -742,14 +748,14 @@ def test_parts_install_create_package_wraps_part(monkeypatch, tmp_path: Path) ->
     )
 
     wrapper = (
-        tmp_path
-        / "packages"
-        / "Infineon_BSC010N04LS"
-        / "Infineon_BSC010N04LS.ato"
+        tmp_path / "packages" / "Infineon_BSC010N04LS" / "Infineon_BSC010N04LS.ato"
     ).read_text(encoding="utf-8")
     assert result["created_package"] is True
     assert result["identifier"] == "local/infineon-bsc010n04ls"
-    assert 'from "parts/Infineon_BSC010N04LS/Infineon_BSC010N04LS.ato" import Infineon_BSC010N04LS_package' in wrapper
+    assert (
+        'from "parts/Infineon_BSC010N04LS/Infineon_BSC010N04LS.ato" import Infineon_BSC010N04LS_package'
+        in wrapper
+    )
     assert "module Infineon_BSC010N04LS:" in wrapper
     assert "    package = new Infineon_BSC010N04LS_package" in wrapper
 

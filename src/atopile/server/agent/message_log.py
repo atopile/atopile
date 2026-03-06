@@ -109,8 +109,7 @@ class TrackedChecklistItem:
 def build_pending_message_nudge(messages: list[TrackedMessage]) -> str:
     """Build a nudge prompt for unaddressed messages."""
     lines = [
-        "You have unaddressed messages that need attention. "
-        "For each message, either:",
+        "You have unaddressed messages that need attention. For each message, either:",
         "- Create checklist items linked via `message_id`, or",
         "- Call `message_acknowledge` with a justification.",
         "",

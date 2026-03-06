@@ -439,8 +439,9 @@ def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -
     if exc is not None:
         import websockets.exceptions  # noqa: E402
 
-        if isinstance(exc, (asyncio.CancelledError,
-                            websockets.exceptions.ConnectionClosed)):
+        if isinstance(
+            exc, (asyncio.CancelledError, websockets.exceptions.ConnectionClosed)
+        ):
             log.info("WebSocket connection closed: %s", msg)
             return
 
@@ -544,7 +545,9 @@ def create_app(
                     project_root=build.project_root or "",
                     build_id=build.build_id or "",
                     target=build.target or "default",
-                    status=build.status.value if hasattr(build.status, "value") else str(build.status),
+                    status=build.status.value
+                    if hasattr(build.status, "value")
+                    else str(build.status),
                     warnings=build.warnings,
                     errors=build.errors,
                     error=build.error,

@@ -69,7 +69,9 @@ class _StubRegistry:
         return [{"type": "function", "name": "design_questions"}]
 
 
-def test_design_questions_force_end_closes_provider_chain(monkeypatch, tmp_path: Path) -> None:
+def test_design_questions_force_end_closes_provider_chain(
+    monkeypatch, tmp_path: Path
+) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
     (project_root / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
@@ -88,18 +90,26 @@ def test_design_questions_force_end_closes_provider_chain(monkeypatch, tmp_path:
     )
 
     provider = _StubProvider()
-    runner = AgentRunner(config=type("Cfg", (), {
-        "model": "test-model",
-        "max_tool_loops": 4,
-        "max_turn_seconds": 60,
-        "max_checklist_continuations": 0,
-        "silent_retry_max": 0,
-        "trace_enabled": False,
-        "trace_preview_max_chars": 200,
-        "tool_output_max_chars": 10_000,
-        "context_summary_max_chars": 2_000,
-        "user_message_max_chars": 2_000,
-    })(), provider=provider, registry=_StubRegistry())
+    runner = AgentRunner(
+        config=type(
+            "Cfg",
+            (),
+            {
+                "model": "test-model",
+                "max_tool_loops": 4,
+                "max_turn_seconds": 60,
+                "max_checklist_continuations": 0,
+                "silent_retry_max": 0,
+                "trace_enabled": False,
+                "trace_preview_max_chars": 200,
+                "tool_output_max_chars": 10_000,
+                "context_summary_max_chars": 2_000,
+                "user_message_max_chars": 2_000,
+            },
+        )(),
+        provider=provider,
+        registry=_StubRegistry(),
+    )
 
     import asyncio
 
@@ -124,7 +134,9 @@ def test_design_questions_force_end_closes_provider_chain(monkeypatch, tmp_path:
     assert outputs[0]["call_id"] == "call_design_1"
 
 
-def test_design_questions_marks_questions_checklist_item_done(monkeypatch, tmp_path: Path) -> None:
+def test_design_questions_marks_questions_checklist_item_done(
+    monkeypatch, tmp_path: Path
+) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
     (project_root / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
@@ -155,18 +167,26 @@ def test_design_questions_marks_questions_checklist_item_done(monkeypatch, tmp_p
     )
 
     provider = _StubProvider()
-    runner = AgentRunner(config=type("Cfg", (), {
-        "model": "test-model",
-        "max_tool_loops": 4,
-        "max_turn_seconds": 60,
-        "max_checklist_continuations": 0,
-        "silent_retry_max": 0,
-        "trace_enabled": False,
-        "trace_preview_max_chars": 200,
-        "tool_output_max_chars": 10_000,
-        "context_summary_max_chars": 2_000,
-        "user_message_max_chars": 2_000,
-    })(), provider=provider, registry=_StubRegistry())
+    runner = AgentRunner(
+        config=type(
+            "Cfg",
+            (),
+            {
+                "model": "test-model",
+                "max_tool_loops": 4,
+                "max_turn_seconds": 60,
+                "max_checklist_continuations": 0,
+                "silent_retry_max": 0,
+                "trace_enabled": False,
+                "trace_preview_max_chars": 200,
+                "tool_output_max_chars": 10_000,
+                "context_summary_max_chars": 2_000,
+                "user_message_max_chars": 2_000,
+            },
+        )(),
+        provider=provider,
+        registry=_StubRegistry(),
+    )
 
     import asyncio
 
@@ -185,7 +205,9 @@ def test_design_questions_marks_questions_checklist_item_done(monkeypatch, tmp_p
     assert updated_checklist[0]["status"] == "done"
 
 
-def test_model_commentary_preamble_is_emitted_as_progress(monkeypatch, tmp_path: Path) -> None:
+def test_model_commentary_preamble_is_emitted_as_progress(
+    monkeypatch, tmp_path: Path
+) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
     (project_root / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
@@ -237,18 +259,26 @@ def test_model_commentary_preamble_is_emitted_as_progress(monkeypatch, tmp_path:
     async def _progress(payload: dict[str, object]) -> None:
         progress_events.append(payload)
 
-    runner = AgentRunner(config=type("Cfg", (), {
-        "model": "test-model",
-        "max_tool_loops": 4,
-        "max_turn_seconds": 60,
-        "max_checklist_continuations": 0,
-        "silent_retry_max": 0,
-        "trace_enabled": False,
-        "trace_preview_max_chars": 200,
-        "tool_output_max_chars": 10_000,
-        "context_summary_max_chars": 2_000,
-        "user_message_max_chars": 2_000,
-    })(), provider=_CommentaryProvider(), registry=_StubRegistry())
+    runner = AgentRunner(
+        config=type(
+            "Cfg",
+            (),
+            {
+                "model": "test-model",
+                "max_tool_loops": 4,
+                "max_turn_seconds": 60,
+                "max_checklist_continuations": 0,
+                "silent_retry_max": 0,
+                "trace_enabled": False,
+                "trace_preview_max_chars": 200,
+                "tool_output_max_chars": 10_000,
+                "context_summary_max_chars": 2_000,
+                "user_message_max_chars": 2_000,
+            },
+        )(),
+        provider=_CommentaryProvider(),
+        registry=_StubRegistry(),
+    )
 
     import asyncio
 
@@ -265,7 +295,8 @@ def test_model_commentary_preamble_is_emitted_as_progress(monkeypatch, tmp_path:
 
     assert any(
         event.get("phase") == "thinking"
-        and event.get("detail_text") == "I'm going to inspect the project structure, then draft the controller architecture."
+        and event.get("detail_text")
+        == "I'm going to inspect the project structure, then draft the controller architecture."
         for event in progress_events
     )
 

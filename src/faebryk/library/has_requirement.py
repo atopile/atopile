@@ -51,9 +51,7 @@ class has_requirement(fabll.Node):
         # Store discriminator so trait_from_field can generate a unique
         # identifier when multiple has_requirement traits are on one module.
         out._trait_discriminator = id  # type: ignore[attr-defined]
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_SetSuperset([out, cls.id_], id)
-        )
+        out.add_dependant(F.Literals.Strings.MakeChild_SetSuperset([out, cls.id_], id))
         out.add_dependant(
             F.Literals.Strings.MakeChild_SetSuperset([out, cls.text_], text)
         )

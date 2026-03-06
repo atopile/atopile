@@ -136,7 +136,9 @@ def test_responses_create_retries_on_429(monkeypatch) -> None:
     async def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
 
-    monkeypatch.setattr("atopile.server.agent._orchestrator_old.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr(
+        "atopile.server.agent._orchestrator_old.asyncio.sleep", fake_sleep
+    )
 
     class StubResponses:
         def __init__(self) -> None:

@@ -48,34 +48,38 @@ SteeringMessagesCallback = Callable[[], list[str]]
 MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 TraceCallback = Callable[[str, dict[str, Any]], Awaitable[None] | None]
 
-_CHECKLIST_TOOLS = frozenset({"checklist_create", "checklist_update", "checklist_add_items"})
+_CHECKLIST_TOOLS = frozenset(
+    {"checklist_create", "checklist_update", "checklist_add_items"}
+)
 _MESSAGE_TOOLS = frozenset({"message_acknowledge", "message_log_query"})
 _PLANNING_TOOLS = frozenset({"design_questions"})
 _MANAGED_TOOLS = _CHECKLIST_TOOLS | _MESSAGE_TOOLS | _PLANNING_TOOLS
 
 # Tools that represent productive work (reading, editing, building, etc.)
-_WORK_TOOLS = frozenset({
-    "project_read_file",
-    "project_edit_file",
-    "project_list_files",
-    "project_create_path",
-    "build_run",
-    "build_create",
-    "build_rename",
-    "parts_search",
-    "parts_install",
-    "packages_search",
-    "packages_install",
-    "datasheet_read",
-    "design_diagnostics",
-    "autolayout_request_screenshot",
-    "layout_set_component_position",
-    "layout_set_board_shape",
-    "autolayout_run",
-    "autolayout_status",
-    "autolayout_fetch_to_layout",
-    "web_search",
-})
+_WORK_TOOLS = frozenset(
+    {
+        "project_read_file",
+        "project_edit_file",
+        "project_list_files",
+        "project_create_path",
+        "build_run",
+        "build_create",
+        "build_rename",
+        "parts_search",
+        "parts_install",
+        "packages_search",
+        "packages_install",
+        "datasheet_read",
+        "design_diagnostics",
+        "autolayout_request_screenshot",
+        "layout_set_component_position",
+        "layout_set_board_shape",
+        "autolayout_run",
+        "autolayout_status",
+        "autolayout_fetch_to_layout",
+        "web_search",
+    }
+)
 
 
 _CHECKLIST_NUDGE_MSG = (
@@ -175,8 +179,8 @@ def _build_kickstart_msg(checklist: Any) -> str:
     return (
         f"Your previous response was empty — you MUST call a tool now.\n\n"
         f"Next checklist item: {first.id} — {first.description}\n\n"
-        f"Step 1: Call checklist_update with item_id=\"{first.id}\" and "
-        f"status=\"doing\"\n"
+        f'Step 1: Call checklist_update with item_id="{first.id}" and '
+        f'status="doing"\n'
         f"Step 2: Call project_read_file or project_list_files to understand "
         f"what code exists\n"
         f"Step 3: Call project_edit_file to make changes\n\n"
@@ -416,7 +420,11 @@ class AgentRunner:
         request_input.append({"role": "user", "content": user_content})
 
         # Consume any early steering
-        steering_inputs = self._collect_steering(consume_steering_messages, session_id=session_id, project_root=str(project_path))
+        steering_inputs = self._collect_steering(
+            consume_steering_messages,
+            session_id=session_id,
+            project_root=str(project_path),
+        )
         if steering_inputs:
             request_input.extend(steering_inputs)
 
@@ -493,7 +501,8 @@ class AgentRunner:
                         {
                             "phase": "thinking",
                             "status_text": "Working",
-                            "detail_text": commentary_preamble or "Continuing after preamble",
+                            "detail_text": commentary_preamble
+                            or "Continuing after preamble",
                         },
                     )
                     await self._emit_trace(
@@ -552,7 +561,8 @@ class AgentRunner:
 
                     if (
                         _needs_kickstart
-                        and turn_state.consecutive_empty_continuations <= _MAX_EMPTY_CONTINUATIONS
+                        and turn_state.consecutive_empty_continuations
+                        <= _MAX_EMPTY_CONTINUATIONS
                     ):
                         # Silent retry: re-prompt with empty messages
                         # (same pattern as commentary continuation) before
@@ -576,7 +586,9 @@ class AgentRunner:
                                     "empty_streak": turn_state.consecutive_empty_continuations,
                                 },
                             )
-                            telemetry["silent_retry_count"] = telemetry.get("silent_retry_count", 0) + 1
+                            telemetry["silent_retry_count"] = (
+                                telemetry.get("silent_retry_count", 0) + 1
+                            )
                             response = await self._provider.complete(
                                 messages=[],
                                 instructions=instructions,
@@ -610,7 +622,9 @@ class AgentRunner:
                                 "silent_retries_exhausted": True,
                             },
                         )
-                        telemetry["kickstart_count"] = telemetry.get("kickstart_count", 0) + 1
+                        telemetry["kickstart_count"] = (
+                            telemetry.get("kickstart_count", 0) + 1
+                        )
                         response = await self._provider.complete(
                             messages=[{"role": "user", "content": kickstart_msg}],
                             instructions=instructions,
@@ -622,7 +636,8 @@ class AgentRunner:
                         last_response_id = response.id or last_response_id
                         continue
                     elif (
-                        turn_state.consecutive_empty_continuations <= _MAX_EMPTY_CONTINUATIONS
+                        turn_state.consecutive_empty_continuations
+                        <= _MAX_EMPTY_CONTINUATIONS
                     ):
                         continuations_remaining -= 1
                         cont_msg = cl.continuation_prompt()
@@ -762,7 +777,11 @@ class AgentRunner:
                         last_response_id = response.id or last_response_id
                         continue
 
-                steering = self._collect_steering(consume_steering_messages, session_id=session_id, project_root=str(project_path))
+                steering = self._collect_steering(
+                    consume_steering_messages,
+                    session_id=session_id,
+                    project_root=str(project_path),
+                )
                 if steering:
                     await self._emit_progress(
                         progress_callback,
@@ -804,9 +823,7 @@ class AgentRunner:
                     "tool_calls_total": len(traces),
                 }
                 if turn_state.checklist is not None:
-                    done_payload["checklist"] = (
-                        turn_state.checklist.to_dict()
-                    )
+                    done_payload["checklist"] = turn_state.checklist.to_dict()
                 await self._emit_progress(progress_callback, done_payload)
                 return AgentTurnResult(
                     text=text,
@@ -857,7 +874,10 @@ class AgentRunner:
                 if call.name in _MANAGED_TOOLS:
                     args = call.arguments or {}
                     result_payload, ok = self._handle_managed_tool(
-                        call.name, args, turn_state, skill_state,
+                        call.name,
+                        args,
+                        turn_state,
+                        skill_state,
                         session_id=session_id,
                         project_root=str(project_path),
                     )
@@ -868,7 +888,9 @@ class AgentRunner:
                             {
                                 "phase": "design_questions",
                                 "context": (call.arguments or {}).get("context", ""),
-                                "questions": (call.arguments or {}).get("questions", []),
+                                "questions": (call.arguments or {}).get(
+                                    "questions", []
+                                ),
                             },
                         )
                 else:
@@ -880,7 +902,9 @@ class AgentRunner:
                         ctx=ctx,
                     )
 
-                trace = ToolTrace(name=call.name, args=args, ok=ok, result=result_payload)
+                trace = ToolTrace(
+                    name=call.name, args=args, ok=ok, result=result_payload
+                )
                 traces.append(trace)
 
                 if ok:
@@ -892,7 +916,9 @@ class AgentRunner:
                     # "not_started" item so the checklist stays in
                     # sync without an extra tool call.
                     if call.name in _WORK_TOOLS:
-                        telemetry["work_tool_count"] = telemetry.get("work_tool_count", 0) + 1
+                        telemetry["work_tool_count"] = (
+                            telemetry.get("work_tool_count", 0) + 1
+                        )
                         cl = turn_state.checklist
                         if cl is not None and not any(
                             i.status == "doing" for i in cl.items
@@ -929,7 +955,9 @@ class AgentRunner:
                                 {"tool": call.name, "loop": loops},
                             )
                     elif call.name in _CHECKLIST_TOOLS:
-                        telemetry["checklist_tool_count"] = telemetry.get("checklist_tool_count", 0) + 1
+                        telemetry["checklist_tool_count"] = (
+                            telemetry.get("checklist_tool_count", 0) + 1
+                        )
                 else:
                     trip_msg = breaker.record_failure(
                         call.name, args, str(result_payload.get("error", ""))
@@ -957,9 +985,7 @@ class AgentRunner:
                 }
                 # Attach checklist snapshot whenever it changes
                 if call.name in _MANAGED_TOOLS and turn_state.checklist:
-                    tool_end_payload["checklist"] = (
-                        turn_state.checklist.to_dict()
-                    )
+                    tool_end_payload["checklist"] = turn_state.checklist.to_dict()
                 await self._emit_progress(progress_callback, tool_end_payload)
                 await self._emit_trace(
                     active_trace,
@@ -1031,7 +1057,11 @@ class AgentRunner:
                 )
 
             # Append steering if available
-            steering = self._collect_steering(consume_steering_messages, session_id=session_id, project_root=str(project_path))
+            steering = self._collect_steering(
+                consume_steering_messages,
+                session_id=session_id,
+                project_root=str(project_path),
+            )
             if steering:
                 outputs.extend(steering)
 
@@ -1233,7 +1263,10 @@ class AgentRunner:
                     return {"error": "questions list is empty"}, False
                 if state.checklist is not None:
                     for item in state.checklist.items:
-                        if item.id == "questions" and item.status in {"not_started", "doing"}:
+                        if item.id == "questions" and item.status in {
+                            "not_started",
+                            "doing",
+                        }:
                             item.status = "done"
                             break
                     state.checklist.save_to_skill_state(skill_state)
@@ -1317,7 +1350,9 @@ class AgentRunner:
                 if not raw_items:
                     return {"error": "items list is empty"}, False
                 if state.checklist is not None:
-                    return {"error": "Checklist already exists. Use checklist_update."}, False
+                    return {
+                        "error": "Checklist already exists. Use checklist_update."
+                    }, False
 
                 now_iso = datetime.now(timezone.utc).isoformat()
                 items = [
@@ -1374,7 +1409,9 @@ class AgentRunner:
 
             elif tool_name == "checklist_add_items":
                 if state.checklist is None:
-                    return {"error": "No checklist exists. Call checklist_create first."}, False
+                    return {
+                        "error": "No checklist exists. Call checklist_create first."
+                    }, False
                 raw_items = args.get("items", [])
                 if not raw_items:
                     return {"error": "items list is empty"}, False
@@ -1431,11 +1468,15 @@ class AgentRunner:
                             if msg and msg.status == MSG_PENDING:
                                 MessageLog.update_message_status(mid, MSG_ACTIVE)
                     except Exception:
-                        log.warning("Failed to persist added checklist items", exc_info=True)
+                        log.warning(
+                            "Failed to persist added checklist items", exc_info=True
+                        )
 
                 msg = f"Added {len(added)} item(s)."
                 if skipped:
-                    msg += f" Skipped {len(skipped)} duplicate(s): {', '.join(skipped)}."
+                    msg += (
+                        f" Skipped {len(skipped)} duplicate(s): {', '.join(skipped)}."
+                    )
                 return {
                     "ok": True,
                     "message": msg,
@@ -1446,7 +1487,9 @@ class AgentRunner:
 
             elif tool_name == "checklist_update":
                 if state.checklist is None:
-                    return {"error": "No checklist exists. Call checklist_create first."}, False
+                    return {
+                        "error": "No checklist exists. Call checklist_create first."
+                    }, False
                 item_id = str(args.get("item_id", ""))
                 new_status = str(args.get("status", ""))
                 justification = args.get("justification")

@@ -534,9 +534,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                                 },
                                 "source": {
                                     "type": "string",
-                                    "description": (
-                                        "Provenance tag (e.g. 'steering')"
-                                    ),
+                                    "description": ("Provenance tag (e.g. 'steering')"),
                                 },
                                 "message_id": {
                                     "type": "string",
@@ -591,9 +589,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                                 },
                                 "source": {
                                     "type": "string",
-                                    "description": (
-                                        "Provenance tag (e.g. 'steering')"
-                                    ),
+                                    "description": ("Provenance tag (e.g. 'steering')"),
                                 },
                                 "message_id": {
                                     "type": "string",
