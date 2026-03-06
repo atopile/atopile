@@ -28,6 +28,8 @@ zig, graph, faebryk, fabll, domain-layer, build-server, frontend
 
 # Tooling
 
+- use `bun` for JS/TS tooling in this repo
+- do not use `npm` or invoke `vite` directly
 - testing is done via `ato dev test`
 
 # Pull Requests

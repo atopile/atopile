@@ -2,5 +2,6 @@ node_modules/
 dist/
 webview-dist/
 hub-dist/
+layout-dist/
 out/
 *.vsix
