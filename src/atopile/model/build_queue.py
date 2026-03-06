@@ -800,7 +800,7 @@ class BuildQueue:
         if msg.error and status == BuildStatus.FAILED:
             log.error("BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error)
         else:
-            log.info(
+            log.debug(
                 "BuildQueue: Build %s completed with status %s", msg.build_id, status
             )
 

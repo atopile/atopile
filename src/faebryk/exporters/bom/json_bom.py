@@ -391,4 +391,4 @@ def write_json_bom(
     with open(path, "w", encoding="utf-8") as f:
         f.write(bom.to_json())
 
-    logger.info(f"Wrote JSON BOM to {path}")
+    logger.debug(f"Wrote JSON BOM to {path}")

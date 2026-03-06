@@ -65,7 +65,7 @@ def export_datasheets(
 
     # Collect unique datasheet URLs
     unique_urls: set[str] = set()
-    logger.info(f"Exporting datasheets to: {path}")
+    logger.debug(f"Exporting datasheets to: {path}")
 
     for m in fabll.Traits.get_implementor_objects(
         F.has_datasheet.bind_typegraph(tg=app.tg)
@@ -148,7 +148,7 @@ def _download_datasheet(url: str, path: Path):
                     if match:
                         lcsc_id = match.group(1)
                         redirected_url = f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
-                        logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
+                        logger.debug(f"LCSC 301 redirect: {url} -> {redirected_url}")
                         _download_datasheet(redirected_url, path)
                         return  # Exit after successful recursive download
 

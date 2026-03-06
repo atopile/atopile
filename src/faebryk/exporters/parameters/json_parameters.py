@@ -663,7 +663,7 @@ def make_json_variables(
     # Combine and deduplicate (some nodes might have both traits)
     all_nodes = {id(n): n for n in modules + interfaces}
 
-    logger.info(
+    logger.debug(
         f"JSON Variables: Found {len(modules)} modules, {len(interfaces)} interfaces"
     )
 
@@ -696,7 +696,7 @@ def make_json_variables(
             logger.debug(f"Could not process module {module}: {e}")
             continue
 
-    logger.info(
+    logger.debug(
         f"JSON Variables: {len(flat_nodes)} total nodes, "
         f"{len(nodes_with_params)} with params, {total_params} total params"
     )
@@ -719,7 +719,7 @@ def make_json_variables(
 
     pruned_roots = prune_empty_nodes(root_nodes)
 
-    logger.info(f"JSON Variables: Built tree with {len(pruned_roots)} root nodes")
+    logger.debug(f"JSON Variables: Built tree with {len(pruned_roots)} root nodes")
 
     return JSONVariablesOutput(build_id=build_id, nodes=pruned_roots)
 
@@ -763,4 +763,4 @@ def write_variables_to_file(
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-        logger.info(f"Wrote {fmt} variables to {output_path}")
+        logger.debug(f"Wrote {fmt} variables to {output_path}")

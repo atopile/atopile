@@ -184,7 +184,7 @@ def _get_bomline(
         Supplier_Partnumber=supplier_partnumber,
     )
 
-    logger.info(f"BOMLine for {module_name} {out=}")
+    logger.debug(f"BOMLine for {module_name} {out=}")
 
     return out
 
