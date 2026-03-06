@@ -22,7 +22,6 @@ class LayoutService:
         self._manager: PcbManager | None = None
         self._current_path: Path | None = None
         self._watcher: FileWatcher | None = None
-        self._watcher_task: asyncio.Task | None = None
         self._ws_clients: set[WebSocket] = set()
 
     def load(self, path: Path) -> None:
@@ -50,8 +49,6 @@ class LayoutService:
     async def start_watcher(self) -> None:
         if self._watcher:
             self._watcher.stop()
-        if self._watcher_task and not self._watcher_task.done():
-            self._watcher_task.cancel()
 
         if not self._current_path:
             return
@@ -63,7 +60,7 @@ class LayoutService:
             glob=self._current_path.name,
             debounce_s=1.0,
         )
-        self._watcher_task = asyncio.create_task(self._watcher.run())
+        await self._watcher.watch()
 
     async def add_ws_client(self, ws: WebSocket) -> None:
         await ws.accept()

@@ -305,6 +305,53 @@ body {
   font-size: var(--font-size-base);
 }
 
+/* Panel 3D state primitives */
+.panel-3d-state-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.panel-3d-state p {
+  font-size: 0.85rem;
+  color: var(--vscode-descriptionForeground);
+}
+
+.panel-3d-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--vscode-editorWidget-border);
+  border-top-color: var(--vscode-progressBar-background);
+  border-radius: 50%;
+  animation: panel-shared-spin 1s linear infinite;
+}
+
+.panel-3d-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-font-family);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.panel-3d-badge-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--vscode-descriptionForeground);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: panel-shared-spin 0.8s linear infinite;
+  opacity: 0.7;
+}
+
 /* Inline error — compact error callout */
 .inline-error {
   margin-top: var(--spacing-sm);
@@ -354,3 +401,8 @@ body {
   padding: 0 var(--spacing-xs);
 }
 
+@keyframes panel-shared-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

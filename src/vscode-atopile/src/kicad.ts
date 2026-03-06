@@ -44,6 +44,15 @@ async function loadBuilds(): Promise<BuildTarget[]> {
     return builds;
 }
 
+export async function getBuildTarget(projectRoot: string, target: string): Promise<BuildTarget> {
+    const builds = await loadBuilds();
+    const build = builds.find((candidate) => candidate.root === projectRoot && candidate.name === target);
+    if (!build) {
+        throw new Error(`No build config found for target "${target}".`);
+    }
+    return build;
+}
+
 /**
  * Creates a new environment object with Python virtual environment-specific
  * variables removed or modified. This is to prevent KiCad's potential
@@ -152,10 +161,6 @@ export async function openPcb(pcbPath: string): Promise<void> {
  * @throws Error if the build target cannot be found.
  */
 export async function openKicadForBuild(projectRoot: string, target: string): Promise<void> {
-    const builds = await loadBuilds();
-    const build = builds.find((b) => b.root === projectRoot && b.name === target);
-    if (!build) {
-        throw new Error(`No build config found for target "${target}".`);
-    }
+    const build = await getBuildTarget(projectRoot, target);
     await openPcb(build.pcb_path);
 }

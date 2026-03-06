@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { getBuildTarget } from "./kicad";
 
 const webviewCommandMap = {
   browseFolder: "atopile.browseFolder",
@@ -37,7 +38,7 @@ export class WebviewManager implements vscode.WebviewViewProvider {
   ): void {
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri],
+      localResourceRoots: this._getLocalResourceRoots(),
     };
 
     if (webviewView.viewType === WebviewManager.logsViewId) {
@@ -66,7 +67,7 @@ export class WebviewManager implements vscode.WebviewViewProvider {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [this._extensionUri],
+        localResourceRoots: this._getLocalResourceRoots(),
       }
     );
 
@@ -94,6 +95,45 @@ export class WebviewManager implements vscode.WebviewViewProvider {
 
       if (msg.type === "openPanel" && typeof msg.panelId === "string") {
         this.openPanel(msg.panelId);
+        return;
+      }
+
+      if (msg.type === "resolveThreeDModel") {
+        try {
+          const projectRoot = typeof msg.projectRoot === "string" ? msg.projectRoot : undefined;
+          const target = typeof msg.target === "string" ? msg.target : undefined;
+          if (!projectRoot || !target) {
+            throw new Error("Select a project and target first.");
+          }
+
+          const build = await getBuildTarget(projectRoot, target);
+          const modelUri = vscode.Uri.file(build.model_path);
+          const exists = await this._pathExists(modelUri);
+          const stat = exists ? await vscode.workspace.fs.stat(modelUri) : undefined;
+
+          if (requestId) {
+            void webview.postMessage({
+              type: "response",
+              requestId,
+              ok: true,
+              result: {
+                exists,
+                modelPath: build.model_path,
+                modelUri: webview.asWebviewUri(modelUri).toString(),
+                version: stat?.mtime ?? null,
+              },
+            });
+          }
+        } catch (err) {
+          if (requestId) {
+            void webview.postMessage({
+              type: "response",
+              requestId,
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         return;
       }
 
@@ -154,11 +194,12 @@ export class WebviewManager implements vscode.WebviewViewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none';
-      script-src 'unsafe-inline' ${csp};
-      style-src 'unsafe-inline' ${csp};
-      img-src ${csp} data:;
-      font-src ${csp};
-      connect-src ws://localhost:*;" />
+      script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' ${csp} https:;
+      style-src 'unsafe-inline' ${csp} https:;
+      img-src ${csp} https: data: blob:;
+      font-src ${csp} https: data:;
+      connect-src ${csp} https: http: ws://localhost:* ws: wss: blob:;
+      worker-src ${csp} https: blob:;" />
   <link rel="stylesheet" href="${styleUri}" />
   <title>atopile</title>
 </head>
@@ -172,5 +213,21 @@ export class WebviewManager implements vscode.WebviewViewProvider {
   <script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
+  }
+
+  private _getLocalResourceRoots(): vscode.Uri[] {
+    return [
+      this._extensionUri,
+      ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ?? []),
+    ];
+  }
+
+  private async _pathExists(uri: vscode.Uri): Promise<boolean> {
+    try {
+      await vscode.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

@@ -112,6 +112,8 @@ export class WebviewWebSocketServer {
         coreSocket.sendAction("startBuild", {
           projectRoot: msg.projectRoot as string,
           targets: msg.targets as string[],
+          includeTargets: msg.includeTargets as string[] | undefined,
+          excludeTargets: msg.excludeTargets as string[] | undefined,
         });
         return;
       }
