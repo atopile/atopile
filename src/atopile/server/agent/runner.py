@@ -91,27 +91,24 @@ _MAX_CHECKLIST_NUDGES = 1
 _MAX_MESSAGE_NUDGES = 2
 
 _DESIGN_REVIEW_ITEMS = [
-    ChecklistItem(
-        id="review_requirements",
-        description="Verify all user requirements are addressed in the design",
-        criteria="Each stated requirement has corresponding ato implementation",
-        source="review",
-    ),
-    ChecklistItem(
-        id="review_build",
-        description="Verify design builds successfully",
-        criteria="Build passes or unsolvable issue clearly identified",
-        source="review",
-    ),
-    ChecklistItem(
-        id="review_interfaces",
-        description="Verify standard library interfaces used where applicable",
-        criteria=(
+    {
+        "description": "Verify all user requirements are addressed in the design",
+        "criteria": "Each stated requirement has corresponding ato implementation",
+        "source": "review",
+    },
+    {
+        "description": "Verify design builds successfully",
+        "criteria": "Build passes or unsolvable issue clearly identified",
+        "source": "review",
+    },
+    {
+        "description": "Verify standard library interfaces used where applicable",
+        "criteria": (
             "I2C, SPI, CAN, Ethernet, Power used instead of raw "
             "Electrical/ElectricLogic"
         ),
-        source="review",
-    ),
+        "source": "review",
+    },
 ]
 
 # If the model responds without tool calls to this many consecutive
@@ -232,6 +229,26 @@ def _has_ato_file_changes(traces: list[ToolTrace]) -> bool:
         if path.endswith(".ato"):
             return True
     return False
+
+
+def _next_checklist_item_id(existing_items: list[ChecklistItem]) -> str:
+    numeric_ids = [int(item.id) for item in existing_items if item.id.isdigit()]
+    next_id = (max(numeric_ids) + 1) if numeric_ids else (len(existing_items) + 1)
+    return str(next_id)
+
+
+def _resolve_checklist_item(
+    items: list[ChecklistItem], requested_id: str
+) -> ChecklistItem | None:
+    target = next((item for item in items if item.id == requested_id), None)
+    if target is not None:
+        return target
+
+    digits = "".join(ch for ch in requested_id if ch.isdigit())
+    if not digits:
+        return None
+
+    return next((item for item in items if item.id == digits), None)
 
 
 @dataclass
@@ -1710,36 +1727,25 @@ class AgentRunner:
                     return {"error": "items list is empty"}, False
 
                 now_iso = datetime.now(timezone.utc).isoformat()
-                items = []
-                for it in raw_items:
-                    items.append(
-                        ChecklistItem(
-                            id=str(it["id"]),
-                            description=str(it["description"]),
-                            criteria=str(it["criteria"]),
-                            requirement_id=it.get("requirement_id"),
-                            source=it.get("source"),
-                            message_id=_resolve_message_id(
-                                it.get("message_id"), state.current_message_id
-                            ),
-                        )
-                    )
-
                 existing = state.checklist
                 created = existing is None
                 if existing is None:
                     state.checklist = Checklist(items=[], created_at=time.time())
                     existing = state.checklist
 
-                existing_ids = {item.id for item in existing.items}
                 added: list[ChecklistItem] = []
-                skipped: list[str] = []
-                for item in items:
-                    if item.id in existing_ids:
-                        skipped.append(item.id)
-                        continue
+                for it in raw_items:
+                    item = ChecklistItem(
+                        id=_next_checklist_item_id(existing.items),
+                        description=str(it["description"]),
+                        criteria=str(it["criteria"]),
+                        requirement_id=it.get("requirement_id"),
+                        source=it.get("source"),
+                        message_id=_resolve_message_id(
+                            it.get("message_id"), state.current_message_id
+                        ),
+                    )
                     existing.items.append(item)
-                    existing_ids.add(item.id)
                     added.append(item)
 
                 state.checklist.save_to_skill_state(skill_state)
@@ -1778,15 +1784,11 @@ class AgentRunner:
                     message = f"Checklist created with {len(added)} items."
                 else:
                     message = f"Checklist already existed. Added {len(added)} item(s)."
-                if skipped:
-                    message += (
-                        f" Skipped {len(skipped)} duplicate(s): {', '.join(skipped)}."
-                    )
                 return {
                     "ok": True,
                     "message": message,
                     "added": len(added),
-                    "skipped": skipped,
+                    "skipped": [],
                     "checklist": state.checklist.summary_text(),
                 }, True
 
@@ -1800,16 +1802,10 @@ class AgentRunner:
                     return {"error": "items list is empty"}, False
 
                 now_iso = datetime.now(timezone.utc).isoformat()
-                existing_ids = {i.id for i in state.checklist.items}
-                skipped: list[str] = []
                 added: list[ChecklistItem] = []
                 for it in raw_items:
-                    item_id = str(it["id"])
-                    if item_id in existing_ids:
-                        skipped.append(item_id)
-                        continue
                     item = ChecklistItem(
-                        id=item_id,
+                        id=_next_checklist_item_id(state.checklist.items + added),
                         description=str(it["description"]),
                         criteria=str(it["criteria"]),
                         requirement_id=it.get("requirement_id"),
@@ -1819,7 +1815,6 @@ class AgentRunner:
                         ),
                     )
                     added.append(item)
-                    existing_ids.add(item_id)
                 state.checklist.items.extend(added)
                 state.checklist.save_to_skill_state(skill_state)
 
@@ -1856,15 +1851,11 @@ class AgentRunner:
                         )
 
                 msg = f"Added {len(added)} item(s)."
-                if skipped:
-                    msg += (
-                        f" Skipped {len(skipped)} duplicate(s): {', '.join(skipped)}."
-                    )
                 return {
                     "ok": True,
                     "message": msg,
                     "added": len(added),
-                    "skipped": skipped,
+                    "skipped": [],
                     "checklist": state.checklist.summary_text(),
                 }, True
 
@@ -1876,18 +1867,17 @@ class AgentRunner:
                 item_id = str(args.get("item_id", ""))
                 new_status = str(args.get("status", ""))
                 justification = args.get("justification")
-                target = next(
-                    (i for i in state.checklist.items if i.id == item_id), None
-                )
+                target = _resolve_checklist_item(state.checklist.items, item_id)
                 if target is None:
                     return {"error": f"Item '{item_id}' not found."}, False
+                canonical_item_id = target.id
                 # Treat same-status transitions as a harmless no-op.
                 # This avoids errors when auto-doing already moved an
                 # item to "doing" before the model explicitly requests it.
                 if target.status == new_status:
                     return {
                         "ok": True,
-                        "item_id": item_id,
+                        "item_id": canonical_item_id,
                         "status": new_status,
                         "noop": True,
                         "checklist": state.checklist.summary_text(),
@@ -1896,7 +1886,7 @@ class AgentRunner:
                 if new_status not in allowed:
                     return {
                         "error": (
-                            f"Cannot transition '{item_id}' from "
+                            f"Cannot transition '{canonical_item_id}' from "
                             f"'{target.status}' to '{new_status}'. "
                             f"Allowed: {sorted(allowed) or 'none (terminal)'}."
                         )
@@ -1913,7 +1903,7 @@ class AgentRunner:
 
                         MessageLog.update_checklist_item(
                             session_id,
-                            item_id,
+                            canonical_item_id,
                             new_status,
                             str(justification) if justification else None,
                         )
@@ -1927,7 +1917,7 @@ class AgentRunner:
                 # review before the turn ends.
                 result: dict[str, Any] = {
                     "ok": True,
-                    "item_id": item_id,
+                    "item_id": canonical_item_id,
                     "status": new_status,
                     "checklist": state.checklist.summary_text(),
                 }
@@ -1943,7 +1933,14 @@ class AgentRunner:
                 ):
                     state.review_items_injected = True
                     for ri in _DESIGN_REVIEW_ITEMS:
-                        state.checklist.items.append(copy.deepcopy(ri))
+                        state.checklist.items.append(
+                            ChecklistItem(
+                                id=_next_checklist_item_id(state.checklist.items),
+                                description=ri["description"],
+                                criteria=ri["criteria"],
+                                source=ri["source"],
+                            )
+                        )
                     state.checklist.save_to_skill_state(skill_state)
                     result["review_items_added"] = True
                     result["checklist"] = state.checklist.summary_text()

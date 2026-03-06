@@ -509,7 +509,8 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "name": "checklist_create",
             "description": (
                 "Define success criteria for the current task. Call this before "
-                "starting complex work."
+                "starting complex work. Item IDs are assigned automatically by "
+                "the system."
             ),
             "parameters": {
                 "type": "object",
@@ -519,10 +520,6 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                         "items": {
                             "type": "object",
                             "properties": {
-                                "id": {
-                                    "type": "string",
-                                    "description": "Short ID (e.g. R1, step-1)",
-                                },
                                 "description": {
                                     "type": "string",
                                     "description": "What needs to be done",
@@ -549,7 +546,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                                     ),
                                 },
                             },
-                            "required": ["id", "description", "criteria"],
+                            "required": ["description", "criteria"],
                             "additionalProperties": False,
                         },
                         "minItems": 1,
@@ -565,7 +562,8 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "Append new items to an existing checklist. Use this when "
                 "steering updates or new requirements introduce additional "
-                "tasks after the checklist has been created."
+                "tasks after the checklist has been created. Item IDs are "
+                "assigned automatically by the system."
             ),
             "parameters": {
                 "type": "object",
@@ -575,10 +573,6 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                         "items": {
                             "type": "object",
                             "properties": {
-                                "id": {
-                                    "type": "string",
-                                    "description": "Short ID (e.g. S1, steer-1)",
-                                },
                                 "description": {
                                     "type": "string",
                                     "description": "What needs to be done",
@@ -604,7 +598,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
                                     ),
                                 },
                             },
-                            "required": ["id", "description", "criteria"],
+                            "required": ["description", "criteria"],
                             "additionalProperties": False,
                         },
                         "minItems": 1,
@@ -619,7 +613,7 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "name": "checklist_update",
             "description": (
                 "Update the status of a checklist item. Can only change status, "
-                "not content."
+                "not content. Use the numeric item_id shown in the checklist."
             ),
             "parameters": {
                 "type": "object",

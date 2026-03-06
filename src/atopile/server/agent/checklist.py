@@ -102,9 +102,10 @@ class Checklist:
             "Continue with the next item."
         )
         lines.append(
-            "All tools are available. Call checklist_update to mark the next "
-            "item as 'doing', then use project_read_file / project_edit_file / "
-            "build_run / etc. to implement it."
+            "All tools are available. Call checklist_update with the numeric "
+            "item_id shown in the checklist to mark the next item as 'doing', "
+            "then use project_read_file / project_edit_file / build_run / etc. "
+            "to implement it."
         )
         return "\n".join(lines)
 
