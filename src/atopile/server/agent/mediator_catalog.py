@@ -62,7 +62,9 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         category="research",
         purpose="Search the public web using Exa.",
         tooltip=(
-            "Use web search for current external facts not present in project files."
+            "Use web search for current external facts, vendor datasheets, "
+            "hardware design guides, and application notes not present in "
+            "project files."
         ),
         inputs=[
             "query",
@@ -84,6 +86,10 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "look up",
             "external docs",
             "release notes",
+            "datasheet",
+            "application note",
+            "design guide",
+            "pinout",
         ],
     ),
     "examples_list": ToolDirectoryItem(
@@ -396,23 +402,6 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
             "wrapper package",
         ],
         tool_role="execution",
-    ),
-    "datasheet_read": ToolDirectoryItem(
-        name="datasheet_read",
-        category="parts",
-        purpose="Attach a component datasheet PDF for model-native reading.",
-        tooltip="Resolve datasheet from LCSC id/url/path and attach it as a PDF.",
-        inputs=["lcsc_id", "url", "path", "target", "query"],
-        typical_output="found, openai_file_id, source, filename",
-        keywords=[
-            "datasheet",
-            "pdf",
-            "pinout",
-            "electrical characteristics",
-            "absolute maximum",
-            "timing",
-            "application notes",
-        ],
     ),
     "packages_search": ToolDirectoryItem(
         name="packages_search",

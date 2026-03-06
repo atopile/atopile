@@ -572,6 +572,7 @@ def _stdlib_matches_parameter_query(item: Any, query: str) -> bool:
 
 
 _TOOL_REGISTRY_VALIDATED = False
+_INTERNAL_ONLY_TOOL_HANDLERS = frozenset({"datasheet_read"})
 
 
 def _ensure_tool_registry_consistency(definitions: list[dict[str, Any]]) -> None:
@@ -586,7 +587,9 @@ def _ensure_tool_registry_consistency(definitions: list[dict[str, Any]]) -> None
     handler_tool_names = set(_TOOL_HANDLERS.keys())
 
     missing_handlers = sorted(schema_tool_names - handler_tool_names)
-    missing_schemas = sorted(handler_tool_names - schema_tool_names)
+    missing_schemas = sorted(
+        (handler_tool_names - schema_tool_names) - _INTERNAL_ONLY_TOOL_HANDLERS
+    )
     if missing_handlers or missing_schemas:
         parts: list[str] = []
         if missing_handlers:
@@ -1110,8 +1113,9 @@ async def _tool_parts_install(
             "success": True,
             "lcsc_id": lcsc_id,
             "implementation_hint": (
-                "For complex parts (MCUs/sensors/PMICs/radios), call "
-                "datasheet_read next and verify required support circuitry."
+                "For complex parts (MCUs/sensors/PMICs/radios), use "
+                "web_search next to inspect the vendor datasheet, hardware "
+                "design guides, and required support circuitry."
             ),
             **result,
         }
@@ -1126,8 +1130,9 @@ async def _tool_parts_install(
         "success": True,
         "lcsc_id": lcsc_id,
         "implementation_hint": (
-            "For complex parts (MCUs/sensors/PMICs/radios), call "
-            "datasheet_read next and verify required support circuitry."
+            "For complex parts (MCUs/sensors/PMICs/radios), use "
+            "web_search next to inspect the vendor datasheet, hardware "
+            "design guides, and required support circuitry."
         ),
         **result,
     }

@@ -711,7 +711,8 @@ def _build_function_call_outputs_for_model(
                             "parts_install completed."
                             f"{lcsc_suffix} "
                             "If this is a complex part (MCU/sensor/PMIC/radio), "
-                            "call datasheet_read next to verify recommended "
+                            "use web_search next to inspect the vendor datasheet "
+                            "and hardware design guidance for recommended "
                             "application circuitry and pin constraints."
                         ),
                     }

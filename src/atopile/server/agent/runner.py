@@ -67,7 +67,6 @@ _WORK_TOOLS = frozenset(
         "parts_install",
         "packages_search",
         "packages_install",
-        "datasheet_read",
         "design_diagnostics",
         "autolayout_request_screenshot",
         "layout_set_component_position",

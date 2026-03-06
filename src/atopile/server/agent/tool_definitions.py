@@ -56,26 +56,6 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
-            "name": "datasheet_read",
-            "description": (
-                "Resolve a datasheet PDF, upload it to OpenAI Files, and attach "
-                "it for model-native reading. Prefer lcsc_id for graph-first "
-                "project resolution."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "lcsc_id": {"type": ["string", "null"]},
-                    "url": {"type": ["string", "null"]},
-                    "path": {"type": ["string", "null"]},
-                    "target": {"type": ["string", "null"]},
-                    "query": {"type": ["string", "null"]},
-                },
-                "additionalProperties": False,
-            },
-        },
-        {
-            "type": "function",
             "name": "packages_search",
             "description": (
                 "Search atopile registry packages (module/library dependencies)."

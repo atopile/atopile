@@ -326,8 +326,8 @@ Use `design_questions` any time you have multiple design decisions to gather. It
 
 ## Phase 3: Implement end-to-end (do not stop)
 
-7. **Create package wrappers** — one per IC. Install parts, read datasheets, map pins to interfaces.
-   - Before committing to an unfamiliar IC, motor driver, PMIC, RF part, or other high-risk part, do a brief `web_search` pass to compare families, confirm the typical topology, and find reference-circuit guidance.
+7. **Create package wrappers** — one per IC. Install parts, inspect vendor datasheets/design guides with `web_search`, map pins to interfaces.
+   - Before committing to an unfamiliar IC, motor driver, PMIC, RF part, or other high-risk part, do a brief `web_search` pass to inspect the vendor datasheet/design guide, compare families, confirm the typical topology, and find reference-circuit guidance.
    - Keep wrappers reusable across projects. Expose generic chip capabilities and keep board-specific grouping and role naming in `main.ato` or project modules above the wrapper.
    - Start each wrapper as a basic reusable boundary with the minimum standard interfaces needed to validate the package target and integrate the design. Add more interfaces or alternate pin mappings later only if integration proves they are needed.
 8. **Validate package targets first** — use `workspace_list_targets` to discover package targets automatically exposed by local packages, then build/fix wrappers and other submodules before attempting the full design.

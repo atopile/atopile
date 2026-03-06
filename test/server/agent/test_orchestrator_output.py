@@ -88,7 +88,7 @@ def test_build_function_call_outputs_nudges_after_parts_install() -> None:
     assert outputs[1]["role"] == "user"
     text = outputs[1]["content"][0]["text"]
     assert "parts_install completed" in text
-    assert "datasheet_read next" in text
+    assert "web_search next" in text
 
 
 def _make_api_status_error(

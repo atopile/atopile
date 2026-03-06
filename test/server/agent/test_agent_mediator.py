@@ -25,7 +25,6 @@ def test_get_tool_directory_includes_core_tools() -> None:
     names = {entry["name"] for entry in directory}
 
     assert "project_read_file" in names
-    assert "datasheet_read" in names
     assert "project_create_path" in names
     assert "project_move_path" in names
     assert "project_delete_path" in names
@@ -57,7 +56,7 @@ def test_discovery_tool_names_includes_read_tools() -> None:
     assert "stdlib_list" in names
     assert "parts_search" in names
     assert "autolayout_status" in names
-    assert "datasheet_read" in names
+    assert "web_search" in names
 
 
 def test_execution_tool_names_includes_edit_tools() -> None:
@@ -136,14 +135,14 @@ def test_tool_directory_describes_parts_install_package_flow() -> None:
     )
 
 
-def test_suggest_tools_surfaces_datasheet_for_lcsc_id() -> None:
+def test_suggest_tools_surfaces_web_search_for_lcsc_id() -> None:
     suggestions = mediator.suggest_tools(
         message="check datasheet for C521608 and review pin functions",
         history=[],
         selected_targets=["default"],
         tool_memory={},
     )
-    assert "datasheet_read" in _suggestion_names(suggestions)
+    assert "web_search" in _suggestion_names(suggestions)
 
 
 def test_suggest_tools_surfaces_bom_tool_for_bom_requests() -> None:

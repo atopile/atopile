@@ -62,7 +62,7 @@ Prefer the most concrete current activity:
 2. waiting on user input
 3. active build or build review
 4. active file edits
-5. part/package search or datasheet reading
+5. part/package search or vendor-document research
 6. planning or general review
 
 If multiple events exist, summarize the most recent meaningful step, not the whole history.
@@ -75,7 +75,7 @@ Use these patterns:
 - `project_edit_file`, `project_create_*`, `project_move_path`: editing or restructuring
 - `parts_search`, `parts_install`: selecting or installing parts
 - `packages_search`, `packages_install`, `package_create_local`: creating or wiring packages
-- `datasheet_read`: checking datasheet details
+- `web_search`: checking vendor datasheets, design guides, or application notes
 - `build_run`: running a build
 - `build_logs_search`, `design_diagnostics`: reviewing failures or diagnostics
 - checklist `doing -> done`: moving from one milestone to the next

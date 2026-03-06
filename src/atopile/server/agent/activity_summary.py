@@ -253,12 +253,6 @@ class ActivitySummarizer:
             )
         if tool_name == "workspace_list_targets":
             return "Discovering package build targets"
-        if tool_name == "datasheet_read":
-            return (
-                f"Reading the datasheet for {identifier}"
-                if identifier
-                else "Reading the component datasheet"
-            )
         return "Working through the next implementation step"
 
     def _summarize_tool_end(self, trace: dict[str, Any]) -> str:
@@ -295,9 +289,6 @@ class ActivitySummarizer:
             if isinstance(total, int) and total > 0:
                 return f"Found {total} build targets in the workspace"
             return "Workspace targets loaded"
-        if tool_name == "datasheet_read":
-            return "Datasheet loaded for pin and constraint review"
-
         message = _clean_text(result.get("message"), max_chars=68)
         if message:
             return message

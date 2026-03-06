@@ -108,7 +108,8 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "name": "web_search",
             "description": (
                 "Search the public web using Exa and return ranked sources "
-                "for current/unknown external facts."
+                "for current/unknown external facts, including vendor "
+                "datasheets, hardware design guides, and application notes."
             ),
             "parameters": {
                 "type": "object",

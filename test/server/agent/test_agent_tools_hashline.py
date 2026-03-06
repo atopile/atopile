@@ -57,7 +57,6 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "examples_read_ato" in names
     assert "stdlib_list" in names
     assert "stdlib_get_item" in names
-    assert "datasheet_read" in names
     assert "design_diagnostics" in names
     assert "project_create_path" in names
     assert "project_move_path" in names
@@ -629,7 +628,7 @@ def test_project_create_and_move_path_execute(tmp_path: Path) -> None:
     assert (tmp_path / "docs" / "notes.md").exists()
 
 
-def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
+def test_parts_install_returns_web_search_followup_hint(monkeypatch) -> None:
     def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
         assert lcsc_id == "C521608"
         assert project_root == "/tmp/project"
@@ -651,7 +650,7 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
 
     assert result["success"] is True
     assert result["lcsc_id"] == "C521608"
-    assert "datasheet_read" in result["implementation_hint"]
+    assert "web_search" in result["implementation_hint"]
 
 
 def test_package_create_local_creates_dependency_and_stub(tmp_path: Path) -> None:

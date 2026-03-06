@@ -155,14 +155,14 @@ Search the atopile package registry before building from scratch.
 
 When `packages_search` returns no match for a needed IC, connector, or module, **create a local driver package** instead of giving up or asking the user to find one.
 
-> **Tools:** `parts_search` → `web_search` (when comparing families, validating topology, or finding reference circuits) → `parts_install(create_package=true)` → `datasheet_read` → `project_read_file` (to inspect the generated wrapper package) → `project_edit_file` (to refine that wrapper in place) → `workspace_list_targets` (to discover nested package targets).
+> **Tools:** `parts_search` → `web_search` (to compare families, inspect the vendor datasheet/design guide, validate topology, and find reference circuits) → `parts_install(create_package=true)` → `project_read_file` (to inspect the generated wrapper package) → `project_edit_file` (to refine that wrapper in place) → `workspace_list_targets` (to discover nested package targets).
 
 **Step-by-step recipe:**
 
 1. **Find the part**: Use `parts_search` to find the LCSC component (e.g., `parts_search("LAN8742A")`).
 2. **Research the part family when needed**: Use `web_search` before locking the part if you need application notes, common reference circuits, family comparisons, or confirmation that the chosen topology is standard and robust.
 3. **Install as a local package**: Use `parts_install` with the LCSC ID and `create_package=true`. This installs the raw part and generates the canonical reusable wrapper package under `packages/`.
-4. **Read the datasheet**: Use `datasheet_read` with the LCSC ID to get pin functions, electrical specs, and typical application circuit.
+4. **Inspect the vendor docs with web search**: Use `web_search` with the part number, vendor, and terms like `datasheet`, `hardware design`, `application circuit`, `decoupling`, `pinout`, or the specific pins/features you need.
 5. **Read the generated files**: Inspect the generated wrapper under `packages/<PartName>/<PartName>.ato` and the installed raw part it imports to see available interfaces and exact pin names.
 6. **Refine the wrapper package** if needed:
    - Treat `packages/<PartName>/<PartName>.ato` as the canonical wrapper module for that part.
@@ -242,7 +242,7 @@ module TI_TCA9548A:
 - Prefer `parts_install(create_package=true)` for ICs and other reusable wrapped parts.
 - Use `package_create_local` only when you need an empty local package scaffold without installing a physical part.
 - Always **read the generated package and raw part `.ato` files** to see the exact signal names (e.g., `package.VCC`, `package.SDA`). Do NOT guess pin names.
-- Always read the datasheet to get correct pin mapping, constraints, and recommended decoupling.
+- Always use `web_search` to inspect the vendor datasheet and hardware design notes to get correct pin mapping, constraints, and recommended decoupling.
 - The generated package file under `packages/` is the canonical wrapper for that part. Refine it in place.
 - The raw installed file is a `component` — never edit it.
 - Build a basic reusable wrapper first. Expose the minimum standard interfaces needed to validate the package and integrate it, then come back and add more pin mappings or interfaces later if integration requires them.
@@ -259,13 +259,13 @@ module TI_TCA9548A:
 
 Choose components using generics + constraints wherever possible.
 
-> **Tools:** `parts_search` / `parts_install` for specific ICs/connectors. `datasheet_read` for electrical specs. `web_search` for application notes or alternative parts.
+> **Tools:** `parts_search` / `parts_install` for specific ICs/connectors. `web_search` for vendor datasheets, hardware design guides, application notes, and alternative parts.
 
 - Use stdlib generics (`Resistor`, `Capacitor`, `Inductor`, `Diode`, `LED`, `Fuse`) with value + package constraints for auto-picking. Prefer generics over locked parts.
 - Use `parts_search` only when a specific part is needed (IC, connector, specialized component).
 - Use `web_search` before locking a part when you need to compare candidate families, confirm the recommended implementation pattern, or find a solid reference circuit/application note.
 - Use `parts_install` for parts that need explicit LCSC IDs, and prefer `create_package=true` when the part should become a reusable local wrapper.
-- Use `datasheet_read` after selecting a concrete part to validate exact pins, limits, and supporting circuitry.
+- Use `web_search` after selecting a concrete part to inspect the vendor datasheet, exact pins, limits, and supporting circuitry.
 - Lock only high-risk parts (MCU, PMIC, RF, connectors). Leave commodity passives auto-picked.
 - Before inventing a project-local `interface`, check whether the wrapper boundary can be represented as:
   - a stdlib interface (`SPI`, `UART`, `SWD`, `USB2_0_IF`, etc.)

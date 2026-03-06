@@ -127,7 +127,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 ## Web Search & Datasheets
 - Use `web_search` for external/current web facts when project files do not contain the answer.
 - Use `web_search` for component-family research, application notes, reference designs, and topology validation before locking unfamiliar or high-risk parts.
-- Use `datasheet_read` when a component datasheet is needed; it attaches a PDF for native model reading. Prefer `lcsc_id` for graph-first resolution.
+- Use `web_search` when a component datasheet or hardware design guide is needed. Search for the vendor datasheet, application notes, and support-circuit guidance before locking wrapper details.
 
 ## Build Diagnostics
 - Prefer `build_logs_search` with explicit `log_levels`/`stage` filters when logs are noisy.
