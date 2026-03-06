@@ -455,7 +455,13 @@ def _pick_tree(
                 continue
 
             g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
-            item.solver.simplify(g, tg, terminal=False, relevant=relevant)
+            item.solver.simplify(
+                g,
+                tg,
+                terminal=False,
+                relevant=relevant,
+                targets=relevant,
+            )
 
             groups = find_independent_groups(item.modules)
             group_solvers = [next(item.solver.fork()) for _ in range(len(groups))]

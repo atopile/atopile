@@ -245,9 +245,16 @@ class MutatorUtils:
     def try_extract_superset(
         self,
         po: F.Parameters.is_parameter_operatable,
+        domain_default: bool = False,
     ) -> F.Literals.is_literal | None:
         # TODO check if empty set?
-        return po.try_extract_superset()
+        if lit := po.try_extract_superset():
+            return lit
+        if not domain_default:
+            return None
+        if not (param := po.as_parameter.try_get()):
+            return None
+        return param.domain_set(g=self.mutator.G_transient, tg=self.mutator.tg_in)
 
     def try_extract_subset(
         self,
@@ -778,7 +785,11 @@ class MutatorUtils:
         trait: T,
     ) -> T:
         # TODO should be somewhere else
-        from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+        from faebryk.core.solver.mutator import (
+            is_irrelevant,
+            is_relevant,
+            is_simplification_target,
+        )
 
         trait_t = type(trait)
         assert trait_t is not fabll.Node
@@ -792,7 +803,7 @@ class MutatorUtils:
                     name=trait.name.get().get_single(),
                     detail=trait.detail.get().get_single() or None,
                 )
-            case is_relevant() | is_irrelevant():
+            case is_relevant() | is_irrelevant() | is_simplification_target():
                 pass
             case _:
                 raise ValueError(f"Unknown trait type: {trait_t}")

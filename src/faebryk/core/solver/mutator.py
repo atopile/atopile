@@ -98,6 +98,18 @@ class is_irrelevant(fabll.Node):
     is_monotone = fabll.Traits.MakeEdge(is_monotone.MakeChild().put_on_type())
 
 
+class is_simplification_target(fabll.Node):
+    """
+    Marks a parameter operable as an explicit target of the current solve.
+
+    This is transient solver state, used by algorithms that should only act on the
+    params the caller is actively simplifying for.
+    """
+
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    is_monotone = fabll.Traits.MakeEdge(is_monotone.MakeChild().put_on_type())
+
+
 @dataclass
 class Transformations:
     mutated: dict[
@@ -1697,7 +1709,7 @@ class Mutator:
             # Preserve the location-based name before it's lost
             new_param_p.set_name(param_obj.get_full_name())
 
-        for trait_t in (is_relevant, is_irrelevant):
+        for trait_t in (is_relevant, is_irrelevant, is_simplification_target):
             MutatorUtils.try_copy_trait(p_op, new_param_op, trait_t)
 
         return self._mutate(
