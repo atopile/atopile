@@ -75,17 +75,11 @@ export const useSelectContext = useSelectCtx
 /* ---- Select (root) ---- */
 
 export interface SelectProps {
-  /** Available items */
   items: SelectItem[]
-  /** Controlled value */
   value?: string | null
-  /** Default value (uncontrolled) */
   defaultValue?: string | null
-  /** Change handler */
   onValueChange?: (value: string | null) => void
-  /** Disable the entire select */
   disabled?: boolean
-  /** Extra class appended to root div */
   className?: string
   children: ReactNode
 }
@@ -106,7 +100,6 @@ export function Select({
   const isControlled = valueProp !== undefined
   const value = isControlled ? valueProp : internalValue
 
-  // Sync highlight to selected item on open, reset on close
   const setOpen = useCallback(
     (v: boolean) => {
       setOpenRaw(v)
@@ -128,7 +121,6 @@ export function Select({
     [isControlled, onValueChange],
   )
 
-  // Clamp highlightedIndex when the item list shrinks (e.g. filtered combobox)
   useEffect(() => {
     if (items.length > 0 && highlightedIndex >= items.length) {
       setHighlightedIndex(items.length - 1)
@@ -227,7 +219,6 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
 
   useDropdownPanel(open, setOpen, ref, handleKeyDown)
 
-  // Scroll highlighted item into view
   useEffect(() => {
     if (!open || highlightedIndex < 0 || !ref.current) return
     const el = ref.current.querySelector('[data-highlighted="true"]') as HTMLElement
@@ -246,7 +237,6 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
 /* ---- SelectGroup ---- */
 
 export interface SelectGroupProps {
-  /** Optional group label */
   label?: string
   children: ReactNode
   className?: string
@@ -323,12 +313,6 @@ export function SelectSeparator({ className = '' }: SelectSeparatorProps) {
   return <div role="separator" className={`select-separator ${className}`.trim()} />
 }
 
-/* ================================================================
-   DropdownMenu — multi-select variant of Select.
-   Shares useDropdownPanel for dismiss behavior.
-   Uses a simpler context (just open/close, no single-value state).
-   ================================================================ */
-
 interface DropdownMenuContextValue {
   open: boolean
   setOpen: (v: boolean) => void
@@ -341,8 +325,6 @@ function useDropdownMenuCtx() {
   if (!ctx) throw new Error('DropdownMenu.* must be used inside <DropdownMenu>')
   return ctx
 }
-
-/* ---- DropdownMenu (root) ---- */
 
 export interface DropdownMenuProps {
   className?: string
@@ -359,8 +341,6 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
     </DropdownMenuCtx.Provider>
   )
 }
-
-/* ---- DropdownMenuTrigger ---- */
 
 export interface DropdownMenuTriggerProps extends HTMLAttributes<HTMLButtonElement> {
   'aria-invalid'?: boolean
@@ -387,8 +367,6 @@ export function DropdownMenuTrigger({
   )
 }
 
-/* ---- DropdownMenuContent ---- */
-
 export interface DropdownMenuContentProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
 }
@@ -407,8 +385,6 @@ export function DropdownMenuContent({ children, className = '', ...props }: Drop
     </div>
   )
 }
-
-/* ---- DropdownMenuCheckboxItem ---- */
 
 export interface DropdownMenuCheckboxItemProps {
   checked?: boolean

@@ -130,7 +130,7 @@ def compile(
 def install(
     ide: str = typer.Argument(
         None,
-        help="IDE to install the extension for: 'cursor' or 'vscode'",
+        help="IDE to install the extension for: 'cursor', 'vscode', or 'antigravity'",
     ),
 ):
     """
@@ -142,9 +142,11 @@ def install(
         cli = shutil.which("code") or "code"
     elif ide == "cursor":
         cli = shutil.which("cursor") or "cursor"
+    elif ide == "antigravity":
+        cli = shutil.which("antigravity") or "antigravity"
     else:
         typer.secho(
-            "Usage: ato dev install <cursor|vscode>",
+            "Usage: ato dev install <cursor|vscode|antigravity>",
             fg=typer.colors.RED,
         )
         raise typer.Exit(1)

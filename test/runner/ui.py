@@ -30,9 +30,6 @@ aggregator = None  # type: ignore
 REPORT_HTML_PATH = Path("artifacts/test-report.html")
 REMOTE_BASELINES_DIR = Path("artifacts/baselines/remote")
 
-# Path to the log viewer static files
-LOG_VIEWER_DIST_DIR = Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
-
 
 def set_globals(agg_ref, report_path, remote_dir):
     """Set global references from main module."""
@@ -236,31 +233,13 @@ async def get_baseline_status(commit: str):
 
 @router.get("/logs")
 async def serve_log_viewer(request: Request):
-    """Serve the log viewer HTML page with injected API URL."""
-    html_path = LOG_VIEWER_DIST_DIR / "log-viewer.html"
-    if not html_path.exists():
-        return HTMLResponse(
-            content="<html><body><h1>Log viewer not found</h1>"
-            f"<p>Expected at: {html_path}</p>"
-            "<p>Run 'npm run build' in src/ui-server to build it.</p></body></html>",
-            status_code=404,
-        )
-
-    content = html_path.read_text(encoding="utf-8")
-
-    # Inject the API URL so the log viewer can connect to this server's WebSocket
-    # The log viewer JavaScript expects window.__ATOPILE_API_URL__ to be set
-    host = request.headers.get("host", "127.0.0.1")
-    # Ensure we use http (not https) for local server
-    api_url = f"http://{host}"
-    inject_script = f"""<script>
-    window.__ATOPILE_API_URL__ = "{api_url}";
-    </script>
-    """
-    # Insert the script right after <head>
-    content = content.replace("<head>", f"<head>\n    {inject_script}", 1)
-
-    return HTMLResponse(content=content)
+    """Fail fast: the standalone log viewer was removed with the webview rewrite."""
+    _ = request
+    return HTMLResponse(
+        content="<html><body><h1>Log viewer unavailable</h1>"
+        "<p>Use the VS Code logs panel instead.</p></body></html>",
+        status_code=410,
+    )
 
 
 @router.websocket("/ws/state")

@@ -1,42 +1,38 @@
-/* ============================================
-   Select — dropdown select primitive
-   Matches VS Code dropdown styling
-   ============================================ */
-
 .select-root {
   position: relative;
-  display: inline-flex;
-  flex-direction: column;
 }
 
-/* ---- Trigger ---- */
-
 .select-trigger {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  height: 28px;
-  padding: 0 var(--spacing-md);
-  background: var(--vscode-dropdown-background, var(--bg-tertiary));
-  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
-  border-radius: var(--radius-sm);
-  color: var(--vscode-dropdown-foreground, var(--text-primary));
-  font-size: var(--font-size-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: border-color var(--transition-fast);
-  white-space: nowrap;
+  min-width: 180px;
   width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--vscode-dropdown-background, var(--bg-secondary));
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .select-trigger:hover {
-  border-color: var(--vscode-focusBorder, var(--border-color));
+  border-color: var(--border-hover);
 }
 
 .select-trigger:focus-visible {
-  outline: 2px solid var(--info);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
+}
+
+.select-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .select-trigger[aria-invalid="true"] {
@@ -58,8 +54,6 @@
   transform: rotate(180deg);
 }
 
-/* ---- Value (placeholder styling) ---- */
-
 .select-value {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -68,8 +62,6 @@
 .select-value-placeholder {
   color: var(--text-muted);
 }
-
-/* ---- Content (dropdown panel) ---- */
 
 .select-content {
   position: absolute;
@@ -85,8 +77,6 @@
   box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
   z-index: var(--z-dropdown);
   padding: var(--spacing-xs) 0;
-
-  /* enter animation */
   opacity: 0;
   animation: select-in 0.1s ease-out forwards;
 }
@@ -96,7 +86,6 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Scrollbar */
 .select-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -110,8 +99,6 @@
   background: transparent;
 }
 
-/* ---- Group ---- */
-
 .select-group {
   padding: 0;
 }
@@ -124,8 +111,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-
-/* ---- Item ---- */
 
 .select-item {
   display: flex;
@@ -154,43 +139,24 @@
 
 .select-item[data-disabled="true"] {
   color: var(--text-muted);
-  cursor: default;
-}
-
-.select-item[data-disabled="true"]:hover {
-  background: transparent;
-}
-
-.select-item .select-item-check {
-  color: var(--info);
-  flex-shrink: 0;
-  width: 14px;
-}
-
-/* ---- Disabled trigger ---- */
-
-.select-trigger:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.select-trigger:disabled:hover {
-  border-color: var(--vscode-dropdown-border, var(--border-subtle));
+.select-item-check {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
 }
-
-/* ---- Label (standalone inside content) ---- */
 
 .select-label {
   padding: var(--spacing-xs) var(--spacing-md);
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
-
-/* ---- Separator ---- */
 
 .select-separator {
   height: 1px;
   margin: var(--spacing-xs) 0;
-  background: var(--border-subtle);
+  background: var(--border-color);
 }

@@ -1072,6 +1072,11 @@ class LogHandler(RichHandler):
                     ato_tb = render_ato_traceback(exc_value)
                     if record.exc_info:
                         py_tb = json.dumps(_extract_traceback_frames(*record.exc_info))
+                elif exc_value and hasattr(exc_value, "__rich_console__"):
+                    message = str(exc_value) or type(exc_value).__name__
+                    ato_tb = render_ato_traceback(exc_value)
+                    if record.exc_info:
+                        py_tb = json.dumps(_extract_traceback_frames(*record.exc_info))
                 else:
                     message = record.getMessage()
                     if record.exc_info and record.exc_info[1]:

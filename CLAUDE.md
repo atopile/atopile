@@ -30,6 +30,11 @@ zig, graph, faebryk, fabll, domain-layer, build-server, frontend
 
 - testing is done via `ato dev test`
 
+# Pull Requests
+
+- follow the PR template at `.github/pull_request_template.md`
+- prefix branch names with `fix/` or `feature/`
+
 # SKILLS
 
 For detailed explanations of submodules read the correspondig skill.
@@ -52,6 +57,8 @@ Skills are located in `.claude/skills/`.
 │ └── SKILL.md
 ├── faebryk
 │ └── SKILL.md
+├── frontend
+│ └── SKILL.md
 ├── graph
 │ └── SKILL.md
 ├── library
@@ -65,5 +72,5 @@ Skills are located in `.claude/skills/`.
 ├── atopile-skills
 │ └── SKILL.md
 └── solver
-└── SKILL.md
+  └── SKILL.md
 ```

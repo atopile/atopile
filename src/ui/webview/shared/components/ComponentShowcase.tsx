@@ -39,10 +39,6 @@ import { TreeRowHeader } from './TreeRowHeader'
 
 import './ComponentShowcase.css'
 
-/* ================================================================
-   Sample data
-   ================================================================ */
-
 interface Payment {
   id: string
   amount: number
@@ -90,10 +86,6 @@ const selectItems = [
   { label: 'Date', value: 'date' },
 ]
 
-/* ================================================================
-   Showcase
-   ================================================================ */
-
 export function ComponentShowcase() {
   const [checkA, setCheckA] = useState(false)
   const [checkB, setCheckB] = useState(true)
@@ -109,7 +101,6 @@ export function ComponentShowcase() {
     <div className="showcase">
       <h1>Shared Component Library</h1>
 
-      {/* ---- Badge ---- */}
       <section className="showcase-section">
         <h2>Badge</h2>
 
@@ -142,7 +133,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Button ---- */}
       <section className="showcase-section">
         <h2>Button</h2>
 
@@ -174,7 +164,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- SearchBar ---- */}
       <section className="showcase-section">
         <h2>SearchBar</h2>
 
@@ -200,7 +189,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Checkbox ---- */}
       <section className="showcase-section">
         <h2>Checkbox</h2>
         <div className="showcase-row">
@@ -214,7 +202,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Spinner ---- */}
       <section className="showcase-section">
         <h2>Spinner</h2>
         <div className="showcase-row">
@@ -227,7 +214,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Skeleton ---- */}
       <section className="showcase-section">
         <h2>Skeleton</h2>
         <div className="showcase-col" style={{ maxWidth: 320 }}>
@@ -239,7 +225,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Separator ---- */}
       <section className="showcase-section">
         <h2>Separator</h2>
         <div className="showcase-col" style={{ maxWidth: 320 }}>
@@ -257,7 +242,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Tooltip ---- */}
       <section className="showcase-section">
         <h2>Tooltip</h2>
         <TooltipProvider delayDuration={200}>
@@ -292,7 +276,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- HoverCard ---- */}
       <section className="showcase-section">
         <h2>HoverCard</h2>
         <div className="showcase-row">
@@ -320,7 +303,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Alert ---- */}
       <section className="showcase-section">
         <h2>Alert</h2>
         <div className="showcase-col">
@@ -349,7 +331,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Field ---- */}
       <section className="showcase-section">
         <h2>Field</h2>
         <div className="showcase-grid">
@@ -377,7 +358,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Select ---- */}
       <section className="showcase-section">
         <h2>Select</h2>
         <div className="showcase-grid">
@@ -458,7 +438,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- Table ---- */}
       <section className="showcase-section">
         <h2>Table</h2>
         <Table>
@@ -502,7 +481,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- DataTable ---- */}
       <section className="showcase-section">
         <h2>DataTable</h2>
         <DataTable
@@ -520,7 +498,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- EmptyState ---- */}
       <section className="showcase-section">
         <h2>EmptyState</h2>
         <div className="showcase-card">
@@ -533,7 +510,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- PanelSearchBox ---- */}
       <section className="showcase-section">
         <h2>PanelSearchBox</h2>
         <div style={{ maxWidth: 320 }}>
@@ -547,7 +523,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- PublisherBadge ---- */}
       <section className="showcase-section">
         <h2>PublisherBadge</h2>
         <div className="showcase-row">
@@ -558,7 +533,6 @@ export function ComponentShowcase() {
 
       <hr className="showcase-divider" />
 
-      {/* ---- TreeRowHeader ---- */}
       <section className="showcase-section">
         <h2>TreeRowHeader</h2>
         <div className="showcase-col" style={{ maxWidth: 400 }}>

@@ -50,7 +50,6 @@ export function HoverCard({ children }: HoverCardProps) {
     closeTimerRef.current = setTimeout(() => setOpen(false), closeDelayRef.current)
   }, [])
 
-  // Expose delay setters via refs so trigger can configure them
   const ctx: HoverCardContextValue & {
     delayRef: React.MutableRefObject<number>
     closeDelayRef: React.MutableRefObject<number>
@@ -81,9 +80,7 @@ export function HoverCard({ children }: HoverCardProps) {
 
 export interface HoverCardTriggerProps {
   children?: ReactNode
-  /** Delay before opening in ms (default 200) */
   delay?: number
-  /** Delay before closing in ms (default 200) */
   closeDelay?: number
   className?: string
 }
@@ -100,22 +97,17 @@ export function HoverCardTrigger({
   }
   const { show, hide, triggerRef } = ctx
 
-  // Sync delay values
   ctx.delayRef.current = delay
   ctx.closeDelayRef.current = closeDelay
-
-  const handlers = {
-    onMouseEnter: show,
-    onMouseLeave: hide,
-    onFocus: show,
-    onBlur: hide,
-  }
 
   return (
     <span
       ref={triggerRef as React.RefObject<HTMLSpanElement>}
       className={`hover-card-trigger ${className}`.trim()}
-      {...handlers}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
     >
       {children}
     </span>
@@ -129,7 +121,6 @@ type Side = 'top' | 'bottom' | 'left' | 'right'
 export interface HoverCardContentProps {
   children: ReactNode
   side?: Side
-  /** Offset from trigger in px (default 8) */
   sideOffset?: number
   className?: string
 }
@@ -179,7 +170,6 @@ export function HoverCardContent({
         break
     }
 
-    // Clamp to viewport
     left = Math.max(4, Math.min(left, window.innerWidth - c.width - 4))
     top = Math.max(4, Math.min(top, window.innerHeight - c.height - 4))
 

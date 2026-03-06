@@ -34,46 +34,4 @@ html:has(.showcase) #root {
 .showcase-section h2 {
   font-size: var(--font-size-lg, 16px);
   font-weight: 600;
-  margin-bottom: var(--spacing-sm);
-  color: var(--text-primary);
-}
-
-.showcase-section h3 {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-top: var(--spacing-md);
-  margin-bottom: var(--spacing-xs);
-}
-
-.showcase-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  align-items: center;
-}
-
-.showcase-col {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.showcase-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--spacing-md);
-}
-
-.showcase-card {
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-md);
-  background: var(--bg-secondary);
-}
-
-.showcase-divider {
-  border: none;
-  border-top: 1px solid var(--border-subtle);
-  margin: var(--spacing-lg) 0;
 }

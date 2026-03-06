@@ -1,0 +1,16 @@
+{
+  "name": "pcb-layout-editor",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --outfile=../static/editor.js --format=esm --sourcemap",
+    "watch": "esbuild src/main.ts --bundle --outfile=../static/editor.js --format=esm --sourcemap --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "puppeteer": "^24.37.5",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "earcut": "^3.0.0"
+  }
+}
