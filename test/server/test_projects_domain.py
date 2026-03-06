@@ -65,7 +65,9 @@ builds:
     package = projects_domain.create_local_package(project_root, "rp2040", "RP2040")
 
     package_root = Path(package["path"])
-    package_ato = yaml.safe_load((package_root / "ato.yaml").read_text(encoding="utf-8"))
+    package_ato = yaml.safe_load(
+        (package_root / "ato.yaml").read_text(encoding="utf-8")
+    )
 
     assert (package_root / "layouts").is_dir()
     assert not (package_root / "elec").exists()
@@ -89,7 +91,9 @@ builds:
 
     projects_domain.create_local_package(project_root, "Raspberry_Pi_RP2040", "RP2040")
 
-    project_ato = yaml.safe_load((project_root / "ato.yaml").read_text(encoding="utf-8"))
+    project_ato = yaml.safe_load(
+        (project_root / "ato.yaml").read_text(encoding="utf-8")
+    )
 
     assert project_ato["dependencies"] == [
         {
@@ -122,7 +126,9 @@ dependencies:
 
     projects_domain.create_local_package(project_root, "Raspberry_Pi_RP2040", "RP2040")
 
-    project_ato = yaml.safe_load((project_root / "ato.yaml").read_text(encoding="utf-8"))
+    project_ato = yaml.safe_load(
+        (project_root / "ato.yaml").read_text(encoding="utf-8")
+    )
 
     assert project_ato["dependencies"] == [
         {

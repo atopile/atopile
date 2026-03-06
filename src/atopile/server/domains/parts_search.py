@@ -218,7 +218,9 @@ def handle_get_install_identifier(
     if not manufacturer:
         manufacturer = "UNKNOWN"
     if not partno:
-        raise errors.UserException(f"Part {lcsc_id} is missing a manufacturer part number")
+        raise errors.UserException(
+            f"Part {lcsc_id} is missing a manufacturer part number"
+        )
 
     identifier = f"{manufacturer}_{partno}"
     return {

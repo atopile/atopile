@@ -237,7 +237,9 @@ def _discover_nested_project_targets(project_root: Path) -> list[BuildTarget]:
 
     for dirpath, dirnames, filenames in os.walk(project_root):
         dirnames[:] = [
-            d for d in dirnames if d not in _SKIP_PROJECT_DIRS and not d.startswith("{{")
+            d
+            for d in dirnames
+            if d not in _SKIP_PROJECT_DIRS and not d.startswith("{{")
         ]
         current_dir = Path(dirpath)
         if current_dir == project_root or "ato.yaml" not in filenames:
@@ -359,7 +361,9 @@ def _normalize_local_package_slug(name: str) -> str:
 def _normalize_package_file_stem(name: str) -> str:
     stem = re.sub(r"[^0-9A-Za-z_]+", "_", name.strip()).strip("_")
     if not stem:
-        raise ValueError("Package name must include at least one valid filename character")
+        raise ValueError(
+            "Package name must include at least one valid filename character"
+        )
     return stem
 
 
@@ -373,7 +377,11 @@ def _ensure_file_dependency(
 
     rel_path = f"./{dependency_path.relative_to(project_root).as_posix()}"
     for dep in dependencies:
-        if isinstance(dep, dict) and dep.get("type") == "file" and dep.get("path") == rel_path:
+        if (
+            isinstance(dep, dict)
+            and dep.get("type") == "file"
+            and dep.get("path") == rel_path
+        ):
             if dep.get("identifier") != identifier:
                 dep["identifier"] = identifier
                 save_ato_yaml(ato_file, data)
