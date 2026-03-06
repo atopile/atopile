@@ -775,7 +775,7 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     rim.position.set(-12, 18, 62);
     scene.add(rim);
 
-    const glow = new THREE.PointLight(0xff8a32, 0.7, 0, 2);
+    const glow = new THREE.PointLight(0xf95015, 0.7, 0, 2);
     glow.position.set(-28, 22, 18);
     scene.add(glow);
 
