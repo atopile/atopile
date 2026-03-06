@@ -18,6 +18,7 @@ html, body {
 }
 
 body {
+  /* Use VS Code's native UI font throughout */
   font-family: var(--font-sans);
   font-size: var(--vscode-font-size, 14px);
   font-weight: var(--vscode-font-weight, 400);
@@ -25,39 +26,11 @@ body {
   color: var(--vscode-foreground, var(--text-primary));
   background: var(--vscode-sideBar-background, var(--bg-primary));
   -webkit-font-smoothing: antialiased;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   transition: var(--theme-transition);
-  position: relative;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(249, 80, 21, 0.05) 1px, transparent 0),
-    linear-gradient(90deg, rgba(249, 80, 21, 0.05) 1px, transparent 0);
-  background-size: 48px 48px;
-  opacity: var(--app-grid-opacity);
-}
-
-body::after {
-  content: '';
-  position: fixed;
-  top: 34%;
-  left: 50%;
-  width: min(72vw, 860px);
-  height: min(52vw, 560px);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(249, 80, 21, 0.1) 0, transparent 68%);
-  opacity: var(--app-glow-opacity);
 }
 
 #root {
-  position: relative;
-  z-index: 1;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -128,9 +101,8 @@ body::after {
   /* Edge-to-edge: minimal horizontal padding */
   position: relative;
   padding: 0 var(--spacing-xs);
-  border-bottom: 1px solid var(--border-subtle);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 92%, white 8%) 0%, var(--bg-primary) 100%);
+  border-bottom: 1px solid var(--accent);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   /* Match VS Code native header height (35px is standard for view titles) */
   height: 35px;
   min-height: 35px;
@@ -144,20 +116,20 @@ body::after {
   top: 0;
   left: 0;
   right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, var(--accent) 16%, transparent 70%);
+  height: 2px;
+  background: var(--accent);
 }
 
 .header-title {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  font-family: var(--font-display);
-  font-weight: 700;
+  /* Match VS Code native view title styling */
+  font-family: var(--font-sans);
+  font-weight: 500;
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .header-logo {
@@ -187,7 +159,7 @@ body::after {
 
 .icon-btn:hover {
   background: var(--bg-hover);
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .icon-btn.active {

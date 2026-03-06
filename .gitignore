@@ -216,11 +216,6 @@ examples/**/parts/
 !examples/i2c/parts/Texas_Instruments_TCA9548APWR/
 !examples/i2c/parts/Texas_Instruments_TCA9548APWR/**
 
-# DeepPCB/autolayout development artifacts
-demo_deeppcb*.py
-demo_sensor_board.py
-examples/**/.autolayout_*/
-
 # KiCad temporary files
 **/~*.kicad_pcb.lck
 **/~_autosave-*.kicad_pcb.lck

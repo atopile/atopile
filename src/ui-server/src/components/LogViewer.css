@@ -1047,6 +1047,10 @@ body.lv-is-resizing {
   padding-left: var(--spacing-sm);
 }
 
+.lv-tracebacks-expanded {
+  flex-direction: column;
+}
+
 .lv-trace {
   padding: 0;
 }

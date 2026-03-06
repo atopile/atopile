@@ -11,11 +11,9 @@
   padding: 2px 8px;
   border: 1px solid transparent;
   border-radius: 9999px;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xxs);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
   width: fit-content;
@@ -34,9 +32,8 @@
 /* ---- Variant: secondary ---- */
 
 .badge-secondary {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
 /* ---- Variant: outline ---- */

@@ -213,37 +213,6 @@ export const api = {
     variables: (buildId: string) => fetchJSON<VariablesData>(`/api/build/${buildId}/variables`),
   },
 
-  // Autolayout
-  autolayout: {
-    start: (projectRoot: string, buildTarget: string, constraints: Record<string, unknown> = {}, options: Record<string, unknown> = {}) =>
-      fetchJSON<{ job: Record<string, unknown> }>('/api/autolayout/jobs', {
-        method: 'POST',
-        body: JSON.stringify({
-          projectRoot,
-          buildTarget,
-          constraints,
-          options,
-        }),
-      }),
-
-    listJobs: (projectRoot?: string) => {
-      const query = projectRoot
-        ? `?project_root=${encodeURIComponent(projectRoot)}`
-        : '';
-      return fetchJSON<{ jobs: Record<string, unknown>[] }>(`/api/autolayout/jobs${query}`);
-    },
-
-    getJob: (jobId: string, refresh: boolean = false) =>
-      fetchJSON<{ job: Record<string, unknown> }>(
-        `/api/autolayout/jobs/${encodeURIComponent(jobId)}?refresh=${refresh ? 'true' : 'false'}`
-      ),
-
-    listCandidates: (jobId: string, refresh: boolean = false) =>
-      fetchJSON<{ candidates: Record<string, unknown>[] }>(
-        `/api/autolayout/jobs/${encodeURIComponent(jobId)}/candidates?refresh=${refresh ? 'true' : 'false'}`
-      ),
-  },
-
   // Logs
   logs: {
     buildIds: (limit: number = 200) =>

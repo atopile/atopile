@@ -9,7 +9,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as which from 'which';
 import { getProjectRoot } from './utilities';
-import { getAtopileWorkspaceFolders, getWorkspaceFolders, getWorkspaceFolder } from './vscodeapi';
+import { getAtopileWorkspaceFolders } from './vscodeapi';
 import * as vscode from 'vscode';
 import { isWebIdeHost } from './environment';
 
@@ -334,32 +334,9 @@ export async function resolveAtoBinForWorkspace(): Promise<{
     settings: ISettings;
     atoBin: AtoBinLocator;
 } | null> {
-    const allWorkspaces = getWorkspaceFolders();
+    // Try atopile workspace folders first (folders containing ato.yaml)
     const atopileWorkspaces = await getAtopileWorkspaceFolders();
-    const byUri = new Map(allWorkspaces.map((w) => [w.uri.toString(), w] as const));
-
-    // Prefer the active editor workspace first in multi-root windows.
-    const activeWorkspace = vscode.window.activeTextEditor?.document?.uri
-        ? getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
-        : undefined;
-
-    // Then prefer project root, then other atopile workspaces, then remaining workspaces.
-    const orderedCandidates = new Map<string, vscode.WorkspaceFolder>();
-    const addCandidate = (workspace: vscode.WorkspaceFolder | undefined) => {
-        if (!workspace) return;
-        orderedCandidates.set(workspace.uri.toString(), workspace);
-    };
-
-    addCandidate(activeWorkspace);
-    addCandidate(await getProjectRoot());
     for (const workspace of atopileWorkspaces) {
-        addCandidate(byUri.get(workspace.uri.toString()) ?? workspace);
-    }
-    for (const workspace of allWorkspaces) {
-        addCandidate(workspace);
-    }
-
-    for (const workspace of orderedCandidates.values()) {
         const settings = await getWorkspaceSettings(workspace);
         const atoBin = await getAtoBin(settings);
         if (atoBin) {
@@ -367,21 +344,14 @@ export async function resolveAtoBinForWorkspace(): Promise<{
         }
     }
 
-    // Fall back to implicit defaults if no workspace candidate resolves.
-    const atoBin = await getAtoBin();
+    // Fall back to default project root
+    const projectRoot = await getProjectRoot();
+    const settings = await getWorkspaceSettings(projectRoot);
+    const atoBin = await getAtoBin(settings);
     if (!atoBin) {
         return null;
     }
-    return {
-        settings: {
-            cwd: process.cwd(),
-            workspace: '',
-            ato: undefined,
-            from: undefined,
-            telemetry: undefined,
-        },
-        atoBin,
-    };
+    return { settings, atoBin };
 }
 
 

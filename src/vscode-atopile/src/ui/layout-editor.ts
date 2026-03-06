@@ -61,8 +61,10 @@ class LayoutEditorWebview extends BaseWebview {
             `connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} ws: wss:`,
         ].join('; ');
 
-        const editorUri = webview.asWebviewUri(
-            vscode.Uri.file(getAndCheckResource('layout-editor/editor.js'))
+        const editorUri = this.getWebviewUri(
+            webview,
+            getAndCheckResource('layout-editor/editor.js'),
+            true,
         ).toString();
         const bridgeRuntimeUri = this.getWebviewUri(
             webview,
