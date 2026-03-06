@@ -970,7 +970,13 @@ class AgentRunner:
                 interrupt_messages = self._collect_interrupts(
                     consume_interrupt_messages
                 )
-                if interrupt_messages or self._is_stop_requested(stop_requested):
+                stop_now = self._is_stop_requested(stop_requested)
+                stop_steering_messages = (
+                    _consume_steering_updates(consume_steering_messages)
+                    if stop_now and not interrupt_messages
+                    else []
+                )
+                if interrupt_messages or stop_now:
                     await self._emit_progress(
                         progress_callback,
                         {
@@ -979,7 +985,11 @@ class AgentRunner:
                             "detail_text": (
                                 "Responding to your interruption"
                                 if interrupt_messages
-                                else "Preparing a handoff"
+                                else (
+                                    "Reviewing your latest guidance before stopping"
+                                    if stop_steering_messages
+                                    else "Preparing a handoff"
+                                )
                             ),
                         },
                     )
@@ -987,7 +997,13 @@ class AgentRunner:
                         messages=(
                             _build_interrupt_inputs_for_model(interrupt_messages)
                             if interrupt_messages
-                            else _build_stop_inputs_for_model()
+                            else (
+                                _build_interrupt_inputs_for_model(
+                                    stop_steering_messages
+                                )
+                                if stop_steering_messages
+                                else _build_stop_inputs_for_model()
+                            )
                         ),
                         instructions=instructions,
                         tools=[],
@@ -1299,12 +1315,21 @@ class AgentRunner:
 
             interrupt_messages = self._collect_interrupts(consume_interrupt_messages)
             stop_now = self._is_stop_requested(stop_requested)
+            stop_steering_messages = (
+                _consume_steering_updates(consume_steering_messages)
+                if stop_now and not interrupt_messages
+                else []
+            )
 
             # Append steering if available
-            steering = self._collect_steering(
-                consume_steering_messages,
-                session_id=session_id,
-                project_root=str(project_path),
+            steering = (
+                []
+                if stop_steering_messages
+                else self._collect_steering(
+                    consume_steering_messages,
+                    session_id=session_id,
+                    project_root=str(project_path),
+                )
             )
             if steering and not interrupt_messages and not stop_now:
                 outputs.extend(steering)
@@ -1341,7 +1366,11 @@ class AgentRunner:
                         "detail_text": (
                             "Responding to your interruption"
                             if interrupt_messages
-                            else "Preparing a handoff"
+                            else (
+                                "Reviewing your latest guidance before stopping"
+                                if stop_steering_messages
+                                else "Preparing a handoff"
+                            )
                         ),
                         "loop": loops,
                         "tool_calls_total": len(traces),
@@ -1352,7 +1381,11 @@ class AgentRunner:
                     + (
                         _build_interrupt_inputs_for_model(interrupt_messages)
                         if interrupt_messages
-                        else _build_stop_inputs_for_model()
+                        else (
+                            _build_interrupt_inputs_for_model(stop_steering_messages)
+                            if stop_steering_messages
+                            else _build_stop_inputs_for_model()
+                        )
                     ),
                     instructions=instructions,
                     tools=[],
