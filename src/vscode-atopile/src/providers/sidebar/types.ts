@@ -127,18 +127,6 @@ export interface OpenInTerminalMessage {
   path: string;
 }
 
-export interface ListFilesMessage {
-  type: 'listFiles';
-  projectRoot: string;
-  includeAll?: boolean;
-}
-
-export interface LoadDirectoryMessage {
-  type: 'loadDirectory';
-  projectRoot: string;
-  directoryPath: string;
-}
-
 export interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
 }
@@ -183,8 +171,6 @@ export type WebviewMessage =
   | CreateFolderMessage
   | DuplicateFileMessage
   | OpenInTerminalMessage
-  | ListFilesMessage
-  | LoadDirectoryMessage
   | GetAtopileSettingsMessage
   | FetchProxyRequest
   | ThreeDModelBuildResultMessage

@@ -6,8 +6,7 @@
  *
  * Heavy logic is delegated to focused modules in ./sidebar/:
  * - types.ts: Message interfaces
- * - file-watcher.ts: File system watching
- * - file-operations.ts: File CRUD + listing
+ * - file-operations.ts: File CRUD
  * - action-handlers.ts: Open signals, KiCad, 3D, selection
  * - settings-handlers.ts: atopile settings sync + browse dialogs
  */
@@ -74,10 +73,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       postToWebview,
       logTag: 'SidebarProvider',
     });
-    this._fileOps = new SidebarFileOperations({
-      postToWebview,
-      notifyFilesChanged: () => {},
-    });
+    this._fileOps = new SidebarFileOperations({ postToWebview });
     this._actions = new SidebarActionHandlers({});
     this._settings = new SidebarSettingsHandlers({ postToWebview });
 
@@ -308,12 +304,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'openInTerminal':
         this._fileOps.openInTerminal(message.path);
-        break;
-      case 'listFiles':
-        this._fileOps.listFiles(message.projectRoot, message.includeAll ?? true);
-        break;
-      case 'loadDirectory':
-        this._fileOps.loadDirectory(message.projectRoot, message.directoryPath);
         break;
       case 'threeDModelBuildResult':
         this._actions.handleThreeDModelBuildResult(message.success, message.error);
