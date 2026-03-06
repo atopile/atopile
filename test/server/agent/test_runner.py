@@ -4,8 +4,8 @@ from pathlib import Path
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent.checklist import Checklist, ChecklistItem
-from atopile.server.agent.runner import AgentRunner
 from atopile.server.agent.provider import LLMResponse, ToolCall
+from atopile.server.agent.runner import AgentRunner
 
 
 class _StubProvider:
@@ -40,7 +40,11 @@ class _StubProvider:
                     ToolCall(
                         id="call_design_1",
                         name="design_questions",
-                        arguments_raw='{"context":"Need preferences","questions":[{"id":"Q1","question":"Pick one","options":["A","B"],"default":"A"}]}',
+                        arguments_raw=(
+                            '{"context":"Need preferences","questions":['
+                            '{"id":"Q1","question":"Pick one","options":["A","B"],'
+                            '"default":"A"}]}'
+                        ),
                         arguments={
                             "context": "Need preferences",
                             "questions": [
@@ -243,7 +247,10 @@ def test_model_commentary_preamble_is_emitted_as_progress(
             if self.calls == 1:
                 return LLMResponse(
                     id="resp_commentary",
-                    text="I'm going to inspect the project structure, then draft the controller architecture.",
+                    text=(
+                        "I'm going to inspect the project structure, then "
+                        "draft the controller architecture."
+                    ),
                     tool_calls=[],
                     phase="commentary",
                 )
@@ -296,7 +303,10 @@ def test_model_commentary_preamble_is_emitted_as_progress(
     assert any(
         event.get("phase") == "thinking"
         and event.get("detail_text")
-        == "I'm going to inspect the project structure, then draft the controller architecture."
+        == (
+            "I'm going to inspect the project structure, then draft the "
+            "controller architecture."
+        )
         for event in progress_events
     )
 

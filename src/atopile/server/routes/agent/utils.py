@@ -40,22 +40,12 @@ from .models import (
     session_not_found_detail,
 )
 from .state import (
-    cleanup_finished_runs,
     consume_run_steer_messages,
-    ensure_session_idle,
-    normalize_running_run_state,
     persist_sessions_state,
-    release_sync_turn,
-    reserve_background_run,
-    reserve_sync_turn,
-    reset_session_state,
     runs_by_id,
     runs_lock,
-    session_has_sync_turn,
     sessions_by_id,
     sessions_lock,
-    sync_turns_by_session,
-    sync_turns_lock,
 )
 
 _PROGRESS_DISABLE_VALUES = {"0", "false", "no", "off"}
@@ -187,7 +177,8 @@ async def run_turn_with_chain_recovery(
             raise
 
         log.warning(
-            "Invalidating stale response chain for session %s and retrying from local history",
+            "Invalidating stale response chain for session %s and retrying "
+            "from local history",
             session_id,
         )
         invalidate_session_response_chain(session)

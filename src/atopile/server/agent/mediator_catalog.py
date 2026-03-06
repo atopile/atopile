@@ -356,7 +356,9 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         name="workspace_list_targets",
         category="project",
         purpose="List workspace build targets.",
-        tooltip="Discover targets from nested ato.yaml files under the current project.",
+        tooltip=(
+            "Discover targets from nested ato.yaml files under the current project."
+        ),
         inputs=[],
         typical_output="projects, total_targets",
         keywords=["targets", "workspace builds", "subpackages", "ato.yaml"],

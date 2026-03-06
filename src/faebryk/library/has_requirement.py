@@ -17,7 +17,11 @@ class has_requirement(fabll.Node):
 
     Example ato usage:
         module PowerFrontEnd:
-            trait has_requirement<id="R1", text="40V input", criteria="Power path rated for 60V">
+            trait has_requirement<
+                id="R1",
+                text="40V input",
+                criteria="Power path rated for 60V",
+            >
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from typing import Any
-
 
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "not_started": {"doing"},

@@ -869,11 +869,11 @@ class MessageLog:
 
     @staticmethod
     def check_and_complete_messages(session_id: str) -> list[str]:
-        """Auto-transition active messages to done when all linked items are terminal."""
+        """Auto-transition active messages when linked items are terminal."""
         from atopile.server.agent.message_log import (
+            _TERMINAL_ITEM_STATUSES,
             MSG_ACTIVE,
             MSG_DONE,
-            _TERMINAL_ITEM_STATUSES,
         )
 
         completed_ids: list[str] = []

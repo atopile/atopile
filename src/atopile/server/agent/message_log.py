@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 # Message status constants
 MSG_PENDING = "pending"
 MSG_ACKNOWLEDGED = "acknowledged"

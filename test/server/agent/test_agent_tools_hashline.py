@@ -647,7 +647,14 @@ def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
 
 def test_package_create_local_creates_dependency_and_stub(tmp_path: Path) -> None:
     (tmp_path / "ato.yaml").write_text(
-        'requires-atopile: "^0.14.0"\npaths:\n  src: ./\nbuilds:\n  default:\n    entry: main.ato:App\n',
+        (
+            'requires-atopile: "^0.14.0"\n'
+            "paths:\n"
+            "  src: ./\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: main.ato:App\n"
+        ),
         encoding="utf-8",
     )
 
@@ -685,7 +692,15 @@ def test_workspace_list_targets_includes_nested_packages(tmp_path: Path) -> None
     package_dir = tmp_path / "packages" / "sensor-front-end"
     package_dir.mkdir(parents=True)
     (package_dir / "ato.yaml").write_text(
-        'requires-atopile: "^0.14.0"\nbuilds:\n  usage:\n    entry: sensor_front_end.ato:SensorFrontEnd\npackage:\n  identifier: local/sensor-front-end\n  version: 0.0.1\n',
+        (
+            'requires-atopile: "^0.14.0"\n'
+            "builds:\n"
+            "  usage:\n"
+            "    entry: sensor_front_end.ato:SensorFrontEnd\n"
+            "package:\n"
+            "  identifier: local/sensor-front-end\n"
+            "  version: 0.0.1\n"
+        ),
         encoding="utf-8",
     )
 
@@ -706,7 +721,14 @@ def test_workspace_list_targets_includes_nested_packages(tmp_path: Path) -> None
 
 def test_parts_install_create_package_wraps_part(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "ato.yaml").write_text(
-        'requires-atopile: "^0.14.0"\npaths:\n  src: ./\nbuilds:\n  default:\n    entry: main.ato:App\n',
+        (
+            'requires-atopile: "^0.14.0"\n'
+            "paths:\n"
+            "  src: ./\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: main.ato:App\n"
+        ),
         encoding="utf-8",
     )
 
@@ -753,8 +775,8 @@ def test_parts_install_create_package_wraps_part(monkeypatch, tmp_path: Path) ->
     assert result["created_package"] is True
     assert result["identifier"] == "local/infineon-bsc010n04ls"
     assert (
-        'from "parts/Infineon_BSC010N04LS/Infineon_BSC010N04LS.ato" import Infineon_BSC010N04LS_package'
-        in wrapper
+        'from "parts/Infineon_BSC010N04LS/Infineon_BSC010N04LS.ato" '
+        "import Infineon_BSC010N04LS_package" in wrapper
     )
     assert "module Infineon_BSC010N04LS:" in wrapper
     assert "    package = new Infineon_BSC010N04LS_package" in wrapper

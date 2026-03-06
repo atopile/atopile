@@ -7,8 +7,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from atopile.dataclasses import AppContext
 import atopile.server.routes.agent.state as agent_state
+from atopile.dataclasses import AppContext
 from atopile.server.routes.agent import main as agent_routes
 from atopile.server.routes.agent import utils as agent_utils
 from atopile.server.routes.agent.models import AgentRun
@@ -214,7 +214,8 @@ async def test_sync_chain_integrity_error_retries_without_last_response_id(
         calls.append(kwargs.get("previous_response_id"))
         if len(calls) == 1:
             raise RuntimeError(
-                "Model API request failed (400): No tool output found for function call call_123."
+                "Model API request failed (400): No tool output found for "
+                "function call call_123."
             )
 
         class Result:
@@ -276,7 +277,8 @@ async def test_background_chain_integrity_error_retries_without_last_response_id
         calls.append(kwargs.get("previous_response_id"))
         if len(calls) == 1:
             raise RuntimeError(
-                "Model API request failed (400): No tool output found for function call call_123."
+                "Model API request failed (400): No tool output found for "
+                "function call call_123."
             )
 
         class Result:

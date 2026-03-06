@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import inspect
-import json
 import logging
 import time
 import uuid
@@ -16,29 +15,26 @@ from typing import Any, Awaitable, Callable
 from atopile.dataclasses import AppContext
 from atopile.server.agent import tools as _legacy_tools
 from atopile.server.agent.checklist import VALID_TRANSITIONS, Checklist, ChecklistItem
+from atopile.server.agent.circuit_breaker import CircuitBreaker
+from atopile.server.agent.config import AgentConfig
+from atopile.server.agent.context import build_initial_user_message, build_system_prompt
 from atopile.server.agent.message_log import (
     MSG_ACKNOWLEDGED,
     MSG_ACTIVE,
-    MSG_DONE,
     MSG_PENDING,
     TrackedChecklistItem,
     TrackedMessage,
     build_pending_message_nudge,
 )
-from atopile.server.agent.circuit_breaker import CircuitBreaker
-from atopile.server.agent.config import AgentConfig
-from atopile.server.agent.context import build_initial_user_message, build_system_prompt
 from atopile.server.agent.orchestrator_helpers import (
     _build_function_call_outputs_for_model,
     _build_steering_inputs_for_model,
     _consume_steering_updates,
     _limit_tool_output_for_model,
     _sanitize_tool_output_for_model,
-    _summarize_function_call_for_trace,
     _summarize_tool_result_for_trace,
-    _to_trace_preview,
 )
-from atopile.server.agent.provider import LLMProvider, LLMResponse, OpenAIProvider
+from atopile.server.agent.provider import LLMProvider
 from atopile.server.agent.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
@@ -109,7 +105,10 @@ _DESIGN_REVIEW_ITEMS = [
     ChecklistItem(
         id="review_interfaces",
         description="Verify standard library interfaces used where applicable",
-        criteria="I2C, SPI, CAN, Ethernet, Power used instead of raw Electrical/ElectricLogic",
+        criteria=(
+            "I2C, SPI, CAN, Ethernet, Power used instead of raw "
+            "Electrical/ElectricLogic"
+        ),
         source="review",
     ),
 ]
@@ -583,7 +582,9 @@ class AgentRunner:
                                     "loop": loops,
                                     "attempt": turn_state.silent_retry_count,
                                     "max": cfg.silent_retry_max,
-                                    "empty_streak": turn_state.consecutive_empty_continuations,
+                                    "empty_streak": (
+                                        turn_state.consecutive_empty_continuations
+                                    ),
                                 },
                             )
                             telemetry["silent_retry_count"] = (
@@ -615,7 +616,9 @@ class AgentRunner:
                             "tool_kickstart",
                             {
                                 "loop": loops,
-                                "empty_streak": turn_state.consecutive_empty_continuations,
+                                "empty_streak": (
+                                    turn_state.consecutive_empty_continuations
+                                ),
                                 "is_empty": _is_empty,
                                 "model_thinks_stuck": _model_thinks_stuck,
                                 "model_text_snippet": resp_text[:200],
@@ -656,7 +659,8 @@ class AgentRunner:
                                 "phase": "thinking",
                                 "status_text": "Continuing",
                                 "detail_text": (
-                                    f"{len(cl.incomplete_items())} checklist items remaining"
+                                    f"{len(cl.incomplete_items())} checklist "
+                                    "items remaining"
                                 ),
                             },
                         )
@@ -1257,7 +1261,6 @@ class AgentRunner:
         try:
             # ── Planning tools ─────────────────────────────────────
             if tool_name == "design_questions":
-                context = str(args.get("context", ""))
                 questions = args.get("questions", [])
                 if not questions:
                     return {"error": "questions list is empty"}, False

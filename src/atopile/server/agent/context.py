@@ -13,8 +13,8 @@ from atopile.server.agent import policy
 from atopile.server.agent.config import AgentConfig
 from atopile.server.agent.orchestrator_helpers import (
     _allocate_fixed_skill_char_caps,
-    _truncate_middle,
     _trim_user_message,
+    _truncate_middle,
 )
 from atopile.server.domains import artifacts as artifacts_domain
 
