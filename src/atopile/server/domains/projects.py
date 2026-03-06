@@ -351,7 +351,9 @@ def _normalize_package_file_stem(name: str) -> str:
     return stem
 
 
-def _ensure_file_dependency(project_root: Path, dependency_path: Path) -> None:
+def _ensure_file_dependency(
+    project_root: Path, dependency_path: Path, identifier: str
+) -> None:
     data, ato_file = load_ato_yaml(project_root)
     dependencies = data.setdefault("dependencies", [])
     if not isinstance(dependencies, list):
@@ -360,9 +362,12 @@ def _ensure_file_dependency(project_root: Path, dependency_path: Path) -> None:
     rel_path = f"./{dependency_path.relative_to(project_root).as_posix()}"
     for dep in dependencies:
         if isinstance(dep, dict) and dep.get("type") == "file" and dep.get("path") == rel_path:
+            if dep.get("identifier") != identifier:
+                dep["identifier"] = identifier
+                save_ato_yaml(ato_file, data)
             return
 
-    dependencies.append({"type": "file", "path": rel_path})
+    dependencies.append({"type": "file", "path": rel_path, "identifier": identifier})
     save_ato_yaml(ato_file, data)
 
 
@@ -409,7 +414,7 @@ def create_local_package(
     module_lines.extend([f"module {entry_module.strip()}:", "    pass", ""])
     ato_path.write_text("\n".join(module_lines), encoding="utf-8")
 
-    _ensure_file_dependency(project_root, package_dir)
+    _ensure_file_dependency(project_root, package_dir, package_identifier)
 
     return {
         "path": str(package_dir),
