@@ -199,6 +199,21 @@ class AgentEventRow:
     tool_name: str | None = None
     project_root: str | None = None
     summary: str | None = None
+    step_kind: str | None = None
+    loop: int | None = None
+    tool_index: int | None = None
+    tool_count: int | None = None
+    call_id: str | None = None
+    item_id: str | None = None
+    model: str | None = None
+    response_id: str | None = None
+    previous_response_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    duration_ms: int | None = None
     payload: str | None = None  # JSON string
 
 

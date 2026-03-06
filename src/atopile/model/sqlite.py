@@ -549,6 +549,21 @@ class AgentLogs:
                     tool_name       TEXT,
                     project_root    TEXT,
                     summary         TEXT,
+                    step_kind       TEXT,
+                    loop            INTEGER,
+                    tool_index      INTEGER,
+                    tool_count      INTEGER,
+                    call_id         TEXT,
+                    item_id         TEXT,
+                    model           TEXT,
+                    response_id     TEXT,
+                    previous_response_id TEXT,
+                    input_tokens    INTEGER,
+                    output_tokens   INTEGER,
+                    total_tokens    INTEGER,
+                    reasoning_tokens INTEGER,
+                    cached_input_tokens INTEGER,
+                    duration_ms     INTEGER,
                     payload         TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_agent_events_session
@@ -556,6 +571,34 @@ class AgentLogs:
                 CREATE INDEX IF NOT EXISTS idx_agent_events_run
                     ON agent_events(run_id, id);
             """)
+            conn.row_factory = sqlite3.Row
+            existing_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(agent_events)").fetchall()
+            }
+            required_columns = {
+                "step_kind": "TEXT",
+                "loop": "INTEGER",
+                "tool_index": "INTEGER",
+                "tool_count": "INTEGER",
+                "call_id": "TEXT",
+                "item_id": "TEXT",
+                "model": "TEXT",
+                "response_id": "TEXT",
+                "previous_response_id": "TEXT",
+                "input_tokens": "INTEGER",
+                "output_tokens": "INTEGER",
+                "total_tokens": "INTEGER",
+                "reasoning_tokens": "INTEGER",
+                "cached_input_tokens": "INTEGER",
+                "duration_ms": "INTEGER",
+            }
+            for column, column_type in required_columns.items():
+                if column in existing_columns:
+                    continue
+                conn.execute(
+                    f"ALTER TABLE agent_events ADD COLUMN {column} {column_type}"
+                )
 
     @staticmethod
     def _from_row(row: sqlite3.Row) -> dict[str, Any]:
@@ -576,6 +619,37 @@ class AgentLogs:
             "tool_name": row["tool_name"],
             "project_root": row["project_root"],
             "summary": row["summary"],
+            "step_kind": row["step_kind"] if "step_kind" in row.keys() else None,
+            "loop": row["loop"] if "loop" in row.keys() else None,
+            "tool_index": row["tool_index"] if "tool_index" in row.keys() else None,
+            "tool_count": row["tool_count"] if "tool_count" in row.keys() else None,
+            "call_id": row["call_id"] if "call_id" in row.keys() else None,
+            "item_id": row["item_id"] if "item_id" in row.keys() else None,
+            "model": row["model"] if "model" in row.keys() else None,
+            "response_id": row["response_id"] if "response_id" in row.keys() else None,
+            "previous_response_id": (
+                row["previous_response_id"]
+                if "previous_response_id" in row.keys()
+                else None
+            ),
+            "input_tokens": row["input_tokens"]
+            if "input_tokens" in row.keys()
+            else None,
+            "output_tokens": (
+                row["output_tokens"] if "output_tokens" in row.keys() else None
+            ),
+            "total_tokens": row["total_tokens"]
+            if "total_tokens" in row.keys()
+            else None,
+            "reasoning_tokens": (
+                row["reasoning_tokens"] if "reasoning_tokens" in row.keys() else None
+            ),
+            "cached_input_tokens": (
+                row["cached_input_tokens"]
+                if "cached_input_tokens" in row.keys()
+                else None
+            ),
+            "duration_ms": row["duration_ms"] if "duration_ms" in row.keys() else None,
             "payload": payload,
         }
 
@@ -588,8 +662,16 @@ class AgentLogs:
                 """
                 INSERT INTO agent_events
                     (session_id, run_id, timestamp, event, level,
-                     phase, tool_name, project_root, summary, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     phase, tool_name, project_root, summary,
+                     step_kind, loop, tool_index, tool_count, call_id, item_id,
+                     model, response_id, previous_response_id,
+                     input_tokens, output_tokens, total_tokens,
+                     reasoning_tokens, cached_input_tokens,
+                     duration_ms, payload)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?
+                )
                 """,
                 [
                     (
@@ -602,6 +684,21 @@ class AgentLogs:
                         e.tool_name,
                         e.project_root,
                         e.summary,
+                        e.step_kind,
+                        e.loop,
+                        e.tool_index,
+                        e.tool_count,
+                        e.call_id,
+                        e.item_id,
+                        e.model,
+                        e.response_id,
+                        e.previous_response_id,
+                        e.input_tokens,
+                        e.output_tokens,
+                        e.total_tokens,
+                        e.reasoning_tokens,
+                        e.cached_input_tokens,
+                        e.duration_ms,
                         e.payload,
                     )
                     for e in entries

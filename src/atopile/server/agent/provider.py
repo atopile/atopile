@@ -42,6 +42,8 @@ class TokenUsage:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    cached_input_tokens: int | None = None
 
 
 @dataclass
@@ -308,10 +310,22 @@ class OpenAIProvider:
         usage_raw = body.get("usage")
         usage = None
         if isinstance(usage_raw, dict):
+            output_details = usage_raw.get("output_tokens_details")
+            input_details = usage_raw.get("input_tokens_details")
             usage = TokenUsage(
                 input_tokens=usage_raw.get("input_tokens"),
                 output_tokens=usage_raw.get("output_tokens"),
                 total_tokens=usage_raw.get("total_tokens"),
+                reasoning_tokens=(
+                    output_details.get("reasoning_tokens")
+                    if isinstance(output_details, dict)
+                    else None
+                ),
+                cached_input_tokens=(
+                    input_details.get("cached_tokens")
+                    if isinstance(input_details, dict)
+                    else None
+                ),
             )
 
         phase = _extract_output_phase(body)

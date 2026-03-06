@@ -148,6 +148,8 @@ class AgentProgressUsage(ApiModel):
     input_tokens: int | None = Field(default=None, alias="inputTokens")
     output_tokens: int | None = Field(default=None, alias="outputTokens")
     total_tokens: int | None = Field(default=None, alias="totalTokens")
+    reasoning_tokens: int | None = Field(default=None, alias="reasoningTokens")
+    cached_input_tokens: int | None = Field(default=None, alias="cachedInputTokens")
 
 
 class AgentProgressEventPayload(ApiModel):
@@ -167,4 +169,6 @@ class AgentProgressEventPayload(ApiModel):
     input_tokens: int | None = Field(default=None, alias="inputTokens")
     output_tokens: int | None = Field(default=None, alias="outputTokens")
     total_tokens: int | None = Field(default=None, alias="totalTokens")
+    reasoning_tokens: int | None = Field(default=None, alias="reasoningTokens")
+    cached_input_tokens: int | None = Field(default=None, alias="cachedInputTokens")
     usage: AgentProgressUsage | None = None
