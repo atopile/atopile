@@ -10,11 +10,13 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Literal
 
 from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
+
+from atopile.dataclasses import FileNode
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +57,12 @@ _IGNORED_DIR_NAMES = frozenset(
     }
 )
 
+_IGNORED_FILE_NAMES = frozenset(
+    {
+        ".DS_Store",
+    }
+)
+
 # Directories whose creation/deletion we DO want to track (but not their contents)
 _TRACK_DIR_EVENTS = frozenset(
     {
@@ -63,36 +71,34 @@ _TRACK_DIR_EVENTS = frozenset(
     }
 )
 
-# Patterns for watchdog's built-in filtering (applied early, before handlers)
-_WATCH_PATTERNS = [
-    "*.ato",
-    "*.py",
-    "*.json",
-    "*.yaml",
-    "*.yml",
-    "*.kicad_pcb",
-    "*.kicad_pro",
-    "*.kicad_sch",
-    "*.kicad_mod",
-    "*.kicad_sym",
-]
+# Shared dispatcher must admit all files because tree watchers need to observe
+# arbitrary additions/removals, including extensionless files. Per-watcher glob
+# matching still narrows events before callbacks fire.
+_WATCH_PATTERNS = ["*"]
 
 # Ignore patterns for watchdog (applied early, skips contents of ignored directories)
 # Note: We only ignore contents (*/{name}/*), not the directories themselves,
 # so we can detect when tracked directories like .ato and .git are created/deleted
-_IGNORE_PATTERNS = [f"*/{name}/*" for name in _IGNORED_DIR_NAMES]
+_IGNORE_PATTERNS = [
+    *(f"*/{name}/*" for name in _IGNORED_DIR_NAMES),
+    *(name for name in _IGNORED_FILE_NAMES),
+    *(f"*/{name}" for name in _IGNORED_FILE_NAMES),
+]
+
+_WATCHER_TIMEOUT_SECONDS = 0.1
 
 
 @dataclass
 class FileChangeResult:
-    """Result of file change detection."""
+    """Watcher callback payload."""
 
     created: list[Path] = field(default_factory=list)
     deleted: list[Path] = field(default_factory=list)
     changed: list[Path] = field(default_factory=list)
+    tree: list[dict] | None = None
 
     def __bool__(self) -> bool:
-        return bool(self.created or self.deleted or self.changed)
+        return bool(self.created or self.deleted or self.changed or self.tree)
 
 
 _HandlerInfo = tuple[
@@ -157,7 +163,7 @@ class _EventDispatcher(PatternMatchingEventHandler):
 
     def _dispatch(self, path_str: str, event_type: str) -> None:
         path = Path(path_str)
-        if self._is_ignored(path):
+        if FileWatcher._is_ignored(path, allow_tracked_dirs=True):
             return
         with self._lock:
             for hid, (glob, callback, debounce_s, loop) in self._handlers.items():
@@ -281,23 +287,6 @@ class _EventDispatcher(PatternMatchingEventHandler):
             changed=truly_changed,
         )
 
-    @staticmethod
-    def _is_ignored(path: Path) -> bool:
-        """Secondary filter for paths that slip through watchdog's pattern matching.
-
-        Allows tracked directories (.ato, .git) themselves but ignores their contents.
-        """
-        parts = path.parts
-        for i, part in enumerate(parts):
-            if part in _IGNORED_DIR_NAMES:
-                # If this is the last component and it's a tracked dir, allow it
-                # (this is the directory itself, not its contents)
-                if i == len(parts) - 1 and part in _TRACK_DIR_EVENTS:
-                    return False
-                # Otherwise it's contents of an ignored dir, or untracked ignored dir
-                return True
-        return False
-
 
 # Module-level singleton state
 _observer: Any = None
@@ -318,12 +307,12 @@ def _get_observer() -> tuple[Any, _EventDispatcher]:
         if _observer is None:
             _configure_watchdog_logging()
             try:
-                obs = Observer()
+                obs = Observer(timeout=_WATCHER_TIMEOUT_SECONDS)
                 obs.start()
                 log.info("Using native file observer")
             except Exception as e:
                 log.warning("Native observer failed (%s), falling back to polling", e)
-                obs = PollingObserver(timeout=2.0)
+                obs = PollingObserver(timeout=_WATCHER_TIMEOUT_SECONDS)
                 obs.start()
                 log.info("Using polling file observer")
             _observer = obs
@@ -398,12 +387,15 @@ class FileWatcher:
         *,
         paths: Sequence[Path] | None = None,
         paths_provider: Callable[[], Sequence[Path]] | None = None,
-        on_change: Callable[[FileChangeResult], Awaitable[None] | None],
+        on_change: Callable[[FileChangeResult], Awaitable[None] | None] | None = None,
         glob: str = "**/*",
         debounce_s: float = 0.5,
+        mode: Literal["changes", "tree"] = "changes",
     ) -> None:
         if paths is None and paths_provider is None:
             raise ValueError("paths or paths_provider must be provided")
+        if on_change is None:
+            raise ValueError("on_change must be provided")
 
         with FileWatcher._id_lock:
             FileWatcher._id_counter += 1
@@ -412,25 +404,184 @@ class FileWatcher:
         self._name = name
         self._paths_provider = paths_provider
         self._static_paths = list(paths or [])
+        self._mode = mode
         self._on_change = on_change
         self._glob = glob
         self._debounce_s = debounce_s
         self._watched_paths: set[Path] = set()
         self._stop_event = asyncio.Event()
+        self._wake_event = asyncio.Event()
+        self._task: asyncio.Task | None = None
+        self._tree: list[FileNode] | None = None
+
+    @staticmethod
+    def _is_ignored(path: Path, *, allow_tracked_dirs: bool = False) -> bool:
+        """Return whether a path should be excluded from watch/scanning logic."""
+        if path.name in _IGNORED_FILE_NAMES:
+            return True
+        parts = path.parts
+        for i, part in enumerate(parts):
+            if part in _IGNORED_DIR_NAMES:
+                if (
+                    allow_tracked_dirs
+                    and i == len(parts) - 1
+                    and part in _TRACK_DIR_EVENTS
+                ):
+                    return False
+                return True
+        return False
+
+    @staticmethod
+    def _scan_tree(dir_path: Path) -> list[FileNode]:
+        nodes: list[FileNode] = []
+        try:
+            entries = list(dir_path.iterdir())
+        except PermissionError:
+            log.debug("Permission denied: %s", dir_path)
+            return nodes
+
+        for entry in entries:
+            if FileWatcher._is_ignored(entry):
+                continue
+            if entry.is_dir():
+                nodes.append(
+                    FileNode(name=entry.name, children=FileWatcher._scan_tree(entry))
+                )
+            elif entry.is_file():
+                nodes.append(FileNode(name=entry.name))
+        FileWatcher._sort_tree(nodes)
+        return nodes
+
+    @staticmethod
+    def _serialize_tree(nodes: list[FileNode]) -> list[dict]:
+        return [node.model_dump(by_alias=True) for node in nodes]
+
+    @staticmethod
+    def _sort_tree(nodes: list[FileNode]) -> None:
+        nodes.sort(
+            key=lambda node: (0 if node.children is not None else 1, node.name.lower())
+        )
+
+    @staticmethod
+    def _find_node(
+        nodes: list[FileNode], name: str
+    ) -> tuple[int, FileNode] | tuple[None, None]:
+        for index, node in enumerate(nodes):
+            if node.name == name:
+                return index, node
+        return None, None
+
+    @staticmethod
+    def _snapshot_path(path: Path) -> FileNode | None:
+        if FileWatcher._is_ignored(path) or not path.exists():
+            return None
+        if path.is_dir():
+            return FileNode(name=path.name, children=FileWatcher._scan_tree(path))
+        if path.is_file():
+            return FileNode(name=path.name)
+        return None
+
+    @staticmethod
+    def _set_tree_path(
+        tree: list[FileNode], parts: tuple[str, ...], node: FileNode | None
+    ) -> bool:
+        if not parts:
+            return False
+        name = parts[0]
+        index, existing = FileWatcher._find_node(tree, name)
+
+        if len(parts) == 1:
+            if node is None:
+                if index is None:
+                    return False
+                tree.pop(index)
+                return True
+            if existing == node:
+                return False
+            if index is None:
+                tree.append(node)
+                FileWatcher._sort_tree(tree)
+            else:
+                tree[index] = node
+            return True
+
+        if existing is None or existing.children is None:
+            existing = FileNode(name=name, children=[])
+            if index is None:
+                tree.append(existing)
+                FileWatcher._sort_tree(tree)
+            else:
+                tree[index] = existing
+
+        return FileWatcher._set_tree_path(existing.children, parts[1:], node)
+
+    def _tree_parts(self, path: Path) -> tuple[str, ...] | None:
+        root = self._get_tree_root()
+        if root is None:
+            return None
+        try:
+            relative = path.resolve().relative_to(root.resolve())
+        except ValueError:
+            return None
+        return tuple(part for part in relative.parts if part not in ("", "."))
+
+    def _apply_tree_changes(self, result: FileChangeResult) -> bool:
+        if self._tree is None:
+            return False
+
+        changed = False
+        for path in result.deleted:
+            parts = self._tree_parts(path)
+            if parts:
+                changed = FileWatcher._set_tree_path(self._tree, parts, None) or changed
+
+        for path in result.created:
+            parts = self._tree_parts(path)
+            if not parts:
+                continue
+            node = FileWatcher._snapshot_path(path)
+            if node is not None:
+                changed = FileWatcher._set_tree_path(self._tree, parts, node) or changed
+
+        return changed
 
     def _resolve_paths(self) -> set[Path]:
         paths = self._paths_provider() if self._paths_provider else self._static_paths
         return {p for p in paths if p.exists()}
 
-    async def run(self) -> None:
+    def _get_tree_root(self) -> Path | None:
+        paths = self._paths_provider() if self._paths_provider else self._static_paths
+        return paths[0] if paths else None
+
+    async def watch(self, paths: Sequence[Path] | None = None) -> None:
+        if paths is not None:
+            self._static_paths = list(paths)
+            self._wake_event.set()
+
+        if self._task is None or self._task.done():
+            if self._stop_event.is_set():
+                self._stop_event = asyncio.Event()
+                self._wake_event = asyncio.Event()
+            self._task = asyncio.create_task(self._run())
+
+        if self._mode == "tree":
+            root = self._get_tree_root()
+            self._tree = await asyncio.to_thread(self._scan_tree, root) if root else []
+            await self._emit_tree()
+
+    async def _run(self) -> None:
         """Run the file watcher until stopped."""
         loop = asyncio.get_running_loop()
 
         def sync_callback(result: FileChangeResult) -> None:
             async def dispatch() -> None:
-                response = self._on_change(result)
-                if isinstance(response, Awaitable):
-                    await response
+                if self._mode == "tree":
+                    if self._apply_tree_changes(result):
+                        await self._emit_tree()
+                else:
+                    response = self._on_change(result)
+                    if isinstance(response, Awaitable):
+                        await response
                 log.info(
                     "File watcher '%s': +%d ~%d -%d",
                     self._name,
@@ -455,7 +606,11 @@ class FileWatcher:
                     _watch(path, self._id, handler_args)
 
                 self._watched_paths = new_paths
-                await asyncio.sleep(5.0)
+                self._wake_event.clear()
+                try:
+                    await asyncio.wait_for(self._wake_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
         finally:
             for path in self._watched_paths:
                 _unwatch(path)
@@ -465,6 +620,10 @@ class FileWatcher:
 
     def stop(self) -> None:
         self._stop_event.set()
+        self._wake_event.set()
+        if self._task and not self._task.done():
+            self._task.cancel()
+        self._task = None
 
     def notify_saved(self, path: Path) -> None:
         """Tell the watcher we just wrote this file ourselves.
@@ -474,3 +633,14 @@ class FileWatcher:
         """
         _, dispatcher = _get_observer()
         dispatcher.update_hash(path.resolve())
+
+    async def _emit_tree(self) -> None:
+        if self._mode != "tree":
+            raise RuntimeError(
+                "_emit_tree() is only supported for tree-mode FileWatcher"
+            )
+        response = self._on_change(
+            FileChangeResult(tree=FileWatcher._serialize_tree(self._tree or []))
+        )
+        if isinstance(response, Awaitable):
+            await response

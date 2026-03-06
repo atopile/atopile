@@ -19,7 +19,7 @@ from atopile.model.builds import (
     get_finished_builds,
     handle_start_build,
 )
-from atopile.model.files import FileWatcher
+from atopile.model.file_watcher import FileWatcher
 from atopile.model.module_introspection import introspect_module_definition
 from atopile.model.projects import handle_get_modules, handle_get_projects
 from atopile.model.sqlite import Logs
@@ -35,6 +35,16 @@ class CoreSocket:
     def __init__(self) -> None:
         self._clients: set[ServerConnection] = set()
         self._log_tasks: dict[ServerConnection, asyncio.Task] = {}
+        self._project_files = FileWatcher(
+            "project-files",
+            paths=[],
+            on_change=lambda result: self.broadcast_state(
+                "projectFiles", result.tree or []
+            ),
+            glob="**/*",
+            debounce_s=0.1,
+            mode="tree",
+        )
         self.bind_build_queue(_build_queue)
 
     # -- Client lifecycle --------------------------------------------------
@@ -80,17 +90,14 @@ class CoreSocket:
                 )
 
             case "listFiles":
-                project_root = msg.get("projectRoot", "")
-                result = FileWatcher.scan_and_serialize(project_root)
-                await self.broadcast_state("projectFiles", result)
-                FileWatcher.start(
-                    project_root, self.broadcast_state, asyncio.get_running_loop()
-                )
+                await self._project_files.watch([Path(msg.get("projectRoot", ""))])
 
             case "startBuild":
                 request = BuildRequest(
                     project_root=msg.get("projectRoot", ""),
                     targets=msg.get("targets", []),
+                    include_targets=msg.get("includeTargets", []),
+                    exclude_targets=msg.get("excludeTargets", []),
                 )
                 try:
                     handle_start_build(request)
