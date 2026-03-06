@@ -95,6 +95,17 @@ class UnitNotFoundError(UnitException):
 class UnitExpressionError(UnitException): ...
 
 
+class UnitSerializationError(UnitException): ...
+
+
+class NoBaseUnitError(UnitException):
+    def __init__(self, unit: type):
+        self.unit = unit
+
+    def __str__(self) -> str:
+        return f"No base unit type for {self.unit.__name__}"
+
+
 @dataclass(frozen=True)
 class BasisVector(DataClassJsonMixin):
     ampere: int = field(default=0, metadata={"display_symbol": "A"})
@@ -838,7 +849,7 @@ class is_unit(fabll.Node):
 
         return out
 
-    def serialize_for_api(self: "is_unit | None") -> str | dict | None:
+    def serialize_for_api(self: "is_unit | None") -> str | None:
         """
         Serialize unit for the component API backend.
 
@@ -859,18 +870,9 @@ class is_unit(fabll.Node):
             # Fallback to first symbol if no lowercase name found
             return symbols[0]
 
-        # For anonymous/complex units, return the full structure
-        out = {}
-        basis_vector = is_unit._extract_basis_vector(self)
-        multiplier = is_unit._extract_multiplier(self)
-        offset = is_unit._extract_offset(self)
-
-        out["symbols"] = symbols
-        out["basis_vector"] = basis_vector.to_dict()
-        out["multiplier"] = multiplier
-        out["offset"] = offset
-
-        return out
+        raise UnitSerializationError(
+            f"Unable to serialize unit with no symbols: {self}"
+        )
 
 
 class is_si_unit(fabll.Node):
@@ -1422,10 +1424,10 @@ def UnitExpressionFactory(
         symbols = tuple(_UNIT_SYMBOLS[unit_registry_member])
     assert len(symbols) >= 1, "Unit Expression must have at least one symbol"
 
-    # Derive the basis/multiplier/offset tuple for this expression.
     # Resolve the unit vector to get the composed basis vector, multiplier, and offset
-    # from any nested UnitExpressions. Then combine with the user-provided values.
     unit_info = resolve_unit_vector(unit_vector)
+    effective_multiplier = multiplier * unit_info.multiplier
+    effective_offset = offset + unit_info.offset
 
     ConcreteUnitExpr._add_field(
         "is_unit",
@@ -1433,11 +1435,22 @@ def UnitExpressionFactory(
             is_unit.MakeChild(
                 symbols,
                 unit_info.basis_vector,
-                multiplier * unit_info.multiplier,
-                offset + unit_info.offset,
+                effective_multiplier,
+                effective_offset,
             )
         ),
     )
+
+    # Set _base_unit_type for non-base single-component UnitExpressions
+    # (e.g. nF -> Farad).
+    # Multi-component expressions (e.g. km/h) don't have a single named base unit type;
+    # find_base_unit_type will raise NoBaseUnitError if they're used as has_unit.
+    if (
+        (effective_multiplier != 1.0 or effective_offset != 0.0)
+        and len(unit_vector) == 1
+        and unit_vector[0][1] == 1
+    ):
+        ConcreteUnitExpr._base_unit_type = find_base_unit_type(unit_vector[0][0])
 
     return ConcreteUnitExpr
 
@@ -1691,6 +1704,20 @@ def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfo:
     offset = getattr(unit_type, "offset_arg")
 
     return UnitInfo(basis_vector=basis_vector, multiplier=multiplier, offset=offset)
+
+
+def find_base_unit_type(unit: type[fabll.Node]) -> type[fabll.Node]:
+    """Find the base unit type (multiplier=1.0, offset=0.0) for a unit's dimension.
+
+    Base units return themselves. Non-base units must have _base_unit_type set.
+    """
+    info = extract_unit_info(unit)
+    if info.multiplier == 1.0 and info.offset == 0.0:
+        return unit
+    try:
+        return unit._base_unit_type  # type: ignore[attr-defined]
+    except AttributeError:
+        raise NoBaseUnitError(unit)
 
 
 # SI base units ------------------------------------------------------------------------
@@ -2092,6 +2119,7 @@ class Henry(fabll.Node):
 
 
 class DegreeCelsius(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Kelvin
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(kelvin=1)
     multiplier_arg: ClassVar[float] = 1.0
     offset_arg: ClassVar[float] = 273.15
@@ -2218,6 +2246,7 @@ class Katal(fabll.Node):
 
 
 class Gram(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Kilogram
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(kilogram=1)
     multiplier_arg: ClassVar[float] = 1e-3
     offset_arg: ClassVar[float] = 0.0
@@ -2260,6 +2289,7 @@ class Bit(fabll.Node):
 
 
 class Percent(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Dimensionless
     unit_vector_arg: ClassVar[BasisVector] = _BasisVector.ORIGIN
     multiplier_arg: ClassVar[float] = 1e-2
     offset_arg: ClassVar[float] = 0.0
@@ -2278,6 +2308,7 @@ class Percent(fabll.Node):
 
 
 class Ppm(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Dimensionless
     unit_vector_arg: ClassVar[BasisVector] = _BasisVector.ORIGIN
     multiplier_arg: ClassVar[float] = 1e-6
     offset_arg: ClassVar[float] = 0.0
@@ -2299,6 +2330,7 @@ class Ppm(fabll.Node):
 
 
 class Degree(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Radian
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(radian=1)
     multiplier_arg: ClassVar[float] = math.pi / 180.0
     offset_arg: ClassVar[float] = 0.0
@@ -2321,6 +2353,7 @@ class Degree(fabll.Node):
 
 
 class ArcMinute(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Radian
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(radian=1)
     multiplier_arg: ClassVar[float] = math.pi / 180.0 / 60.0
     offset_arg: ClassVar[float] = 0.0
@@ -2343,6 +2376,7 @@ class ArcMinute(fabll.Node):
 
 
 class ArcSecond(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Radian
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(radian=1)
     multiplier_arg: ClassVar[float] = math.pi / 180.0 / 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2365,6 +2399,7 @@ class ArcSecond(fabll.Node):
 
 
 class Minute(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Second
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(second=1)
     multiplier_arg: ClassVar[float] = 60.0
     offset_arg: ClassVar[float] = 0.0
@@ -2383,6 +2418,7 @@ class Minute(fabll.Node):
 
 
 class Hour(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Second
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(second=1)
     multiplier_arg: ClassVar[float] = 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2401,6 +2437,7 @@ class Hour(fabll.Node):
 
 
 class Day(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Second
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(second=1)
     multiplier_arg: ClassVar[float] = 24 * 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2419,6 +2456,7 @@ class Day(fabll.Node):
 
 
 class Week(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Second
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(second=1)
     multiplier_arg: ClassVar[float] = 7 * 24 * 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2441,6 +2479,7 @@ class Week(fabll.Node):
 
 
 class Month(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Second
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(second=1)
     multiplier_arg: ClassVar[float] = (365.25 / 12) * 24 * 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2463,6 +2502,7 @@ class Month(fabll.Node):
 
 
 class Year(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Second
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(second=1)
     multiplier_arg: ClassVar[float] = 365.25 * 24 * 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2526,6 +2566,7 @@ class Rpm(fabll.Node):
 
 
 class Byte(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Bit
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(bit=1)
     multiplier_arg: ClassVar[float] = 8.0
     offset_arg: ClassVar[float] = 0.0
@@ -2563,6 +2604,7 @@ class BitsPerSecond(fabll.Node):
 
 
 class AmpereHour(fabll.Node):
+    _base_unit_type: ClassVar[type[fabll.Node]] = Coulomb
     unit_vector_arg: ClassVar[BasisVector] = BasisVector(ampere=1, second=1)
     multiplier_arg: ClassVar[float] = 3600.0
     offset_arg: ClassVar[float] = 0.0
@@ -2784,8 +2826,8 @@ class TestIsUnit(_TestWithContext):
 
         TestIsUnit.assert_commensurability(
             [
-                meters_per_second.get_trait(is_unit),
-                kilometers_per_hour.get_trait(is_unit),
+                not_none(meters_per_second).get_trait(is_unit),
+                not_none(kilometers_per_hour).get_trait(is_unit),
             ]
         )
 

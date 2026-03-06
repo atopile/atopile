@@ -3258,7 +3258,7 @@ class Numbers(fabll.Node):
         )
 
         if unit is not None and unit is not Dimensionless:
-            from faebryk.library.Units import has_display_unit
+            from faebryk.library.Units import find_base_unit_type, has_display_unit
 
             # Store display unit (user's original unit, e.g., mV)
             display_unit_child = unit.MakeChild()
@@ -3272,23 +3272,14 @@ class Numbers(fabll.Node):
             unit_info = extract_unit_info(unit)
             if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
                 # Base unit - use same child as has_unit (display and base are the same)
-                out.add_dependant(
-                    fabll.Traits.MakeEdge(
-                        has_unit.MakeChild([display_unit_child]), [out]
-                    )
-                )
+                base_unit_child = display_unit_child
             else:
-                # Prefixed unit - create base unit for has_unit
-                # Values are stored in base units, so has_unit must reflect this
-                from faebryk.library.Parameters import NumericParameter
-
-                base_unit_child = NumericParameter._make_1_0_unit(
-                    unit_info.basis_vector
-                ).MakeChild()
+                base_unit_child = find_base_unit_type(unit).MakeChild()
                 out.add_dependant(base_unit_child)
-                out.add_dependant(
-                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
-                )
+
+            out.add_dependant(
+                fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+            )
 
         return out
 
