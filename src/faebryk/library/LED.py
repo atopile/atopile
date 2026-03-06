@@ -9,8 +9,6 @@ import faebryk.library._F as F
 
 
 class LED(fabll.Node):
-    """Light-emitting diode module with color and brightness parameters."""
-
     # ----------------------------------------
     #                 enums
     # ----------------------------------------

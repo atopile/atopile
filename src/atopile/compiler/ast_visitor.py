@@ -63,8 +63,8 @@ STDLIB_ALLOWLIST: AllowListT = (
     # Modules
     {
         F.Addressor,
+        F.SinglePinAddressor,
         F.BJT,
-        F.CAN,
         F.CAN_TTL,
         F.Capacitor,
         F.CapacitorPolarized,
@@ -95,7 +95,6 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.Regulator,
         F.AdjustableRegulator,
         F.RS232,
-        F.RS485HalfDuplex,
         F.SPI,
         F.SPIFlash,
         F.SWD,
@@ -104,7 +103,6 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.USB2_0_IF,
         F.USB2_0,
         F.USB3,
-        F.USB3_IF,
         F.XtalIF,
         F.TestPoint,
         F.MountingHole,

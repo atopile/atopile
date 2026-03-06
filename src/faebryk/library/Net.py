@@ -12,8 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 class Net(fabll.Node):
-    """Logical net module that groups connected electrical interfaces."""
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

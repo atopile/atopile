@@ -6,8 +6,6 @@ import faebryk.library._F as F
 
 
 class SPIFlash(fabll.Node):
-    """SPI/QSPI flash memory module with power and bus connectivity."""
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

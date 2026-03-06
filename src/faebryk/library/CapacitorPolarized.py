@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class CapacitorPolarized(fabll.Node):
-    """Polarized capacitor module with explicit anode and cathode terminals."""
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

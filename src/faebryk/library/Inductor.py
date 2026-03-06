@@ -7,8 +7,6 @@ import faebryk.library._F as F
 
 
 class Inductor(fabll.Node):
-    """Two-terminal inductor module with current, DCR, and SRF constraints."""
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

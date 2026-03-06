@@ -11,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class Capacitor(fabll.Node):
-    """Two-terminal capacitor module with capacitance and voltage constraints."""
-
     # ----------------------------------------
     #                 enums
     # ----------------------------------------

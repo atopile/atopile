@@ -6,8 +6,6 @@ import faebryk.library._F as F
 
 
 class Resistor(fabll.Node):
-    """Two-terminal resistor module with resistance and rating parameters."""
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

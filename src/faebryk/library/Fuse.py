@@ -11,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class Fuse(fabll.Node):
-    """Circuit protection fuse module with type and trip-current parameters."""
-
     # ----------------------------------------
     #                 enums
     # ----------------------------------------

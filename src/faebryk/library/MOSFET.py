@@ -8,8 +8,6 @@ import faebryk.library._F as F
 
 
 class MOSFET(fabll.Node):
-    """MOSFET transistor module with source, gate, and drain interfaces."""
-
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
