@@ -11,6 +11,7 @@ from typing import Any  # noqa: F401
 from faebryk.core.zig.gen.sexp.pcb import (
     Arc,
     Circle,
+    E_Attr,
     FpText,
     Line,
     Model,
@@ -29,7 +30,7 @@ class Footprint:
     path: str | None
     layer: str
     propertys: list[Property]
-    attr: list[str]
+    attr: list[E_Attr]
     fp_circles: list[Circle]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
@@ -50,26 +51,26 @@ class Footprint:
         self,
         *,
         name: str,
-        uuid: str | None,
-        path: str | None,
-        layer: str,
-        propertys: list[Property],
-        attr: list[str],
-        fp_circles: list[Circle],
-        fp_lines: list[Line],
-        fp_arcs: list[Arc],
-        fp_rects: list[Rect],
-        fp_poly: list[Polygon],
-        fp_texts: list[FpText],
-        pads: list[Pad],
-        models: list[Model],
-        embedded_fonts: bool | None,
-        version: int,
-        generator: str,
-        generator_version: str,
-        description: str | None,
-        tags: list[str],
-        tedit: str | None,
+        uuid: str | None = ...,
+        path: str | None = ...,
+        layer: str = ...,
+        propertys: list[Property] = ...,
+        attr: list[E_Attr] = ...,
+        fp_circles: list[Circle] = ...,
+        fp_lines: list[Line] = ...,
+        fp_arcs: list[Arc] = ...,
+        fp_rects: list[Rect] = ...,
+        fp_poly: list[Polygon] = ...,
+        fp_texts: list[FpText] = ...,
+        pads: list[Pad] = ...,
+        models: list[Model] = ...,
+        embedded_fonts: bool | None = ...,
+        version: int = ...,
+        generator: str = ...,
+        generator_version: str = ...,
+        description: str | None = ...,
+        tags: list[str] = ...,
+        tedit: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

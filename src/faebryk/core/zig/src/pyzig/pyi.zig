@@ -1,5 +1,37 @@
 const std = @import("std");
 
+// Check if a type is internal to the sexp framework and not exposed to Python
+fn isInternalType(comptime T: type) bool {
+    const name = @typeName(T);
+    // SExp and related ast types are internal to the sexp encode/decode framework
+    return std.mem.endsWith(u8, name, ".SExp") or
+        std.mem.endsWith(u8, name, ".SExpValue");
+}
+
+// Unwrap error unions, optionals, pointers to get the underlying type
+fn referencesInternalType(comptime T: type) bool {
+    if (isInternalType(T)) return true;
+    return switch (@typeInfo(T)) {
+        .error_union => |eu| referencesInternalType(eu.payload),
+        .optional => |opt| referencesInternalType(opt.child),
+        .pointer => |ptr| referencesInternalType(ptr.child),
+        else => false,
+    };
+}
+
+// Check if any parameter or return type of a function references internal types
+fn fnReferencesInternalType(comptime fn_info: std.builtin.Type.Fn) bool {
+    for (fn_info.params) |param| {
+        if (param.type) |pt| {
+            if (referencesInternalType(pt)) return true;
+        }
+    }
+    if (fn_info.return_type) |rt| {
+        if (referencesInternalType(rt)) return true;
+    }
+    return false;
+}
+
 pub const PyiGenerator = struct {
     allocator: std.mem.Allocator,
     output: std.array_list.Managed(u8),
@@ -143,21 +175,12 @@ pub const PyiGenerator = struct {
             },
             .@"union" => try writer.writeAll("Any"),
             .@"enum" => {
-                // TODO: make proper use of enum types
-                const enum_info = @typeInfo(T).@"enum";
-                const tag_type_info = @typeInfo(enum_info.tag_type);
-                const is_i32_backed = switch (tag_type_info) {
-                    .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
-                    else => false,
-                };
-
-                if (is_i32_backed) {
-                    // For i32 enums, use int since they're IntEnum at runtime
-                    try writer.writeAll("int");
-                } else {
-                    // For other enums, use strings
-                    try writer.writeAll("str");
-                }
+                const class_name = @typeName(T);
+                const clean_name = if (std.mem.lastIndexOf(u8, class_name, ".")) |idx|
+                    class_name[idx + 1 ..]
+                else
+                    class_name;
+                try writer.writeAll(clean_name);
             },
             .error_union => |err_union| {
                 try self.writeZigTypeToPython(writer, err_union.payload);
@@ -262,6 +285,9 @@ pub const PyiGenerator = struct {
         inline for (struct_info.fields) |field| {
             try self.output.writer().print(", {s}: ", .{field.name});
             try self.writeZigTypeToPython(self.output.writer(), field.type);
+            if (field.default_value_ptr != null) {
+                try self.output.writer().print(" = ...", .{});
+            }
         }
         try self.output.writer().print(") -> None: ...\n", .{});
 
@@ -282,6 +308,9 @@ pub const PyiGenerator = struct {
                     .@"fn" => |fn_info| {
                         // Skip if it's not a method (doesn't take self as first parameter)
                         if (fn_info.params.len == 0) continue;
+
+                        // Skip methods that reference internal types not exposed to Python
+                        if (comptime fnReferencesInternalType(fn_info)) continue;
 
                         const first_param_type_info = @typeInfo(fn_info.params[0].type.?);
                         const is_method = switch (first_param_type_info) {

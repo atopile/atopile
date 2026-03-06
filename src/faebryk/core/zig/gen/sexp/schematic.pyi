@@ -71,16 +71,16 @@ class E_hide(str, Enum):
 class Pts:
     xys: list[Xy]
 
-    def __init__(self, *, xys: list[Xy]) -> None: ...
+    def __init__(self, *, xys: list[Xy] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
 class Fill:
-    type: str
+    type: E_fill_type
 
-    def __init__(self, *, type: str) -> None: ...
+    def __init__(self, *, type: E_fill_type = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -88,10 +88,12 @@ class Fill:
 
 class Stroke:
     width: float
-    type: str
+    type: E_stroke_type
     color: Color
 
-    def __init__(self, *, width: float, type: str, color: Color) -> None: ...
+    def __init__(
+        self, *, width: float = ..., type: E_stroke_type = ..., color: Color = ...
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -141,7 +143,7 @@ class Polyline:
     fill: Fill
     pts: Pts
 
-    def __init__(self, *, stroke: Stroke, fill: Fill, pts: Pts) -> None: ...
+    def __init__(self, *, stroke: Stroke, fill: Fill, pts: Pts = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -155,7 +157,13 @@ class Property:
     effects: Effects | None
 
     def __init__(
-        self, *, name: str, value: str, id: int | None, at: Xyr, effects: Effects | None
+        self,
+        *,
+        name: str,
+        value: str,
+        id: int | None = ...,
+        at: Xyr,
+        effects: Effects | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -194,8 +202,8 @@ class PinNumber:
 class SymbolPin:
     at: Xyr
     length: float
-    type: str
-    style: str
+    type: E_pin_type
+    style: E_pin_style
     name: PinName
     number: PinNumber
 
@@ -204,10 +212,10 @@ class SymbolPin:
         *,
         at: Xyr,
         length: float,
-        type: str,
-        style: str,
-        name: PinName,
-        number: PinNumber,
+        type: E_pin_type,
+        style: E_pin_style,
+        name: PinName = ...,
+        number: PinNumber = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -226,11 +234,11 @@ class SymbolUnit:
         self,
         *,
         name: str,
-        polylines: list[Polyline],
-        circles: list[Circle],
-        rectangles: list[Rect],
-        arcs: list[Arc],
-        pins: list[SymbolPin],
+        polylines: list[Polyline] = ...,
+        circles: list[Circle] = ...,
+        rectangles: list[Rect] = ...,
+        arcs: list[Arc] = ...,
+        pins: list[SymbolPin] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -241,7 +249,7 @@ class Symbol:
     name: str
     power: bool
     propertys: list[Property]
-    pin_numbers: str | None
+    pin_numbers: E_hide | None
     pin_names: PinNames | None
     in_bom: bool | None
     on_board: bool | None
@@ -252,14 +260,14 @@ class Symbol:
         self,
         *,
         name: str,
-        power: bool,
-        propertys: list[Property],
-        pin_numbers: str | None,
-        pin_names: PinNames | None,
-        in_bom: bool | None,
-        on_board: bool | None,
-        symbols: list[SymbolUnit],
-        convert: int | None,
+        power: bool = ...,
+        propertys: list[Property] = ...,
+        pin_numbers: E_hide | None = ...,
+        pin_names: PinNames | None = ...,
+        in_bom: bool | None = ...,
+        on_board: bool | None = ...,
+        symbols: list[SymbolUnit] = ...,
+        convert: int | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -294,13 +302,13 @@ class SymbolInstance:
         lib_id: str,
         at: Xyr,
         unit: int,
-        in_bom: bool,
-        on_board: bool,
+        in_bom: bool = ...,
+        on_board: bool = ...,
         uuid: str,
-        fields_autoplaced: bool,
-        propertys: list[Property],
-        pins: list[InstancePin],
-        convert: int | None,
+        fields_autoplaced: bool = ...,
+        propertys: list[Property] = ...,
+        pins: list[InstancePin] = ...,
+        convert: int | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -313,7 +321,9 @@ class Junction:
     color: Color
     uuid: str
 
-    def __init__(self, *, at: Xy, diameter: float, color: Color, uuid: str) -> None: ...
+    def __init__(
+        self, *, at: Xy, diameter: float, color: Color = ..., uuid: str
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -344,13 +354,13 @@ class Text:
 
 class SheetPin:
     name: str
-    type: str
+    type: E_sheet_pin_type
     at: Xyr
     effects: Effects
     uuid: str
 
     def __init__(
-        self, *, name: str, type: str, at: Xyr, effects: Effects, uuid: str
+        self, *, name: str, type: E_sheet_pin_type, at: Xyr, effects: Effects, uuid: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -375,9 +385,9 @@ class Sheet:
         stroke: Stroke,
         fill: Fill,
         uuid: str,
-        fields_autoplaced: bool,
-        propertys: list[Property],
-        pins: list[SheetPin],
+        fields_autoplaced: bool = ...,
+        propertys: list[Property] = ...,
+        pins: list[SheetPin] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -386,7 +396,7 @@ class Sheet:
 
 class GlobalLabel:
     text: str
-    shape: str
+    shape: E_global_label_shape
     at: Xyr
     effects: Effects
     uuid: str
@@ -397,12 +407,12 @@ class GlobalLabel:
         self,
         *,
         text: str,
-        shape: str,
+        shape: E_global_label_shape,
         at: Xyr,
         effects: Effects,
         uuid: str,
-        fields_autoplaced: bool,
-        propertys: list[Property],
+        fields_autoplaced: bool = ...,
+        propertys: list[Property] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -453,10 +463,10 @@ class TitleBlock:
     def __init__(
         self,
         *,
-        title: str | None,
-        date: str | None,
-        rev: str | None,
-        company: str | None,
+        title: str | None = ...,
+        date: str | None = ...,
+        rev: str | None = ...,
+        company: str | None = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -466,7 +476,7 @@ class TitleBlock:
 class LibSymbols:
     symbols: list[Symbol]
 
-    def __init__(self, *, symbols: list[Symbol]) -> None: ...
+    def __init__(self, *, symbols: list[Symbol] = ...) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -505,22 +515,22 @@ class KicadSch:
     def __init__(
         self,
         *,
-        version: int,
+        version: int = ...,
         generator: str,
         paper: str,
         uuid: str,
-        lib_symbols: LibSymbols,
-        title_block: TitleBlock,
-        junctions: list[Junction],
-        wires: list[Wire],
-        texts: list[Text],
-        symbols: list[SymbolInstance],
-        sheets: list[Sheet],
-        global_labels: list[GlobalLabel],
-        no_connects: list[Xy],
-        buss: list[Bus],
-        labels: list[Label],
-        bus_entrys: list[BusEntry],
+        lib_symbols: LibSymbols = ...,
+        title_block: TitleBlock = ...,
+        junctions: list[Junction] = ...,
+        wires: list[Wire] = ...,
+        texts: list[Text] = ...,
+        symbols: list[SymbolInstance] = ...,
+        sheets: list[Sheet] = ...,
+        global_labels: list[GlobalLabel] = ...,
+        no_connects: list[Xy] = ...,
+        buss: list[Bus] = ...,
+        labels: list[Label] = ...,
+        bus_entrys: list[BusEntry] = ...,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

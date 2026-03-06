@@ -36,6 +36,7 @@ class Named(Protocol):
 # namespace
 class kicad:
     from faebryk.core.zig.gen.sexp import (
+        dru,  # noqa: E402, F401 # type: ignore[import-untyped]
         footprint,  # noqa: E402, F401 # type: ignore[import-untyped]
         footprint_v5,  # noqa: E402, F401 # type: ignore[import-untyped]
         fp_lib_table,  # noqa: E402, F401 # type: ignore[import-untyped]
@@ -65,6 +66,7 @@ class kicad:
         | netlist.NetlistFile
         | symbol.SymbolFile
         | schematic.SchematicFile
+        | dru.DruFile
         | C_kicad_drc_report_file
         | C_kicad_model_file
         | C_kicad_project_file
@@ -94,6 +96,8 @@ class kicad:
             return kicad.footprint_v5
         elif instance_or_subclass(t, kicad.symbol_v6.SymbolFile):
             return kicad.symbol_v6
+        elif instance_or_subclass(t, kicad.dru.DruFile):
+            return kicad.dru
         elif instance_or_subclass(t, kicad.drc.DrcFile):
             return kicad.drc.DrcFile
         # TODO need to switch to bytes instead of str in sexp load
@@ -424,7 +428,9 @@ class kicad:
                             layer=line.layer,
                             layers=[line.layer],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=line.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=line.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
@@ -437,7 +443,9 @@ class kicad:
                             layer=arc.layer,
                             layers=[],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=arc.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=arc.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
@@ -451,7 +459,9 @@ class kicad:
                             layer=circle.layer,
                             layers=[],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=circle.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=circle.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
@@ -465,7 +475,9 @@ class kicad:
                             layer=rect.layer,
                             layers=[],
                             solder_mask_margin=None,
-                            stroke=kicad.pcb.Stroke(width=rect.width, type="solid"),
+                            stroke=kicad.pcb.Stroke(
+                                width=rect.width, type=kicad.pcb.E_stroke_type.SOLID
+                            ),
                             fill=None,
                             locked=False,
                             uuid=kicad.gen_uuid(),
