@@ -178,6 +178,7 @@ When `packages_search` returns no match for a needed IC, connector, or module, *
    - Map the internal `_package` component pins to those interfaces.
    - Add decoupling capacitors and required passives.
    - Set voltage/current constraints from the datasheet.
+   - If the wrapper needs new supporting physical parts while you are validating the package target in isolation, install them into that package project with `parts_install(project_path="packages/<PartName>")`.
 7. **Discover targets**: Run `workspace_list_targets` after package creation to inspect and build the package targets that were exposed automatically.
 8. **Import and use** the local package in your top-level design directly from `packages/<PartName>/<PartName>.ato`.
 
@@ -240,6 +241,7 @@ module TI_TCA9548A:
 **Key rules:**
 - Always `parts_install` first — never reference a part that hasn't been installed.
 - Prefer `parts_install(create_package=true)` for ICs and other reusable wrapped parts.
+- When validating a package as its own project, use `parts_install(project_path="packages/<name>")` for any new supporting parts the package itself imports.
 - Use `package_create_local` only when you need an empty local package scaffold without installing a physical part.
 - Always **read the generated package and raw part `.ato` files** to see the exact signal names (e.g., `package.VCC`, `package.SDA`). Do NOT guess pin names.
 - Always use `web_search` to inspect the vendor datasheet and hardware design notes to get correct pin mapping, constraints, and recommended decoupling.

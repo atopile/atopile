@@ -1102,14 +1102,17 @@ async def _tool_parts_install(
 ) -> dict[str, Any]:
     lcsc_id = str(arguments.get("lcsc_id", "")).strip().upper()
     create_package = bool(arguments.get("create_package", False))
+    install_root = _resolve_nested_project_path(
+        project_root, arguments.get("project_path")
+    )
 
     if not create_package:
         result = await asyncio.to_thread(
             parts_domain.handle_install_part,
             lcsc_id,
-            str(project_root),
+            str(install_root),
         )
-        return {
+        payload = {
             "success": True,
             "lcsc_id": lcsc_id,
             "implementation_hint": (
@@ -1119,14 +1122,17 @@ async def _tool_parts_install(
             ),
             **result,
         }
+        if install_root != project_root:
+            payload["projectPath"] = str(install_root.relative_to(project_root))
+        return payload
 
     result = await asyncio.to_thread(
         parts_domain.handle_install_part_as_package,
         lcsc_id,
-        str(project_root),
+        str(install_root),
     )
 
-    return {
+    payload = {
         "success": True,
         "lcsc_id": lcsc_id,
         "implementation_hint": (
@@ -1136,6 +1142,9 @@ async def _tool_parts_install(
         ),
         **result,
     }
+    if install_root != project_root:
+        payload["projectPath"] = str(install_root.relative_to(project_root))
+    return payload
 
 
 @_register_tool("datasheet_read")

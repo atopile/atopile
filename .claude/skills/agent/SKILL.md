@@ -115,6 +115,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 - Use `parts_search`/`parts_install` for physical LCSC/JLC components.
 - Use `web_search` alongside `parts_search` when selecting unfamiliar ICs, comparing candidate families, or researching proven reference circuits and implementation patterns before committing to a part.
 - Use `parts_install(create_package=true)` when an installed physical part should become a reusable local package under `packages/`.
+- When refining a package as its own project, use `parts_install(project_path="packages/<name>")` so any new supporting parts land inside that package project instead of only the top-level project.
 - Use `package_create_local` when you need an empty local package scaffold without installing a physical part.
 - Use `packages_search`/`packages_install` for atopile registry dependencies.
 - Use `stdlib_list` and `stdlib_get_item` for standard library modules, interfaces, and traits.
@@ -144,7 +145,7 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 ## Project Structure
 
 - **ICs get wrapper packages** in `packages/<name>/<name>.ato` — MCU, gate driver, transceiver, anything with complex pin mapping.
-- **Raw parts** from `parts_install` live in project-level `parts/`, but `parts_install(create_package=true)` also generates a reusable wrapper package under `packages/`.
+- **Raw parts** from `parts_install` live under the targeted project's `parts/`. By default that is the top-level project, but `parts_install(project_path="packages/<name>")` installs into a nested package project. `parts_install(create_package=true)` also generates a reusable wrapper package under `packages/`.
 - **Wrapper modules expose standard interfaces** — `ElectricPower`, `I2C`, `SPI`, `CAN`, `UART`, not raw pins.
 - **`main.ato` imports wrapper packages**, never raw `_package` components. Parts that don't need supporting components and don't expose high-level interfaces can be used directly from `parts/` (e.g. connectors, LEDs, test points, mounting holes).
 - **Generated package wrappers are refined in place** — if `parts_install(create_package=true)` created `packages/<name>/<name>.ato`, that file is the wrapper to edit and import directly from `main.ato`.

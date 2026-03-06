@@ -388,9 +388,10 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         tooltip=(
             "Install a part by LCSC id into the current project, or set "
             "create_package=true to generate a reusable local package under "
-            "packages/."
+            "packages/. Set project_path to install into a nested package "
+            "project when refining that package in isolation."
         ),
-        inputs=["lcsc_id", "create_package"],
+        inputs=["lcsc_id", "create_package", "project_path"],
         typical_output=(
             "success, lcsc_id, path, created_package, identifier, import_statement"
         ),

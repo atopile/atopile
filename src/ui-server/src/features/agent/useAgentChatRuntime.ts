@@ -115,10 +115,15 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
       leftPercent: Math.max(0, 100 - usedPercent),
     };
   }, [contextWindow]);
-  const projectQueuedBuilds = useMemo(
-    () => (projectRoot ? queuedBuilds.filter((build) => build.projectRoot === projectRoot) : []),
-    [projectRoot, queuedBuilds],
-  );
+  const projectQueuedBuilds = useMemo(() => {
+    if (!projectRoot) return [];
+    const rootPrefix = `${projectRoot}/`;
+    return queuedBuilds.filter((build) => {
+      const buildRoot = build.projectRoot;
+      if (!buildRoot) return false;
+      return buildRoot === projectRoot || buildRoot.startsWith(rootPrefix);
+    });
+  }, [projectRoot, queuedBuilds]);
   const latestBuildStatus = useMemo(
     () => findLatestBuildStatus(messages, projectQueuedBuilds, projectRoot),
     [messages, projectQueuedBuilds, projectRoot],

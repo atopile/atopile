@@ -74,6 +74,7 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
     assert "create_package=true" in definitions["parts_install"]["description"]
+    assert "project_path" in definitions["parts_install"]["parameters"]["properties"]
     assert "local sub-package" in definitions["package_create_local"]["description"]
     assert (
         "discover new build targets"
@@ -653,6 +654,48 @@ def test_parts_install_returns_web_search_followup_hint(monkeypatch) -> None:
     assert "web_search" in result["implementation_hint"]
 
 
+def test_parts_install_targets_nested_project_path(monkeypatch, tmp_path: Path) -> None:
+    package_root = tmp_path / "packages" / "sensor-front-end"
+    package_root.mkdir(parents=True)
+    (package_root / "ato.yaml").write_text(
+        (
+            'requires-atopile: "^0.14.0"\n'
+            "paths:\n"
+            "  src: ./\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: sensor_front_end.ato:SensorFrontEnd\n"
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
+        assert lcsc_id == "C12345"
+        assert project_root == str(package_root)
+        return {
+            "identifier": "Yangxing_Tech_X322512MMB4SI",
+            "path": str(package_root / "parts" / "Yangxing_Tech_X322512MMB4SI"),
+        }
+
+    monkeypatch.setattr(tools.parts_domain, "handle_install_part", fake_install_part)
+
+    result = _run(
+        tools.execute_tool(
+            name="parts_install",
+            arguments={
+                "lcsc_id": "c12345",
+                "project_path": "packages/sensor-front-end",
+            },
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["lcsc_id"] == "C12345"
+    assert result["projectPath"] == "packages/sensor-front-end"
+
+
 def test_package_create_local_creates_dependency_and_stub(tmp_path: Path) -> None:
     (tmp_path / "ato.yaml").write_text(
         (
@@ -688,7 +731,7 @@ def test_package_create_local_creates_dependency_and_stub(tmp_path: Path) -> Non
     assert (tmp_path / "packages" / "power-stage" / "power_stage.ato").exists()
     assert (tmp_path / "packages" / "power-stage" / "ato.yaml").exists()
     root_ato = (tmp_path / "ato.yaml").read_text(encoding="utf-8")
-    assert "type: file" in root_ato
+    assert "type: project" in root_ato
     assert "path: ./packages/power-stage" in root_ato
 
 
