@@ -491,6 +491,7 @@ class Build(CamelModel):
     keep_picked_parts: bool | None = Field(default=None, exclude=True)
     keep_net_names: bool | None = Field(default=None, exclude=True)
     keep_designators: bool | None = Field(default=None, exclude=True)
+    standardize_designators: bool | None = Field(default=None, exclude=True)
     verbose: bool = Field(default=False, exclude=True)
 
     @model_validator(mode="before")

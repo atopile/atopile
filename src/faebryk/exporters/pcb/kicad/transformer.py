@@ -1397,15 +1397,29 @@ class PCB_Transformer:
 
     def set_designator_position(
         self,
-        offset: float,
+        offset: float | None = None,
         displacement: kicad.pcb.Xy = kicad.pcb.Xy(x=0, y=0),
         rotation: Optional[float] = None,
-        offset_side: Side = Side.BOTTOM,
+        offset_side: Side = Side.LEFT,
         layer: Optional[str] = None,
         font: Optional[kicad.pcb.Font] = None,
         knockout: "Optional[kicad.pcb.E_knockout]" = None,
         justify: "kicad.pcb.Justify | None" = None,
     ):
+        # Justify mapping: align text toward the component for a given side
+        _JUSTIFY_FOR_SIDE = {
+            self.Side.TOP: kicad.pcb.E_justify.BOTTOM,
+            self.Side.BOTTOM: kicad.pcb.E_justify.TOP,
+            self.Side.LEFT: kicad.pcb.E_justify.RIGHT,
+            self.Side.RIGHT: kicad.pcb.E_justify.LEFT,
+        }
+
+        _JUSTIFY_SWAP = {
+            kicad.pcb.E_justify.LEFT: kicad.pcb.E_justify.RIGHT,
+            kicad.pcb.E_justify.RIGHT: kicad.pcb.E_justify.LEFT,
+            kicad.pcb.E_justify.TOP: kicad.pcb.E_justify.BOTTOM,
+            kicad.pcb.E_justify.BOTTOM: kicad.pcb.E_justify.TOP,
+        }
         if knockout:
             raise NotImplementedError("knockout not supported")
 
@@ -1414,35 +1428,91 @@ class PCB_Transformer:
             reference.layer = (
                 layer if layer else "F.SilkS" if fp.layer.startswith("F") else "B.SilkS"
             )
+
+            # reference.at.r is absolute: match footprint rotation so text
+            # follows the component
+            fp_angle = fp.at.r or 0
+            rot = rotation if rotation is not None else fp_angle
+
+            # Compute justify per-footprint: for rotated components,
+            # LEFT/RIGHT justify flips in the text frame
+            if justify is not None:
+                effective_justify = justify
+            else:
+                j = _JUSTIFY_FOR_SIDE[offset_side]
+                if fp_angle % 360 != 0:
+                    j = _JUSTIFY_SWAP[j]
+                effective_justify = kicad.pcb.Justify(
+                    justify1=j, justify2=None, justify3=None
+                )
+
             if reference.effects:
                 if font:
                     reference.effects.font = font
-                if justify:
-                    reference.effects.justify = justify
-
-            rot = rotation if rotation else reference.at.r
+                reference.effects.justify = effective_justify
 
             footprint_bbox = self.get_bounding_box(fp, {"F.SilkS", "B.SilkS"})
             if not footprint_bbox:
                 continue
             max_coord = kicad.pcb.Xy(x=footprint_bbox[1][0], y=footprint_bbox[1][1])
             min_coord = kicad.pcb.Xy(x=footprint_bbox[0][0], y=footprint_bbox[0][1])
+            bbox_width = max_coord.x - min_coord.x
+            bbox_height = max_coord.y - min_coord.y
 
+            # Estimate designator text size from font
+            ref_font = reference.effects.font if reference.effects else None
+            char_w = ref_font.size.w if ref_font and ref_font.size else 1.0
+            char_h = (
+                ref_font.size.h
+                if ref_font and ref_font.size and ref_font.size.h
+                else char_w
+            )
+            text_len = len(reference.value) if reference.value else 1
+            designator_w = char_w * text_len
+            designator_h = char_h
+
+            DEFAULT_MARGIN = 0.1  # mm
+            margin = offset if offset is not None else DEFAULT_MARGIN
+
+            # If the footprint is large enough to fit the designator inside
+            # with margin, center it at the origin
+            if (
+                bbox_width >= designator_w + margin * 2
+                and bbox_height >= designator_h + margin * 2
+            ):
+                reference.at = kicad.pcb.Xyr(x=0, y=0, r=rot)
+                if reference.effects:
+                    reference.effects.justify = None
+                continue
+
+            bbox_center_x = (min_coord.x + max_coord.x) / 2
+            bbox_center_y = (min_coord.y + max_coord.y) / 2
+
+            # Position in unrotated footprint-local frame (same as fp_lines/bbox).
+            # KiCad applies the footprint rotation when rendering.
             if offset_side == self.Side.BOTTOM:
                 reference.at = kicad.pcb.Xyr(
-                    x=displacement.x, y=max_coord.y + offset - displacement.y, r=rot
+                    x=bbox_center_x + displacement.x,
+                    y=max_coord.y + margin + displacement.y,
+                    r=rot,
                 )
             elif offset_side == self.Side.TOP:
                 reference.at = kicad.pcb.Xyr(
-                    x=displacement.x, y=min_coord.y - offset - displacement.y, r=rot
+                    x=bbox_center_x + displacement.x,
+                    y=min_coord.y - margin - displacement.y,
+                    r=rot,
                 )
             elif offset_side == self.Side.LEFT:
                 reference.at = kicad.pcb.Xyr(
-                    x=min_coord.x - offset - displacement.x, y=displacement.y, r=rot
+                    x=min_coord.x - margin - displacement.x,
+                    y=bbox_center_y + displacement.y,
+                    r=rot,
                 )
             elif offset_side == self.Side.RIGHT:
                 reference.at = kicad.pcb.Xyr(
-                    x=max_coord.x + offset + displacement.x, y=displacement.y, r=rot
+                    x=max_coord.x + margin + displacement.x,
+                    y=bbox_center_y + displacement.y,
+                    r=rot,
                 )
 
     def add_git_version(
@@ -1465,8 +1535,8 @@ class PCB_Transformer:
                 git.InvalidGitRepositoryError,
                 git.NoSuchPathError,
                 git.GitCommandError,
-            ):
-                logger.warning("Cannot get git project version")
+            ) as e:
+                logger.warning(f"Cannot get git project version: {e}")
                 git_human_version = "Cannot get git project version"
         except ImportError:
             # Fall back to direct string if git executable is not available

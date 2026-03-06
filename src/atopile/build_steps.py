@@ -828,6 +828,8 @@ def update_pcb(ctx: BuildStepContext) -> None:
     # set layout
     if config.build.hide_designators:
         pcb.transformer.hide_all_designators()
+    if config.build.standardize_designators:
+        pcb.transformer.set_designator_position()
 
     # Backup layout
     backup_dir = config.build.paths.output_base.parent / "backups"

@@ -594,6 +594,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
     hide_designators: bool | None = Field(default=False)
+    standardize_designators: bool | None = Field(default=False)
     paths: BuildTargetPaths
 
     def __init__(self, **data: Any):
