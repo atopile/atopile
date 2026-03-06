@@ -210,6 +210,7 @@ def _build_all_projects(
     keep_picked_parts: bool | None = None,
     keep_net_names: bool | None = None,
     keep_designators: bool | None = None,
+    standardize_designators: bool | None = None,
 ) -> None:
     """
     Build all projects in a directory.
@@ -292,6 +293,7 @@ def _build_all_projects(
                 keep_picked_parts=keep_picked_parts,
                 keep_net_names=keep_net_names,
                 keep_designators=keep_designators,
+                standardize_designators=standardize_designators,
                 verbose=verbose,
             )
         )
@@ -359,6 +361,13 @@ def build(
             envvar="ATO_KEEP_DESIGNATORS",
         ),
     ] = None,
+    standardize_designators: Annotated[
+        bool | None,
+        typer.Option(
+            help="Standardize designator positions on silkscreen",
+            envvar="ATO_STANDARDIZE_DESIGNATORS",
+        ),
+    ] = None,
     standalone: bool = False,
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
@@ -422,6 +431,7 @@ def build(
             keep_picked_parts=keep_picked_parts,
             keep_net_names=keep_net_names,
             keep_designators=keep_designators,
+            standardize_designators=standardize_designators,
         )
 
         # Install dependencies if needed (same as single project mode)
@@ -472,6 +482,7 @@ def build(
             keep_picked_parts=keep_picked_parts,
             keep_net_names=keep_net_names,
             keep_designators=keep_designators,
+            standardize_designators=standardize_designators,
         )
         return
 
@@ -486,6 +497,7 @@ def build(
         keep_picked_parts=keep_picked_parts,
         keep_net_names=keep_net_names,
         keep_designators=keep_designators,
+        standardize_designators=standardize_designators,
     )
 
     try:
@@ -526,6 +538,7 @@ def build(
                 keep_picked_parts=keep_picked_parts,
                 keep_net_names=keep_net_names,
                 keep_designators=keep_designators,
+                standardize_designators=standardize_designators,
                 verbose=verbose,
             )
         )
