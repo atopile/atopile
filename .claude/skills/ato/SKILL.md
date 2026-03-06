@@ -5,25 +5,27 @@ description: "Authoritative ato authoring and review skill: language reference, 
 
 # 1. End-to-End Design Process
 
-This is the canonical sequence for designing a board in atopile. Follow these steps in order. Each step has a gate condition — do not advance until the gate is met.
+This is the canonical sequence for designing a board in atopile. Move quickly, keep the structure clean, and avoid spreading planning state across multiple rounds unless the design genuinely requires it.
 
-## Step 1: Understand User Intent
+## Step 1: Draft The Architecture
 
-Ask probing questions to make sure you understand what the user is trying to build. You can ask questions in several rounds if needed. Focus on:
+Capture user intent as ato code immediately. Start with a clean high-level architecture and only stop to ask batched design questions when there are real unresolved decisions.
 
-- What is the system supposed to do?
-- What are the key functional blocks?
-- Are there specific parts, interfaces, or form factor requirements?
-- What are the power requirements and voltage domains?
-- Are there constraints on size, cost, or manufacturing?
+Focus on:
 
-> **Tools:** Use `design_questions` to batch multiple questions with suggested options. Use `web_search` if you need to research unfamiliar domains or components.
+- What the system is supposed to do
+- The main functional blocks
+- The important interfaces and voltage domains
+- Key constraints on size, cost, power, or manufacturing
+- Any parts or protocols that are already fixed by the user
 
-Gate: you have a clear understanding of the user's goals, constraints, and priorities. All open questions are answered.
+> **Tools:** Use `design_questions` to batch multiple unresolved decisions at once. Use `web_search` if you need to research unfamiliar domains or components before locking the architecture.
 
-## Step 2: Write Spec
+Gate: a spec `.ato` file exists with module hierarchy, interface connections, requirements in docstrings, and formal constraints.
 
-Capture user intent as ato code. Focus on **high-level architecture** — think of this step as drawing the block diagram. The spec IS the design file at a high level of abstraction. As you implement, you fill in real components and wiring. The file grows; the structure stays.
+## Step 2: Write The Spec
+
+The spec IS the design file at a high level of abstraction. As you implement, you fill in real components and wiring. The file grows; the structure stays.
 
 **Key principles:**
 - **Good naming** — name modules by their role in the system, not implementation topology (see Section 1.1).
@@ -68,8 +70,6 @@ module SensorBoard:
     - nRF52840 for BLE + low power
     - BME280 for temp/humidity/pressure
 
-    ## Open Questions
-    - Battery chemistry: LiPo vs coin cell?
     """
 
     # ── Architecture ──────────────────────────────────────
@@ -119,25 +119,25 @@ module Radio:
 **Key rules for this step:**
 - Module names are final — `PowerSupply` stays `PowerSupply` through implementation. Do NOT suffix with "Spec".
 - Place requirements in the docstring of the module that owns them, not all on the top-level.
-- Use docstrings for overview, key decisions, and open questions.
-- Present open questions to the user and wait for answers before implementing.
+- Use docstrings for overview, requirements, and important decisions.
+- Do not keep unresolved planning state in the design file longer than needed; use `design_questions` to batch open questions and then continue implementation.
 
 > **Tools:** Use `stdlib_list` / `stdlib_get_item` to check available interfaces and components before defining custom ones. Use `examples_search` / `examples_read_ato` to find reference designs for similar systems.
 
-Gate: spec `.ato` file exists with module hierarchy, interfaces, requirements in docstrings, and constraints.
+Gate: architecture is coherent enough to implement. If there are multiple open design decisions, batch them with `design_questions` and continue once answers arrive.
 
-## Step 3: Get Signoff
+## Step 3: Resolve Open Decisions
 
-Present the user with a high-level summary of the architecture:
+Present the user with the current architecture and any real unresolved decisions:
 
 - List the modules and their responsibilities.
 - Show the interface connections between modules.
 - Highlight any key decisions or trade-offs made.
 - Call out any assumptions or areas where alternatives exist.
 
-Give the user an opportunity to provide feedback or suggestions. Incorporate any feedback and iterate on the spec if necessary. Only proceed once the user approves the architecture.
+Use `design_questions` to batch unresolved decisions instead of trickling follow-up questions across multiple turns. Then incorporate the answers directly into the spec and continue implementation.
 
-Gate: user has approved the architecture.
+Gate: the key open questions are resolved or reasonable defaults have been chosen.
 
 ## Step 4: Implement Detailed Design
 
@@ -168,12 +168,15 @@ When `packages_search` returns no match for a needed IC, connector, or module, *
    - Treat `packages/<PartName>/<PartName>.ato` as the canonical wrapper module for that part.
    - Edit that generated package file in place rather than creating another wrapper layer.
    - Keep the raw installed part file unchanged.
+   - Keep the wrapper generic and reusable. Expose the chip's general capabilities, not one project's exact architecture.
    - Expose standard interfaces such as `ElectricPower`, `I2C`, `SPI`, `UART`, `CAN`, `SWD`, `USB2_0`, `USB2_0_IF`, `ElectricLogic`, or `ElectricSignal`.
    - Before writing any custom `interface`, check `stdlib_list` / `stdlib_get_item` for an existing stdlib interface and prefer stdlib arrays/composition over project-local aggregate interfaces.
+   - Prefer capability-oriented names and boundaries such as `uart`, `spi`, `adc_inputs`, `gpio`, `usb`, `swd`, `power`, not design-specific roles like `sbus`, `phase_current`, `weapon_pwm`, or `battlebot_interfaces`.
+   - It is fine to make slightly opinionated pin choices so key capabilities are wired out cleanly, but do not encode one specific end design into the wrapper shape.
    - Map the internal `_package` component pins to those interfaces.
    - Add decoupling capacitors and required passives.
    - Set voltage/current constraints from the datasheet.
-7. **Discover targets**: Run `workspace_list_targets` after package creation if you need to inspect or build nested package targets.
+7. **Discover targets**: Run `workspace_list_targets` after package creation to inspect and build the package targets that were exposed automatically.
 8. **Import and use** the local package in your top-level design directly from `packages/<PartName>/<PartName>.ato`.
 
 **Example: refining a generated local I2C mux wrapper**
@@ -266,6 +269,7 @@ Choose components using generics + constraints wherever possible.
   - an array of stdlib signals/interfaces (`new ElectricLogic[3]`, `new ElectricPower[3]`, `new ElectricSignal[3]`)
   - a few named stdlib fields directly on the module
 - Only define a custom interface when it represents a real reusable protocol/boundary that stdlib or simple composition does not already cover.
+- Keep package wrappers generic. Design-specific grouping and role naming belong in `main.ato` or project modules above the package layer.
 
 ### 4d: Detailed wiring and constraints
 
@@ -283,9 +287,14 @@ Run builds and fix issues iteratively until everything passes. **Build submodule
 
 ### 5a: Build + fix loop
 
-> **Tools:** `build_run` → `build_logs_search` (filter by `log_levels`/`stage`) → `design_diagnostics` for silent failures. Use `report_variables` to inspect constraint state and `report_bom` to verify part selection.
+> **Tools:** `workspace_list_targets` → `build_run` → `build_logs_search` (filter by `log_levels`/`stage`) → `design_diagnostics` for silent failures. Use `report_variables` to inspect constraint state and `report_bom` to verify part selection.
 
-- Run `build_run` and inspect results.
+- Run `workspace_list_targets` first after creating/installing local packages so you know which package targets already exist automatically.
+- Split the design into sensible submodules and build those smaller targets first. This is the default validation loop.
+- Build wrapper/package targets first, and do so in parallel where practical, so you get feedback much faster than waiting on repeated full-design builds.
+- Fix submodule/package failures before running the top-level design.
+- Do not add manual top-level `ato.yaml` entries just to build generated local package wrappers if `workspace_list_targets` already exposes those targets.
+- Use the full top-level build after submodules are green; it should then be mainly an integration check rather than the first place issues appear.
 - Check `build_logs_search` for errors/warnings.
 - Use `design_diagnostics` for silent failures.
 - Fix issues using Section 5 troubleshooting.
@@ -351,20 +360,21 @@ For non-trivial designs, split early and keep one primary module per file.
 **Example file layout:**
 
 ```text
-design/
-  main.ato                  # integration module only
-  power/
-    buck_5v.ato             # 30V -> 5V stage
-    buck_3v3.ato            # 5V -> 3V3 stage
-  control/
-    mcu.ato                 # MCU + local support passives
-  comms/
-    can_phy.ato             # CAN transceiver stage
-  io/
-    connectors.ato          # connector adapters
+main.ato                    # integration module only
+ato.yaml                    # project-level builds
+packages/
+  stm32g474/
+    stm32g474.ato           # reusable wrapper package
+power/
+  buck_5v.ato               # project-specific power stage
+  buck_3v3.ato              # project-specific regulator stage
+control/
+  motor_control.ato         # project-specific control module
+io/
+  connectors.ato            # project-specific adapters/connectors
 ```
 
-Create folders/files for planned modules before writing detailed internals. Keep the integration file focused on composition and cross-module constraints.
+Keep `main.ato` at the project root. Put reusable IC wrappers under `packages/`. Put project-specific implementation modules in sibling folders only when they help keep the design clean.
 
 ## 1.3 Design for Test
 

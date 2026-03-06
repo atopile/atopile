@@ -34,7 +34,9 @@ def get_project_tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "List build targets from every nested ato.yaml under the selected "
                 "project, including local sub-packages. Use this after creating "
-                "or installing packages to discover new build targets."
+                "or installing packages to discover new build targets. Prefer "
+                "these discovered package targets over adding manual top-level "
+                "ato.yaml build entries just to validate generated local packages."
             ),
             "parameters": {
                 "type": "object",

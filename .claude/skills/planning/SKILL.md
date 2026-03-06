@@ -33,7 +33,7 @@ Every project with ICs should follow this structure. **IC wrapper packages are s
 
 ```
 my-project/
-├── ato.yaml                        # All builds defined here
+├── ato.yaml                        # Project-level builds defined here
 ├── main.ato                        # Top-level design — imports packages, not raw parts
 ├── packages/
 │   ├── stm32g474/
@@ -65,9 +65,10 @@ my-project/
 - **ICs always get wrapper packages** — MCU, gate driver, transceiver, anything with complex pin mapping
 - **Wrapper modules expose standard interfaces** — `ElectricPower`, `I2C`, `SPI`, `CAN`, `UART`, `SWD`, `USB2_0`, `USB2_0_IF`, `ElectricLogic`, `ElectricSignal`, not raw pins
 - **Check stdlib before defining new interfaces** — if stdlib already has the right interface, or the boundary can be modeled as arrays/composition of stdlib interfaces, use that instead of inventing a project-local interface
+- **Wrapper packages are generic** — package boundaries should reflect chip capability, not one board's exact subsystem decomposition or role naming
 - **Self-contained parts don't need wrappers** — anything that doesn't need supporting components and doesn't expose high-level interfaces (connectors, LEDs, test points, mounting holes)
-- **No `ato.yaml` inside package directories** — all builds defined in the project root `ato.yaml`
-- **Package builds in `ato.yaml`** — each package gets its own build target for independent verification
+- **No `ato.yaml` inside package directories** — package targets are discovered automatically
+- **Do not add manual package wrapper build targets to the top-level `ato.yaml`** — use `workspace_list_targets` to discover package targets exposed by local packages
 
 ## `ato.yaml` format
 
@@ -293,7 +294,7 @@ When creating a spec, also create a checklist to track implementation progress. 
 ```
 checklist_create({
   items: [
-    {id: "spec", description: "Write spec and project structure", criteria: "main.ato with architecture, ato.yaml with package builds"},
+    {id: "spec", description: "Write spec and project structure", criteria: "main.ato with architecture and project-level ato.yaml"},
     {id: "questions", description: "Gather design decisions", criteria: "design_questions called with all open questions"},
     {id: "pkg-mcu", description: "Create MCU wrapper package", criteria: "packages/stm32g474/stm32g474.ato with standard interfaces"},
     {id: "pkg-driver", description: "Create gate driver wrapper package", criteria: "packages/drv8317/drv8317.ato with standard interfaces"},
@@ -312,7 +313,7 @@ The goal is to **front-load all questions and decisions**, then implement withou
 Do steps 1-5 in a SINGLE turn — do not end your turn after announcing you will plan.
 
 1. **Read** existing project files to understand current state.
-2. **Set up project structure** — create `ato.yaml` with package builds, create `packages/` directories.
+2. **Set up project structure** — create the project-level `ato.yaml` and `packages/` directories. Do not add manual package-wrapper build targets for generated local packages.
 3. **Write the spec** as `main.ato` — architecture with sub-modules, requirements in docstrings, interface connections, and formal constraints. Use standard library interfaces (CAN, I2C, SPI, SWD, USB2_0, ElectricPower, ElectricLogic, ElectricSignal) in the spec instead of inventing local interfaces unless there is a real reusable boundary not covered by stdlib.
 4. **Create checklist** with items for each package wrapper + integration + build.
 5. **Call `design_questions`** with ALL open questions at once. Include suggested options and recommended defaults where possible — make it easy for the user to answer quickly. Your turn ends automatically after this call.
@@ -327,8 +328,13 @@ Use `design_questions` any time you have multiple design decisions to gather. It
 
 7. **Create package wrappers** — one per IC. Install parts, read datasheets, map pins to interfaces.
    - Before committing to an unfamiliar IC, motor driver, PMIC, RF part, or other high-risk part, do a brief `web_search` pass to compare families, confirm the typical topology, and find reference-circuit guidance.
-8. **Wire up `main.ato`** — connect packages through their interfaces. No raw `_package` imports here.
-9. **Build and verify** — run the build and fix issues.
+   - Keep wrappers reusable across projects. Expose generic chip capabilities and keep board-specific grouping and role naming in `main.ato` or project modules above the wrapper.
+8. **Validate package targets first** — use `workspace_list_targets` to discover package targets automatically exposed by local packages, then build/fix wrappers and other submodules before attempting the full design.
+   - Build smaller design sections first because they are much faster to validate.
+   - Run independent package/submodule builds in parallel where practical to get faster feedback.
+   - Use the full-design build only after those smaller targets are green so it serves as an integration check, not the first debugging loop.
+9. **Wire up `main.ato`** — connect packages through their interfaces. No raw `_package` imports here.
+10. **Build and verify the full design last** — once package and submodule targets are green, run the top-level build and fix integration issues.
 
 **Do not end your turn to ask follow-up questions** — make reasonable assumptions and note them. The user can course-correct via steering messages.
 

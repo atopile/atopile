@@ -136,7 +136,12 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "build_create",
-            "description": "Create a new build target in ato.yaml.",
+            "description": (
+                "Create a new project-level build target in ato.yaml. Use this "
+                "for real top-level or explicitly desired project builds, not as "
+                "the default way to validate generated local package wrappers "
+                "that are already discoverable via workspace_list_targets."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
