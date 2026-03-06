@@ -30,6 +30,7 @@ from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
+from atopile.server.project_files import ProjectFilesWatcher, scan_project_tree
 from faebryk.libs.package.meta import PackageModifiedError
 
 log = logging.getLogger(__name__)
@@ -969,14 +970,31 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            # Run blocking file tree build in thread pool
-            file_tree = await asyncio.to_thread(
-                projects_domain.build_file_tree, project_path, project_path
-            )
+            file_tree = await asyncio.to_thread(scan_project_tree, project_path)
             return {
                 "success": True,
-                "files": [node.model_dump(by_alias=True) for node in file_tree],
+                "files": file_tree,
             }
+
+        if action == "watchProjectFiles":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                ProjectFilesWatcher.clear()
+                return {"success": True, "info": "Project file watcher cleared"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            await ProjectFilesWatcher.watch(
+                project_root,
+                broadcast=server_state.emit_event,
+                loop=asyncio.get_running_loop(),
+            )
+            return {"success": True, "project_root": project_root}
 
         if action == "fetchDependencies":
             project_root = payload.get("projectRoot", "")
