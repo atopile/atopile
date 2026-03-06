@@ -24,7 +24,12 @@ jobs:
         fetch-tags: true
 
     - name: Checkout packages repo
-      run: git clone --depth 1 https://github.com/atopile/packages "$GITHUB_WORKSPACE/../packages"
+      run: |
+        if [ -d "$GITHUB_WORKSPACE/../packages" ]; then
+          git -C "$GITHUB_WORKSPACE/../packages" pull --ff-only || true
+        else
+          git clone --depth 1 https://github.com/atopile/packages "$GITHUB_WORKSPACE/../packages"
+        fi
 
     - name: Prepare artifacts dir
       run: mkdir -p artifacts
