@@ -127,21 +127,6 @@ def get_installed_packages_for_project(project_root: Path) -> list[InstalledPack
                 if isinstance(dep, dict):
                     identifier = dep.get("identifier", "")
                     version = dep.get("release", dep.get("version", "unknown"))
-                    if dep.get("type") == "project":
-                        dep_path = dep.get("path")
-                        if isinstance(dep_path, str):
-                            from atopile import config as atopile_config
-
-                            package_root = (project_root / dep_path).resolve()
-                            try:
-                                cfg = atopile_config.ProjectConfig.from_path(
-                                    package_root,
-                                    validate_builds=False,
-                                )
-                            except Exception:
-                                cfg = None
-                            if cfg and cfg.package and cfg.package.version:
-                                version = cfg.package.version
                     if identifier:
                         packages.append(
                             InstalledPackage(
