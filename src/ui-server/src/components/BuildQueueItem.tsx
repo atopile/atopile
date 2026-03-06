@@ -110,6 +110,21 @@ interface BuildQueueItemProps {
   onCancel?: (buildId: string) => void
 }
 
+function formatBuildQueueLabel(build: QueuedBuild): string {
+  const targetName = build.target || build.entry || 'default'
+  const projectRoot = build.projectRoot || ''
+  if (!projectRoot.includes('/packages/')) {
+    return targetName
+  }
+
+  const packageName = projectRoot.split('/').filter(Boolean).pop()
+  if (!packageName) {
+    return targetName
+  }
+
+  return `${packageName}:${targetName}`
+}
+
 export function BuildQueueItem({
   build,
   onCancel,
@@ -156,7 +171,7 @@ export function BuildQueueItem({
     return Math.round((completedStages / totalStages) * 100)
   }, [build.stages, build.totalStages])
 
-  const targetName = build.target || build.entry || 'default'
+  const targetName = useMemo(() => formatBuildQueueLabel(build), [build])
   const isComplete = build.status === 'success' || build.status === 'failed' || build.status === 'cancelled' || build.status === 'warning'
   const hasStages = build.stages && build.stages.length > 0
   // Check if any stage has failed - used to hide progress bar even if build status hasn't updated yet

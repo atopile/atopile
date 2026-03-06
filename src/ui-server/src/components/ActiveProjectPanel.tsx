@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
+import { IS_WEB_IDE } from '../api/config'
 import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
@@ -26,10 +27,11 @@ const getWorkspaceRoot = (): string => {
 interface ActiveProjectPanelProps {
   projects: Project[]
   selectedProjectRoot: string | null
+  selectedTargetRoot: string | null
   selectedTargetName: string | null
   projectModules?: ModuleDefinition[]
   onSelectProject: (projectRoot: string | null) => void
-  onSelectTarget: (projectRoot: string, targetName: string) => void
+  onSelectTarget: (projectRoot: string, targetName: string, targetRoot?: string) => void
   onBuildTarget: (projectRoot: string, targetName: string) => void
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
@@ -255,20 +257,53 @@ function ProjectSelector({
 // TargetSelector component - combobox for target selection
 function TargetSelector({
   targets,
+  primaryProjectRoot,
   activeTargetName,
+  activeTargetRoot,
   onSelectTarget,
   disabled,
 }: {
   targets: BuildTarget[]
+  primaryProjectRoot: string
   activeTargetName: string | null
-  onSelectTarget: (targetName: string) => void
+  activeTargetRoot: string | null
+  onSelectTarget: (target: BuildTarget) => void
   disabled?: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const comboboxRef = useRef<HTMLDivElement>(null)
 
-  const activeTarget = targets.find(t => t.name === activeTargetName) || targets[0] || null
+  const orderedTargets = useMemo(() => {
+    const mainTargets = targets.filter((target) => target.root === primaryProjectRoot)
+    const subProjectTargets = targets
+      .filter((target) => target.root !== primaryProjectRoot)
+      .sort((left, right) => {
+        if (left.root !== right.root) return left.root.localeCompare(right.root)
+        return left.name.localeCompare(right.name)
+      })
+    return [...mainTargets, ...subProjectTargets]
+  }, [primaryProjectRoot, targets])
+
+  const activeTarget = orderedTargets.find((target) =>
+    target.name === activeTargetName &&
+    (!activeTargetRoot || target.root === activeTargetRoot)
+  ) || orderedTargets.find((target) => target.name === activeTargetName) || orderedTargets[0] || null
+
+  const formatTargetScope = (target: BuildTarget) => {
+    if (target.root === primaryProjectRoot) return null
+    const targetParts = target.root.split('/').filter(Boolean)
+    const rootParts = primaryProjectRoot.split('/').filter(Boolean)
+    let offset = 0
+    while (
+      offset < targetParts.length &&
+      offset < rootParts.length &&
+      targetParts[offset] === rootParts[offset]
+    ) {
+      offset += 1
+    }
+    return targetParts.slice(offset).join('/') || target.root
+  }
 
   // Close on outside click
   useEffect(() => {
@@ -293,7 +328,7 @@ function TargetSelector({
           setIsOpen(true)
         } else {
           setHighlightedIndex((prev) =>
-            prev < targets.length - 1 ? prev + 1 : prev
+            prev < orderedTargets.length - 1 ? prev + 1 : prev
           )
         }
       } else if (e.key === 'ArrowUp') {
@@ -301,21 +336,21 @@ function TargetSelector({
         setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0))
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (targets[highlightedIndex]) {
-          onSelectTarget(targets[highlightedIndex].name)
+        if (orderedTargets[highlightedIndex]) {
+          onSelectTarget(orderedTargets[highlightedIndex])
           setIsOpen(false)
         }
       }
     },
-    [targets, highlightedIndex, isOpen, onSelectTarget]
+    [orderedTargets, highlightedIndex, isOpen, onSelectTarget]
   )
 
   const selectTarget = (target: BuildTarget) => {
-    onSelectTarget(target.name)
+    onSelectTarget(target)
     setIsOpen(false)
   }
 
-  if (targets.length === 0 && !activeTargetName) {
+  if (orderedTargets.length === 0 && !activeTargetName) {
     return (
       <div className="target-selector-empty">
         <span>No builds defined</span>
@@ -336,6 +371,9 @@ function TargetSelector({
       >
         <Target size={14} className="target-icon" />
         <span className="target-trigger-name">{activeTarget?.name || activeTargetName || 'Select build'}</span>
+        {activeTarget && activeTarget.root !== primaryProjectRoot && (
+          <span className="target-scope-badge trigger">{formatTargetScope(activeTarget) || 'package'}</span>
+        )}
         <span className="target-combobox-chevron">
           <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
         </span>
@@ -344,13 +382,14 @@ function TargetSelector({
       {isOpen && (
         <div className="target-combobox-dropdown">
           <div className="target-combobox-list" role="listbox">
-            {targets.map((target, index) => {
-              const isActive = target.name === activeTargetName
+            {orderedTargets.map((target, index) => {
+              const isActive = activeTarget != null && target.name === activeTarget.name && target.root === activeTarget.root
               const isHighlighted = index === highlightedIndex
+              const scope = formatTargetScope(target)
               return (
                 <button
-                  key={target.name}
-                  className={`target-option ${isActive ? 'active' : ''} ${isHighlighted ? 'highlighted' : ''}`}
+                  key={`${target.root}:${target.name}`}
+                  className={`target-option ${isActive ? 'active' : ''} ${isHighlighted ? 'highlighted' : ''} ${target.root !== primaryProjectRoot ? 'subproject' : ''}`}
                   onClick={() => selectTarget(target)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                   role="option"
@@ -358,6 +397,7 @@ function TargetSelector({
                 >
                   <Target size={12} className="option-icon" />
                   <span className="target-option-name">{target.name}</span>
+                  {scope && <span className="target-scope-badge option">{scope}</span>}
                   {target.entry && (
                     <span className="target-option-entry">{target.entry.split(':').pop()}</span>
                   )}
@@ -841,6 +881,7 @@ function NewProjectForm({
 export function ActiveProjectPanel({
   projects,
   selectedProjectRoot,
+  selectedTargetRoot,
   selectedTargetName,
   projectModules,
   onSelectProject,
@@ -918,6 +959,14 @@ export function ActiveProjectPanel({
     return activeProject?.targets?.[0]?.name ?? null
   }, [activeProject, selectedTargetName])
 
+  const activeTarget = useMemo(() => {
+    if (!activeProject) return null
+    return activeProject.targets.find((target) =>
+      target.name === activeTargetName &&
+      (!selectedTargetRoot || target.root === selectedTargetRoot)
+    ) ?? activeProject.targets.find((target) => target.name === activeTargetName) ?? activeProject.targets[0] ?? null
+  }, [activeProject, activeTargetName, selectedTargetRoot])
+
   const handleCreateTarget = useCallback(async (data: NewTargetData) => {
     if (!onCreateTarget || !activeProject) return
     setIsCreatingTarget(true)
@@ -938,8 +987,8 @@ export function ActiveProjectPanel({
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
     if (!activeProject) return 'Select a project first'
-    if (!activeTargetName) return 'Select a build first'
-    return `Open ${action} for ${activeTargetName}`
+    if (!activeTarget) return 'Select a build first'
+    return `Open ${action} for ${activeTarget.name}`
   }
 
   return (
@@ -1006,10 +1055,12 @@ export function ActiveProjectPanel({
           </span>
           <TargetSelector
             targets={activeProject?.targets || []}
+            primaryProjectRoot={activeProject?.root || ''}
             activeTargetName={activeTargetName}
-            onSelectTarget={(targetName) => {
+            activeTargetRoot={activeTarget?.root ?? selectedTargetRoot}
+            onSelectTarget={(target) => {
               if (activeProject) {
-                onSelectTarget(activeProject.root, targetName)
+                onSelectTarget(activeProject.root, target.name, target.root)
               }
             }}
             disabled={!activeProject}
@@ -1044,10 +1095,10 @@ export function ActiveProjectPanel({
             <button
               className="action-btn primary"
               onClick={() => {
-                if (!activeProject || !activeTargetName || isMigrating) return
-                onBuildTarget(activeProject.root, activeTargetName)
+                if (!activeTarget || isMigrating) return
+                onBuildTarget(activeTarget.root, activeTarget.name)
               }}
-              disabled={!activeProject || isMigrating || !activeTargetName}
+              disabled={!activeTarget || isMigrating}
               title={isMigrating ? 'Migrating...' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
             >
               {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
@@ -1055,30 +1106,33 @@ export function ActiveProjectPanel({
             </button>
           )}
 
+          {!IS_WEB_IDE && (
+            <>
+              <div className="action-divider" />
+              <button
+                className="action-btn"
+                onClick={() => {
+                  if (!activeTarget) return
+                  onOpenKiCad(activeTarget.root, activeTarget.name)
+                }}
+                disabled={!activeTarget}
+                title={getOutputTooltip('KiCad schematic editor')}
+              >
+                <Layers size={12} />
+                <span className="action-label">KiCad</span>
+              </button>
+            </>
+          )}
+
           <div className="action-divider" />
 
           <button
             className="action-btn"
             onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpenKiCad(activeProject.root, activeTargetName)
+              if (!activeTarget) return
+              onOpen3D(activeTarget.root, activeTarget.name)
             }}
-            disabled={!activeProject || !activeTargetName}
-            title={getOutputTooltip('KiCad schematic editor')}
-          >
-            <Layers size={12} />
-            <span className="action-label">KiCad</span>
-          </button>
-
-          <div className="action-divider" />
-
-          <button
-            className="action-btn"
-            onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpen3D(activeProject.root, activeTargetName)
-            }}
-            disabled={!activeProject || !activeTargetName}
+            disabled={!activeTarget}
             title={getOutputTooltip('3D board viewer')}
           >
             <Cuboid size={12} />
@@ -1090,10 +1144,10 @@ export function ActiveProjectPanel({
           <button
             className="action-btn"
             onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpenLayout(activeProject.root, activeTargetName)
+              if (!activeTarget) return
+              onOpenLayout(activeTarget.root, activeTarget.name)
             }}
-            disabled={!activeProject || !activeTargetName}
+            disabled={!activeTarget}
             title={getOutputTooltip('PCB layout editor')}
           >
             <Layout size={12} />
@@ -1106,13 +1160,13 @@ export function ActiveProjectPanel({
             <button
               className="action-btn"
               onClick={() => {
-                if (!activeProject || !activeTargetName) return
-                onGenerateManufacturingData(activeProject.root, activeTargetName)
+                if (!activeTarget) return
+                onGenerateManufacturingData(activeTarget.root, activeTarget.name)
               }}
-              disabled={!activeProject || !activeTargetName}
+              disabled={!activeTarget}
               title={
-                activeProject && activeTargetName
-                  ? `Generate manufacturing files for ${activeTargetName}`
+                activeTarget
+                  ? `Generate manufacturing files for ${activeTarget.name}`
                   : 'Run a build first to generate manufacturing data'
               }
             >
