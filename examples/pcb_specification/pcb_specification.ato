@@ -2,6 +2,7 @@
 This example demonstrates how to specify a specific PCB stackup from a specific
 manufacturer.
 """
+#pragma experiment("TRAITS")
 
 import Resistor
 import is_pcb
@@ -10,8 +11,7 @@ from "JLCPCB.ato" import JLC041612_3313
 
 module App:
     """System"""
-    cool_pcb_a = new MyAmazingDesign
-    cool_pcb_b = new MyAmazingDesign
+    cool_pcb = new MyAmazingDesign
 
 module MyAmazingDesign:
     """Board"""

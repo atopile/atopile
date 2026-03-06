@@ -9,12 +9,12 @@ import has_part_removed
 module JLCPCB:
     trait is_pcb_manufacturer
     trait is_company<name = "JLCPCB", country = "CHN", website = "https://www.jlcpcb.com">
-    trait has_part_removed
+    trait has_part_removed  # suppress picker warning (ato limitation)
 
 module JLC041612_3313:
     """JLCPCB 4-layer 1.6mm layer."""
     trait is_pcb_stackup
-    trait has_part_removed  # this module is not a pickable component
+    trait has_part_removed  # suppress picker warning (ato limitation)
     is_default_stackup = True
     manufacturer = new JLCPCB
     layers = new PCBLayer[9]

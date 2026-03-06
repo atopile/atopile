@@ -7,6 +7,7 @@ from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.errors import UserException
 from faebryk.libs.ISO3166 import ISO3166_1_A3
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,20 @@ class is_pcb(fabll.Node):
     """
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    def get_stackup(self) -> is_pcb_stackup:
+        pcb_node = self.get_parent_force()[0]
+        stackup_n = pcb_node.get_children(
+            direct_only=True, types=fabll.Node, required_trait=is_pcb_stackup
+        )
+        if not stackup_n:
+            raise UserException(f"PCB '{pcb_node.get_name()}' does not have a stackup.")
+        if len(stackup_n) > 1:
+            raise UserException(
+                f"PCB '{pcb_node.get_name()}' has multiple stackups: "
+                f"{', '.join(stackup_node.get_name() for stackup_node in stackup_n)}"
+            )
+        return stackup_n[0].get_trait(is_pcb_stackup)
 
 
 class is_company(fabll.Node):

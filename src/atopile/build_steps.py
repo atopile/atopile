@@ -361,8 +361,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -536,6 +540,20 @@ def instantiate_app_step(ctx: BuildStepContext) -> None:
 def prepare_build(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     ctx.solver = Solver()
+
+    # Check if build has multiple boards (PCBs) or stackups
+    board_nodes = app.get_children(
+        direct_only=False, types=fabll.Node, required_trait=F.PCBManu.is_pcb
+    )
+    if len(board_nodes) > 1:
+        raise UserException(
+            "Build has multiple boards: "
+            f"{', '.join(board_node.get_name() for board_node in board_nodes)}, "
+            "currently not supported."
+        )
+    board = board_nodes[0].get_trait(F.PCBManu.is_pcb)
+    _ = board.get_stackup()  # validate stackup
+
     if ctx.pcb is None:
         ctx.pcb = (
             F.PCB.bind_typegraph(app.tg)
