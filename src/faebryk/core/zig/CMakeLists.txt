@@ -35,6 +35,7 @@ set(ZIG_OUT_LIB_SEXP "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_SEXP_NAME}")
 set(ZIG_ENV_PREFIX "")
 set(ZIG_TARGET_ARG "")
 set(_TARGET_ARCH_FOR_STAMP "native")  # Default for non-Apple platforms
+set(_CPU_TARGET_FOR_STAMP "native")
 
 if (APPLE)
   if (CMAKE_OSX_ARCHITECTURES)
@@ -83,12 +84,14 @@ endif()
 set(ZIG_CPU_ARG "")
 if(DEFINED ENV{ATOPILE_ZIG_CPU})
   set(ZIG_CPU_ARG -Dcpu=$ENV{ATOPILE_ZIG_CPU})
+  set(_CPU_TARGET_FOR_STAMP "$ENV{ATOPILE_ZIG_CPU}")
+  string(REGEX REPLACE "[^A-Za-z0-9_.-]" "_" _CPU_TARGET_FOR_STAMP "${_CPU_TARGET_FOR_STAMP}")
   message(STATUS "Zig CPU target: $ENV{ATOPILE_ZIG_CPU}")
 endif()
 
-# Stamp file includes target architecture to keep separate outputs for
-# different build architectures in the same source checkout.
-set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
+# Stamp file includes target architecture and CPU target to keep separate
+# outputs for different build variants in the same source checkout.
+set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.${_CPU_TARGET_FOR_STAMP}.build.stamp")
 
 # CI cache support: use pre-built zig artifacts from external directory --------
 set(_use_prebuilt FALSE)
