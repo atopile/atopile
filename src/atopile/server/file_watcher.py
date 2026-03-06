@@ -63,19 +63,9 @@ _TRACK_DIR_EVENTS = frozenset(
     }
 )
 
-# Patterns for watchdog's built-in filtering (applied early, before handlers)
-_WATCH_PATTERNS = [
-    "*.ato",
-    "*.py",
-    "*.json",
-    "*.yaml",
-    "*.yml",
-    "*.kicad_pcb",
-    "*.kicad_pro",
-    "*.kicad_sch",
-    "*.kicad_mod",
-    "*.kicad_sym",
-]
+# Use broad early filtering so one shared observer can serve both targeted
+# state watchers and whole-tree consumers like the sidebar file explorer.
+_WATCH_PATTERNS = ["*"]
 
 # Ignore patterns for watchdog (applied early, skips contents of ignored directories)
 # Note: We only ignore contents (*/{name}/*), not the directories themselves,
@@ -210,14 +200,13 @@ class _EventDispatcher(PatternMatchingEventHandler):
     def _should_process_event(self, event: FileSystemEvent) -> bool:
         """Check if we should process this event.
 
-        For files: always process (filtering done by patterns)
-        For directories: only process if it's a tracked directory like .ato or .git
+        For files: always process (filtering done by patterns + handler globs)
+        For directories: process create/delete/move so tree subscribers can react
+        to nested folder changes. Ignored directories are still filtered later.
         """
         if not event.is_directory:
             return True
-        # For directories, only track creation/deletion of specific ones
-        dir_name = Path(self._path_str(event.src_path)).name
-        return dir_name in _TRACK_DIR_EVENTS
+        return True
 
     def on_created(self, event: FileSystemEvent) -> None:
         if self._should_process_event(event):

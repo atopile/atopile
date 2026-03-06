@@ -361,8 +361,10 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     # 3. Stop selected-project file watcher
     try:
         from atopile.server.project_files import ProjectFilesWatcher
+        from atopile.server.resource_files import ResourceFileWatcher
 
         ProjectFilesWatcher.clear()
+        ResourceFileWatcher.clear()
     except Exception:
         pass
 

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
-import { Build } from './manifest';
 import * as fs from 'fs';
-import { FileResource, FileResourceWatcher } from './file-resource-watcher';
+import { backendServer } from './backendServer';
 import { traceInfo, traceWarn } from './log/logging';
 import { optimizeGLB } from './kicad';
 
@@ -16,12 +15,19 @@ export type ThreeDViewerState =
     | { state: 'showing'; modelPath: string; isOptimized: boolean; isBuilding: boolean; isOptimizing: boolean }
     | { state: 'failed'; message: string };
 
+interface ThreeDModel {
+    path: string;
+    exists: boolean;
+}
+
 let viewerState: ThreeDViewerState = { state: 'loading' };
 const viewerStateEmitter = new vscode.EventEmitter<ThreeDViewerState>();
 export const onThreeDViewerStateChanged = viewerStateEmitter.event;
 
 let optimizationAbortController: AbortController | undefined;
 let buildTimeoutTimer: NodeJS.Timeout | undefined;
+let currentModel: ThreeDModel | undefined;
+let currentProjectRoot: string | undefined;
 
 export function getThreeDViewerState(): ThreeDViewerState {
     return viewerState;
@@ -38,6 +44,18 @@ function setViewerState(newState: ThreeDViewerState) {
     viewerStateEmitter.fire(newState);
 }
 
+function setCurrentModel(model: ThreeDModel | undefined): void {
+    currentModel = model;
+}
+
+function watchCurrentModel(projectRoot: string | undefined, rawGlbPath: string | undefined): void {
+    backendServer.sendBackendAction('watchResourceFile', {
+        resourceType: 'model',
+        projectRoot: projectRoot ?? null,
+        path: rawGlbPath ?? null,
+    });
+}
+
 function getOptimizedPath(rawPath: string): string {
     return rawPath.replace(/\.glb$/, '.optimized.glb');
 }
@@ -47,7 +65,6 @@ function findBestGlbPath(rawPath: string): { path: string; isOptimized: boolean 
     const rawExists = fs.existsSync(rawPath);
     const optimizedExists = fs.existsSync(optimizedPath);
 
-    // Prefer optimized if it's newer than raw
     if (optimizedExists && rawExists) {
         const rawMtime = fs.statSync(rawPath).mtimeMs;
         const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
@@ -111,11 +128,9 @@ async function runOptimization(rawPath: string) {
                     isOptimizing: false,
                 });
             }
-        } else {
+        } else if (viewerState.state === 'showing') {
             traceWarn('3dmodel: Optimized file was not created');
-            if (viewerState.state === 'showing') {
-                setViewerState({ ...viewerState, isOptimizing: false });
-            }
+            setViewerState({ ...viewerState, isOptimizing: false });
         }
     } catch (error) {
         if (signal.aborted) {
@@ -132,41 +147,18 @@ async function runOptimization(rawPath: string) {
     }
 }
 
-// ============================================================================
-// File Watcher
-// ============================================================================
-
-interface ThreeDModel extends FileResource {}
-
-class ThreeDModelWatcher extends FileResourceWatcher<ThreeDModel> {
-    constructor() {
-        super('3D Model');
-    }
-
-    protected getResourceForBuild(build: Build | undefined): ThreeDModel | undefined {
-        if (!build?.entry) {
-            return undefined;
-        }
-        return { path: build.model_path, exists: fs.existsSync(build.model_path) };
-    }
-}
-
-const modelWatcher = new ThreeDModelWatcher();
-
-// ============================================================================
-// Main API
-// ============================================================================
-
 /**
  * Prepare the 3D viewer for a build target. Handles three scenarios:
  * 1. Existing GLB → Show immediately, rebuild in background
  * 2. No GLB exists → Show loading spinner, wait for build
  * 3. After build completes → Optimize GLB in background
  */
-export function prepareThreeDViewer(rawGlbPath: string, triggerBuild: () => void): void {
+export function prepareThreeDViewer(rawGlbPath: string, projectRoot: string, triggerBuild: () => void): void {
     cancelOptimization();
     clearBuildTimeout();
-    modelWatcher.setCurrent({ path: rawGlbPath, exists: fs.existsSync(rawGlbPath) });
+    currentProjectRoot = projectRoot;
+    setCurrentModel({ path: rawGlbPath, exists: fs.existsSync(rawGlbPath) });
+    watchCurrentModel(projectRoot, rawGlbPath);
 
     const bestGlb = findBestGlbPath(rawGlbPath);
 
@@ -203,38 +195,34 @@ function setupBuildTimeout(rawGlbPath: string) {
         } else if (viewerState.state === 'showing') {
             setViewerState({ ...viewerState, isBuilding: false });
         }
-    }, 300000); // 5 minutes
+    }, 300000);
 }
 
-/** Called when webview reports build completion */
 export function handleThreeDModelBuildResult(success: boolean, error?: string | null) {
     clearBuildTimeout();
 
-    // "interrupted" errors are stale results from cancelled builds
     if (!success && error?.includes('interrupted')) {
         return;
     }
 
-    const model = modelWatcher.getCurrent();
-    if (!model?.path) {
+    if (!currentModel?.path) {
         traceWarn('3dmodel: Build result received but no model path configured');
         return;
     }
 
     if (success) {
-        setTimeout(() => onBuildSuccess(model.path), 500);
+        const modelPath = currentModel.path;
+        setTimeout(() => onBuildSuccess(modelPath), 500);
     } else {
         onBuildFailure(error || 'Build failed');
     }
 }
 
 function onBuildSuccess(rawGlbPath: string) {
-    // Already showing this model and not waiting for a build
     if (viewerState.state === 'showing' && !viewerState.isBuilding && viewerState.modelPath.includes(rawGlbPath.replace('.glb', ''))) {
         return;
     }
 
-    // File might not be written yet, retry
     if (!fs.existsSync(rawGlbPath)) {
         setTimeout(() => {
             if (fs.existsSync(rawGlbPath)) {
@@ -246,16 +234,14 @@ function onBuildSuccess(rawGlbPath: string) {
         return;
     }
 
-    modelWatcher.setCurrent({ path: rawGlbPath, exists: true });
+    setCurrentModel({ path: rawGlbPath, exists: true });
 
-    // If already showing an optimized model, keep showing it while we optimize the new build
     if (viewerState.state === 'showing' && viewerState.isOptimized) {
         setViewerState({ ...viewerState, isBuilding: false, isOptimizing: true });
         runOptimization(rawGlbPath);
         return;
     }
 
-    // Otherwise show the best available GLB
     const bestGlb = findBestGlbPath(rawGlbPath);
 
     if (bestGlb) {
@@ -285,21 +271,37 @@ function onBuildFailure(message: string) {
     }
 }
 
-// ============================================================================
-// Activation / Deactivation
-// ============================================================================
-
 export async function activate(context: vscode.ExtensionContext) {
-    await modelWatcher.activate(context);
-
-    // When file watcher detects GLB created, update viewer
     context.subscriptions.push(
-        modelWatcher.onChanged((model) => {
-            if (!model?.path || !model.exists) {
+        backendServer.onBackendEvent((message) => {
+            if (message.event === 'backend_socket_connected') {
+                if (currentModel?.path) {
+                    watchCurrentModel(currentProjectRoot, currentModel.path);
+                }
                 return;
             }
+            if (message.event !== 'resource_file_changed') {
+                return;
+            }
+            if (message.data.resourceType !== 'model') {
+                return;
+            }
+            const path = typeof message.data.path === 'string' ? message.data.path : undefined;
+            if (!path || !currentModel || currentModel.path !== path) {
+                return;
+            }
+
+            currentModel = {
+                path,
+                exists: Boolean(message.data.exists),
+            };
+
+            if (!currentModel.exists) {
+                return;
+            }
+
             if (viewerState.state === 'loading' || (viewerState.state === 'showing' && viewerState.isBuilding)) {
-                onBuildSuccess(model.path);
+                onBuildSuccess(currentModel.path);
             }
         }),
     );
@@ -308,5 +310,6 @@ export async function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
     cancelOptimization();
     clearBuildTimeout();
-    modelWatcher.deactivate();
+    currentProjectRoot = undefined;
+    watchCurrentModel(undefined, undefined);
 }

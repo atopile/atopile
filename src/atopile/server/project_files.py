@@ -7,12 +7,10 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from threading import Lock, Timer
+from threading import Lock
 from typing import Any
 
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
-from watchdog.observers.polling import PollingObserver
+from atopile.server.file_watcher import FileWatcher
 
 log = logging.getLogger(__name__)
 
@@ -93,34 +91,28 @@ def scan_project_tree(project_root: str | Path) -> list[dict[str, Any]]:
     return scan_dir(root)
 
 
-class _ProjectFilesEventHandler(FileSystemEventHandler):
-    def __init__(self, owner: "ProjectFilesWatcher") -> None:
-        self._owner = owner
-
-    def on_any_event(self, event: FileSystemEvent) -> None:
-        self._owner.on_fs_event(event)
-
-
 class ProjectFilesWatcher:
     """Owns the currently watched project file tree and broadcasts full state."""
 
     _active: "ProjectFilesWatcher | None" = None
     _lock = Lock()
-    DEBOUNCE_SECONDS = 0.3
 
     def __init__(
         self,
         project_root: str,
         *,
         broadcast: BroadcastFn,
-        loop: asyncio.AbstractEventLoop,
     ) -> None:
         self.project_root = Path(project_root)
         self._broadcast = broadcast
-        self._loop = loop
-        self._observer: Observer | PollingObserver | None = None
-        self._timer: Timer | None = None
-        self._state_lock = Lock()
+        self._watcher = FileWatcher(
+            "project-files",
+            paths=[self.project_root],
+            on_change=lambda _result: self._emit_if_changed(),
+            glob="**/*",
+            debounce_s=0.3,
+        )
+        self._task: asyncio.Task[None] | None = None
         self._last_json = ""
 
     @classmethod
@@ -129,8 +121,9 @@ class ProjectFilesWatcher:
         project_root: str,
         *,
         broadcast: BroadcastFn,
-        loop: asyncio.AbstractEventLoop,
+        loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
+        del loop
         root = Path(project_root)
 
         with cls._lock:
@@ -139,11 +132,11 @@ class ProjectFilesWatcher:
             else:
                 if cls._active:
                     cls._active.stop()
-                active = cls(project_root, broadcast=broadcast, loop=loop)
+                active = cls(project_root, broadcast=broadcast)
                 cls._active = active
                 active.start()
 
-        active.schedule_emit(immediate=True)
+        await active._emit_if_changed()
 
     @classmethod
     def clear(cls) -> None:
@@ -153,61 +146,19 @@ class ProjectFilesWatcher:
                 cls._active = None
 
     def start(self) -> None:
-        handler = _ProjectFilesEventHandler(self)
-        try:
-            observer: Observer | PollingObserver = Observer()
-            observer.schedule(handler, str(self.project_root), recursive=True)
-            observer.start()
-            self._observer = observer
-            log.info("Project files watcher started for %s", self.project_root)
-        except Exception as exc:
-            log.warning(
-                "Project files native watcher failed for %s (%s), using polling",
-                self.project_root,
-                exc,
-            )
-            observer = PollingObserver(timeout=1.0)
-            observer.schedule(handler, str(self.project_root), recursive=True)
-            observer.start()
-            self._observer = observer
+        if self._task and not self._task.done():
+            return
+        self._task = asyncio.create_task(self._watcher.run())
+        log.info("Project files watcher started for %s", self.project_root)
 
     def stop(self) -> None:
-        with self._state_lock:
-            if self._timer:
-                self._timer.cancel()
-                self._timer = None
-
-        observer = self._observer
-        self._observer = None
-        if observer is not None:
-            observer.stop()
-            observer.join(timeout=2.0)
+        self._watcher.stop()
+        if self._task and not self._task.done():
+            self._task.cancel()
+        self._task = None
         log.info("Project files watcher stopped for %s", self.project_root)
 
-    def on_fs_event(self, event: FileSystemEvent) -> None:
-        paths = [Path(event.src_path)]
-        dest_path = getattr(event, "dest_path", None)
-        if dest_path:
-            paths.append(Path(dest_path))
-
-        if any(not _is_ignored(path, self.project_root) for path in paths):
-            self.schedule_emit()
-
-    def schedule_emit(self, *, immediate: bool = False) -> None:
-        with self._state_lock:
-            if self._timer:
-                self._timer.cancel()
-                self._timer = None
-
-            delay = 0.0 if immediate else self.DEBOUNCE_SECONDS
-            self._timer = Timer(delay, self._emit_if_changed)
-            self._timer.daemon = True
-            self._timer.start()
-
-    def _emit_if_changed(self) -> None:
-        with self._state_lock:
-            self._timer = None
-
+    async def _emit_if_changed(self) -> None:
         try:
             files = scan_project_tree(self.project_root)
             current_json = json.dumps(files, sort_keys=True)
@@ -218,21 +169,10 @@ class ProjectFilesWatcher:
             log.exception("Failed to scan project tree for %s", self.project_root)
             return
 
-        future = asyncio.run_coroutine_threadsafe(
-            self._broadcast(
-                "project_files_changed",
-                {
-                    "project_root": str(self.project_root),
-                    "files": files,
-                },
-            ),
-            self._loop,
+        await self._broadcast(
+            "project_files_changed",
+            {
+                "project_root": str(self.project_root),
+                "files": files,
+            },
         )
-        future.add_done_callback(self._log_emit_error)
-
-    @staticmethod
-    def _log_emit_error(future: asyncio.Future) -> None:
-        try:
-            future.result()
-        except Exception:
-            log.exception("Failed to broadcast project file tree update")
