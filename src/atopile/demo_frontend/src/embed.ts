@@ -364,6 +364,75 @@ function createEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
     return texture;
 }
 
+function looksLikeBoardSilkscreen(materialName: string, meshName: string): boolean {
+    const material = materialName.toLowerCase();
+    const mesh = meshName.toLowerCase();
+    return mesh.includes("silkscreen") || material === "mat_22" || material === "mat_23";
+}
+
+function applyBoardMaterialStyle(node: THREE.Mesh, material: THREE.Material): void {
+    const meshName = node.name.toLowerCase();
+    const materialName = material.name.toLowerCase();
+
+    if (looksLikeBoardSilkscreen(materialName, meshName)) {
+        const overlay = new THREE.MeshBasicMaterial({
+            color: new THREE.Color("#f4f3ea"),
+            side: THREE.DoubleSide,
+            toneMapped: false,
+            transparent: false,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -4,
+            polygonOffsetUnits: -4,
+        });
+        node.material = Array.isArray(node.material)
+            ? (node.material as THREE.Material[]).map(() => overlay.clone())
+            : overlay;
+        node.renderOrder = 10;
+        return;
+    }
+
+    if (!(material instanceof THREE.MeshStandardMaterial)) {
+        return;
+    }
+
+    if (materialName === "mat_24" || materialName === "mat_25") {
+        material.color = new THREE.Color("#111111");
+        material.roughness = 0.96;
+        material.metalness = 0.02;
+        material.envMapIntensity = 0.04;
+        material.opacity = 0.94;
+        material.transparent = true;
+        material.needsUpdate = true;
+        return;
+    }
+
+    if (materialName === "mat_26" || materialName === "mat_6") {
+        material.color = new THREE.Color("#161616");
+        material.roughness = 0.98;
+        material.metalness = 0.0;
+        material.envMapIntensity = 0.03;
+        material.needsUpdate = true;
+        return;
+    }
+
+    if (materialName === "mat_20" || materialName === "mat_21") {
+        material.color = new THREE.Color(
+            materialName === "mat_20" ? "#c79a2b" : "#c9ced4",
+        );
+        material.roughness = 0.34;
+        material.metalness = 0.9;
+        material.envMapIntensity = materialName === "mat_20" ? 0.28 : 0.18;
+        material.needsUpdate = true;
+        return;
+    }
+
+    material.envMapIntensity = 0.18;
+    material.roughness = Math.max(material.roughness, 0.72);
+    material.metalness = Math.min(material.metalness, 0.35);
+    material.needsUpdate = true;
+}
+
 async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise<() => void> {
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
@@ -379,7 +448,7 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 0.92;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     const scene = new THREE.Scene();
@@ -419,32 +488,10 @@ async function mountThreeViewer(surface: HTMLElement, modelUrl: string): Promise
         if (!(node instanceof THREE.Mesh)) return;
         node.castShadow = false;
         node.receiveShadow = false;
-        if (node.name.toLowerCase().includes("silkscreen")) {
-            const sourceMaterials = Array.isArray(node.material) ? node.material : [node.material];
-            const overlayMaterials = sourceMaterials.map((material) => {
-                const overlay = new THREE.MeshBasicMaterial({
-                    color: new THREE.Color("#f7f7f4"),
-                    side: THREE.DoubleSide,
-                    toneMapped: false,
-                    transparent: false,
-                    depthWrite: false,
-                    polygonOffset: true,
-                    polygonOffsetFactor: -4,
-                    polygonOffsetUnits: -4,
-                });
-                return overlay;
-            });
-            node.material = Array.isArray(node.material) ? overlayMaterials : overlayMaterials[0]!;
-            node.renderOrder = 10;
-            return;
-        }
         const materials = Array.isArray(node.material) ? node.material : [node.material];
         for (const material of materials) {
             if (!material) continue;
-            if ("envMapIntensity" in material) {
-                (material as THREE.MeshStandardMaterial).envMapIntensity = 0.9;
-            }
-            material.needsUpdate = true;
+            applyBoardMaterialStyle(node, material);
         }
     });
 

@@ -220,22 +220,28 @@ def _build_embed_bundle(paths: DemoPaths) -> None:
 
 def _optimize_demo_glb(paths: DemoPaths) -> None:
     bundle_dir = Path(__file__).parent / "demo_frontend"
-    subprocess.run(
-        [
-            "bun",
-            "x",
-            "@gltf-transform/cli",
-            "optimize",
-            str(paths.source_glb_path),
-            str(paths.glb_path),
-            "--compress",
-            "meshopt",
-            "--texture-compress",
-            "false",
-        ],
-        cwd=str(bundle_dir),
-        check=True,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        stages = [
+            ("dedup", paths.source_glb_path, tmpdir_path / "1.glb"),
+            ("instance", tmpdir_path / "1.glb", tmpdir_path / "2.glb"),
+            ("weld", tmpdir_path / "2.glb", tmpdir_path / "3.glb"),
+            ("prune", tmpdir_path / "3.glb", tmpdir_path / "4.glb"),
+            ("meshopt", tmpdir_path / "4.glb", paths.glb_path),
+        ]
+        for command, src, dst in stages:
+            subprocess.run(
+                [
+                    "bun",
+                    "x",
+                    "@gltf-transform/cli",
+                    command,
+                    str(src),
+                    str(dst),
+                ],
+                cwd=str(bundle_dir),
+                check=True,
+            )
 
 
 def _ensure_bun_install(bundle_dir: Path) -> None:
