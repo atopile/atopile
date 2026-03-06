@@ -52,6 +52,7 @@ export function Sidebar() {
   const hasEverConnected = useStore((s) => s.hasEverConnected);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
+  const selectedTargetRoot = useStore((s) => s.selectedTargetRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
@@ -193,7 +194,10 @@ export function Sidebar() {
   // Filter builds by selected project
   const filteredBuilds = useMemo(() => {
     if (!selectedProjectRoot) return queuedBuilds;
-    return queuedBuilds.filter((build) => build.projectRoot === selectedProjectRoot);
+    return queuedBuilds.filter((build) => {
+      const buildRoot = build.projectRoot;
+      return buildRoot === selectedProjectRoot || buildRoot?.startsWith(`${selectedProjectRoot}/`);
+    });
   }, [queuedBuilds, selectedProjectRoot]);
 
   // Build queue resize handlers
@@ -229,6 +233,7 @@ export function Sidebar() {
   // Use effects hook for side effects (data fetching, etc.)
   useSidebarEffects({
     selectedProjectRoot,
+    selectedTargetRoot,
     selectedTargetName,
     panels,
     action,
@@ -431,6 +436,7 @@ export function Sidebar() {
           <ActiveProjectPanel
             projects={projects || []}
             selectedProjectRoot={selectedProjectRoot}
+            selectedTargetRoot={selectedTargetRoot}
             selectedTargetName={selectedTargetName}
             projectModules={selectedProjectRoot ? projectModules?.[selectedProjectRoot] : undefined}
             onSelectProject={handlers.handleSelectProject}
@@ -578,6 +584,7 @@ export function Sidebar() {
                 isLoading={isLoadingBom}
                 error={bomError}
                 selectedProjectRoot={selectedProjectRoot}
+                selectedTargetRoot={selectedTargetRoot}
                 selectedTargetNames={selectedTargetNames}
                 onGoToSource={handleGoToSource}
                 isExpanded={activeTab === 'bom'}

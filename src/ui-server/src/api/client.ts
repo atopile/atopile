@@ -28,6 +28,17 @@ import { API_URL } from './config';
 // Base URL - from centralized config
 const BASE_URL = API_URL;
 
+// In some VS Code webviews, the extension injects __ATOPILE_PROXY_FETCH__ that routes
+// requests through the extension host (postMessage → Node.js fetch → backend).
+// In others, window.fetch itself is overridden for backend URLs.
+// Resolved at call time (not module load) because the webview pre-page may
+// evaluate modules before the inline script sets globals.
+function getProxyFetch(): typeof fetch | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fn = typeof window !== 'undefined' && (window as any).__ATOPILE_PROXY_FETCH__;
+  return typeof fn === 'function' ? fn : null;
+}
+
 /**
  * Custom error class for API errors.
  */
@@ -50,8 +61,9 @@ async function fetchJSON<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
+  const fetchFn = getProxyFetch() || fetch;
 
-  const response = await fetch(url, {
+  const response = await fetchFn(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -301,14 +313,15 @@ export const api = {
       fetchJSON<InstalledPartsResponse>(
         `/api/parts/installed?project_root=${encodeURIComponent(projectRoot)}`
       ),
-    install: (lcscId: string, projectRoot: string) =>
-      fetchJSON<{ success: boolean; identifier?: string; path?: string; error?: string }>(
+    install: (lcscId: string, projectRoot: string, options?: { createPackage?: boolean }) =>
+      fetchJSON<{ success: boolean; identifier?: string; path?: string; created_package?: boolean; import_statement?: string; error?: string }>(
         '/api/parts/install',
         {
           method: 'POST',
           body: JSON.stringify({
             lcsc_id: lcscId,
             project_root: projectRoot,
+            create_package: options?.createPackage ?? false,
           }),
         }
       ),

@@ -5,6 +5,12 @@ import { runAtoCommandInTerminal } from '../common/findbin';
 import { getBuildTarget, onBuildTargetChanged } from '../common/target';
 import { getPackageDependency } from '../common/manifest';
 import * as path from 'path';
+import { renderTemplate } from '../common/template';
+import { getNonce } from '../common/webview';
+// @ts-ignore
+import * as _packageExplorerTemplateText from './packagexplorer.hbs';
+
+const packageExplorerTemplateText: string = (_packageExplorerTemplateText as any).default || _packageExplorerTemplateText;
 
 const packagesUrl = 'https://packages.atopile.io';
 
@@ -34,52 +40,20 @@ class PackageExplorerWebview extends BaseWebview {
     }
 
     protected getHtmlContent(_webview: vscode.Webview, path?: string): string {
-        return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-    </style>
-</head>
-<body>
-    <iframe id="packages-iframe" src="${this.getPackagesUrl(path)}"></iframe>
-    <script>
-        const vscode = acquireVsCodeApi();
-        const iframe = document.getElementById('packages-iframe');
+        const nonce = getNonce();
+        const csp = [
+            "default-src 'none'",
+            `script-src 'nonce-${nonce}'`,
+            "style-src 'unsafe-inline'",
+            `frame-src ${packagesUrl}`,
+            `connect-src ${packagesUrl}`,
+        ].join('; ');
 
-        // forward messages from VSCode to iframe
-        const downwardEventTypes = ['vscode-theme', 'project-name', 'package-status'];
-        window.addEventListener('message', (event) => {
-            if (downwardEventTypes.includes(event.data.type)) {
-                iframe.contentWindow.postMessage(event.data, '*');
-            }
+        return renderTemplate(packageExplorerTemplateText, {
+            csp,
+            nonce,
+            packagesUrl: this.getPackagesUrl(path),
         });
-
-        // forward messages from iframe to VSCode
-        const upwardEventTypes = ['request-theme', 'install-package', 'upgrade-package', 'uninstall-package', 'request-project-name', 'subscribe-package', 'copy-text'];
-        window.addEventListener('message', (event) => {
-            if (event.source === iframe.contentWindow) {
-                if (upwardEventTypes.includes(event.data.type)) {
-                    vscode.postMessage(event.data);
-                }
-            }
-        });
-    </script>
-</body>
-</html>`;
     }
 
     protected setupPanel(): void {

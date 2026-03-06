@@ -17,8 +17,10 @@ import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
 import { backendServer } from './common/backendServer';
 import { initMenu } from './common/vscode-menu';
+import { hasConfiguredBackendPort } from './common/environment';
 import { SidebarProvider, LogViewerProvider } from './providers';
 import { ensureAtoBin } from './ui/setup';
+import * as demo from './demo';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -172,8 +174,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
     initServer(context);
-    await ensureAtoBin(context);
-    traceMilestone('ensureAtoBin done');
+    // If backend port is pre-configured (web-ide mode), skip ensureAtoBin —
+    // the pre-started backend proves the binary works.
+    if (!hasConfiguredBackendPort()) {
+        await ensureAtoBin(context);
+        traceMilestone('ensureAtoBin done');
+    }
 
     // 3. Start servers and UI in parallel
     let isInitialStart = true;
@@ -215,6 +221,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await Promise.all([ui.activate(context), startBackend()]);
 
     traceMilestone('activated');
+
+    // Register demo-mode command and auto-trigger in web-ide environments
+    demo.activate(context);
 }
 
 export async function deactivate(): Promise<void> {

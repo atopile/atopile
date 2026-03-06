@@ -440,6 +440,31 @@
   text-overflow: ellipsis;
 }
 
+.target-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 40%;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--ctp-teal) 82%, white);
+  background: color-mix(in srgb, var(--ctp-teal) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-teal) 28%, transparent);
+}
+
+.target-scope-badge.option {
+  max-width: 34%;
+}
+
+.target-scope-badge.trigger {
+  max-width: 45%;
+}
+
 .target-combobox-chevron {
   display: flex;
   align-items: center;
@@ -495,6 +520,10 @@
   background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
 }
 
+.target-option.subproject .option-icon {
+  color: var(--ctp-teal);
+}
+
 .target-option .option-icon {
   flex-shrink: 0;
   color: var(--text-muted);
@@ -511,6 +540,7 @@
 }
 
 .target-option-entry {
+  margin-left: auto;
   font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   color: var(--text-primary);

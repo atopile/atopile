@@ -42,6 +42,8 @@ interface BOMComponentUI {
   totalCost?: number
   inStock?: boolean
   stockQuantity?: number
+  isBasic?: boolean       // JLCPCB basic part (no loading fee)
+  isPreferred?: boolean   // JLCPCB preferred part (no loading fee)
   lcscLoading?: boolean
   parameters?: BOMParameterUI[]
   source?: string        // 'picked' | 'specified' | 'manual'
@@ -106,6 +108,8 @@ function transformBOMComponent(apiComp: BOMComponentAPI): BOMComponentUI {
     quantity: apiComp.quantity,
     unitCost,
     totalCost,
+    isBasic: apiComp.isBasic ?? undefined,
+    isPreferred: apiComp.isPreferred ?? undefined,
     inStock: stock !== undefined && stock !== null ? stock > 0 : undefined,
     stockQuantity: stock ?? undefined,
     parameters: apiComp.parameters,
@@ -416,6 +420,7 @@ interface BOMPanelProps {
   error?: string | null
   onGoToSource?: (path: string, line?: number) => void
   selectedProjectRoot?: string | null
+  selectedTargetRoot?: string | null
   selectedTargetNames?: string[]
   isExpanded?: boolean
 }
@@ -426,6 +431,7 @@ export function BOMPanel({
   error = null,
   onGoToSource: externalGoToSource,
   selectedProjectRoot,
+  selectedTargetRoot,
   isExpanded = false,
   selectedTargetNames,
 }: BOMPanelProps) {
@@ -443,9 +449,10 @@ export function BOMPanel({
   const lcscRequestIdRef = useRef(0)
   const lastLcscRefreshBuildIdRef = useRef<string | null>(null)
   const selectedTargetName = selectedTargetNames?.[0] ?? null
+  const activeProjectRoot = selectedTargetRoot ?? selectedProjectRoot ?? null
 
   useEffect(() => {
-    if (!selectedProjectRoot) {
+    if (!activeProjectRoot) {
       setLatestBuildInfo(null)
       setForceRefreshBuildId(null)
       lastLcscRefreshBuildIdRef.current = null
@@ -453,7 +460,7 @@ export function BOMPanel({
     }
 
     sendActionWithResponse('getBuildsByProject', {
-      projectRoot: selectedProjectRoot,
+      projectRoot: activeProjectRoot,
       target: selectedTargetName ?? undefined,
       limit: 1,
     })
@@ -472,7 +479,7 @@ export function BOMPanel({
         console.warn('Failed to load build info', error)
         setLatestBuildInfo(null)
       })
-  }, [selectedProjectRoot, selectedTargetName])
+  }, [activeProjectRoot, selectedTargetName])
 
   // Check if build is stale (older than 24 hours) to trigger LCSC refresh
   useEffect(() => {
@@ -526,7 +533,7 @@ export function BOMPanel({
     })
     sendActionWithResponse('fetchLcscParts', {
       lcscIds: missing,
-      projectRoot: selectedProjectRoot ?? undefined,
+      projectRoot: activeProjectRoot ?? undefined,
       target: selectedTargetName ?? undefined,
     })
       .then((response) => {
@@ -556,7 +563,7 @@ export function BOMPanel({
     lcscParts,
     forceRefreshBuildId,
     latestBuildInfo,
-    selectedProjectRoot,
+    activeProjectRoot,
     selectedTargetName,
   ])
 
@@ -587,6 +594,12 @@ export function BOMPanel({
       }
       if (!uiComponent.mpn && lcscInfo.mpn) {
         uiComponent.mpn = lcscInfo.mpn
+      }
+      if (uiComponent.isBasic == null) {
+        uiComponent.isBasic = lcscInfo.is_basic
+      }
+      if (uiComponent.isPreferred == null) {
+        uiComponent.isPreferred = lcscInfo.is_preferred
       }
 
       return uiComponent
@@ -653,18 +666,26 @@ export function BOMPanel({
   }, [bomComponents, searchQuery])
 
   // Memoize totals calculation - single pass for efficiency
-  const { totalComponents, totalCost, uniqueParts, outOfStock } = useMemo(() => {
+  const EXTENDED_LOADING_FEE = 3
+  const { totalComponents, partsCost, setupFees, extendedPartCount, totalCost, uniqueParts, outOfStock } = useMemo(() => {
     let total = 0
     let cost = 0
     let oos = 0
+    let extendedParts = 0
     for (const c of bomComponents) {
       total += c.quantity
       cost += c.totalCost || 0
       if (c.inStock === false) oos++
+      // Count unique parts that incur a loading fee (not basic and not preferred)
+      if (c.isBasic !== true && c.isPreferred !== true) extendedParts++
     }
+    const setupFeesTotal = extendedParts * EXTENDED_LOADING_FEE
     return {
       totalComponents: total,
-      totalCost: cost,
+      partsCost: cost,
+      setupFees: setupFeesTotal,
+      extendedPartCount: extendedParts,
+      totalCost: cost + setupFeesTotal,
       uniqueParts: bomComponents.length,
       outOfStock: oos
     }
@@ -747,9 +768,19 @@ export function BOMPanel({
           <span className="summary-value">{totalComponents}</span>
           <span className="summary-label">total</span>
         </div>
+        <div className="bom-summary-item">
+          <span className="summary-value">{formatCurrency(partsCost)}</span>
+          <span className="summary-label">parts</span>
+        </div>
+        {setupFees > 0 && (
+          <div className="bom-summary-item" title={`${extendedPartCount} extended part${extendedPartCount !== 1 ? 's' : ''} × $${EXTENDED_LOADING_FEE} loading fee`}>
+            <span className="summary-value">+{formatCurrency(setupFees)}</span>
+            <span className="summary-label">setup</span>
+          </div>
+        )}
         <div className="bom-summary-item primary">
           <span className="summary-value">{formatCurrency(totalCost)}</span>
-          <span className="summary-label">cost</span>
+          <span className="summary-label">total</span>
         </div>
         {outOfStock > 0 && (
           <div className="bom-summary-item warning">
