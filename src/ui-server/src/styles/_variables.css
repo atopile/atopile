@@ -38,6 +38,7 @@
   /* Font - bundled Inter/Fira Code first, then VS Code + system fallbacks */
   --font-mono: 'Fira Code Variable', 'Fira Code', var(--vscode-editor-font-family, 'SF Mono', Consolas, monospace);
   --font-sans: 'Inter Variable', 'Inter', var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  --font-display: var(--font-sans);
 
   /* Transitions */
   --transition-fast: 0.1s ease;
@@ -45,6 +46,8 @@
 
   /* Theme transition for smooth switching */
   --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  --app-grid-opacity: 0.55;
+  --app-glow-opacity: 1;
 
   /* Font Sizes - aligned with VS Code native UI */
   --font-size-base: var(--vscode-font-size, 14px);
@@ -82,7 +85,7 @@
    ============================================ */
 :root,
 [data-theme="dark"] {
-  /* Catppuccin Mocha palette */
+  /* atopile.io dark palette */
   --ctp-rosewater: #f5e0dc;
   --ctp-flamingo: #f2cdcd;
   --ctp-pink: #f5c2e7;
@@ -105,32 +108,32 @@
   --ctp-sapphire: #74c7ec;
   --ctp-blue: #89b4fa;
   --ctp-lavender: #b4befe;
-  --ctp-text: #cdd6f4;
-  --ctp-subtext1: #bac2de;
-  --ctp-subtext0: #a6adc8;
-  --ctp-overlay2: #9399b2;
-  --ctp-overlay1: #7f849c;
-  --ctp-overlay0: #6c7086;
-  --ctp-surface2: #585b70;
-  --ctp-surface1: #45475a;
-  --ctp-surface0: #313244;
-  --ctp-base: #1e1e2e;
-  --ctp-mantle: #181825;
-  --ctp-crust: #11111b;
+  --ctp-text: #dde6f0;
+  --ctp-subtext1: #b6c3d0;
+  --ctp-subtext0: #94a3b5;
+  --ctp-overlay2: #7f90a4;
+  --ctp-overlay1: #6b7a8d;
+  --ctp-overlay0: #556274;
+  --ctp-surface2: #1b2632;
+  --ctp-surface1: #151f2a;
+  --ctp-surface0: #131b24;
+  --ctp-base: #0c1118;
+  --ctp-mantle: #111823;
+  --ctp-crust: #090d12;
 
   /* Semantic colors - VS Code theme vars with Catppuccin fallbacks */
   --bg-primary: var(--vscode-sideBar-background, var(--ctp-base));
   --bg-secondary: var(--vscode-sideBarSectionHeader-background, var(--ctp-mantle));
   --bg-tertiary: var(--vscode-input-background, var(--ctp-surface0));
-  --bg-hover: var(--vscode-list-hoverBackground, var(--ctp-surface1));
-  --bg-active: var(--vscode-list-activeSelectionBackground, var(--ctp-surface2));
+  --bg-hover: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  --bg-active: var(--vscode-list-activeSelectionBackground, rgba(249, 80, 21, 0.12));
 
   --text-primary: var(--vscode-foreground, var(--ctp-text));
   --text-secondary: var(--vscode-descriptionForeground, var(--ctp-subtext1));
   --text-muted: var(--vscode-disabledForeground, var(--ctp-overlay1));
 
-  --border-color: var(--vscode-panel-border, var(--ctp-surface1));
-  --border-subtle: var(--vscode-widget-border, var(--ctp-surface0));
+  --border-color: var(--vscode-panel-border, rgba(255, 255, 255, 0.11));
+  --border-subtle: var(--vscode-widget-border, rgba(255, 255, 255, 0.07));
 
   /* Primary accent is atopile orange */
   --accent: var(--ato-orange);
@@ -139,14 +142,14 @@
   --accent-subtle: var(--ato-orange-subtle);
 
   /* Secondary accent */
-  --accent-secondary: var(--ctp-mauve);
-  --accent-secondary-hover: var(--ctp-lavender);
+  --accent-secondary: #ff9a73;
+  --accent-secondary-hover: #ffb08f;
 
   /* Status colors - VS Code theme vars with Catppuccin fallbacks */
-  --success: var(--vscode-testing-iconPassed, var(--ctp-green));
-  --warning: var(--vscode-notificationsWarningIcon-foreground, var(--ctp-yellow));
-  --error: var(--vscode-notificationsErrorIcon-foreground, var(--ctp-red));
-  --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
+  --success: var(--vscode-testing-iconPassed, #73d29a);
+  --warning: var(--vscode-notificationsWarningIcon-foreground, #f4c46a);
+  --error: var(--vscode-notificationsErrorIcon-foreground, #f38ba8);
+  --info: var(--vscode-editorInfo-foreground, #7bb6ff);
   --debug: var(--ctp-overlay1);
 
   /* Status backgrounds (15-20% opacity) */
@@ -160,16 +163,16 @@
   --text-on-status: var(--ctp-crust);
 
   /* Card backgrounds */
-  --bg-card: var(--bg-tertiary);
-  --bg-card-hover: var(--bg-hover);
+  --bg-card: color-mix(in srgb, var(--bg-tertiary) 92%, white 8%);
+  --bg-card-hover: color-mix(in srgb, var(--bg-tertiary) 78%, white 22%);
 
   /* Interactive States */
   --hover: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
-  --active: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.08));
+  --active: var(--vscode-list-activeSelectionBackground, rgba(249, 80, 21, 0.12));
   --selected: var(--ato-orange-subtle);
 
   /* Dark mode specific */
-  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-color: rgba(0, 0, 0, 0.38);
   --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
   --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
 }
@@ -268,6 +271,8 @@
   --shadow-color: rgba(0, 0, 0, 0.1);
   --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
   --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
+  --app-grid-opacity: 0.08;
+  --app-glow-opacity: 0.24;
 }
 
 /* ============================================
@@ -367,6 +372,8 @@
     --shadow-color: rgba(0, 0, 0, 0.1);
     --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
     --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
+    --app-grid-opacity: 0.08;
+    --app-glow-opacity: 0.24;
   }
 }
 

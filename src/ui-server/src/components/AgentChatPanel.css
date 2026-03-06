@@ -164,7 +164,7 @@
 }
 
 .agent-chat-thread-status.ready {
-  color: color-mix(in srgb, var(--text-secondary) 84%, var(--success));
+  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-muted));
 }
 
 .agent-chat-thread-status.working {
@@ -602,17 +602,17 @@
 }
 
 .agent-markdown li.task-list-item > input[type='checkbox']:checked {
-  border-color: color-mix(in srgb, var(--success) 50%, transparent);
-  background: color-mix(in srgb, var(--success) 18%, transparent);
+  border-color: color-mix(in srgb, var(--agent-accent) 44%, transparent);
+  background: color-mix(in srgb, var(--agent-accent) 10%, transparent);
 }
 
 .agent-markdown li.task-list-item > input[type='checkbox']:checked::after {
-  border-left-color: color-mix(in srgb, var(--success) 84%, var(--text-primary));
-  border-bottom-color: color-mix(in srgb, var(--success) 84%, var(--text-primary));
+  border-left-color: color-mix(in srgb, var(--agent-accent) 84%, var(--text-primary));
+  border-bottom-color: color-mix(in srgb, var(--agent-accent) 84%, var(--text-primary));
 }
 
 .agent-markdown li.task-list-item:has(> input[type='checkbox']:checked) {
-  color: color-mix(in srgb, var(--text-secondary) 88%, var(--success));
+  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary));
 }
 
 .agent-markdown li.task-list-item > p {
@@ -701,7 +701,7 @@
 }
 
 .agent-tool-group-title {
-  color: color-mix(in srgb, var(--agent-accent) 64%, var(--text-secondary));
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-family: var(--font-mono);
@@ -717,7 +717,7 @@
 }
 
 .agent-tool-group-count {
-  color: color-mix(in srgb, var(--agent-accent) 70%, var(--text-muted));
+  color: var(--text-muted);
   font-family: var(--font-mono);
 }
 
@@ -728,7 +728,7 @@
 
 .agent-tool-group-chevron.open {
   transform: rotate(180deg);
-  color: color-mix(in srgb, var(--agent-accent) 72%, var(--text-primary));
+  color: var(--agent-accent);
 }
 
 .agent-tool-group-chevron.hidden {
@@ -803,7 +803,7 @@
 }
 
 .agent-tool-trace.ok {
-  color: color-mix(in srgb, var(--success) 72%, var(--text-secondary));
+  color: color-mix(in srgb, var(--text-secondary) 94%, var(--text-muted));
 }
 
 .agent-tool-trace.running {
@@ -812,6 +812,27 @@
 
 .agent-tool-trace.error {
   color: color-mix(in srgb, var(--error) 72%, var(--text-secondary));
+}
+
+.agent-tool-status-icon {
+  flex-shrink: 0;
+}
+
+.agent-tool-status-icon.ok,
+.agent-tool-status-icon.error {
+  color: var(--agent-accent);
+}
+
+.agent-tool-status-icon.ok {
+  filter: drop-shadow(0 0 6px rgba(249, 80, 21, 0.18));
+}
+
+.agent-tool-status-icon.error {
+  opacity: 0.92;
+}
+
+.agent-tool-status-icon.running {
+  color: var(--agent-accent);
 }
 
 .agent-tool-spin {
@@ -854,7 +875,7 @@
 }
 
 .agent-line-added {
-  color: color-mix(in srgb, var(--success) 82%, var(--text-primary));
+  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary));
 }
 
 .agent-line-removed {
@@ -939,12 +960,12 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--agent-accent) 60%, var(--text-secondary));
+  color: var(--text-secondary);
 }
 
 .agent-build-status-meta {
   font-size: 10px;
-  color: color-mix(in srgb, var(--agent-accent) 72%, var(--text-muted));
+  color: var(--text-muted);
 }
 
 .agent-build-status-list {
@@ -1048,7 +1069,7 @@
 }
 
 .agent-tool-link.composite {
-  color: color-mix(in srgb, var(--success) 68%, var(--text-secondary));
+  color: color-mix(in srgb, var(--agent-accent) 62%, var(--text-secondary));
 }
 
 .agent-tool-link:hover {
@@ -1129,7 +1150,7 @@
 }
 
 .agent-mention-kind.module {
-  color: color-mix(in srgb, var(--success) 72%, var(--text-muted));
+  color: color-mix(in srgb, var(--text-secondary) 72%, var(--text-muted));
 }
 
 .agent-mention-kind.file {
@@ -1280,7 +1301,7 @@
   font-family: var(--font-mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--warning) 72%, var(--text-secondary));
+  color: color-mix(in srgb, var(--agent-accent) 58%, var(--text-secondary));
   min-width: 0;
 }
 
@@ -1332,7 +1353,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--agent-accent) 60%, var(--warning));
+  background: color-mix(in srgb, var(--agent-accent) 78%, var(--text-secondary));
 }
 
 .agent-changes-summary {
@@ -1451,12 +1472,12 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--agent-accent) 60%, var(--text-secondary));
+  color: var(--text-secondary);
 }
 
 .agent-checklist-meta {
   font-size: 10px;
-  color: color-mix(in srgb, var(--agent-accent) 72%, var(--text-muted));
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1467,14 +1488,71 @@
   background: color-mix(in srgb, var(--border-subtle) 80%, transparent);
   overflow: hidden;
   margin-bottom: 6px;
+  position: relative;
 }
 
 .agent-checklist-progress-bar {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--success) 72%, var(--agent-accent));
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    rgba(249, 80, 21, 0.88) 0%,
+    rgba(249, 80, 21, 1) 50%,
+    rgba(249, 80, 21, 0.88) 100%
+  );
+  background-size: 200% 100%;
+  box-shadow:
+    0 0 8px rgba(249, 80, 21, 0.22),
+    0 0 16px rgba(249, 80, 21, 0.1);
   transition: width 300ms ease;
+  animation: agent-checklist-progress-wave 4.2s ease-in-out infinite;
+}
+
+.agent-checklist-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.28) 50%, transparent 100%);
+  transform: translateX(-120%);
+  animation: agent-checklist-progress-sheen 4.2s ease-in-out infinite;
+}
+
+@keyframes agent-checklist-progress-wave {
+  0%, 100% {
+    background-position: 0% 50%;
+    box-shadow:
+      0 0 8px rgba(249, 80, 21, 0.18),
+      0 0 14px rgba(249, 80, 21, 0.08);
+  }
+  50% {
+    background-position: 100% 50%;
+    box-shadow:
+      0 0 10px rgba(249, 80, 21, 0.26),
+      0 0 18px rgba(249, 80, 21, 0.12);
+  }
+}
+
+@keyframes agent-checklist-progress-sheen {
+  0%, 100% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0;
+  }
+  50% {
+    transform: translateX(0%);
+    opacity: 0.7;
+  }
+  82% {
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
 }
 
 .agent-checklist-items {
@@ -1536,19 +1614,20 @@
 }
 
 .agent-checklist-item--doing {
-  color: color-mix(in srgb, var(--agent-accent) 78%, var(--text-primary));
+  color: var(--text-primary);
 }
 
 .agent-checklist-item--doing .agent-checklist-item-icon {
   animation: agent-spin 0.9s linear infinite;
+  color: var(--agent-accent);
 }
 
 .agent-checklist-item--done {
-  color: color-mix(in srgb, var(--success) 72%, var(--text-secondary));
+  color: color-mix(in srgb, var(--text-secondary) 94%, var(--text-muted));
 }
 
 .agent-checklist-item--blocked {
-  color: color-mix(in srgb, var(--error) 72%, var(--text-secondary));
+  color: var(--text-secondary);
 }
 
 .agent-checklist-item-id {
@@ -1575,8 +1654,8 @@
   letter-spacing: 0.3px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--agent-accent) 14%, transparent);
-  color: color-mix(in srgb, var(--agent-accent) 80%, var(--text-secondary));
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  color: var(--text-muted);
 }
 
 /* ── Design Questions Card ─────────────────────── */
@@ -1617,7 +1696,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--agent-accent) 72%, var(--text-secondary));
+  color: var(--agent-accent);
 }
 
 .agent-dq-toggle {
@@ -1650,13 +1729,13 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--agent-accent) 60%, var(--text-secondary));
+  color: var(--text-secondary);
 }
 
 .agent-dq-answered {
   font-size: 10px;
   font-family: var(--font-mono);
-  color: color-mix(in srgb, var(--agent-accent) 72%, var(--text-muted));
+  color: var(--agent-accent);
   font-variant-numeric: tabular-nums;
 }
 

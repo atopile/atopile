@@ -1,5 +1,5 @@
 import { useState, type RefObject } from 'react';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, Loader2, X } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, Loader2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BuildQueueItem } from '../../../components/BuildQueueItem';
@@ -267,8 +267,8 @@ export function AgentMessagesView({
                         className={`agent-checklist-item agent-checklist-item--${item.status}`}
                       >
                         <span className="agent-checklist-item-icon">
-                          {item.status === 'done' && <CheckCircle2 size={13} />}
-                          {item.status === 'doing' && <Loader2 size={13} className="agent-tool-spin" />}
+                          {item.status === 'done' && <Check size={13} className="agent-tool-status-icon ok" />}
+                          {item.status === 'doing' && <Loader2 size={13} className="agent-tool-spin agent-tool-status-icon running" />}
                           {item.status === 'blocked' && <AlertCircle size={13} />}
                           {item.status === 'not_started' && <span className="agent-checklist-item-circle" />}
                         </span>

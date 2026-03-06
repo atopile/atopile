@@ -8,14 +8,17 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-sm);
-  font-family: var(--font-sans);
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-weight: 700;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   cursor: pointer;
   white-space: nowrap;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   transition: background var(--transition-fast),
               border-color var(--transition-fast),
+              box-shadow var(--transition-fast),
               opacity var(--transition-fast);
   line-height: 1;
 }
@@ -51,6 +54,7 @@
 .btn-default:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 .btn-default:active:not(:disabled) {
@@ -60,14 +64,15 @@
 /* ---- Variant: outline ---- */
 
 .btn-outline {
-  background: transparent;
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
   color: var(--text-primary);
-  border-color: var(--border-color);
+  border-color: var(--border-subtle);
 }
 
 .btn-outline:hover:not(:disabled) {
   background: var(--hover);
-  border-color: var(--text-muted);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border-color));
+  color: var(--accent);
 }
 
 .btn-outline:active:not(:disabled) {
@@ -77,7 +82,7 @@
 /* ---- Variant: secondary ---- */
 
 .btn-secondary {
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--bg-tertiary) 90%, white 10%);
   color: var(--text-primary);
   border-color: var(--border-subtle);
 }
