@@ -97,7 +97,6 @@ class InteractiveBomWebview extends BaseWebview {
 let ibomWebview: InteractiveBomWebview | undefined;
 
 export function openInteractiveBomPreview(
-  _extensionUri: vscode.Uri,
   projectRoot?: string,
   targetName?: string,
 ): void {

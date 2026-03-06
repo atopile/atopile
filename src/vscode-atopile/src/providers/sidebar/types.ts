@@ -12,6 +12,9 @@ export interface OpenSignalsMessage {
   openLayout?: string | null;
   openKicad?: string | null;
   open3d?: string | null;
+  openInteractiveBom?: string | null;
+  ibomProjectRoot?: string | null;
+  ibomTargetName?: string | null;
 }
 
 export interface ConnectionStatusMessage {

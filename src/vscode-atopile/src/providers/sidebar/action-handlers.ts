@@ -16,6 +16,7 @@ import { isModelViewerOpen, openModelViewerPreview } from '../../ui/modelviewer'
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../../common/target';
 import { type Build, loadBuilds, getBuilds } from '../../common/manifest';
 import { isLayoutEditorOpen, openLayoutEditor } from '../../ui/layout-editor';
+import { openInteractiveBomPreview } from '../../ui/interactive-bom';
 import type { OpenSignalsMessage, SelectionChangedMessage } from './types';
 import { isWebIdeUi } from '../../common/environment';
 
@@ -42,6 +43,12 @@ export class SidebarActionHandlers {
     }
     if (msg.open3d) {
       void this.open3dPreview(msg.open3d);
+    }
+    if (msg.openInteractiveBom) {
+      openInteractiveBomPreview(
+        msg.ibomProjectRoot ?? undefined,
+        msg.ibomTargetName ?? undefined,
+      );
     }
   }
 
