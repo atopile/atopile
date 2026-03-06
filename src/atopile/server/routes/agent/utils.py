@@ -18,7 +18,6 @@ from atopile.server.agent.registry import ToolRegistry
 from atopile.server.agent.runner import TraceCallback
 from atopile.server.events import get_event_bus
 
-from . import state as _state
 from .models import (
     ASSISTANT_ROLE,
     ERROR_SESSION_EXPIRED,
@@ -48,17 +47,6 @@ from .state import (
     sessions_by_id,
     sessions_lock,
 )
-
-cleanup_finished_runs = _state.cleanup_finished_runs
-ensure_session_idle = _state.ensure_session_idle
-normalize_running_run_state = _state.normalize_running_run_state
-release_sync_turn = _state.release_sync_turn
-reserve_background_run = _state.reserve_background_run
-reserve_sync_turn = _state.reserve_sync_turn
-reset_session_state = _state.reset_session_state
-session_has_sync_turn = _state.session_has_sync_turn
-sync_turns_by_session = _state.sync_turns_by_session
-sync_turns_lock = _state.sync_turns_lock
 
 _PROGRESS_DISABLE_VALUES = {"0", "false", "no", "off"}
 

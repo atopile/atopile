@@ -18,20 +18,21 @@ from atopile.server.routes.agent.models import AgentRun
 def _clear_agent_route_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(agent_routes, "persist_sessions_state", lambda: None)
     monkeypatch.setattr(agent_utils, "persist_sessions_state", lambda: None)
+    monkeypatch.setattr(agent_state, "persist_sessions_state", lambda: None)
 
-    with agent_utils.sessions_lock:
-        agent_utils.sessions_by_id.clear()
-    with agent_utils.runs_lock:
-        agent_utils.runs_by_id.clear()
+    with agent_state.sessions_lock:
+        agent_state.sessions_by_id.clear()
+    with agent_state.runs_lock:
+        agent_state.runs_by_id.clear()
     with agent_state.sync_turns_lock:
         agent_state.sync_turns_by_session.clear()
 
     yield
 
-    with agent_utils.sessions_lock:
-        agent_utils.sessions_by_id.clear()
-    with agent_utils.runs_lock:
-        agent_utils.runs_by_id.clear()
+    with agent_state.sessions_lock:
+        agent_state.sessions_by_id.clear()
+    with agent_state.runs_lock:
+        agent_state.runs_by_id.clear()
     with agent_state.sync_turns_lock:
         agent_state.sync_turns_by_session.clear()
 
@@ -71,8 +72,8 @@ async def test_invalid_project_root_does_not_reset_session_state(
     assert create.status_code == 200
     session_id = create.json()["sessionId"]
 
-    with agent_utils.sessions_lock:
-        session = agent_utils.sessions_by_id[session_id]
+    with agent_state.sessions_lock:
+        session = agent_state.sessions_by_id[session_id]
         session.history = [{"role": "user", "content": "keep me"}]
         session.tool_memory = {
             "project_read_file": {
@@ -95,8 +96,8 @@ async def test_invalid_project_root_does_not_reset_session_state(
     )
     assert response.status_code == 400
 
-    with agent_utils.sessions_lock:
-        session = agent_utils.sessions_by_id[session_id]
+    with agent_state.sessions_lock:
+        session = agent_state.sessions_by_id[session_id]
         assert session.project_root == str(project_root)
         assert session.history == [{"role": "user", "content": "keep me"}]
         assert session.tool_memory["project_read_file"]["summary"] == "cached"
@@ -116,9 +117,9 @@ async def test_background_run_conflicts_with_reserved_sync_turn(
     assert create.status_code == 200
     session_id = create.json()["sessionId"]
 
-    with agent_utils.sessions_lock:
-        session = agent_utils.sessions_by_id[session_id]
-        token = agent_utils.reserve_sync_turn(session)
+    with agent_state.sessions_lock:
+        session = agent_state.sessions_by_id[session_id]
+        token = agent_state.reserve_sync_turn(session)
     assert token is not None
 
     response = await client.post(
@@ -204,8 +205,8 @@ async def test_sync_chain_integrity_error_retries_without_last_response_id(
     assert create.status_code == 200
     session_id = create.json()["sessionId"]
 
-    with agent_utils.sessions_lock:
-        session = agent_utils.sessions_by_id[session_id]
+    with agent_state.sessions_lock:
+        session = agent_state.sessions_by_id[session_id]
         session.last_response_id = "resp_bad"
 
     calls: list[object] = []
@@ -241,8 +242,8 @@ async def test_sync_chain_integrity_error_retries_without_last_response_id(
     assert response.status_code == 200
     assert response.json()["assistantMessage"] == "recovered"
 
-    with agent_utils.sessions_lock:
-        session = agent_utils.sessions_by_id[session_id]
+    with agent_state.sessions_lock:
+        session = agent_state.sessions_by_id[session_id]
         assert session.last_response_id == "resp_recovered"
 
     assert calls == ["resp_bad", None]
@@ -266,10 +267,10 @@ async def test_background_chain_integrity_error_retries_without_last_response_id
         selected_targets=[],
     )
 
-    with agent_utils.sessions_lock:
-        agent_utils.sessions_by_id[session.session_id] = session
-    with agent_utils.runs_lock:
-        agent_utils.runs_by_id[run.run_id] = run
+    with agent_state.sessions_lock:
+        agent_state.sessions_by_id[session.session_id] = session
+    with agent_state.runs_lock:
+        agent_state.runs_by_id[run.run_id] = run
 
     calls: list[object] = []
 
@@ -300,12 +301,12 @@ async def test_background_chain_integrity_error_retries_without_last_response_id
         ctx=AppContext(workspace_paths=[project_root.parent]),
     )
 
-    with agent_utils.sessions_lock:
-        current = agent_utils.sessions_by_id[session.session_id]
+    with agent_state.sessions_lock:
+        current = agent_state.sessions_by_id[session.session_id]
         assert current.last_response_id == "resp_bg_recovered"
 
-    with agent_utils.runs_lock:
-        current_run = agent_utils.runs_by_id[run.run_id]
+    with agent_state.runs_lock:
+        current_run = agent_state.runs_by_id[run.run_id]
         assert current_run.status == "completed"
 
     assert calls == ["resp_bad", None]

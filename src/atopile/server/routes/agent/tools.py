@@ -16,7 +16,7 @@ from .models import (
     ToolSuggestionsResponse,
     session_not_found_detail,
 )
-from .utils import sessions_by_id, sessions_lock
+from .state import sessions_by_id, sessions_lock
 
 router = APIRouter()
 
