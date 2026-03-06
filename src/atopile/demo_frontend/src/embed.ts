@@ -488,8 +488,8 @@ function ensureStyles(): void {
       }
       .atopile-demo-model-surface {
         background:
-          radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.035), transparent 26%),
-          linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+          radial-gradient(circle at 50% 28%, rgba(249, 80, 21, 0.035), transparent 26%),
+          linear-gradient(180deg, rgba(249, 80, 21, 0.025), rgba(249, 80, 21, 0));
       }
       .atopile-demo-model-surface model-viewer {
         width: 100%;
@@ -609,7 +609,7 @@ function createEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
     const warm = new THREE.PointLight(0xffddb0, 14, 0, 2);
     warm.position.set(7, 8, 5);
     envScene.add(warm);
-    const accent = new THREE.PointLight(0xff8a32, 5.5, 0, 2);
+    const accent = new THREE.PointLight(0xf95015, 5.5, 0, 2);
     accent.position.set(-3, 3.5, 9);
     envScene.add(accent);
     const cool = new THREE.PointLight(0x8cb9e6, 6, 0, 2);
