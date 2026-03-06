@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 
@@ -73,6 +73,15 @@ class AgentConfig:
     activity_summary_enabled: bool = True
     activity_summary_max_events: int = 6
     activity_summary_min_interval_s: float = 1.5
+    subagent_model: str | None = None
+    subagent_max_concurrent: int = 3
+    subagent_context_hard_max_tokens: int = 240_000
+    subagent_fixed_skill_ids: list[str] = field(
+        default_factory=lambda: ["agent", "ato", "package-agent"]
+    )
+    subagent_fixed_skill_token_budgets: dict[str, int] = field(default_factory=dict)
+    subagent_fixed_skill_total_max_chars: int = 120_000
+    subagent_prefix_max_chars: int = 120_000
 
     @classmethod
     def from_env(cls) -> AgentConfig:
@@ -89,6 +98,7 @@ class AgentConfig:
             pass
 
         fixed_skill_ids = ["agent", "ato", "planning"]
+        subagent_fixed_skill_ids = ["agent", "ato", "package-agent"]
         return cls(
             base_url=_env("ATOPILE_AGENT_BASE_URL", "https://api.openai.com/v1"),
             model=_env("ATOPILE_AGENT_MODEL", "gpt-5.4"),
@@ -162,4 +172,39 @@ class AgentConfig:
                 lo=0.0,
                 hi=10.0,
             ),
+            subagent_model=_env("ATOPILE_AGENT_SUBAGENT_MODEL", "").strip() or None,
+            subagent_max_concurrent=_env_int(
+                "ATOPILE_AGENT_SUBAGENT_MAX_CONCURRENT", "3", lo=1, hi=3
+            ),
+            subagent_context_hard_max_tokens=_env_int(
+                "ATOPILE_AGENT_SUBAGENT_CONTEXT_HARD_MAX_TOKENS",
+                "240000",
+                lo=50_000,
+                hi=500_000,
+            ),
+            subagent_fixed_skill_ids=subagent_fixed_skill_ids,
+            subagent_fixed_skill_token_budgets=_parse_fixed_skill_token_budgets(
+                _env(
+                    "ATOPILE_AGENT_SUBAGENT_FIXED_SKILL_TOKEN_BUDGETS",
+                    "agent:8000,ato:18000,package-agent:6000",
+                ),
+                default_skill_ids=subagent_fixed_skill_ids,
+            ),
+            subagent_fixed_skill_total_max_chars=_env_int(
+                "ATOPILE_AGENT_SUBAGENT_FIXED_SKILL_TOTAL_MAX_CHARS", "120000"
+            ),
+            subagent_prefix_max_chars=_env_int(
+                "ATOPILE_AGENT_SUBAGENT_PREFIX_MAX_CHARS", "120000"
+            ),
+        )
+
+    def build_subagent_config(self) -> AgentConfig:
+        return replace(
+            self,
+            model=self.subagent_model or self.model,
+            fixed_skill_ids=list(self.subagent_fixed_skill_ids),
+            fixed_skill_token_budgets=dict(self.subagent_fixed_skill_token_budgets),
+            fixed_skill_total_max_chars=self.subagent_fixed_skill_total_max_chars,
+            prefix_max_chars=self.subagent_prefix_max_chars,
+            context_hard_max_tokens=self.subagent_context_hard_max_tokens,
         )

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { agentApi } from '../../../api/agent';
-import { api } from '../../../api/client';
-import { postMessage } from '../../../api/vscodeApi';
-import { useStore } from '../../../store';
+import { agentApi } from '../../api/agent';
+import { api } from '../../api/client';
+import { postMessage } from '../../api/vscodeApi';
+import { useStore } from '../../store';
 import {
   createChatId,
   DEFAULT_CHAT_TITLE,
   deriveChatTitle,
   shortProjectName,
-} from '../../../components/AgentChatPanel.helpers';
+} from '../AgentChatPanel.helpers';
 import {
   ACTIVE_CHAT_STORAGE_KEY,
   CHAT_SNAPSHOTS_STORAGE_KEY,
@@ -17,7 +17,7 @@ import {
   persistAgentState,
 } from '../state/persistence';
 import type { AgentChatSnapshot, AgentMessage } from '../state/types';
-import type { FileTreeNode } from '../../../types/build';
+import type { FileTreeNode } from '../../types/build';
 
 interface SessionDeps {
   projectRoot: string | null;
@@ -199,6 +199,7 @@ export function useAgentSessionState({
         cancelRequested: false,
         activityElapsedSeconds: 0,
         messages: [readyMessage],
+        packageWorkers: [],
         input: '',
         error: null,
         activityLabel: 'Ready',
@@ -237,6 +238,7 @@ export function useAgentSessionState({
         cancelRequested: false,
         activityElapsedSeconds: 0,
         messages: [errorMessage],
+        packageWorkers: [],
         input: '',
         error: message,
         activityLabel: 'Idle',
@@ -275,6 +277,7 @@ export function useAgentSessionState({
       cancelRequested: false,
       activityElapsedSeconds: 0,
       messages: [bootMessage],
+      packageWorkers: [],
       input: '',
       error: null,
       activityLabel: 'Starting',

@@ -6,8 +6,8 @@ import { useAgentPanelState } from './runtime/useAgentPanelState';
 import { flattenFileNodes } from './runtime/shared';
 import { useAgentRunState } from './runtime/useAgentRunState';
 import { useAgentSessionState } from './runtime/useAgentSessionState';
-import { useStore } from '../../store';
-import { postMessage } from '../../api/vscodeApi';
+import { useStore } from '../store';
+import { postMessage } from '../api/vscodeApi';
 import type { AgentMessage } from './state/types';
 
 export function useAgentChatRuntime(projectRoot: string | null, selectedTargets: string[]) {
@@ -159,6 +159,7 @@ export function useAgentChatRuntime(projectRoot: string | null, selectedTargets:
     isChatsPanelOpen: panelState.isChatsPanelOpen,
     sessionId,
     messages,
+    packageWorkers: sessionState.activeChatSnapshot?.packageWorkers ?? [],
     input: composerState.input,
     isSending,
     isStopping,

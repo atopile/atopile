@@ -1,4 +1,4 @@
-import { trimSingleLine } from '../../../components/AgentChatPanel.helpers';
+import { trimSingleLine } from '../AgentChatPanel.helpers';
 import { readTraceDiff, readTraceEditDiffPayload } from '../state/progress';
 import type {
   AgentEditDiffUiPayload,

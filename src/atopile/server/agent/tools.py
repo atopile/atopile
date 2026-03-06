@@ -28,7 +28,7 @@ from atopile.logging import (
 from atopile.model import builds as builds_domain
 from atopile.model.sqlite import BuildHistory
 from atopile.server import module_introspection
-from atopile.server.agent import policy
+from atopile.server.agent import package_workers, policy
 from atopile.server.agent.tool_autolayout_web_helpers import (
     _apply_component_highlight_overlay,
     _archive_autolayout_iteration,
@@ -703,6 +703,136 @@ async def _tool_workspace_list_targets(
 ) -> dict[str, Any]:
     _ = arguments, ctx
     return await asyncio.to_thread(projects_domain.list_workspace_targets, project_root)
+
+
+@_register_tool("package_agent_spawn")
+async def _tool_package_agent_spawn(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    session_id = getattr(ctx, "agent_session_id", None)
+    if not session_id:
+        raise RuntimeError("package_agent_spawn requires an agent session context")
+
+    raw_project_path = arguments.get("project_path")
+    if not isinstance(raw_project_path, str) or not raw_project_path.strip():
+        raise ValueError("project_path is required")
+    goal = str(arguments.get("goal", "")).strip()
+    if not goal:
+        raise ValueError("goal is required")
+
+    comments = str(arguments.get("comments", "")).strip() or None
+    selected_targets_raw = arguments.get("selected_targets")
+    if isinstance(selected_targets_raw, list):
+        selected_targets = [
+            str(target).strip()
+            for target in selected_targets_raw
+            if str(target).strip()
+        ]
+    else:
+        selected_targets = []
+
+    worker = await package_workers.spawn_package_worker(
+        ctx=ctx,
+        parent_session_id=session_id,
+        parent_run_id=getattr(ctx, "agent_run_id", None),
+        parent_project_root=project_root,
+        package_project_path=raw_project_path.strip(),
+        goal=goal,
+        comments=comments,
+        selected_targets=selected_targets,
+    )
+    return {
+        "success": True,
+        "worker_id": worker["worker_id"],
+        "package_project_path": worker["package_project_path"],
+        "status": worker["status"],
+    }
+
+
+@_register_tool("package_agent_list")
+async def _tool_package_agent_list(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    _ = arguments, project_root
+    session_id = getattr(ctx, "agent_session_id", None)
+    if not session_id:
+        raise RuntimeError("package_agent_list requires an agent session context")
+    workers = package_workers.list_package_workers(
+        session_id=session_id, parent_run_id=getattr(ctx, "agent_run_id", None)
+    )
+    return {"workers": workers, "total": len(workers)}
+
+
+@_register_tool("package_agent_get")
+async def _tool_package_agent_get(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    _ = project_root, ctx
+    worker_id = str(arguments.get("worker_id", "")).strip()
+    if not worker_id:
+        raise ValueError("worker_id is required")
+    worker = package_workers.get_package_worker(worker_id)
+    if worker is None:
+        raise ValueError(f"Unknown package worker: {worker_id}")
+    return worker
+
+
+@_register_tool("package_agent_wait")
+async def _tool_package_agent_wait(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    _ = project_root, ctx
+    worker_id = str(arguments.get("worker_id", "")).strip()
+    if not worker_id:
+        raise ValueError("worker_id is required")
+    raw_timeout = arguments.get("timeout_seconds")
+    timeout_seconds = float(raw_timeout) if raw_timeout is not None else None
+    worker = await package_workers.wait_for_package_worker(
+        worker_id, timeout_seconds=timeout_seconds
+    )
+    if worker is None:
+        raise ValueError(f"Unknown package worker: {worker_id}")
+    return worker
+
+
+@_register_tool("package_agent_message")
+async def _tool_package_agent_message(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    _ = project_root, ctx
+    worker_id = str(arguments.get("worker_id", "")).strip()
+    message = str(arguments.get("message", "")).strip()
+    if not worker_id:
+        raise ValueError("worker_id is required")
+    if not message:
+        raise ValueError("message is required")
+    worker = package_workers.message_package_worker(worker_id, message)
+    if worker is None:
+        raise ValueError(f"Unknown package worker: {worker_id}")
+    return {
+        "success": True,
+        "worker_id": worker["worker_id"],
+        "status": worker["status"],
+        "queued_message": message,
+    }
+
+
+@_register_tool("package_agent_stop")
+async def _tool_package_agent_stop(
+    arguments: dict[str, Any], project_root: Path, ctx: AppContext
+) -> dict[str, Any]:
+    _ = project_root, ctx
+    worker_id = str(arguments.get("worker_id", "")).strip()
+    if not worker_id:
+        raise ValueError("worker_id is required")
+    worker = package_workers.stop_package_worker(worker_id)
+    if worker is None:
+        raise ValueError(f"Unknown package worker: {worker_id}")
+    return {
+        "success": True,
+        "worker_id": worker["worker_id"],
+        "status": worker["status"],
+    }
 
 
 @_register_tool("web_search")

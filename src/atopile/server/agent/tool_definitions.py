@@ -86,8 +86,118 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
+            "name": "package_agent_spawn",
+            "description": (
+                "Spawn a package-specialist worker for one nested package project. "
+                "Use this after the package project already exists under packages/. "
+                "Pass project_path plus a concise goal and optional "
+                "design-specific comments."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_path": {"type": "string"},
+                    "goal": {"type": "string"},
+                    "comments": {"type": ["string", "null"]},
+                    "selected_targets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": ["default"],
+                    },
+                },
+                "required": ["project_path", "goal"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_agent_list",
+            "description": (
+                "List package-specialist workers created for the current run/session."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_agent_get",
+            "description": (
+                "Inspect the current state and summary of a package-specialist worker."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string"},
+                },
+                "required": ["worker_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_agent_wait",
+            "description": (
+                "Wait for a package-specialist worker to finish and "
+                "return its latest summary."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string"},
+                    "timeout_seconds": {
+                        "type": ["number", "null"],
+                        "minimum": 0,
+                    },
+                },
+                "required": ["worker_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_agent_message",
+            "description": (
+                "Send follow-up guidance to a running package-specialist worker. "
+                "Use this to clarify priorities without taking over the package work."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+                "required": ["worker_id", "message"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "package_agent_stop",
+            "description": "Request a graceful stop for a package-specialist worker.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string"},
+                },
+                "required": ["worker_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
             "name": "build_run",
-            "description": "Queue a build for one or more targets.",
+            "description": (
+                "Queue a build for one or more targets in the selected project "
+                "or a nested package project. For local packages under "
+                "packages/, first use workspace_list_targets to discover the "
+                "package target, then call build_run with targets plus "
+                "project_path pointing at that nested package project. Do not "
+                "create synthetic standalone package builds just to validate "
+                "generated local wrappers."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -97,7 +207,6 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                         "default": [],
                     },
                     "entry": {"type": ["string", "null"]},
-                    "standalone": {"type": "boolean", "default": False},
                     "frozen": {"type": "boolean", "default": False},
                     "include_targets": {
                         "type": "array",

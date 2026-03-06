@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ from atopile.dataclasses import AgentEventRow, AppContext
 from atopile.server.agent import AgentRunner, mediator
 from atopile.server.agent.activity_summary import ActivitySummarizer
 from atopile.server.agent.config import AgentConfig
+from atopile.server.agent.execution_context import AgentExecutionContext
 from atopile.server.agent.provider import OpenAIProvider
 from atopile.server.agent.registry import ToolRegistry
 from atopile.server.agent.runner import TraceCallback
@@ -200,6 +202,7 @@ async def run_turn_with_chain_recovery(
     history: list[dict[str, str]],
     user_message: str,
     session_id: str,
+    run_id: str | None,
     selected_targets: list[str] | None,
     prior_skill_state: dict[str, Any] | None,
     tool_memory: dict[str, dict[str, Any]],
@@ -210,13 +213,19 @@ async def run_turn_with_chain_recovery(
     trace_callback: TraceCallback | None = None,
 ) -> Any:
     """Retry once from local history when the provider response chain is stale."""
+    run_ctx = AgentExecutionContext(
+        **copy.copy(ctx).__dict__,
+        agent_session_id=session_id,
+        agent_run_id=run_id,
+    )
     try:
         return await orchestrator.run_turn(
-            ctx=ctx,
+            ctx=run_ctx,
             project_root=project_root,
             history=history,
             user_message=user_message,
             session_id=session_id,
+            run_id=run_id or "",
             selected_targets=selected_targets,
             previous_response_id=session.last_response_id,
             prior_skill_state=prior_skill_state,
@@ -239,11 +248,12 @@ async def run_turn_with_chain_recovery(
         invalidate_session_response_chain(session)
 
         return await orchestrator.run_turn(
-            ctx=ctx,
+            ctx=run_ctx,
             project_root=project_root,
             history=history,
             user_message=user_message,
             session_id=session_id,
+            run_id=run_id or "",
             selected_targets=selected_targets,
             previous_response_id=None,
             prior_skill_state=prior_skill_state,
@@ -598,6 +608,7 @@ async def run_turn_in_background(
             history=list(session.history),
             user_message=run.message,
             session_id=session_id,
+            run_id=run_id,
             selected_targets=run.selected_targets,
             prior_skill_state=session.skill_state,
             tool_memory=session.tool_memory,

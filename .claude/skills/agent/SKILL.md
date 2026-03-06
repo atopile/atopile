@@ -117,6 +117,9 @@ Do not repeat identical read/search calls. After sufficient context, execute or 
 - Use `parts_install(create_package=true)` when an installed physical part should become a reusable local package under `packages/`.
 - When refining a package as its own project, use `parts_install(project_path="packages/<name>")` so any new supporting parts land inside that package project instead of only the top-level project.
 - Use `package_create_local` when you need an empty local package scaffold without installing a physical part.
+- Use `package_agent_spawn` when a package project already exists and the wrapper work can proceed in parallel with top-level integration.
+- Delegate package workers by `project_path` first. Use short `comments` only for design-important priorities that affect the wrapper boundary.
+- Use `package_agent_get` or `package_agent_wait` before assuming delegated package work is complete.
 - Use `packages_search`/`packages_install` for atopile registry dependencies.
 - Use `stdlib_list` and `stdlib_get_item` for standard library modules, interfaces, and traits.
 

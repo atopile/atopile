@@ -261,6 +261,128 @@
   min-height: 0;
 }
 
+.agent-package-workers-panel {
+  margin: 8px 12px 0;
+  border: 1px solid color-mix(in srgb, var(--agent-panel-line) 82%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary) 56%, var(--bg-primary));
+  overflow: hidden;
+}
+
+.agent-package-workers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--agent-panel-line) 70%, transparent);
+}
+
+.agent-package-workers-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.agent-package-workers-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.agent-package-workers-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-package-worker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--agent-panel-line) 46%, transparent);
+}
+
+.agent-package-worker-card:first-child {
+  border-top: 0;
+}
+
+.agent-package-worker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-package-worker-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+.agent-package-worker-name {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-package-worker-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.agent-package-worker-status.running {
+  color: color-mix(in srgb, var(--text-primary) 80%, var(--accent));
+}
+
+.agent-package-worker-status.completed {
+  color: color-mix(in srgb, var(--text-primary) 60%, #3aa26d);
+}
+
+.agent-package-worker-status.failed {
+  color: color-mix(in srgb, var(--text-primary) 36%, #c75050);
+}
+
+.agent-package-worker-status.stopped {
+  color: var(--text-muted);
+}
+
+.agent-package-worker-path,
+.agent-package-worker-summary,
+.agent-package-worker-meta-row {
+  font-size: 11px;
+}
+
+.agent-package-worker-path {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-package-worker-summary {
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.agent-package-worker-meta-row {
+  display: flex;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
 .agent-chat-history-drawer {
   position: absolute;
   inset: 0 auto 0 0;

@@ -1,4 +1,4 @@
-import type { Build, QueuedBuild } from '../../../types/build';
+import type { Build, QueuedBuild } from '../../types/build';
 import type { AgentMessage, AgentTraceView } from '../state/types';
 import type { MessageBuildStatusState } from './shared';
 

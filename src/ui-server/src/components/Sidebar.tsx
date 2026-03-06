@@ -29,7 +29,7 @@ import {
   type SelectedPart,
 } from './sidebar-modules';
 import { ManufacturingPanel } from './manufacturing';
-import { AgentChatPanel } from './AgentChatPanel';
+import { AgentChatPanel } from '../agent/AgentChatPanel';
 import './Sidebar.css';
 import '../styles.css';
 

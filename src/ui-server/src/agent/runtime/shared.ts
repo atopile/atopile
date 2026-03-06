@@ -1,4 +1,4 @@
-import type { FileTreeNode, ModuleDefinition, QueuedBuild } from '../../../types/build';
+import type { FileTreeNode, ModuleDefinition, QueuedBuild } from '../../types/build';
 import type { AgentTraceView } from '../state/types';
 
 export interface BuildRunReferences {

@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import { AlertCircle, Check, ChevronDown, Loader2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { BuildQueueItem } from '../../../components/BuildQueueItem';
+import { BuildQueueItem } from '../../components/BuildQueueItem';
 import { readTraceDiff } from '../state/progress';
 import type { AgentMessage } from '../state/types';
 import { DesignQuestionsCard } from './DesignQuestionsCard';
@@ -15,7 +15,7 @@ import {
   summarizeTraceDetails,
   traceExpansionKey,
 } from './viewHelpers';
-import type { QueuedBuild } from '../../../types/build';
+import type { QueuedBuild } from '../../types/build';
 
 interface MessageBuildStatusState {
   messageId: string;

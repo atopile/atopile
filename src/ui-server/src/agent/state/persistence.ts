@@ -1,4 +1,4 @@
-import { DEFAULT_CHAT_TITLE, deriveChatTitle } from '../../../components/AgentChatPanel.helpers';
+import { DEFAULT_CHAT_TITLE, deriveChatTitle } from '../AgentChatPanel.helpers';
 import type { AgentChatSnapshot, AgentMessage } from './types';
 
 export const CHAT_SNAPSHOTS_STORAGE_KEY = 'atopile.agentChatSnapshots.v1';
@@ -69,6 +69,7 @@ export function normalizeSnapshotForPersistence(value: unknown): AgentChatSnapsh
     cancelRequested: false,
     activityElapsedSeconds: 0,
     messages,
+    packageWorkers: [],
     input,
     error: typeof candidate.error === 'string' ? candidate.error : null,
     activityLabel: resumedWithSession ? 'Ready' : 'Idle',

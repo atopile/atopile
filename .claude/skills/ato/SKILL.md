@@ -181,6 +181,7 @@ When `packages_search` returns no match for a needed IC, connector, or module, *
    - If the wrapper needs new supporting physical parts while you are validating the package target in isolation, install them into that package project with `parts_install(project_path="packages/<PartName>")`.
 7. **Discover targets**: Run `workspace_list_targets` after package creation to inspect and build the package targets that were exposed automatically.
 8. **Import and use** the local package in your top-level design directly from `packages/<PartName>/<PartName>.ato`.
+9. **Delegate package work when helpful**: If the package project exists and can be built independently, use `package_agent_spawn(project_path="packages/<PartName>", goal=..., comments=...)` so a package specialist can refine that wrapper while you continue top-level integration.
 
 **Example: refining a generated local I2C mux wrapper**
 
@@ -248,6 +249,7 @@ module TI_TCA9548A:
 - The generated package file under `packages/` is the canonical wrapper for that part. Refine it in place.
 - The raw installed file is a `component` — never edit it.
 - Build a basic reusable wrapper first. Expose the minimum standard interfaces needed to validate the package and integrate it, then come back and add more pin mappings or interfaces later if integration requires them.
+- Once a package project exists, prefer delegating isolated wrapper build-out through `package_agent_spawn` instead of doing all package work serially in the main agent.
 - Instantiate the raw component inside the wrapper as `package = new <ComponentName>`.
 - `main.ato` should import wrapper packages directly from `packages/<name>/<name>.ato`, not through an extra aggregator wrapper file.
 - Connect interfaces via `.line` and `.reference` (e.g., `i2c.sda.line ~ package.SDA`; `i2c.sda.reference ~ power`).

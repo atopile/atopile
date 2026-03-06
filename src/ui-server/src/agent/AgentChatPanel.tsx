@@ -1,9 +1,10 @@
 import { ChevronDown, Plus, Minimize2, Maximize2, MessageSquareText } from 'lucide-react';
-import { AgentComposer } from '../features/agent/components/AgentComposer';
-import { AgentHistoryDrawer } from '../features/agent/components/AgentHistoryDrawer';
-import { AgentMessagesView } from '../features/agent/components/AgentMessagesView';
-import { formatCount, renderLineDelta } from '../features/agent/components/viewHelpers';
-import { useAgentChatRuntime } from '../features/agent/useAgentChatRuntime';
+import { AgentComposer } from './components/AgentComposer';
+import { AgentHistoryDrawer } from './components/AgentHistoryDrawer';
+import { AgentMessagesView } from './components/AgentMessagesView';
+import { PackageWorkersPanel } from './components/PackageWorkersPanel';
+import { formatCount, renderLineDelta } from './components/viewHelpers';
+import { useAgentChatRuntime } from './useAgentChatRuntime';
 import './AgentChatPanel.css';
 
 interface AgentChatPanelProps {
@@ -106,6 +107,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
               onToggleTraceExpanded={runtime.toggleTraceExpanded}
               onSubmitDesignQuestions={(answers) => void runtime.sendMessage({ directMessage: answers, hideUserMessage: true })}
             />
+
+            <PackageWorkersPanel workers={runtime.packageWorkers} />
 
             {runtime.changedFilesSummary && (
               <div className="agent-changes-summary">

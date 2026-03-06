@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { ModuleDefinition } from '../../../types/build';
+import type { ModuleDefinition } from '../../types/build';
 import { buildMentionItems, findMentionToken, type MentionItem, type MentionToken } from './shared';
 
 export function useAgentComposerState(

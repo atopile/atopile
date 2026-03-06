@@ -34,6 +34,15 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def _agent_ctx(
+    tmp_path: Path, *, session_id: str = "session-1", run_id: str = "run-1"
+) -> AppContext:
+    ctx = AppContext(workspace_paths=[tmp_path])
+    setattr(ctx, "agent_session_id", session_id)
+    setattr(ctx, "agent_run_id", run_id)
+    return ctx
+
+
 @pytest.fixture(autouse=True)
 def _clear_agent_tool_caches() -> None:
     tools._openai_file_cache.clear()
@@ -48,6 +57,12 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
 
     assert "package_create_local" in names
     assert "workspace_list_targets" in names
+    assert "package_agent_spawn" in names
+    assert "package_agent_list" in names
+    assert "package_agent_get" in names
+    assert "package_agent_wait" in names
+    assert "package_agent_message" in names
+    assert "package_agent_stop" in names
     assert "project_edit_file" in names
     assert "project_list_modules" in names
     assert "project_module_children" in names
@@ -75,11 +90,73 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_replace_text" not in names
     assert "create_package=true" in definitions["parts_install"]["description"]
     assert "project_path" in definitions["parts_install"]["parameters"]["properties"]
+    assert "package-specialist" in definitions["package_agent_spawn"]["description"]
+    assert (
+        "project_path" in definitions["package_agent_spawn"]["parameters"]["properties"]
+    )
     assert "local sub-package" in definitions["package_create_local"]["description"]
     assert (
         "discover new build targets"
         in definitions["workspace_list_targets"]["description"]
     )
+
+
+def test_package_agent_spawn_executes_with_parent_context(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_spawn_package_worker(**kwargs):
+        captured.update(kwargs)
+        return {
+            "worker_id": "worker-123",
+            "package_project_path": "packages/rp2350",
+            "status": "running",
+        }
+
+    monkeypatch.setattr(
+        tools.package_workers, "spawn_package_worker", fake_spawn_package_worker
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="package_agent_spawn",
+            arguments={
+                "project_path": "packages/rp2350",
+                "goal": "Build a generic RP2350 wrapper package",
+                "comments": "Prioritize USB and SWD.",
+                "selected_targets": ["default"],
+            },
+            project_root=tmp_path,
+            ctx=_agent_ctx(tmp_path),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["worker_id"] == "worker-123"
+    assert captured["parent_session_id"] == "session-1"
+    assert captured["parent_run_id"] == "run-1"
+    assert captured["package_project_path"] == "packages/rp2350"
+    assert captured["goal"] == "Build a generic RP2350 wrapper package"
+    assert captured["comments"] == "Prioritize USB and SWD."
+    assert captured["selected_targets"] == ["default"]
+
+
+def test_package_agent_spawn_requires_agent_session_context(tmp_path: Path) -> None:
+    with pytest.raises(
+        RuntimeError, match="package_agent_spawn requires an agent session context"
+    ):
+        _run(
+            tools.execute_tool(
+                name="package_agent_spawn",
+                arguments={
+                    "project_path": "packages/rp2350",
+                    "goal": "Build a generic RP2350 wrapper package",
+                },
+                project_root=tmp_path,
+                ctx=AppContext(workspace_paths=[tmp_path]),
+            )
+        )
 
 
 def test_execute_tool_allows_read_tool(tmp_path: Path) -> None:

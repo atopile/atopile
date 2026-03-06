@@ -4,7 +4,7 @@ import {
   formatChatTimestamp,
   shortProjectName,
   summarizeChatPreview,
-} from '../../../components/AgentChatPanel.helpers';
+} from '../AgentChatPanel.helpers';
 import type { AgentChatSnapshot } from '../state/types';
 
 interface AgentHistoryDrawerProps {

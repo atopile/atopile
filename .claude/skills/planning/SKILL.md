@@ -331,6 +331,7 @@ Use `design_questions` any time you have multiple design decisions to gather. It
    - Keep wrappers reusable across projects. Expose generic chip capabilities and keep board-specific grouping and role naming in `main.ato` or project modules above the wrapper.
    - Start each wrapper as a basic reusable boundary with the minimum standard interfaces needed to validate the package target and integrate the design. Add more interfaces or alternate pin mappings later only if integration proves they are needed.
    - If a wrapper needs new supporting passives, crystals, or connectors while you are validating that package target, install them into the package project itself with `parts_install(project_path="packages/<name>")`.
+   - Once a package project exists and the work is independent, delegate it with `package_agent_spawn(project_path="packages/<name>", goal=..., comments=...)` so the main agent can keep moving on integration and architecture.
 8. **Validate package targets first** — use `workspace_list_targets` to discover package targets automatically exposed by local packages, then build/fix wrappers and other submodules before attempting the full design.
    - Build smaller design sections first because they are much faster to validate.
    - Run independent package/submodule builds in parallel where practical to get faster feedback.

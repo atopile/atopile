@@ -4,7 +4,6 @@
  */
 
 import type { ManufacturingWizardState } from '../components/manufacturing/types';
-import type { AgentState } from '../features/agent/state/types';
 
 export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'failed' | 'cancelled';
 export type StageStatus = 'pending' | 'running' | 'success' | 'warning' | 'failed' | 'error' | 'skipped';
@@ -577,11 +576,7 @@ export interface AppState {
   // Manufacturing Wizard
   manufacturingWizard: ManufacturingWizardState | null;
 
-  // Agent UI
-  agentState: AgentState;
 }
-
-export type { AgentChatSnapshot, AgentState } from '../features/agent/state/types';
 
 // Re-export manufacturing types for convenience
 export type {
