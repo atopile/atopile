@@ -271,360 +271,224 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
 @dataclass(frozen=True)
 class _UncertaintySummary:
     outer: F.Literals.Numbers
-    robust_low: F.Literals.Numbers
-    robust_high: F.Literals.Numbers
-    uncertainty_leaf_count: int
+    low: F.Literals.Numbers
+    high: F.Literals.Numbers
+    count: int
+
+    @classmethod
+    def from_outer(
+        cls, mutator: Mutator, outer: F.Literals.Numbers, *, uncertainty: bool = False
+    ) -> "_UncertaintySummary":
+        nums = F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
+        return cls(
+            outer=outer,
+            low=nums.create_instance(g=mutator.G_transient).setup_from_singleton(
+                value=outer.get_max_value() if uncertainty else outer.get_min_value(),
+                unit=outer.get_is_unit(),
+            ),
+            high=nums.create_instance(g=mutator.G_transient).setup_from_singleton(
+                value=outer.get_min_value() if uncertainty else outer.get_max_value(),
+                unit=outer.get_is_unit(),
+            ),
+            count=int(uncertainty),
+        )
 
 
-def _try_get_numbers_literal(
-    operand: F.Parameters.can_be_operand,
-) -> F.Literals.Numbers | None:
-    if not (lit := operand.as_literal.try_get()):
-        return None
-    return fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
+def _numeric_parameter(po: F.Parameters.is_parameter_operatable):
+    param = po.as_parameter.try_get()
+    return (
+        None
+        if param is None
+        else fabll.Traits(param).get_obj_raw().try_cast(F.Parameters.NumericParameter)
+    )
 
 
-def _try_get_numeric_parameter(
-    po: F.Parameters.is_parameter_operatable,
-) -> F.Parameters.NumericParameter | None:
-    if not (param := po.as_parameter.try_get()):
-        return None
-    return fabll.Traits(param).get_obj_raw().try_cast(F.Parameters.NumericParameter)
-
-
-def _try_get_expression_representative(
-    operand: F.Parameters.can_be_operand,
+def _represented_expression(
+    operand: F.Parameters.can_be_operand, *, exclude_eq: F.Expressions.Is | None = None
 ) -> F.Expressions.is_expression | None:
-    if direct := operand.try_get_sibling_trait(F.Expressions.is_expression):
-        return direct
-
-    if not (po := operand.as_parameter_operatable.try_get()):
+    if (expr := _direct_expression(operand)) is not None:
+        return expr
+    if operand.as_parameter_operatable.try_get() is None:
         return None
-    if not (param := po.as_parameter.try_get()):
-        return None
-    if _try_get_numeric_parameter(po) is None:
-        return None
-    if not param.try_get_sibling_trait(F.Expressions.is_expression_representative):
-        return None
-
-    from faebryk.core.solver.symbolic.invariants import AliasClass
-
     for is_ in operand.get_operations(F.Expressions.Is, predicates_only=True):
-        try:
-            alias = AliasClass.of(is_)
-        except AssertionError:
+        if exclude_eq is not None and is_.is_same(exclude_eq):
             continue
-
-        if not alias.representative().is_same(operand, allow_different_graph=True):
-            continue
-
-        exprs = alias.get_with_trait(F.Expressions.is_expression)
-        if len(exprs) == 1:
-            return next(iter(exprs))
-
+        eq = is_.is_expression.get()
+        params = eq.get_operands_with_trait(F.Parameters.is_parameter)
+        exprs = [
+            expr
+            for expr in eq.get_operands_with_trait(F.Expressions.is_expression)
+            if not expr.has_trait(F.Expressions.is_predicate)
+        ]
+        if len(params) == len(exprs) == 1 and next(
+            iter(params)
+        ).as_operand.get().is_same(operand):
+            return exprs[0]
     return None
 
 
-def _expr_depends_on_target_alias(
-    target_op: F.Parameters.can_be_operand,
-    expr: F.Expressions.is_expression,
-) -> bool:
-    from faebryk.core.solver.symbolic.invariants import AliasClass
-
-    target_alias_params = AliasClass.of(target_op, allow_non_repr=True).get_with_trait(
-        F.Parameters.is_parameter
-    )
-    if not target_alias_params:
-        return False
-
-    def operand_depends_on_target(
-        operand: F.Parameters.can_be_operand,
-        seen: set[int],
-    ) -> bool:
-        if any(
-            operand.is_same(alias_param.as_operand.get())
-            for alias_param in target_alias_params
-        ):
-            return True
-
-        operand_id = id(operand.instance)
-        if operand_id in seen:
-            return False
-        seen.add(operand_id)
-
-        if nested_expr := _try_get_expression_representative(operand):
-            return any(
-                operand_depends_on_target(nested, seen)
-                for nested in nested_expr.get_operands()
-            )
-
-        return False
-
-    return any(
-        operand_depends_on_target(operand, set()) for operand in expr.get_operands()
-    )
+def _direct_expression(operand: F.Parameters.can_be_operand):
+    expr = operand.try_get_sibling_trait(F.Expressions.is_expression)
+    return None if expr is None or expr.has_trait(F.Expressions.is_predicate) else expr
 
 
-def _singleton_numbers(
-    mutator: Mutator,
-    value: float,
-    unit: fabll.Node | None,
-) -> F.Literals.Numbers:
-    return (
-        F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
-        .create_instance(g=mutator.G_transient)
-        .setup_from_singleton(value=value, unit=unit)
-    )
-
-
-def _min_singleton(mutator: Mutator, numbers: F.Literals.Numbers) -> F.Literals.Numbers:
-    return _singleton_numbers(mutator, numbers.get_min_value(), numbers.get_is_unit())
-
-
-def _max_singleton(mutator: Mutator, numbers: F.Literals.Numbers) -> F.Literals.Numbers:
-    return _singleton_numbers(mutator, numbers.get_max_value(), numbers.get_is_unit())
-
-
-def _summary_without_uncertainty(
-    mutator: Mutator, outer: F.Literals.Numbers
-) -> _UncertaintySummary:
-    return _UncertaintySummary(
-        outer=outer,
-        robust_low=_min_singleton(mutator, outer),
-        robust_high=_max_singleton(mutator, outer),
-        uncertainty_leaf_count=0,
-    )
-
-
-def _summary_for_uncertainty_leaf(
-    mutator: Mutator, outer: F.Literals.Numbers
-) -> _UncertaintySummary:
-    return _UncertaintySummary(
-        outer=outer,
-        robust_low=_max_singleton(mutator, outer),
-        robust_high=_min_singleton(mutator, outer),
-        uncertainty_leaf_count=1,
-    )
-
-
-def _try_extract_numeric_superset(
-    mutator: Mutator,
-    po: F.Parameters.is_parameter_operatable,
-) -> F.Literals.Numbers | None:
-    if lit := po.try_extract_superset():
-        if lit := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers):
-            return lit
-    if not (numeric_param := _try_get_numeric_parameter(po)):
-        return None
-    return numeric_param.domain_set(g=mutator.G_transient, tg=mutator.tg_in)
-
-
-def _try_extract_numeric_subset(
-    po: F.Parameters.is_parameter_operatable,
-) -> F.Literals.Numbers | None:
-    if lit := po.try_extract_subset():
-        return fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
-    return None
-
-
-def _strictly_positive(numbers: F.Literals.Numbers) -> bool:
-    return numbers.get_min_value() > 0
-
-
-def _is_finite(numbers: F.Literals.Numbers) -> bool:
-    return math.isfinite(numbers.get_min_value()) and math.isfinite(
-        numbers.get_max_value()
-    )
-
-
-def _build_interval_from_bounds(
-    mutator: Mutator,
-    low: F.Literals.Numbers,
-    high: F.Literals.Numbers,
-    *,
-    unit: fabll.Node | None = None,
-) -> F.Literals.Numbers:
-    return (
-        F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
-        .create_instance(g=mutator.G_transient)
-        .setup_from_min_max(
-            min=low.get_min_value(),
-            max=high.get_max_value(),
-            unit=unit or low.get_is_unit(),
-        )
-    )
-
-
-def _summarize_add(
-    mutator: Mutator, summaries: list[_UncertaintySummary]
-) -> _UncertaintySummary | None:
-    outer = summaries[0].outer.op_add_intervals(
-        *(summary.outer for summary in summaries[1:]),
-        g=mutator.G_transient,
-        tg=mutator.tg_in,
-    )
-    uncertainty_leaf_count = sum(
-        summary.uncertainty_leaf_count for summary in summaries
-    )
-    if uncertainty_leaf_count == 0:
-        return _summary_without_uncertainty(mutator, outer)
-    if uncertainty_leaf_count != 1 or not all(
-        _is_finite(summary.outer) for summary in summaries
-    ):
-        return None
-
-    dependent_index = next(
-        i for i, summary in enumerate(summaries) if summary.uncertainty_leaf_count
-    )
-    robust_low = summaries[dependent_index].robust_low
-    robust_high = summaries[dependent_index].robust_high
-    for i, summary in enumerate(summaries):
-        if i == dependent_index:
-            continue
-        robust_low = robust_low.op_add_intervals(
-            _min_singleton(mutator, summary.outer),
-            g=mutator.G_transient,
-            tg=mutator.tg_in,
-        )
-        robust_high = robust_high.op_add_intervals(
-            _max_singleton(mutator, summary.outer),
-            g=mutator.G_transient,
-            tg=mutator.tg_in,
-        )
-
-    return _UncertaintySummary(
-        outer=outer,
-        robust_low=robust_low,
-        robust_high=robust_high,
-        uncertainty_leaf_count=1,
-    )
-
-
-def _summarize_multiply(
-    mutator: Mutator, summaries: list[_UncertaintySummary]
-) -> _UncertaintySummary | None:
-    outer = summaries[0].outer.op_mul_intervals(
-        *(summary.outer for summary in summaries[1:]),
-        g=mutator.G_transient,
-        tg=mutator.tg_in,
-    )
-    uncertainty_leaf_count = sum(
-        summary.uncertainty_leaf_count for summary in summaries
-    )
-    if uncertainty_leaf_count == 0:
-        return _summary_without_uncertainty(mutator, outer)
-    if uncertainty_leaf_count != 1 or not all(
-        _strictly_positive(summary.outer) and _is_finite(summary.outer)
-        for summary in summaries
-    ):
-        return None
-
-    dependent_index = next(
-        i for i, summary in enumerate(summaries) if summary.uncertainty_leaf_count
-    )
-    robust_low = summaries[dependent_index].robust_low
-    robust_high = summaries[dependent_index].robust_high
-    for i, summary in enumerate(summaries):
-        if i == dependent_index:
-            continue
-        robust_low = robust_low.op_mul_intervals(
-            _min_singleton(mutator, summary.outer),
-            g=mutator.G_transient,
-            tg=mutator.tg_in,
-        )
-        robust_high = robust_high.op_mul_intervals(
-            _max_singleton(mutator, summary.outer),
-            g=mutator.G_transient,
-            tg=mutator.tg_in,
-        )
-
-    return _UncertaintySummary(
-        outer=outer,
-        robust_low=robust_low,
-        robust_high=robust_high,
-        uncertainty_leaf_count=1,
-    )
-
-
-def _summarize_power_inverse(
-    mutator: Mutator, base_summary: _UncertaintySummary
-) -> _UncertaintySummary | None:
-    if not _strictly_positive(base_summary.outer) or not _is_finite(base_summary.outer):
-        return None
-    outer = base_summary.outer.op_invert(g=mutator.G_transient, tg=mutator.tg_in)
-    if base_summary.uncertainty_leaf_count == 0:
-        return _summary_without_uncertainty(mutator, outer)
-    if base_summary.uncertainty_leaf_count != 1:
-        return None
-
-    return _UncertaintySummary(
-        outer=outer,
-        robust_low=base_summary.robust_high.op_invert(
-            g=mutator.G_transient, tg=mutator.tg_in
-        ),
-        robust_high=base_summary.robust_low.op_invert(
-            g=mutator.G_transient, tg=mutator.tg_in
-        ),
-        uncertainty_leaf_count=1,
-    )
-
-
-def _summarize_uncertainty_operand(
+def _summarize_uncertainty(
     mutator: Mutator,
     operand: F.Parameters.can_be_operand,
-) -> _UncertaintySummary | None:
-    if literal := _try_get_numbers_literal(operand):
-        return _summary_without_uncertainty(mutator, literal)
-
-    if expr := _try_get_expression_representative(operand):
-        return _summarize_uncertainty_expression(mutator, expr)
-
-    if not (po := operand.as_parameter_operatable.try_get()):
+    seen: tuple[F.Parameters.can_be_operand, ...] = (),
+):
+    if literal := MutatorUtils.is_numeric_literal(operand):
+        return _UncertaintySummary.from_outer(mutator, literal)
+    po = operand.as_parameter_operatable.try_get()
+    if po is None:
         return None
-
-    if subset := _try_extract_numeric_subset(po):
-        return _summary_for_uncertainty_leaf(mutator, subset)
-
-    if outer := _try_extract_numeric_superset(mutator, po):
-        return _summary_without_uncertainty(mutator, outer)
-
-    return None
+    if subset := MutatorUtils.is_numeric_literal(po.try_extract_subset()):
+        return _UncertaintySummary.from_outer(mutator, subset, uncertainty=True)
+    outer = MutatorUtils.is_numeric_literal(po.try_extract_superset()) or (
+        numeric_param.domain_set(g=mutator.G_transient, tg=mutator.tg_in)
+        if (numeric_param := _numeric_parameter(po))
+        else None
+    )
+    if any(prev.is_same(operand) for prev in seen):
+        return None if outer is None else _UncertaintySummary.from_outer(mutator, outer)
+    if expr := _represented_expression(operand):
+        if summary := _summarize_uncertainty_expression(
+            mutator, expr, (*seen, operand)
+        ):
+            return summary
+    return None if outer is None else _UncertaintySummary.from_outer(mutator, outer)
 
 
 def _summarize_uncertainty_expression(
     mutator: Mutator,
     expr: F.Expressions.is_expression,
-) -> _UncertaintySummary | None:
-    operands = expr.get_operands()
+    seen: tuple[F.Parameters.can_be_operand, ...] = (),
+):
+    parts = [_summarize_uncertainty(mutator, op, seen) for op in expr.get_operands()]
+    if any(part is None for part in parts):
+        return None
+    parts = [part for part in parts if part]
 
-    if expr.expr_isinstance(Add):
-        summaries = [_summarize_uncertainty_operand(mutator, op) for op in operands]
-        if any(summary is None for summary in summaries):
-            return None
-        return _summarize_add(mutator, [summary for summary in summaries if summary])
-
-    if expr.expr_isinstance(Multiply):
-        summaries = [_summarize_uncertainty_operand(mutator, op) for op in operands]
-        if any(summary is None for summary in summaries):
-            return None
-        return _summarize_multiply(
-            mutator, [summary for summary in summaries if summary]
+    if expr.expr_isinstance(Power):
+        exponent = (
+            MutatorUtils.is_numeric_literal(expr.get_operands()[1])
+            if len(expr.get_operands()) == 2
+            else None
         )
-
-    if expr.expr_isinstance(Power) and len(operands) == 2:
-        exponent = _try_get_numbers_literal(operands[1])
+        base = (
+            parts[0]
+            if exponent and exponent.is_singleton() and exponent.get_single() == -1
+            else None
+        )
         if (
-            exponent is None
-            or not exponent.is_singleton()
-            or exponent.get_single() != -1
+            base is None
+            or base.outer.get_min_value() <= 0
+            or not math.isfinite(base.outer.get_min_value())
+            or not math.isfinite(base.outer.get_max_value())
         ):
             return None
-        base_summary = _summarize_uncertainty_operand(mutator, operands[0])
-        if base_summary is None:
-            return None
-        return _summarize_power_inverse(mutator, base_summary)
+        outer = base.outer.op_invert(g=mutator.G_transient, tg=mutator.tg_in)
+        return _UncertaintySummary(
+            outer=outer,
+            low=base.high.op_invert(g=mutator.G_transient, tg=mutator.tg_in),
+            high=base.low.op_invert(g=mutator.G_transient, tg=mutator.tg_in),
+            count=base.count,
+        )
 
-    return None
+    if not expr.expr_isinstance(Add) and not expr.expr_isinstance(Multiply):
+        return None
+    if sum(part.count for part in parts) > 1:
+        return None
+    valid = (
+        (
+            lambda n: (
+                math.isfinite(n.get_min_value()) and math.isfinite(n.get_max_value())
+            )
+        )
+        if expr.expr_isinstance(Add)
+        else (
+            lambda n: (
+                n.get_min_value() > 0
+                and math.isfinite(n.get_min_value())
+                and math.isfinite(n.get_max_value())
+            )
+        )
+    )
+    if not all(valid(part.outer) for part in parts):
+        return None
+    op = (
+        F.Literals.Numbers.op_add_intervals
+        if expr.expr_isinstance(Add)
+        else F.Literals.Numbers.op_mul_intervals
+    )
+    outer = op(
+        parts[0].outer,
+        *(part.outer for part in parts[1:]),
+        g=mutator.G_transient,
+        tg=mutator.tg_in,
+    )
+    if all(part.count == 0 for part in parts):
+        return _UncertaintySummary.from_outer(mutator, outer)
+    low, high = next((part.low, part.high) for part in parts if part.count == 1)
+    for part in parts:
+        if part.count == 1:
+            continue
+        nums = F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
+        low = op(
+            low,
+            nums.create_instance(g=mutator.G_transient).setup_from_singleton(
+                value=part.outer.get_min_value(), unit=part.outer.get_is_unit()
+            ),
+            g=mutator.G_transient,
+            tg=mutator.tg_in,
+        )
+        high = op(
+            high,
+            nums.create_instance(g=mutator.G_transient).setup_from_singleton(
+                value=part.outer.get_max_value(), unit=part.outer.get_is_unit()
+            ),
+            g=mutator.G_transient,
+            tg=mutator.tg_in,
+        )
+    return _UncertaintySummary(outer=outer, low=low, high=high, count=1)
+
+
+def _depends_on_target(
+    target_op: F.Parameters.can_be_operand, expr: F.Expressions.is_expression
+):
+    from faebryk.core.solver.symbolic.invariants import AliasClass
+
+    target_aliases = [
+        alias.as_operand.get()
+        for alias in AliasClass.of(target_op, allow_non_repr=True).get_with_trait(
+            F.Parameters.is_parameter
+        )
+    ]
+    if not target_aliases:
+        return False
+
+    seen: list[F.Parameters.can_be_operand] = []
+    stack = list(expr.get_operands())
+    while stack:
+        operand = stack.pop()
+        if any(alias.is_same(operand) for alias in target_aliases):
+            return True
+        if any(prev.is_same(operand) for prev in seen):
+            continue
+        seen.append(operand)
+        if nested := _represented_expression(operand):
+            stack.extend(nested.get_operands())
+    return False
+
+
+def _is_input_parameter_target(
+    mutator: Mutator, po: F.Parameters.is_parameter_operatable
+) -> bool:
+    return any(
+        source in mutator.mutation_map.input_operables
+        and source.as_parameter.try_get() is not None
+        for source in mutator.mutation_map.map_backward(po)
+    )
 
 
 @algorithm("Uncertainty estimation", terminal=False)
@@ -632,10 +496,6 @@ def uncertainty_estimation_single_source(mutator: Mutator):
     """
     Derive a safe outer bound for a parameter from a canonical expression tree with a
     single uncertainty leaf.
-
-    This pass is intentionally conservative: it only helps targets that are still
-    open-ended. Once a target already has a finite outer bound, we leave further
-    tightening to the ordinary upper-estimation machinery.
     """
 
     for eq in mutator.get_typed_expressions(
@@ -643,84 +503,89 @@ def uncertainty_estimation_single_source(mutator: Mutator):
         required_traits=(F.Expressions.is_predicate,),
         include_terminated=True,
     ):
-        eq_e = eq.get_trait(F.Expressions.is_expression)
-        operands = eq_e.get_operands()
-
-        param_operands = [
-            op
-            for op in operands
-            if (po := op.as_parameter_operatable.try_get())
-            and _try_get_numeric_parameter(po)
-            and not op.try_get_sibling_trait(F.Expressions.is_expression_representative)
+        operands = eq.is_expression.get().get_operands()
+        targets = [
+            (operand, po)
+            for operand in operands
+            if _direct_expression(operand) is None
+            and (po := operand.as_parameter_operatable.try_get())
+            and _numeric_parameter(po)
         ]
-        expr_operands = [
-            op for op in operands if _try_get_expression_representative(op) is not None
-        ]
-        if len(param_operands) != 1 or not expr_operands:
+        rhs_exprs = []
+        for operand in operands:
+            if not (expr := _direct_expression(operand)):
+                continue
+            if any(expr.is_same(prev) for prev in rhs_exprs):
+                continue
+            rhs_exprs.append(expr)
+        if len(targets) != 1 or not rhs_exprs:
             continue
 
-        target_op = param_operands[0]
-        target_po = target_op.as_parameter_operatable.force_get()
-        existing_upper = _try_extract_numeric_superset(mutator, target_po)
-        if existing_upper is not None and _is_finite(existing_upper):
+        target_op, target_po = targets[0]
+        if target_po.try_extract_subset() is not None:
             continue
-
-        candidate: F.Literals.Numbers | None = None
-
-        for expr_op in expr_operands:
-            rhs_expr = _try_get_expression_representative(expr_op)
-            if rhs_expr is None:
+        if not _is_input_parameter_target(mutator, target_po):
+            continue
+        upper = MutatorUtils.is_numeric_literal(target_po.try_extract_superset())
+        if upper is None and (numeric_param := _numeric_parameter(target_po)):
+            upper = numeric_param.domain_set(g=mutator.G_transient, tg=mutator.tg_in)
+        candidate = None
+        for rhs_expr in rhs_exprs:
+            if _depends_on_target(target_op, rhs_expr):
                 continue
-
-            if _expr_depends_on_target_alias(target_op, rhs_expr):
-                continue
-
             summary = _summarize_uncertainty_expression(mutator, rhs_expr)
-            if summary is None or summary.uncertainty_leaf_count != 1:
+            if (
+                summary is None
+                or summary.count != 1
+                or summary.low.get_min_value() > summary.high.get_max_value()
+            ):
                 continue
-
-            if summary.robust_low.get_min_value() > summary.robust_high.get_max_value():
-                # This rewritten equality does not admit a non-empty common interval
-                # under uncertainty semantics. That is a conservative skip, not a proof
-                # of unsatisfiability of the whole alias class.
-                continue
-
-            expr_candidate = _build_interval_from_bounds(
-                mutator,
-                summary.robust_low,
-                summary.robust_high,
+            rhs_candidate = (
+                F.Literals.Numbers.bind_typegraph(tg=mutator.tg_in)
+                .create_instance(g=mutator.G_transient)
+                .setup_from_min_max(
+                    min=summary.low.get_min_value(),
+                    max=summary.high.get_max_value(),
+                    unit=summary.low.get_is_unit(),
+                )
             )
             candidate = (
-                expr_candidate
+                rhs_candidate
                 if candidate is None
                 else fabll.Traits(
                     candidate.is_literal.get().op_setic_intersect(
-                        expr_candidate.is_literal.get(),
+                        rhs_candidate.is_literal.get(),
                         g=mutator.G_transient,
                         tg=mutator.tg_in,
                     )
                 ).get_obj(F.Literals.Numbers)
             )
-
         if candidate is None:
             continue
-
-        if existing_upper is not None:
+        if upper is not None:
             candidate = fabll.Traits(
                 candidate.is_literal.get().op_setic_intersect(
-                    existing_upper.is_literal.get(),
+                    upper.is_literal.get(),
                     g=mutator.G_transient,
                     tg=mutator.tg_in,
                 )
             ).get_obj(F.Literals.Numbers)
-
         if candidate.is_empty():
             raise Contradiction(
                 "Uncertainty lower bound not contained in target upper bound",
                 involved=[eq.get_trait(F.Parameters.is_parameter_operatable)],
                 mutator=mutator,
             )
-
+        if (
+            upper is not None
+            and candidate.op_setic_is_subset_of(
+                upper, g=mutator.G_transient, tg=mutator.tg_in
+            )
+            and upper.op_setic_is_subset_of(
+                candidate, g=mutator.G_transient, tg=mutator.tg_in
+            )
+        ):
+            continue
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             target_op,

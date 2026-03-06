@@ -18,7 +18,7 @@ from typing import (
     overload,
 )
 
-from more_itertools import first, zip_equal
+from more_itertools import first
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree

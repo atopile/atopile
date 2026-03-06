@@ -358,8 +358,10 @@ class MutatorUtils:
 
     @staticmethod
     def is_numeric_literal(
-        po: F.Parameters.can_be_operand,
+        po: F.Parameters.can_be_operand | F.Literals.is_literal | None,
     ) -> F.Literals.Numbers | None:
+        if po is None:
+            return None
         return fabll.Traits(po).get_obj_raw().try_cast(F.Literals.Numbers)
 
     @staticmethod
@@ -790,8 +792,6 @@ class MutatorUtils:
                     name=trait.name.get().get_single(),
                     detail=trait.detail.get().get_single() or None,
                 )
-            case F.Expressions.is_expression_representative():
-                pass
             case is_relevant() | is_irrelevant():
                 pass
             case _:

@@ -830,10 +830,6 @@ class is_expression(fabll.Node):
         else:
             assert False
 
-        fabll.Traits.create_and_add_instance_to(
-            node=p_instance,
-            trait=is_expression_representative,
-        )
         p = p_instance.is_parameter.get()
         e_compact = self.compact_repr(no_lit_suffix=True, no_class_suffix=True)
         # calculcate ANSII color from uuid
@@ -895,15 +891,6 @@ class is_predicate(fabll.Node):
     def unassert(self):
         # TODO
         pass
-
-
-class is_expression_representative(fabll.Node):
-    """
-    Marks a parameter created to represent a non-predicate expression.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
 
 
 def _make_instance_from_operand_instance[T: fabll.NodeT](
